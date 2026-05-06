@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
-
-#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 
 namespace at::native {
 namespace xpu {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -8,9 +8,9 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/Context.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
-#include <comm/SYCLContext.h>
 
 #include <ATen/ops/bincount_native.h>
 

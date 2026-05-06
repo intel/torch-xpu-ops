@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,12 +65,29 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
     }
   }();
   at::native::check_foreach_api_restrictions(tensors);
-  const bool has_int_or_complex =
-      std::any_of(tensors.begin(), tensors.end(), [](const auto& t) {
-        const auto scalar_type = t.scalar_type();
-        return at::isIntegralType(scalar_type, /*includeBool*/ true) ||
-            at::isComplexType(scalar_type);
-      });
+  // If the tensor is empty and norm == infty, we cannot compute the norm
+  // because the operation does not have an identity. Also populate the
+  // has_int_or_complex flag.
+  bool has_int_or_complex = false;
+  if (p == std::numeric_limits<double>::infinity()) {
+    for (const auto& t : tensors) {
+      TORCH_CHECK(
+          t.numel() > 0,
+          "_foreach_norm cannot compute the infinity norm on an empty tensor because the operation does not have an identity");
+      const auto scalar_type = t.scalar_type();
+      if (at::isIntegralType(scalar_type, /*includeBool*/ true) ||
+          at::isComplexType(scalar_type)) {
+        has_int_or_complex = true;
+      }
+    }
+  } else {
+    has_int_or_complex =
+        std::any_of(tensors.begin(), tensors.end(), [](const auto& t) {
+          const auto scalar_type = t.scalar_type();
+          return at::isIntegralType(scalar_type, /*includeBool*/ true) ||
+              at::isComplexType(scalar_type);
+        });
+  }
   if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
       !(p == static_cast<double>(1) || p == static_cast<double>(2) ||
         p == std::numeric_limits<double>::infinity())) {
@@ -84,17 +101,19 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
 
 std::vector<Tensor> foreach_tensor_max_xpu(TensorList tensors) {
   check_foreach_api_restrictions(tensors);
-  if (!can_use_fast_route(tensors)) {
-    return foreach_tensor_max_slow(tensors);
-  }
 
-  // for parity with max in ReduceAllOps.cpp, as max(empty) is ???
+  // for parity with max in ReduceAllOps.cpp, as max(empty) is undefined
+  // Check this early before routing to slow path
   TORCH_CHECK(
       std::all_of(
           tensors.begin(),
           tensors.end(),
           [](const auto& t) { return t.numel() > 0; }),
-      "max(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument.");
+      "_foreach_max cannot compute the maximum of an empty tensor; max over zero elements is undefined.");
+
+  if (!can_use_fast_route(tensors)) {
+    return foreach_tensor_max_slow(tensors);
+  }
 
   return at::native::xpu::foreach_max_kernel(tensors);
 }

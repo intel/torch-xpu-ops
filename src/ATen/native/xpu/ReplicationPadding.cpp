@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/ReplicationPaddingKernels.h>
-
-#include <comm/RegisterUtils.h>
 
 #include <ATen/ops/replication_pad1d_backward_native.h>
 #include <ATen/ops/replication_pad1d_native.h>

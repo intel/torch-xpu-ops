@@ -5,6 +5,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+# Owner(s): ["module: functorch"]
+
 import copy
 import math
 import os
@@ -3003,7 +3005,7 @@ class TestLinearize(TestCase):
         with self.assertRaisesRegex(
             RuntimeError, "in flattened pytree doesn't match the device"
         ):
-            jvp_fn(x_t.to(torch.device(device)))
+            jvp_fn(x_t.to(self.device_type))
 
 
 # The tests here follow the cases in [Forward Grad View/inplace]
@@ -4339,9 +4341,7 @@ class TestExamplesCorrectness(TestCase):
 
         def lennard_jones_force(r):
             """Get magnitude of LJ force"""
-            return -epsilon * (
-                (-12 * sigma**12 / r**13) + (6 * sigma**6 / r**7)
-            )
+            return -epsilon * ((-12 * sigma**12 / r**13) + (6 * sigma**6 / r**7))
 
         r = torch.linspace(0.5, 2 * sigma, steps=100, requires_grad=True, device=device)
         drs = torch.outer(r, torch.tensor([1.0, 0, 0], device=device))

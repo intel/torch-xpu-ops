@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice, this
- * list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
@@ -26,18 +26,19 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mha_fwd.h"
-#include "mha_common.h"
+#include <sycltla/mha_common.h>
+#include <sycltla/mha_fwd.h>
 
 // batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
 using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
@@ -47,34 +48,14 @@ namespace cute {
 template <class...>
 class MhaName;
 
-template <class FMHAPrefillKernel>
+template <class FMHAPrefillKernel, bool isVarLen>
 struct FA2Runner {
-  using StrideQ = typename FMHAPrefillKernel::StrideQ;
-  using StrideK = typename FMHAPrefillKernel::StrideK;
-  using StrideV = typename FMHAPrefillKernel::StrideV;
-  using StrideO = typename FMHAPrefillKernel::StrideO;
-
   using ElementQ = typename FMHAPrefillKernel::ElementQ;
   using ElementK = typename FMHAPrefillKernel::ElementK;
   using ElementV = typename FMHAPrefillKernel::ElementV;
-  using ElementAcc = typename FMHAPrefillKernel::ElementAccumulator;
+  using ElementO = typename FMHAPrefillKernel::ElementO;
 
-  using CollectiveEpilogue = typename FMHAPrefillKernel::CollectiveEpilogue;
-  using ElementOutput = typename CollectiveEpilogue::ElementOutput;
-  using ElementCompute = typename CollectiveEpilogue::ElementCompute;
-  using ElementAccumulator = typename CollectiveEpilogue::ElementAccumulator;
-
-  using ProblemShapeType = typename FMHAPrefillKernel::ProblemShape;
-
-  //
-  // Data members
-  //
-
-  /// Initialization
-  StrideQ stride_Q;
-  StrideK stride_K;
-  StrideV stride_V;
-  StrideO stride_O;
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
 
   //
   // Methods
@@ -84,6 +65,9 @@ struct FA2Runner {
   // attention, which is why this secondary `run` function is required to launch
   // the kernel.
   void run(sycl::queue& queue, typename FMHAPrefillKernel::Params params) {
+    namespace syclex = sycl::ext::oneapi::experimental;
+    namespace intelex = sycl::ext::intel::experimental;
+
     dim3 const block = FMHAPrefillKernel::get_block_shape();
     dim3 const grid = FMHAPrefillKernel::get_grid_shape(params);
 
@@ -93,93 +77,72 @@ struct FA2Runner {
     const auto sycl_block = compat::dim3(block.x, block.y, block.z);
     const auto sycl_grid = compat::dim3(grid.x, grid.y, grid.z);
 
-// Launch parameters depend on whether SYCL compiler supports work-group scratch
-// memory extension
-#if !defined(SYCL_EXT_ONEAPI_WORK_GROUP_SCRATCH_MEMORY)
-    using namespace compat::experimental;
-    auto event = launch<
-        cutlass::device_kernel<FMHAPrefillKernel>,
-        MhaName<FMHAPrefillKernel>>(
-        launch_policy{
-            sycl_grid,
-            sycl_block,
-            local_mem_size{static_cast<std::size_t>(smem_size)},
-            kernel_properties{sycl_exp::sub_group_size<
-                FMHAPrefillKernel::DispatchPolicy::SubgroupSize>}},
-        queue,
-        params);
-#else
+    // Launch parameters depend on whether SYCL compiler supports work-group
+    // scratch memory extension
     compat::experimental::launch_properties launch_props{
-        sycl::ext::oneapi::experimental::work_group_scratch_size(smem_size),
+        syclex::work_group_scratch_size(smem_size),
     };
     compat::experimental::kernel_properties kernel_props{
-        sycl::ext::oneapi::experimental::sub_group_size<
-            FMHAPrefillKernel::DispatchPolicy::SubgroupSize>};
+        syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
     compat::experimental::launch_policy policy{
         sycl_grid, sycl_block, launch_props, kernel_props};
-    auto event = compat::experimental::launch<
+    compat::experimental::launch<
         cutlass::device_kernel<FMHAPrefillKernel>,
         MhaName<FMHAPrefillKernel>>(policy, queue, params);
-#endif
   }
 
   void run(
       sycl::queue& queue,
-      ProblemShapeType problem_size,
-      const cutlass::KernelHardwareInfo& hw_info,
-      const ElementQ* inputQ,
-      const ElementK* inputK,
-      const ElementV* inputV,
-      ElementOutput* output,
-      float* logsumexp,
-      float softmax_scale,
-      bool is_bshd) {
-    auto
-        [batch,
-         num_heads_q,
-         num_heads_kv,
-         seq_len_qo,
-         seq_len_kv,
-         head_size_qk,
-         head_size_vo] = problem_size;
+      FLASH_FWD_params& params,
+      const cutlass::KernelHardwareInfo& hw_info) {
+    int batch = params.batch_size;
+    int num_heads_qo = params.num_heads_qo;
+    int num_heads_kv = params.num_heads_kv;
+    int seq_len_qo = params.seqlen_qo;
+    int seq_len_kv = params.seqlen_kv;
+    int head_size_qk = params.head_size_qk;
+    int head_size_vo = params.head_size_vo;
 
-    if (is_bshd) {
-      stride_Q = cutlass::make_cute_packed_stride(
-          StrideQ{},
-          cute::make_shape(seq_len_qo, num_heads_q * head_size_qk, batch));
-      stride_K = cutlass::make_cute_packed_stride(
-          StrideK{},
-          cute::make_shape(seq_len_kv, num_heads_kv * head_size_qk, batch));
-      stride_V = cutlass::make_cute_packed_stride(
-          StrideV{},
-          cute::make_shape(head_size_vo * num_heads_kv, seq_len_kv, batch));
-      stride_O = cutlass::make_cute_packed_stride(
-          StrideO{},
-          cute::make_shape(seq_len_qo, num_heads_q * head_size_vo, batch));
-    } else {
-      stride_Q = cutlass::make_cute_packed_stride(
-          StrideQ{},
-          cute::make_shape(seq_len_qo, head_size_qk, batch * num_heads_q));
-      stride_K = cutlass::make_cute_packed_stride(
-          StrideK{},
-          cute::make_shape(seq_len_kv, head_size_qk, batch * num_heads_kv));
-      stride_V = cutlass::make_cute_packed_stride(
-          StrideV{},
-          cute::make_shape(head_size_vo, seq_len_kv, batch * num_heads_kv));
-      stride_O = cutlass::make_cute_packed_stride(
-          StrideO{},
-          cute::make_shape(seq_len_qo, head_size_vo, batch * num_heads_q));
-    }
+    ProblemShapeType shape;
+    shape.batch = batch;
+    shape.num_heads_q = num_heads_qo;
+    shape.num_heads_kv = num_heads_kv;
+    shape.seq_len_qo = seq_len_qo;
+    shape.seq_len_kv = seq_len_kv;
+    shape.head_size_qk = head_size_qk;
+    shape.head_size_vo = head_size_vo;
+
+    const ElementQ* q_ptr = static_cast<const ElementQ*>(params.q_ptr);
+    const ElementK* k_ptr = static_cast<const ElementK*>(params.k_ptr);
+    const ElementV* v_ptr = static_cast<const ElementV*>(params.v_ptr);
+    ElementO* o_ptr = static_cast<ElementO*>(params.o_ptr);
+    float* lse_ptr = static_cast<float*>(params.lse_ptr);
+    float softmax_scale = params.scale;
 
     typename FMHAPrefillKernel::Arguments arguments{
-        cutlass::gemm::GemmUniversalMode::kGemm,
-        problem_size,
-        {inputQ, stride_Q, inputK, stride_K, inputV, stride_V},
+        {
+            shape,
+            q_ptr,
+            params.q_batch_stride,
+            params.q_head_stride,
+            params.q_row_stride,
+            k_ptr,
+            params.k_batch_stride,
+            params.k_head_stride,
+            params.k_row_stride,
+            v_ptr,
+            params.v_batch_stride,
+            params.v_head_stride,
+            params.v_row_stride,
+            o_ptr,
+            params.o_batch_stride,
+            params.o_head_stride,
+            params.o_row_stride,
+            lse_ptr,
+        },
         {softmax_scale},
-        {output, stride_O, logsumexp},
-        hw_info,
-        softmax_scale,
-        is_bshd};
+        {},
+        hw_info};
 
     // Define device-global scratch memory
     size_t workspace_size = FMHAPrefillKernel::get_workspace_size(arguments);
@@ -193,7 +156,7 @@ struct FA2Runner {
           "Invalid Problem Size",
           batch,
           "x",
-          num_heads_q,
+          num_heads_qo,
           "x",
           seq_len_qo,
           "x",
@@ -211,226 +174,175 @@ struct FA2Runner {
 
     // Convert host-side arguments to device-side arguments to be passed to the
     // kernel
-    auto params = FMHAPrefillKernel::to_underlying_arguments(
+    auto kernel_params = FMHAPrefillKernel::to_underlying_arguments(
         arguments, workspace_tensor.data_ptr());
 
     // Launch a SYCL kernel using scratch/shared memory
-    run(queue, params);
+    run(queue, kernel_params);
   }
 };
 
 template <
     typename T,
-    typename ProblemShape,
     bool IS_CAUSAL,
     typename TileShapeQK,
     typename TileShapePV,
     typename TileShapeOutPut,
-    typename SubgroupLayout,
-    int PipelineStages>
-void run_mha_fwd_(
-    sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const T* query,
-    const T* key,
-    const T* value,
-    T* out,
-    float* logsumexp,
-    float scale,
-    bool is_bshd) {
+    typename SubgroupLayoutQK,
+    int PipelineStages,
+    bool isVarLen = false>
+void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
+  using ElementQ = T;
+  using ElementK = T;
+  using ElementV = T;
+  using ElementO = T;
+  using StrideQ = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideK = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideV = Stride<_1, int64_t, int64_t, int64_t>;
+  using StrideO = Stride<int64_t, _1, int64_t, int64_t>;
+  auto make_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  auto make_const_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<const decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  using TensorQ = decltype(make_const_dummy_tensor(ElementQ{}, StrideQ{}));
+  using TensorK = decltype(make_const_dummy_tensor(ElementK{}, StrideK{}));
+  using TensorV = decltype(make_const_dummy_tensor(ElementV{}, StrideV{}));
+  using TensorO = decltype(make_dummy_tensor(ElementO{}, StrideO{}));
+
+  static constexpr int SGTileQ =
+      get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})))();
+  static_assert(SGTileQ <= 16, "Subgroup tile in Q dimension must be <= 16");
+  using MMAOperation = XE_DPAS_TT<cute::gcd(SGTileQ, 8), float, T>;
+  using SubgroupLayoutPV =
+      decltype(cutlass::fmha::collective::get_sg_layout_pv(SubgroupLayoutQK{}));
+  using TiledMMAQK = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapeQK>,
+      SubgroupLayoutQK>::TiledMMA;
+  using TiledMMAPV = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapePV>,
+      SubgroupLayoutPV>::TiledMMA;
+  static_assert(
+      get<0>(TileShapeOutPut{}) == get<0>(TileShapePV{}),
+      "Output tile and P*V tile have different sizes in Q dimension");
+  constexpr int VTiles = get<1>(TileShapeOutPut{}) / get<1>(TileShapePV{});
+
   cutlass::KernelHardwareInfo hw_info;
 
-  using LayoutQ = cutlass::layout::RowMajor;
-  using LayoutK = cutlass::layout::ColumnMajor;
-  using LayoutV = cutlass::layout::RowMajor;
-  using LayoutO = cutlass::layout::RowMajor;
-
-  using ElementInputQ = T;
-  using ElementInputKV = T;
-  using ElementOutput = T;
-  using ElementAccumulator = float;
-  using ElementComputeEpilogue = float;
-
-  using MMAOperation = std::conditional_t<
-      std::is_same_v<T, bfloat16_t>,
-      XE_8x16x16_F32BF16BF16F32_TT,
-      XE_8x16x16_F32F16F16F32_TT>;
-  using GmemTiledCopyQ = XE_2D_U16x8x32_LD_N;
-  using GmemTiledCopyK =
-      XE_2D_U16x16x16_LD_T; // _T designates a transposed block load operation
-  using GmemTiledCopyV = XE_2D_U16x16x32_LD_V;
-  using GmemTiledCopyStore = XE_2D_U16x8x16_ST_N; // Change to output BF16
-
-  using GEMMDispatchPolicy =
-      cutlass::gemm::MainloopIntelXeXMX16<PipelineStages>;
-  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeXMX16;
-  using CollectiveEpilogue =
-      cutlass::flash_attention::collective::FlashPrefillEpilogue<
-          EpilogueDispatchPolicy,
-          MMAOperation,
-          TileShapeOutPut,
-          SubgroupLayout,
-          ElementComputeEpilogue,
-          ElementOutput,
-          cutlass::gemm::TagToStrideC_t<LayoutO>,
-          ElementOutput,
-          GmemTiledCopyStore>;
-  using CollectiveSoftmaxEpilogue =
-      cutlass::flash_attention::collective::FlashPrefillSoftmaxEpilogue<
-          IS_CAUSAL,
-          EpilogueDispatchPolicy,
-          ElementAccumulator>;
-
-  using namespace cutlass::fmha::collective;
-
-  using ProblemShapeType = ProblemShape;
-
   // Mainloop
-  using CollectiveMainloop =
-      cutlass::flash_attention::collective::FlashPrefillMma<
-          GEMMDispatchPolicy,
-          ProblemShapeType,
-          ElementInputQ,
-          cutlass::gemm::TagToStrideA_t<LayoutQ>,
-          ElementInputKV,
-          cutlass::gemm::TagToStrideB_t<LayoutK>,
-          ElementInputKV,
-          cutlass::gemm::TagToStrideB_t<LayoutV>,
-          MMAOperation,
-          TileShapeQK,
-          TileShapePV,
-          SubgroupLayout,
-          GmemTiledCopyQ, // Q
-          GmemTiledCopyK, // K
-          GmemTiledCopyV, // V,
-          IS_CAUSAL>;
-  using FMHAPrefillKernel = cutlass::flash_attention::kernel::FMHAPrefill<
+  using MainloopDispatchPolicy = cutlass::fmha::XeDefault<PipelineStages>;
+  using CollectiveMainloop = cutlass::fmha::collective::FMHAFwdMainloop<
+      MainloopDispatchPolicy,
+      IS_CAUSAL,
+      TiledMMAQK,
+      TiledMMAPV,
+      VTiles,
+      TensorQ,
+      TensorK,
+      TensorV>;
+
+  // Epilogue
+  using CollectiveEpilogue = cutlass::fmha::collective::
+      FMHAFwdEpilogue<CollectiveMainloop, TileShapeOutPut, TensorO>;
+
+  using Scheduler = cutlass::fmha::kernel::XeFMHAIndividualTileScheduler;
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
+  using FMHAPrefillKernel = cutlass::fmha::kernel::XeFMHAFwdKernel<
       ProblemShapeType,
       CollectiveMainloop,
-      CollectiveSoftmaxEpilogue,
       CollectiveEpilogue,
-      cutlass::flash_attention::IndividualScheduler>;
+      Scheduler>;
 
-  FA2Runner<FMHAPrefillKernel> runner;
-  runner.run(
-      queue,
-      problem_shape,
-      hw_info,
-      query,
-      key,
-      value,
-      out,
-      logsumexp,
-      scale,
-      is_bshd);
+  FA2Runner<FMHAPrefillKernel, isVarLen> runner;
+  runner.run(queue, params, hw_info);
 }
 
-template <typename T, typename ProblemShape, bool IS_CAUSAL>
-void run_mha_fwd_(
-    sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const T* query,
-    const T* key,
-    const T* value,
-    T* out,
-    float* logsumexp,
-    float scale,
-    bool is_bshd) {
-  const int headdim = get<5>(problem_shape);
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
+  const int headdim = params.head_size_vo;
 
 #define run_mha_fwd_specialized( \
     TileShapeQK_,                \
     TileShapePV_,                \
     TileShapeOutPut_,            \
-    SubgroupLayout_,             \
+    SubgroupLayoutQK_,           \
     PipelineStages_)             \
   run_mha_fwd_<                  \
       T,                         \
-      ProblemShape,              \
       IS_CAUSAL,                 \
       TileShapeQK_,              \
       TileShapePV_,              \
       TileShapeOutPut_,          \
-      SubgroupLayout_,           \
-      PipelineStages_>(          \
-      queue,                     \
-      problem_shape,             \
-      query,                     \
-      key,                       \
-      value,                     \
-      out,                       \
-      logsumexp,                 \
-      scale,                     \
-      is_bshd);
+      SubgroupLayoutQK_,         \
+      PipelineStages_>(queue, params);
 
+  constexpr int PipelineStages = 2;
   if (headdim == 64) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_128, _64, _64>;
-    using TileShapePV = Shape<_128, _32, _64>;
-    using TileShapeOutPut = Shape<_128, _64, _64>;
-    using SubgroupLayout = Layout<Shape<_8, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
-  } else if (headdim == 96) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_128, _64, _32>;
-    using TileShapePV = Shape<_128, _32, _64>;
-    using TileShapeOutPut = Shape<_128, _96, _64>;
-    using SubgroupLayout = Layout<Shape<_8, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
-  } else if (headdim == 128) {
-    auto device_architecture =
-        queue.get_device()
-            .get_info<
-                sycl::ext::oneapi::experimental::info::device::architecture>();
-    if (device_architecture ==
-            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc ||
-        device_architecture ==
-            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg) {
-      constexpr int PipelineStages = 1;
-      using TileShapeQK = Shape<_64, _32, _64>;
-      using TileShapePV = Shape<_64, _32, _32>;
-      using TileShapeOutPut = Shape<_64, _128, _32>;
-      using SubgroupLayout = Layout<Shape<_4, _1, _1>, Stride<_1, _1, _1>>;
+    int64_t batch_size = params.batch_size;
+    int64_t num_heads_qo = params.num_heads_qo;
+    int64_t seqlen_qo = params.seqlen_qo;
+    if (batch_size * num_heads_qo * seqlen_qo <= 8192) {
+      using TileShapeQK = Shape<_64, _64, _32>;
+      using TileShapePV = Shape<_64, _32, _64>;
+      using TileShapeOutPut = Shape<_64, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_16, _1, _1>>;
       run_mha_fwd_specialized(
           TileShapeQK,
           TileShapePV,
           TileShapeOutPut,
-          SubgroupLayout,
+          SubgroupLayoutQK,
           PipelineStages);
     } else {
-      constexpr int PipelineStages = 2;
-      using TileShapeQK = Shape<_256, _32, _64>;
-      using TileShapePV = Shape<_256, _32, _32>;
-      using TileShapeOutPut = Shape<_256, _128, _32>;
-      using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+      using TileShapeQK = Shape<_128, _64, _32>;
+      using TileShapePV = Shape<_128, _32, _64>;
+      using TileShapeOutPut = Shape<_128, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
       run_mha_fwd_specialized(
           TileShapeQK,
           TileShapePV,
           TileShapeOutPut,
-          SubgroupLayout,
+          SubgroupLayoutQK,
           PipelineStages);
     }
-  } else if (headdim == 192) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_256, _64, _64>;
-    using TileShapePV = Shape<_256, _32, _64>;
-    using TileShapeOutPut = Shape<_256, _192, _64>;
-    using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+  } else if (headdim == 96) {
+    using TileShapeQK = Shape<_128, _64, _32>;
+    using TileShapePV = Shape<_128, _32, _64>;
+    using TileShapeOutPut = Shape<_128, _96>;
+    using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
     run_mha_fwd_specialized(
         TileShapeQK,
         TileShapePV,
         TileShapeOutPut,
-        SubgroupLayout,
+        SubgroupLayoutQK,
+        PipelineStages);
+  } else if (headdim == 128) {
+    using TileShapeQK = Shape<_128, _32, _32>;
+    using TileShapePV = Shape<_128, _32, _32>;
+    using TileShapeOutPut = Shape<_128, _128>;
+    using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+    run_mha_fwd_specialized(
+        TileShapeQK,
+        TileShapePV,
+        TileShapeOutPut,
+        SubgroupLayoutQK,
+        PipelineStages);
+  } else if (headdim == 192) {
+    using TileShapeQK = Shape<_256, _64, _32>;
+    using TileShapePV = Shape<_256, _32, _64>;
+    using TileShapeOutPut = Shape<_256, _192>;
+    using SubgroupLayoutQK = Layout<Shape<_32, _1, _1>>;
+    run_mha_fwd_specialized(
+        TileShapeQK,
+        TileShapePV,
+        TileShapeOutPut,
+        SubgroupLayoutQK,
         PipelineStages);
   } else {
     TORCH_CHECK(
@@ -438,31 +350,10 @@ void run_mha_fwd_(
   }
 }
 
-template <typename ProblemShape>
-void run_mha_fwd(
-    sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const void* query,
-    const void* key,
-    const void* value,
-    void* out,
-    void* logsumexp,
-    bool is_causal,
-    float scale,
-    bool is_bshd,
-    at::ScalarType dtype) {
-  FP16_SWITCH(dtype == at::kHalf, [&] {
-    BOOL_SWITCH(is_causal, IS_CAUSAL, [&] {
-      run_mha_fwd_<elem_type, ProblemShape, IS_CAUSAL>(
-          queue,
-          problem_shape,
-          static_cast<const elem_type*>(query),
-          static_cast<const elem_type*>(key),
-          static_cast<const elem_type*>(value),
-          static_cast<elem_type*>(out),
-          static_cast<float*>(logsumexp),
-          scale,
-          is_bshd);
+void run_mha_fwd(sycl::queue& queue, FLASH_FWD_params& params) {
+  FP16_SWITCH(params.is_fp16, [&] {
+    BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
+      run_mha_fwd_<elem_type, IS_CAUSAL>(queue, params);
     });
   });
 }
@@ -539,44 +430,8 @@ flash_attention_forward_sycltla(
       value.stride(-1) == 1,
       "FlashAttentionForwardXPU: input tensor must have contiguous last dimension");
 
-  ATTN_TENSOR_LAYOUT layout = get_attn_tensor_layout(query);
-  if (layout == ATTN_TENSOR_LAYOUT::UNSUPPORTED) {
-    TORCH_CHECK(
-        false,
-        "FlashAttentionForwardXPU: only support BHSD or BSHD layout, got query with shape ",
-        query.sizes(),
-        ", stride ",
-        query.strides());
-  }
-  layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(key));
-  TORCH_CHECK(
-      ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionForwardXPU: query and key must have the same layout, got query with layout ",
-      to_string(layout),
-      ", key with layout ",
-      to_string(get_attn_tensor_layout(key)));
-  layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(value));
-  TORCH_CHECK(
-      ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionForwardXPU: query and value must have the same layout, got query with layout ",
-      to_string(layout),
-      ", value with layout ",
-      to_string(get_attn_tensor_layout(value)));
-  if (layout == ATTN_TENSOR_LAYOUT::BXD) {
-    layout = ATTN_TENSOR_LAYOUT::BSHD;
-  }
-
   auto opts = query.options();
-  at::Tensor out;
-  if (layout == ATTN_TENSOR_LAYOUT::BHSD) {
-    out = at::empty({batch_size, numhead_qo, seqlen_qo, headsize_vo}, opts);
-  } else if (layout == ATTN_TENSOR_LAYOUT::BSHD) {
-    out = at::empty({batch_size, seqlen_qo, numhead_qo, headsize_vo}, opts)
-              .permute({0, 2, 1, 3});
-  } else {
-    TORCH_CHECK(
-        false, "FlashAttentionForwardXPU: only support BHSD or BSHD layout");
-  }
+  at::Tensor out = at::empty_like(query);
 
   if (seqlen_qo > seqlen_kv && is_causal) {
     // When seqlen_qo is greater than seqlen_kv and is_causal(lower_right causal
@@ -594,41 +449,41 @@ flash_attention_forward_sycltla(
           .get_info<
               sycl::ext::oneapi::experimental::info::device::architecture>();
   constexpr auto supported_architectures =
-      std::array<sycl::ext::oneapi::experimental::architecture, 3>{
+      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21};
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
   if (std::find(
           supported_architectures.begin(),
           supported_architectures.end(),
           device_architecture) == supported_architectures.end()) {
     TORCH_CHECK(
         false,
-        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21.");
+        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
   }
 
-  auto problem_shape = ProblemShapeRegular(
+  FLASH_FWD_params params;
+  set_params_fprop(
+      params,
       batch_size,
       numhead_qo,
       numhead_kv,
       seqlen_qo,
       seqlen_kv,
       headsize_qk,
-      headsize_vo);
-
-  bool is_bshd = (layout == ATTN_TENSOR_LAYOUT::BSHD);
-  cute::run_mha_fwd<decltype(problem_shape)>(
-      sycl_queue,
-      problem_shape,
-      query.data_ptr(),
-      key.data_ptr(),
-      value.data_ptr(),
-      out.data_ptr(),
-      logsumexp.data_ptr(),
-      is_causal,
+      headsize_vo,
+      0, // unused seqlen_qo_pad
+      0, // unused seqlen_kv_pad
+      query,
+      key,
+      value,
+      out,
+      logsumexp,
       scale,
-      is_bshd,
-      dtype);
+      is_causal);
+
+  cute::run_mha_fwd(sycl_queue, params);
 
   return std::tuple<
       at::Tensor,
@@ -643,8 +498,8 @@ flash_attention_forward_sycltla(
       logsumexp,
       /* cumulative_sequence_length_q */ at::Tensor(),
       /* cumulative_sequence_length_k */ at::Tensor(),
-      /* max_seqlen_batch_q */ c10::SymInt(0),
-      /* max_seqlen_batch_k */ c10::SymInt(0),
+      /* max_seqlen_batch_q */ c10::SymInt(seqlen_qo),
+      /* max_seqlen_batch_k */ c10::SymInt(seqlen_kv),
       /* philox_seed */ at::empty({}, at::dtype(at::kLong)),
       /* philox_offset */ at::empty({}, at::dtype(at::kLong))};
 }

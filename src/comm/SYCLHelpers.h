@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -9,9 +9,15 @@
  */
 
 #pragma once
-
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 // sycl access address space
 static constexpr auto sycl_priv_space =
@@ -142,12 +148,113 @@ sycl_kernel_submit(
   q.submit(cgf);
 }
 
+// Overloads accepting kernel properties (e.g., sub_group_size, grf_size).
+// Uses kernel functor with get(properties_tag) — the official non-deprecated
+// way to attach compile-time properties to a kernel.
+
+template <typename KernelType, typename PropsType>
+struct __SyclKernelWithProps__ {
+  KernelType kernel_;
+  template <typename ItemT>
+  void operator()(ItemT&& item) const {
+    kernel_(std::forward<ItemT>(item));
+  }
+  template <typename ItemT, typename... Rest>
+  void operator()(ItemT&& item, Rest&&...) const {
+    kernel_(std::forward<ItemT>(item));
+  }
+  auto get(::sycl::ext::oneapi::experimental::properties_tag) const {
+    return PropsType{};
+  }
+};
+
+template <typename ker_t, typename Props, int dim>
+static inline typename std::enable_if<
+    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props, int dim>
+static inline typename std::enable_if<
+    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props>
+static inline typename std::enable_if<
+    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props>
+static inline typename std::enable_if<
+    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        wrapped);
+  };
+  q.submit(cgf);
+}
+
 #ifdef __SYCL_DEVICE_ONLY__
-  #define SYCL_KERNEL_STRING(var, str) \
-    static const __attribute__((opencl_constant)) char var[] = str
+#define SYCL_KERNEL_STRING(var, str) \
+  static const __attribute__((opencl_constant)) char var[] = str
 #else
-  #define SYCL_KERNEL_STRING(var, str) \
-    static const char var[] = str
+#define SYCL_KERNEL_STRING(var, str) static const char var[] = str
 #endif
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
@@ -158,7 +265,7 @@ sycl_kernel_submit(
   }
 
 #ifdef __SYCL_DEVICE_ONLY__
-  #define SYCL_REQD_SUB_GROUP_SIZE(x) [[sycl::reqd_sub_group_size(x)]]
+#define SYCL_REQD_SUB_GROUP_SIZE(x) [[sycl::reqd_sub_group_size(x)]]
 #else
-  #define SYCL_REQD_SUB_GROUP_SIZE(x)
+#define SYCL_REQD_SUB_GROUP_SIZE(x)
 #endif

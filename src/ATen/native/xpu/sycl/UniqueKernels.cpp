@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ Tensor compute_inverse(
     not_equal_t not_equal) {
   // inverse indices
   Tensor inverse_indices;
-  input_t* data = sorted.data_ptr<input_t>();
+  const input_t* data = sorted.const_data_ptr<input_t>();
   auto data_begin = data;
   if (!return_inverse) {
     inverse_indices = at::empty({0}, index_options);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -9,10 +9,26 @@
  */
 
 #pragma once
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wchanges-meaning"
+#pragma clang diagnostic ignored "-Wsycl-strict"
+#pragma clang diagnostic ignored "-Wunused-local-typedefs"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wchanges-meaning"
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wdangling-pointer"
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <sycl/sycl.hpp>
+#include <sycltla/mha_common.h>
+
+#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
 
 namespace cute {
 template <
@@ -35,10 +51,6 @@ struct FAKernel {
   */
   using DType = T_;
   using VType = float; // accumulation
-  using MMA_Atom_ARCH = std::conditional_t<
-      std::is_same_v<DType, cutlass::half_t>,
-      MMA_Atom<XE_8x16x16_F32F16F16F32_TT>,
-      MMA_Atom<XE_8x16x16_F32BF16BF16F32_TT>>;
   static constexpr int kHeadDim = kHeadDim_;
   static constexpr int kBlockM = kBlockM_;
   static constexpr int kBlockN = kBlockN_;
@@ -47,160 +59,32 @@ struct FAKernel {
   static constexpr int AtomLayoutNdKV = AtomLayoutNdKV_;
   static constexpr int AtomLayoutMdQ = AtomLayoutMdQ_;
   static constexpr bool is_causal = is_causal_;
+  using MMA_Atom_ARCH = XE_DPAS_TT<8, VType, DType>;
+  using _K = Int<MMA_Atom_ARCH::K>;
   using SubgroupLayoutSdP =
       Layout<Shape<Int<AtomLayoutMSdP>, Int<kNSGs / AtomLayoutMSdP>, _1>>;
   using SubgroupLayoutdKV =
       Layout<Shape<Int<AtomLayoutNdKV>, Int<kNSGs / AtomLayoutNdKV>, _1>>;
   using SubgroupLayoutdQ =
       Layout<Shape<Int<AtomLayoutMdQ>, Int<kNSGs / AtomLayoutMdQ>, _1>>;
-
-  using TileShapeSdP =
-      Tile<Int<16 * AtomLayoutMSdP>, Int<16 * kNSGs / AtomLayoutMSdP>, _16>;
-  static_assert(
-      size<0>(TileShapeSdP{}) <= kBlockM &&
-      "tile size M must be smaller than or equal to kBlockM");
-  static_assert(
-      kBlockM % size<0>(TileShapeSdP{}) == 0 &&
-      "kBlockM must be dividable by tile size M");
-  static_assert(
-      size<1>(TileShapeSdP{}) <= kBlockN &&
-      "tile size N must be smaller than or equal to kBlockN");
-  static_assert(
-      kBlockN % size<1>(TileShapeSdP{}) == 0 &&
-      "kBlockN must be dividable by tile size N ");
-
-  using TileShapedKV =
-      Tile<Int<16 * AtomLayoutNdKV>, Int<16 * kNSGs / AtomLayoutNdKV>, _16>;
-  static_assert(
-      size<0>(TileShapedKV{}) <= kBlockN &&
-      "tile size M must be smaller than or equal to kBlockN");
-  static_assert(
-      kBlockN % size<0>(TileShapedKV{}) == 0 &&
-      "kBlockN must be dividable by tile size M");
-  static_assert(
-      size<1>(TileShapedKV{}) <= kHeadDim &&
-      "tile size N must be smaller than or equal to kHeadDim");
-  static_assert(
-      kHeadDim % size<1>(TileShapedKV{}) == 0 &&
-      "kHeadDim must be dividable by tile size N");
-
-  using TileShapedQ =
-      Tile<Int<16 * AtomLayoutMdQ>, Int<16 * kNSGs / AtomLayoutMdQ>, _16>;
-  static_assert(
-      size<0>(TileShapedQ{}) <= kBlockM &&
-      "tile size M must be smaller than or equal to kBlockM");
-  static_assert(
-      kBlockM % size<0>(TileShapedQ{}) == 0 &&
-      "kBlockM must dividable by tile size M");
-  static_assert(
-      size<1>(TileShapedQ{}) <= kHeadDim &&
-      "tile size N must be smaller than or equal to kHeadDim");
-  static_assert(
-      kHeadDim % size<1>(TileShapedQ{}) == 0 &&
-      "kHeadDim must be dividable by tile size N");
+  using TileShapeSdP = Layout<Shape<Int<kBlockN>, Int<kBlockM>, _K>>;
+  using TileShapedKV = Layout<Shape<Int<kBlockN>, Int<kHeadDim>, _K>>;
+  using TileShapedQ = Layout<Shape<Int<kBlockM>, Int<kHeadDim>, _K>>;
 
   using TiledMmaSdP = typename TiledMMAHelper<
-      MMA_Atom_ARCH,
-      Layout<TileShapeSdP>,
+      MMA_Atom<MMA_Atom_ARCH>,
+      TileShapeSdP,
       SubgroupLayoutSdP>::TiledMMA;
 
   using TiledMmadKV = typename TiledMMAHelper<
-      MMA_Atom_ARCH,
-      Layout<TileShapedKV>,
+      MMA_Atom<MMA_Atom_ARCH>,
+      TileShapedKV,
       SubgroupLayoutdKV>::TiledMMA;
 
   using TiledMmadQ = typename TiledMMAHelper<
-      MMA_Atom_ARCH,
-      Layout<TileShapedQ>,
+      MMA_Atom<MMA_Atom_ARCH>,
+      TileShapedQ,
       SubgroupLayoutdQ>::TiledMMA;
-  static constexpr auto bP = Int<2>{}; // Pipeline
-
-  using StrideR = cute::tuple<long, cute::C<1>>;
-  using StrideC = cute::tuple<cute::C<1>, long>;
-
-  // for load Q and Kt in S=QKt
-  using TiledLoadQ = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-  using TiledLoadKt = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-
-  // for load dO and Vt in dP=dO*Vt
-  using TiledLoaddO = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-
-  using TiledLoadV = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-
-  // for load Pt and dO in dV=Pt*dO
-  using TiledLoadPt = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideC>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 m-major
-      Layout<Shape<_16, _1>>{})); // // Val layout  8x1
-  using TiledLoaddOt = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_V, StrideC>, DType>{}, // should
-                                                                      // be V
-                                                                      // here
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _1>>{})); // val layout 16x1
-
-  // for load dP, K and dQ in dQ=dP*K
-  using TiledLoaddP = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _1>>{})); // val layout 16x1
-  using TiledLoadK = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideC>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _1>>{})); // val layout 16x1
-
-  using TiledLoaddQ = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U32x8x16_LD_N, StrideR>, VType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // val layout 8x1
-
-  //  for load dPt, Q in dK=dPt*Q
-  using TiledLoaddPt = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideC>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-  using TiledLoadQt = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideC>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _1>>{})); // Val layout  16x1
-
-  // for save S in S=QKt and P
-  using TiledSaveS = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // Val layout  8x1
-  // for save dP in dP=dO*Vt
-  using TiledSavedP = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // Val layout  8x1
-  // for save dV in dV=Pt*dO
-  using TiledSavedV = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // Val layout  8x1
-  // for save dQ in dQ=dP*K
-  using TiledSavedQ = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U32x8x16_ST_N, StrideR>, VType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // val layout 8x1
-  // for save dK=dPt*Q
-  using TiledSavedK = decltype(make_tiled_copy(
-      Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _1>>{})); // Val layout  8x1
 
   static constexpr int SubgroupSize = 16;
   static constexpr int smem_size = 0;
@@ -239,8 +123,7 @@ struct Param {
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
-        pb_ptr(pb),
-        is_bhsd(true) {}
+        pb_ptr(pb) {}
   // read only
   const T* do_ptr;
   const T* o_ptr;
@@ -273,43 +156,39 @@ struct Param {
   int tail_m;
   int num_qh_per_kvh;
   int num_nb_per_blk;
-  int q_r_stride;
-  int q_h_stride;
-  int q_b_stride;
 
-  int k_r_stride;
-  int k_h_stride;
-  int k_b_stride;
+  // strides
+  index_t q_r_stride;
+  index_t q_h_stride;
+  index_t q_b_stride;
 
-  int dk_r_stride;
-  int dk_h_stride;
-  int dk_b_stride;
+  index_t k_r_stride;
+  index_t k_h_stride;
+  index_t k_b_stride;
 
-  int v_r_stride;
-  int v_h_stride;
-  int v_b_stride;
+  index_t v_r_stride;
+  index_t v_h_stride;
+  index_t v_b_stride;
 
-  int dv_r_stride;
-  int dv_h_stride;
-  int dv_b_stride;
+  index_t o_r_stride;
+  index_t o_h_stride;
+  index_t o_b_stride;
 
-  int o_r_stride;
-  int o_h_stride;
-  int o_b_stride;
+  index_t dq_r_stride;
+  index_t dq_h_stride;
+  index_t dq_b_stride;
 
-  int s_r_stride;
-  int s_s_stride;
-  int s_b_stride;
+  index_t dk_r_stride;
+  index_t dk_h_stride;
+  index_t dk_b_stride;
 
-  int dq_r_stride;
-  int dq_h_stride;
-  int dq_b_stride;
-  /*
-   * input output layout
-   * true batch, numhead, seqlen, headsize
-   * false batch, seqlen, numhead, headsize
-   */
-  bool is_bhsd;
+  index_t dv_r_stride;
+  index_t dv_h_stride;
+  index_t dv_b_stride;
+
+  index_t do_r_stride;
+  index_t do_h_stride;
+  index_t do_b_stride;
 };
 
 template <typename T>
@@ -327,6 +206,13 @@ struct Boffset {
     return b_id * param.v_b_stride + h_id * param.v_h_stride +
         s_id * param.v_r_stride;
   }
+  index_t dq_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.dq_b_stride + h_id * param.dq_h_stride +
+        s_id * param.dq_r_stride;
+  }
   index_t dk_offset(
       const index_t b_id,
       const index_t h_id,
@@ -341,6 +227,17 @@ struct Boffset {
     return b_id * param.dv_b_stride + h_id * param.dv_h_stride +
         s_id * param.dv_r_stride;
   }
+  index_t o_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
+    return b_id * param.o_b_stride + h_id * param.o_h_stride +
+        s_id * param.o_r_stride;
+  }
+  index_t do_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.do_b_stride + h_id * param.do_h_stride +
+        s_id * param.do_r_stride;
+  }
   index_t lse_offset(
       const index_t b_id,
       const index_t h_id,
@@ -348,90 +245,49 @@ struct Boffset {
     return b_id * param.seq_len_q * param.num_head_q + h_id * param.seq_len_q +
         s_id;
   }
-
-  index_t o_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.o_b_stride + h_id * param.o_h_stride +
-        s_id * param.o_r_stride;
-  }
-
-  index_t dq_offset(
+  index_t dqaccum_offset(
       const index_t b_id,
       const index_t h_id,
       const index_t s_id) {
-    return b_id * param.dq_b_stride + h_id * param.dq_h_stride +
-        s_id * param.dq_r_stride;
+    return b_id * param.num_head_q * param.seq_len_q_pad * param.head_dim +
+        h_id * param.seq_len_q_pad * param.head_dim + s_id * param.head_dim;
   }
+
   Param<T>& param;
 };
 
-// for debug
 template <typename T>
-void setup_bhsd_stride(Param<T>& param) {
-  param.q_r_stride = param.head_dim;
-  param.q_h_stride = param.seq_len_q * param.head_dim;
-  param.q_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+void setup_stride(Param<T>& param, FLASH_BWD_params& flash_bwd_param) {
+  param.q_r_stride = flash_bwd_param.q_row_stride;
+  param.q_h_stride = flash_bwd_param.q_head_stride;
+  param.q_b_stride = flash_bwd_param.q_batch_stride;
 
-  // param.dq_r_stride = param.head_dim;
-  // param.dq_h_stride = param.seq_len_q * param.head_dim;
-  // param.dq_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+  param.k_r_stride = flash_bwd_param.k_row_stride;
+  param.k_h_stride = flash_bwd_param.k_head_stride;
+  param.k_b_stride = flash_bwd_param.k_batch_stride;
 
-  param.k_r_stride = param.head_dim;
-  param.k_h_stride = param.seq_len_kv * param.head_dim;
-  param.k_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
+  param.v_r_stride = flash_bwd_param.v_row_stride;
+  param.v_h_stride = flash_bwd_param.v_head_stride;
+  param.v_b_stride = flash_bwd_param.v_batch_stride;
 
-  param.dk_r_stride = param.head_dim;
-  param.dk_h_stride = param.seq_len_kv * param.head_dim;
-  param.dk_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
+  param.o_r_stride = flash_bwd_param.o_row_stride;
+  param.o_h_stride = flash_bwd_param.o_head_stride;
+  param.o_b_stride = flash_bwd_param.o_batch_stride;
 
-  param.v_r_stride = param.head_dim;
-  param.v_h_stride = param.seq_len_kv * param.head_dim;
-  param.v_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
+  param.dq_r_stride = flash_bwd_param.dq_row_stride;
+  param.dq_h_stride = flash_bwd_param.dq_head_stride;
+  param.dq_b_stride = flash_bwd_param.dq_batch_stride;
 
-  param.dv_r_stride = param.head_dim;
-  param.dv_h_stride = param.seq_len_kv * param.head_dim;
-  param.dv_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
+  param.dk_r_stride = flash_bwd_param.dk_row_stride;
+  param.dk_h_stride = flash_bwd_param.dk_head_stride;
+  param.dk_b_stride = flash_bwd_param.dk_batch_stride;
 
-  param.o_r_stride = param.head_dim;
-  param.o_h_stride = param.seq_len_q * param.head_dim;
-  param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+  param.dv_r_stride = flash_bwd_param.dv_row_stride;
+  param.dv_h_stride = flash_bwd_param.dv_head_stride;
+  param.dv_b_stride = flash_bwd_param.dv_batch_stride;
 
-  param.dq_r_stride = param.head_dim;
-  param.dq_h_stride = param.seq_len_q_pad * param.head_dim;
-  param.dq_b_stride = param.num_head_q * param.seq_len_q_pad * param.head_dim;
-}
-
-template <typename T>
-void setup_bshd_stride(Param<T>& param) {
-  param.q_r_stride = param.num_head_q * param.head_dim;
-  param.q_h_stride = param.head_dim;
-  param.q_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  // param.dq_r_stride = param.head_dim;
-  // param.dq_h_stride = param.seq_len_q * param.head_dim;
-  // param.dq_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  param.k_r_stride = param.num_head_kv * param.head_dim;
-  param.k_h_stride = param.head_dim;
-  param.k_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
-
-  param.dk_r_stride = param.num_head_q * param.head_dim;
-  param.dk_h_stride = param.head_dim;
-  param.dk_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
-
-  param.v_r_stride = param.num_head_kv * param.head_dim;
-  param.v_h_stride = param.head_dim;
-  param.v_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
-
-  param.dv_r_stride = param.num_head_q * param.head_dim;
-  param.dv_h_stride = param.head_dim;
-  param.dv_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
-
-  param.o_r_stride = param.num_head_q * param.head_dim;
-  param.o_h_stride = param.head_dim;
-  param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  param.dq_r_stride = param.num_head_q * param.head_dim;
-  param.dq_h_stride = param.head_dim;
-  param.dq_b_stride = param.num_head_q * param.seq_len_q_pad * param.head_dim;
+  param.do_r_stride = flash_bwd_param.do_row_stride;
+  param.do_h_stride = flash_bwd_param.do_head_stride;
+  param.do_b_stride = flash_bwd_param.do_batch_stride;
 }
 } // namespace cute

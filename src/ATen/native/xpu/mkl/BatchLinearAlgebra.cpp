@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -111,10 +111,10 @@ void mkl_getrs(
     oneapi::mkl::transpose trans,
     int64_t n,
     int64_t nrhs,
-    scalar_t* a,
+    const scalar_t* a,
     int64_t lda,
     int64_t stride_a,
-    int64_t* ipiv,
+    const int64_t* ipiv,
     int64_t stride_ipiv,
     scalar_t* b,
     int64_t ldb,
@@ -241,7 +241,7 @@ static void apply_lu_solve_xpu_(
   int64_t ldb = b_.size(-2);
   int64_t stride_b = native::matrixStride(b_);
 
-  scalar_t* a = reinterpret_cast<scalar_t*>(lu_.data_ptr());
+  const auto* a = static_cast<const scalar_t*>(lu_.const_data_ptr());
   Tensor pivots = pivots_;
   if (pivots_.scalar_type() == at::ScalarType::Int)
     pivots = pivots_.to(kLong);
@@ -251,41 +251,43 @@ static void apply_lu_solve_xpu_(
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
 
-  auto execute_mkl_getrs =
-      [&](scalar_t* a, scalar_t* b, int64_t* ipiv, int64_t batch_size) {
-        int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
-            queue,
-            trans,
-            n,
-            nrhs,
-            lda,
-            stride_a,
-            stride_ipiv,
-            ldb,
-            stride_b,
-            batch_size);
-        Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        try {
-          mkl_getrs<scalar_t>(
-              queue,
-              trans,
-              n,
-              nrhs,
-              a,
-              lda,
-              stride_a,
-              ipiv,
-              stride_ipiv,
-              b,
-              ldb,
-              stride_b,
-              batch_size,
-              reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
-              scratchpad_size);
-        } catch (const oneapi::mkl::lapack::batch_error& be) {
-          error_handle(info_data, be);
-        }
-      };
+  auto execute_mkl_getrs = [&](const scalar_t* a,
+                               scalar_t* b,
+                               const int64_t* ipiv,
+                               int64_t batch_size) {
+    int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
+        queue,
+        trans,
+        n,
+        nrhs,
+        lda,
+        stride_a,
+        stride_ipiv,
+        ldb,
+        stride_b,
+        batch_size);
+    Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
+    try {
+      mkl_getrs<scalar_t>(
+          queue,
+          trans,
+          n,
+          nrhs,
+          a,
+          lda,
+          stride_a,
+          ipiv,
+          stride_ipiv,
+          b,
+          ldb,
+          stride_b,
+          batch_size,
+          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpad_size);
+    } catch (const oneapi::mkl::lapack::batch_error& be) {
+      error_handle(info_data, be);
+    }
+  };
 
   bool is_broadcast = false;
   IntArrayRef lu_batch_shape(lu_.sizes().data(), lu_.dim() - 2);
@@ -308,9 +310,9 @@ static void apply_lu_solve_xpu_(
 
   for (const auto i : c10::irange(batch_size)) {
     int64_t lu_index_i = lu_index(i);
-    scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
+    const scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
     scalar_t* b_working_ptr = &b[i * stride_b];
-    int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
+    const int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
 
     execute_mkl_getrs(a_working_ptr, b_working_ptr, ipiv_working_ptr, 1);
   }
@@ -372,7 +374,8 @@ void lu_factor_mkl(
       int64_t n = LU.size(-1);
 
       // Detect NaN per-batch
-      auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
+      auto nan_mask_batch =
+          at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
 
       // Replace NaN batches with identity matrix to avoid MKL crash
       auto identity = at::eye(m, n, LU.options()).unsqueeze(0);
@@ -382,13 +385,98 @@ void lu_factor_mkl(
       apply_lu_xpu_<T>(LU, pivots_, info_data);
 
       // Restore NaN for batches that originally had NaN
-      LU.masked_fill_(nan_mask_expanded.expand({batch_size, m, n}), create_quiet_nan<scalar_t>());
+      LU.masked_fill_(
+          nan_mask_expanded.expand({batch_size, m, n}),
+          create_quiet_nan<scalar_t>());
     }
   });
 
   // Copy to original info and pivots tensor
   info.copy_(info_);
   pivots.copy_(pivots_);
+}
+
+template <typename T>
+void apply_triangular_solve_mkl(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+
+  oneapi::mkl::side left_right =
+      left ? oneapi::mkl::side::left : oneapi::mkl::side::right;
+  oneapi::mkl::uplo upper_lower =
+      upper ? oneapi::mkl::uplo::upper : oneapi::mkl::uplo::lower;
+  oneapi::mkl::transpose transa = to_blas_(transpose);
+  oneapi::mkl::diag unit_diag =
+      unitriangular ? oneapi::mkl::diag::unit : oneapi::mkl::diag::nonunit;
+
+  const int64_t batch_size = batchCount(A);
+  const int64_t m = left ? A.size(-1) : B.size(-2);
+  const int64_t n = B.size(-1);
+  const int64_t lda = std::max<int64_t>(1, A.size(-2));
+  const int64_t ldb = std::max<int64_t>(1, B.size(-2));
+
+  const T* A_data = reinterpret_cast<const T*>(A.const_data_ptr());
+  T* B_data = reinterpret_cast<T*>(B.data_ptr());
+
+  if (batch_size > 1) {
+    const int64_t A_mat_stride = matrixStride(A);
+    const int64_t B_mat_stride = matrixStride(B);
+
+    oneapi::mkl::blas::column_major::trsm_batch(
+        queue,
+        left_right,
+        upper_lower,
+        transa,
+        unit_diag,
+        m,
+        n,
+        T(1),
+        A_data,
+        lda,
+        A_mat_stride,
+        B_data,
+        ldb,
+        B_mat_stride,
+        batch_size);
+  } else {
+    oneapi::mkl::blas::column_major::trsm(
+        queue,
+        left_right,
+        upper_lower,
+        transa,
+        unit_diag,
+        m,
+        n,
+        T(1),
+        A_data,
+        lda,
+        B_data,
+        ldb);
+  }
+}
+
+void triangular_solve_mkl(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+  if (A.numel() == 0 || B.numel() == 0) {
+    return;
+  }
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+      A.scalar_type(), "triangular_solve_mkl", [&] {
+        using T = get_mkl_type<scalar_t>::type;
+        apply_triangular_solve_mkl<T>(
+            A, B, left, upper, transpose, unitriangular);
+      });
 }
 
 } // namespace at::native::xpu

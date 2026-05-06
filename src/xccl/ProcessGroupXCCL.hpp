@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -176,6 +176,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   ~ProcessGroupXCCL() override;
 
+  uint64_t getUid() const noexcept {
+    return static_cast<uint64_t>(local_id_);
+  }
+
   c10::intrusive_ptr<Options> getOptions() {
     return options_;
   }
@@ -193,6 +197,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Work> endCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing(OpType optype);
+
+  void setTimeout(std::chrono::milliseconds timeout) override {
+    options_->timeout = timeout;
+  }
+
+  bool isInitialized();
+
+  void setEnableNanCheck(bool enableNanCheck);
 
   std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
 
@@ -475,13 +487,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
-  void setEnableNanCheck(bool enableNanCheck);
-
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void attachRetireAndStatusCallback(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+      std::shared_ptr<ProcessGroupStatus> pgStatus);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
@@ -519,10 +532,16 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::mutex kvs_mutex_;
 };
 
+TORCH_API void reset_xccl_trace();
+
 // Dumps the comm traces and additional information about the ProcessGroup.
 TORCH_API std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
+    bool onlyActive);
+
+TORCH_API std::string dump_xccl_trace_json(
+    bool includeCollectives,
     bool onlyActive);
 
 TORCH_API std::string getXcclVersion();

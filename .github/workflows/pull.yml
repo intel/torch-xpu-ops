@@ -6,9 +6,9 @@ on:
       - opened
       - synchronize
       - reopened
-      - converted_to_draft
       - ready_for_review
       - labeled
+      - unlabeled
     branches:
       - main
       - release/*
@@ -24,43 +24,147 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      pr_body_cmd: ${{ steps.reproducer-check.outputs.pr_cmd }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
       - name: Run lint check
+        id: lint-python
+        continue-on-error: true
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
+      - name: Checkout PyTorch (for headers)
+        uses: actions/checkout@v4
+        with:
+          repository: pytorch/pytorch
+          path: pytorch-headers
+          fetch-depth: 1
+          submodules: false
       - name: Run lint check with Clang
+        id: lint-clang
+        continue-on-error: true
+        env:
+          PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
         run: |
-          sudo apt update && sudo apt install -y libomp-dev
-          rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && cp -r ../torch-xpu-ops third_party/
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
-                                                    build/xpu/**/*.* \
-                                                    third_party/torch-xpu-ops/src/*.* \
-                                                    third_party/torch-xpu-ops/src/**/*.* \
-                                                    third_party/torch-xpu-ops/src/**/**/**/*.*"
-          export CLANG=1
-          bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
+          cd ./torch-xpu-ops
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
+          bash .github/scripts/lintrunner.sh
+      - name: Comment on lint failure for AI-generated PR
+        if: >-
+          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
+          && contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          FAILED_STEPS=""
+          if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
+            FAILED_STEPS="Python lint (flake8/ruff)"
+          fi
+          if [ "${{ steps.lint-clang.outcome }}" = "failure" ]; then
+            if [ -n "$FAILED_STEPS" ]; then
+              FAILED_STEPS="${FAILED_STEPS} and Clang format"
+            else
+              FAILED_STEPS="Clang format"
+            fi
+          fi
+          JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf -v COMMENT_BODY '%s\n' \
+            "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
+            "" \
+            "Lint job log: ${JOB_URL}" \
+            "" \
+            "Instructions:" \
+            "1. Review the lint failure log via the link above" \
+            "2. Fix all lint errors in the relevant source files" \
+            "3. Ensure both Python lint and Clang format checks pass"
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
+      - name: Fail if lint failed
+        if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
+        run: |
+          echo "::error::Lint check failed"
+          exit 1
+      - name: Check reproducer exists for AI-generated PR
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        id: reproducer-check
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          cd ./torch-xpu-ops
+          FAIL_MSG=""
+          HAS_REPRO_FILES=false
+          HAS_PR_CMD=false
 
-  conditions-filter:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+          # Check if reproducer files exist
+          if ls test/repro/test_*.py 1>/dev/null 2>&1; then
+            # Validate pytest format
+            for f in test/repro/test_*.py; do
+              if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
+                HAS_REPRO_FILES=true
+              else
+                FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
+                break
+              fi
+            done
+            if [ "$HAS_REPRO_FILES" = true ] && [ -z "$FAIL_MSG" ]; then
+              echo "Found valid reproducer files:"
+              ls test/repro/test_*.py
+            fi
+          fi
+
+          # Check if PR description contains pytest commands (lines starting with "pytest")
+          PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
+          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' | grep -E '^pytest ' || true)
+          if [ -n "$PR_CMD" ]; then
+            HAS_PR_CMD=true
+            echo "Found reproducer commands in PR description:"
+            echo "$PR_CMD"
+          fi
+
+          # Export for later steps
+          echo "has_repro_files=$HAS_REPRO_FILES" >> "$GITHUB_OUTPUT"
+          echo "has_pr_cmd=$HAS_PR_CMD" >> "$GITHUB_OUTPUT"
+          # Use delimiter for multiline output
+          echo "pr_cmd<<ENDOFCMD" >> "$GITHUB_OUTPUT"
+          echo "$PR_CMD" >> "$GITHUB_OUTPUT"
+          echo "ENDOFCMD" >> "$GITHUB_OUTPUT"
+
+          # Fail only if neither source is available
+          if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
+            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`)."
+          fi
+
+          if [ -n "$FAIL_MSG" ]; then
+            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+            printf -v COMMENT_BODY '%s\n' \
+              "@${PR_AUTHOR} ${FAIL_MSG}" \
+              "" \
+              "Please provide a reproducer using one of these methods:" \
+              "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
+              "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
+            echo "::error::${FAIL_MSG}"
+            exit 1
+          fi
+
+  conditions-filter-win:
+    if: >-
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
-      has_label: ${{ steps.check-label.outputs.has_label }}
-      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
-      pytorch: ${{ contains(steps.check-pr-desc.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || github.base_ref }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: check-files
         with:
           filters: |
@@ -74,23 +178,10 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
-      - name: Check Label
-        id: check-label
-        run: |
-          echo "has_label=${{ contains(github.event.pull_request.labels.*.name, 'windows_ci') }}" >> $GITHUB_OUTPUT
-      - name: Check PR infos
-        id: check-pr-desc
-        run: |
-          set -x -e -o pipefail
-          sudo apt update && sudo apt install -y dos2unix
-          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
-          dos2unix pr-info.txt
-          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
-          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   linux-build:
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
-    needs: [conditions-filter, preci-lint-check]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: [preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -99,13 +190,15 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   linux-ut:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
+    needs: [linux-build]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
-    permissions: write-all
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -113,15 +206,17 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
+    needs: [linux-build]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
-    permissions: write-all
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -129,15 +224,15 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     name: linux-e2e
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
-    needs: [conditions-filter, linux-build]
+    needs: [linux-build]
     strategy:
       fail-fast: false
       matrix:
@@ -145,27 +240,46 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
     name: linux-e2e-summary
-    needs: [conditions-filter, linux-e2e]
+    needs: [linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions: write-all
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
+      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
+
+  reproducer-test:
+    needs: [linux-build, preci-lint-check]
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/_linux_reproducer.yml
+    with:
+      runner: pvc_rolling
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   windows:
     name: windows
-    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
-    needs: [conditions-filter, preci-lint-check]
+    needs: [conditions-filter-win, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
-    with: 
+    with:
       ut: op_extended,test_xpu
       runner: Windows_CI
-      src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
-      has_label: ${{ needs.conditions-filter.outputs.has_label }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      build_runner: Windows_CI_Build
+      src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
+      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}

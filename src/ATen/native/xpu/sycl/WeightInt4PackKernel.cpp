@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,14 +37,14 @@ struct WeightToInt4PackKernelFunctor {
 
   WeightToInt4PackKernelFunctor(
       uint32_t* weight_packed,
-      uint8_t* weight,
+      const uint8_t* weight,
       int N,
       int K)
       : weight_packed_(weight_packed), weight_(weight), N_(N), K_(K) {}
 
  private:
   uint32_t* weight_packed_;
-  uint8_t* weight_;
+  const uint8_t* weight_;
   int N_;
   int K_;
 };
@@ -56,7 +56,7 @@ void weight_to_int4pack_kernel(
     int K) {
   auto weight_packed_data =
       reinterpret_cast<uint32_t*>(weight_packed.data_ptr());
-  const auto weight_data = weight.data_ptr<uint8_t>();
+  const auto weight_data = weight.const_data_ptr<uint8_t>();
   int K_div_8 = K / 8;
   size_t global_range = N * K_div_8;
   auto fn =

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -398,7 +398,7 @@ static Tensor collapse_dims_1_and_2(const Tensor& sizes) {
 static Tensor NestedTensor_batch_offsets_from_size_tensor(
     const Tensor& sizes,
     int64_t extra_elements) {
-  int64_t* const sizes_ptr = sizes.data_ptr<int64_t>();
+  const int64_t* const sizes_ptr = sizes.const_data_ptr<int64_t>();
   Tensor offsets = at::empty({1 + sizes.size(0) + extra_elements}, at::kInt);
   int32_t* const offsets_ptr = offsets.mutable_data_ptr<int32_t>();
   offsets_ptr[0] = 0;
@@ -441,7 +441,7 @@ void _transform_bias_rescale_qkv_kernel(
         auto global_range = B * T;
         const bool aligned =
             ((dim_per_head % TRANSFORM_BIAS_RESCALE_VEC) == 0) &&
-            ((reinterpret_cast<intptr_t>(qkv_bias.data_ptr()) %
+            ((reinterpret_cast<intptr_t>(qkv_bias.const_data_ptr()) %
               TRANSFORM_BIAS_RESCALE_VEC) == 0);
 
         if (aligned) {
@@ -468,7 +468,7 @@ void _transform_bias_rescale_qkv_kernel(
           // const auto input_dim = sizes.sizes()[1];
           auto qkv_acc = q_k_v.packed_accessor64<scalar_t, 5>();
           if (aligned &&
-              ((reinterpret_cast<intptr_t>(qkv.data_ptr()) %
+              ((reinterpret_cast<intptr_t>(qkv.const_data_ptr()) %
                 TRANSFORM_BIAS_RESCALE_VEC) == 0)) {
             TransformBiasRescaleQKVAddPaddingFunctor<
                 scalar_t,

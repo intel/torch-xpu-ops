@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,9 +92,7 @@ with XPUPatchForImport(False):
                 # If mock was called, fastpath was taken
                 self.assertTrue(fastpath_mock.called)
 
-    TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = (
-        multihead_self_attn_two_masks_fast_path_mock
-    )
+    TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = multihead_self_attn_two_masks_fast_path_mock
     torch.nn.modules.activation._check_arg_device = _check_arg_device2
 
 instantiate_device_type_tests(

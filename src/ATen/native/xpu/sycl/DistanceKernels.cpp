@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,11 @@ class Dists {
 template <typename scalar_t>
 struct DistsZero {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
-    agg += diff != 0.0f;
+    if (diff != diff) { // NaN
+      agg = diff;
+    } else if (diff != 0.0) {
+      agg += 1.0;
+    }
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
     return agg;
@@ -657,7 +661,7 @@ void cdist_backward_kernel(
               r1 * m,
               r2 * m);
         } else if (p < 2.0) {
-          cdist_backward_kernel_impl<scalar_t, DistsTwo<scalar_t>, 1>(
+          cdist_backward_kernel_impl<scalar_t, DistsLtTwo<scalar_t>, 1>(
               buffer,
               grad,
               x1,

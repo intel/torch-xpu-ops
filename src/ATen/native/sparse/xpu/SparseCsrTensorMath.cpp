@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -8,14 +8,35 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/ExpandUtils.h>
+#include <ATen/SparseCsrTensorUtils.h>
+#include <ATen/TensorOperators.h>
+#include <ATen/native/Resize.h>
+#include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
 
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/add.h>
+#include <ATen/ops/addmm.h>
+#include <ATen/ops/addmv.h>
+#include <ATen/ops/baddbmm.h>
+#include <ATen/ops/copy_native.h>
+#include <ATen/ops/mul.h>
+#include <ATen/ops/scalar_tensor_native.h>
+#include <ATen/ops/sparse_compressed_tensor.h>
+#include <ATen/ops/triangular_solve.h>
+#endif
+
 namespace at::native {
 
 using namespace at::sparse;
+using namespace at::sparse_csr;
 
 TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu)
 (const Tensor& input,
@@ -51,6 +72,452 @@ Tensor _sparse_csr_prod_xpu(
     std::optional<ScalarType> dtype) {
   return xpu::_sparse_csr_prod_xpu_kernel(
       input, dims_to_reduce, keepdim, dtype);
+}
+
+Tensor addmm_calculation(
+    const Tensor& input,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
+  Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
+  Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
+  if (beta.toComplexDouble() != 0.) {
+    Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
+    // NOTE: For reduced-precision dtypes (e.g. bf16), the form
+    //   result_dense.add_(input_dense * beta)
+    // introduces two separate roundings:
+    //   1. input_dense (bf16) * beta (f32) -> intermediate (bf16)
+    //   2. result_dense (bf16) + intermediate (bf16) -> result_dense (bf16)
+    // The alternative form
+    //   result_dense.add_(input_dense, beta)
+    // avoids the intermediate rounding: the kernel promotes both bf16 operands
+    // to f32 registers, computes result_dense(f32) + input_dense(f32)*beta(f32)
+    // in a single fused step, then rounds once back to bf16.
+    result_dense.add_(input_dense * beta);
+  }
+  return result_dense;
+}
+
+void addmm_out_sparse_csr(
+    const Tensor& input,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_INTERNAL_ASSERT(
+      !((mat1.layout() == kStrided) && (mat2.layout() == kStrided) &&
+        (result.layout() == kStrided)),
+      "Expected at least one sparse input");
+
+  // Layout checks are nested mat1, mat2, result
+  // Conditions are ordered strided, csr, csc, bsr, bsc.
+  // Valid combinations terminate in a return
+  // Invalid combinations are omitted and will fall though to the TORCH check
+  // generating an informative error message
+
+  if ((mat1.layout() == kSparseBsr) && (mat2.layout() == kStrided) &&
+      (result.layout() == kStrided)) {
+    Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+    result.copy_(result_dense);
+    return;
+  }
+
+  if ((mat1.layout() == kStrided) && (mat2.layout() == kSparseBsc) &&
+      (result.layout() == kStrided)) {
+    Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+    result.copy_(result_dense);
+    return;
+  }
+
+  if (mat1.layout() == kStrided) {
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kStrided)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result.copy_(result_dense);
+      return;
+    }
+    if ((mat2.layout() == kSparseCsc) && (result.layout() == kStrided)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result.copy_(result_dense);
+      return;
+    }
+  }
+  if (mat1.layout() == kSparseCsr) {
+    if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result.copy_(result_dense);
+      return;
+    }
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result = result_dense.to_sparse_csr();
+      return;
+    }
+    if ((mat2.layout() == kSparseCsc) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result = result_dense.to_sparse_csr();
+      return;
+    }
+  }
+  if (mat1.layout() == kSparseCsc) {
+    if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result.copy_(result_dense);
+      return;
+    }
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+      result = result_dense.to_sparse_csr();
+      return;
+    }
+    if (mat2.layout() == kSparseCsc) {
+      if (result.layout() == kSparseCsr) {
+        Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+        result = result_dense.to_sparse_csr();
+        return;
+      }
+      if (result.layout() == kSparseCsc) {
+        Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
+        result = result_dense.to_sparse_csc();
+        return;
+      }
+    }
+  }
+  TORCH_CHECK(
+      false,
+      "addmm: computation on XPU is not implemented for ",
+      result.layout(),
+      " + ",
+      mat1.layout(),
+      " @ ",
+      mat2.layout());
+}
+
+// result = beta * self + alpha * (mat1 @ mat2)
+Tensor& addmm_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_CHECK(
+      self.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected self to be XPU tensor, but got ",
+      self.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat1.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected mat1 to be XPU tensor, but got ",
+      mat1.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat2.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected mat2 to be XPU tensor, but got ",
+      mat2.device(),
+      " tensor");
+  TORCH_CHECK(
+      result.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected result to be XPU tensor, but got ",
+      result.device(),
+      " tensor");
+
+  // Same checks as in TORCH_META_FUNC(addmm) at
+  // aten/src/ATen/native/LinearAlgebra.cpp
+  sparse::impl::_check_dim(mat1, 2, "mat1");
+  sparse::impl::_check_dim(mat2, 2, "mat2");
+
+  TORCH_CHECK(
+      mat1.size(1) == mat2.size(0),
+      "mat1 and mat2 shapes cannot be multiplied (",
+      mat1.size(0),
+      "x",
+      mat1.size(1),
+      " and ",
+      mat2.sizes()[0],
+      "x",
+      mat2.sizes()[1],
+      ")");
+
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
+
+  TORCH_CHECK(
+      result_shape.size() >= (size_t)self.dim(),
+      "The number of sizes provided (",
+      result_shape.size(),
+      ") ",
+      "must be greater or equal to the number of dimensions in the tensor (",
+      self.dim(),
+      ")");
+
+  c10::MaybeOwned<at::Tensor> self_;
+  // Don't expand self if this is an in-place operation
+  if (&result == &self) {
+    self_ = c10::MaybeOwned<Tensor>::borrowed(self);
+  } else {
+    self_ = expand_size(self, result_shape, "addmm");
+  }
+
+  sparse::impl::_check_dim(*self_, 2, "self");
+  TORCH_CHECK(
+      ((self_->dim() == 2) && (self_->size(0) == mat1.size(0)) &&
+       (self_->size(1) == mat2.size(1))),
+      "The input tensor must be a matrix with size ",
+      mat1.size(0),
+      "x",
+      mat2.size(1),
+      ", but got a ",
+      self_->dim(),
+      "-D tensor with size ",
+      self_->size(0),
+      "x",
+      self_->size(1));
+
+  if (!result.is_same(self)) {
+    if (result.layout() == kStrided) {
+      at::native::resize_output(result, self_->sizes());
+    } else {
+      result.resize_as_sparse_(*self_);
+    }
+  }
+
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  if (sparse::impl::_is_sparse_and_zero(mat1) ||
+      sparse::impl::_is_sparse_and_zero(mat2)) {
+    // According to docs, when beta==0 values in self should be ignored.
+    // nans and infs should not propagate
+    const auto beta_val = beta.toComplexDouble();
+    if (beta_val == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(*self_);
+      }
+      if (beta_val != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+Tensor expand_batch_if_necessary(const Tensor& mat) {
+  auto indice_batch_ndim = sparse_csr::numBatchDimensions(mat);
+  auto [compressed_indices, plain_indices] =
+      sparse_csr::getCompressedPlainIndices(mat);
+  auto values = mat.values();
+  auto batch_diff_size = mat.sizes().vec();
+  auto real_batch_ndim = mat.sizes().size() - 2;
+  if (indice_batch_ndim < real_batch_ndim) {
+    batch_diff_size.erase(
+        batch_diff_size.begin() + (real_batch_ndim - indice_batch_ndim),
+        batch_diff_size.end());
+    auto reshaped_compressed_indices_shape = compressed_indices.sizes().vec();
+    reshaped_compressed_indices_shape.insert(
+        std::begin(reshaped_compressed_indices_shape),
+        std::begin(batch_diff_size),
+        std::end(batch_diff_size));
+    compressed_indices =
+        compressed_indices.expand(reshaped_compressed_indices_shape);
+    auto reshaped_plain_indices_shape = plain_indices.sizes().vec();
+    reshaped_plain_indices_shape.insert(
+        reshaped_plain_indices_shape.begin(),
+        batch_diff_size.begin(),
+        batch_diff_size.end());
+    plain_indices = plain_indices.expand(reshaped_plain_indices_shape);
+    auto reshaped_values_indices_shape = values.sizes().vec();
+    reshaped_values_indices_shape.insert(
+        reshaped_values_indices_shape.begin(),
+        batch_diff_size.begin(),
+        batch_diff_size.end());
+    values = values.expand(reshaped_values_indices_shape);
+  }
+  auto updated_sparse_tensor = at::sparse_compressed_tensor(
+      compressed_indices, plain_indices, values, mat.sizes(), mat.options());
+  return updated_sparse_tensor;
+}
+
+Tensor& baddbmm_out_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(mat1.is_sparse_csr());
+
+  TORCH_CHECK(
+      self.layout() == kStrided,
+      "torch.baddbmm: Expected self to be strided, but got layout ",
+      self.layout());
+  TORCH_CHECK(
+      mat2.layout() == kStrided,
+      "torch.baddbmm: Expect mat2 to be strided, but got ",
+      mat2.layout());
+  TORCH_CHECK(
+      result.layout() == kStrided,
+      "torch.baddbmm: Expect result to be strided, but got ",
+      result.layout());
+
+  if (!result.is_same(self)) {
+    at::native::resize_output(result, self.sizes());
+  }
+
+  if (mat1._nnz() == 0) {
+    // According to docs, when beta==0 values in self should be ignored
+    // nans and infs should not propagate
+    if (beta.toComplexDouble() == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(self);
+      }
+      if (beta.toComplexDouble() != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  // broadcast batch of sparse indices and values if not compatible with sizes
+  // before to_dense() to_dense issue:
+  // https://github.com/intel/torch-xpu-ops/issues/2801
+  auto mat1_new = expand_batch_if_necessary(mat1);
+
+  at::baddbmm_out(result, self, mat1_new.to_dense(), mat2, beta, alpha);
+  return result;
+}
+
+Tensor& bmm_out_sparse_csr_xpu(
+    const Tensor& mat1,
+    const Tensor& mat2,
+    Tensor& result) {
+  Scalar beta(0.0);
+  Scalar alpha(1.0);
+  return at::native::baddbmm_out_sparse_csr_xpu(
+      result, mat1, mat2, beta, alpha, result);
+}
+
+Tensor& add_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const SparseCsrTensor& other,
+    const Scalar& alpha,
+    SparseCsrTensor& out) {
+  if (self.layout() == kStrided) {
+    at::add_out(out, self, other.to_dense(), alpha);
+    return out;
+  } else if (other.layout() == kStrided) {
+    at::add_out(out, other, self.to_dense(), alpha);
+    return out;
+  } else {
+    TORCH_CHECK(
+        self.sizes().equals(other.sizes()),
+        "torch.add: Expected input tensors to have the same shape, but got tensor `self` with shape ",
+        self.sizes(),
+        " and tensor `other` with shape ",
+        other.sizes());
+    TORCH_CHECK(
+        self.is_xpu(),
+        "add: expected 'self' to be XPU tensor, but got tensor on device: ",
+        self.device());
+    TORCH_CHECK(
+        other.is_xpu(),
+        "add: expected 'other' to be XPU tensor, but got tensor on device: ",
+        other.device());
+    TORCH_CHECK(
+        out.is_xpu(),
+        "add: expected 'out' to be XPU tensor, but got tensor on device: ",
+        out.device());
+
+    if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
+      return out;
+    }
+
+    // Preserve the index dtype from self (int32 or int64)
+    auto index_dtype = self.crow_indices().scalar_type();
+    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
+    Tensor out_csr = out_dense.to_sparse_csr();
+    Tensor result = at::sparse_compressed_tensor(
+        out_csr.crow_indices().to(index_dtype),
+        out_csr.col_indices().to(index_dtype),
+        out_csr.values(),
+        out_csr.sizes(),
+        out_csr.options().layout(at::kSparseCsr));
+    out.copy_(result);
+  }
+  return out;
+}
+
+Tensor& addmv_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat,
+    const Tensor& vec,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  if (mat.layout() == kSparseCsc) {
+    return addmv_out_sparse_compressed_xpu(
+        self, mat.to_sparse_csr(), vec, beta, alpha, result);
+  }
+  TORCH_CHECK(
+      mat.layout() != kSparseBsc,
+      "addmv_out_sparse_compressed_xpu currently does not support layout SparseBsc for input mat.");
+
+  TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
+  TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
+
+  auto betaval = beta.toComplexDouble();
+
+  if (mat._nnz() == 0) {
+    // shortcut for an empty matrix
+    // By definition, when beta==0, values in self should be ignored. nans and
+    // infs should not propagate
+    if (betaval == 0.0) {
+      return result.zero_();
+    } else {
+      return at::mul_out(
+          result,
+          self,
+          at::native::scalar_tensor(
+              beta,
+              self.scalar_type(),
+              std::nullopt /* layout */,
+              at::kCPU,
+              std::nullopt /* pin_memory */));
+    }
+  }
+
+  at::addmv_out(result, self, mat.to_dense(), vec, beta, alpha);
+
+  return result;
+}
+
+std::tuple<Tensor&, Tensor&> triangular_solve_out_sparse_csr_xpu(
+    const Tensor& B,
+    const Tensor& A,
+    bool upper,
+    bool transpose,
+    bool unitriangular,
+    Tensor& X,
+    Tensor& clone_A) {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(A.is_sparse_csr());
+
+  if (B.numel() == 0 || X.numel() == 0 || A._nnz() == 0) {
+    X.fill_(NAN);
+    return std::tuple<Tensor&, Tensor&>(X, clone_A);
+  }
+  Tensor temp_clone_A = at::empty({0}, A.options().layout(at::kStrided));
+  at::triangular_solve_out(
+      X, temp_clone_A, B, A.to_dense(), upper, transpose, unitriangular);
+  return std::tuple<Tensor&, Tensor&>(X, clone_A);
 }
 
 } // namespace at::native

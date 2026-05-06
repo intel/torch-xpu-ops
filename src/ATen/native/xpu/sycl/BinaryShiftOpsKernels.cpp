@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,7 +45,11 @@ struct RshiftFunctor {
         sizeof(scalar_t) * CHAR_BIT - std::is_signed_v<scalar_t>;
     if ((static_cast<std::make_signed_t<scalar_t>>(b) < 0) ||
         (b >= max_shift)) {
-      return a >> max_shift;
+      if constexpr (std::is_signed_v<scalar_t>) {
+        return a < 0 ? scalar_t(-1) : scalar_t(0);
+      } else {
+        return scalar_t(0);
+      }
     }
     return a >> b;
   }

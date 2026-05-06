@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,6 @@
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpScalarListKernels.h>
-
-#include <ATen/ops/_foreach_add_native.h>
-#include <ATen/ops/_foreach_mul_native.h>
 
 namespace at {
 namespace native {

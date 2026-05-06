@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/LossNLLKernel.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/ops/nll_loss_backward_native.h>

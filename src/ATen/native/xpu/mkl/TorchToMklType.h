@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -9,7 +9,12 @@
  */
 
 #include <ATen/ATen.h>
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <oneapi/mkl/blas.hpp>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 template <typename T>
 struct get_mkl_type {

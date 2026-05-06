@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
 # Owner(s): ["module: intel"]
 
 import threading
+import contextlib
 import warnings
 from copy import deepcopy
 from functools import partial
 
 import torch
-import torch.autograd.forward_ad as fwAD
 import torch.utils.checkpoint
 from torch import nn
 from torch.autograd import Function
@@ -40,80 +40,6 @@ from torch.utils.checkpoint import (
     create_selective_checkpoint_contexts,
 )
 from torch.utils.flop_counter import FlopCounterMode
-
-
-def autograd_multiple_dispatch_registrations(self, device):
-    t = torch.randn(3, 3, device=device, requires_grad=True)
-    # using _test_autograd_multiple_dispatch.fullcoverage which has
-    # registrations in derivatives.yaml for Default, AutogradCUDA and NestedTensorAutograd
-    out = torch._test_autograd_multiple_dispatch(t)
-    grad = torch.randn(3, 3, device=device)
-    out.backward(grad)
-    if "XPU" not in device:
-        # bogus default gradient registered for Autograd is grad + 1
-        self.assertEqual(t.grad, grad + 1)
-    else:
-        # bogus gradient registered for AutogradCUDA is grad * 2
-        self.assertEqual(t.grad, grad * 2)
-    # test registered AutogradNestedTensor formula
-    a = (
-        torch.arange(6, dtype=torch.float, device=device)
-        .reshape(2, 3)
-        .requires_grad_(True)
-    )
-    b = (
-        torch.arange(8, dtype=torch.float, device=device)
-        .reshape(2, 4)
-        .requires_grad_(True)
-    )
-    nt = torch.nested.as_nested_tensor([a, b], dtype=torch.float, device=device)
-    nt_out = torch._test_autograd_multiple_dispatch(nt)
-    c = torch.randn(2, 3, device=device)
-    d = torch.randn(2, 4, device=device)
-    nt_grad = torch.nested.nested_tensor([c, d], dtype=torch.float, device=device)
-    nt_out.backward(nt_grad)
-    # bogus gradient for AutogradNestedTensor is grad * grad
-    self.assertEqual(a.grad, c * c)
-    self.assertEqual(b.grad, d * d)
-
-
-def foward_mode_AD(self, device):
-    # check that forward mode AD is only registered for the Default
-    # dispatch for _test_autograd_multiple_dispatch.fullcoverage and not AutogradCUDA
-    primal = torch.randn(3, device=device)
-    tangent = torch.randn(3, device=device)
-    with fwAD.dual_level():
-        dual_input = fwAD.make_dual(primal, tangent)
-        err_msg = r"Trying to use forward AD with .* that does not support it"
-        hint_msg = "Running forward AD for an OP that does not implement it should raise a NotImplementedError"
-        if "XPU" in device:
-            with self.assertRaisesRegex(NotImplementedError, err_msg, msg=hint_msg):
-                torch._test_autograd_multiple_dispatch(dual_input)
-        else:
-            torch._test_autograd_multiple_dispatch(dual_input)
-
-
-def view_copy(self, device):
-    # tests that view_copy derivative formulas are also generated per dispatch key
-    # from their respective view ops in derivatives.yaml
-    t = torch.randn(2, 2, device=device, requires_grad=True)
-    t_ref = t.clone().detach().requires_grad_()
-    # _test_autograd_multiple_dispatch_view does a .view(-1) on the input
-    t_view = torch._test_autograd_multiple_dispatch_view(t_ref)
-    t_view_copy = torch._test_autograd_multiple_dispatch_view_copy(t)
-    grad = torch.randn(4, device=device)
-    t_view_copy.backward(grad)
-    t_view.backward(grad.clone())
-    # forward and backward give the same shape + result
-    self.assertEqual(t_view_copy, t_view)
-    self.assertEqual(t.grad, t_ref.grad)
-    # backward results are per-dispatch-key in derivatives.yaml
-    if "XPU" in device:
-        # gradient registered to AutogradCUDA is grad.reshape_as(self) + 1
-        self.assertEqual(t.grad, grad.reshape_as(t) + 1)
-    else:
-        # Default gradient registered is grad.reshape_as(self)
-        self.assertEqual(t.grad, grad.reshape_as(t))
 
 
 @onlyXPU
@@ -366,6 +292,39 @@ def checkpointing_without_reentrant_memory_savings(self):
     self.assertTrue(mem_no_reentrant_checkpoint < mem_no_checkpoint)
 
 
+def forward_traceback_preserves_exception_with_checkpoint(self):
+    with torch.library._scoped_library("_test_autograd", "FRAGMENT"):
+
+        @torch.library.custom_op("_test_autograd::sin_op", mutates_args=())
+        def sin_op(x: torch.Tensor) -> torch.Tensor:
+            return x.sin()
+
+        def setup_context(ctx, inputs, output):
+            (x,) = inputs
+            ctx.save_for_backward(x)
+
+        def backward(ctx, grad):
+            (x,) = ctx.saved_tensors
+            return grad * x.cos()
+
+        torch.library.register_autograd(
+            "_test_autograd::sin_op",
+            backward,
+            setup_context=setup_context,
+        )
+
+        def fn(x):
+            return torch.ops._test_autograd.sin_op(x)
+
+        try:
+            torch.xpu.memory._record_memory_history("all", stacks="python")
+            x = torch.randn(4, device="xpu", requires_grad=True)
+            y = checkpoint(fn, x, use_reentrant=False)
+            y.sum().backward()
+        finally:
+            torch.xpu.memory._record_memory_history(None)
+
+
 def gradcheck_default_device_placement_context(self):
     # During gradcheck with fast_mode=True, we create a random vector on the CPU device using a CPU generator.
     # This test ensures that this still works when the default device is set to something else by the user.
@@ -533,6 +492,89 @@ def flops_and_mem(self):
     self.assertEqual(bw_flops_sac3, 2.0)
 
 
+@contextlib.contextmanager
+def _set_device_index(target_device):
+    orig_device = torch.accelerator.current_device_index()
+    try:
+        torch.accelerator.set_device_index(target_device)
+        yield
+    finally:
+        torch.accelerator.set_device_index(orig_device)
+
+
+def default_streams(self, num_devices=1):
+    out = []
+    for i in range(num_devices):
+        with _set_device_index(i):
+            acc = torch.accelerator.current_accelerator()
+            out.append(torch.get_device_module(acc).current_stream())
+    return tuple(out)
+
+
+def _get_device_name(idx):
+    return f"{torch.accelerator.current_accelerator().type}:{idx}"
+
+
+def _test_consumer_to_single_producer_case_3_correctness(
+    self, non_default_ambient_stream
+):
+    #                          Device    Stream
+    # Consumer (MulBackward):  xpu:0    s0
+    # Producer              :  xpu:1    xpu:1 default
+    # Gradient              :  xpu:0    xpu:0 default
+    class Producer(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            # The node's canonical stream is the current stream
+            # of the device of the first output.
+            ctx.node_stream = torch.accelerator.current_stream(1)
+            return x.to(_get_device_name(1))
+
+        @staticmethod
+        def backward(ctx, gO):
+            out = gO.to(_get_device_name(0))
+            # It's the node's responsibility to sync back to its canonical stream.
+            out.add_(1)
+            ctx.node_stream.wait_stream(torch.accelerator.current_stream(0))
+            return out
+
+    def test(self):
+        self.synchronize_all_devices(2)
+        self.assert_all_streams_default(2)
+
+        (default_stream_0,) = self.get_default_streams()
+
+        # Ensure consumer node happens on non-default stream so that
+        # when FuncBackward produces a gradient on a default stream
+        # a sync is necessary.
+        with torch.Stream(0) as s0:
+            a = torch.ones(256, 256, requires_grad=True, device="xpu")
+            b = a * 2
+
+        default_stream_0.wait_stream(s0)
+        out = Producer.apply(b)
+
+        def call_backward(x):
+            with torch.autograd.grad_mode.set_multithreading_enabled(False):
+                x.sum().backward()
+
+        if non_default_ambient_stream:
+            with torch.Stream(0) as s1:
+                s1.wait_stream(default_stream_0)
+                call_backward(out)
+        else:
+            call_backward(out)
+
+        self.synchronize_all_devices(2)
+
+        # Expected result: a.grad = (grad_out + 1) * 2 = 4
+        self.assertEqual(a.grad, torch.full_like(a, 4))
+
+        # Run an extra time to warm up
+        for _ in range(2):
+            test()
+
+
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
@@ -554,6 +596,11 @@ with XPUPatchForImport(False):
         TestMultithreadAutograd,
         TestNestedCheckpoint,
         TestSelectiveActivationCheckpoint,
+        TestAllowMutationOnSaved,
+        TestAutogradForwardModeBatchedGrad,
+        TestAutogradForwardMode,
+        TestAutogradInferenceMode,
+        TestAutogradStreamSynchronization,
     )
 
     @base_and_logging_tensor
@@ -632,6 +679,9 @@ with XPUPatchForImport(False):
     TestAutograd.test_checkpointing_without_reentrant_memory_savings = (
         checkpointing_without_reentrant_memory_savings
     )
+    TestAutograd.test_forward_traceback_preserves_exception_with_checkpoint = (
+        forward_traceback_preserves_exception_with_checkpoint
+    )
     TestAutograd.test_gradcheck_default_device_placement_context = (
         gradcheck_default_device_placement_context
     )
@@ -652,11 +702,6 @@ with XPUPatchForImport(False):
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = (
         custom_function_propagates_errors_from_device_thread
     )
-    TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = (
-        autograd_multiple_dispatch_registrations
-    )
-    TestAutogradMultipleDispatch.test_foward_mode_AD = foward_mode_AD
-    TestAutogradMultipleDispatch.test_view_copy = view_copy
     TestAutogradMultipleDispatch.test_backward_single_threaded = (
         backward_single_threaded
     )
@@ -668,6 +713,10 @@ with XPUPatchForImport(False):
     TestAutogradFunctional.test_jacobian_vectorize_correctness_different_devices = (
         jacobian_vectorize_correctness_different_devices
     )
+    TestAutogradStreamSynchronization.get_default_streams = (default_streams)
+    TestAutogradStreamSynchronization._test_consumer_to_single_producer_case_3_correctness = (
+        _test_consumer_to_single_producer_case_3_correctness
+    )
 instantiate_device_type_tests(
     TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True
 )
@@ -675,10 +724,17 @@ instantiate_device_type_tests(
 instantiate_device_type_tests(
     TestAutogradMultipleDispatch, globals(), only_for="xpu", allow_xpu=True
 )
+instantiate_device_type_tests(
+    TestAutogradStreamSynchronization, globals(), only_for="xpu", allow_xpu=True
+)
 
 instantiate_parametrized_tests(TestAutograd)
 instantiate_parametrized_tests(TestNestedCheckpoint)
 instantiate_parametrized_tests(TestAutogradFunctional)
+instantiate_parametrized_tests(TestAllowMutationOnSaved)
+instantiate_parametrized_tests(TestAutogradForwardMode)
+instantiate_parametrized_tests(TestAutogradForwardModeBatchedGrad)
+instantiate_parametrized_tests(TestAutogradInferenceMode)
 
 
 if __name__ == "__main__":

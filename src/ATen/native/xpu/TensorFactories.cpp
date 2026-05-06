@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,7 +11,14 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <c10/xpu/XPUFunctions.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 #include <ATen/ops/_efficientzerotensor_native.h>
 #include <ATen/ops/empty_native.h>
