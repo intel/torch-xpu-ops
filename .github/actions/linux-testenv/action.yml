@@ -192,6 +192,28 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
+    - name: Update numpy
+      shell: bash -xe {0}
+      run: |
+        # TODO: Remove this step once Python 3.10 is no longer supported.
+        if [[ "${{ inputs.python }}" == "3.10" ]]; then
+          OPENBLAS_DETECT_OUTPUT=$(OPENBLAS_VERBOSE=2 python -c "import numpy as np; np.dot(np.ones(1), np.ones(1))" 2>&1 > /dev/null)
+          if echo "${OPENBLAS_DETECT_OUTPUT}" | grep -qi "cooperlake"; then
+            echo "OpenBLAS detected CPU as Cooperlake; checking numpy for update"
+            CURRENT_NUMPY=$(python -c "import numpy as np; print(np.__version__)")
+            if [[ "${CURRENT_NUMPY}" == 1.23.* ]]; then
+              echo "Detected numpy ${CURRENT_NUMPY}; upgrading to 1.24.*"
+              pip install -U "numpy>=1.24,<1.25"
+              python -c "import numpy as np; print(f'numpy version after conditional upgrade: {np.__version__}')"
+            else
+              echo "numpy is ${CURRENT_NUMPY}; skipping upgrade because version is not 1.23.*"
+            fi
+          else
+            echo "OpenBLAS did not detect Cooperlake; skipping Update numpy"
+          fi
+        else
+          echo "Skipping Update numpy because python is not 3.10 (python=${{ inputs.python }})"
+        fi
     - name: Torch Config
       shell: bash -xe {0}
       run: |
