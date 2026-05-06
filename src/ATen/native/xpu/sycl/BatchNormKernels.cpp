@@ -4167,7 +4167,8 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
         output, self, weight_opt, bias_opt, *running_mean_opt, local_invstd);
     at::native::resize_output(save_mean, {0});
     at::native::resize_output(save_invstd, {0});
-    return std::tuple<Tensor&, Tensor&, Tensor&>(output, save_mean, save_invstd);
+    return std::tuple<Tensor&, Tensor&, Tensor&>(
+        output, save_mean, save_invstd);
   }
 
   batch_norm_elementwise(
