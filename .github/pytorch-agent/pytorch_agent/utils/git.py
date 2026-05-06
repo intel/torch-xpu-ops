@@ -1,27 +1,60 @@
-"""Shared git helpers for the pytorch-agent pipeline."""
+"""Shared git helpers."""
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
+from .config import PYTORCH_DIR
+from .logger import log
+
 
 def git(*args: str, workdir: Path | None = None, check: bool = True,
         issue: int | None = None) -> subprocess.CompletedProcess[str]:
-    """Run a git command inside PYTORCH_DIR (or *workdir*) with logging."""
-    raise NotImplementedError("git.py: stub — implementation added in PR 2")
+    """Run a git command with logging."""
+    cwd = str(workdir or PYTORCH_DIR)
+    cmd_str = "git " + " ".join(args)
+    log("INFO", f"$ {cmd_str}", issue=issue)
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=check,
+        capture_output=True, text=True,
+    )
 
 
 def git_out(*args: str, **kwargs) -> str:
-    """Run git and return stdout string."""
-    raise NotImplementedError("git.py: stub — implementation added in PR 2")
+    """Run git and return stdout. Convenience wrapper around git()."""
+    return git(*args, **kwargs).stdout
 
 
-def add_and_commit(message: str, *,
-                   issue: int | None = None,
+def add_and_commit(message: str, *, issue: int | None = None,
                    workdir: Path | None = None) -> bool:
-    """Stage all tracked files (excluding third_party/*) and commit if dirty.
+    """Stage tracked files (excluding third_party/*) and commit if dirty.
 
-    Returns True if a commit was made, False if the tree was already clean.
-    Handles renamed files (porcelain R old -> new) correctly.
+    Returns True if a commit was made, False if tree was clean.
     """
-    raise NotImplementedError("git.py: stub — implementation added in PR 2")
+    cwd = workdir or PYTORCH_DIR
+    status = git("status", "--porcelain", workdir=cwd, issue=issue).stdout
+    if not status.strip():
+        return False
+
+    # Filter out submodule pointer changes (third_party/*)
+    files = []
+    for line in status.splitlines():
+        # porcelain format: XY filename  or  XY old -> new
+        parts = line.split(maxsplit=1)
+        if len(parts) < 2:
+            continue
+        fname = parts[1].strip()
+        # Handle rename porcelain: "R  old -> new"
+        if " -> " in fname:
+            fname = fname.split(" -> ", 1)[1]
+        if fname.startswith("third_party/"):
+            log("INFO", f"Skipping submodule change: {fname}", issue=issue)
+            continue
+        files.append(fname)
+
+    if not files:
+        return False
+
+    git("add", "--", *files, workdir=cwd, issue=issue)
+    git("commit", "-m", message, workdir=cwd, issue=issue)
+    return True
