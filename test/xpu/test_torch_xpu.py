@@ -62,7 +62,6 @@ from torch.testing._internal.common_device_type import (
     onlyCUDA,
     onlyNativeDeviceTypes,
     onlyOn,
-    onlyXPU,
     PYTORCH_CUDA_MEMCHECK,
     skipCUDAIfNotRocm,
     skipMeta,
@@ -412,7 +411,6 @@ class TestTorchDeviceType(TestCase):
         torch.qint32,
         torch.quint4x2,
     )
-
     @unittest.skipIf(
         TEST_XPU,
         "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
@@ -447,7 +445,6 @@ class TestTorchDeviceType(TestCase):
         l[2:7] = [1] * 5
         s[2:7] = 1
         self.assertEqual(s, storage_type(l))
-
 
     @unittest.skipIf(
         TEST_XPU,
@@ -1444,7 +1441,6 @@ class TestTorchDeviceType(TestCase):
             small2 = torch.randn(*dims_small2, device=device).float()
             small2_expanded = small2.expand(*dims_full)
 
-
         if (small.device.type in ["cuda", "xpu"]) and fn in ["map", "map2"]:
             # map and map2 are not implemented on CUDA and XPU tensors
             return
@@ -2000,7 +1996,6 @@ class TestTorchDeviceType(TestCase):
             torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
         )
 
-
     @skipIfMPS
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
     def test_nondeterministic_alert_ReflectionPad3d(self, device):
@@ -2485,7 +2480,6 @@ class TestTorchDeviceType(TestCase):
         original = torch.arange(4, dtype=torch.float32)
         result = original.scatter(0, null_index, null_arr)
         self.assertEqual(result, original, atol=0, rtol=0)
-
 
     @onlyCUDA
     @skipIfTorchInductor("FIXME")
