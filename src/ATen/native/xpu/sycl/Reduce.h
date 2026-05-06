@@ -257,21 +257,39 @@ struct ReduceConfig {
     // some platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
     auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
-                                                : syclMaxSubGroupSize();
-    const int max_num_items = max_wg_sz / output_vec_size;
+                                                 : syclMaxSubGroupSize();
+    // Cap work-group size to 512, matching CUDA's MAX_NUM_THREADS=512.
+    // This limits group_height (number of sub-groups cooperating via SLM)
+    // and produces more work-groups for better device occupancy.
+    //
+    // For large accumulators (e.g. pair<Half,int64_t> = 16 bytes for min/max),
+    // the kernel uses reqd_sub_group_size(16) to double registers per lane.
+    // Set group_width=16 and group_height=1 so each work-group is exactly
+    // one SIMD16 sub-group: all reduction via shuffles, zero SLM, zero
+    // barriers, and no SLM-based inter-SG reduce overhead.
+    // For small accumulators (e.g. float = 4 bytes for sum), keep 512 to match
+    // CUDA's block_height=16 and allow cooperative Y-reduce when beneficial.
+    constexpr int LARGE_ACC_SG_SIZE = 16;
+    constexpr int MAX_NUM_ITEMS_DEFAULT = 512;
+    const bool large_acc = element_size_bytes > (int)sizeof(float);
+    const int effective_sg_sz = large_acc ? LARGE_ACC_SG_SIZE : max_sg_sz;
+    const int effective_max_items =
+        large_acc ? LARGE_ACC_SG_SIZE : MAX_NUM_ITEMS_DEFAULT;
+    const int max_num_items = std::min(
+        static_cast<int>(max_wg_sz / output_vec_size), effective_max_items);
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
     int dim1_pow2 = dim1 < max_num_items ? static_cast<int>(last_pow2(dim1))
                                          : max_num_items;
-    group_width = std::min(dim0_pow2, int(max_sg_sz));
+    group_width = std::min(dim0_pow2, int(effective_sg_sz));
     group_height = std::min(dim1_pow2, int(max_num_items / group_width));
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-    if (num_items < max_sg_sz) {
+    if (num_items < effective_sg_sz) {
       // Hardware always allocates full sub-group regardless of work-group size.
       // Enforce group_width to align with sub-group size.
-      group_width = max_sg_sz;
+      group_width = effective_sg_sz;
       // Ensure num_items <= max_num_items
       group_height = std::min(group_height, max_num_items / group_width);
       num_items = group_width * group_height;
@@ -362,9 +380,17 @@ struct ReduceConfig {
   }
 
   int slm_sz() const {
-    // if (!should_group_y_reduce() && (!should_group_x_reduce() ||
-    // group_width
-    // <= 32)) { return 0; }
+    // SLM is only needed for:
+    // 1. group_y_reduce: inter-SG tree reduction via SLM
+    // 2. group_x_reduce when group_width > sub-group size (tree reduce in SLM
+    //    before sub-group shuffles). Since group_width is always <= max_sg_sz
+    //    by construction in set_group_dimension, X-reduce only uses shuffles.
+    // When neither condition holds, all reduction is done via sub-group shuffles
+    // and no SLM is needed. This avoids wasteful SLM allocation that could
+    // reduce occupancy (e.g. 16KB/WG for min/max split_output path).
+    if (!should_group_y_reduce() && !should_global_reduce()) {
+      return 0;
+    }
     return element_size_bytes * num_items * output_vec_size;
   }
 
@@ -734,6 +760,44 @@ struct ReduceOp {
       value_list[i] = ident;
     }
 
+    // Software pipeline: issue vt0 vector loads before reducing, to overlap
+    // memory latency with ALU work. Each vector load fetches input_vec_size
+    // elements; the vt0 loads are independent and can be pipelined by the
+    // memory subsystem while ALU processes previous reductions.
+    // This mirrors CUDA's thread_reduce_impl which separates loads and
+    // computes with vt0 buffers (Reduce.cuh:580-596).
+    //
+    // Double-buffering was tested (buf[2][vt0] and buf[2][vt0/2]) but
+    // caused register spill on Xe2 with SIMD16 (SbidStall: 1.6% -> 28%,
+    // DistStall: 3.7% -> 17%). The single-buffer approach already achieves
+    // very low SbidStall (1.6%), so latency hiding is not the bottleneck.
+    using load_vec_t =
+        at::native::memory::aligned_vector<scalar_t, input_vec_size>;
+    load_vec_t prefetch[vt0];
+
+    while ((idx + (vt0 - 1) * stride) * input_vec_size + input_vec_size - 1 <
+           end) {
+      // LOAD PHASE: issue vt0 vector loads
+#pragma unroll(vt0)
+      for (int k = 0; k < vt0; k++) {
+        prefetch[k] =
+            memory::load_vector<input_vec_size>(data, idx + k * stride);
+      }
+      // COMPUTE PHASE: reduce all prefetched values
+#pragma unroll(vt0)
+      for (int k = 0; k < vt0; k++) {
+#pragma unroll
+        for (index_t i = 0; i < input_vec_size; ++i) {
+          value_list[i] = ops.reduce(
+              value_list[i],
+              prefetch[k][i],
+              shift + (idx + k * stride) * input_vec_size + i);
+        }
+      }
+      idx += stride * vt0;
+    }
+
+    // Remainder: one vector at a time
     while (idx * input_vec_size + input_vec_size - 1 < end) {
       const auto values_vec = memory::load_vector<input_vec_size>(data, idx);
 #pragma unroll
@@ -1051,6 +1115,10 @@ struct ReduceOp {
   }
 };
 
+// Use SIMD16 (reqd_sub_group_size=16) for large accumulators (>8 bytes),
+// e.g., min/max with pair<scalar_t, int64_t>. SIMD16 doubles available
+// registers per lane on Xe2, preventing register spill for large state.
+// For small accumulators (e.g., sum with float), use the compiler default.
 template <typename R>
 static void launch_reduce_kernel(
     const ReduceConfig& config,
@@ -1352,8 +1420,32 @@ inline void gpu_reduce_kernel(
   // XXX: Avoid all WIs in a work group contributes on one output. If so,
   // It is inefficient to store output, each work group stores only one
   // output. It is not friendly to collapse memory request in an EU.
-  if (config.values_per_item() >= group_height * 16 ||
-      config.values_per_item() >= 512) {
+  //
+  // Base threshold matches CUDA: min(block_height * 16, max_values_per_thread).
+  // Together with MAX_NUM_ITEMS=512 in set_group_dimension, this produces
+  // group_height=16 (matching CUDA's block_height=16).
+  //
+  // On XPU, SLM-based inter-SG Y-reduce (barrier + read + combine + write per
+  // level, log2(group_height) levels) is more expensive relative to memory BW
+  // than CUDA's shared-memory warp-reduce, especially for large accumulators
+  // (e.g. pair<Half,int64_t> = 16 bytes for min/max). To compensate, we scale
+  // the threshold by (ceil(acc_size/4))^2 so that Y-reduce is only used when
+  // there are enough values per item to amortize the SLM overhead.
+  //   - For sum (acc_size=4): scale=1, threshold=256 (matches CUDA exactly)
+  //   - For min/max (acc_size=16): scale=16, threshold=4096
+  //     → uses split_output (no SLM) for moderate N, Y-reduce only for very
+  //       large reductions where the per-item work amortizes the SLM cost
+  constexpr int min_values_per_item = 16;
+  constexpr int max_values_per_item = 256;
+  const int elem_scale = ((config.element_size_bytes + 3) / 4);
+  const int elem_scale_sq = elem_scale * elem_scale;
+  const int sg_split_threshold =
+      std::min<int>(group_height * 16, max_values_per_item) * elem_scale_sq;
+  if (group_height <= 1) {
+    // With group_height=1 (single sub-group per WG), Y-reduce is impossible.
+    // split_output(1) is a no-op, just skip the decision entirely.
+    config.output_mult[1] = config.split_output(group_height);
+  } else if (config.values_per_item() >= sg_split_threshold) {
     // Divide the input across SGs in a work group, if that leaves at least
     // 16 elements to be summed by each WI. This will require inter-SG
     // reduction using shared memory.
@@ -1365,8 +1457,6 @@ inline void gpu_reduce_kernel(
 
   // We are finding a general rountine to work out target max WI number on dev
   // And now we use catch-all configuration
-  constexpr int min_values_per_item = 16;
-  constexpr int max_values_per_item = 256;
 
   const auto target_group_range =
       syclMaxWorkItemsPerTile() / (group_height * group_width);
