@@ -13,11 +13,16 @@ import torch
 from torch.testing import make_tensor
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
+    largeTensorTest,
     OpDTypes,
     ops,
 )
-from torch.testing._internal.common_methods_invocations import foreach_binary_op_db
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_dtype import floating_types
+from torch.testing._internal.common_methods_invocations import (
+    foreach_binary_op_db,
+    foreach_reduce_op_db,
+)
+from torch.testing._internal.common_utils import parametrize, run_tests, serialTest
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -195,6 +200,23 @@ def _test_0dim_tensor_overload_exception(self):
 TestForeach.test_0dim_tensor_overload_exception = _test_0dim_tensor_overload_exception
 
 
+@serialTest()
+@largeTensorTest("40GB", device="xpu")
+def _test_foreach_copy_with_multi_dtypes_large_input(self):
+    # see https://github.com/pytorch/pytorch/issues/156261
+    self_tensor = torch.empty(2**31 + 1, device="xpu", dtype=torch.float32)
+    src_tensor = torch.ones(2**31 + 1, device="xpu", dtype=torch.bfloat16)
+
+    torch._foreach_copy_([self_tensor], [src_tensor])
+    ref_out = torch.empty_like(self_tensor).copy_(src_tensor)
+    self.assertEqual(self_tensor, ref_out)
+
+
+TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
+    _test_foreach_copy_with_multi_dtypes_large_input
+)
+
+
 @ops(filter(lambda op: op.name == "_foreach_copy", foreach_binary_op_db))
 def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
     if dtype in (torch.complex128, torch.complex64):
@@ -231,6 +253,58 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
 TestForeach.test_foreach_copy_with_different_device_inputs = (
     _test_foreach_copy_with_different_device_inputs
 )
+
+
+@ops(foreach_reduce_op_db, allowed_dtypes=floating_types())
+@parametrize("use_xpu_graph", (False, True))
+@parametrize("w_empty", (False, True))
+def _test_big_num_tensors(self, device, dtype, op, use_xpu_graph, w_empty):
+    intersperse_empty_tensors = w_empty and op.name != "_foreach_max"
+
+    N = 600
+    indices_with_empty_tensors = (
+        set()
+        if not intersperse_empty_tensors
+        else {200, 300, 301, 400, 401, 402, 404, 598}
+    )
+    tensorlist = [
+        make_tensor((2, 3), dtype=dtype, device=device, noncontiguous=False)
+        if i not in indices_with_empty_tensors
+        else torch.empty(0, dtype=dtype, device=device)
+        for i in range(N)
+    ]
+    fn, ref_fn, *_ = self._get_funcs(op)
+
+    import math
+
+    if op.name == "_foreach_norm":
+        ords = [1, 2]
+        if not intersperse_empty_tensors:
+            ords.append(math.inf)
+    else:
+        ords = [None]
+
+    for ord in ords:
+        kwargs = {"ord": ord} if ord else {}
+        if not use_xpu_graph:
+            actual = fn(
+                inputs=[tensorlist],
+                is_cuda=False,
+                expect_fastpath=True,
+                zero_size=False,
+                **kwargs,
+            )
+        else:
+            g = torch.xpu.XPUGraph()
+            with torch.xpu.graph(g):
+                actual = fn.func(tensorlist, **kwargs)
+            g.replay()
+        expect = ref_fn(inputs=[tensorlist], **kwargs)
+
+        self.assertEqual(expect, actual, equal_nan=True)
+
+
+TestForeach.test_big_num_tensors = _test_big_num_tensors
 
 instantiate_device_type_tests(TestForeach, globals(), only_for="xpu", allow_xpu=True)
 

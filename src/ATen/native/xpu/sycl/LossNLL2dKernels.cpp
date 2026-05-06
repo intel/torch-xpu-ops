@@ -8,11 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 #include <ATen/ATen.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -199,6 +198,7 @@ void nll_loss2d_forward_kernel(
   }
 
   total_weight.resize_({});
+  total_weight.zero_();
 
   if (reduction == at::Reduction::None) {
     int64_t batch_size = input.size(0);
@@ -246,7 +246,6 @@ void nll_loss2d_forward_kernel(
     } else {
       output.zero_();
     }
-    total_weight.zero_();
     return;
   }
 
@@ -255,7 +254,6 @@ void nll_loss2d_forward_kernel(
   auto target_ = target.contiguous();
 
   output.zero_();
-  total_weight.zero_();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -545,5 +543,6 @@ void nll_loss2d_backward_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on
