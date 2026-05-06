@@ -1,0 +1,349 @@
+name: OnDemand Acceptance Comparison
+
+# Self-contained orchestration workflow that runs two pipelines (target vs
+# baseline) in the same workflow run, then compares their results.
+#
+# Test scope is fixed to the acceptance comparison scope:
+#   * UT  : op_p0 only
+#   * E2E : huggingface, timm_models, torchbench
+#           (training amp_fp16 + inference bfloat16, accuracy + performance)
+#
+# Flexibility is on the *components* under test: vary any subset of
+# `pytorch`, `torch_xpu_ops`, `triton`, `onednn`, `sycltla` between the two
+# pipelines via independent `target_*` / `baseline_*` inputs. Empty /
+# `pinned` keeps the upstream-pinned version. If both sides are equal, that
+# component is unchanged.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        type: string
+        default: pvc_rolling
+        description: 'Runner label for the test pool (UT + E2E). Build jobs always use the dedicated `build` runner pool.'
+      python:
+        type: string
+        required: true
+        default: '3.10'
+        description: Python version (e.g. 3.10, 3.11, 3.12)
+
+      # ----- Target versions -----
+      target_pytorch:
+        type: string
+        default: 'main'
+        description: 'Target pytorch ref (commit/branch/tag, or `repo@ref`)'
+      target_torch_xpu_ops:
+        type: string
+        default: 'main'
+        description: 'Target torch-xpu-ops ref, or `pinned`'
+      target_triton:
+        type: string
+        default: ''
+        description: 'Target Triton ref. Empty/`pinned` = pytorch-pinned.'
+      target_onednn:
+        type: string
+        default: ''
+        description: 'Target oneDNN ref. Empty/`pinned` = pytorch-pinned.'
+      target_sycltla:
+        type: string
+        default: ''
+        description: 'Target SYCLTLA ref. Empty/`pinned` = torch-xpu-ops-pinned.'
+
+      # ----- Baseline versions -----
+      baseline_pytorch:
+        type: string
+        default: 'main'
+        description: 'Baseline pytorch ref'
+      baseline_torch_xpu_ops:
+        type: string
+        default: 'main'
+        description: 'Baseline torch-xpu-ops ref, or `pinned`'
+      baseline_triton:
+        type: string
+        default: ''
+        description: 'Baseline Triton ref. Empty/`pinned` = pytorch-pinned.'
+      baseline_onednn:
+        type: string
+        default: ''
+        description: 'Baseline oneDNN ref. Empty/`pinned` = pytorch-pinned.'
+      baseline_sycltla:
+        type: string
+        default: ''
+        description: 'Baseline SYCLTLA ref. Empty/`pinned` = torch-xpu-ops-pinned.'
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  issues: write
+
+run-name: >-
+  Acceptance / ${{
+    inputs.target_triton  != inputs.baseline_triton  && format('triton {0} vs {1}',  inputs.target_triton  || 'pinned', inputs.baseline_triton  || 'pinned') ||
+    inputs.target_onednn  != inputs.baseline_onednn  && format('onednn {0} vs {1}',  inputs.target_onednn  || 'pinned', inputs.baseline_onednn  || 'pinned') ||
+    inputs.target_sycltla != inputs.baseline_sycltla && format('sycltla {0} vs {1}', inputs.target_sycltla || 'pinned', inputs.baseline_sycltla || 'pinned') ||
+    inputs.target_torch_xpu_ops != inputs.baseline_torch_xpu_ops && format('torch-xpu-ops {0} vs {1}', inputs.target_torch_xpu_ops, inputs.baseline_torch_xpu_ops) ||
+    inputs.target_pytorch != inputs.baseline_pytorch && format('pytorch {0} vs {1}', inputs.target_pytorch, inputs.baseline_pytorch) ||
+    'identical (sanity)' }}
+
+jobs:
+  # ==================================================================
+  # Pick ONE runner and reuse for every test job (target & baseline,
+  # UT & E2E) so they all execute on the same physical machine.
+  # ==================================================================
+  pick-runner:
+    name: pick-runner
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+    steps:
+      - name: Derive runner id
+        id: runner-info
+        shell: bash -xe {0}
+        run: |
+          runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
+          echo "runner_id=${runner_id}" | tee -a "${GITHUB_OUTPUT}"
+
+  # ==================================================================
+  # TARGET pipeline
+  # ==================================================================
+  target-build:
+    name: target / build
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: build
+      pytorch: ${{ inputs.target_pytorch }}
+      torch_xpu_ops: ${{ inputs.target_torch_xpu_ops }}
+      triton: ${{ inputs.target_triton }}
+      onednn: ${{ inputs.target_onednn }}
+      sycltla: ${{ inputs.target_sycltla }}
+      python: ${{ inputs.python }}
+      category: target
+
+  target-ut:
+    name: target / ut
+    needs: [pick-runner, target-build]
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      pytorch: ${{ inputs.target_pytorch }}
+      torch_xpu_ops: ${{ inputs.target_torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      ut: op_p0
+      category: target
+
+  target-e2e:
+    name: target / e2e
+    needs: [pick-runner, target-build]
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [huggingface, timm_models, torchbench]
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      test_type: build-comparison
+      pytorch: ${{ inputs.target_pytorch }}
+      python: ${{ inputs.python }}
+      suite: ${{ matrix.suite }}
+      category: target
+
+  # ==================================================================
+  # BASELINE pipeline
+  # ==================================================================
+  baseline-build:
+    name: baseline / build
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: build
+      pytorch: ${{ inputs.baseline_pytorch }}
+      torch_xpu_ops: ${{ inputs.baseline_torch_xpu_ops }}
+      triton: ${{ inputs.baseline_triton }}
+      onednn: ${{ inputs.baseline_onednn }}
+      sycltla: ${{ inputs.baseline_sycltla }}
+      python: ${{ inputs.python }}
+      category: baseline
+
+  baseline-ut:
+    name: baseline / ut
+    needs: [pick-runner, baseline-build]
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      pytorch: ${{ inputs.baseline_pytorch }}
+      torch_xpu_ops: ${{ inputs.baseline_torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      ut: op_p0
+      category: baseline
+
+  baseline-e2e:
+    name: baseline / e2e
+    needs: [pick-runner, baseline-build]
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [huggingface, timm_models, torchbench]
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      test_type: build-comparison
+      pytorch: ${{ inputs.baseline_pytorch }}
+      python: ${{ inputs.python }}
+      suite: ${{ matrix.suite }}
+      category: baseline
+
+  # ==================================================================
+  # Compare results
+  # ==================================================================
+  compare-results:
+    name: Compare results
+    needs: [target-ut, target-e2e, baseline-ut, baseline-e2e]
+    if: ${{ ! cancelled() }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print configuration
+        run: |
+          {
+            echo "## Acceptance comparison"
+            echo ""
+            echo "| Component | Target | Baseline |"
+            echo "| --- | --- | --- |"
+            echo "| pytorch          | ${{ inputs.target_pytorch }} | ${{ inputs.baseline_pytorch }} |"
+            echo "| torch-xpu-ops    | ${{ inputs.target_torch_xpu_ops }} | ${{ inputs.baseline_torch_xpu_ops }} |"
+            echo "| triton           | ${{ inputs.target_triton  || 'pinned' }} | ${{ inputs.baseline_triton  || 'pinned' }} |"
+            echo "| onednn           | ${{ inputs.target_onednn  || 'pinned' }} | ${{ inputs.baseline_onednn  || 'pinned' }} |"
+            echo "| sycltla          | ${{ inputs.target_sycltla || 'pinned' }} | ${{ inputs.baseline_sycltla || 'pinned' }} |"
+            echo ""
+            echo "Scope: UT=\`op_p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Download target E2E logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-target'
+          path: ${{ github.workspace }}/results/target/e2e
+
+      - name: Download target UT logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-XPU-UT-Data-*-target'
+          path: ${{ github.workspace }}/results/target/ut
+
+      - name: Download target UT failure lists
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'XPU-UT-Failure-List-*-target'
+          path: ${{ github.workspace }}/results/target/ut
+
+      - name: Download baseline E2E logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-baseline'
+          path: ${{ github.workspace }}/results/baseline/e2e
+
+      - name: Download baseline UT logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-XPU-UT-Data-*-baseline'
+          path: ${{ github.workspace }}/results/baseline/ut
+
+      - name: Download baseline UT failure lists
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'XPU-UT-Failure-List-*-baseline'
+          path: ${{ github.workspace }}/results/baseline/ut
+
+      - name: Ensure result directories exist
+        run: |
+          mkdir -p "${{ github.workspace }}/results/target/e2e"
+          mkdir -p "${{ github.workspace }}/results/target/ut"
+          mkdir -p "${{ github.workspace }}/results/baseline/e2e"
+          mkdir -p "${{ github.workspace }}/results/baseline/ut"
+
+      - name: Install comparison dependencies
+        run: |
+          python -m pip install --quiet pandas numpy openpyxl PyGithub
+
+      - name: E2E comparison (compare-e2e.py)
+        run: |
+          # Flatten per-suite artifact directories so compare-e2e.py finds csvs
+          for side in target baseline; do
+            base="${{ github.workspace }}/results/${side}/e2e"
+            if compgen -G "${base}/Inductor-*-LTS2-XPU-E2E-Data-*" > /dev/null; then
+              for d in "${base}"/Inductor-*-LTS2-XPU-E2E-Data-*; do
+                cp -r "${d}/." "${base}/"
+              done
+            fi
+          done
+          mkdir -p "${{ github.workspace }}/comparison"
+          python .github/scripts/compare-e2e.py \
+            -t "${{ github.workspace }}/results/target/e2e" \
+            -b "${{ github.workspace }}/results/baseline/e2e" \
+            -o "${{ github.workspace }}/comparison/e2e_comparison.xlsx" \
+            -m "${{ github.workspace }}/comparison/e2e_comparison.md" || true
+          {
+            echo ""
+            echo "### E2E (target vs baseline)"
+            echo ""
+            if [ -f "${{ github.workspace }}/comparison/e2e_comparison.md" ]; then
+              cat "${{ github.workspace }}/comparison/e2e_comparison.md"
+            else
+              echo "_compare-e2e.py produced no markdown report._"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: UT comparison (compare-ut.py)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "${{ github.workspace }}/comparison"
+          python .github/scripts/compare-ut.py \
+            -i "${{ github.workspace }}/results/target/ut" \
+               "${{ github.workspace }}/results/baseline/ut" \
+            -o "${{ github.workspace }}/comparison/ut_comparison.xlsx" \
+            -m \
+            --markdown-output "${{ github.workspace }}/comparison/ut_comparison.md" \
+            --no-github || true
+          {
+            echo ""
+            echo "### UT (target vs baseline)"
+            echo ""
+            if [ -f "${{ github.workspace }}/comparison/ut_comparison.md" ]; then
+              cat "${{ github.workspace }}/comparison/ut_comparison.md"
+            else
+              echo "_compare-ut.py produced no markdown report._"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload comparison summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-comparison-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ github.workspace }}/comparison/**
+          retention-days: 30
+          if-no-files-found: warn
+

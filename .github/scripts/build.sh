@@ -46,6 +46,47 @@ cd ${WORKSPACE}/pytorch
 python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
+
+# Optional component overrides (used by the acceptance / comparison workflow).
+# Each variable, when set to a non-empty value other than "pinned",
+# replaces the default pinned version of the corresponding component.
+
+# oneDNN: pytorch's mkl-dnn submodule lives under third_party/ideep/mkl-dnn
+if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
+    if [[ "${ONEDNN_COMMIT}" == *"@"* ]]; then
+        ONEDNN_REPO_URL="${ONEDNN_COMMIT%@*}"
+        ONEDNN_REF="${ONEDNN_COMMIT##*@}"
+    else
+        ONEDNN_REPO_URL=""
+        ONEDNN_REF="${ONEDNN_COMMIT}"
+    fi
+    pushd third_party/ideep/mkl-dnn >/dev/null
+    if [ -n "${ONEDNN_REPO_URL}" ]; then
+        git remote set-url origin "${ONEDNN_REPO_URL}"
+    fi
+    # Try fetching the ref directly (works for branch/tag/SHA on servers
+    # with uploadpack.allowReachableSHA1InWant); fall back to a full fetch.
+    git fetch --tags --force origin "${ONEDNN_REF}" || git fetch --tags --force origin
+    git checkout --force "${ONEDNN_REF}"
+    git submodule update --init --recursive
+    git rev-parse HEAD
+    popd >/dev/null
+fi
+
+# SYCLTLA: cmake FetchContent in torch-xpu-ops/cmake/SYCLTLA.cmake
+if [ -n "${SYCLTLA_COMMIT:-}" ] && [ "${SYCLTLA_COMMIT,,}" != "pinned" ]; then
+    SYCLTLA_CMAKE="third_party/torch-xpu-ops/cmake/SYCLTLA.cmake"
+    if [[ "${SYCLTLA_COMMIT}" == *"@"* ]]; then
+        SYCLTLA_REPO_URL="${SYCLTLA_COMMIT%@*}"
+        SYCLTLA_REF="${SYCLTLA_COMMIT##*@}"
+        sed -i -E "s#GIT_REPOSITORY[[:space:]]+[^[:space:]]+#GIT_REPOSITORY ${SYCLTLA_REPO_URL}#" "${SYCLTLA_CMAKE}"
+    else
+        SYCLTLA_REF="${SYCLTLA_COMMIT}"
+    fi
+    sed -i -E "s#GIT_TAG[[:space:]]+[^[:space:]]+#GIT_TAG        ${SYCLTLA_REF}#" "${SYCLTLA_CMAKE}"
+    grep -E 'GIT_REPOSITORY|GIT_TAG' "${SYCLTLA_CMAKE}"
+fi
+
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1
