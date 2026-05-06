@@ -192,6 +192,22 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
+    - name: Update numpy
+      shell: bash -xe {0}
+      run: |
+        # TODO: Remove this step once Python 3.10 is no longer supported.
+        if [[ "${{ inputs.python }}" == "3.10" ]]; then
+          CURRENT_NUMPY=$(python -c "import numpy as np; print(np.__version__)")
+          if [[ "${CURRENT_NUMPY}" == 1.23.* ]]; then
+            echo "Detected numpy ${CURRENT_NUMPY}; upgrading to 1.24.4"
+            pip install -U "numpy==1.24.4"
+            python -c "import numpy as np; print(f'numpy version after conditional upgrade: {np.__version__}')"
+          else
+            echo "numpy is ${CURRENT_NUMPY}; skipping upgrade because version is not 1.23.*"
+          fi
+        else
+          echo "Skipping Update numpy because python is not 3.10 (python=${{ inputs.python }})"
+        fi
     - name: Torch Config
       shell: bash -xe {0}
       run: |
