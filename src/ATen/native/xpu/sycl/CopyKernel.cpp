@@ -35,6 +35,22 @@ struct CastScalarFunc {
   }
 };
 
+// TODO: Remove this workaround for Half -0.0
+template <>
+struct CastScalarFunc<Half, float> {
+  float operator()(Half src_val) const {
+    return c10::convert<float>(src_val);
+  }
+};
+
+// TODO: Remove this workaround for Half -0.0
+template <>
+struct CastScalarFunc<Half, BFloat16> {
+  BFloat16 operator()(Half src_val) const {
+    return c10::convert<BFloat16>(src_val);
+  }
+};
+
 // TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
 // from incorrectly converting -0.0 to NaN. This temporary fix should
 // be removed once the compiler/driver error is resolved.
@@ -146,6 +162,64 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
+bool isFastCastType(const TensorIteratorBase& iter) {
+  ScalarType dst_dtype = iter.dtype(0);
+  ScalarType src_dtype = iter.dtype(1);
+
+  if (dst_dtype == src_dtype) {
+    return false;
+  }
+
+  if (src_dtype != kFloat && src_dtype != kHalf && src_dtype != kBFloat16) {
+    return false;
+  }
+
+  if (dst_dtype != kFloat && dst_dtype != kHalf && dst_dtype != kBFloat16) {
+    return false;
+  }
+
+  return true;
+}
+
+// Optimized cast kernel for common fp32/fp16/bf16 conversions.
+// Uses gpu_kernel_nocast with explicit CastScalarFunc to enable vectorized
+// memory access, bypassing the generic LoadWithCast/StoreWithCast path
+// which disables vectorization and uses per-element runtime dtype dispatch.
+void fast_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType dst_dtype = iter.dtype(0);
+  ScalarType src_dtype = iter.dtype(1);
+
+  // fp32 <-> fp16
+  if (src_dtype == kFloat && dst_dtype == kHalf) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, Half>());
+    return;
+  }
+  if (src_dtype == kHalf && dst_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, float>());
+    return;
+  }
+
+  // fp32 <-> bf16
+  if (src_dtype == kFloat && dst_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, BFloat16>());
+    return;
+  }
+  if (src_dtype == kBFloat16 && dst_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, float>());
+    return;
+  }
+
+  // fp16 <-> bf16
+  if (src_dtype == kHalf && dst_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, BFloat16>());
+    return;
+  }
+  if (src_dtype == kBFloat16 && dst_dtype == kHalf) {
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Half>());
+    return;
+  }
+}
+
 void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
@@ -156,6 +230,8 @@ void copy_kernel(TensorIteratorBase& iter) {
     float8_copy_kernel_xpu(iter);
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
+  } else if (isFastCastType(iter)) {
+    fast_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,
