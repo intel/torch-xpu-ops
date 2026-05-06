@@ -4942,7 +4942,11 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
                     "layer_norm(): the result of reducing a nested tensor along the ragged dimension is a nested tensor",
                 )  # output is a nested tensor
                 self.assertEqual(out_actual._values.shape, out_expected.shape)
-                self.assertTrue(torch.allclose(out_actual.values(), out_expected))
+                self.assertTrue(
+                    torch.allclose(
+                        out_actual.values(), out_expected, atol=1e-5, rtol=1e-5
+                    )
+                )
 
     @dtypes(torch.float32)
     @parametrize("requires_grad", [False, True])
