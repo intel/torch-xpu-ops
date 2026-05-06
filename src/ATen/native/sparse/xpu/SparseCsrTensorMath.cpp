@@ -82,11 +82,10 @@ Tensor addmm_calculation(
     const Scalar& alpha) {
   Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
   Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
-
   Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
-    result_dense.add_(input_dense, beta);
+    result_dense.add_(input_dense * beta);
   }
   return result_dense;
 }

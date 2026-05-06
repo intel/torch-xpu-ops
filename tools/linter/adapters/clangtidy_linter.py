@@ -28,21 +28,15 @@ from sysconfig import get_paths as gp
 from typing import Any, NamedTuple
 
 
-# PyTorch directory root
-def scm_root() -> str:
-    path = os.path.abspath(os.getcwd())
-    while True:
-        if os.path.exists(os.path.join(path, ".git")):
-            return path
-        if os.path.isdir(os.path.join(path, ".hg")):
-            return path
-        n = len(path)
-        path = os.path.dirname(path)
-        if len(path) == n:
-            raise RuntimeError("Unable to find SCM root")
+PYTORCH_ROOT = os.environ.get("PYTORCH_ROOT")
+if PYTORCH_ROOT is None:
+     raise RuntimeError(
+         "Environment variable PYTORCH_ROOT is not set. "
+         "Please set PYTORCH_ROOT to the root directory of the PyTorch source "
+         "tree so that clang-tidy can locate the appropriate headers."
+     )
 
-
-PYTORCH_ROOT = scm_root()
+CMPLR_ROOT = os.environ.get("CMPLR_ROOT", "/opt/intel/oneapi/compiler/latest")
 IS_WINDOWS: bool = os.name == "nt"
 
 
@@ -154,22 +148,20 @@ def clang_search_dirs() -> list[str]:
 
 include_args = []
 include_dir = [
-    "/usr/lib/llvm-11/include/openmp",
-    get_python_include_dir(),
-    os.path.join(PYTORCH_ROOT, "third_party/pybind11/include"),
+    os.path.join(PYTORCH_ROOT, "include"),
+    os.path.join(CMPLR_ROOT, "include")
 ] + clang_search_dirs()
 for dir in include_dir:
-    include_args += ["--extra-arg", f"-I{dir}"]
+    include_args += ["--extra-arg", f"-isystem{dir}"]
 
 
 def check_file(
     filename: str,
     binary: str,
-    build_dir: Path,
 ) -> list[LintMessage]:
     try:
         proc = run_command(
-            [binary, f"-p={build_dir}", *include_args, filename],
+            [binary, *include_args, filename],
         )
     except OSError as err:
         return [
@@ -186,31 +178,25 @@ def check_file(
             )
         ]
     lint_messages = []
-    try:
-        # Change the current working directory to the build directory, since
-        # clang-tidy will report files relative to the build directory.
-        saved_cwd = os.getcwd()
-        os.chdir(build_dir)
-
-        for match in RESULTS_RE.finditer(proc.stdout.decode()):
-            # Convert the reported path to an absolute path.
-            abs_path = str(Path(match["file"]).resolve())
-            message = LintMessage(
-                path=abs_path,
-                name=match["code"],
-                description=match["message"],
-                line=int(match["line"]),
-                char=int(match["column"])
-                if match["column"] is not None and not match["column"].startswith("-")
-                else None,
-                code="CLANGTIDY",
-                severity=severities.get(match["severity"], LintSeverity.ERROR),
-                original=None,
-                replacement=None,
-            )
-            lint_messages.append(message)
-    finally:
-        os.chdir(saved_cwd)
+    for match in RESULTS_RE.finditer(proc.stdout.decode()):
+        abs_path = str(Path(match["file"]).resolve())
+        # clang-diagnostic-error cannot be suppressed via .clang-tidy config.
+        if match["code"] == "[clang-diagnostic-error]":
+            continue
+        message = LintMessage(
+            path=abs_path,
+            name=match["code"],
+            description=match["message"],
+            line=int(match["line"]),
+            char=int(match["column"])
+            if match["column"] is not None and not match["column"].startswith("-")
+            else None,
+            code="CLANGTIDY",
+            severity=severities.get(match["severity"], LintSeverity.ERROR),
+            original=None,
+            replacement=None,
+        )
+        lint_messages.append(message)
 
     return lint_messages
 
@@ -224,15 +210,6 @@ def main() -> None:
         "--binary",
         required=True,
         help="clang-tidy binary path",
-    )
-    parser.add_argument(
-        "--build-dir",
-        "--build_dir",
-        required=True,
-        help=(
-            "Where the compile_commands.json file is located. "
-            "Gets passed to clang-tidy -p"
-        ),
     )
     parser.add_argument(
         "--verbose",
@@ -274,8 +251,6 @@ def main() -> None:
         print(json.dumps(err_msg._asdict()), flush=True)
         sys.exit(0)
 
-    abs_build_dir = Path(args.build_dir).resolve()
-
     # Get the absolute path to clang-tidy and use this instead of the relative
     # path such as .lintbin/clang-tidy. The problem here is that os.chdir is
     # per process, and the linter uses it to move between the current directory
@@ -293,7 +268,6 @@ def main() -> None:
                 check_file,
                 filename,
                 binary_path,
-                abs_build_dir,
             ): filename
             for filename in args.filenames
         }
