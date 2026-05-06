@@ -19,10 +19,10 @@ git remote -v
 git remote add review <your-private-review-fork-url>
 ```
 
-5. **Labels created** on `intel/torch-xpu-ops`:
+5. **Labels created** on the issue repo:
 
 ```bash
-REPO=intel/torch-xpu-ops
+REPO=ZhaoqiongZ/torch-xpu-ops-exp  # or your ISSUE_REPO
 for label in agent:active agent:blocked agent:done agent:skipped agent:needs-human agent:paused; do
   gh label create "$label" --repo $REPO --color ededed --force
 done
@@ -36,18 +36,24 @@ All repo references are configured via environment. **Set these before running:*
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ISSUE_REPO` | `ZhaoqiongZ/torch-xpu-ops-exp` | Source repo for issues to process |
+| `UPSTREAM_ISSUE_REPO` | `intel/torch-xpu-ops` | Upstream torch-xpu-ops repo |
 | `PRIVATE_REVIEW_REPO` | *(required)* | Private review fork, e.g. `yourorg/pytorch` |
-| `UPSTREAM_ISSUE_REPO` | `intel/torch-xpu-ops` | Source repo for `ai_generated` issues |
 | `PUBLIC_TARGET_REPO` | `pytorch/pytorch` | Upstream repo for public PRs |
 | `PYTORCH_DIR` | `~/pytorch` | Local pytorch checkout path |
 | `AGENT_BACKEND` | `opencode` | Agent backend (`opencode` or `copilot`) |
 | `OPENCODE_CMD` | `opencode` | Path to opencode binary |
 | `POLL_INTERVAL` | `60` | Seconds between polling cycles |
+| `GH_TOKEN` | - | Token for upstream repos |
+| `REVIEW_GH_TOKEN` | - | Token for private review, public target, and issue repos |
 
 Example `.env` setup:
 ```bash
+export ISSUE_REPO="ZhaoqiongZ/torch-xpu-ops-exp"
 export PRIVATE_REVIEW_REPO="yourorg/pytorch"
 export PYTORCH_DIR="$HOME/pytorch"
+export GH_TOKEN="ghp_..."
+export REVIEW_GH_TOKEN="ghp_..."
 ```
 
 ---
@@ -62,22 +68,25 @@ torch-xpu-ops/.github/pytorch-agent/
 │   │   ├── config.py                 # All constants & env vars
 │   │   ├── logger.py                 # Simple file logger
 │   │   ├── github_client.py          # gh CLI wrappers
-│   │   ├── state.py                  # Issue-comment state tracking
+│   │   ├── issue_body.py             # Issue body read/write helpers
 │   │   ├── agent_backend.py          # OpenCode/Copilot dispatch
+│   │   ├── git.py                    # Git operations
+│   │   ├── notify.py                 # Notification helpers
 │   │   └── review_handler.py         # PR review parsing
-│   ├── issue_discovery.py            # Find new ai_generated issues
-│   ├── issue_triaging_agent.py       # Decide: pytorch or skip?
-│   ├── issue_fixing_agent.py         # Orchestrate fixing steps
+│   ├── discovery_agent.py            # Format raw issues into template
+│   ├── triage_agent.py               # Root cause analysis + verdict
+│   ├── issue_fixing_agent.py         # Orchestrate all stages
 │   └── fixing_steps/
-│       ├── implement.py              # Branch, code, push
+│       ├── implement.py              # Branch, code, push, PR
 │       ├── private_review.py         # Handle review on private fork
 │       ├── public_submit.py          # Cross-fork PR to pytorch/pytorch
 │       ├── ci_watch.py               # Monitor CI, fix failures
 │       └── close_issue.py            # Close issue, cleanup branch
 ├── scripts/
-│   ├── run_pipeline.py               # Polling loop (temporary)
+│   ├── run_pipeline.py               # Polling loop
+│   ├── run_oneshot.sh                # Single run with lock
+│   ├── cron.sh                       # Cron wrapper
 │   └── status_report.py              # Print status table
-├── tests/                            # 34 unit tests
 └── logs/                             # Runtime logs
 ```
 
@@ -89,24 +98,34 @@ torch-xpu-ops/.github/pytorch-agent/
 
 ```bash
 cd ~/torch-xpu-ops/.github/pytorch-agent
+source .env
 
-# Step 1: Start tracking an issue
-python -m pytorch_agent.issue_discovery --issue 123
+# Run full pipeline for one issue (discovery → triage → fix → review → PR)
+python scripts/run_pipeline.py --issue 123
+```
 
-# Step 2: Triage it (decides pytorch vs skip)
-python -m pytorch_agent.issue_triaging_agent --issue 123
+Each stage reads the issue body, does its work, updates the issue body,
+and advances to the next stage automatically.
 
-# Step 3: Advance through fixing stages (run repeatedly)
+You can also run individual agents:
+```bash
+# Just format a raw issue
+python -m pytorch_agent.discovery_agent --issue 123
+
+# Just triage a formatted issue
+python -m pytorch_agent.triage_agent --issue 123
+
+# Just advance one step
 python -m pytorch_agent.issue_fixing_agent --issue 123
-# Re-run after review / CI completes to advance to next stage
 ```
 
 ### Option B: Automated polling loop
 
 ```bash
 cd ~/torch-xpu-ops/.github/pytorch-agent
+source .env
 
-# Single cycle — discover all new issues, advance all active ones
+# Single cycle — check all open issues and advance them
 python scripts/run_pipeline.py --once
 
 # Continuous loop (every 60s by default)
@@ -116,74 +135,50 @@ python scripts/run_pipeline.py
 python scripts/run_pipeline.py --interval 300
 ```
 
-### Check status
-
-```bash
-python scripts/status_report.py
-```
-
-Output:
-```
-    #  Stage            Branch                       PR    Pub  Rev  Att  Title
-----------------------------------------------------------------------------------------------------
-  123  IN_REVIEW        agent/issue-123               5      -    1    1  Fix XPU conv dispatch
-  456  SKIPPED          agent/issue-456               -      -    0    0  Missing XPU kernel
-```
-
-### Run tests
-
-```bash
-cd ~/torch-xpu-ops/.github/pytorch-agent
-pytest tests/ -v
-```
-
 ---
 
-## Stage Flow & What Happens at Each Stage
+## Stage Flow
 
 ```
-DISCOVERED ──→ TRIAGING ──→ IMPLEMENTING ──→ IN_REVIEW ──→ PUBLIC_PR ──→ CI_WATCH ──→ DONE
-                  │               │              │
-                  ▼               ▼              ▼
-               SKIPPED       NEEDS_HUMAN    NEEDS_HUMAN
+(no status) ──→ DISCOVERED ──→ TRIAGING ──→ IMPLEMENTING ──→ IN_REVIEW ──→ PUBLIC_PR ──→ CI_WATCH ──→ DONE
+                                   │             │               │
+                                   ▼             ▼               ▼
+                               NEEDS_HUMAN   NEEDS_HUMAN     NEEDS_HUMAN
 ```
 
-| Stage | What happens | Needs human? |
-|-------|-------------|--------------|
-| **DISCOVERED** | Issue found, state comment created on issue | No |
-| **TRIAGING** | Agent reads issue, decides pytorch vs skip | No |
-| **IMPLEMENTING** | Agent branches `agent/issue-N`, codes fix, pushes to `review` remote, creates draft PR on private review fork | No |
-| **IN_REVIEW** | Waits for human review on private PR. If `changes_requested`, agent addresses feedback and re-pushes. Max 3 iterations. | **Yes — review the PR** |
-| **PUBLIC_PR** | Agent creates cross-fork PR from review fork to `pytorch/pytorch:main` | No |
-| **CI_WATCH** | Polls CI checks. If failures related to the change, agent tries to fix. If merged, advances to DONE. | No |
-| **DONE** | Comments on source issue with link to merged PR, closes issue, deletes agent branch | No |
-| **SKIPPED** | Triage decided fix doesn't belong in pytorch | No |
-| **NEEDS_HUMAN** | Agent exceeded 3 attempts or 3 review iterations | **Yes — take over** |
+All state is tracked in the issue body via `<!-- agent:status:STAGE -->` markers.
+
+| Stage | Agent | What happens | Needs human? |
+|-------|-------|-------------|--------------|
+| **(no status)** | discovery_agent | Formats raw issue into structured template | No |
+| **TRIAGING** | triage_agent | Determines root cause, writes fix strategy, decides IMPLEMENTING vs NEEDS_HUMAN | No |
+| **IMPLEMENTING** | implement.py | Branches `agent/issue-N`, calls LLM with fix skill, pushes, creates PR on review fork | No |
+| **IN_REVIEW** | private_review.py | Waits for human review. Addresses feedback if changes requested (max 3 iterations) | **Yes — review the PR** |
+| **PUBLIC_PR** | public_submit.py | Creates cross-fork PR from review fork to pytorch/pytorch | No |
+| **CI_WATCH** | ci_watch.py | Polls CI checks. Fixes related failures. Advances to DONE on merge | No |
+| **DONE** | close_issue.py | Comments on issue with merged PR link, closes issue | No |
+| **NEEDS_HUMAN** | — | Agent exceeded attempts or can't fix | **Yes — take over** |
 
 ---
 
 ## Automated Monitoring (cron)
 
-The agent ships with a cron wrapper that runs one cycle every N minutes:
-
 ```bash
 # 1. Create .env with your config
 cp .env.example .env
-# Edit .env — set PRIVATE_REVIEW_REPO at minimum
+# Edit .env — set ISSUE_REPO and PRIVATE_REVIEW_REPO at minimum
 
 # 2. Test manually
 ./scripts/cron.sh
 
 # 3. Install crontab (every 5 minutes)
-crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/torch-xpu-ops/.github/pytorch-agent/scripts/cron.sh"
-# Review, then:
 (crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/torch-xpu-ops/.github/pytorch-agent/scripts/cron.sh") | crontab -
 ```
 
 **What it does each cycle:**
-1. Discovers new `ai_generated` issues
-2. Triages any DISCOVERED issues
-3. Advances all active issues (IMPLEMENTING → IN_REVIEW → PUBLIC_PR → CI_WATCH → DONE)
+1. Lists all open issues in `ISSUE_REPO` with the tracking label
+2. For each issue, reads its status from the body and advances one step
+3. Discovery → Triage → Implement → Review → Public PR → CI Watch → Done
 
 **Safety:**
 - File lock prevents overlapping runs
@@ -197,31 +192,44 @@ tail -20 ~/torch-xpu-ops/.github/pytorch-agent/logs/cron.log
 
 # Latest cycle detail
 ls -1t ~/torch-xpu-ops/.github/pytorch-agent/logs/cycle-*.log | head -1 | xargs cat
-
-# All tracked issues
-python scripts/status_report.py
 ```
+
+---
+
+## Skills
+
+The agent uses skills (in `.github/skills/`) to guide LLM behavior at each stage:
+
+| Skill | Used by | Purpose |
+|-------|---------|---------|
+| `pytorch-issue-discovery` | discovery_agent | How to extract structured info from raw issues |
+| `pytorch-triage-ut` | triage_agent | How to triage unit test failures |
+| `pytorch-triage-e2e` | triage_agent | How to triage end-to-end test failures |
+| `pytorch-fix` | implement.py | How to fix XPU CI failures |
+| `pytorch-ci-triage` | ci_watch.py | How to triage CI failures on PRs |
+| `xpu-ops-pr-creation` | implement.py | PR format and conventions |
 
 ---
 
 ## Troubleshooting
 
 **Issue not being picked up?**
-- Check it has the `ai_generated` label on the upstream issue repo
-- Run `python -m pytorch_agent.issue_discovery --poll` manually
+- Check it exists in `ISSUE_REPO` (default: `ZhaoqiongZ/torch-xpu-ops-exp`)
+- Check it has the tracking label (default: `ai_generated`)
 
-**Stuck at IN_REVIEW?**
-- Review the PR on the private review fork — approve or request changes
-- Then run `python -m pytorch_agent.issue_fixing_agent --issue N`
+**Stuck at a stage?**
+- Read the issue body — action items show what's done and what's pending
+- Check `<details>` logs for each agent's output
+- Run `python -m pytorch_agent.issue_fixing_agent --issue N` to retry
 
 **NEEDS_HUMAN?**
-- Check logs in `logs/` for what went wrong
-- Fix manually, then update the state comment on the issue to change stage
+- Check the triage/fix logs in the issue body
+- Fix manually, then edit the issue body to set `<!-- agent:status:DONE -->`
 
 **Agent backend errors?**
 - Verify `opencode` works: `opencode run --dir ~/pytorch "echo hello"`
 - Check `OPENCODE_CMD` env var if opencode is not on PATH
 
-**PRIVATE_REVIEW_REPO not set?**
-- The agent will fail at any step that touches the review fork
-- Set it: `export PRIVATE_REVIEW_REPO="yourorg/pytorch"`
+**Token issues?**
+- `REVIEW_GH_TOKEN` is used for `ISSUE_REPO`, `PRIVATE_REVIEW_REPO`, and `PUBLIC_TARGET_REPO`
+- `GH_TOKEN` is used for `UPSTREAM_ISSUE_REPO`
