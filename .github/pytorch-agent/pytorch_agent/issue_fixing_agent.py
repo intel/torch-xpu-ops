@@ -1,7 +1,10 @@
-"""Issue fixing agent — orchestrate fixing steps based on current stage.
+"""Issue fixing agent — orchestrate all stages from discovery to close.
 
 Entry point:
   python -m pytorch_agent.issue_fixing_agent --issue 123
+
+Reads stage from issue body (<!-- agent:status:STAGE -->) and dispatches
+to the appropriate agent/step.
 """
 from __future__ import annotations
 
@@ -9,23 +12,23 @@ import argparse
 import traceback
 
 from .utils import github_client as gh
-from .utils.config import UPSTREAM_ISSUE_REPO
-from .utils.state import load_tracked
+from .utils.config import ISSUE_REPO
+from .utils.issue_body import get_status
 from .utils.logger import log
 
 
-def _run_step(step_name: str, run_fn, tracked, issue_number: int) -> None:
-    """Run a fixing step with error reporting to the source issue."""
+def _run_step(step_name: str, run_fn, issue_number: int) -> None:
+    """Run a step with error reporting to the source issue."""
     log("INFO", f"Dispatching {step_name} step", issue=issue_number)
     try:
-        run_fn(tracked)
+        run_fn(issue_number)
         log("INFO", f"{step_name} step completed", issue=issue_number)
     except Exception as e:
         tb = traceback.format_exc()
         log("ERROR", f"{step_name} step failed: {e}", issue=issue_number, exc=e)
         # Post error to source issue so it's visible remotely
         gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, issue_number,
+            ISSUE_REPO, issue_number,
             f"❌ **Agent error** in `{step_name}` step:\n\n"
             f"```\n{str(e)[:500]}\n```\n\n"
             f"<details><summary>Full traceback</summary>\n\n"
@@ -35,40 +38,53 @@ def _run_step(step_name: str, run_fn, tracked, issue_number: int) -> None:
 
 
 def advance(issue_number: int) -> None:
-    """Advance a tracked issue to the next stage.
+    """Advance an issue to the next stage.
 
-    Each step checks current state and short-circuits if already done.
+    Reads current stage from issue body and dispatches to the right agent.
     """
-    tracked = load_tracked(issue_number)
-    log("INFO", f"Advancing issue #{issue_number} at stage {tracked.stage}",
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+    stage = get_status(body)
+
+    if stage is None:
+        # No status marker → needs discovery
+        stage = "DISCOVERED"
+
+    log("INFO", f"Advancing issue #{issue_number} at stage {stage}",
         issue=issue_number)
 
-    match tracked.stage:
+    match stage:
+        case "DISCOVERED":
+            from .discovery_agent import run
+            _run_step("discovery", run, issue_number)
+        case "TRIAGING":
+            from .triage_agent import run
+            _run_step("triage", run, issue_number)
         case "IMPLEMENTING":
             from .fixing_steps.implement import run
-            _run_step("implement", run, tracked, issue_number)
+            _run_step("implement", run, issue_number)
         case "IN_REVIEW":
             from .fixing_steps.private_review import run
-            _run_step("private_review", run, tracked, issue_number)
+            _run_step("private_review", run, issue_number)
         case "PUBLIC_PR":
             from .fixing_steps.public_submit import run
-            _run_step("public_submit", run, tracked, issue_number)
+            _run_step("public_submit", run, issue_number)
         case "CI_WATCH":
             from .fixing_steps.ci_watch import run
-            _run_step("ci_watch", run, tracked, issue_number)
+            _run_step("ci_watch", run, issue_number)
         case "MERGED" | "DONE":
             from .fixing_steps.close_issue import run
-            _run_step("close_issue", run, tracked, issue_number)
+            _run_step("close_issue", run, issue_number)
         case "NEEDS_HUMAN":
             log("INFO", f"Issue #{issue_number} needs human intervention, skipping",
                 issue=issue_number)
         case _:
-            log("WARN", f"Issue #{issue_number} at unexpected stage {tracked.stage}",
+            log("WARN", f"Issue #{issue_number} at unexpected stage {stage}",
                 issue=issue_number)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Advance a tracked issue")
+    parser = argparse.ArgumentParser(description="Advance an issue through the pipeline")
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
     advance(args.issue)

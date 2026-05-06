@@ -4,6 +4,7 @@ import os
 
 # Repos (configure via env — no personal forks hardcoded)
 UPSTREAM_ISSUE_REPO = os.environ.get("UPSTREAM_ISSUE_REPO", "intel/torch-xpu-ops")
+ISSUE_REPO = os.environ.get("ISSUE_REPO", "ZhaoqiongZ/torch-xpu-ops-exp")
 PRIVATE_REVIEW_REPO = os.environ.get("PRIVATE_REVIEW_REPO", "")  # e.g. "yourfork/pytorch"
 PUBLIC_TARGET_REPO = os.environ.get("PUBLIC_TARGET_REPO", "pytorch/pytorch")
 
@@ -11,6 +12,7 @@ PUBLIC_TARGET_REPO = os.environ.get("PUBLIC_TARGET_REPO", "pytorch/pytorch")
 ISSUE_LABEL = "ai_generated"
 STAGE_TO_LABEL = {
     "DISCOVERED": "agent:active",
+    "TRIAGING": "agent:active",
     "IMPLEMENTING": "agent:active",
     "IN_REVIEW": "agent:blocked",
     "PUBLIC_PR": "agent:blocked",
@@ -43,6 +45,7 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
 # Per-stage timeouts (seconds)
 STAGE_TIMEOUTS = {
+    "DISCOVERY": 300,
     "TRIAGING": 300,
     "IMPLEMENTING": 3600,
     "IN_REVIEW": 1800,

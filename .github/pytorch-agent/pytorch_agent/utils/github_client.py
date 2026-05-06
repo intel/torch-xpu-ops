@@ -8,13 +8,14 @@ from typing import Any
 def _token_for_repo(repo: str) -> str | None:
     """Pick the right GH token based on which repo we're accessing.
 
-    REVIEW_GH_TOKEN → for PRIVATE_REVIEW_REPO operations
-    GH_TOKEN → for everything else (upstream issues, public PRs)
+    REVIEW_GH_TOKEN → for PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, and ISSUE_REPO operations
+    GH_TOKEN → for everything else (upstream issues)
     """
     review_repo = os.environ.get("PRIVATE_REVIEW_REPO", "")
     public_target = os.environ.get("PUBLIC_TARGET_REPO", "")
+    issue_repo = os.environ.get("ISSUE_REPO", "")
     review_token = os.environ.get("REVIEW_GH_TOKEN")
-    if review_token and repo in (review_repo, public_target):
+    if review_token and repo in (review_repo, public_target, issue_repo):
         return review_token
     return os.environ.get("GH_TOKEN")
 
@@ -98,6 +99,12 @@ def update_pr_comment(repo: str, comment_id: int, body: str) -> None:
 def close_issue(repo: str, number: int) -> None:
     """Close an issue."""
     _gh(["issue", "close", str(number), "--repo", repo])
+
+
+def update_issue_body(repo: str, number: int, body: str) -> None:
+    """Update an issue's body text."""
+    _gh_api(f"/repos/{repo}/issues/{number}", method="PATCH",
+            token=_token_for_repo(repo), body=body)
 
 
 def add_label(repo: str, number: int, label: str) -> None:

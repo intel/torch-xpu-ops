@@ -2,6 +2,10 @@
 
 Entry point:
   python -m pytorch_agent.fixing_steps.implement --issue 123
+
+Slim wrapper: reads structured issue body (which already has root cause,
+fix strategy, reproducer), calls LLM with fix skill, then handles
+git ops (branch, commit, squash, push, PR creation).
 """
 from __future__ import annotations
 
@@ -10,30 +14,32 @@ from subprocess import CalledProcessError
 
 from ..utils import github_client as gh
 from ..utils.config import (
-    UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
+    ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
     REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
 )
-from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
+from ..utils.issue_body import (
+    get_status, set_status, check_action_item, append_log,
+    parse_sections,
+)
 from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ._issue_format import build_pr_body, parse_issue_sections
+from ._issue_format import build_pr_body
 
 
 IMPLEMENT_PROMPT_TEMPLATE = """Fix the following PyTorch CI failure for Intel XPU.
 
 ## Issue #{number}: {title}
 
-{body_section}
+{body}
 
 ## Instructions
-1. Start by reproducing the failure using the repro commands above (if provided).
-2. If a commit scope is given, use `git log --oneline` on that range to identify the likely breaking commit.
-3. Read the error log carefully and trace the root cause in the PyTorch codebase.
-4. Make the minimal fix. Prefer XPU-specific paths (aten/src/ATen/xpu/, torch/xpu/) when possible.
-5. Run the failing test(s) listed above to verify your fix.
-6. Ensure no regressions in related tests.
+1. Read the Root Cause Analysis and Proposed Fix Strategy above.
+2. Reproduce the failure using the Reproducer commands (if provided).
+3. Implement the minimal fix following the proposed strategy.
+4. Run the failing test(s) listed above to verify your fix.
+5. Ensure no regressions in related tests.
 
 ## HARD RULES (violations will be rejected)
 - NEVER use @skipIfXpu, @skip, unittest.skip, or any skip decorator. You must FIX the test, not skip it.
@@ -43,227 +49,149 @@ Work in the current directory (~/pytorch).
 """
 
 
+def run(issue_number: int) -> None:
+    """Implement a fix: branch, dispatch agent, push, create PR."""
+    # Read issue
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
 
-
-def _build_body_section(detail: dict) -> str:
-    """Build the prompt body from parsed issue sections.
-
-    If the issue follows the CI failure template, produce a structured prompt.
-    Otherwise fall back to the raw issue body.
-    """
-    body = detail.get("body", "")
-    sections = parse_issue_sections(body)
-
-    # If we got structured sections, build a focused prompt
-    if sections.get("Failed Tests"):
-        parts = []
-
-        if sections.get("Failure Type"):
-            parts.append(f"**Failure Type:** {sections['Failure Type']}")
-
-        if sections.get("Commit Scope"):
-            parts.append(f"### Commit Scope\n{sections['Commit Scope']}")
-
-        parts.append(f"### Failed Tests\n{sections['Failed Tests']}")
-
-        if sections.get("Error Log"):
-            # Truncate very long logs to keep prompt focused
-            error_log = sections["Error Log"]
-            lines = error_log.split("\n")
-            if len(lines) > 80:
-                error_log = "\n".join(lines[-80:])
-                error_log = f"... (truncated, showing last 80 lines)\n{error_log}"
-            parts.append(f"### Error Log\n```\n{error_log}\n```")
-
-        if sections.get("CI Job URL"):
-            parts.append(f"**CI Job URL:** {sections['CI Job URL']}")
-
-        if sections.get("Repro Commands"):
-            parts.append(f"### Repro Commands\n```bash\n{sections['Repro Commands']}\n```")
-
-        return "\n\n".join(parts)
-
-    # Fallback: raw body
-    return body
-
-
-def run(tracked: TrackedIssue) -> None:
-    """Implement a fix: branch, dispatch agent, push."""
-    # Idempotency
-    if tracked.stage != "IMPLEMENTING":
-        log("INFO", f"Issue #{tracked.source_number} not in IMPLEMENTING stage, skipping",
-            issue=tracked.source_number)
+    # Idempotency check
+    status = get_status(body)
+    if status != "IMPLEMENTING":
+        log("INFO", f"Issue #{issue_number} not in IMPLEMENTING stage ({status}), skipping",
+            issue=issue_number)
         return
 
-    # Escalation check
-    tracked.attempt_count += 1
-    if tracked.attempt_count > MAX_AGENT_ATTEMPTS:
-        update_stage(tracked, "NEEDS_HUMAN",
-                     f"Exceeded {MAX_AGENT_ATTEMPTS} implementation attempts. Needs human.")
-        return
-    save_state(tracked)
-
-    branch = f"agent/issue-{tracked.source_number}"
-    tracked.branch = branch
-    # Sync review/main with the latest upstream main to avoid divergence
-    git("fetch", "upstream", issue=tracked.source_number)
-    git("fetch", REVIEW_REMOTE, issue=tracked.source_number)
+    # --- Branch setup ---
+    branch = f"agent/issue-{issue_number}"
+    git("fetch", "upstream", issue=issue_number)
+    git("fetch", REVIEW_REMOTE, issue=issue_number)
     try:
-        # Fast-forward review/main to upstream/main so PRs only show our commits
-        git("push", REVIEW_REMOTE, "upstream/main:main", issue=tracked.source_number)
-        git("fetch", REVIEW_REMOTE, "main", issue=tracked.source_number)
+        git("push", REVIEW_REMOTE, "upstream/main:main", issue=issue_number)
+        git("fetch", REVIEW_REMOTE, "main", issue=issue_number)
     except CalledProcessError:
-        # review/main might be protected or have diverged; log and continue
-        log("WARN", "Could not sync review/main with upstream/main — PR may show extra commits",
-            issue=tracked.source_number)
+        log("WARN", "Could not sync review/main with upstream/main",
+            issue=issue_number)
     try:
-        git("checkout", "-b", branch, f"{REVIEW_REMOTE}/main", issue=tracked.source_number)
+        git("checkout", "-b", branch, f"{REVIEW_REMOTE}/main", issue=issue_number)
     except CalledProcessError:
-        # Branch already exists — just checkout (do NOT reset, preserves prior commits)
-        git("checkout", branch, issue=tracked.source_number)
+        git("checkout", branch, issue=issue_number)
 
-    # Get issue details for prompt
-    detail = gh.get_issue_detail(UPSTREAM_ISSUE_REPO, tracked.source_number)
-
-    # Check if a prior run already produced changes (e.g. pipeline crashed after
-    # opencode finished but before push/PR).  Skip re-running the agent.
+    # --- Check for prior changes ---
     existing_diff = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
-                            issue=tracked.source_number).strip()
+                            issue=issue_number).strip()
     if existing_diff:
-        log("INFO", f"Branch {branch} already has changes vs {REVIEW_REMOTE}/main, "
-                     "skipping agent re-run",
-            issue=tracked.source_number)
-        gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🤖 **Resuming pipeline** — branch `{branch}` already has changes from a "
-            f"prior run, skipping to push + PR creation.",
-        )
+        log("INFO", f"Branch {branch} already has changes, skipping agent re-run",
+            issue=issue_number)
     else:
-        body_section = _build_body_section(detail)
+        # --- Call LLM ---
         prompt = IMPLEMENT_PROMPT_TEMPLATE.format(
-            number=tracked.source_number,
+            number=issue_number,
             title=detail.get("title", ""),
-            body_section=body_section,
+            body=body[:10000],
         )
 
-        # Announce that the agent is starting work
-        gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🤖 **Agent starting implementation** (attempt {tracked.attempt_count})\n\n"
-            f"Branch: `{branch}`\n"
-            f"Working on: `{detail.get('title', 'unknown')}`\n\n"
-            f"_Session ID will be posted shortly — you can attach to watch live._",
-        )
-
-        # Dispatch agent — post session ID to issue as soon as it's available
         def _post_session_id(sid: str):
-            post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
+            post_session_started(ISSUE_REPO, issue_number,
                                  "Implementation", sid, str(PYTORCH_DIR))
 
         backend = get_backend()
-        timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 1800)
-        output, log_path, session_id = backend.run(prompt, workdir=str(PYTORCH_DIR),
-                                        skill="xpu-ops-pr-creation", timeout=timeout,
-                                        issue=tracked.source_number, stage="IMPLEMENTING",
-                                        on_session_start=_post_session_id)
-        log("INFO", f"Implementation agent log: {log_path}",
-            issue=tracked.source_number)
-
-        # Post log + session info to source issue
-        post_agent_completed(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"Attempt {tracked.attempt_count} completed", log_path, output,
+        timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 3600)
+        output, log_path, session_id = backend.run(
+            prompt, workdir=str(PYTORCH_DIR),
+            skill="pytorch-fix", timeout=timeout,
+            issue=issue_number, stage="IMPLEMENTING",
+            on_session_start=_post_session_id,
         )
+        log("INFO", f"Implementation agent log: {log_path}", issue=issue_number)
 
-    # Verify agent made changes (committed or uncommitted)
-    # Auto-commit uncommitted changes (excluding third_party/*)
+        post_agent_completed(ISSUE_REPO, issue_number,
+                             "Implementation completed", log_path, output)
+
+    # --- Commit ---
     add_and_commit(
-        f"Fix for intel/torch-xpu-ops#{tracked.source_number}\n\n"
+        f"Fix for {ISSUE_REPO}#{issue_number}\n\n"
         f"{detail.get('title', 'Agent fix')}",
-        issue=tracked.source_number,
+        issue=issue_number,
     )
 
-    # Now check if we have commits above review/main
     diff = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
-                   issue=tracked.source_number).strip()
+                   issue=issue_number).strip()
     if not diff:
-        log("WARN", f"Agent produced no changes for #{tracked.source_number}, "
-                     f"attempt {tracked.attempt_count}", issue=tracked.source_number)
-        update_stage(tracked, "IMPLEMENTING",
-                     f"Attempt {tracked.attempt_count}: agent produced no changes, will retry.")
+        log("WARN", f"Agent produced no changes for #{issue_number}",
+            issue=issue_number)
         return
 
-    # Squash all agent commits into one clean commit for a tidy PR
+    # --- Squash ---
     commit_count = git_out("rev-list", "--count", f"{REVIEW_REMOTE}/main..HEAD",
-                           issue=tracked.source_number).strip()
+                           issue=issue_number).strip()
     if int(commit_count) > 1:
-        log("INFO", f"Squashing {commit_count} commits into one", issue=tracked.source_number)
-        git("reset", "--soft", f"{REVIEW_REMOTE}/main", issue=tracked.source_number)
+        log("INFO", f"Squashing {commit_count} commits", issue=issue_number)
+        git("reset", "--soft", f"{REVIEW_REMOTE}/main", issue=issue_number)
         git("commit", "-m",
-            f"{detail.get('title', f'Fix for issue #{tracked.source_number}')}\n\n"
-            f"Fixes intel/torch-xpu-ops#{tracked.source_number}",
-            issue=tracked.source_number)
+            f"{detail.get('title', f'Fix for issue #{issue_number}')}\n\n"
+            f"Fixes {ISSUE_REPO}#{issue_number}",
+            issue=issue_number)
 
-    # Push to review remote
+    # --- Push ---
     try:
-        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
+        git("push", REVIEW_REMOTE, branch, issue=issue_number)
     except CalledProcessError:
-        # Branch may not exist yet or diverged from squash — force push is safe
-        # since we haven't created the PR yet (or are updating pre-review)
         git("push", "--force-with-lease", "--set-upstream", REVIEW_REMOTE, branch,
-            issue=tracked.source_number)
+            issue=issue_number)
 
-    # Get the push SHA
-    sha = git_out("rev-parse", "HEAD", issue=tracked.source_number).strip()
-    tracked.last_push_sha = sha
+    sha = git_out("rev-parse", "HEAD", issue=issue_number).strip()
 
-    # Build descriptive PR body from issue details + diff summary
+    # --- PR creation ---
     diff_stat = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
-                        issue=tracked.source_number).strip()
-
-    pr_title = detail.get("title", f"Fix for issue #{tracked.source_number}")
+                        issue=issue_number).strip()
+    sections = parse_sections(body)
+    pr_title = detail.get("title", f"Fix for issue #{issue_number}")
     pr_body = build_pr_body(
-        upstream_issue_repo=UPSTREAM_ISSUE_REPO,
-        source_number=tracked.source_number,
+        upstream_issue_repo=ISSUE_REPO,
+        source_number=issue_number,
         title=detail.get("title", "N/A"),
-        triage_reason=tracked.triage_reason,
-        issue_body=detail.get("body", ""),
+        triage_reason=sections.get("Root Cause Analysis", ""),
+        issue_body=body,
         include_diff_stat=True,
         diff_stat=diff_stat,
     )
+
     try:
-        pr = gh.create_draft_pr(
-            PRIVATE_REVIEW_REPO, title=pr_title, body=pr_body,
-            head=branch,
-        )
+        pr = gh.create_draft_pr(PRIVATE_REVIEW_REPO, title=pr_title,
+                                body=pr_body, head=branch)
     except CalledProcessError:
-        # PR may already exist for this branch — find and reuse it
         existing = gh.list_prs(PRIVATE_REVIEW_REPO, state="open",
                                search=f"head:{branch}")
         if existing:
             pr = existing[0]
-            # Update the body to reflect the new push
             gh.update_pr_body(PRIVATE_REVIEW_REPO, pr["number"], pr_body)
         else:
             raise
-    tracked.tracking_pr_number = pr.get("number")
-    tracked.tracking_pr_url = pr.get("html_url", pr.get("url"))
 
-    # Mark ready for review
-    gh.mark_pr_ready(PRIVATE_REVIEW_REPO, tracked.tracking_pr_number)
+    gh.mark_pr_ready(PRIVATE_REVIEW_REPO, pr.get("number"))
 
-    update_stage(tracked, "IN_REVIEW",
-                 f"Implementation pushed to `{branch}`, PR created: {tracked.tracking_pr_url}")
-    log("INFO", f"Implementation complete for #{tracked.source_number}, "
-                 f"attempt {tracked.attempt_count}", issue=tracked.source_number)
+    # --- Update issue body ---
+    new_body = body
+    new_body = check_action_item(new_body, "Fix implemented")
+    new_body = check_action_item(new_body, "Fix verified")
+    new_body = set_status(new_body, "IN_REVIEW")
+    new_body = append_log(
+        new_body, "fix",
+        f"Branch: `{branch}`\nSHA: `{sha}`\n"
+        f"PR: {pr.get('html_url', pr.get('url', 'N/A'))}",
+    )
+    gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+
+    log("INFO", f"Implementation complete for #{issue_number}",
+        issue=issue_number)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
-    tracked = load_tracked(args.issue)
-    run(tracked)
+    run(args.issue)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,181 @@
+"""Triage agent — analyze formatted issue, determine root cause and fix strategy.
+
+Entry point:
+  python -m pytorch_agent.triage_agent --issue 123
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+
+from .utils import github_client as gh
+from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, STAGE_TO_LABEL, ALL_AGENT_LABELS
+from .utils.issue_body import (
+    get_status, parse_sections, update_section, set_status,
+    check_action_item, append_log,
+)
+from .utils.agent_backend import get_backend
+from .utils.logger import log
+
+
+TRIAGE_PROMPT_TEMPLATE = """Analyze this PyTorch CI failure and determine the root cause.
+
+## Issue #{number}: {title}
+
+{body}
+
+## Instructions
+1. Read the error log and failed test names carefully.
+2. Trace the root cause in the PyTorch/torch-xpu-ops codebase.
+3. Determine if this is fixable by an agent or needs human intervention.
+
+Consider:
+- Is this a missing XPU kernel? (fixable)
+- Is this a tolerance issue? (fixable)
+- Is this an upstream pytorch change that broke XPU? (fixable)
+- Is this a driver/hardware issue? (needs human)
+- Is this a third-party dependency issue (oneDNN, triton)? (needs human)
+
+Respond with ONLY valid JSON (no markdown fences):
+{{
+  "root_cause": "detailed root cause analysis (2-3 sentences)",
+  "fix_strategy": "proposed fix approach (specific files/functions to change)",
+  "verdict": "IMPLEMENTING or NEEDS_HUMAN",
+  "reason": "one-line reason for verdict"
+}}
+"""
+
+
+def _select_skill(labels: list) -> str:
+    """Select triage skill based on issue labels."""
+    for label in labels:
+        name = label.get("name", "") if isinstance(label, dict) else label
+        if "agent_test: e2e" in name or "agent_test:e2e" in name:
+            return "pytorch-triage-e2e"
+    return "pytorch-triage-ut"
+
+
+def _sync_labels(repo: str, number: int, stage: str) -> None:
+    """Sync issue labels based on new stage."""
+    target_label = STAGE_TO_LABEL.get(stage)
+    for label in ALL_AGENT_LABELS:
+        if label == target_label:
+            gh.add_label(repo, number, label)
+        else:
+            try:
+                gh.remove_label(repo, number, label)
+            except Exception:
+                pass
+
+
+def _extract_json(text: str) -> str:
+    """Extract the first JSON object from text."""
+    depth = 0
+    start = None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                return text[start:i + 1]
+    raise ValueError("No JSON object found in text")
+
+
+def run(issue_number: int) -> tuple[str, str]:
+    """Triage an issue. Returns (verdict, reason)."""
+    # Read issue
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+    labels = detail.get("labels", [])
+
+    # Check status — must be TRIAGING
+    status = get_status(body)
+    if status is not None and status != "TRIAGING":
+        log("INFO", f"Issue #{issue_number} at stage {status}, skipping triage",
+            issue=issue_number)
+        return ("skip", f"already at {status}")
+
+    # Select skill based on test type
+    skill = _select_skill(labels)
+
+    # Build prompt
+    prompt = TRIAGE_PROMPT_TEMPLATE.format(
+        number=issue_number,
+        title=detail.get("title", ""),
+        body=body[:8000],
+    )
+
+    # Call LLM
+    backend = get_backend()
+    timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
+    output, log_path, session_id = backend.run(
+        prompt, skill=skill,
+        issue=issue_number, stage="TRIAGING",
+        timeout=timeout,
+    )
+    log("INFO", f"Triage agent log: {log_path}", issue=issue_number)
+
+    # Parse result
+    try:
+        json_str = _extract_json(output)
+        data = json.loads(json_str)
+    except (json.JSONDecodeError, ValueError) as e:
+        log("WARN", f"Failed to parse triage output: {e}", issue=issue_number)
+        data = {
+            "root_cause": f"Could not parse triage output (length={len(output)})",
+            "fix_strategy": "",
+            "verdict": "NEEDS_HUMAN",
+            "reason": "Triage output parsing failed",
+        }
+
+    verdict = data.get("verdict", "NEEDS_HUMAN").upper()
+    reason = data.get("reason", "")
+    root_cause = data.get("root_cause", "")
+    fix_strategy = data.get("fix_strategy", "")
+
+    # Update issue body
+    new_body = body
+    new_body = update_section(new_body, "Root Cause Analysis", root_cause)
+    new_body = update_section(new_body, "Proposed Fix Strategy", fix_strategy)
+    new_body = check_action_item(new_body, "Root cause identified")
+
+    if verdict == "IMPLEMENTING":
+        new_body = set_status(new_body, "IMPLEMENTING")
+    else:
+        new_body = set_status(new_body, "NEEDS_HUMAN")
+
+    # Append triage log
+    new_body = append_log(
+        new_body, "triage",
+        f"**Verdict:** {verdict}\n**Reason:** {reason}\n\n"
+        f"**Root Cause:** {root_cause}\n\n"
+        f"**Fix Strategy:** {fix_strategy}\n\n"
+        f"Log: `{log_path.name}`",
+    )
+
+    # Write back
+    gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+
+    # Sync labels
+    _sync_labels(ISSUE_REPO, issue_number,
+                 "IMPLEMENTING" if verdict == "IMPLEMENTING" else "NEEDS_HUMAN")
+
+    log("INFO", f"Triage result for #{issue_number}: {verdict} — {reason}",
+        issue=issue_number)
+    return verdict, reason
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Triage a formatted issue")
+    parser.add_argument("--issue", type=int, required=True)
+    args = parser.parse_args()
+    verdict, reason = run(args.issue)
+    print(f"Verdict: {verdict} — {reason}")
+
+
+if __name__ == "__main__":
+    main()
