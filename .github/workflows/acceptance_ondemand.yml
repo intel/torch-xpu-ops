@@ -71,11 +71,7 @@ on:
         default: ''
         description: 'Baseline SYCLTLA ref. Empty/`pinned` = torch-xpu-ops-pinned.'
 
-permissions:
-  contents: read
-  actions: read
-  checks: write
-  issues: write
+permissions: read-all
 
 run-name: >-
   Acceptance / ${{
