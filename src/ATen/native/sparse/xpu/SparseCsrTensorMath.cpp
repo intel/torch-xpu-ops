@@ -85,6 +85,16 @@ Tensor addmm_calculation(
   Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
+    // NOTE: For reduced-precision dtypes (e.g. bf16), the form
+    //   result_dense.add_(input_dense * beta)
+    // introduces two separate roundings:
+    //   1. input_dense (bf16) * beta (f32) -> intermediate (bf16)
+    //   2. result_dense (bf16) + intermediate (bf16) -> result_dense (bf16)
+    // The alternative form
+    //   result_dense.add_(input_dense, beta)
+    // avoids the intermediate rounding: the kernel promotes both bf16 operands
+    // to f32 registers, computes result_dense(f32) + input_dense(f32)*beta(f32)
+    // in a single fused step, then rounds once back to bf16.
     result_dense.add_(input_dense * beta);
   }
   return result_dense;
