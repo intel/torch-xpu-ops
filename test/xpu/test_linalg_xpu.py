@@ -513,6 +513,35 @@ def __tunableop_ctx(self):
                 pass
 
 
+@dtypes(*floating_and_complex_types())
+def matrix_rank_out_errors_and_warnings(self, device, dtype):
+    # dtypes should be safely castable
+    a = torch.eye(2, dtype=dtype, device=device)
+    out = torch.empty(0, dtype=torch.bool, device=device)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Bool"):
+        torch.linalg.matrix_rank(a, out=out)
+
+    # device should match
+    if torch.xpu.is_available():
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        out = torch.empty(0, dtype=dtype, device=wrong_device)
+        with self.assertRaisesRegex(RuntimeError, "tensors to be on the same device"):
+            torch.linalg.matrix_rank(a, out=out)
+
+    # if out tensor with wrong shape is passed a warning is given
+    with warnings.catch_warnings(record=True) as w:
+        out = torch.empty(3, dtype=dtype, device=device)
+        # Trigger warning
+        torch.linalg.matrix_rank(a, out=out)
+        # Expect resize warning, and possibly an XPU-to-CPU fallback warning
+        self.assertTrue(len(w) in (1, 2))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[0].message)
+        )
+        if len(w) == 2:
+            self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -691,6 +720,9 @@ TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
+TestLinalg.test_matrix_rank_out_errors_and_warnings = (
+    matrix_rank_out_errors_and_warnings
+)
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
