@@ -9541,6 +9541,14 @@
     # broadcasting
     SparseXPU: s_addmm_sparse_dense_xpu_
 
+- func: hspmm.out(Tensor mat1, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    SparseXPU: hspmm_out_sparse_xpu
+
+- func: hspmm(Tensor mat1, Tensor mat2) -> Tensor
+  dispatch:
+    SparseXPU: hspmm_sparse_xpu
+
 - func: mm(Tensor self, Tensor mat2) -> Tensor
   structured_delegate: mm.out
   variants: function, method
