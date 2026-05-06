@@ -15,6 +15,8 @@
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
+#include <cstdint>
+#include <limits>
 
 namespace at {
 namespace native {
@@ -348,8 +350,14 @@ void segmented_radix_sort_pairs_kernel(
     int num_segments,
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
-  int num_tiles =
-      (num_elements + TILE_PROCESSING_LENGTH - 1) / TILE_PROCESSING_LENGTH;
+  int64_t num_tiles_64 =
+      (static_cast<int64_t>(num_elements) + TILE_PROCESSING_LENGTH - 1) /
+      TILE_PROCESSING_LENGTH;
+  TORCH_CHECK(
+      num_tiles_64 <= std::numeric_limits<int>::max(),
+      "num_tiles overflow: ",
+      num_tiles_64);
+  int num_tiles = static_cast<int>(num_tiles_64);
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
@@ -359,11 +367,12 @@ void segmented_radix_sort_pairs_kernel(
   value_t* values_temp;
 
   at::DataPtr counts_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * RADIX_BUCKETS * num_tiles * sizeof(int));
+      static_cast<size_t>(num_segments) * RADIX_BUCKETS * num_tiles *
+      sizeof(int));
   at::DataPtr keys_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(key_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(key_t));
   at::DataPtr values_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(value_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(value_t));
 
   counts = (int*)counts_data.get();
   keys_temp = (key_t*)keys_temp_data.get();
