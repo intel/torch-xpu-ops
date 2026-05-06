@@ -367,11 +367,12 @@ void segmented_radix_sort_pairs_kernel(
   value_t* values_temp;
 
   at::DataPtr counts_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * RADIX_BUCKETS * num_tiles * sizeof(int));
+      static_cast<size_t>(num_segments) * RADIX_BUCKETS * num_tiles *
+      sizeof(int));
   at::DataPtr keys_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(key_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(key_t));
   at::DataPtr values_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(value_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(value_t));
 
   counts = (int*)counts_data.get();
   keys_temp = (key_t*)keys_temp_data.get();
