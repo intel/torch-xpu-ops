@@ -64,19 +64,29 @@ def reset(issue_number: int) -> None:
 
 
 def _extract_environment(body: str) -> str:
-    """Extract collect_env / Versions section from raw issue body."""
+    """Extract collect_env / Versions section from raw issue body.
+
+    Returns the raw text content only (no <details> wrappers or code fences),
+    since the template already wraps it in <details><summary>collect_env</summary>.
+    """
     # Try <details> block containing collect_env
     m = re.search(
         r'<details>\s*\n\s*<summary>.*?collect_env.*?</summary>\s*\n(.*?)</details>',
         body, re.DOTALL | re.IGNORECASE,
     )
-    if m:
-        return m.group(1).strip()
-    # Try ### Versions section
-    m = re.search(r'### Versions\s*\n(.*?)(?=\n### |\n## |\Z)', body, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    return ""
+    if not m:
+        # Try ### Versions section
+        m = re.search(r'### Versions\s*\n(.*?)(?=\n### |\n## |\Z)', body, re.DOTALL)
+    if not m:
+        return ""
+    content = m.group(1).strip()
+    # Strip HTML wrapper tags (details, summary)
+    content = re.sub(r'</?details>', '', content)
+    content = re.sub(r'<summary>.*?</summary>', '', content)
+    # Strip code fences if present (```text ... ```)
+    content = re.sub(r'^\s*```\w*\s*\n', '', content)
+    content = re.sub(r'\n```\s*$', '', content)
+    return content.strip()
 
 
 def run(issue_number: int) -> None:

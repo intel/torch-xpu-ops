@@ -205,12 +205,11 @@ class TestNoAgentLogSection:
 class TestEnvironmentSection:
     def test_environment_section_exists(self):
         assert "## Environment" in SAMPLE_BODY
-
     def test_environment_in_collapsible_code_block(self):
+        """Environment should be inside a collapsible details block."""
         assert "<details><summary>collect_env</summary>" in SAMPLE_BODY
-        # Content should be inside a code block
         env_section = SAMPLE_BODY.split("## Environment")[1].split("## Original")[0]
-        assert "```" in env_section
+        assert "</details>" in env_section
 
     def test_environment_content_rendered(self):
         assert "PyTorch version: 2.13.0" in SAMPLE_BODY
@@ -301,6 +300,9 @@ class TestExtractEnvironment:
         env = _extract_environment(body)
         assert "PyTorch version: 2.13.0" in env
         assert "CPU: x86_64" in env
+        # Should NOT contain code fences or <details> tags
+        assert "```" not in env
+        assert "<details>" not in env
 
     def test_extracts_from_versions_section(self):
         body = "### Versions\nPyTorch 2.0\nCUDA 11.8\n\n### Other\nstuff"
