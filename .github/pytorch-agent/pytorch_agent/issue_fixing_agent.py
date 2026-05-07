@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import traceback
 
-from .utils import github_client as gh
+from .utils import git as gh
 from .utils.config import ISSUE_REPO
 from .utils.issue_body import get_status
 from .utils.logger import log

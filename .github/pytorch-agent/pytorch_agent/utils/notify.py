@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import github_client as gh
+from . import git as gh
 
 
 def post_session_started(

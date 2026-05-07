@@ -9,7 +9,7 @@ import argparse
 import json
 import re
 
-from .utils import github_client as gh
+from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, STAGE_TO_LABEL, ALL_AGENT_LABELS
 from .utils.issue_body import (
     get_status, parse_sections, update_section, set_status,
@@ -17,34 +17,6 @@ from .utils.issue_body import (
 )
 from .utils.agent_backend import get_backend
 from .utils.logger import log
-
-
-TRIAGE_PROMPT_TEMPLATE = """Analyze this PyTorch CI failure and determine the root cause.
-
-## Issue #{number}: {title}
-
-{body}
-
-## Instructions
-1. Read the error log and failed test names carefully.
-2. Trace the root cause in the PyTorch/torch-xpu-ops codebase.
-3. Determine if this is fixable by an agent or needs human intervention.
-
-Consider:
-- Is this a missing XPU kernel? (fixable)
-- Is this a tolerance issue? (fixable)
-- Is this an upstream pytorch change that broke XPU? (fixable)
-- Is this a driver/hardware issue? (needs human)
-- Is this a third-party dependency issue (oneDNN, triton)? (needs human)
-
-Respond with ONLY valid JSON (no markdown fences):
-{{
-  "root_cause": "detailed root cause analysis (2-3 sentences)",
-  "fix_strategy": "proposed fix approach (specific files/functions to change)",
-  "verdict": "IMPLEMENTING or NEEDS_HUMAN",
-  "reason": "one-line reason for verdict"
-}}
-"""
 
 
 def _select_skill(labels: list) -> str:
@@ -87,29 +59,25 @@ def _extract_json(text: str) -> str:
 
 def run(issue_number: int) -> tuple[str, str]:
     """Triage an issue. Returns (verdict, reason)."""
-    # Read issue
     detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
     body = detail.get("body", "") or ""
     labels = detail.get("labels", [])
 
-    # Check status — must be TRIAGING
+    # Check status
     status = get_status(body)
     if status is not None and status != "TRIAGING":
         log("INFO", f"Issue #{issue_number} at stage {status}, skipping triage",
             issue=issue_number)
         return ("skip", f"already at {status}")
 
-    # Select skill based on test type
+    # Select skill and call LLM (no inline prompt)
     skill = _select_skill(labels)
-
-    # Build prompt
-    prompt = TRIAGE_PROMPT_TEMPLATE.format(
-        number=issue_number,
-        title=detail.get("title", ""),
-        body=body[:8000],
+    prompt = (
+        f"Read the {skill} skill and triage issue #{issue_number}.\n\n"
+        f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
+        f"{body[:8000]}"
     )
 
-    # Call LLM
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
     output, log_path, session_id = backend.run(
@@ -148,7 +116,6 @@ def run(issue_number: int) -> tuple[str, str]:
     else:
         new_body = set_status(new_body, "NEEDS_HUMAN")
 
-    # Append triage log
     new_body = append_log(
         new_body, "triage",
         f"**Verdict:** {verdict}\n**Reason:** {reason}\n\n"
@@ -160,7 +127,7 @@ def run(issue_number: int) -> tuple[str, str]:
     # Write back
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
 
-    # Sync labels
+    # Sync labels (only add agent:active for IMPLEMENTING, not for triage phase)
     _sync_labels(ISSUE_REPO, issue_number,
                  "IMPLEMENTING" if verdict == "IMPLEMENTING" else "NEEDS_HUMAN")
 

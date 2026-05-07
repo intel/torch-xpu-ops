@@ -6,58 +6,62 @@ Entry point:
 from __future__ import annotations
 
 import argparse
+import re
 
-from ..utils import github_client as gh
+from ..utils import git as gh
 from ..utils.config import (
-    UPSTREAM_ISSUE_REPO, PUBLIC_TARGET_REPO, PRIVATE_REVIEW_REPO,
+    ISSUE_REPO, PUBLIC_TARGET_REPO, PRIVATE_REVIEW_REPO,
 )
-from ..utils.state import TrackedIssue, update_stage, load_tracked
+from ..utils.issue_body import get_status, set_status, check_action_item, append_log
 from ..utils.logger import log
 
 
-def run(tracked: TrackedIssue) -> None:
+def run(issue_number: int) -> None:
     """Close source issue and clean up."""
-    if tracked.stage != "MERGED":
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+
+    if get_status(body) != "MERGED":
         return
 
-    if not tracked.public_pr_number:
-        log("WARN", f"No public PR for issue #{tracked.source_number}",
-            issue=tracked.source_number)
+    # Get public PR number from body
+    pr_match = re.search(r"public_pr:\s*#?(\d+)", body)
+    if not pr_match:
+        log("WARN", f"No public PR for issue #{issue_number}", issue=issue_number)
         return
+    public_pr = int(pr_match.group(1))
 
-    # Verify public PR is merged
-    status = gh.get_pr_status(PUBLIC_TARGET_REPO, tracked.public_pr_number)
+    # Verify merged
+    status = gh.get_pr_status(PUBLIC_TARGET_REPO, public_pr)
     if status != "merged":
-        log("INFO", f"Public PR not yet merged for #{tracked.source_number} (status={status})",
-            issue=tracked.source_number)
+        log("INFO", f"Public PR not yet merged for #{issue_number} (status={status})",
+            issue=issue_number)
         return
 
-    # Comment on source issue
-    comment = (
-        f"✅ Fixed in {PUBLIC_TARGET_REPO}#{tracked.public_pr_number} "
-        f"— {tracked.public_pr_url}"
-    )
-    gh.add_issue_comment(UPSTREAM_ISSUE_REPO, tracked.source_number, comment)
+    # Update issue body
+    new_body = set_status(body, "DONE")
+    new_body = check_action_item(new_body, "PR merged")
+    public_pr_url = f"https://github.com/{PUBLIC_TARGET_REPO}/pull/{public_pr}"
+    new_body = append_log(new_body, "close",
+                          f"Fixed in {PUBLIC_TARGET_REPO}#{public_pr} — {public_pr_url}")
+    gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
 
-    # Close source issue
-    gh.close_issue(UPSTREAM_ISSUE_REPO, tracked.source_number)
+    # Close issue
+    gh.close_issue(ISSUE_REPO, issue_number)
 
     # Delete agent branch from review fork
-    branch = tracked.branch or f"agent/issue-{tracked.source_number}"
+    branch = f"agent/issue-{issue_number}"
     gh.delete_branch(PRIVATE_REVIEW_REPO, branch)
 
-    update_stage(tracked, "DONE", "Issue closed and branch cleaned up.")
-    log("INFO", f"Issue #{tracked.source_number} closed. "
-                 f"Public PR: {tracked.public_pr_url}",
-        issue=tracked.source_number)
+    log("INFO", f"Issue #{issue_number} closed. Public PR: {public_pr_url}",
+        issue=issue_number)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
-    tracked = load_tracked(args.issue)
-    run(tracked)
+    run(args.issue)
 
 
 if __name__ == "__main__":

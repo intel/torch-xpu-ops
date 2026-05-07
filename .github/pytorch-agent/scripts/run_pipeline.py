@@ -13,7 +13,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pytorch_agent.issue_fixing_agent import advance
-from pytorch_agent.utils import github_client as gh
+from pytorch_agent.utils import git as gh
 from pytorch_agent.utils.config import ISSUE_REPO, POLL_INTERVAL, ISSUE_LABEL
 from pytorch_agent.utils.issue_body import get_status
 from pytorch_agent.utils.logger import log

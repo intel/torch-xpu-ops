@@ -27,11 +27,13 @@ ALL_AGENT_LABELS = sorted(set(STAGE_TO_LABEL.values()))
 
 # Limits
 MAX_REVIEW_ITERATIONS = 3
+MAX_CI_ITERATIONS = 3
 MAX_AGENT_ATTEMPTS = 3
+
+AGENT_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Local paths
 PYTORCH_DIR = Path(os.environ.get("PYTORCH_DIR", os.path.expanduser("~/pytorch")))
-AGENT_DIR = Path(__file__).resolve().parent.parent.parent  # .github/pytorch-agent/
 LOG_DIR = AGENT_DIR / "logs"
 SKILLS_DIR = AGENT_DIR.parent / "skills"
 

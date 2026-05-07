@@ -8,52 +8,51 @@ from __future__ import annotations
 import argparse
 from subprocess import CalledProcessError
 
-from ..utils import github_client as gh
+from ..utils import git as gh
+from ..utils.git import git, add_and_commit
 from ..utils.config import (
-    UPSTREAM_ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
-    STAGE_TIMEOUTS,
+    ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
+    STAGE_TIMEOUTS, MAX_CI_ITERATIONS,
 )
-from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
+from ..utils.issue_body import (
+    get_status, set_status, update_section, check_action_item, append_log,
+)
 from ..utils.agent_backend import get_backend
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ..utils.git import git, add_and_commit
 
 
-CI_FIX_PROMPT_TEMPLATE = """CI is failing on the public PR for your PyTorch fix.
-
-## Failing checks:
-{failures}
-
-## Instructions
-1. Analyze each failure — is it related to your change or pre-existing?
-2. If related: fix the issue in code.
-3. If unrelated: note it but don't change code for it.
-"""
-
-
-def run(tracked: TrackedIssue) -> None:
+def run(issue_number: int) -> None:
     """Check CI status on public PR."""
-    if tracked.stage != "CI_WATCH":
+    # Read issue body
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+
+    status = get_status(body)
+    if status != "CI_WATCH":
         return
 
-    if not tracked.public_pr_number:
-        log("WARN", f"No public PR for issue #{tracked.source_number}",
-            issue=tracked.source_number)
+    # Get public PR number from issue body context
+    import re
+    pr_match = re.search(r"public_pr:\s*#?(\d+)", body)
+    if not pr_match:
+        log("WARN", f"No public PR reference in issue #{issue_number} body",
+            issue=issue_number)
         return
+    public_pr = int(pr_match.group(1))
 
     # Check if PR is already merged
-    pr_status = gh.get_pr_status(PUBLIC_TARGET_REPO, tracked.public_pr_number)
+    pr_status = gh.get_pr_status(PUBLIC_TARGET_REPO, public_pr)
     if pr_status == "merged":
-        update_stage(tracked, "MERGED",
-                     f"Public PR #{tracked.public_pr_number} merged!")
+        new_body = set_status(body, "MERGED")
+        new_body = append_log(new_body, "ci-watch", f"Public PR #{public_pr} merged!")
+        gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
         return
 
     # Get CI checks
-    checks = gh.get_ci_checks(PUBLIC_TARGET_REPO, tracked.public_pr_number)
+    checks = gh.get_ci_checks(PUBLIC_TARGET_REPO, public_pr)
     if not checks:
-        log("INFO", f"No CI checks yet for #{tracked.source_number}",
-            issue=tracked.source_number)
+        log("INFO", f"No CI checks yet for #{issue_number}", issue=issue_number)
         return
 
     # Categorize
@@ -65,106 +64,85 @@ def run(tracked: TrackedIssue) -> None:
               if c.get("status") == "completed"
               and c.get("conclusion") in ("success", "skipped", "neutral")]
 
-    # Post CI status summary to source issue
-    ci_summary = (
-        f"⏳ {len(pending)} pending" if pending else
-        f"✅ {len(passed)} passed, ❌ {len(failed)} failed"
-    )
-    gh.add_issue_comment(
-        UPSTREAM_ISSUE_REPO, tracked.source_number,
-        f"🤖 **CI status** for public PR #{tracked.public_pr_number}:\n\n"
-        f"{ci_summary} (total: {len(checks)} checks)",
-    )
-
     if pending:
-        log("INFO", f"CI still running for #{tracked.source_number}: "
+        log("INFO", f"CI still running for #{issue_number}: "
                      f"{len(pending)} pending, {len(passed)} passed, {len(failed)} failed",
-            issue=tracked.source_number)
+            issue=issue_number)
         return
 
     if not failed:
-        # All passed, but PR not yet merged — wait for merge
-        log("INFO", f"All CI passed for #{tracked.source_number}, waiting for merge",
-            issue=tracked.source_number)
+        log("INFO", f"All CI passed for #{issue_number}, waiting for merge",
+            issue=issue_number)
         return
 
-    # Handle failures
+    # Handle failures — check iteration count
+    iter_match = re.search(r"ci_iteration:\s*(\d+)", body)
+    ci_iteration = int(iter_match.group(1)) if iter_match else 0
+    ci_iteration += 1
+
+    if ci_iteration > MAX_CI_ITERATIONS:
+        new_body = set_status(body, "NEEDS_HUMAN")
+        new_body = append_log(new_body, "ci-watch",
+                              f"CI fix iteration limit ({MAX_CI_ITERATIONS}) reached.")
+        gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+        return
+
+    # Update iteration counter in body
+    if iter_match:
+        new_body = body[:iter_match.start()] + f"ci_iteration: {ci_iteration}" + body[iter_match.end():]
+    else:
+        new_body = body + f"\n<!-- ci_iteration: {ci_iteration} -->\n"
+
     failure_text = "\n".join(
         f"- **{c.get('name', 'unknown')}**: {c.get('conclusion', '?')} — "
         f"{(c.get('output') or {}).get('summary', 'no details')}"
         for c in failed
     )
 
-    # Post failure details to source issue
-    gh.add_issue_comment(
-        UPSTREAM_ISSUE_REPO, tracked.source_number,
-        f"🤖 **CI failures** on public PR #{tracked.public_pr_number}:\n\n"
-        f"{failure_text}\n\n"
-        f"Agent is analyzing failures...",
+    # Call agent with skill (no inline prompt)
+    prompt = (
+        f"Read the pytorch-ci-triage skill and fix CI failures on PR #{public_pr}.\n\n"
+        f"## Failing checks:\n{failure_text}"
     )
 
-    # --- CI iteration limit ---
-    MAX_CI_ITERATIONS = 3
-    tracked.ci_iteration = getattr(tracked, "ci_iteration", 0) + 1
-    save_state(tracked)
-    if tracked.ci_iteration > MAX_CI_ITERATIONS:
-        update_stage(tracked, "NEEDS_HUMAN",
-                     f"CI fix iteration limit ({MAX_CI_ITERATIONS}) reached.")
-        return
-
-    prompt = CI_FIX_PROMPT_TEMPLATE.format(failures=failure_text)
-
     def _post_session_id(sid: str):
-        post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
-                             "CI fix", sid)
+        post_session_started(ISSUE_REPO, issue_number, "CI fix", sid)
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("CI_WATCH", 600)
     output, log_path, _ = backend.run(prompt, workdir=str(PYTORCH_DIR),
                                     skill="pytorch-ci-triage", timeout=timeout,
-                                    issue=tracked.source_number, stage="CI_WATCH",
+                                    issue=issue_number, stage="CI_WATCH",
                                     on_session_start=_post_session_id)
-    log("INFO", f"CI fix agent log: {log_path}",
-        issue=tracked.source_number)
 
-    # Auto-commit any changes the agent made (excluding third_party/*)
-    branch = tracked.branch or f"agent/issue-{tracked.source_number}"
+    # Auto-commit and push
+    branch = f"agent/issue-{issue_number}"
     committed = add_and_commit(
-        f"[agent] CI fix iteration {tracked.ci_iteration} "
-        f"for #{tracked.source_number}",
-        issue=tracked.source_number,
+        f"[agent] CI fix iteration {ci_iteration} for #{issue_number}",
+        issue=issue_number,
     )
 
-    if not committed:
-        log("INFO", "No changes to commit after CI fix agent",
-            issue=tracked.source_number)
+    if committed:
+        try:
+            git("push", REVIEW_REMOTE, branch, issue=issue_number)
+        except CalledProcessError as e:
+            log("ERROR", f"Failed to push CI fix: {e}", issue=issue_number, exc=e)
 
-    # Push fixes (no force push — preserves reviewed commits)
-    try:
-        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
-        tracked.last_push_sha = git(
-            "rev-parse", "HEAD", issue=tracked.source_number,
-        ).stdout.strip()
-        save_state(tracked)
-        log("INFO", f"Pushed CI fix for #{tracked.source_number}",
-            issue=tracked.source_number)
-        post_agent_completed(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"CI fix pushed (iteration {tracked.ci_iteration}) "
-            f"for PR #{tracked.public_pr_number}",
-            log_path, output, tail=20,
-        )
-    except CalledProcessError as e:
-        log("ERROR", f"Failed to push CI fix: {e}", issue=tracked.source_number,
-            exc=e)
+    # Update issue body with log
+    new_body = append_log(new_body, "ci-watch",
+                          f"CI fix iteration {ci_iteration}\n"
+                          f"Log: `{log_path.name}`")
+    gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+
+    log("INFO", f"CI fix iteration {ci_iteration} for #{issue_number}",
+        issue=issue_number)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
-    tracked = load_tracked(args.issue)
-    run(tracked)
+    run(args.issue)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from . import github_client as gh
+from . import git as gh
 from .config import PRIVATE_REVIEW_REPO
 
 

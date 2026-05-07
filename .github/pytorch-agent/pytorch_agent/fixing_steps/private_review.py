@@ -8,49 +8,27 @@ from __future__ import annotations
 import argparse
 import subprocess
 
-from ..utils import github_client as gh
+from ..utils import git as gh
+from ..utils.git import git, add_and_commit
 from ..utils.config import (
     PRIVATE_REVIEW_REPO, PYTORCH_DIR, REVIEW_REMOTE,
-    MAX_REVIEW_ITERATIONS, UPSTREAM_ISSUE_REPO, STAGE_TIMEOUTS,
+    MAX_REVIEW_ITERATIONS, ISSUE_REPO, STAGE_TIMEOUTS,
 )
-from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
+from ..utils.issue_body import (
+    get_status, set_status, append_log,
+)
 from ..utils.review_handler import (
     get_pending_reviews, format_reviews_for_prompt, get_review_state,
 )
 from ..utils.agent_backend import get_backend
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ..utils.git import git, add_and_commit
-
-
-REVIEW_FIX_PROMPT_TEMPLATE = """Address the following code review feedback on your PyTorch fix.
-
-## Original Issue #{number}: {title}
-
-## Review Feedback
-{reviews}
-
-## Instructions
-1. Address EACH review comment separately — do not skip any.
-2. Make the requested changes.
-3. Ensure tests still pass.
-
-## HARD RULES (violations will be rejected)
-- NEVER use @skipIfXpu, @skip, unittest.skip, or any skip decorator. You must FIX the test, not skip it.
-- Do NOT commit submodule pointer changes (third_party/*). Use `git add` on specific files only.
-"""
 
 
 def _build_task_list(reviews: list[dict]) -> list[str]:
-    """Extract actionable tasks from review comments using an LLM.
-
-    Sends the review text to opencode with a focused extraction prompt,
-    then parses the numbered list from the response.  Falls back to a
-    simple regex splitter if the LLM call fails or times out.
-    """
+    """Extract actionable tasks from review comments using an LLM."""
     import re
 
-    # Combine all review bodies
     combined = []
     for review in reviews:
         body = (review.get("body") or "").strip().replace("\r", "")
@@ -61,12 +39,10 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
 
     review_text = "\n\n---\n\n".join(combined)
 
-    # --- LLM extraction ---
     extraction_prompt = (
         "Extract concise, actionable tasks from the following code review. "
         "Return ONLY a numbered list (1. 2. 3. ...), one task per line. "
-        "Each task should be a concrete action the developer must take "
-        "(e.g. 'Revert changes to file X', 'Get CI failure traceback'). "
+        "Each task should be a concrete action the developer must take. "
         "Do NOT include section headers, verdicts, analysis, or explanations — "
         "only actionable items.\n\n"
         "Review:\n" + review_text
@@ -83,19 +59,12 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
         )
         full_text = parse_opencode_events(result.stdout)
         if full_text:
-            # Parse numbered items: "1. ...", "2. ...", etc.
             items = re.findall(r'^\s*\d+\.\s*(.+)', full_text, re.MULTILINE)
             if items:
-                log("INFO", f"LLM extracted {len(items)} tasks from review")
                 return [item.strip()[:200] for item in items if item.strip()]
-
-        log("WARN", "LLM extraction returned no parseable tasks, falling back to regex")
-    except subprocess.TimeoutExpired:
-        log("WARN", "LLM task extraction timed out (60s), falling back to regex")
-    except Exception as e:
+    except (subprocess.TimeoutExpired, Exception) as e:
         log("WARN", f"LLM task extraction failed: {e}, falling back to regex")
 
-    # --- Fallback: simple regex ---
     return _build_task_list_regex(combined)
 
 
@@ -104,19 +73,15 @@ def _build_task_list_regex(bodies: list[str]) -> list[str]:
     import re
     tasks = []
     for body in bodies:
-        # Extract numbered items (1. ..., 2. ...) as primary signal
         numbered = re.findall(r'^\s*\d+\.\s*(.+)', body, re.MULTILINE)
         if numbered:
             tasks.extend(item.strip()[:200] for item in numbered if item.strip())
         else:
-            # Fall back to paragraph splitting
             paragraphs = re.split(r'\n\s*\n', body)
             for para in paragraphs:
                 para = para.strip()
-                if not para:
-                    continue
-                summary = para.split("\n")[0][:200]
-                tasks.append(summary)
+                if para:
+                    tasks.append(para.split("\n")[0][:200])
     return tasks
 
 
@@ -135,67 +100,64 @@ def _format_task_comment(tasks: list[str], done: set[int] | None = None,
     return "\n".join(lines)
 
 
-def run(tracked: TrackedIssue) -> None:
+def run(issue_number: int) -> None:
     """Handle private review cycle."""
-    if tracked.stage != "IN_REVIEW":
+    import re
+
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+
+    if get_status(body) != "IN_REVIEW":
         return
 
-    if not tracked.tracking_pr_number:
-        log("WARN", f"No tracking PR for issue #{tracked.source_number}",
-            issue=tracked.source_number)
+    # Get tracking PR number from body
+    pr_match = re.search(r"tracking_pr:\s*#?(\d+)", body)
+    if not pr_match:
+        log("WARN", f"No tracking PR for issue #{issue_number}", issue=issue_number)
         return
+    tracking_pr = int(pr_match.group(1))
 
-    state = get_review_state(tracked.tracking_pr_number,
-                             tracked.last_push_sha)
+    # Get last push sha
+    sha_match = re.search(r"last_push_sha:\s*([a-f0-9]+)", body)
+    last_push_sha = sha_match.group(1) if sha_match else None
+
+    state = get_review_state(tracking_pr, last_push_sha)
 
     if state == "approved":
-        update_stage(tracked, "PUBLIC_PR",
-                     "Private review approved. Ready for public PR.")
+        new_body = set_status(body, "PUBLIC_PR")
+        new_body = append_log(new_body, "review", "Private review approved. Ready for public PR.")
+        gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
         return
 
     if state == "paused":
-        if not tracked.paused:
-            tracked.paused = True
-            save_state(tracked)
-            log("INFO", f"Agent paused by /agent pause for #{tracked.source_number}",
-                issue=tracked.source_number)
-        else:
-            log("INFO", f"Agent still paused for #{tracked.source_number}",
-                issue=tracked.source_number)
+        log("INFO", f"Agent paused for #{issue_number}", issue=issue_number)
         return
-
-    # If we get feedback after being paused, resume
-    if tracked.paused:
-        tracked.paused = False
-        save_state(tracked)
-        log("INFO", f"Agent resumed for #{tracked.source_number}",
-            issue=tracked.source_number)
 
     if state == "pending":
-        log("INFO", f"Review still pending for #{tracked.source_number}",
-            issue=tracked.source_number)
+        log("INFO", f"Review still pending for #{issue_number}", issue=issue_number)
         return
 
-    # changes_requested
-    tracked.review_iteration += 1
-    if tracked.review_iteration > MAX_REVIEW_ITERATIONS:
-        update_stage(tracked, "NEEDS_HUMAN",
-                     f"Exceeded {MAX_REVIEW_ITERATIONS} review iterations. Needs human.")
-        return
+    # changes_requested — get iteration count
+    iter_match = re.search(r"review_iteration:\s*(\d+)", body)
+    review_iteration = int(iter_match.group(1)) if iter_match else 0
+    review_iteration += 1
 
-    save_state(tracked)
+    if review_iteration > MAX_REVIEW_ITERATIONS:
+        new_body = set_status(body, "NEEDS_HUMAN")
+        new_body = append_log(new_body, "review",
+                              f"Exceeded {MAX_REVIEW_ITERATIONS} review iterations. Needs human.")
+        gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+        return
 
     # Get review comments
-    reviews = get_pending_reviews(tracked.tracking_pr_number,
-                                  tracked.last_push_sha)
-    # If no new reviews after last push, nothing to address — skip
+    reviews = get_pending_reviews(tracking_pr, last_push_sha)
     if not reviews:
-        log("INFO", f"No new review feedback after last push for #{tracked.source_number}, skipping",
-            issue=tracked.source_number)
+        log("INFO", f"No new review feedback after last push for #{issue_number}",
+            issue=issue_number)
         return
     review_text = format_reviews_for_prompt(reviews)
 
-    # Identify the reviewer (first non-bot commenter)
+    # Identify reviewer
     reviewer = None
     for r in reviews:
         login = r.get("user", {}).get("login", "")
@@ -203,114 +165,100 @@ def run(tracked: TrackedIssue) -> None:
             reviewer = login
             break
 
-    # Build task list and post initial comment on the PR
+    # Build task list and post
     tasks = _build_task_list(reviews)
     if tasks:
         initial_comment = _format_task_comment(tasks)
-        resp = gh.add_pr_comment(PRIVATE_REVIEW_REPO,
-                                 tracked.tracking_pr_number, initial_comment)
+        resp = gh.add_pr_comment(PRIVATE_REVIEW_REPO, tracking_pr, initial_comment)
         task_comment_id = resp.get("id")
     else:
         task_comment_id = None
 
-    # Dispatch agent to fix
-    prompt = REVIEW_FIX_PROMPT_TEMPLATE.format(
-        number=tracked.source_number,
-        title=tracked.title,
-        reviews=review_text,
+    # Call agent with skill (no inline prompt)
+    prompt = (
+        f"Read the pytorch-review-fix skill and address review feedback on PR #{tracking_pr} "
+        f"for issue #{issue_number}.\n\n"
+        f"## Review Feedback\n{review_text}"
     )
 
-    # Record pre-agent HEAD so we can check if agent made changes
-    pre_sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
+    pre_sha = git("rev-parse", "HEAD", issue=issue_number).stdout.strip()
 
     def _post_session_id(sid: str):
-        post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
-                             "Review fix", sid)
+        post_session_started(ISSUE_REPO, issue_number, "Review fix", sid)
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("IN_REVIEW", 1800)
     output, log_path, _ = backend.run(prompt, workdir=str(PYTORCH_DIR),
-                                    skill="xpu-ops-pr-review", timeout=timeout,
-                                    issue=tracked.source_number, stage="IN_REVIEW",
+                                    skill="pytorch-review-fix", timeout=timeout,
+                                    issue=issue_number, stage="IN_REVIEW",
                                     on_session_start=_post_session_id)
-    log("INFO", f"Review fix agent log: {log_path}",
-        issue=tracked.source_number)
 
-    # Check if agent actually made changes (committed or uncommitted)
-    post_sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
-    uncommitted = git("status", "--porcelain", issue=tracked.source_number).stdout.strip()
+    # Check changes
+    post_sha = git("rev-parse", "HEAD", issue=issue_number).stdout.strip()
+    uncommitted = git("status", "--porcelain", issue=issue_number).stdout.strip()
     has_changes = (post_sha != pre_sha) or bool(uncommitted)
 
-    # Auto-commit any uncommitted changes the agent left
     if uncommitted:
         committed = add_and_commit(
-            f"Address review feedback (iteration {tracked.review_iteration})\n\n"
-            f"intel/torch-xpu-ops#{tracked.source_number}",
-            issue=tracked.source_number,
+            f"Address review feedback (iteration {review_iteration})\n\n"
+            f"intel/torch-xpu-ops#{issue_number}",
+            issue=issue_number,
         )
         if committed:
             has_changes = True
 
-    # Determine which tasks were addressed by checking agent output
+    # Determine addressed tasks
     done_tasks: set[int] = set()
     if has_changes and output:
         output_lower = output.lower()
         for i, task in enumerate(tasks):
-            # Simple heuristic: check if key words from task appear in output
             task_words = [w.lower() for w in task.split() if len(w) > 4]
             matches = sum(1 for w in task_words if w in output_lower)
             if task_words and matches >= len(task_words) * 0.3:
                 done_tasks.add(i)
-        # If agent made changes but we can't match specific tasks,
-        # be honest — don't mark any as done
     elif has_changes:
-        # Agent made changes but output is empty — mark all tentatively
         done_tasks = set(range(len(tasks)))
 
-    # Push updated code (NEVER force push — it destroys reviewed commits)
-    branch = tracked.branch or f"agent/issue-{tracked.source_number}"
+    # Push
+    branch = f"agent/issue-{issue_number}"
     if has_changes:
-        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
+        git("push", REVIEW_REMOTE, branch, issue=issue_number)
 
-    # Update last_push_sha
-    sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
-    tracked.last_push_sha = sha
-    save_state(tracked)
+    # Update iteration and sha in body
+    new_sha = git("rev-parse", "HEAD", issue=issue_number).stdout.strip()
+    new_body = body
+    if iter_match:
+        new_body = new_body[:iter_match.start()] + f"review_iteration: {review_iteration}" + new_body[iter_match.end():]
+    else:
+        new_body += f"\n<!-- review_iteration: {review_iteration} -->\n"
+    if sha_match:
+        new_body = new_body.replace(sha_match.group(0), f"last_push_sha: {new_sha}")
+    else:
+        new_body += f"\n<!-- last_push_sha: {new_sha} -->\n"
 
-    # Update task comment with actual status
+    new_body = append_log(new_body, "review",
+                          f"Review iteration {review_iteration} — "
+                          f"tasks addressed: {len(done_tasks)}/{len(tasks)}\n"
+                          f"Log: `{log_path.name}`")
+    gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+
+    # Update task comment
     if task_comment_id and tasks:
         all_done = done_tasks == set(range(len(tasks)))
+        comment = _format_task_comment(tasks, done=done_tasks, reviewer=reviewer, all_done=all_done)
         if not has_changes:
-            status_note = "\n\n⚠️ Agent produced no code changes. Tasks may not be addressed."
-        elif not all_done:
-            status_note = (f"\n\n⚠️ Only {len(done_tasks)}/{len(tasks)} tasks "
-                          f"appear addressed. @{reviewer} please verify.")
-        else:
-            status_note = ""
-        comment = _format_task_comment(
-            tasks, done=done_tasks, reviewer=reviewer, all_done=all_done,
-        ) + status_note
+            comment += "\n\n⚠️ Agent produced no code changes."
         gh.update_pr_comment(PRIVATE_REVIEW_REPO, task_comment_id, comment)
 
-    # Post log to source issue
-    post_agent_completed(
-        UPSTREAM_ISSUE_REPO, tracked.source_number,
-        f"Review iteration {tracked.review_iteration} — "
-        f"tasks addressed: {len(done_tasks)}/{len(tasks)}",
-        log_path, output, tail=30,
-    )
-
-    log("INFO", f"Review iteration {tracked.review_iteration} for #{tracked.source_number}, "
-                 f"tasks: {len(done_tasks)}/{len(tasks)}, changes: {has_changes}",
-        issue=tracked.source_number)
+    log("INFO", f"Review iteration {review_iteration} for #{issue_number}, "
+                 f"tasks: {len(done_tasks)}/{len(tasks)}", issue=issue_number)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
-    tracked = load_tracked(args.issue)
-    run(tracked)
+    run(args.issue)
 
 
 if __name__ == "__main__":

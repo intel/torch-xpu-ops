@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from subprocess import CalledProcessError
 
-from ..utils import github_client as gh
+from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
     REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
@@ -25,28 +25,10 @@ from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ._issue_format import build_pr_body
+from ..utils.git import build_pr_body
 
 
-IMPLEMENT_PROMPT_TEMPLATE = """Fix the following PyTorch CI failure for Intel XPU.
 
-## Issue #{number}: {title}
-
-{body}
-
-## Instructions
-1. Read the Root Cause Analysis and Proposed Fix Strategy above.
-2. Reproduce the failure using the Reproducer commands (if provided).
-3. Implement the minimal fix following the proposed strategy.
-4. Run the failing test(s) listed above to verify your fix.
-5. Ensure no regressions in related tests.
-
-## HARD RULES (violations will be rejected)
-- NEVER use @skipIfXpu, @skip, unittest.skip, or any skip decorator. You must FIX the test, not skip it.
-- Do NOT commit submodule pointer changes (third_party/*). Use `git add` on specific files only.
-
-Work in the current directory (~/pytorch).
-"""
 
 
 def run(issue_number: int) -> None:
@@ -85,10 +67,10 @@ def run(issue_number: int) -> None:
             issue=issue_number)
     else:
         # --- Call LLM ---
-        prompt = IMPLEMENT_PROMPT_TEMPLATE.format(
-            number=issue_number,
-            title=detail.get("title", ""),
-            body=body[:10000],
+        prompt = (
+            f"Read the pytorch-fix skill and fix issue #{issue_number}.\n\n"
+            f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
+            f"{body[:10000]}"
         )
 
         def _post_session_id(sid: str):
