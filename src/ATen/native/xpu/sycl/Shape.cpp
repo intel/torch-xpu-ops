@@ -34,7 +34,243 @@
 
 namespace at::native::xpu {
 
-constexpr int CAT_ARRAY_BATCH_SIZE = 64;
+// ============================================================
+// V1 constants and structs (for contiguous fast path)
+// ============================================================
+constexpr int CAT_ARRAY_BATCH_SIZE_V1 = 1024;
+constexpr int CAT_ARRAY_MAX_INPUT_DIMS_V1 = 5;
+
+template <typename T, typename IndexType>
+struct CatArrInputTensor {
+  T* input;
+  IndexType offset;
+  IndexType dimSize;
+  IndexType nElements;
+};
+
+template <typename IndexType, unsigned int MaxDims>
+struct OutputTensorSizeStride {
+  IndexType outputSize[MaxDims];
+  IndexType outputStride[MaxDims];
+};
+
+// V1 IndexToOffset
+template <typename IndexType, int Dims>
+struct CatArrIndexToOffset_V1 {
+  static inline IndexType compute(
+      const IndexType outputSize[Dims],
+      const IndexType outputStride[Dims],
+      const IndexType dimSize,
+      const unsigned int concatDim,
+      IndexType linearIndex) {
+    IndexType offset = 0;
+#pragma unroll
+    for (int i = Dims - 1; i >= 1; --i) {
+      IndexType curDimSize = i == concatDim ? dimSize : outputSize[i];
+      IndexType nextDimIndex = linearIndex / curDimSize;
+      IndexType curDimIndex = linearIndex - curDimSize * nextDimIndex;
+      IndexType curDimOffset = curDimIndex * outputStride[i];
+      offset += curDimOffset;
+      linearIndex = nextDimIndex;
+    }
+    return offset + linearIndex * outputStride[0];
+  }
+};
+
+// V1 kernel functor (scalar copy, pointer-based metadata)
+template <
+    typename Tout,
+    typename underlying_out_t,
+    typename Tin,
+    typename underlying_in_t,
+    typename IndexType,
+    int Dims>
+struct CatArrayBatchedCopyKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    IndexType tid = item.get_global_id(1);
+    IndexType in = item.get_group(0);
+
+    IndexType nElements = inputs[in].nElements;
+
+    if (tid >= nElements)
+      return;
+
+    Tin* data = inputs[in].input;
+    IndexType offset = inputs[in].offset;
+    IndexType dimSize = inputs[in].dimSize;
+    IndexType dataOffset = offset * dimStride;
+
+    IndexType stride = item.get_global_range(1);
+
+    while (tid < nElements) {
+      IndexType elementOffset =
+          CatArrIndexToOffset_V1<IndexType, Dims>::compute(
+              os.outputSize, os.outputStride, dimSize, concatDim, tid);
+      output[dataOffset + elementOffset] = data[tid];
+      tid += stride;
+    }
+  }
+
+  CatArrayBatchedCopyKernelFunctor(
+      Tout* output_,
+      CatArrInputTensor<Tin, IndexType>* inputs_,
+      OutputTensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS_V1> os_,
+      const int concatDim_,
+      IndexType dimStride_)
+      : output(output_),
+        inputs(inputs_),
+        os(os_),
+        concatDim(concatDim_),
+        dimStride(dimStride_) {}
+
+ private:
+  Tout* output;
+  CatArrInputTensor<Tin, IndexType>* inputs;
+  OutputTensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS_V1> os;
+  const int concatDim;
+  IndexType dimStride;
+};
+
+// V1 kernel launch (with V1 WG config)
+template <
+    typename Tout,
+    typename underlying_out_t,
+    typename Tin,
+    typename underlying_in_t,
+    typename IndexType,
+    int Dims>
+void CatArrayBatchedCopy_V1(
+    Tout* output,
+    CatArrInputTensor<Tin, IndexType>* inputs,
+    OutputTensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS_V1> os,
+    const int concatDim,
+    IndexType dimStride,
+    int batchCounter) {
+  CatArrayBatchedCopyKernelFunctor<
+      Tout,
+      underlying_out_t,
+      Tin,
+      underlying_in_t,
+      IndexType,
+      Dims>
+      kfn(output, inputs, os, concatDim, dimStride);
+
+  int64_t numWI = syclMaxWorkGroupSize(kfn);
+  int64_t numWG;
+  if (batchCounter > 32)
+    numWG = 64;
+  else
+    numWG = 128;
+  sycl::range<2> global_range(batchCounter, numWG * numWI);
+  sycl::range<2> local_range(1, numWI);
+  auto& q = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, q, kfn);
+}
+
+// V1 parallel_cat (pinned memcpy metadata, batch_size=1024)
+template <
+    typename scalar_out_t,
+    typename underlying_out_t,
+    typename scalar_in_t,
+    typename underlying_in_t>
+void parallel_cat_v1(
+    const Tensor& out,
+    const MaterializedITensorListRef& inputs,
+    int64_t dimension,
+    int nDims) {
+  scalar_out_t* data = static_cast<scalar_out_t*>(out.mutable_data_ptr());
+
+  int64_t tensorMetadataSize =
+      sizeof(CatArrInputTensor<scalar_in_t, unsigned int>) *
+      CAT_ARRAY_BATCH_SIZE_V1;
+  auto d_inputs_storage =
+      at::empty({tensorMetadataSize}, out.options().dtype(at::kByte));
+  auto d_inputs = static_cast<CatArrInputTensor<scalar_in_t, unsigned int>*>(
+      d_inputs_storage.mutable_data_ptr());
+
+  OutputTensorSizeStride<unsigned int, CAT_ARRAY_MAX_INPUT_DIMS_V1> param;
+
+  for (int i = 0; i < nDims; ++i) {
+    param.outputSize[i] = at::native::size(out, i);
+    param.outputStride[i] = out.stride(i);
+  }
+
+  auto& q = getCurrentSYCLQueue();
+  int batchCounter = 0;
+  int64_t offset = 0;
+  for (int i = 0; i < inputs.size(); i += CAT_ARRAY_BATCH_SIZE_V1) {
+    {
+      CatArrInputTensor<scalar_in_t, unsigned int>* stackInputs;
+
+      auto stackInputs_dptr =
+          at::getHostAllocator(at::kXPU)->allocate(tensorMetadataSize);
+      stackInputs =
+          (CatArrInputTensor<scalar_in_t, unsigned int>*)stackInputs_dptr.get();
+
+      for (batchCounter = 0; batchCounter < CAT_ARRAY_BATCH_SIZE_V1 &&
+           (i + batchCounter) < inputs.size();
+           ++batchCounter) {
+        int64_t dimSize =
+            at::native::size(inputs[i + batchCounter].get(), dimension);
+
+        stackInputs[batchCounter].input =
+            (scalar_in_t*)(inputs[i + batchCounter].get().const_data_ptr());
+        stackInputs[batchCounter].offset = offset;
+        stackInputs[batchCounter].dimSize = dimSize;
+        stackInputs[batchCounter].nElements =
+            inputs[i + batchCounter].get().numel();
+
+        offset += dimSize;
+      }
+
+      q.memcpy((void*)d_inputs, (void*)stackInputs, tensorMetadataSize);
+      at::getHostAllocator(at::kXPU)->record_event(
+          (void*)stackInputs,
+          stackInputs_dptr.get_context(),
+          at::xpu::getCurrentXPUStream());
+    }
+
+#define HANDLE_CASE_V1(DIMS)         \
+  CatArrayBatchedCopy_V1<            \
+      scalar_out_t,                  \
+      underlying_out_t,              \
+      scalar_in_t,                   \
+      underlying_in_t,               \
+      unsigned int,                  \
+      DIMS>(                         \
+      data,                          \
+      d_inputs,                      \
+      param,                         \
+      dimension,                     \
+      param.outputStride[dimension], \
+      batchCounter);
+    switch (nDims) {
+      case 1:
+        HANDLE_CASE_V1(1);
+        break;
+      case 2:
+        HANDLE_CASE_V1(2);
+        break;
+      case 3:
+        HANDLE_CASE_V1(3);
+        break;
+      case 4:
+        HANDLE_CASE_V1(4);
+        break;
+      case 5:
+        HANDLE_CASE_V1(5);
+        break;
+      default:
+        break;
+    }
+#undef HANDLE_CASE_V1
+  }
+}
+
+// ============================================================
+// V2 constants and structs (for non-contiguous / strided path)
+// ============================================================
+constexpr int CAT_ARRAY_BATCH_SIZE_V2 = 64;
 constexpr int CAT_ARRAY_BATCH_SIZE_STRIDED = 16;
 constexpr int CAT_ARRAY_MAX_INPUT_DIMS = 4;
 constexpr int ALIGNED_VEC_LOAD_BYTES_16 = 16;
@@ -64,30 +300,7 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
   return std::make_tuple(global_range, local_range);
 }
 
-template <typename T, int aligned_vec_load_bytes>
-inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
-    unsigned int max_elements_per_tensor,
-    ptrdiff_t nTensors) {
-  constexpr unsigned int items_per_group = 256;
-  constexpr unsigned int min_aligned_vec_per_item = 1;
-  constexpr unsigned int max_group_per_eu = 32;
-
-  unsigned int elements_per_item =
-      aligned_vec_load_bytes / sizeof(T) * min_aligned_vec_per_item;
-  unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
-  unsigned int item_groups = ceil_div(max_items, items_per_group);
-
-  const unsigned int num_eu = syclGpuEUCountPerSubslice();
-  item_groups = std::min(num_eu * max_group_per_eu, item_groups);
-
-  sycl::range<2> global_range(
-      (long long)nTensors, item_groups * items_per_group);
-  sycl::range<2> local_range(1, items_per_group);
-  return std::make_tuple(global_range, local_range);
-}
-
-// Similar to any other IndexToOffset calculation for copying along a given
-// dimension.
+// V2 IndexToOffset
 template <typename IndexType, int Dims>
 struct CatArrIndexToOffset {
   static inline IndexType compute(
@@ -96,12 +309,7 @@ struct CatArrIndexToOffset {
       const IndexType dimSize,
       const unsigned int concatDim,
       IndexType linearIndex) {
-    // linearIndex is not really linear index, but instead the offset in
-    // input tensor. If the input tensor is contiguous, then this offset
-    // is the linear index, but if the input tensor is channels last, then
-    // it is the linear index of the permuted contiguous tensor
     IndexType offset = 0;
-
 #pragma unroll
     for (int i = Dims - 1; i >= 1; --i) {
       IndexType curDimSize = i == concatDim ? dimSize : tensorSize[i];
@@ -111,7 +319,6 @@ struct CatArrIndexToOffset {
       offset += curDimOffset;
       linearIndex = nextDimIndex;
     }
-
     return offset + linearIndex * tensorStride[0];
   }
 };
@@ -122,9 +329,6 @@ struct TensorSizeStride {
   IndexType tensorStride[MaxDims];
 };
 
-// pass meta data directly through kernel argument instead of pin memory
-// In contiguous case, we will not need stride_size, setting it as 1 as
-// placeholder to pass compile.
 template <typename T, typename IndexType, int n, int stride_size>
 struct CatArrInputTensorMetadata {
   const T* input[n];
@@ -136,6 +340,7 @@ struct CatArrInputTensorMetadata {
       tensorStride[stride_size];
 };
 
+// V2 kernel: scalar copy with stride support
 template <
     typename T,
     typename IndexType,
@@ -197,163 +402,19 @@ struct CatArrayBatchedCopy {
   IndexType dimStride;
 };
 
-template <
-    typename T,
-    typename IndexType,
-    int Dims,
-    int batch_size,
-    int stride_size>
-struct CatArrayBatchedCopy_contig {
-  void operator()(sycl::nd_item<2> item) const {
-    IndexType tid =
-        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
-    IndexType nElements = inputs.nElements[item.get_group(0)];
-
-    if (tid >= nElements)
-      return;
-
-    const T* data = inputs.input[item.get_group(0)];
-    IndexType offset = inputs.offset[item.get_group(0)];
-    IndexType dimSize = inputs.dimSize[item.get_group(0)];
-    IndexType dataOffset = offset * dimStride;
-
-    IndexType stride = item.get_group_range(1) * item.get_local_range(1);
-
-    while (tid < nElements) {
-      IndexType elementOffset = CatArrIndexToOffset<IndexType, Dims>::compute(
-          os.tensorSize, os.tensorStride, dimSize, concatDim, tid);
-      output[dataOffset + elementOffset] = data[tid];
-      tid += stride;
-    }
-  }
-
-  CatArrayBatchedCopy_contig(
-      T* output,
-      CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
-      TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
-      const int concatDim,
-      IndexType dimStride)
-      : output(output),
-        inputs(inputs),
-        os(os),
-        concatDim(concatDim),
-        dimStride(dimStride) {}
-
- private:
-  T* output;
-  CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs;
-  TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os;
-  const int concatDim;
-  IndexType dimStride;
-};
-
-/*
-  Specialized implementation of the CatArrayBatchedCopy written to generate wide
-  memory loads to improve memory bandwidth throughput.
-*/
-
-template <
-    typename T,
-    typename IndexType,
-    int Dims,
-    int batch_size,
-    int stride_size,
-    int aligned_vec_load_bytes>
-struct CatArrayBatchedCopy_alignedK_contig {
-  void operator()(sycl::nd_item<2> item) const {
-    // This kernel tries to use aligned_vec_load_bytes*8 bit loads
-    // Special case 2-byte types to use 8-byte vec loads to reduce register
-    // pressure The below lambda is to allow cc compiler to pass kILP>0 checks
-    // for large types (e.g. ComplexDouble, 16 bytes)
-    constexpr int kILP = aligned_vec_load_bytes / sizeof(T) > 0
-        ? aligned_vec_load_bytes / sizeof(T)
-        : ALIGNED_VEC_LOAD_BYTES_16 / sizeof(T);
-
-    IndexType inputOffset =
-        (item.get_group(1) * item.get_local_range(1) + item.get_local_id(1)) *
-        kILP;
-    IndexType inputStride =
-        item.get_group_range(1) * item.get_local_range(1) * kILP;
-
-    IndexType nElements = inputs.nElements[item.get_group(0)];
-    if (inputOffset >= nElements) {
-      return;
-    }
-
-    const T* data = inputs.input[item.get_group(0)];
-    IndexType offset = inputs.offset[item.get_group(0)];
-    IndexType dimSize = inputs.dimSize[item.get_group(0)];
-    IndexType dataOffset = offset * dimStride;
-
-    IndexType v_elementOffset[kILP];
-
-    while (inputOffset + kILP <= nElements) {
-      for (int i = 0; i < kILP; ++i) {
-        v_elementOffset[i] = CatArrIndexToOffset<IndexType, Dims>::compute(
-            os.tensorSize,
-            os.tensorStride,
-            dimSize,
-            concatDim,
-            inputOffset + i);
-      }
-
-      using LT = memory::aligned_vector<T, kILP>;
-      LT vec_data = const_cast<const LT*>((const LT*)(data + inputOffset))[0];
-
-#pragma unroll
-      for (int i = 0; i < kILP; ++i) {
-        output[dataOffset + v_elementOffset[i]] = vec_data.val[i];
-      }
-
-      inputOffset += inputStride;
-    }
-
-    // Handle remaining tail in case nElements does not divide
-    // exactly to kILP
-
-    while (inputOffset < nElements) {
-      v_elementOffset[0] = CatArrIndexToOffset<IndexType, Dims>::compute(
-          os.tensorSize, os.tensorStride, dimSize, concatDim, inputOffset);
-      output[dataOffset + v_elementOffset[0]] = data[inputOffset];
-      inputOffset++;
-    }
-  }
-
-  CatArrayBatchedCopy_alignedK_contig(
-      T* output,
-      CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
-      TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
-      const int concatDim,
-      IndexType dimStride)
-      : output(output),
-        inputs(inputs),
-        os(os),
-        concatDim(concatDim),
-        dimStride(dimStride) {}
-
- private:
-  T* output;
-  CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs;
-  TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os;
-  const int concatDim;
-  IndexType dimStride;
-};
-
+// V2 parallel_cat for non-contiguous / strided path
 template <typename scalar_t, int batch_size, int stride_size>
-void parallel_cat(
+void parallel_cat_v2(
     const Tensor& out,
     const MaterializedITensorListRef& inputs,
     int64_t dimension,
     int nDims,
     c10::MemoryFormat memory_format) {
-  // First, let's set up our kernel parameters. We start with a raw pointer to
-  // the storage for the output Tensor.
   scalar_t* data = (scalar_t*)(out.mutable_data_ptr());
   CatArrInputTensorMetadata<scalar_t, unsigned int, batch_size, stride_size>
       catMetaData;
   TensorSizeStride<unsigned int, CAT_ARRAY_MAX_INPUT_DIMS> outputParam;
 
-  // Next, let's initialize the size, stride arrays for the output Tensor.
   if (memory_format == c10::MemoryFormat::Contiguous) {
     for (int i = 0; i < nDims; ++i) {
       outputParam.tensorSize[i] = out.size(i);
@@ -362,8 +423,6 @@ void parallel_cat(
   } else if (
       memory_format == c10::MemoryFormat::ChannelsLast ||
       memory_format == c10::MemoryFormat::ChannelsLast3d) {
-    // permute the semantics of dims from NCHW to NHWC so that the input
-    // tensor is now contiguous
     outputParam.tensorSize[0] = out.size(0);
     outputParam.tensorStride[0] = out.stride(0);
     for (int i = 1; i < nDims - 1; ++i) {
@@ -375,11 +434,6 @@ void parallel_cat(
   } else {
     TORCH_CHECK(false, "unsupported memory format");
   }
-
-  // If all batches are contiguous we can call a specialized implementation
-  // which requires the input tensor addresses to be aligned to a
-  // 16 Byte boundary.
-  constexpr int kAlignedKernelBytes = 16;
 
   const int64_t logical_dimension = dimension;
   int64_t mapped_dimension = logical_dimension;
@@ -394,25 +448,15 @@ void parallel_cat(
         mapped_dimension--;
     }
   }
-  bool isOutputAligned = is_aligned_vec4(data) &&
-      (logical_dimension == 0 ||
-       (outputParam.tensorStride[mapped_dimension] * sizeof(scalar_t)) %
-               kAlignedKernelBytes ==
-           0);
 
-  // Now we loop
   int batchCounter = 0;
   int64_t offset = 0;
   for (unsigned i = 0; i < inputs.size(); i += batch_size) {
-    bool isContig = true;
-    bool isAligned = true;
     unsigned int max_elements_per_tensor = 0;
     for (batchCounter = 0;
          batchCounter < batch_size && (i + batchCounter) < inputs.size();
          ++batchCounter) {
       int64_t dimSize = 0;
-      // There is a legacy case where a 1-D empty tensor can be concat with
-      // high-dimensional tensor
       if (inputs[i + batchCounter].get().numel() > 0) {
         dimSize = inputs[i + batchCounter].get().size(logical_dimension);
       }
@@ -422,10 +466,6 @@ void parallel_cat(
       catMetaData.dimSize[batchCounter] = dimSize;
       catMetaData.nElements[batchCounter] =
           inputs[i + batchCounter].get().numel();
-
-      // If at least one of the inputs is not aligned, we can't call the
-      // CatArrayBatchedCopy_alignedK_contig
-      isAligned &= is_aligned_vec4(catMetaData.input[batchCounter]);
 
       if (stride_size > 1) {
         auto strides = inputs[i + batchCounter].get().strides();
@@ -449,86 +489,25 @@ void parallel_cat(
               strides[1];
         }
         catMetaData.isContiguous[batchCounter] = false;
-        isContig = false;
       } else {
         catMetaData.isContiguous[batchCounter] = true;
       }
 
-      // Update offset
       offset += dimSize;
 
-      // We need max elements per tensor to compute range parameters
       max_elements_per_tensor = std::max(
           max_elements_per_tensor, catMetaData.nElements[batchCounter]);
     }
 
-    // Skip if the tensor is empty. Otherwise, the range dim is invalid
     if (max_elements_per_tensor == 0)
       continue;
 
     sycl::range<2> applyGroup, catRange;
-    if (isContig && sizeof(scalar_t) > 2) {
-      std::tie(catRange, applyGroup) =
-          getCatRangeContig<scalar_t, ALIGNED_VEC_LOAD_BYTES_16>(
-              max_elements_per_tensor, batchCounter);
-    } else if (isContig && sizeof(scalar_t) == 2) {
-      std::tie(catRange, applyGroup) =
-          getCatRangeContig<scalar_t, ALIGNED_VEC_LOAD_BYTES_8>(
-              max_elements_per_tensor, batchCounter);
-    } else {
-      std::tie(catRange, applyGroup) =
-          getCatRange(max_elements_per_tensor, batchCounter);
-    }
+    std::tie(catRange, applyGroup) =
+        getCatRange(max_elements_per_tensor, batchCounter);
 
-// Template Declarations for dim = 1, 2, 3, 4
-#define HANDLE_CASE(DIMS)                                                      \
-  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&      \
-      sizeof(scalar_t) <= 8) {                                                 \
-    CatArrayBatchedCopy_alignedK_contig<                                       \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size,                                                           \
-        ALIGNED_VEC_LOAD_BYTES_16>                                             \
-        kfn(data,                                                              \
-            catMetaData,                                                       \
-            outputParam,                                                       \
-            mapped_dimension,                                                  \
-            outputParam.tensorStride[mapped_dimension]);                       \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit(catRange, applyGroup, q, kfn);                          \
-  } else if (                                                                  \
-      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) {     \
-    CatArrayBatchedCopy_alignedK_contig<                                       \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size,                                                           \
-        ALIGNED_VEC_LOAD_BYTES_8>                                              \
-        kfn(data,                                                              \
-            catMetaData,                                                       \
-            outputParam,                                                       \
-            mapped_dimension,                                                  \
-            outputParam.tensorStride[mapped_dimension]);                       \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit(catRange, applyGroup, q, kfn);                          \
-  } else if (isContig) {                                                       \
-    CatArrayBatchedCopy_contig<                                                \
-        scalar_t,                                                              \
-        unsigned int,                                                          \
-        DIMS,                                                                  \
-        batch_size,                                                            \
-        stride_size>                                                           \
-        kfn(data,                                                              \
-            catMetaData,                                                       \
-            outputParam,                                                       \
-            mapped_dimension,                                                  \
-            outputParam.tensorStride[mapped_dimension]);                       \
-    auto& q = getCurrentSYCLQueue();                                           \
-    sycl_kernel_submit(catRange, applyGroup, q, kfn);                          \
-  } else {                                                                     \
+#define HANDLE_CASE_V2(DIMS)                                                   \
+  {                                                                            \
     CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size> \
         kfn(data,                                                              \
             catMetaData,                                                       \
@@ -541,20 +520,20 @@ void parallel_cat(
 
     switch (nDims) {
       case 1:
-        HANDLE_CASE(1);
+        HANDLE_CASE_V2(1);
         break;
       case 2:
-        HANDLE_CASE(2);
+        HANDLE_CASE_V2(2);
         break;
       case 3:
-        HANDLE_CASE(3);
+        HANDLE_CASE_V2(3);
         break;
       case 4:
-        HANDLE_CASE(4);
+        HANDLE_CASE_V2(4);
         break;
     }
 
-#undef HANDLE_CASE
+#undef HANDLE_CASE_V2
   }
 }
 
@@ -565,6 +544,11 @@ struct alignas(N) OpaqueType {
   char data[N];
 };
 
+// ============================================================
+// Entry point: cat_out_kernel
+// Contiguous path → V1 (pinned memcpy + scalar kernel + V1 WG)
+// Non-contiguous/strided path → V2 (kernel arg metadata + stride support)
+// ============================================================
 void cat_out_kernel(
     const ITensorListRef& tensors,
     int64_t dim,
@@ -587,20 +571,48 @@ void cat_out_kernel(
 
   int nDims = materialized[valid].get().dim();
 
-  // We support the contiguous inputs and non-contiguous input (<=4 dims) in
-  // different ways For contiguous input, we don't need to pass stride meta data
-  // to kernel through constant memory. Therefore, we could pass more inputs to
-  // threads. For non-contiguous, we reduce the number of inputs passed to
-  // kernel due to the limitation of constant memory.
-
-  if (materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS &&
+  // Path 1: all contiguous → use V1 implementation (fast on all GPUs)
+  if (materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS_V1 &&
       canUse32BitIndexMath(result) && all_contiguous && all32BitIndexable &&
-      all_same_dtype &&
+      all_same_dtype && memory_format == c10::MemoryFormat::Contiguous &&
       (materialized[valid].get().scalar_type() == result.scalar_type())) {
     if (isBitsType(result.scalar_type())) {
       AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
         using dtype = OpaqueType<sizeof(scalar_t)>;
-        parallel_cat<dtype, CAT_ARRAY_BATCH_SIZE, 1>(
+        parallel_cat_v1<dtype, dtype, dtype, dtype>(
+            result, materialized, dim, nDims);
+      });
+    } else {
+      AT_DISPATCH_V2(
+          result.scalar_type(),
+          "cat_xpu",
+          AT_WRAP([&]() {
+            parallel_cat_v1<scalar_t, scalar_t, scalar_t, scalar_t>(
+                result, materialized, dim, nDims);
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16,
+          AT_EXPAND(AT_FLOAT8_TYPES),
+          AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+          kFloat4_e2m1fn_x2);
+    }
+  }
+  // Path 2a: ChannelsLast + all_contiguous → V2 with stride_size=1 (same as V2
+  // original Path 1)
+  else if (
+      materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS &&
+      canUse32BitIndexMath(result) && all_contiguous && all32BitIndexable &&
+      all_same_dtype &&
+      (materialized[valid].get().scalar_type() == result.scalar_type()) &&
+      (memory_format == c10::MemoryFormat::ChannelsLast ||
+       memory_format == c10::MemoryFormat::ChannelsLast3d)) {
+    if (isBitsType(result.scalar_type())) {
+      AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        parallel_cat_v2<dtype, CAT_ARRAY_BATCH_SIZE_V2, 1>(
             result, materialized, dim, nDims, memory_format);
       });
     } else {
@@ -609,7 +621,7 @@ void cat_out_kernel(
           "cat_xpu",
           AT_WRAP([&]() {
             using dtype = OpaqueType<sizeof(scalar_t)>;
-            parallel_cat<dtype, CAT_ARRAY_BATCH_SIZE, 1>(
+            parallel_cat_v2<dtype, CAT_ARRAY_BATCH_SIZE_V2, 1>(
                 result, materialized, dim, nDims, memory_format);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
@@ -621,17 +633,20 @@ void cat_out_kernel(
           AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
           kFloat4_e2m1fn_x2);
     }
-  } else if (
+  }
+  // Path 2b: non-contiguous strided → V2 with stride_size=batch_size
+  else if (
       materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS &&
       canUse32BitIndexMath(result) && nDims <= CAT_ARRAY_MAX_INPUT_DIMS &&
       all32BitIndexable && all_same_dtype &&
       (materialized[valid].get().scalar_type() == result.scalar_type()) &&
       (memory_format == c10::MemoryFormat::Contiguous ||
-       memory_format == c10::MemoryFormat::ChannelsLast)) {
+       memory_format == c10::MemoryFormat::ChannelsLast ||
+       memory_format == c10::MemoryFormat::ChannelsLast3d)) {
     if (isBitsType(result.scalar_type())) {
       AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
         using dtype = OpaqueType<sizeof(scalar_t)>;
-        parallel_cat<
+        parallel_cat_v2<
             dtype,
             CAT_ARRAY_BATCH_SIZE_STRIDED,
             CAT_ARRAY_BATCH_SIZE_STRIDED>(
@@ -643,7 +658,7 @@ void cat_out_kernel(
           "cat_xpu",
           AT_WRAP([&]() {
             using dtype = OpaqueType<sizeof(scalar_t)>;
-            parallel_cat<
+            parallel_cat_v2<
                 dtype,
                 CAT_ARRAY_BATCH_SIZE_STRIDED,
                 CAT_ARRAY_BATCH_SIZE_STRIDED>(
@@ -658,7 +673,9 @@ void cat_out_kernel(
           AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
           kFloat4_e2m1fn_x2);
     }
-  } else {
+  }
+  // Path 3: fallback narrow+copy
+  else {
     int64_t offset = 0;
     for (const Tensor& t : materialized) {
       if (cat_should_skip_tensor(t))
