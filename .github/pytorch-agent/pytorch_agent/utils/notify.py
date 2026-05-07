@@ -7,12 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import git as gh
-from .body_templates import append_log, get_status
-from .config import ISSUE_REPO
+from .body_templates import append_log
 
 
 def post_session_started(
-    repo: str, issue: int, stage: str, sid: str, workdir: str = "~/pytorch",
+    repo: str, issue: int, stage: str, sid: str,
 ) -> None:
     """Log session start into the issue body's agent log."""
     detail = gh.get_issue_detail(repo, issue)
