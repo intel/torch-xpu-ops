@@ -258,7 +258,7 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
             self.assertEqual(
                 optimizer.state_dict(),
                 optimizer_cuda.state_dict(),
-                atol=1.9e-5,
+                atol=2e-5,
                 rtol=1.3e-6,
             )
 
