@@ -7,9 +7,9 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 from skip_list_dist import skip_dict
 from xpu_test_utils import launch_test
