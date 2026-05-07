@@ -44,12 +44,16 @@ python -m pytorch_agent.issue_fixing_agent --issue 346
 ```
 
 Verify:
-- [ ] Stage advances correctly
-- [ ] Action Items updated in body
-- [ ] Agent Log entries in body (not comments)
-- [ ] PR created on `chuanqi129/pytorch`
+- [x] Stage advances correctly (IMPLEMENTING → IN_REVIEW)
+- [x] Action Items updated in body (Fix implemented ✅, Fix verified ✅)
+- [x] Agent Log entries in body (not comments)
+- [x] PR created on `chuanqi129/pytorch` (#6)
+- [x] Tracking metadata set (tracking_pr, last_push_sha)
+- [x] Correct fix: moved pivot validation from CPU kernel to TORCH_IMPL_FUNC
 
-Fix any bugs → write tests for those bugs.
+Bugs found:
+1. Missing `parse_sections` import in code_fix.py
+2. Duplicate `render_pr_body` import
 
 ---
 
