@@ -300,6 +300,9 @@ class TestExtractEnvironment:
         env = _extract_environment(body)
         assert "PyTorch version: 2.13.0" in env
         assert "CPU: x86_64" in env
+        # Should NOT contain code fences or <details> tags
+        assert "```" not in env
+        assert "<details>" not in env
 
     def test_extracts_from_versions_section(self):
         body = "### Versions\nPyTorch 2.0\nCUDA 11.8\n\n### Other\nstuff"
