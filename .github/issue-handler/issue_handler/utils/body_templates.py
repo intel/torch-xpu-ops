@@ -12,6 +12,56 @@ import yaml
 
 
 # ---------------------------------------------------------------------------
+# Section parsing
+# ---------------------------------------------------------------------------
+
+def parse_sections(body: str) -> dict[str, str]:
+    """Parse markdown body into {section_name: content} dict.
+
+    Sections are delimited by ## or ### headings.
+    """
+    sections: dict[str, str] = {}
+    current_key = ""
+    current_lines: list[str] = []
+
+    for line in (body or "").splitlines():
+        heading = re.match(r"^#{1,4}\s+(.+)", line)
+        if heading:
+            if current_key:
+                sections[current_key] = "\n".join(current_lines).strip()
+            current_key = heading.group(1).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_key:
+        sections[current_key] = "\n".join(current_lines).strip()
+    return sections
+
+
+def update_section(body: str, section: str, content: str) -> str:
+    """Replace content of a named section, preserving other sections.
+
+    If the section doesn't exist, append it before Action Items
+    (or at the end).
+    """
+    # Find the section heading and replace content until next heading
+    pattern = re.compile(
+        r"(^#{1,4}\s+" + re.escape(section) + r"\s*\n)(.*?)(?=^#{1,4}\s|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    match = pattern.search(body)
+    if match:
+        return body[:match.start(2)] + content + "\n\n" + body[match.end(2):]
+
+    # Section doesn't exist — insert before Action Items or append
+    action_match = re.search(r"^## Action Items", body, re.MULTILINE)
+    insert_point = action_match.start() if action_match else len(body)
+    new_section = f"\n## {section}\n{content}\n\n"
+    return body[:insert_point] + new_section + body[insert_point:]
+
+
+# ---------------------------------------------------------------------------
 # Status block  <!-- agent:status:STAGE -->
 # ---------------------------------------------------------------------------
 
