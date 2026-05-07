@@ -18,8 +18,8 @@ stage_labels:
   PUBLIC_PR: "agent:active"
   CI_WATCH: "agent:active"
   MERGED: "agent:active"
-  DONE: ""          # label removed on completion
-  SKIPPED: ""
+  DONE: "agent:done"
+  SKIPPED: "agent:done"
   NEEDS_HUMAN: "agent:needs-human"
 
 # Per-stage timeouts (seconds)
