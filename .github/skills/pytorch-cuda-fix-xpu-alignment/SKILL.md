@@ -11,7 +11,7 @@ Scan `pytorch/pytorch` for upstream backend bugs that may also affect XPU. Adapt
 
 1. GitHub MCP first, `gh` CLI as fallback. Never hardcode tokens.
 2. Use the caller-provided or currently selected XPU-capable Python environment; keep the XPU nightly fresh and upgrade it if stale.
-3. Persist scan state locally. `artifacts/candidate_ledger.jsonl` is the source of truth; raw candidates, fetched details, repro outputs, and final reports must be written to disk.
+3. Persist scan state locally. `artifacts/candidate_ledger.jsonl` is the source of truth; raw candidates, fetched details, repro outputs, and final reports must be written to disk. On resume, skip ledger rows already marked done.
 4. Paginate exhaustively. If the result set is too large, split the query window instead of silently truncating.
 5. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
 
@@ -42,12 +42,13 @@ Scan `pytorch/pytorch` for upstream backend bugs that may also affect XPU. Adapt
 
 - Fetch details for non-rejected candidates and save them under `artifacts/details/`.
 - Prefer upstream reproducers or regression tests; adapt them to XPU instead of inventing a new repro unless necessary.
+- Each repro script must print a machine-parseable result line (e.g., `RESULT: <bucket>`) so outcomes can be collected programmatically.
 - Write local repro scripts and capture local outputs when a repro is feasible.
 - If a meaningful repro cannot be constructed, record a blocked result in the ledger and move on.
 
 ### Step 4: Execute and classify
 
-- Run reproducers with crash isolation and save logs locally.
+- Run reproducers one at a time with a timeout to isolate crashes and hangs.
 - Confirm the operation actually ran on XPU rather than silently falling back to CPU.
 - Update the ledger with a concise outcome such as `confirmed`, `related-failure`, `not-reproduced`, or a `blocked-*` result.
 
@@ -111,4 +112,5 @@ Not sufficient: tiny float noise within tolerance, documented unsupported behavi
 - `confirmed` requires a local run reproducing the issue.
 - Never hardcode GitHub tokens.
 - Never treat missing pagination as success.
+- Do not reject candidates merely because they mention cuDNN or NCCL — these map to oneDNN/oneCCL on XPU and bugs in those paths are often relevant.
 - Keep raw candidates, the ledger, fetched details, repro outputs, and the final report on disk for auditability.
