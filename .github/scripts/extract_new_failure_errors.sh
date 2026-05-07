@@ -61,7 +61,10 @@ while IFS= read -r test_name; do
                         print buffer
                         buffer=""
                     }
-                    if (index($0, test) > 0) {
+                    header = $0
+                    gsub(/^[_=[:space:]]+/, "", header)
+                    gsub(/[_=[:space:]]+$/, "", header)
+                    if (length(header) >= length(test) && substr(header, length(header) - length(test) + 1) == test) {
                         printing=1
                         buffer=$0 "\n"
                         next
@@ -79,7 +82,7 @@ while IFS= read -r test_name; do
             fi
 
             # Fallback: grab the FAILED line with reason
-            failed_line=$(grep -F -- "FAILED" "$log_file" 2>/dev/null | grep -F -- "$short_name" | head -5)
+            failed_line=$(grep -F -- "FAILED" "$log_file" 2>/dev/null | grep -F -- "$short_name" | head -5 || true)
             if [[ -n "$failed_line" ]]; then
                 echo "$failed_line" >> "$output_file"
                 found=true
