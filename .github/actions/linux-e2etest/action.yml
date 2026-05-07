@@ -88,10 +88,16 @@ runs:
         }
         delimiter=";"
         IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
-        export NUM_GPUS=${#numactl_args_list[@]}
+        export NUM_GPUS=8
         cp ${GITHUB_WORKSPACE}/.github/scripts/run_dynamo.py .
-        python ./run_dynamo.py --suite "${{ inputs.suite }}" \
+        for scenario in $(echo ${{ inputs.scenario }} | tr ',' ' ')
+        do
+          if [ "${scenario}" == "performance" ]; then
+            export ZE_AFFINITY_MASK=0
+          fi
+          python ./run_dynamo.py --suite "${{ inputs.suite }}" \
                                --dt "${{ inputs.dt }}" \
                                --mode "${{ inputs.mode }}" \
-                               --scenario "${{ inputs.scenario }}" \
+                               --scenario "${scenario}" \
                                --model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt || true
+        done
