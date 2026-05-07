@@ -19,12 +19,12 @@ from ..utils.config import (
 )
 from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
+    parse_sections, render_pr_body,
 )
 from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ..utils.body_templates import render_pr_body
 
 
 
