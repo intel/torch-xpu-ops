@@ -111,7 +111,7 @@ def main() -> None:
     parser.add_argument("--issue", type=int, required=True)
     args = parser.parse_args()
     verdict, reason = run(args.issue)
-    print(f"Verdict: {verdict} — {reason}")
+    log("INFO", f"Verdict: {verdict} — {reason}", issue=args.issue)
 
 
 if __name__ == "__main__":
