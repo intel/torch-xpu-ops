@@ -44,6 +44,24 @@ def _extract_label_info(labels: list[dict]) -> dict[str, str]:
     return info
 
 
+def reset(issue_number: int) -> None:
+    """Reset issue body to original raw content for re-run."""
+    detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+    body = detail.get("body", "") or ""
+    m = re.search(
+        r'<details><summary>Original issue body</summary>\s*\n(.*?)\n\s*</details>',
+        body, re.DOTALL,
+    )
+    if not m:
+        log("WARN", f"Issue #{issue_number} has no Original Issue section, cannot reset",
+            issue=issue_number)
+        return
+    raw = m.group(1).strip()
+    gh.update_issue_body(ISSUE_REPO, issue_number, raw)
+    log("INFO", f"Issue #{issue_number} reset to original body ({len(raw)} chars)",
+        issue=issue_number)
+
+
 def run(issue_number: int) -> None:
     """Format a raw issue into the structured template."""
     # Read issue
@@ -139,7 +157,11 @@ def run(issue_number: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Format a raw issue")
     parser.add_argument("--issue", type=int, required=True)
+    parser.add_argument("--reset", action="store_true",
+                        help="Reset issue to original body before re-running discovery")
     args = parser.parse_args()
+    if args.reset:
+        reset(args.issue)
     run(args.issue)
 
 
