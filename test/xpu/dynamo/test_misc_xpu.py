@@ -6464,9 +6464,9 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
             def forward(self, idx, targets=None):
                 b, t = idx.size()
-                assert (
-                    t <= self.block_size
-                ), "Cannot forward, model block size is exhausted."
+                assert t <= self.block_size, (
+                    "Cannot forward, model block size is exhausted."
+                )
 
                 # forward the GPT model
                 token_embeddings = self.tok_emb(
@@ -9339,8 +9339,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
     def test_torch_compile_ctx_on_forward_and_training_step(self):
         class MyModel(torch.nn.Module):
-            def forward(self):
-                ...
+            def forward(self): ...
 
             def training_step(self):
                 self()

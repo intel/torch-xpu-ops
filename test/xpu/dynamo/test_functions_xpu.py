@@ -4309,9 +4309,7 @@ class GraphModule(torch.nn.Module):
             out = torch.empty_like(x)
             n_elements = x.numel()
 
-            grid = lambda meta: (
-                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
-            )  # noqa: E731
+            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
 
             wrapped = torch.library.wrap_triton(sin_kernel)
             wrapped[grid](x, out, n_elements, BLOCK_SIZE=128)

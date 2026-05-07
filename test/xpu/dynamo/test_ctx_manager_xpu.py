@@ -294,24 +294,30 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             )
             s.wait_stream(current_stream)
 
-            with torch.cuda.stream(
-                s
-            ) if torch.cuda.is_available() else torch.xpu.stream(s):
+            with (
+                torch.cuda.stream(s)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(s)
+            ):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s)
-            with torch.cuda.stream(
-                current_stream
-            ) if torch.cuda.is_available() else torch.xpu.stream(current_stream):
+            with (
+                torch.cuda.stream(current_stream)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(current_stream)
+            ):
                 x = torch.relu(x)
 
             s2 = (
                 torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
             )
             s2.wait_stream(current_stream)
-            with torch.cuda.stream(
-                s2
-            ) if torch.cuda.is_available() else torch.xpu.stream(s2):
+            with (
+                torch.cuda.stream(s2)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(s2)
+            ):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s2)
@@ -348,9 +354,11 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             )
             new_stream.wait_stream(cur_stream)
 
-            with torch.cuda.stream(
-                new_stream
-            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with (
+                torch.cuda.stream(new_stream)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(new_stream)
+            ):
                 x = torch.sin(x)
                 x = torch.add(x, 3)
 
@@ -360,9 +368,11 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             cur_stream.query()
             cur_stream.synchronize()
 
-            with torch.cuda.stream(
-                new_stream
-            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with (
+                torch.cuda.stream(new_stream)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(new_stream)
+            ):
                 x = torch.add(x, 5)
             new_stream.synchronize()
 
@@ -568,9 +578,11 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             event.query()
 
             new_stream.wait_event(event)
-            with torch.cuda.stream(
-                new_stream
-            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with (
+                torch.cuda.stream(new_stream)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(new_stream)
+            ):
                 x = torch.add(x, 4)
 
             new_event = (

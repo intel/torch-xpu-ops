@@ -315,9 +315,9 @@ class RegionalInductorTests(torch._inductor.test_case.TestCase):
 
             # Verify config is set as expected from explicit options
             assert inductor_config.max_autotune, "max_autotune should be True"
-            assert (
-                not inductor_config.triton.cudagraphs
-            ), "triton.cudagraphs should be False"
+            assert not inductor_config.triton.cudagraphs, (
+                "triton.cudagraphs should be False"
+            )
 
             return original_compile(*args, **kwargs)
 
@@ -1046,9 +1046,9 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
 
             # Verify config is set as expected from explicit options
             assert torch._inductor.config.max_autotune, "max_autotune should be True"
-            assert (
-                not inductor_config.triton.cudagraphs
-            ), "triton.cudagraphs should be False"
+            assert not inductor_config.triton.cudagraphs, (
+                "triton.cudagraphs should be False"
+            )
 
             return original_compile(*args, **kwargs)
 
