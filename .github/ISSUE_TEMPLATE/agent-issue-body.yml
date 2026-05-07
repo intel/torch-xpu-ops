@@ -57,11 +57,11 @@ body: |
   - [ ] 👀 Human review
   - [ ] 🎉 PR merged
 
-  ## Agent Log
-  <!-- agent:log -->
-
   ## Context
   {context}
+
+  ## Environment
+  {environment}
 
   ## Original Issue
   <details><summary>Original issue body</summary>

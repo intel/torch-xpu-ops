@@ -137,6 +137,7 @@ def run(issue_number: int) -> None:
         reproducer=data.get("reproducer", ""),
         commit_scope=data.get("commit_scope", ""),
         context=data.get("context", ""),
+        environment=data.get("environment", ""),
         original_issue=body,
     )
 
