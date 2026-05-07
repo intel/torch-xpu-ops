@@ -311,6 +311,20 @@ class TestExtractEnvironment:
         assert "CUDA 11.8" in env
         assert "stuff" not in env
 
+    def test_extracts_same_line_details_summary(self):
+        """Handle <details><summary>collect_env</summary> on one line."""
+        body = (
+            "<details><summary>collect_env</summary>\n\n"
+            "```text\n"
+            "PyTorch version: 2.14.0\nIs XPU available: True\n"
+            "```\n"
+            "</details>\n"
+        )
+        env = _extract_environment(body)
+        assert "PyTorch version: 2.14.0" in env
+        assert "```" not in env
+        assert "<details>" not in env
+
     def test_returns_empty_when_no_versions(self):
         body = "### Bug\nSomething broken\n"
         assert _extract_environment(body) == ""

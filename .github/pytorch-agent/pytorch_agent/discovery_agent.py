@@ -76,7 +76,7 @@ def _extract_environment(body: str) -> str:
     """
     # Try <details> block containing collect_env
     m = re.search(
-        r'<details>\s*\n\s*<summary>.*?collect_env.*?</summary>\s*\n(.*?)</details>',
+        r'<details>\s*(?:\n\s*)?<summary>.*?collect_env.*?</summary>\s*\n(.*?)</details>',
         body, re.DOTALL | re.IGNORECASE,
     )
     if not m:
