@@ -1,0 +1,56 @@
+<!-- agent:status:{stage} -->
+
+## Summary
+{summary}
+
+## Test Info
+- **Test Type:** {test_type}
+- **Category:** {category}
+- **Dependency:** {dependency}
+- **Platform:** {platform}
+
+## Failed Tests
+{failed_tests}
+
+## Error Log
+```
+{error_log}
+```
+
+## Reproducer
+```bash
+{reproducer}
+```
+
+## Commit Scope
+{commit_scope}
+
+## Root Cause Analysis
+{root_cause}
+
+## Proposed Fix Strategy
+{fix_strategy}
+
+## Action Items
+- [ ] 🔍 Issue formatted (Discovery Agent)
+  <details><summary>Discovery log</summary>
+  <!-- agent:discovery-log -->
+  </details>
+- [ ] 🧠 Root cause identified (Triage Agent)
+  <details><summary>Triage log</summary>
+  <!-- agent:triage-log -->
+  </details>
+- [ ] 🔧 Fix implemented (Fix Agent)
+  <details><summary>Fix log</summary>
+  <!-- agent:fix-log -->
+  </details>
+- [ ] ✅ Fix verified locally
+- [ ] 📋 PR proposed
+- [ ] 👀 Human review
+- [ ] 🎉 PR merged
+
+## Agent Log
+<!-- agent:log -->
+
+## Context
+{context}

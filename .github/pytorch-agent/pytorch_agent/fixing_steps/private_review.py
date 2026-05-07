@@ -39,17 +39,16 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
     review_text = "\n\n---\n\n".join(combined)
 
     extraction_prompt = (
-        "Extract concise, actionable tasks from the following code review. "
-        "Return ONLY a numbered list (1. 2. 3. ...), one task per line. "
-        "Each task should be a concrete action the developer must take. "
-        "Do NOT include section headers, verdicts, analysis, or explanations — "
-        "only actionable items.\n\n"
+        "Read the pytorch-review-task-extraction skill and extract tasks "
+        "from the following review.\n\n"
         "Review:\n" + review_text
     )
 
     try:
         backend = get_backend()
-        full_text, _, _ = backend.run(extraction_prompt, timeout=120)
+        full_text, _, _ = backend.run(extraction_prompt,
+                                       skill="pytorch-review-task-extraction",
+                                       timeout=120)
         if full_text:
             items = re.findall(r'^\s*\d+\.\s*(.+)', full_text, re.MULTILINE)
             if items:

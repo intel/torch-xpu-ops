@@ -6,6 +6,7 @@ no GitHub API calls — callers handle reading/writing the issue.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from datetime import datetime
 
 
@@ -127,61 +128,12 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # Template rendering
 # ---------------------------------------------------------------------------
 
-ISSUE_TEMPLATE = """\
-<!-- agent:status:{stage} -->
+ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue.md"
 
-## Summary
-{summary}
 
-## Test Info
-- **Test Type:** {test_type}
-- **Category:** {category}
-- **Dependency:** {dependency}
-- **Platform:** {platform}
-
-## Failed Tests
-{failed_tests}
-
-## Error Log
-```
-{error_log}
-```
-
-## Reproducer
-```bash
-{reproducer}
-```
-
-## Commit Scope
-{commit_scope}
-
-## Root Cause Analysis
-{root_cause}
-
-## Proposed Fix Strategy
-{fix_strategy}
-
-## Action Items
-- [ ] 🔍 Issue formatted (Discovery Agent)
-  <details><summary>Discovery log</summary>
-  <!-- agent:discovery-log -->
-  </details>
-- [ ] 🧠 Root cause identified (Triage Agent)
-  <details><summary>Triage log</summary>
-  <!-- agent:triage-log -->
-  </details>
-- [ ] 🔧 Fix implemented (Fix Agent)
-  <details><summary>Fix log</summary>
-  <!-- agent:fix-log -->
-  </details>
-- [ ] ✅ Fix verified locally
-- [ ] 📋 PR proposed
-- [ ] 👀 Human review
-- [ ] 🎉 PR merged
-
-## Context
-{context}
-"""
+def _load_template() -> str:
+    """Load issue template from .github/ISSUE_TEMPLATE/agent-issue.md."""
+    return ISSUE_TEMPLATE_PATH.read_text(encoding="utf-8")
 
 
 def render_initial_body(
@@ -201,7 +153,7 @@ def render_initial_body(
     context: str = "",
 ) -> str:
     """Render the full issue body template from structured data."""
-    return ISSUE_TEMPLATE.format(
+    return _load_template().format(
         stage=stage,
         summary=summary,
         test_type=test_type,
