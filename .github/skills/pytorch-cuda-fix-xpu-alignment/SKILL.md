@@ -5,67 +5,17 @@ description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any b
 
 # PyTorch CUDA-Fix XPU Alignment
 
-Scan `pytorch/pytorch` for upstream backend bugs that may also affect XPU. Adapt upstream reproducers, validate locally on XPU, route confirmed bugs, and keep the scan auditable and resumable.
+Scan `pytorch/pytorch` for issues, PRs, and bug-fix commits across any backend (CUDA, ROCm, CPU, MPS) that may also affect XPU due to shared code paths. Adapt upstream reproducers for XPU, validate locally, route confirmed bugs, produce an auditable report.
 
 ## Rules
 
 1. GitHub MCP first, `gh` CLI as fallback. Never hardcode tokens.
-2. Use the caller-provided or currently selected XPU-capable Python environment; keep the XPU nightly fresh and upgrade it if stale.
-3. Persist scan state locally. `artifacts/candidate_ledger.jsonl` is the source of truth; raw candidates, fetched details, repro outputs, and final reports must be written to disk. On resume, skip ledger rows already marked done.
-4. Paginate exhaustively. If the result set is too large, split the query window instead of silently truncating.
-5. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
+2. Workspace-local XPU interpreter: `./.conda-xpu-triage/bin/python`. If missing, create it in-workspace; never use interpreters outside this workspace.
+3. Preflight checks nightly version; reinstall if stale or missing to ensure the latest nightly.
+4. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
+5. **Batched pipeline**: batch deep-filter → batch write repros → serial execution → batch route → batch report. Ledger enables resume from any interruption.
 
-## Workflow
-
-### Step 0: Preflight
-
-- Verify the selected interpreter can import `torch` and reports `torch.xpu.is_available()`.
-- Check the nightly freshness from `torch.__version__`; if it is stale, upgrade in that same environment.
-- Verify GitHub access through MCP or `gh`.
-- Create the local run directories and save `collect_env` output under `artifacts/`.
-
-### Step 1: Collect candidates
-
-- Search `pytorch/pytorch` issues, merged PRs, and fix-related commits for the caller-specified time window.
-- Use broad bug and fix signals; adjust keywords as needed for coverage, but do not rely on a single narrow query.
-- Paginate through the full result set. If you approach GitHub's search caps, split the date range and continue.
-- Save raw metadata locally to `artifacts/raw_candidates.json`.
-- Deduplicate overlapping hits, preferring the richer source when a PR and one of its commits describe the same fix.
-
-### Step 2: Triage
-
-- Initialize `artifacts/candidate_ledger.jsonl` from the raw candidates.
-- Reject only when the title or fetched details clearly show the case is irrelevant, non-bug, or platform-exclusive.
-- When in doubt, keep the candidate for deeper review instead of over-filtering early.
-
-### Step 3: Reproduce
-
-- Fetch details for non-rejected candidates and save them under `artifacts/details/`.
-- Prefer upstream reproducers or regression tests; adapt them to XPU instead of inventing a new repro unless necessary.
-- Each repro script must print a machine-parseable result line (e.g., `RESULT: <bucket>`) so outcomes can be collected programmatically.
-- Write local repro scripts and capture local outputs when a repro is feasible.
-- If a meaningful repro cannot be constructed, record a blocked result in the ledger and move on.
-
-### Step 4: Execute and classify
-
-- Run reproducers one at a time with a timeout to isolate crashes and hangs.
-- Confirm the operation actually ran on XPU rather than silently falling back to CPU.
-- Update the ledger with a concise outcome such as `confirmed`, `related-failure`, `not-reproduced`, or a `blocked-*` result.
-
-### Step 5: Route and report
-
-- Route shared-code bugs to `pytorch/pytorch`.
-- Route XPU backend gaps or non-upstream XPU kernels to `intel/torch-xpu-ops`.
-- Generate `reports/full_scan.md` from locally validated candidates.
-
-### Step 6: Audit
-
-- Audit the local ledger and report for completeness.
-- `actionable = title_status == "pass" && deep_status != "reject" && local_status == "pending"`
-- If actionable rows remain, write `## Progress checkpoint` with what is left.
-- If actionable rows are zero, write `## Final Summary` with filter, validation, and routing stats.
-
-## Reference
+## Key Tables
 
 ### CUDA-to-XPU Mapping
 
@@ -78,27 +28,34 @@ Scan `pytorch/pytorch` for upstream backend bugs that may also affect XPU. Adapt
 | cuDNN / NCCL | oneDNN / oneCCL |
 | `CUDA_VISIBLE_DEVICES` | `ZE_AFFINITY_MASK` |
 
-### Minimum Ledger Fields
+### Ledger Schema (`artifacts/candidate_ledger.jsonl`)
 
-| Field | Purpose |
-|-------|---------|
+| Field | Values |
+|-------|--------|
 | `id` | issue/PR number or short SHA |
 | `kind` | `issue` / `pr` / `commit` |
-| `title_status` | early reject or pass |
-| `deep_status` | pending / pass-to-repro / reject |
-| `local_status` | pending / done |
-| `local_bucket` | local outcome summary |
+| `title_status` | `pass` / `reject` |
+| `deep_status` | `pending` / `pass-to-repro` / `reject` |
+| `local_status` | `pending` / `done` |
+| `local_bucket` | one of the buckets below |
 | `target` | `pytorch/pytorch` / `intel/torch-xpu-ops` / `null` |
 
-### Example Outcome Buckets
+Actionable = `title_status == "pass" && deep_status != "reject" && local_status == "pending"`
 
-- `confirmed`
-- `related-failure`
-- `not-reproduced`
-- `blocked-env`
-- `blocked-platform`
-- `blocked-script-error`
-- `blocked-fetch`
+### Bucket Vocabulary
+
+| Bucket | Meaning |
+|--------|---------|
+| `confirmed` | same bug reproduces on XPU |
+| `related-failure` | XPU fails differently on same scenario |
+| `not-reproduced` | upstream failure does not reproduce |
+| `blocked-env` | missing dependency or distributed setup |
+| `blocked-platform` | XPU lacks required path |
+| `blocked-fetch` | cannot fetch issue details |
+| `blocked-commit-context` | commit lacks enough context for repro |
+| `blocked-script-error` | repro failed before reaching oracle |
+| `needs-performance-harness` | perf-only, needs benchmark |
+| `not-applicable` | rejected before validation |
 
 ### Confirmation Criteria
 
@@ -106,11 +63,105 @@ Sufficient: crash, segfault, assertion failure, hang, wrong numerical result, wr
 
 Not sufficient: tiny float noise within tolerance, documented unsupported behavior, invalid repro setup.
 
+## Workflow
+
+### Step 0: Preflight
+
+Verify XPU torch import and `torch.xpu.is_available()`, verify GitHub API access, create output directories (`artifacts/details`, `reports`, `scripts`), and save `collect_env` output.
+
+### Step 1: Collect candidates
+
+Search `pytorch/pytorch` using GitHub MCP (fall back to `gh` CLI). Use caller-specified time window. Paginate with `per_page=100`; split date ranges if hitting the 1000-result cap.
+
+**Source types:**
+
+1. **Issues** — `repo:pytorch/pytorch is:issue` + bug-signal keywords (`crash`, `incorrect`, `wrong`, `regression`, `segfault`, `fail`)
+2. **PRs** — `repo:pytorch/pytorch is:pr is:merged` + fix-signal keywords (`fix`, `bug`, `correct`, `resolve`)
+3. **Commits** — search merged commits fixing backend bugs via commit search API or from merged bug-fix PRs. Look for commits touching core paths (`aten/`, `torch/`, `c10/`) with fix-related messages.
+
+Save to `artifacts/raw_candidates.json` (deduplicated by id, metadata only — no bodies/diffs yet). Each entry has `kind: "issue"|"pr"|"commit"`.
+
+### Step 1.5: Title triage
+
+Initialize ledger from raw candidates. Reject by title/message alone when it clearly indicates non-bug or platform-exclusive scope:
+- `DISABLED test_` (CI noise)
+- Platform prefixes: `[Windows]`, `[MPS]`, `[Build]`, `[Dependabot]`, `[RFC]`
+- Docs/CI/infra/release-only keywords
+- Obvious duplicates of already-processed candidates
+- For commits: pure refactor/style/typo/doc commits (no functional change)
+
+**Principle**: reject only when you're confident the title rules out XPU relevance. When in doubt, pass.
+
+### Step 2: Batched pipeline
+
+#### 2a. Batch deep-filter
+
+Fetch all passed candidates' details → save to `artifacts/details/<id>.json`:
+- **Issues/PRs**: fetch body, linked PRs/commits, test names
+- **Commits**: fetch commit message + diff (`gh api repos/pytorch/pytorch/commits/<sha>` or `git show`). Save the diff summary and affected files.
+
+For each, decide reject or pass-to-repro.
+
+**Rejection principle**: reject only when the content confirms the bug is in platform-exclusive code with no XPU equivalent. Examples:
+- Metal/MPS shaders, HIP driver-level, Windows linker
+- CUDA allocator internals (CUDACachingAllocator), hardware-specific (device capability, RTX model)
+- vLLM/distributed infrastructure with no standalone PyTorch repro available
+- Commits that only touch CUDA-specific codegen templates (`torch/inductor/codegen/cuda/`) with no shared path
+
+**Pass principle**: if the bug touches shared code (Inductor, Dynamo, autograd, dispatcher, ATen, Triton, runtime) or you're unsure, pass it through. Attempt a reproducer — that's cheaper than a false negative.
+
+**Commit-specific**: if the diff is too small or lacks context to construct a meaningful reproducer (e.g., one-line typo fix in a comment), set `deep_status: "reject"` with reason "insufficient commit context" and move on.
+
+#### 2b. Batch write reproducers
+
+For all `pass-to-repro` candidates, write `scripts/repro_<id>.py` in one pass. Each repro must:
+1. Print `torch.__version__` and `torch.xpu.is_available()`
+2. Verify the op ran on XPU (not CPU fallback)
+3. Print `RESULT: <bucket>` as the final meaningful line
+
+**Repro source by kind:**
+- **Issues**: extract the reproducer from the issue body
+- **PRs**: extract from the PR description, or from the test added/modified in the PR's commits
+- **Commits**: extract the regression test added in the commit (look for new `test_*` functions in `test/` files in the diff). If no test was added, construct a minimal repro from the fix diff — the "before" state is the bug.
+
+Prefer extracting existing upstream code and adapting it (CUDA→XPU mapping above). Only write from scratch when no upstream repro exists.
+
+#### 2c. Serial execution
+
+Run each repro script sequentially (for crash/timeout isolation) with a timeout (~120s). Capture stdout/stderr to `artifacts/output_<id>.log`. Parse each `RESULT:` line → update ledger (`local_status: "done"`, `local_bucket`).
+
+If tensor `.device` is `cpu`, mark `blocked-script-error` (CPU fallback, not valid XPU test).
+
+#### 2d. Batch route
+
+For confirmed/related-failure bugs:
+- Shared code (Inductor, autograd, dispatcher, ATen, Triton, runtime) → `pytorch/pytorch`
+- XPU kernel in `aten/src/ATen/native/xpu/` → `pytorch/pytorch`
+- XPU kernel not upstream → `intel/torch-xpu-ops`
+- Bug reveals XPU backend gap (different error, missing feature) → `intel/torch-xpu-ops`
+- CPU-only crashes that affect all backends → `pytorch/pytorch`
+- When in doubt → `pytorch/pytorch`
+
+#### 2e. Batch write report
+
+Generate `reports/full_scan.md` with all tested candidates:
+```
+1. `#<id>` — Title (kind: issue/pr/commit)
+Summary: ...
+Evidence: <url>
+Local XPU result: `<bucket>`
+```
+
+### Step 3: Audit
+
+```bash
+bash scripts/audit_scan_report.sh reports/full_scan.md artifacts/candidate_ledger.jsonl
+```
+
+Write `## Final Summary` only when audit passes. Include filter stats, validation stats, routing stats.
+
 ## Guardrails
 
 - Do not file issues from this skill.
 - `confirmed` requires a local run reproducing the issue.
 - Never hardcode GitHub tokens.
-- Never treat missing pagination as success.
-- Do not reject candidates merely because they mention cuDNN or NCCL — these map to oneDNN/oneCCL on XPU and bugs in those paths are often relevant.
-- Keep raw candidates, the ledger, fetched details, repro outputs, and the final report on disk for auditability.
