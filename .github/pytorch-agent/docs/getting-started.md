@@ -104,8 +104,13 @@ python scripts/run_pipeline.py --issue 123
 ### Individual agents
 
 ```bash
+# Format raw issue → structured template (input: raw issue body, output: formatted issue body)
 python -m pytorch_agent.discovery_agent --issue 123
+
+# Analyze root cause → verdict (input: formatted issue body, output: root cause + fix strategy + IMPLEMENTING/NEEDS_HUMAN)
 python -m pytorch_agent.triage_agent --issue 123
+
+# Advance one stage (input: issue at any stage, output: issue advanced to next stage)
 python -m pytorch_agent.issue_fixing_agent --issue 123
 ```
 
