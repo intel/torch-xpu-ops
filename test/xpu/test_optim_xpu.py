@@ -254,13 +254,17 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
         for _ in range(5):
             optimizer.step(closure)
             optimizer_cuda.step(closure)
-            self.assertEqual(params, params_cuda, atol=2e-5, rtol=1.3e-6)
-            self.assertEqual(
-                optimizer.state_dict(),
-                optimizer_cuda.state_dict(),
-                atol=2e-5,
-                rtol=1.3e-6,
-            )
+            if optim_cls.__name__ == "Muon":
+                self.assertEqual(params, params_cuda, atol=2e-5, rtol=1.3e-6)
+                self.assertEqual(
+                    optimizer.state_dict(),
+                    optimizer_cuda.state_dict(),
+                    atol=2e-5,
+                    rtol=1.3e-6,
+                )
+            else:
+                self.assertEqual(params, params_cuda)
+                self.assertEqual(optimizer.state_dict(), optimizer_cuda.state_dict())
 
 
 TestOptimRenewed.test_state_dict_with_cuda_params = _test_state_dict_with_cuda_params
