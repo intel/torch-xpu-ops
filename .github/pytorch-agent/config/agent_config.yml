@@ -8,10 +8,12 @@
 # Override via env: UPSTREAM_ISSUE_REPO, ISSUE_REPO, PRIVATE_REVIEW_REPO,
 #                   PUBLIC_TARGET_REPO
 repos:
-  upstream_issue: "intel/torch-xpu-ops"
-  issue: "ZhaoqiongZ/torch-xpu-ops-exp"
-  private_review: ""          # e.g. "yourfork/pytorch"
-  public_target: "pytorch/pytorch"
+  # torch-xpu-ops repos
+  xpu_ops_upstream: "intel/torch-xpu-ops"           # upstream torch-xpu-ops
+  xpu_ops_issue: "ZhaoqiongZ/torch-xpu-ops-exp"     # issues + PRs for torch-xpu-ops fixes
+  # pytorch repos
+  pytorch_public: "pytorch/pytorch"                  # upstream pytorch
+  pytorch_private: "chuanqi129/pytorch"              # private review PRs for pytorch fixes
 
 # ---------------------------------------------------------------------------
 # Labels
