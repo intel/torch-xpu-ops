@@ -48,7 +48,7 @@ def update_section(body: str, section: str, content: str) -> str:
     """
     # Find the section heading and replace content until next heading
     pattern = re.compile(
-        rf"(^#{{{1,4}}}\s+{re.escape(section)}\s*\n)(.*?)(?=^#{{{1,4}}}\s|\Z)",
+        r"(^#{1,4}\s+" + re.escape(section) + r"\s*\n)(.*?)(?=^#{1,4}\s|\Z)",
         re.MULTILINE | re.DOTALL,
     )
     match = pattern.search(body)

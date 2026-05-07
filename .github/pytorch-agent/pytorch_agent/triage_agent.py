@@ -37,9 +37,9 @@ def run(issue_number: int) -> tuple[str, str]:
     body = detail.get("body", "") or ""
     labels = detail.get("labels", [])
 
-    # Check status
+    # Check status — triage accepts DISCOVERED or TRIAGING
     status = get_status(body)
-    if status is not None and status != "TRIAGING":
+    if status is not None and status not in ("DISCOVERED", "TRIAGING"):
         log("INFO", f"Issue #{issue_number} at stage {status}, skipping triage",
             issue=issue_number)
         return ("skip", f"already at {status}")
