@@ -38,15 +38,20 @@ Given a raw issue body + labels, extract and return structured JSON with these f
 2. **Error Log** — extract the actual error traceback/assertion.
    Truncate to last ~50 lines. Remove CI infrastructure noise.
 
-3. **Reproducer** — look for bash commands, `python` invocations, or
-   "repro" sections. If none found, construct from the test name:
+3. **Reproducer** — copy the reproducer **verbatim** from the issue body.
+   Look for code blocks with `python` invocations, bash commands, or sections titled
+   "Reproducer" / "How to reproduce". Do NOT rewrite or simplify.
+   If no reproducer exists at all, construct from the test name:
    ```bash
    python -m pytest test/<test_file>.py -k <test_name> -x
    ```
 
-4. **Commit Scope** — look for SHA hashes, compare links, or "last pass / first fail" tables.
+4. **Context** — copy relevant additional context verbatim: upstream PR/issue links,
+   commit references, version info, env details. Preserve original URLs and formatting.
 
-5. **Labels are authoritative** — if labels say `agent_test: ut`, the test_type is `ut`
+5. **Commit Scope** — look for SHA hashes, compare links, or "last pass / first fail" tables.
+
+6. **Labels are authoritative** — if labels say `agent_test: ut`, the test_type is `ut`
    regardless of what the body says.
 
 ## Output

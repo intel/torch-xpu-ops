@@ -140,11 +140,15 @@ def run(issue_number: int) -> None:
         original_issue=body,
     )
 
-    # Check action item and append log
+    # Check action item and append log with extraction summary
     new_body = check_action_item(new_body, "Issue formatted")
-    new_body = append_log(new_body, "discovery",
-                          f"Extracted from raw issue by discovery agent.\n"
-                          f"Log: `{log_path.name}`")
+    log_summary = (
+        f"**Summary:** {data.get('summary', 'N/A')}\n"
+        f"**Failed tests:** {data.get('failed_tests', 'N/A')}\n"
+        f"**Dependency:** {data.get('dependency', 'N/A')}\n"
+        f"**Commit scope:** {data.get('commit_scope', 'N/A')}"
+    )
+    new_body = append_log(new_body, "discovery", log_summary)
 
     # Write back and sync labels
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
