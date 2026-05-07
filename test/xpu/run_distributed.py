@@ -19,7 +19,18 @@ res2 = 0
 fail_test = []
 
 # Add the path to the pipelining test utilities to the system path
-sys.path.insert(0, str(Path("../../../../test/distributed/pipelining").resolve()))
+pipelining_path = str(Path("../../../../test/distributed/pipelining").resolve())
+sys.path.insert(0, pipelining_path)
+
+existing_pythonpath = os.environ.get("PYTHONPATH")
+if existing_pythonpath:
+    pythonpath_entries = existing_pythonpath.split(os.pathsep)
+    if pipelining_path not in pythonpath_entries:
+        os.environ["PYTHONPATH"] = os.pathsep.join(
+            pythonpath_entries + [pipelining_path]
+        )
+else:
+    os.environ["PYTHONPATH"] = pipelining_path
 
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
