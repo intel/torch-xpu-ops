@@ -353,6 +353,7 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("nn.ConvTranspose3d", "test_cpu_gpu_parity"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
