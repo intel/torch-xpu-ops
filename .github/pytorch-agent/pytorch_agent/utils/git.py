@@ -179,15 +179,13 @@ def remove_label(repo: str, number: int, label: str) -> None:
          token=_token_for_repo(repo))
 
 
-def get_issue_comments(repo: str, number: int) -> list[dict]:
-    """Get all comments on an issue."""
-    return _gh_api(f"/repos/{repo}/issues/{number}/comments")
 
-
-def update_issue_comment(repo: str, comment_id: int, body: str) -> None:
-    """Update an existing issue comment."""
-    _gh_api(f"/repos/{repo}/issues/comments/{comment_id}",
-            method="PATCH", body=body)
+def list_pulls(repo: str, head: str = "", state: str = "open") -> list[dict]:
+    """List pull requests, optionally filtered by head label and state."""
+    kwargs = {"state": state}
+    if head:
+        kwargs["head"] = head
+    return _gh_api(f"/repos/{repo}/pulls", token=_token_for_repo(repo), **kwargs)
 
 
 # ---------------------------------------------------------------------------

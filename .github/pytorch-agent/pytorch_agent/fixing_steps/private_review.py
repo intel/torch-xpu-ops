@@ -6,7 +6,6 @@ Entry point:
 from __future__ import annotations
 
 import argparse
-import subprocess
 
 from ..utils import git as gh
 from ..utils.git import git, add_and_commit
@@ -49,20 +48,13 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
     )
 
     try:
-        from ..utils.config import OPENCODE_CMD
-        from ..utils.agent_backend import parse_opencode_events
-        result = subprocess.run(
-            [OPENCODE_CMD, "run", "--format", "json", "--dir", str(PYTORCH_DIR),
-             "--dangerously-skip-permissions", extraction_prompt],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL, text=True, timeout=120,
-        )
-        full_text = parse_opencode_events(result.stdout)
+        backend = get_backend()
+        full_text, _, _ = backend.run(extraction_prompt, timeout=120)
         if full_text:
             items = re.findall(r'^\s*\d+\.\s*(.+)', full_text, re.MULTILINE)
             if items:
                 return [item.strip()[:200] for item in items if item.strip()]
-    except (subprocess.TimeoutExpired, Exception) as e:
+    except Exception as e:
         log("WARN", f"LLM task extraction failed: {e}, falling back to regex")
 
     return _build_task_list_regex(combined)

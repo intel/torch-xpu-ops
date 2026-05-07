@@ -48,11 +48,7 @@ def run(issue_number: int) -> None:
     # Idempotent: check if PR already exists
     head_label = f"{PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}"
     try:
-        existing = gh._gh_api(
-            f"/repos/{PUBLIC_TARGET_REPO}/pulls",
-            token=gh._token_for_repo(PUBLIC_TARGET_REPO),
-            head=head_label, state="open",
-        )
+        existing = gh.list_pulls(PUBLIC_TARGET_REPO, head=head_label, state="open")
         if existing:
             pr = existing[0]
             log("INFO", f"Public PR already exists: #{pr.get('number')}",
@@ -68,11 +64,7 @@ def run(issue_number: int) -> None:
     except CalledProcessError as exc:
         log("WARN", f"PR creation failed, checking for existing: {exc}",
             issue=issue_number)
-        existing = gh._gh_api(
-            f"/repos/{PUBLIC_TARGET_REPO}/pulls",
-            token=gh._token_for_repo(PUBLIC_TARGET_REPO),
-            head=head_label, state="open",
-        )
+        existing = gh.list_pulls(PUBLIC_TARGET_REPO, head=head_label, state="open")
         if existing:
             pr = existing[0]
         else:

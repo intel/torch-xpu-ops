@@ -96,16 +96,6 @@ def check_action_item(body: str, item_substring: str) -> str:
     return re.sub(r"^- \[ \] .+$", _replace, body, flags=re.MULTILINE)
 
 
-def uncheck_action_item(body: str, item_substring: str) -> str:
-    """Mark a checkbox undone: - [x] ...item_substring... → - [ ] ...item_substring..."""
-    def _replace(m: re.Match) -> str:
-        line = m.group(0)
-        if item_substring.lower() in line.lower():
-            return line.replace("- [x]", "- [ ]", 1)
-        return line
-
-    return re.sub(r"^- \[x\] .+$", _replace, body, flags=re.MULTILINE)
-
 
 # ---------------------------------------------------------------------------
 # Folded logs  <!-- agent:MARKER-log -->
