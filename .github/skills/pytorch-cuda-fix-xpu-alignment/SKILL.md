@@ -21,10 +21,6 @@ Scan `pytorch/pytorch` for issues, PRs, and bug-fix commits across any backend (
 
 | CUDA | XPU |
 |------|-----|
-| `torch.cuda.*` | `torch.xpu.*` |
-| `"cuda"` / `"cuda:0"` | `"xpu"` / `"xpu:0"` |
-| `torch.cuda.synchronize()` | `torch.xpu.synchronize()` |
-| `torch.backends.cudnn.*` | `torch.backends.mkldnn.*` |
 | cuDNN / NCCL | oneDNN / oneCCL |
 | `CUDA_VISIBLE_DEVICES` | `ZE_AFFINITY_MASK` |
 
@@ -77,9 +73,9 @@ Search `pytorch/pytorch` using GitHub MCP (fall back to `gh` CLI). Use caller-sp
 
 **Source types:**
 
-1. **Issues** — all states (open + closed). Use `label:bug` OR `label:regression` as one axis, plus broad keyword search: `crash`, `incorrect`, `wrong`, `regression`, `segfault`, `fail`, `nan`, `miscompile`, `hang`, `corrupt`, `broken`, `silent`, `mismatch`.
-2. **PRs** — all states (open, merged, closed). Use `label:bug` OR `label:release blocker`, plus fix-signal keywords: `fix`, `bug`, `correct`, `resolve`, `revert`, `workaround`, `patch`, `regression`.
-3. **Commits** — search commits (not limited to merged PRs) fixing backend bugs via commit search API. Look for commits touching core paths (`aten/`, `torch/`, `c10/`) with fix-related messages, or reverts of recent commits.
+1. **Issues** — collect all issues in the specified time window, across all states (open + closed); do not pre-filter by labels or keywords at this stage.
+2. **PRs** — collect all PRs in the specified time window, across all states (open, merged, closed); do not pre-filter by labels or keywords at this stage.
+3. **Commits** — collect all commits in the specified time window; do not require merged-PR linkage or keyword filtering at this stage.
 
 Save to `artifacts/raw_candidates.json` (deduplicated by id, metadata only — no bodies/diffs yet). Each entry has `kind: "issue"|"pr"|"commit"`.
 
