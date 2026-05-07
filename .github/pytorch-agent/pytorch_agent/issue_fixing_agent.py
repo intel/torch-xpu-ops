@@ -66,8 +66,8 @@ def advance(issue_number: int) -> None:
             from .triage_agent import run
             _run_step("triage", run, issue_number)
         case "IMPLEMENTING":
-            from .fixing_steps.implement import run
-            _run_step("implement", run, issue_number)
+            from .fixing_steps.code_fix import run
+            _run_step("code_fix", run, issue_number)
         case "IN_REVIEW":
             from .fixing_steps.private_review import run
             _run_step("private_review", run, issue_number)
