@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from datetime import datetime
 
+import yaml
+
 
 # ---------------------------------------------------------------------------
 # Section parsing
@@ -128,17 +130,19 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # Template rendering
 # ---------------------------------------------------------------------------
 
-ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "config" / "issue_body_template.md"
-PR_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "config" / "pr_body_template.md"
+ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue-body.yml"
+PR_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-pr-body.yml"
 
 
 def build_body(template_path: Path, **kwargs: str) -> str:
-    """Load a template file and fill placeholders.
+    """Load a YAML template file and fill placeholders in its 'body' field.
 
     Generic renderer — works for issue bodies, PR bodies, or any
-    markdown template with {placeholder} fields.
+    YAML template with a 'body' field containing {placeholder} strings.
     """
-    template = template_path.read_text(encoding="utf-8")
+    with open(template_path, encoding="utf-8") as f:
+        template_data = yaml.safe_load(f)
+    template = template_data.get("body", "")
     return template.format(**kwargs)
 
 
