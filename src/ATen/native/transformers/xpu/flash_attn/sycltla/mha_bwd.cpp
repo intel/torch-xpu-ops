@@ -144,7 +144,7 @@ void compute_o_dot_do(
     stensor(mi, sg_group_id, sg_local_id) = accum;
   }
 
-  sg.barrier();
+  sycl::group_barrier(sg);
 
   if (sg_local_id == 0) {
     CUTLASS_PRAGMA_UNROLL
