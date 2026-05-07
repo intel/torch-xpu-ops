@@ -1,0 +1,59 @@
+name: verify-pytorch-build
+description: 'Import smoke tests for torch, triton, and domain libs with a step-summary table.'
+
+inputs:
+  pytorch-src:
+    description: 'Path to pytorch source (used for collect_env.py).'
+    required: false
+    default: 'pytorch'
+
+runs:
+  using: composite
+  steps:
+    - name: Torch Config
+      shell: bash
+      env:
+        PYTORCH_SRC: ${{ inputs.pytorch-src }}
+      run: |
+        set -uo pipefail
+        rc=0
+        : > /tmp/_verify_rows
+
+        check() {
+          local name="$1"; shift
+          local expr="$1"
+          local out
+          if out=$(python -c "${expr}" 2>&1); then
+            printf '  %-12s OK   %s\n' "${name}" "${out}"
+            echo "| ${name} | OK | \`${out}\` |" >> /tmp/_verify_rows
+          else
+            printf '  %-12s FAIL %s\n' "${name}" "${out}" >&2
+            echo "| ${name} | FAIL | \`${out}\` |" >> /tmp/_verify_rows
+            rc=1
+          fi
+        }
+
+        printenv
+        python -c "import torch; print(torch.__config__.show())" || true
+        python -c "import torch; print(torch.__config__.parallel_info())" || true
+
+        check torch        "import torch; print(torch.__version__)"
+        check 'torch.xpu'  "import torch; print('devices=' + str(torch.xpu.device_count()))"
+        check triton       "import triton; print(triton.__version__)"
+        check torchvision  "import torchvision; print(torchvision.__version__)"
+        check torchaudio   "import torchaudio; print(torchaudio.__version__)"
+
+        if [[ -d "${PYTORCH_SRC}" && -f "${PYTORCH_SRC}/torch/utils/collect_env.py" ]]; then
+          python "${PYTORCH_SRC}/torch/utils/collect_env.py" || true
+        fi
+        pip list | grep -E 'torch|intel' || true
+
+        {
+          echo "## Build verification"
+          echo
+          echo "| Component | Status | Detail |"
+          echo "|-----------|--------|--------|"
+          cat /tmp/_verify_rows
+        } >> "${GITHUB_STEP_SUMMARY:-/dev/null}" || true
+
+        exit "${rc}"

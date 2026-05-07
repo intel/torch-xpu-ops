@@ -1,0 +1,39 @@
+name: setup-build-python
+description: 'Locate cp interpreter under /opt/python and create a fresh build venv.'
+
+inputs:
+  python-version:
+    description: 'Python version, e.g. 3.10.'
+    required: true
+  venv-dir:
+    description: 'Where to create the build venv.'
+    required: false
+    default: '/tmp/xpu-tool/myvenv'
+  setuptools-spec:
+    description: 'setuptools pin (passed verbatim to pip install).'
+    required: false
+    default: 'setuptools==81.0.0'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup python ${{ inputs.python-version }}
+      shell: bash
+      env:
+        PY_VER: ${{ inputs.python-version }}
+        VENV_DIR: ${{ inputs.venv-dir }}
+        SETUPTOOLS_SPEC: ${{ inputs.setuptools-spec }}
+      run: |
+        set -euo pipefail
+        rm -rf "${VENV_DIR}"
+        local_python=$(echo "${PY_VER}" | awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+        py_bin="/opt/python/${local_python}/bin/python"
+        if [[ ! -x "${py_bin}" ]]; then
+          echo "::error title=Python not found::${py_bin} (version ${PY_VER}) not found"
+          ls -1 /opt/python || true
+          exit 1
+        fi
+        "${py_bin}" -m venv "${VENV_DIR}"
+        which python && python -V
+        which pip && pip list
+        pip install -U pip wheel "${SETUPTOOLS_SPEC}"

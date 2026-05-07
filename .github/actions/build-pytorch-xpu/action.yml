@@ -1,0 +1,85 @@
+name: build-pytorch-xpu
+description: 'Run torch-xpu-ops build.sh to build PyTorch with XPU support.'
+
+inputs:
+  workspace:
+    description: 'Build workspace (where torch-*.whl will land). Typically ${{ github.workspace }}.'
+    required: true
+  torch-xpu-ops-src:
+    description: 'Path to the torch-xpu-ops checkout (where build.sh and env.sh live).'
+    required: true
+  pytorch:
+    description: 'PyTorch spec: commit, branch, or repo@ref.'
+    required: true
+  torch-xpu-ops:
+    description: 'torch-xpu-ops spec: commit, branch, or repo@ref.'
+    required: true
+  gcc-version:
+    description: 'gcc-toolset version to source.'
+    required: false
+    default: '13'
+
+runs:
+  using: composite
+  steps:
+    - name: Build PyTorch XPU
+      shell: bash
+      env:
+        WORKSPACE: ${{ inputs.workspace }}
+        TORCH_XPU_OPS_SRC: ${{ inputs.torch-xpu-ops-src }}
+        PYTORCH_SPEC: ${{ inputs.pytorch }}
+        TORCH_XPU_OPS_SPEC: ${{ inputs.torch-xpu-ops }}
+        GCC_VERSION: ${{ inputs.gcc-version }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+      run: |
+        set -euo pipefail
+        export USE_XCCL=1
+        export IS_XPU_CI=1
+        # only build pvc for CI
+        if [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+          export TORCH_XPU_ARCH_LIST='pvc'
+        fi
+
+        if [[ "${PYTORCH_SPEC}" == *"https://"* ]]; then
+          PYTORCH_REPO="$(echo "${PYTORCH_SPEC}" | sed 's/@.*//')"
+          PYTORCH_COMMIT="$(echo "${PYTORCH_SPEC}" | sed 's/.*@//')"
+        else
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_COMMIT="${PYTORCH_SPEC}"
+        fi
+        if [[ "${TORCH_XPU_OPS_SPEC}" == *"https://"* ]]; then
+          TORCH_XPU_OPS_REPO="$(echo "${TORCH_XPU_OPS_SPEC}" | sed 's/@.*//')"
+          TORCH_XPU_OPS_COMMIT="$(echo "${TORCH_XPU_OPS_SPEC}" | sed 's/.*@//')"
+        else
+          TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
+          TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_SPEC}"
+        fi
+
+        # gcc
+        # shellcheck disable=SC1091
+        source "/opt/rh/gcc-toolset-${GCC_VERSION}/enable"
+        # shellcheck disable=SC1091
+        source "${TORCH_XPU_OPS_SRC}/.github/scripts/env.sh"
+
+        log="${WORKSPACE}/build_pytorch_${PYTORCH_COMMIT//\//-}.log"
+        "${TORCH_XPU_OPS_SRC}/.github/scripts/build.sh" \
+          --WORKSPACE="${WORKSPACE}" \
+          --PYTORCH_REPO="${PYTORCH_REPO}" \
+          --PYTORCH_COMMIT="${PYTORCH_COMMIT}" \
+          --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
+          --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
+          2>&1 | tee "${log}"
+
+        if [ "$(ls "${WORKSPACE}" | grep -c 'torch-.*\.whl')" -eq 0 ]; then
+          echo "::error title=PyTorch wheel build failed::No torch wheel produced in ${WORKSPACE}"
+          exit 1
+        fi
+
+        wheel=$(ls "${WORKSPACE}" | grep -E '^torch-.*\.whl$' | head -1)
+        {
+          echo "## PyTorch build"
+          echo
+          echo "- pytorch: \`${PYTORCH_REPO}@${PYTORCH_COMMIT}\`"
+          echo "- torch-xpu-ops: \`${TORCH_XPU_OPS_REPO}@${TORCH_XPU_OPS_COMMIT}\`"
+          echo "- wheel: \`${wheel}\`"
+        } >> "${GITHUB_STEP_SUMMARY:-/dev/null}" || true

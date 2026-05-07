@@ -1,0 +1,98 @@
+name: build-triton-xpu
+description: 'Provide a triton-xpu wheel by either downloading a pre-built nightly or building from source.'
+
+inputs:
+  pytorch-src:
+    description: 'Path to pytorch source checkout (used for build_triton_wheel.py and the default triton commit pin).'
+    required: true
+  workspace:
+    description: 'Destination directory for the wheel and build log.'
+    required: true
+  triton:
+    description: |
+      Triton spec: empty/"pinned" => use pytorch's pinned commit;
+      otherwise treated as a commit/branch.
+    required: false
+    default: ''
+  default-repo:
+    description: 'Default Triton repository (owner/repo).'
+    required: false
+    default: 'intel/intel-xpu-backend-for-triton'
+  index-url:
+    description: 'pip index URL for pre-built nightly wheels.'
+    required: false
+    default: 'https://download.pytorch.org/whl/nightly/xpu'
+  gcc-version:
+    description: 'gcc-toolset version to source.'
+    required: false
+    default: '13'
+
+runs:
+  using: composite
+  steps:
+    - name: Build or fetch Triton (XPU)
+      shell: bash
+      env:
+        PYTORCH_SRC: ${{ inputs.pytorch-src }}
+        WORKSPACE: ${{ inputs.workspace }}
+        TRITON_SPEC: ${{ inputs.triton }}
+        DEFAULT_REPO: ${{ inputs.default-repo }}
+        INDEX_URL: ${{ inputs.index-url }}
+        GCC_VERSION: ${{ inputs.gcc-version }}
+      run: |
+        set -euo pipefail
+        cd "${PYTORCH_SRC}"
+        rm -rf triton_xpu-*.whl
+
+        if [ -z "${TRITON_SPEC}" ] || [ "${TRITON_SPEC}" == "pinned" ]; then
+          TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+        else
+          TRITON_COMMIT_ID="${TRITON_SPEC}"
+        fi
+        echo "Triton: ${DEFAULT_REPO}@${TRITON_COMMIT_ID}"
+
+        built_version="$(pip index versions --index-url "${INDEX_URL}" --pre triton-xpu 2>/dev/null \
+          | awk -F '[ |,]' -v p="$(echo "${TRITON_COMMIT_ID}" | awk '{print substr($1,0,7)}')" 'BEGIN{
+            v = "None";
+          }{
+            for (i=1;i<=NF;i++) {if ($i ~ p) {v = $i;}};
+          }END{
+            printf("%s", v);
+          }')"
+
+        if [ "${built_version}" != "None" ]; then
+          echo "Using pre-built triton-xpu==${built_version}"
+          pip download --no-deps --index-url "${INDEX_URL}" --pre \
+            "triton-xpu==${built_version}" --dest "${WORKSPACE}/"
+          pip install "${WORKSPACE}"/*triton*.whl
+          source_or_prebuilt="prebuilt"
+        else
+          echo "No matching pre-built wheel; building from source"
+          TRITON_VERSION_NAME="$(
+            curl -sSL "https://raw.githubusercontent.com/${DEFAULT_REPO}/${TRITON_COMMIT_ID}/python/triton/__init__.py" 2>&1 \
+              | grep '__version__' | head -n 1 | awk -F "'" '{print $2}'
+          )"
+          # shellcheck disable=SC1091
+          source "/opt/rh/gcc-toolset-${GCC_VERSION}/enable"
+          dnf install -y zlib-devel
+          pip install cmake ninja pybind11
+          python .github/scripts/build_triton_wheel.py \
+            --device xpu \
+            --commit-hash "${TRITON_COMMIT_ID}" \
+            --triton-version "${TRITON_VERSION_NAME}" \
+            2>&1 | tee "${WORKSPACE}/build_triton_${TRITON_COMMIT_ID}.log"
+          if [ "$(ls | grep -c 'triton_xpu-.*\.whl')" -eq 0 ]; then
+            echo "::error title=Triton build failed::No triton_xpu wheel produced"
+            exit 1
+          fi
+          pip install triton_xpu-*.whl
+          cp triton_xpu-*.whl "${WORKSPACE}"
+          source_or_prebuilt="source"
+        fi
+
+        {
+          echo "## Triton build"
+          echo
+          echo "- commit: \`${TRITON_COMMIT_ID}\`"
+          echo "- source: \`${source_or_prebuilt}\`"
+        } >> "${GITHUB_STEP_SUMMARY:-/dev/null}" || true
