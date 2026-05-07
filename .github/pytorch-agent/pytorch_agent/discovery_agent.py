@@ -122,10 +122,10 @@ def run(issue_number: int) -> None:
     )
 
     backend = get_backend()
-    timeout = STAGE_TIMEOUTS.get("DISCOVERY", 300)
+    timeout = STAGE_TIMEOUTS.get("DISCOVERED", 300)
     output, log_path, session_id = backend.run(
         prompt, skill="pytorch-issue-discovery",
-        issue=issue_number, stage="DISCOVERY", timeout=timeout,
+        issue=issue_number, stage="DISCOVERED", timeout=timeout,
     )
     log("INFO", f"Discovery agent log: {log_path}", issue=issue_number)
 
