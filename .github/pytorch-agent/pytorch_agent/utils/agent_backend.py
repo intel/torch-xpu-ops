@@ -97,8 +97,10 @@ class OpenCodeBackend(AgentBackend):
             prompt_log = log_path.with_suffix('.prompt.txt')
             with open(prompt_log, 'w') as pf:
                 pf.write(full_prompt)
+            stderr_path = log_path.with_suffix('.stderr.log')
+            stderr_f = open(stderr_path, 'w')
             proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                cmd, stdout=subprocess.PIPE, stderr=stderr_f,
                 stdin=subprocess.DEVNULL, text=True,
             )
             log_f.write(f"=== PID ===\n{proc.pid}\n\n")
@@ -153,6 +155,7 @@ class OpenCodeBackend(AgentBackend):
                 raise
 
             log_f.write(f"\n=== EXIT CODE ===\n{proc.returncode}\n")
+            stderr_f.close()
 
         full_output = "".join(text_parts)
 
