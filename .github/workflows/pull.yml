@@ -202,6 +202,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -220,6 +221,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
