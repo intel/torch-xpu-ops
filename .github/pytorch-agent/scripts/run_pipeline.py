@@ -14,12 +14,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pytorch_agent.issue_fixing_agent import advance
 from pytorch_agent.utils import git as gh
-from pytorch_agent.utils.config import ISSUE_REPO, POLL_INTERVAL, ISSUE_LABEL
+from pytorch_agent.utils.config import ISSUE_REPO, POLL_INTERVAL, ISSUE_LABEL, TERMINAL_STAGES, MAX_ADVANCE_LOOPS
 from pytorch_agent.utils.issue_body import get_status
 from pytorch_agent.utils.logger import log
 
-
-TERMINAL_STAGES = {"DONE", "SKIPPED", "NEEDS_HUMAN"}
 
 
 def _get_active_issues() -> list[dict]:
@@ -53,7 +51,7 @@ def run_single(issue_number: int) -> None:
     """Run full pipeline for a single issue: loop advance until terminal or stuck."""
     log("INFO", f"Single-issue run for #{issue_number}", issue=issue_number)
 
-    max_loops = 10
+    max_loops = MAX_ADVANCE_LOOPS
     for i in range(max_loops):
         detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
         body = detail.get("body", "") or ""

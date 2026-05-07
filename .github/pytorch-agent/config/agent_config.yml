@@ -49,11 +49,18 @@ stage_timeouts:
   IMPLEMENTING: 3600
   IN_REVIEW: 1800
   CI_WATCH: 600
-
+# Limits
 limits:
   max_review_iterations: 3
   max_ci_iterations: 3
   max_agent_attempts: 3
+  max_advance_loops: 10
+
+# Terminal stages — pipeline stops advancing when issue reaches one of these
+terminal_stages:
+  - DONE
+  - SKIPPED
+  - NEEDS_HUMAN
 
 # Polling interval (seconds) — temporary, removed when moving to webhooks
 poll_interval: 60

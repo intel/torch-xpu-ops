@@ -45,6 +45,10 @@ _limits = _cfg.get("limits", {})
 MAX_REVIEW_ITERATIONS: int = _limits.get("max_review_iterations", 3)
 MAX_CI_ITERATIONS: int = _limits.get("max_ci_iterations", 3)
 MAX_AGENT_ATTEMPTS: int = _limits.get("max_agent_attempts", 3)
+MAX_ADVANCE_LOOPS: int = _limits.get("max_advance_loops", 10)
+
+# Terminal stages
+TERMINAL_STAGES: set[str] = set(_cfg.get("terminal_stages", ["DONE", "SKIPPED", "NEEDS_HUMAN"]))
 
 # ---------------------------------------------------------------------------
 # Timeouts
