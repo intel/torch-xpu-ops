@@ -100,9 +100,14 @@ def run(issue_number: int) -> None:
         if value:
             data[key] = value
 
+    # Coerce list fields to strings
+    ft = data.get("failed_tests", "")
+    if isinstance(ft, list):
+        data["failed_tests"] = "\n".join(ft)
+
     # Render formatted body
     new_body = render_initial_body(
-        stage="TRIAGING",
+        stage="DISCOVERED",
         summary=data.get("summary", detail.get("title", "")),
         test_type=data.get("test_type", ""),
         category=data.get("category", ""),

@@ -75,11 +75,9 @@ def _token_for_repo(repo: str) -> str | None:
     REVIEW_GH_TOKEN → for PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, and ISSUE_REPO
     GH_TOKEN → for everything else (upstream issues)
     """
-    review_repo = os.environ.get("PRIVATE_REVIEW_REPO", "")
-    public_target = os.environ.get("PUBLIC_TARGET_REPO", "")
-    issue_repo = os.environ.get("ISSUE_REPO", "")
+    from .config import PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO
     review_token = os.environ.get("REVIEW_GH_TOKEN")
-    if review_token and repo in (review_repo, public_target, issue_repo):
+    if review_token and repo in (PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO):
         return review_token
     return os.environ.get("GH_TOKEN")
 
