@@ -31,6 +31,7 @@
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/TraceUtils.h>
@@ -175,6 +176,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
 
   ~ProcessGroupXCCL() override;
+
+  uint64_t getUid() const noexcept {
+    return static_cast<uint64_t>(local_id_);
+  }
 
   c10::intrusive_ptr<Options> getOptions() {
     return options_;
@@ -488,6 +493,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void attachRetireAndStatusCallback(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+      std::shared_ptr<ProcessGroupStatus> pgStatus);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
@@ -531,6 +539,10 @@ TORCH_API void reset_xccl_trace();
 TORCH_API std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
+    bool onlyActive);
+
+TORCH_API std::string dump_xccl_trace_json(
+    bool includeCollectives,
     bool onlyActive);
 
 TORCH_API std::string getXcclVersion();
