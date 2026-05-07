@@ -1,20 +1,17 @@
 name: Setup Test Environment
+description: Setup the test environment for running XPU tests
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
-    type: string
     default: 'main'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
-    type: string
     default: '3.10'
     description: Python version
   suite:
-    type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
@@ -83,6 +80,10 @@ runs:
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
+        rm -rf 182614.diff
+        wget https://github.com/pytorch/pytorch/pull/182614.diff
+        git apply 182614.diff
+        cp torch/_inductor/autoheuristic/autoheuristic.py $(find $(dirname $(which python))/../lib/ -name "autoheuristic.py")
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
