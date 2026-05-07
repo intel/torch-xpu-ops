@@ -2209,15 +2209,15 @@ else:
                 or torch.device(device).type == "xpu",
             )
 
+    @dtypes(torch.float32, torch.int32)
     @skipIfMPS
-    def test_nondeterministic_alert_histc(self, device):
-        a = torch.tensor([], device=device)
+    def test_nondeterministic_alert_histc(self, device, dtype):
+        a = torch.tensor([], device=device, dtype=dtype)
         for op_call in [torch.histc, torch.Tensor.histc]:
             self.check_nondeterministic_alert(
                 lambda: op_call(a, min=0, max=3),
-                "_histc_" + torch.device(device).type,
-                torch.device(device).type == "cuda"
-                or torch.device(device).type == "xpu",
+                "_histc_xpu with floating point input",
+                torch.device(device).type == "xpu" and dtype.is_floating_point,
             )
 
     @skipIfMPS
