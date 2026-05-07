@@ -1,7 +1,7 @@
 # AGENTS.md — PyTorch Agent (pytorch-agent)
 
-Autonomous agent system for triaging and fixing `ai_generated` issues from
-`ZhaoqiongZ/torch-xpu-ops-exp` (configurable via `ISSUE_REPO`) in `pytorch/pytorch`.
+Autonomous agent for triaging and fixing `ai_generated` issues in `pytorch/pytorch`.
+Issues sourced from `ISSUE_REPO` (default: `ZhaoqiongZ/torch-xpu-ops-exp`).
 
 ## Architecture
 
@@ -9,9 +9,9 @@ Autonomous agent system for triaging and fixing `ai_generated` issues from
 discovery_agent.py → triage_agent.py → issue_fixing_agent.py
                                               ↓
                                        fixing_steps/
-                           implement → private_review → public_submit
-                                                             ↓
-                                                     ci_watch → close_issue
+                           code_fix → private_review → public_submit
+                                                            ↓
+                                                    ci_watch → close_issue
 ```
 
 ## Entry Points
@@ -26,11 +26,11 @@ discovery_agent.py → triage_agent.py → issue_fixing_agent.py
 
 ## State Tracking
 
-State is stored on **issue bodies** in the issue repo (`ISSUE_REPO`):
-- **Status:** HTML comment `<!-- agent:status:STAGE -->` in issue body
-- **Metadata:** HTML comments `<!-- tracking_pr: #N -->`, `<!-- last_push_sha: abc -->`, etc.
-- **Action log:** `<details>` blocks appended to issue body
-- **Labels:** `agent:active` (during processing), `agent:needs-human` (escalation)
+All state lives in **issue bodies** in `ISSUE_REPO`:
+- **Status:** `<!-- agent:status:STAGE -->` HTML comment
+- **Metadata:** `<!-- tracking_pr: #N -->`, `<!-- last_push_sha: abc -->`, etc.
+- **Logs:** `<details>` blocks appended per stage
+- **Labels:** `agent:active` (processing), `agent:done` (finished), `agent:needs-human` (escalation)
 
 ## Stage Flow
 
@@ -40,50 +40,52 @@ DISCOVERED → TRIAGING → IMPLEMENTING → IN_REVIEW → PUBLIC_PR → CI_WATC
               NEEDS_HUMAN  NEEDS_HUMAN  NEEDS_HUMAN              NEEDS_HUMAN
 ```
 
-## Repos & Remotes
-
-| Repo | Role |
-|------|------|
-| `$ISSUE_REPO` | Source issues (default: `ZhaoqiongZ/torch-xpu-ops-exp`) |
-| `$PRIVATE_REVIEW_REPO` | Private review PRs (remote: `review`) |
-| `pytorch/pytorch` | Public PRs (remote: `upstream`) |
-
-## Escalation
-
-- Implementation: max 3 attempts → `agent:needs-human` label + NEEDS_HUMAN stage
-- Review: max 3 iterations → `agent:needs-human` label + NEEDS_HUMAN stage
-- CI watch: max 3 iterations → `agent:needs-human` label + NEEDS_HUMAN stage
+Terminal stages (`DONE`, `SKIPPED`, `NEEDS_HUMAN`) are defined in `config/agent_config.yml`.
 
 ## Configuration
 
-Environment variables override defaults in `pytorch_agent/utils/config.py`:
-- `PYTORCH_DIR` — local pytorch checkout (default: `~/pytorch`)
-- `ISSUE_REPO` — issue tracking repo (default: `ZhaoqiongZ/torch-xpu-ops-exp`)
-- `AGENT_BACKEND` — `opencode` (default) or `copilot`
-- `POLL_INTERVAL` — seconds between polling cycles (default: 60)
+All constants live in `config/agent_config.yml`. Python `config.py` loads from it.
+Environment variables override YAML defaults:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ISSUE_REPO` | `ZhaoqiongZ/torch-xpu-ops-exp` | Source repo for issues |
+| `PRIVATE_REVIEW_REPO` | *(required)* | Private review fork |
+| `PYTORCH_DIR` | `~/pytorch` | Local pytorch checkout |
+| `AGENT_BACKEND` | `opencode` | Backend (`opencode` or `copilot`) |
 
 ## Skills
 
 Agent prompts reference skills in `.github/skills/`:
-- `pytorch-issue-discovery` — format raw issues into structured template
-- `pytorch-triage-ut` — triage unit test failures
-- `pytorch-triage-e2e` — triage end-to-end test failures
-- `pytorch-fix` — implement fixes for triaged issues
-- `pytorch-review-fix` — address code review feedback
-- `pytorch-ci-triage` — CI failure analysis
-- `xpu-ops-pr-creation` — implementation & PR conventions
-- `xpu-ops-pr-review` — review feedback handling
+
+| Skill | Used by |
+|-------|---------|
+| `pytorch-issue-discovery` | discovery_agent |
+| `pytorch-triage-ut` / `pytorch-triage-e2e` | triage_agent |
+| `pytorch-fix` | code_fix |
+| `pytorch-review-fix` | private_review |
+| `pytorch-review-task-extraction` | private_review |
+| `pytorch-ci-triage` | ci_watch |
+| `xpu-ops-pr-creation` | code_fix |
+
+## Templates
+
+Issue/PR body templates in `.github/ISSUE_TEMPLATE/`:
+- `agent-issue.yml` — GitHub issue form
+- `agent-issue-body.yml` — programmatic issue body template
+- `agent-pr-body.yml` — PR description template
+
+Loaded via `build_body()` in `issue_body.py`.
 
 ## Utilities
 
 | Module | Purpose |
 |--------|---------|
-| `utils/git.py` | All git CLI + GitHub API operations |
-| `utils/issue_body.py` | Parse/update issue body (status, sections, metadata, logs) |
-| `utils/config.py` | Configuration constants |
+| `utils/config.py` | Loads `config/agent_config.yml` + env overrides |
+| `utils/git.py` | Git CLI + GitHub API operations |
+| `utils/issue_body.py` | Issue body parsing, template rendering, metadata |
 | `utils/agent_backend.py` | LLM agent dispatch (OpenCode / Copilot) |
 | `utils/json_utils.py` | JSON extraction from agent output |
 | `utils/logger.py` | Structured logging |
 | `utils/notify.py` | Notifications |
 | `utils/review_handler.py` | PR review state parsing |
-| `config/label_mapping.yml` | Label prefix → field name mapping |
