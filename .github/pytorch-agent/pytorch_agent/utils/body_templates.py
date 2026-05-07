@@ -120,10 +120,15 @@ def append_log(body: str, marker: str, log_text: str) -> str:
         )
         return body
 
-    # Insert before the marker
+    # Insert before the marker, preserving indentation
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"\n**[{ts}]**\n{log_text}\n"
-    return body.replace(marker_tag, entry + marker_tag)
+    # Detect indentation of the marker line
+    marker_match = re.search(r'^([ \t]*)' + re.escape(marker_tag), body, re.MULTILINE)
+    indent = marker_match.group(1) if marker_match else ""
+    log_lines = f"**[{ts}]**\n{log_text}".splitlines()
+    indented_log = "\n".join(indent + line if line.strip() else "" for line in log_lines)
+    entry = f"\n{indented_log}\n"
+    return body.replace(marker_tag, entry + indent + marker_tag)
 
 
 # ---------------------------------------------------------------------------

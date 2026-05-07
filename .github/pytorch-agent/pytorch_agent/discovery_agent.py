@@ -13,7 +13,7 @@ import yaml
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, AGENT_DIR
 from .utils.body_templates import (
-    get_status, render_initial_body, check_action_item, append_log,
+    get_status, render_initial_body, check_action_item, append_log, sync_labels,
 )
 from .utils.agent_backend import get_backend
 from .utils.json_utils import extract_json
@@ -127,8 +127,9 @@ def run(issue_number: int) -> None:
                           f"Extracted from raw issue by discovery agent.\n"
                           f"Log: `{log_path.name}`")
 
-    # Write back (no agent:active label — discovery just formats)
+    # Write back and sync labels
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+    sync_labels(ISSUE_REPO, issue_number, new_body)
     log("INFO", f"Discovery complete for #{issue_number}", issue=issue_number)
 
 
