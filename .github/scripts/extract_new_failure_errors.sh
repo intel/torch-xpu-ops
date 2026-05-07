@@ -64,7 +64,18 @@ while IFS= read -r test_name; do
                     header = $0
                     gsub(/^[_=[:space:]]+/, "", header)
                     gsub(/[_=[:space:]]+$/, "", header)
-                    if (length(header) >= length(test) && substr(header, length(header) - length(test) + 1) == test) {
+                    start = length(header) - length(test) + 1
+                    if (start > 0 && substr(header, start) == test) {
+                        if (start == 1) {
+                            delim_ok = 1
+                        } else {
+                            prev = substr(header, start - 1, 1)
+                            delim_ok = (prev == ":" || prev == "." || prev == "/" || prev == " " || prev == "]")
+                        }
+                    } else {
+                        delim_ok = 0
+                    }
+                    if (delim_ok) {
                         printing=1
                         buffer=$0 "\n"
                         next
@@ -82,7 +93,20 @@ while IFS= read -r test_name; do
             fi
 
             # Fallback: grab the FAILED line with reason
-            failed_line=$(grep -F -- "FAILED" "$log_file" 2>/dev/null | grep -F -- "$short_name" | head -5 || true)
+            failed_line=$(awk -v test="$short_name" '
+                BEGIN { count=0 }
+                {
+                    failed_pos = index($0, "FAILED")
+                    test_pos = index($0, test)
+                    if (failed_pos > 0 && test_pos > failed_pos) {
+                        print
+                        count++
+                        if (count == 5) {
+                            exit
+                        }
+                    }
+                }
+            ' "$log_file" 2>/dev/null || true)
             if [[ -n "$failed_line" ]]; then
                 echo "$failed_line" >> "$output_file"
                 found=true
