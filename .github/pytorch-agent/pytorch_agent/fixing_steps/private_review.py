@@ -13,7 +13,7 @@ from ..utils.config import (
     PRIVATE_REVIEW_REPO, PYTORCH_DIR, REVIEW_REMOTE,
     MAX_REVIEW_ITERATIONS, ISSUE_REPO, STAGE_TIMEOUTS,
 )
-from ..utils.issue_body import (
+from ..utils.body_templates import (
     get_status, set_status, append_log, get_metadata, set_metadata,
 )
 from ..utils.review_handler import (

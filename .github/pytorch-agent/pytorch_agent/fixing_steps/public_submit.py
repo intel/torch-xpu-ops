@@ -10,12 +10,12 @@ import os
 from subprocess import CalledProcessError
 
 from ..utils import git as gh
-from ..utils.issue_body import render_pr_body
+from ..utils.body_templates import render_pr_body
 from ..utils.config import (
     ISSUE_REPO, UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO,
     PUBLIC_TARGET_REPO,
 )
-from ..utils.issue_body import (
+from ..utils.body_templates import (
     get_status, set_status, parse_sections, append_log,
 )
 from ..utils.logger import log

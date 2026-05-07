@@ -13,7 +13,7 @@ import traceback
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO
-from .utils.issue_body import get_status, sync_labels
+from .utils.body_templates import get_status, sync_labels
 from .utils.logger import log
 
 

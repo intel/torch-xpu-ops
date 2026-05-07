@@ -12,7 +12,7 @@ import yaml
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, AGENT_DIR
-from .utils.issue_body import (
+from .utils.body_templates import (
     get_status, render_initial_body, check_action_item, append_log,
 )
 from .utils.agent_backend import get_backend

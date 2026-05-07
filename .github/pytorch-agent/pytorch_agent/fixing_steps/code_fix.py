@@ -17,14 +17,14 @@ from ..utils.config import (
     ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
     REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
 )
-from ..utils.issue_body import (
+from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
 )
 from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ..utils.issue_body import render_pr_body
+from ..utils.body_templates import render_pr_body
 
 
 

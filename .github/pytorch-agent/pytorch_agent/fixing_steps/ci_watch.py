@@ -14,7 +14,7 @@ from ..utils.config import (
     ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
     STAGE_TIMEOUTS, MAX_CI_ITERATIONS,
 )
-from ..utils.issue_body import (
+from ..utils.body_templates import (
     get_status, set_status, append_log, get_metadata, set_metadata,
 )
 from ..utils.agent_backend import get_backend

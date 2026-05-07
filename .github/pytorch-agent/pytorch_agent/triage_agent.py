@@ -10,7 +10,7 @@ import json
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
-from .utils.issue_body import (
+from .utils.body_templates import (
     get_status, parse_sections, update_section, set_status,
     check_action_item, append_log,
 )
