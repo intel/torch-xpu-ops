@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -17,7 +18,9 @@ res = 0
 res2 = 0
 fail_test = []
 
-os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
+# Add the path to the pipelining test utilities to the system path
+sys.path.insert(0, str(Path("../../../../test/distributed/pipelining").resolve()))
+
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
