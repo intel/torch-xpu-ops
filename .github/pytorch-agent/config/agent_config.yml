@@ -1,0 +1,37 @@
+# Agent configuration
+# All agent constants in one place — Python config.py loads from this file.
+
+# Label prefix mapping for issue metadata extraction
+# Labels like "agent_test: ut" map to test_type="ut"
+label_prefixes:
+  agent_test: test_type
+  agent_category: category
+  agent_dependency: dependency
+
+# Stage → GitHub label mapping
+# Each stage maps to a label applied on the issue during processing
+stage_labels:
+  DISCOVERED: "agent:active"
+  TRIAGING: "agent:active"
+  IMPLEMENTING: "agent:active"
+  IN_REVIEW: "agent:active"
+  PUBLIC_PR: "agent:active"
+  CI_WATCH: "agent:active"
+  MERGED: "agent:active"
+  DONE: ""          # label removed on completion
+  SKIPPED: ""
+  NEEDS_HUMAN: "agent:needs-human"
+
+# Per-stage timeouts (seconds)
+stage_timeouts:
+  DISCOVERED: 300
+  TRIAGING: 300
+  IMPLEMENTING: 3600
+  IN_REVIEW: 1800
+  CI_WATCH: 600
+
+# Limits
+limits:
+  max_review_iterations: 3
+  max_ci_iterations: 3
+  max_agent_attempts: 3

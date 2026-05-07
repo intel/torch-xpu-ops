@@ -21,12 +21,12 @@ from .utils.logger import log
 
 
 def _load_label_mapping() -> dict[str, str]:
-    """Load label prefix → field mapping from config/label_mapping.yml."""
-    path = AGENT_DIR / "config" / "label_mapping.yml"
+    """Load label prefix → field mapping from config/agent_config.yml."""
+    path = AGENT_DIR / "config" / "agent_config.yml"
     if path.exists():
         with open(path) as f:
             data = yaml.safe_load(f)
-        return data.get("prefixes", {})
+        return data.get("label_prefixes", {})
     # Fallback hardcoded
     return {"agent_test": "test_type", "agent_category": "category",
             "agent_dependency": "dependency"}

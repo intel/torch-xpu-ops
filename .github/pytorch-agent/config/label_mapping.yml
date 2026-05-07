@@ -1,7 +1,0 @@
-# Label prefix mapping for issue metadata extraction
-# Format: prefix → field_name
-# Labels like "agent_test: ut" map to test_type="ut"
-prefixes:
-  agent_test: test_type
-  agent_category: category
-  agent_dependency: dependency
