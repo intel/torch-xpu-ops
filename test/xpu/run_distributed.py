@@ -20,8 +20,6 @@ fail_test = []
 
 # Add the path to the pipelining test utilities to the system path
 pipelining_path = str(Path("../../../../test/distributed/pipelining").resolve())
-sys.path.insert(0, pipelining_path)
-
 existing_pythonpath = os.environ.get("PYTHONPATH")
 if existing_pythonpath:
     pythonpath_entries = existing_pythonpath.split(os.pathsep)
