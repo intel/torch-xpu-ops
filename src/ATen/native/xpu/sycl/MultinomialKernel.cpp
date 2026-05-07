@@ -25,8 +25,6 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
-#include <ATen/native/xpu/sycl/MultinomialKernel.h>
-
 namespace at::native::xpu {
 
 template <typename scalar_t, typename item_t>
