@@ -90,15 +90,17 @@ jobs:
   op_benchmark_test_results_check:
     needs: op_benchmark
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     permissions:
       actions: read
       contents: read
       issues: write
     steps:
-      - name: Install gh-cli
+      - name: Setup container environment
         run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync ca-certificates -y
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates gh rsync
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Setup python-${{ inputs.python }}

@@ -140,11 +140,17 @@ jobs:
     needs: [test-in-container, test-in-baremetal]
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates gh
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
