@@ -320,28 +320,37 @@ namespace detail {
 template <typename scalar_t>
 struct LessOrNan {
   bool operator()(scalar_t a, scalar_t b, int64_t idx_a, int64_t idx_b) const {
-    // If (a == b), then choose the one with lower idx, else min(a, b)
-    if (at::_isnan(a)) {
-      if (at::_isnan(b)) {
-        return idx_a < idx_b;
-      }
-      return true;
-    }
-    return (a == b) ? idx_a < idx_b : (a < b);
+    // Branchless formulation of the same logic as CUDA's LessOrNan
+    // (SharedReduceOps.h:441-451). Semantically identical: NaN(a) wins
+    // unless both NaN (then lower idx wins); ties broken by lower idx.
+    // Written without branches to help IGC emit predicated SIMD code
+    // instead of divergent control flow on Xe2 hardware.
+    bool a_nan = at::_isnan(a);
+    bool b_nan = at::_isnan(b);
+    bool idx_less = idx_a < idx_b;
+    bool a_lt_b = (a < b);
+    bool a_eq_b = (a == b);
+    // When a is NaN: result is true unless b is also NaN (then idx decides)
+    //   a_nan_result = a_nan & (!b_nan | idx_less)
+    // When a is not NaN: result is a_lt_b, or idx_less if equal
+    //   not_nan_result = !a_nan & ((a_eq_b & idx_less) | (!a_eq_b & a_lt_b))
+    return (a_nan & (!b_nan | idx_less)) |
+           (!a_nan & ((a_eq_b & idx_less) | (!a_eq_b & a_lt_b)));
   }
 };
 
 template <typename scalar_t>
 struct GreaterOrNan {
   bool operator()(scalar_t a, scalar_t b, int64_t idx_a, int64_t idx_b) const {
-    // If (a == b), then choose the one with lower idx, else max(a, b)
-    if (at::_isnan(a)) {
-      if (at::_isnan(b)) {
-        return idx_a < idx_b;
-      }
-      return true;
-    }
-    return (a == b) ? idx_a < idx_b : (a > b);
+    // Branchless formulation matching CUDA's GreaterOrNan
+    // (SharedReduceOps.h:455-465). Same logic, no branches.
+    bool a_nan = at::_isnan(a);
+    bool b_nan = at::_isnan(b);
+    bool idx_less = idx_a < idx_b;
+    bool a_gt_b = (a > b);
+    bool a_eq_b = (a == b);
+    return (a_nan & (!b_nan | idx_less)) |
+           (!a_nan & ((a_eq_b & idx_less) | (!a_eq_b & a_gt_b)));
   }
 };
 
