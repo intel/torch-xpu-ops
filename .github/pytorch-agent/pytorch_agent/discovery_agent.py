@@ -148,7 +148,7 @@ def run(issue_number: int) -> None:
 
     # Write back and sync labels
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
-    sync_labels(ISSUE_REPO, issue_number, new_body)
+    sync_labels(ISSUE_REPO, issue_number, "DISCOVERED")
     log("INFO", f"Discovery complete for #{issue_number}", issue=issue_number)
 
 
