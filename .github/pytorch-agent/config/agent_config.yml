@@ -1,5 +1,22 @@
 # Agent configuration
 # All agent constants in one place — Python config.py loads from this file.
+# Deployment-specific values can be overridden via environment variables.
+
+# ---------------------------------------------------------------------------
+# Repositories
+# ---------------------------------------------------------------------------
+# Override via env: UPSTREAM_ISSUE_REPO, ISSUE_REPO, PRIVATE_REVIEW_REPO,
+#                   PUBLIC_TARGET_REPO
+repos:
+  upstream_issue: "intel/torch-xpu-ops"
+  issue: "ZhaoqiongZ/torch-xpu-ops-exp"
+  private_review: ""          # e.g. "yourfork/pytorch"
+  public_target: "pytorch/pytorch"
+
+# ---------------------------------------------------------------------------
+# Labels
+# ---------------------------------------------------------------------------
+issue_label: "ai_generated"
 
 # Label prefix mapping for issue metadata extraction
 # Labels like "agent_test: ut" map to test_type="ut"
@@ -9,7 +26,6 @@ label_prefixes:
   agent_dependency: dependency
 
 # Stage → GitHub label mapping
-# Each stage maps to a label applied on the issue during processing
 stage_labels:
   DISCOVERED: "agent:active"
   TRIAGING: "agent:active"
@@ -22,6 +38,10 @@ stage_labels:
   SKIPPED: "agent:done"
   NEEDS_HUMAN: "agent:needs-human"
 
+# ---------------------------------------------------------------------------
+# Timeouts & Limits
+# ---------------------------------------------------------------------------
+
 # Per-stage timeouts (seconds)
 stage_timeouts:
   DISCOVERED: 300
@@ -30,8 +50,33 @@ stage_timeouts:
   IN_REVIEW: 1800
   CI_WATCH: 600
 
-# Limits
 limits:
   max_review_iterations: 3
   max_ci_iterations: 3
   max_agent_attempts: 3
+
+# Polling interval (seconds) — temporary, removed when moving to webhooks
+poll_interval: 60
+
+# ---------------------------------------------------------------------------
+# Git
+# ---------------------------------------------------------------------------
+git:
+  review_remote: "review"
+  branch_prefix: "agent/"
+  pr_prefix: "[Agent]"
+
+# ---------------------------------------------------------------------------
+# Agent backend
+# ---------------------------------------------------------------------------
+# Override via env: AGENT_BACKEND, OPENCODE_CMD
+backend:
+  type: "opencode"            # or "copilot"
+  opencode_cmd: "opencode"
+
+# ---------------------------------------------------------------------------
+# Paths (relative to AGENT_DIR unless absolute)
+# ---------------------------------------------------------------------------
+# Override PYTORCH_DIR via env
+paths:
+  pytorch_dir: "~/pytorch"
