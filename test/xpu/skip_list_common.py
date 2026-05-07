@@ -27,6 +27,10 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_max_pool2d_cudnn_xpu",
+        "test_qgelu_xpu",
+        "test_qrelu_xpu",
     ),
     "quantization/core/test_quantized_tensor_xpu.py": None,
     "quantization/core/test_workflow_module_xpu.py": None,
@@ -138,7 +142,10 @@ skip_dict = {
     "test_reductions_xpu.py": None,
     "test_scatter_gather_ops_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_shape_ops_xpu.py": None,
+    "test_shape_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_flip_xpu_float32",
+    ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,

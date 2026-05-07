@@ -85,7 +85,7 @@ jobs:
             "1. Review the lint failure log via the link above" \
             "2. Fix all lint errors in the relevant source files" \
             "3. Ensure both Python lint and Clang format checks pass"
-          gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
       - name: Fail if lint failed
         if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
         run: |
@@ -149,7 +149,7 @@ jobs:
               "Please provide a reproducer using one of these methods:" \
               "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
               "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
-            gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
           fi
