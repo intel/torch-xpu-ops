@@ -80,10 +80,6 @@ runs:
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
-        rm -rf 182614.diff
-        wget https://github.com/pytorch/pytorch/pull/182614.diff
-        git apply 182614.diff
-        cp torch/_inductor/autoheuristic/autoheuristic.py $(find $(dirname $(which python))/../lib/ -name "autoheuristic.py")
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
