@@ -623,7 +623,7 @@ def run_meta_crossref(
             meta_kwargs = tree_map(to_meta, kwargs)
         except Exception as e:
             raise RuntimeError(
-                f"failed to convert args to meta; " f"originally (*{args}, **{kwargs})"
+                f"failed to convert args to meta; originally (*{args}, **{kwargs})"
             ) from e
     try:
         rs = func(*args, **kwargs)

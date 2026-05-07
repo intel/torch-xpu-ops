@@ -701,9 +701,7 @@ class TestExport(TestCase):
             def forward(self, x, y):
                 f = lambda x, y: (
                     (x * y).to("cpu", memory_format=torch.channels_last) + 1
-                ).sum(
-                    dim=0
-                )  # noqa: E731
+                ).sum(dim=0)  # noqa: E731
                 vmapped = torch.vmap(f)(x, y)
                 return vmapped.sum(dim=0)
 
@@ -15172,12 +15170,14 @@ def forward(self, x, y):
             "y": [Dim("dy")],  # y & z incorrect, export is supposed to fail.
             "z": [Dim("dz")],  # suggested fix should be to match these up.
         }
-        with self.assertRaisesRegex(  # if disable=True, suggested fixes should not specialize.
-            torch._dynamo.exc.UserError,
-            r".*Constraints violated(.*\n)*"
-            r"Suggested fixes:(.*\n)*"
-            r".*dz = dy(.*\n)*",
-        ) as msg:
+        with (
+            self.assertRaisesRegex(  # if disable=True, suggested fixes should not specialize.
+                torch._dynamo.exc.UserError,
+                r".*Constraints violated(.*\n)*"
+                r"Suggested fixes:(.*\n)*"
+                r".*dz = dy(.*\n)*",
+            ) as msg
+        ):
             export(
                 Foo(),
                 inputs,
@@ -16094,8 +16094,7 @@ def forward(self, x):
         """Make sure the metadata is kept after exported program run_decompositions."""
 
         @torch.library.custom_op("mylib::add", mutates_args=())
-        def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            ...
+        def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor: ...
 
         @torch.library.register_fake("mylib::add")
         def _(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

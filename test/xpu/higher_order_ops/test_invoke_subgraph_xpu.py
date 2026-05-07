@@ -328,7 +328,9 @@ class TestInvokeSubgraphCompile(TestCase):
         x_clone = x.detach().clone().requires_grad_(True)
         y_clone = y.detach().clone().requires_grad_(True)
         backend = EagerAndRecordGraphs()
-        with (torch.no_grad(),):
+        with (
+            torch.no_grad(),
+        ):
             res = torch.compile(fn, backend=backend, fullgraph=True)(
                 mod, x_clone, y_clone
             )
@@ -1335,7 +1337,9 @@ class GraphModule(torch.nn.Module):
 
         opt_fn = torch.compile(fn, backend="inductor", fullgraph=True)
 
-        with (torch.no_grad(),):
+        with (
+            torch.no_grad(),
+        ):
             out = opt_fn(x, y)
         exp_out = fn(x_clone, y)
         self.assertEqual(exp_out, out)
@@ -3124,9 +3128,7 @@ class TestInvokeSubgraphReuse(TestCase):
     @contextlib.contextmanager
     def _count_speculate_calls(self):
         count = 0
-        orig = (
-            torch._dynamo.variables.higher_order_ops.speculate_subgraph_with_auto_output_flattening
-        )
+        orig = torch._dynamo.variables.higher_order_ops.speculate_subgraph_with_auto_output_flattening
 
         def _counting(*args, **kwargs):
             nonlocal count
@@ -3942,7 +3944,9 @@ class GraphModule(torch.nn.Module):
         {"strict": False},
         {"strict": True},
     ],
-    class_name_func=lambda cls, _, params: f"{cls.__name__}{'Strict' if params['strict'] else 'Nonstrict'}",
+    class_name_func=lambda cls,
+    _,
+    params: f"{cls.__name__}{'Strict' if params['strict'] else 'Nonstrict'}",
 )
 class TestInvokeSubgraphExport(TestCase):
     @torch._dynamo.config.patch(inline_single_use_invoke_subgraph=False)
