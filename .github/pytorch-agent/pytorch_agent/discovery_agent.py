@@ -113,6 +113,7 @@ def run(issue_number: int) -> None:
         reproducer=data.get("reproducer", ""),
         commit_scope=data.get("commit_scope", ""),
         context=data.get("context", ""),
+        original_issue=body,
     )
 
     # Check action item and append log

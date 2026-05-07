@@ -54,3 +54,10 @@
 
 ## Context
 {context}
+
+## Original Issue
+<details><summary>Original issue body</summary>
+
+{original_issue}
+
+</details>

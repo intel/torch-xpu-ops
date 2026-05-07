@@ -151,6 +151,7 @@ def render_initial_body(
     root_cause: str = "_Pending triage_",
     fix_strategy: str = "_Pending triage_",
     context: str = "",
+    original_issue: str = "",
 ) -> str:
     """Render the full issue body template from structured data."""
     return _load_template().format(
@@ -167,6 +168,7 @@ def render_initial_body(
         root_cause=root_cause,
         fix_strategy=fix_strategy,
         context=context,
+        original_issue=original_issue,
     )
 
 
