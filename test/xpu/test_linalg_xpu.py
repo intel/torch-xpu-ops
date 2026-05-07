@@ -49,6 +49,47 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 
+def _group_quantize_tensor_impl(w, n_bit=4, q_group_size=16):
+    assert w.dim() == 2
+    w = w.transpose(0, 1).contiguous()
+    assert q_group_size > 1
+    assert w.shape[-1] % q_group_size == 0
+
+    to_quant = w.reshape(-1, q_group_size)
+    assert torch.isnan(to_quant).sum() == 0
+
+    max_val = to_quant.amax(dim=1, keepdim=True)
+    min_val = to_quant.amin(dim=1, keepdim=True)
+    max_int = 2**n_bit - 1
+    min_int = 0
+    scales = (max_val - min_val).clamp(min=1e-6) / max_int
+    assert torch.isnan(scales).sum() == 0
+    zeros = min_val + scales * (2 ** (n_bit - 1))
+    assert torch.isnan(zeros).sum() == 0
+
+    out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
+    assert torch.isnan(out).sum() == 0
+
+    out = out.to(dtype=torch.uint8).reshape(w.shape)
+    # The cpu uses big endian while the xpu uses little endian
+    if out.device.type == "xpu":
+        out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
+    elif out.device != torch.device("cpu"):
+        out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
+
+    scales = scales.view(w.shape[0], -1)
+    zeros = zeros.view(w.shape[0], -1)
+    scales_and_zeros = torch.cat(
+        [
+            scales.reshape(scales.size(0), scales.size(1), 1),
+            zeros.reshape(zeros.size(0), zeros.size(1), 1),
+        ],
+        2,
+    )
+    scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
+    return out, scales_and_zeros
+
+
 def large_bmm_mm_backward(self, device):
     A = torch.randn([1024, 2, 1024], device="xpu").mT.contiguous().mT
     B = torch.randn([1024, 65536], device="xpu", requires_grad=True)
@@ -275,45 +316,7 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 @parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
-        assert w.dim() == 2
-        w = w.transpose(0, 1).contiguous()
-        assert q_group_size > 1
-        assert w.shape[-1] % q_group_size == 0
-
-        to_quant = w.reshape(-1, q_group_size)
-        assert torch.isnan(to_quant).sum() == 0
-
-        max_val = to_quant.amax(dim=1, keepdim=True)
-        min_val = to_quant.amin(dim=1, keepdim=True)
-        max_int = 2**n_bit - 1
-        min_int = 0
-        scales = (max_val - min_val).clamp(min=1e-6) / max_int
-        assert torch.isnan(scales).sum() == 0
-        zeros = min_val + scales * (2 ** (n_bit - 1))
-        assert torch.isnan(zeros).sum() == 0
-
-        out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
-        assert torch.isnan(out).sum() == 0
-
-        out = out.to(dtype=torch.uint8).reshape(w.shape)
-        # The cpu uses big endian while the xpu uses little endian
-        if out.device.type == "xpu":
-            out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
-        elif out.device != torch.device("cpu"):
-            out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
-        # Scales and zeros for the same q-group should be contiguous, so we can
-        # load as a 32-bit word
-        scales = scales.view(w.shape[0], -1)
-        zeros = zeros.view(w.shape[0], -1)
-        scales_and_zeros = torch.cat(
-            [
-                scales.reshape(scales.size(0), scales.size(1), 1),
-                zeros.reshape(zeros.size(0), zeros.size(1), 1),
-            ],
-            2,
-        )
-        scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
-        return out, scales_and_zeros
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
 
     def convert_weight_to_int4pack(b):
         b_tmp, b_scales_and_zeros = _group_quantize_tensor(
@@ -371,6 +374,50 @@ def _int4_mm(self, device, m, k, n):
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
+
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+@parametrize("m", [32, 64])
+@parametrize("k", [32, 64])
+@parametrize("n", [48, 64])
+def _compile_int4_mm(self, device, m, k, n):
+    def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
+
+    q_group = 32
+    inner_k_tiles = 2
+
+    torch.manual_seed(1)
+    a = torch.rand((m, k), dtype=torch.bfloat16, device=device)
+    b = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+
+    b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
+
+    @torch.compile
+    def int4_mm(a, b_tmp, b_scales_and_zeros):
+        if self.device_type == "cpu":
+            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
+            self.assertTrue(b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dim() == 2)
+            return torch._weight_int4pack_mm_for_cpu(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
+        if self.device_type == "xpu":
+            b_int4pack = b_tmp.view(torch.int32)
+            self.assertTrue(b_int4pack.dtype is torch.int32)
+            self.assertTrue(b_int4pack.dim() == 2)
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+        b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
+        self.assertTrue(b_int4pack.dtype is torch.int32)
+        self.assertTrue(b_int4pack.dim() == 4)
+        return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+    res = int4_mm(a, b_tmp, b_scales_and_zeros)
+    ref = torch.mm(a, b)
+
+    mean_err = ((res - ref).abs() / ref).mean()
+    self.assertTrue(mean_err < 0.05)
 
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
@@ -682,6 +729,7 @@ TestLinalg.test_preferred_linalg_library = preferred_linalg_library
 TestLinalg.test_addbmm = addbmm
 TestLinalg.test__int_mm = _int_mm
 TestLinalg.test__int4_mm = _int4_mm
+TestLinalg.test_compile_int4_mm = _compile_int4_mm
 TestLinalg.test_matmul_small_brute_force_1d_Nd = matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
