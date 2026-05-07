@@ -310,7 +310,7 @@ struct DispatchSoftmaxForwardKernelFunctor
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
-      // update result
+    // update result
 #pragma unroll(outer_loop)
     for (int i = 0; i < outer_loop; ++i) {
       auto index = i * local_stride + lid_offset;
@@ -622,21 +622,24 @@ struct SoftmaxForwardKernelFunctor {
       } else {
         vec_t in_val = *(reinterpret_cast<const vec_t*>(
             in_data_ + group_offset - start + i * vec_size));
-        outscalar_t* out_data_p =
-            out_data_ + group_offset - start + i * vec_size;
+        using out_vec_t =
+            at::native::memory::aligned_vector<outscalar_t, vec_size>;
+        out_vec_t out_val;
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax)
-            out_data_p[j] =
+            out_val[j] =
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
           else if (
               is_safe_softmax &&
               max_value == std::numeric_limits<accscalar_t>::lowest())
-            out_data_p[j] = static_cast<outscalar_t>(0);
+            out_val[j] = static_cast<outscalar_t>(0);
           else
-            out_data_p[j] = static_cast<outscalar_t>(
+            out_val[j] = static_cast<outscalar_t>(
                 std::exp(in_val[j] - max_value) * sum_value);
         }
+        *(reinterpret_cast<out_vec_t*>(
+            out_data_ + group_offset - start + i * vec_size)) = out_val;
       }
     }
   }
