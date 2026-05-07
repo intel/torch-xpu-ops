@@ -7,15 +7,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 
 from .utils import git as gh
-from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, STAGE_TO_LABEL, ALL_AGENT_LABELS
+from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
 from .utils.issue_body import (
     get_status, parse_sections, update_section, set_status,
     check_action_item, append_log,
 )
 from .utils.agent_backend import get_backend
+from .utils.json_utils import extract_json
 from .utils.logger import log
 
 
@@ -28,33 +28,7 @@ def _select_skill(labels: list) -> str:
     return "pytorch-triage-ut"
 
 
-def _sync_labels(repo: str, number: int, stage: str) -> None:
-    """Sync issue labels based on new stage."""
-    target_label = STAGE_TO_LABEL.get(stage)
-    for label in ALL_AGENT_LABELS:
-        if label == target_label:
-            gh.add_label(repo, number, label)
-        else:
-            try:
-                gh.remove_label(repo, number, label)
-            except Exception:
-                pass
 
-
-def _extract_json(text: str) -> str:
-    """Extract the first JSON object from text."""
-    depth = 0
-    start = None
-    for i, ch in enumerate(text):
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start is not None:
-                return text[start:i + 1]
-    raise ValueError("No JSON object found in text")
 
 
 def run(issue_number: int) -> tuple[str, str]:
@@ -89,7 +63,7 @@ def run(issue_number: int) -> tuple[str, str]:
 
     # Parse result
     try:
-        json_str = _extract_json(output)
+        json_str = extract_json(output)
         data = json.loads(json_str)
     except (json.JSONDecodeError, ValueError) as e:
         log("WARN", f"Failed to parse triage output: {e}", issue=issue_number)
@@ -126,10 +100,6 @@ def run(issue_number: int) -> tuple[str, str]:
 
     # Write back
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
-
-    # Sync labels (only add agent:active for IMPLEMENTING, not for triage phase)
-    _sync_labels(ISSUE_REPO, issue_number,
-                 "IMPLEMENTING" if verdict == "IMPLEMENTING" else "NEEDS_HUMAN")
 
     log("INFO", f"Triage result for #{issue_number}: {verdict} — {reason}",
         issue=issue_number)

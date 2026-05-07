@@ -127,7 +127,7 @@ def get_issues(repo: str, label: str) -> list[dict]:
         "issue", "list", "--repo", repo, "--label", label,
         "--state", "open", "--json",
         "number,title,labels,body,createdAt,url", "--limit", "100",
-    ])
+    ], token=_token_for_repo(repo))
     return json.loads(raw) if raw.strip() else []
 
 
@@ -136,7 +136,7 @@ def get_issue_detail(repo: str, number: int) -> dict:
     raw = _gh([
         "issue", "view", str(number), "--repo", repo,
         "--json", "number,title,body,labels,comments,url,state,createdAt",
-    ])
+    ], token=_token_for_repo(repo))
     return json.loads(raw)
 
 

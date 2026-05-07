@@ -155,6 +155,10 @@ def run(issue_number: int) -> None:
 
     # --- Update issue body ---
     new_body = body
+    # Record PR and SHA for downstream stages (private_review, ci_watch)
+    tracking_pr_num = pr.get("number")
+    new_body = f"<!-- tracking_pr: #{tracking_pr_num} -->\n" + new_body
+    new_body = f"<!-- last_push_sha: {sha} -->\n" + new_body
     new_body = check_action_item(new_body, "Fix implemented")
     new_body = check_action_item(new_body, "Fix verified")
     new_body = set_status(new_body, "IN_REVIEW")

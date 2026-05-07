@@ -13,7 +13,7 @@ import traceback
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO
-from .utils.issue_body import get_status
+from .utils.issue_body import get_status, sync_labels
 from .utils.logger import log
 
 
@@ -23,6 +23,11 @@ def _run_step(step_name: str, run_fn, issue_number: int) -> None:
     try:
         run_fn(issue_number)
         log("INFO", f"{step_name} step completed", issue=issue_number)
+        # Sync labels after each step (re-read body for new status)
+        detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+        new_stage = get_status(detail.get("body", "") or "")
+        if new_stage:
+            sync_labels(ISSUE_REPO, issue_number, new_stage)
     except Exception as e:
         tb = traceback.format_exc()
         log("ERROR", f"{step_name} step failed: {e}", issue=issue_number, exc=e)

@@ -1,6 +1,8 @@
 """Tests for agent_backend module."""
+import json
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
+from io import StringIO
 
 import pytest
 import sys
@@ -10,7 +12,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pytorch_agent.utils.agent_backend import (
-    OpenCodeBackend, CopilotBackend, get_backend
+    OpenCodeBackend, CopilotBackend, get_backend, parse_opencode_events
 )
 
 
@@ -26,30 +28,52 @@ class TestGetBackend:
             assert isinstance(backend, CopilotBackend)
 
 
-class TestOpenCodeBackend:
-    def test_run_calls_subprocess(self, tmp_path):
-        backend = OpenCodeBackend()
-        mock_result = MagicMock()
-        mock_result.stdout = "agent output"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
+class TestParseOpenCodeEvents:
+    def test_extracts_text(self):
+        raw = '\n'.join([
+            json.dumps({"type": "text", "part": {"text": "Hello "}}),
+            json.dumps({"type": "text", "part": {"text": "world"}}),
+        ])
+        assert parse_opencode_events(raw) == "Hello world"
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run, \
+    def test_ignores_non_text(self):
+        raw = json.dumps({"type": "tool_call", "name": "bash"})
+        assert parse_opencode_events(raw) == ""
+
+    def test_skips_invalid_json(self):
+        raw = "not json\n" + json.dumps({"type": "text", "part": {"text": "ok"}})
+        assert parse_opencode_events(raw) == "ok"
+
+
+def _make_mock_popen(events: list[dict], returncode: int = 0):
+    """Create a mock Popen that streams JSON events."""
+    lines = [json.dumps(e) + "\n" for e in events]
+    mock_proc = MagicMock()
+    mock_proc.stdout = iter(lines)
+    mock_proc.returncode = returncode
+    mock_proc.pid = 12345
+    mock_proc.wait = MagicMock()
+    return mock_proc
+
+
+class TestOpenCodeBackend:
+    def test_run_returns_3_tuple(self, tmp_path):
+        backend = OpenCodeBackend()
+        events = [
+            {"sessionID": "sess-123", "type": "start"},
+            {"type": "text", "part": {"text": "agent output"}},
+        ]
+        mock_proc = _make_mock_popen(events)
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
              patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
-            output, log_path = backend.run("fix the bug", workdir="/tmp/pytorch")
+            output, log_path, session_id = backend.run("fix the bug", workdir="/tmp/pytorch")
 
         assert output == "agent output"
         assert log_path.exists()
-        args = mock_run.call_args
-        cmd = args[0][0]
-        assert cmd[0] == "opencode"
-        assert "run" in cmd
-        assert "--dir" in cmd
-        assert "--dangerously-skip-permissions" in cmd
-        assert "fix the bug" in cmd
+        assert session_id == "sess-123"
 
-    def test_run_with_skill_inlines_content(self, tmp_path, monkeypatch):
-        # Create a fake skill
+    def test_run_with_skill_adds_hint(self, tmp_path):
         skill_dir = tmp_path / "pytorch-triage"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# Triage skill\nDo triage.")
@@ -57,50 +81,57 @@ class TestOpenCodeBackend:
         log_dir.mkdir()
 
         backend = OpenCodeBackend()
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
+        events = [{"type": "text", "part": {"text": "output"}}]
+        mock_proc = _make_mock_popen(events)
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run, \
+        with patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
              patch("pytorch_agent.utils.agent_backend.SKILLS_DIR", tmp_path), \
              patch("pytorch_agent.utils.agent_backend.LOG_DIR", log_dir):
             backend.run("triage issue #5", skill="pytorch-triage")
 
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         prompt = cmd[-1]
-        assert "Skill Instructions" in prompt
-        assert "Triage skill" in prompt
+        assert "pytorch-triage" in prompt
         assert "triage issue #5" in prompt
 
     def test_run_raises_on_failure(self, tmp_path):
         backend = OpenCodeBackend()
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "error message"
-        mock_result.stdout = ""
+        events = [{"type": "text", "part": {"text": "error"}}]
+        mock_proc = _make_mock_popen(events, returncode=1)
 
-        with patch("subprocess.run", return_value=mock_result), \
+        with patch("subprocess.Popen", return_value=mock_proc), \
              patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
             with pytest.raises(RuntimeError, match="OpenCode failed"):
                 backend.run("fail")
 
     def test_run_saves_log_with_issue_and_stage(self, tmp_path):
         backend = OpenCodeBackend()
-        mock_result = MagicMock()
-        mock_result.stdout = "fix output"
-        mock_result.stderr = "some warnings"
-        mock_result.returncode = 0
+        events = [{"type": "text", "part": {"text": "fix output"}}]
+        mock_proc = _make_mock_popen(events)
 
-        with patch("subprocess.run", return_value=mock_result), \
+        with patch("subprocess.Popen", return_value=mock_proc), \
              patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
-            output, log_path = backend.run("fix it", issue=42, stage="IMPLEMENTING")
+            output, log_path, _ = backend.run("fix it", issue=42, stage="IMPLEMENTING")
 
         assert "issue-42" in log_path.name
         assert "implementing" in log_path.name
         content = log_path.read_text()
         assert "fix output" in content
-        assert "some warnings" in content
+
+    def test_on_session_start_callback(self, tmp_path):
+        backend = OpenCodeBackend()
+        events = [
+            {"sessionID": "sess-456", "type": "start"},
+            {"type": "text", "part": {"text": "done"}},
+        ]
+        mock_proc = _make_mock_popen(events)
+        callback = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
+             patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
+            backend.run("test", on_session_start=callback)
+
+        callback.assert_called_once_with("sess-456")
 
 
 class TestCopilotBackend:

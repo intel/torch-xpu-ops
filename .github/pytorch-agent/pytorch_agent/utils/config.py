@@ -47,7 +47,7 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
 # Per-stage timeouts (seconds)
 STAGE_TIMEOUTS = {
-    "DISCOVERY": 300,
+    "DISCOVERED": 300,
     "TRIAGING": 300,
     "IMPLEMENTING": 3600,
     "IN_REVIEW": 1800,

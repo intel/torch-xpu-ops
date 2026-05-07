@@ -83,11 +83,12 @@ def run(issue_number: int) -> None:
 
     # Update issue body: set status, record PR ref
     new_body = set_status(body, "CI_WATCH")
+    # Metadata as top-level HTML comments (not inside <details> log)
+    new_body += f"\n<!-- public_pr: #{public_pr_number} -->\n"
+    new_body += f"<!-- ci_iteration: 0 -->\n"
     new_body = append_log(new_body, "public-submit",
                           f"Public PR created: {PUBLIC_TARGET_REPO}#{public_pr_number}\n"
-                          f"URL: {public_pr_url}\n"
-                          f"<!-- public_pr: #{public_pr_number} -->\n"
-                          f"<!-- ci_iteration: 0 -->")
+                          f"URL: {public_pr_url}")
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
 
     log("INFO", f"Public PR created for #{issue_number}: "

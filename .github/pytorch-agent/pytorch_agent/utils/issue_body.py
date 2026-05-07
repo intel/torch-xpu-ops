@@ -226,3 +226,36 @@ def render_initial_body(
         fix_strategy=fix_strategy,
         context=context,
     )
+
+
+# ---------------------------------------------------------------------------
+# Metadata extraction helpers (HTML comment markers)
+# ---------------------------------------------------------------------------
+
+def get_metadata(body: str, key: str) -> str | None:
+    """Extract a metadata value from an HTML comment like <!-- key: value -->."""
+    m = re.search(rf"<!--\s*{re.escape(key)}:\s*#?(.+?)\s*-->", body)
+    return m.group(1).strip() if m else None
+
+
+def sync_labels(repo: str, number: int, stage: str) -> None:
+    """Ensure issue labels match the current stage."""
+    from . import git as gh
+    from .config import STAGE_TO_LABEL, ALL_AGENT_LABELS
+    target_label = STAGE_TO_LABEL.get(stage)
+    for label in ALL_AGENT_LABELS:
+        if label == target_label:
+            gh.add_label(repo, number, label)
+        else:
+            try:
+                gh.remove_label(repo, number, label)
+            except Exception:
+                pass
+
+
+def set_metadata(body: str, key: str, value: str) -> str:
+    """Set or update a metadata HTML comment. Adds if missing."""
+    pattern = rf"(<!--\s*{re.escape(key)}:\s*)#?(.+?)(\s*-->)"
+    if re.search(pattern, body):
+        return re.sub(pattern, rf"\g<1>{value}\3", body)
+    return body + f"\n<!-- {key}: {value} -->\n"

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import yaml
 
@@ -17,6 +16,7 @@ from .utils.issue_body import (
     get_status, render_initial_body, check_action_item, append_log,
 )
 from .utils.agent_backend import get_backend
+from .utils.json_utils import extract_json
 from .utils.logger import log
 
 
@@ -80,7 +80,7 @@ def run(issue_number: int) -> None:
 
     # Parse JSON from LLM output
     try:
-        json_match = _extract_json(output)
+        json_match = extract_json(output)
         data = json.loads(json_match)
     except (json.JSONDecodeError, ValueError) as e:
         log("WARN", f"Failed to parse discovery output as JSON: {e}",
@@ -126,20 +126,7 @@ def run(issue_number: int) -> None:
     log("INFO", f"Discovery complete for #{issue_number}", issue=issue_number)
 
 
-def _extract_json(text: str) -> str:
-    """Extract the first JSON object from text."""
-    depth = 0
-    start = None
-    for i, ch in enumerate(text):
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start is not None:
-                return text[start:i + 1]
-    raise ValueError("No JSON object found in text")
+
 
 
 def main() -> None:

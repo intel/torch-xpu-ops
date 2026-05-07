@@ -15,7 +15,7 @@ from ..utils.config import (
     STAGE_TIMEOUTS, MAX_CI_ITERATIONS,
 )
 from ..utils.issue_body import (
-    get_status, set_status, update_section, check_action_item, append_log,
+    get_status, set_status, append_log, get_metadata, set_metadata,
 )
 from ..utils.agent_backend import get_backend
 from ..utils.logger import log
@@ -32,14 +32,13 @@ def run(issue_number: int) -> None:
     if status != "CI_WATCH":
         return
 
-    # Get public PR number from issue body context
-    import re
-    pr_match = re.search(r"public_pr:\s*#?(\d+)", body)
-    if not pr_match:
+    # Get public PR number from issue body metadata
+    public_pr_str = get_metadata(body, "public_pr")
+    if not public_pr_str:
         log("WARN", f"No public PR reference in issue #{issue_number} body",
             issue=issue_number)
         return
-    public_pr = int(pr_match.group(1))
+    public_pr = int(public_pr_str)
 
     # Check if PR is already merged
     pr_status = gh.get_pr_status(PUBLIC_TARGET_REPO, public_pr)
@@ -76,8 +75,8 @@ def run(issue_number: int) -> None:
         return
 
     # Handle failures — check iteration count
-    iter_match = re.search(r"ci_iteration:\s*(\d+)", body)
-    ci_iteration = int(iter_match.group(1)) if iter_match else 0
+    ci_iter_str = get_metadata(body, "ci_iteration")
+    ci_iteration = int(ci_iter_str) if ci_iter_str else 0
     ci_iteration += 1
 
     if ci_iteration > MAX_CI_ITERATIONS:
@@ -88,10 +87,7 @@ def run(issue_number: int) -> None:
         return
 
     # Update iteration counter in body
-    if iter_match:
-        new_body = body[:iter_match.start()] + f"ci_iteration: {ci_iteration}" + body[iter_match.end():]
-    else:
-        new_body = body + f"\n<!-- ci_iteration: {ci_iteration} -->\n"
+    new_body = set_metadata(body, "ci_iteration", str(ci_iteration))
 
     failure_text = "\n".join(
         f"- **{c.get('name', 'unknown')}**: {c.get('conclusion', '?')} — "

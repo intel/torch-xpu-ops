@@ -111,14 +111,13 @@ def run(issue_number: int) -> None:
         return
 
     # Get tracking PR number from body
-    pr_match = re.search(r"tracking_pr:\s*#?(\d+)", body)
-    if not pr_match:
-        log("WARN", f"No tracking PR for issue #{issue_number}", issue=issue_number)
+    tracking_pr_str = get_metadata(body, "tracking_pr")
+    if not tracking_pr_str:
+        log("ERROR", f"No tracking PR in issue #{issue_number}", issue=issue_number)
         return
-    tracking_pr = int(pr_match.group(1))
+    tracking_pr = int(tracking_pr_str)
 
-    # Get last push sha
-    sha_match = re.search(r"last_push_sha:\s*([a-f0-9]+)", body)
+    last_push_sha = get_metadata(body, "last_push_sha")
     last_push_sha = sha_match.group(1) if sha_match else None
 
     state = get_review_state(tracking_pr, last_push_sha)

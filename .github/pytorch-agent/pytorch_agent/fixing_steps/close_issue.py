@@ -12,7 +12,7 @@ from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PUBLIC_TARGET_REPO, PRIVATE_REVIEW_REPO,
 )
-from ..utils.issue_body import get_status, set_status, check_action_item, append_log
+from ..utils.issue_body import get_status, set_status, append_log, get_metadata
 from ..utils.logger import log
 
 
@@ -24,12 +24,11 @@ def run(issue_number: int) -> None:
     if get_status(body) != "MERGED":
         return
 
-    # Get public PR number from body
-    pr_match = re.search(r"public_pr:\s*#?(\d+)", body)
-    if not pr_match:
-        log("WARN", f"No public PR for issue #{issue_number}", issue=issue_number)
+    public_pr_str = get_metadata(body, "public_pr")
+    if not public_pr_str:
+        log("WARN", f"No public PR in issue #{issue_number}", issue=issue_number)
         return
-    public_pr = int(pr_match.group(1))
+    public_pr = int(public_pr_str)
 
     # Verify merged
     status = gh.get_pr_status(PUBLIC_TARGET_REPO, public_pr)
