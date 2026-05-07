@@ -128,7 +128,7 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # Template rendering
 # ---------------------------------------------------------------------------
 
-ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue.md"
+ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "config" / "issue_body_template.md"
 
 
 def _load_template() -> str:
