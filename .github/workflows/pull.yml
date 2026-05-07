@@ -27,57 +27,129 @@ jobs:
     permissions:
       contents: read
       issues: write
+    outputs:
+      pr_body_cmd: ${{ steps.reproducer-check.outputs.pr_cmd }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
       - name: Run lint check
+        id: lint-python
+        continue-on-error: true
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
+      - name: Checkout PyTorch (for headers)
+        uses: actions/checkout@v4
+        with:
+          repository: pytorch/pytorch
+          path: pytorch-headers
+          fetch-depth: 1
+          submodules: false
       - name: Run lint check with Clang
+        id: lint-clang
+        continue-on-error: true
+        env:
+          PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
         run: |
           cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
           bash .github/scripts/lintrunner.sh
+      - name: Comment on lint failure for AI-generated PR
+        if: >-
+          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
+          && contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          FAILED_STEPS=""
+          if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
+            FAILED_STEPS="Python lint (flake8/ruff)"
+          fi
+          if [ "${{ steps.lint-clang.outcome }}" = "failure" ]; then
+            if [ -n "$FAILED_STEPS" ]; then
+              FAILED_STEPS="${FAILED_STEPS} and Clang format"
+            else
+              FAILED_STEPS="Clang format"
+            fi
+          fi
+          JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf -v COMMENT_BODY '%s\n' \
+            "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
+            "" \
+            "Lint job log: ${JOB_URL}" \
+            "" \
+            "Instructions:" \
+            "1. Review the lint failure log via the link above" \
+            "2. Fix all lint errors in the relevant source files" \
+            "3. Ensure both Python lint and Clang format checks pass"
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
+      - name: Fail if lint failed
+        if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
+        run: |
+          echo "::error::Lint check failed"
+          exit 1
       - name: Check reproducer exists for AI-generated PR
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        id: reproducer-check
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
           cd ./torch-xpu-ops
           FAIL_MSG=""
+          HAS_REPRO_FILES=false
+          HAS_PR_CMD=false
+
           # Check if reproducer files exist
-          if ! ls test/repro/test_*.py 1>/dev/null 2>&1; then
-            FAIL_MSG="No reproducer test found. AI-generated PRs must include at least one reproducer in \`test/repro/test_*.py\`."
-          else
-            # Validate pytest format: must contain test functions or test classes
-            VALID=false
+          if ls test/repro/test_*.py 1>/dev/null 2>&1; then
+            # Validate pytest format
             for f in test/repro/test_*.py; do
               if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
-                VALID=true
+                HAS_REPRO_FILES=true
               else
                 FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
                 break
               fi
             done
-            if [ "$VALID" = true ] && [ -z "$FAIL_MSG" ]; then
-              echo "All reproducer tests are valid pytest format:"
+            if [ "$HAS_REPRO_FILES" = true ] && [ -z "$FAIL_MSG" ]; then
+              echo "Found valid reproducer files:"
               ls test/repro/test_*.py
             fi
           fi
+
+          # Check if PR description contains pytest commands (lines starting with "pytest")
+          PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
+          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' | grep -E '^pytest ' || true)
+          if [ -n "$PR_CMD" ]; then
+            HAS_PR_CMD=true
+            echo "Found reproducer commands in PR description:"
+            echo "$PR_CMD"
+          fi
+
+          # Export for later steps
+          echo "has_repro_files=$HAS_REPRO_FILES" >> "$GITHUB_OUTPUT"
+          echo "has_pr_cmd=$HAS_PR_CMD" >> "$GITHUB_OUTPUT"
+          # Use delimiter for multiline output
+          echo "pr_cmd<<ENDOFCMD" >> "$GITHUB_OUTPUT"
+          echo "$PR_CMD" >> "$GITHUB_OUTPUT"
+          echo "ENDOFCMD" >> "$GITHUB_OUTPUT"
+
+          # Fail only if neither source is available
+          if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
+            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`)."
+          fi
+
           if [ -n "$FAIL_MSG" ]; then
             PR_AUTHOR="${{ github.event.pull_request.user.login }}"
             printf -v COMMENT_BODY '%s\n' \
               "@${PR_AUTHOR} ${FAIL_MSG}" \
               "" \
-              "Please ensure your reproducer follows pytest conventions:" \
-              "- File name: \`test/repro/test_<description>.py\`" \
-              "- Contains \`def test_...()\` functions or \`class Test...\` classes" \
-              "- Runnable via \`pytest test/repro/\`"
-            gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
+              "Please provide a reproducer using one of these methods:" \
+              "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
+              "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
           fi
@@ -185,7 +257,7 @@ jobs:
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
 
   reproducer-test:
-    needs: [linux-build]
+    needs: [linux-build, preci-lint-check]
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
     secrets: inherit
     permissions:
@@ -197,6 +269,7 @@ jobs:
       runner: pvc_rolling
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   windows:
     name: windows
