@@ -37,6 +37,35 @@ with XPUPatchForImport(False):
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 
+
+# The XPU profiler emits many Level Zero / Unified Runtime bookkeeping events per
+# aten op (zeKernelSetArgumentValue, zeKernelSetGroupSize, zeEventCreate,
+# zeMemGetAllocProperties, zeCommandListAppendLaunchKernel, ...). Upstream CUDA
+# baselines assume one cudaLaunchKernel per kernel dispatch and the HIP path
+# filters hipGetDeviceProperties for the same reason. We drop the UR/ZE
+# bookkeeping so the test asserts the same invariant upstream does: that each
+# real kernel launch event is attributed to its aten op via the FX stack trace.
+# Everything kept here (aten:: ops + the canonical launch event) must still be
+# correctly augmented; nothing is aggregated away.
+_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
+
+# Names of runtime helper events known to be emitted on XPU that carry an
+# aten parent context but are not kernel launches we want to assert on.
+_XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
+
+
+def _filter_xpu_runtime_events(actual_traces):
+    kept = []
+    for line in actual_traces.split("\n"):
+        if f"event={_XPU_KERNEL_LAUNCH_EVENT}" in line:
+            kept.append(line)
+            continue
+        if any(f"event={p}" in line for p in _XPU_RUNTIME_EVENT_PREFIXES):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
 # test_common_passes sets Devices = ["cpu"] (+ "cuda" when available) at
 # module-scope and decorates TestCommonPass with @instantiate_parametrized_tests.
@@ -142,21 +171,20 @@ def _test_profiler_stack_trace_augmentation(self):
     ) as prof:
         result = compiled_model(torch.randn(10, 10, device="xpu"))
 
-    actual_traces = _enrich_profiler_traces(prof)
+    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
 
-    # Handle platform-specific event names
-    if torch.version.hip:
-        actual_traces = "\n".join(
-            line
-            for line in actual_traces.split("\n")
-            if "hipGetDeviceProperties" not in line
-        )
-        kernel_event = "hipExtModuleLaunchKernel"
-        kernel_event_relu = "hipLaunchKernel"
-    else:
-        kernel_event = "xpuLaunchKernel"
-        kernel_event_relu = "xpuLaunchKernel"
+    # Mirror upstream's two-slot naming so the test can distinguish launches
+    # for BLAS-path ops (addmm) from elementwise ops (relu). On CUDA+cuBLASLt
+    # these both happen to be cudaLaunchKernel; on ROCm they differ
+    # (hipExtModuleLaunchKernel vs hipLaunchKernel). Both XPU slots default to
+    # urEnqueueKernelLaunch and must be updated if the actual trace shows a
+    # different launch entry point per path.
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     if IS_WINDOWS:
+        # Upstream CUDA+cuBLASLt emits two launches per addmm on Windows.
+        # If XPU's BLAS backend emits a different count, update this baseline
+        # to match the real trace rather than loosening the assertion.
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
@@ -231,8 +259,8 @@ def _test_profiler_multiple_modules(self):
         result_a = compiled_a(torch.randn(10, 10, device="xpu"))
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
-    actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -283,8 +311,8 @@ def _test_profiler_nested_graph_modules(self):
             torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
         )
 
-    actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
