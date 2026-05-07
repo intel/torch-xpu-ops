@@ -73,11 +73,13 @@ Verify XPU torch import and `torch.xpu.is_available()`, verify GitHub API access
 
 Search `pytorch/pytorch` using GitHub MCP (fall back to `gh` CLI). Use caller-specified time window. Paginate with `per_page=100`; split date ranges if hitting the 1000-result cap.
 
+**Principle**: cast a wide net — prefer over-collecting then filtering, rather than missing candidates at the search stage.
+
 **Source types:**
 
-1. **Issues** — `repo:pytorch/pytorch is:issue` + bug-signal keywords (`crash`, `incorrect`, `wrong`, `regression`, `segfault`, `fail`)
-2. **PRs** — `repo:pytorch/pytorch is:pr is:merged` + fix-signal keywords (`fix`, `bug`, `correct`, `resolve`)
-3. **Commits** — search merged commits fixing backend bugs via commit search API or from merged bug-fix PRs. Look for commits touching core paths (`aten/`, `torch/`, `c10/`) with fix-related messages.
+1. **Issues** — all states (open + closed). Use `label:bug` OR `label:regression` as one axis, plus broad keyword search: `crash`, `incorrect`, `wrong`, `regression`, `segfault`, `fail`, `nan`, `miscompile`, `hang`, `corrupt`, `broken`, `silent`, `mismatch`.
+2. **PRs** — all states (open, merged, closed). Use `label:bug` OR `label:release blocker`, plus fix-signal keywords: `fix`, `bug`, `correct`, `resolve`, `revert`, `workaround`, `patch`, `regression`.
+3. **Commits** — search commits (not limited to merged PRs) fixing backend bugs via commit search API. Look for commits touching core paths (`aten/`, `torch/`, `c10/`) with fix-related messages, or reverts of recent commits.
 
 Save to `artifacts/raw_candidates.json` (deduplicated by id, metadata only — no bodies/diffs yet). Each entry has `kind: "issue"|"pr"|"commit"`.
 
