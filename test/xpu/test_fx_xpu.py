@@ -47,7 +47,10 @@ with XPUPatchForImport(False):
 # real kernel launch event is attributed to its aten op via the FX stack trace.
 # Everything kept here (aten:: ops + the canonical launch event) must still be
 # correctly augmented; nothing is aggregated away.
-_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
+# _canonicalize_profiler_events truncates event names at 30 chars
+# (profiler_util.py:1581). The full UR launch event is
+# urEnqueueKernelLaunchWithArgsExp, which shows up truncated as:
+_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunchWithArgsE"
 
 # Names of runtime helper events known to be emitted on XPU that carry an
 # aten parent context but are not kernel launches we want to assert on.
@@ -182,17 +185,18 @@ def _test_profiler_stack_trace_augmentation(self):
     kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     if IS_WINDOWS:
-        # Upstream CUDA+cuBLASLt emits two launches per addmm on Windows.
-        # If XPU's BLAS backend emits a different count, update this baseline
-        # to match the real trace rather than loosening the assertion.
+        # XPU uses oneDNN/oneMKL (not cuBLASLt), so addmm emits one launch
+        # rather than upstream's two. The Windows-vs-Linux split here only
+        # changes the stack-trace text format; the event shape matches Linux.
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::relu node=relu stack_trace=return F.relu(input, inplace=self.inplace)
 event=aten::clamp_min node=relu stack_trace=return F.relu(input, inplace=self.inplace)
@@ -201,16 +205,24 @@ event=aten::t node=t_1 stack_trace=return F.linear(input, self.weight, self.bias
 event=aten::transpose node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
     else:
+        # XPU addmm decomposes into more real aten calls than CUDA's fused
+        # addmm+cuBLASLt path: resize_/expand/as_strided/empty are emitted
+        # before the kernel launch. All must attribute to node=addmm.
         expected = f"""\
 event=aten::t node=t stack_trace=x = self.linear1(x)
 event=aten::transpose node=t stack_trace=x = self.linear1(x)
 event=aten::as_strided node=t stack_trace=x = self.linear1(x)
 event=aten::addmm node=addmm stack_trace=x = self.linear1(x)
+event=aten::resize_ node=addmm stack_trace=x = self.linear1(x)
+event=aten::expand node=addmm stack_trace=x = self.linear1(x)
+event=aten::as_strided node=addmm stack_trace=x = self.linear1(x)
+event=aten::empty node=addmm stack_trace=x = self.linear1(x)
 event={kernel_event} node=addmm stack_trace=x = self.linear1(x)
 event=aten::relu node=relu stack_trace=x = self.relu(x)
 event=aten::clamp_min node=relu stack_trace=x = self.relu(x)
@@ -219,6 +231,10 @@ event=aten::t node=t_1 stack_trace=x = self.linear2(x)
 event=aten::transpose node=t_1 stack_trace=x = self.linear2(x)
 event=aten::as_strided node=t_1 stack_trace=x = self.linear2(x)
 event=aten::addmm node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::resize_ node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::expand node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::as_strided node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::empty node=addmm_1 stack_trace=x = self.linear2(x)
 event={kernel_event} node=addmm_1 stack_trace=x = self.linear2(x)"""
 
     self.assertExpectedInline(actual_traces, expected)
