@@ -33,9 +33,11 @@ while IFS= read -r test_name; do
     [[ -z "$test_name" ]] && continue
     failure_count=$((failure_count + 1))
 
-    echo "========================================" >> "$output_file"
-    echo "FAILURE #${failure_count}: ${test_name}" >> "$output_file"
-    echo "========================================" >> "$output_file"
+    {
+        echo "========================================"
+        echo "FAILURE #${failure_count}: ${test_name}"
+        echo "========================================"
+    } >> "$output_file"
 
     # Extract the short test name (last part after ::) for searching
     short_name=$(echo "$test_name" | awk -F'::' '{print $NF}')
@@ -48,7 +50,7 @@ while IFS= read -r test_name; do
         # with the full traceback
 
         # Try to extract the FAILED section from pytest short summary
-        if grep -q "$short_name" "$log_file" 2>/dev/null; then
+        if grep -Fq -- "$short_name" "$log_file" 2>/dev/null; then
             # Extract traceback block: look for the test name in FAILURES section
             # Pytest format: ___ test_name ___  followed by traceback until next ___ or ====
             error_block=$(awk -v test="$short_name" '
@@ -59,7 +61,7 @@ while IFS= read -r test_name; do
                         print buffer
                         buffer=""
                     }
-                    if ($0 ~ test) {
+                    if (index($0, test) > 0) {
                         printing=1
                         buffer=$0 "\n"
                         next
@@ -77,7 +79,7 @@ while IFS= read -r test_name; do
             fi
 
             # Fallback: grab the FAILED line with reason
-            failed_line=$(grep "FAILED.*${short_name}" "$log_file" 2>/dev/null | head -5)
+            failed_line=$(grep -F -- "FAILED" "$log_file" 2>/dev/null | grep -F -- "$short_name" | head -5)
             if [[ -n "$failed_line" ]]; then
                 echo "$failed_line" >> "$output_file"
                 found=true
@@ -93,6 +95,8 @@ while IFS= read -r test_name; do
 
 done < "$new_failures_file"
 
-echo "========================================" >> "$output_file"
-echo "Total new failures: ${failure_count}" >> "$output_file"
-echo "========================================" >> "$output_file"
+{
+    echo "========================================"
+    echo "Total new failures: ${failure_count}"
+    echo "========================================"
+} >> "$output_file"
