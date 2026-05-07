@@ -32,7 +32,7 @@ from pytorch_agent.utils.body_templates import (
     check_action_item, append_log, sync_labels,
 )
 from pytorch_agent.discovery_agent import (
-    _extract_label_info, reset, run,
+    _extract_label_info, _extract_environment, reset, run,
 )
 
 
@@ -282,6 +282,37 @@ class TestTokenRouting:
 # ---------------------------------------------------------------------------
 # Skip-if-already-formatted
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Bug 13: Environment extracted programmatically, not by LLM
+# ---------------------------------------------------------------------------
+
+class TestExtractEnvironment:
+    def test_extracts_from_collect_env_details(self):
+        body = (
+            "### Versions\n\n"
+            "<details>\n"
+            "<summary>Collected with torch/utils/collect_env.py</summary>\n\n"
+            "```text\n"
+            "PyTorch version: 2.13.0\nIs debug build: False\nCPU: x86_64\n"
+            "```\n"
+            "</details>\n"
+        )
+        env = _extract_environment(body)
+        assert "PyTorch version: 2.13.0" in env
+        assert "CPU: x86_64" in env
+
+    def test_extracts_from_versions_section(self):
+        body = "### Versions\nPyTorch 2.0\nCUDA 11.8\n\n### Other\nstuff"
+        env = _extract_environment(body)
+        assert "PyTorch 2.0" in env
+        assert "CUDA 11.8" in env
+        assert "stuff" not in env
+
+    def test_returns_empty_when_no_versions(self):
+        body = "### Bug\nSomething broken\n"
+        assert _extract_environment(body) == ""
+
 
 class TestSkipAlreadyFormatted:
     @patch("pytorch_agent.discovery_agent.gh")

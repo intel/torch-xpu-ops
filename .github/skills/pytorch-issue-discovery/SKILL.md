@@ -26,8 +26,7 @@ Given a raw issue body + labels, extract and return structured JSON with these f
   "error_log": "relevant error output (last ~50 lines)",
   "reproducer": "commands to reproduce the failure",
   "commit_scope": "commit range if mentioned (last pass SHA → first fail SHA)",
-  "context": "any additional context useful for triage",
-  "environment": "version info from collect_env or Versions section — copy verbatim"
+  "context": "any additional context useful for triage"
 }
 ```
 

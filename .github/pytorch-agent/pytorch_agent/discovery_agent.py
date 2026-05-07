@@ -63,6 +63,22 @@ def reset(issue_number: int) -> None:
         issue=issue_number)
 
 
+def _extract_environment(body: str) -> str:
+    """Extract collect_env / Versions section from raw issue body."""
+    # Try <details> block containing collect_env
+    m = re.search(
+        r'<details>\s*\n\s*<summary>.*?collect_env.*?</summary>\s*\n(.*?)</details>',
+        body, re.DOTALL | re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip()
+    # Try ### Versions section
+    m = re.search(r'### Versions\s*\n(.*?)(?=\n### |\n## |\Z)', body, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
 def run(issue_number: int) -> None:
     """Format a raw issue into the structured template."""
     # Read issue
@@ -137,7 +153,7 @@ def run(issue_number: int) -> None:
         reproducer=data.get("reproducer", ""),
         commit_scope=data.get("commit_scope", ""),
         context=data.get("context", ""),
-        environment=data.get("environment", ""),
+        environment=_extract_environment(body),
         original_issue=body,
     )
 
