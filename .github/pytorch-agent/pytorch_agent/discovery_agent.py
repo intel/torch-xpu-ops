@@ -98,8 +98,9 @@ def run(issue_number: int) -> None:
 
     # Call LLM with skill (no inline prompt)
     prompt = (
-        f"Read the pytorch-issue-discovery skill and extract structured info "
-        f"from issue #{issue_number}.\n\n"
+        f"Read the pytorch-issue-discovery skill and the template file "
+        f".github/ISSUE_TEMPLATE/agent-issue-body.yml to understand the "
+        f"output fields. Extract structured info from issue #{issue_number}.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
         f"### Labels\n" + "\n".join(f"- {l}" for l in label_names) + "\n\n"
         f"### Body\n{body[:5000]}"

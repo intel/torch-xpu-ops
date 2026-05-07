@@ -13,22 +13,10 @@ When a raw issue has labels (agent_test, agent_category, agent_dependency)
 but the body is sparse or unstructured.
 
 ## Your Task
-Given a raw issue body + labels, extract and return structured JSON with these fields:
-
-```json
-{
-  "summary": "one-line description of the failure",
-  "test_type": "ut or e2e",
-  "category": "from agent_category label (Torch Ops, Inductor, Distributed, etc.)",
-  "dependency": "from agent_dependency label (upstream-pytorch, oneDNN, triton, etc.)",
-  "platform": "PVC, ATS-M, DG2, BMG, etc. if mentioned",
-  "failed_tests": "list of failing tests, one per line, backtick-wrapped",
-  "error_log": "relevant error output (last ~50 lines)",
-  "reproducer": "commands to reproduce the failure",
-  "commit_scope": "commit range if mentioned (last pass SHA → first fail SHA)",
-  "context": "any additional context useful for triage"
-}
-```
+1. Read the template file at `.github/ISSUE_TEMPLATE/agent-issue-body.yml`.
+2. Identify all `{placeholder}` fields in the template's `body` value.
+3. Given the raw issue body + labels, extract a value for **each placeholder**.
+4. Return a JSON object with one key per placeholder.
 
 ## Extraction Rules
 
@@ -54,5 +42,7 @@ Given a raw issue body + labels, extract and return structured JSON with these f
 6. **Labels are authoritative** — if labels say `agent_test: ut`, the test_type is `ut`
    regardless of what the body says.
 
+7. **Do NOT extract environment/versions** — that is handled programmatically, not by the LLM.
+
 ## Output
-Return ONLY valid JSON. No markdown fences, no explanation.
+Return ONLY valid JSON matching the template placeholders. No markdown fences, no explanation.
