@@ -129,11 +129,17 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # ---------------------------------------------------------------------------
 
 ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "config" / "issue_body_template.md"
+PR_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "config" / "pr_body_template.md"
 
 
-def _load_template() -> str:
-    """Load issue template from .github/ISSUE_TEMPLATE/agent-issue.md."""
-    return ISSUE_TEMPLATE_PATH.read_text(encoding="utf-8")
+def build_body(template_path: Path, **kwargs: str) -> str:
+    """Load a template file and fill placeholders.
+
+    Generic renderer — works for issue bodies, PR bodies, or any
+    markdown template with {placeholder} fields.
+    """
+    template = template_path.read_text(encoding="utf-8")
+    return template.format(**kwargs)
 
 
 def render_initial_body(
@@ -154,7 +160,8 @@ def render_initial_body(
     original_issue: str = "",
 ) -> str:
     """Render the full issue body template from structured data."""
-    return _load_template().format(
+    return build_body(
+        ISSUE_TEMPLATE_PATH,
         stage=stage,
         summary=summary,
         test_type=test_type,
@@ -203,3 +210,45 @@ def set_metadata(body: str, key: str, value: str) -> str:
     if re.search(pattern, body):
         return re.sub(pattern, rf"\g<1>{value}\3", body)
     return body + f"\n<!-- {key}: {value} -->\n"
+
+
+def render_pr_body(
+    *,
+    upstream_issue_repo: str,
+    source_number: int,
+    title: str,
+    triage_reason: str | None = None,
+    issue_body: str = "",
+    include_diff_stat: bool = False,
+    diff_stat: str = "",
+    reviewer: str = "",
+) -> str:
+    """Build a PR description from issue details using pr_body_template.md."""
+    issue_url = f"https://github.com/{upstream_issue_repo}/issues/{source_number}"
+
+    root_cause_section = f"**Root Cause:** {triage_reason}\n" if triage_reason else ""
+
+    sections = parse_sections(issue_body)
+    failed_tests_section = (
+        f"**Failed Tests:**\n{sections['Failed Tests']}\n" if sections.get("Failed Tests") else ""
+    )
+    failure_type_section = (
+        f"---\n\n**Failure Type:** {sections['Failure Type']}\n" if sections.get("Failure Type") else ""
+    )
+    diff_stat_section = (
+        f"---\n\n**Diff stat:**\n```\n{diff_stat}\n```\n" if include_diff_stat and diff_stat else ""
+    )
+    reviewer_section = f"---\n\ncc @{reviewer}\n" if reviewer else ""
+
+    return build_body(
+        PR_TEMPLATE_PATH,
+        upstream_issue_repo=upstream_issue_repo,
+        source_number=source_number,
+        issue_url=issue_url,
+        title=title,
+        root_cause_section=root_cause_section,
+        failed_tests_section=failed_tests_section,
+        failure_type_section=failure_type_section,
+        diff_stat_section=diff_stat_section,
+        reviewer_section=reviewer_section,
+    )

@@ -10,7 +10,7 @@ import os
 from subprocess import CalledProcessError
 
 from ..utils import git as gh
-from ..utils.git import build_pr_body
+from ..utils.issue_body import render_pr_body
 from ..utils.config import (
     ISSUE_REPO, UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO,
     PUBLIC_TARGET_REPO,
@@ -36,7 +36,7 @@ def run(issue_number: int) -> None:
         title = title[len("[Agent]"):].strip()
 
     # Build PR body from issue details
-    pr_body = build_pr_body(
+    pr_body = render_pr_body(
         upstream_issue_repo=UPSTREAM_ISSUE_REPO,
         source_number=issue_number,
         title=title,

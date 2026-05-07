@@ -301,40 +301,4 @@ def delete_branch(repo: str, branch: str) -> None:
 # PR body builder (merged from _issue_format.py)
 # ---------------------------------------------------------------------------
 
-def build_pr_body(
-    *,
-    upstream_issue_repo: str,
-    source_number: int,
-    title: str,
-    triage_reason: str | None,
-    issue_body: str,
-    include_diff_stat: bool = False,
-    diff_stat: str = "",
-    reviewer: str = "",
-) -> str:
-    """Build a PR description from issue details."""
-    from .issue_body import parse_sections
 
-    issue_url = f"https://github.com/{upstream_issue_repo}/issues/{source_number}"
-
-    body = (
-        f"## Summary\n\n"
-        f"Fix for [{upstream_issue_repo}#{source_number}]({issue_url})\n\n"
-        f"**Issue:** {title}\n\n"
-    )
-    if triage_reason:
-        body += f"**Root Cause:** {triage_reason}\n\n"
-
-    sections = parse_sections(issue_body)
-    if sections.get("Failed Tests"):
-        body += f"**Failed Tests:**\n{sections['Failed Tests']}\n\n"
-    if sections.get("Failure Type"):
-        body += f"---\n\n**Failure Type:** {sections['Failure Type']}\n\n"
-
-    if include_diff_stat and diff_stat:
-        body += f"---\n\n**Diff stat:**\n```\n{diff_stat}\n```\n\n"
-
-    if reviewer:
-        body += f"---\n\ncc @{reviewer}\n"
-
-    return body

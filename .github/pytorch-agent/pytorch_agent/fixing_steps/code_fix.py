@@ -24,7 +24,7 @@ from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
-from ..utils.git import build_pr_body
+from ..utils.issue_body import render_pr_body
 
 
 
@@ -128,7 +128,7 @@ def run(issue_number: int) -> None:
                         issue=issue_number).strip()
     sections = parse_sections(body)
     pr_title = detail.get("title", f"Fix for issue #{issue_number}")
-    pr_body = build_pr_body(
+    pr_body = render_pr_body(
         upstream_issue_repo=ISSUE_REPO,
         source_number=issue_number,
         title=detail.get("title", "N/A"),
