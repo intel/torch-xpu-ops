@@ -8,6 +8,7 @@ OpenCode CLI notes (from `opencode run --help`):
 from abc import ABC, abstractmethod
 from datetime import datetime
 import json
+import time
 from pathlib import Path
 import subprocess
 
@@ -104,8 +105,17 @@ class OpenCodeBackend(AgentBackend):
 
             session_id = None
             text_parts = []
+            start_time = time.monotonic()
+            effective_timeout = timeout or 600
             try:
                 for line in proc.stdout:
+                    # Enforce timeout during streaming
+                    if time.monotonic() - start_time > effective_timeout:
+                        proc.kill()
+                        proc.wait()
+                        log_f.write("\n=== TIMEOUT (during streaming) ===\n")
+                        raise subprocess.TimeoutExpired(
+                            cmd, effective_timeout)
                     log_f.write(line)
                     log_f.flush()
                     line = line.strip()
