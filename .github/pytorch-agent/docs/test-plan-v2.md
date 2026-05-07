@@ -27,12 +27,15 @@ python -m pytorch_agent.triage_agent --issue 346
 ```
 
 Verify:
-- [ ] Root Cause Analysis filled
-- [ ] Fix Strategy filled
-- [ ] Verdict → IMPLEMENTING or NEEDS_HUMAN
-- [ ] `agent:active` label applied
+- [x] Root Cause Analysis filled
+- [x] Fix Strategy filled
+- [x] Verdict → IMPLEMENTING or NEEDS_HUMAN
+- [x] `<!-- agent:status:IMPLEMENTING -->` set
+- [x] Action Items checkboxes updated
 
-Fix any bugs → write tests for those bugs.
+Bugs found:
+1. Status gate rejected `DISCOVERED` — only accepted `TRIAGING`/`None`
+2. `update_section` regex broken — f-string `#{{{1,4}}}` → `#{(1, 4)}`, sections never matched, always inserted as duplicates
 
 ### Step 3: issue_fixing_agent
 
