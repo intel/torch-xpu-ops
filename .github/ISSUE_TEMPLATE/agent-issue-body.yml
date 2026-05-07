@@ -63,9 +63,7 @@ body: |
   ## Environment
   <details><summary>collect_env</summary>
 
-  ```
   {environment}
-  ```
 
   </details>
 
