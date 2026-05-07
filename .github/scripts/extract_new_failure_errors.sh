@@ -95,10 +95,13 @@ while IFS= read -r test_name; do
             # Fallback: grab the FAILED line with reason
             failed_line=$(awk -v test="$short_name" '
                 BEGIN { count=0 }
-                {
-                    failed_pos = index($0, "FAILED")
-                    test_pos = index($0, test)
-                    if (failed_pos > 0 && test_pos > failed_pos) {
+                index($0, "FAILED ") == 1 {
+                    line = $0
+                    sub(/^FAILED[[:space:]]+/, "", line)
+                    split(line, parts, / - /)
+                    nodeid = parts[1]
+                    segments = split(nodeid, node_parts, /::/)
+                    if (segments > 0 && node_parts[segments] == test) {
                         print
                         count++
                         if (count == 5) {
