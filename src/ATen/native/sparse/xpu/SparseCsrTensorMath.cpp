@@ -14,6 +14,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -28,6 +29,7 @@
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
 #include <ATen/ops/triangular_solve.h>
@@ -82,11 +84,20 @@ Tensor addmm_calculation(
     const Scalar& alpha) {
   Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
   Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
-
   Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
-    result_dense.add_(input_dense, beta);
+    // NOTE: For reduced-precision dtypes (e.g. bf16), the form
+    //   result_dense.add_(input_dense * beta)
+    // introduces two separate roundings:
+    //   1. input_dense (bf16) * beta (f32) -> intermediate (bf16)
+    //   2. result_dense (bf16) + intermediate (bf16) -> result_dense (bf16)
+    // The alternative form
+    //   result_dense.add_(input_dense, beta)
+    // avoids the intermediate rounding: the kernel promotes both bf16 operands
+    // to f32 registers, computes result_dense(f32) + input_dense(f32)*beta(f32)
+    // in a single fused step, then rounds once back to bf16.
+    result_dense.add_(input_dense * beta);
   }
   return result_dense;
 }
@@ -232,12 +243,23 @@ Tensor& addmm_out_sparse_compressed_xpu(
       mat2.sizes()[1],
       ")");
 
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
+
+  TORCH_CHECK(
+      result_shape.size() >= (size_t)self.dim(),
+      "The number of sizes provided (",
+      result_shape.size(),
+      ") ",
+      "must be greater or equal to the number of dimensions in the tensor (",
+      self.dim(),
+      ")");
+
   c10::MaybeOwned<at::Tensor> self_;
   // Don't expand self if this is an in-place operation
   if (&result == &self) {
     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
   } else {
-    self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+    self_ = expand_size(self, result_shape, "addmm");
   }
 
   sparse::impl::_check_dim(*self_, 2, "self");
@@ -421,17 +443,9 @@ Tensor& add_out_sparse_compressed_xpu(
       return out;
     }
 
-    // Preserve the index dtype from self (int32 or int64)
-    auto index_dtype = self.crow_indices().scalar_type();
-    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    Tensor out_csr = out_dense.to_sparse_csr();
-    Tensor result = at::sparse_compressed_tensor(
-        out_csr.crow_indices().to(index_dtype),
-        out_csr.col_indices().to(index_dtype),
-        out_csr.values(),
-        out_csr.sizes(),
-        out_csr.options().layout(at::kSparseCsr));
-    out.copy_(result);
+    at::native::resize_as_sparse_compressed_(out, self);
+    TORCH_INTERNAL_ASSERT(out.is_sparse_csr());
+    xpu::add_out_sparse_csr_kernel(self, other, alpha, out);
   }
   return out;
 }
