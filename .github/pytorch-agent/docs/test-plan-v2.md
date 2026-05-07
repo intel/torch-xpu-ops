@@ -11,12 +11,14 @@ python -m pytorch_agent.discovery_agent --issue 346
 ```
 
 Verify:
-- [ ] Issue body reformatted using `agent-issue-body.yml` template
-- [ ] Sections: Test Info, Error Details, Root Cause Analysis (empty), Fix Strategy (empty)
-- [ ] Original Issue section at bottom
-- [ ] `<!-- agent:status:DISCOVERED -->` set
+- [x] Issue body reformatted using `agent-issue-body.yml` template
+- [x] Sections: Summary, Test Info, Failed Tests, Error Log, Reproducer, Context, Environment, Original Issue
+- [x] Original Issue section at bottom (in collapsible `<details>`)
+- [x] `<!-- agent:status:DISCOVERED -->` set
+- [x] Environment extracted programmatically (no nested `<details>`, no code fences)
+- [x] Labels: `agent:discovered` applied
 
-Fix any bugs → write tests for those bugs.
+Bugs found (12 total) → 23 tests written. See `tests/test_discovery_agent.py`.
 
 ### Step 2: triage_agent
 

@@ -57,7 +57,12 @@ def reset(issue_number: int) -> None:
         log("WARN", f"Issue #{issue_number} has no Original Issue section, cannot reset",
             issue=issue_number)
         return
-    raw = m.group(1).strip()
+    raw = m.group(1)
+    # Only strip the template-added wrapper newlines, not the original content
+    if raw.startswith('\n'):
+        raw = raw[1:]
+    if raw.endswith('\n'):
+        raw = raw[:-1]
     gh.update_issue_body(ISSUE_REPO, issue_number, raw)
     log("INFO", f"Issue #{issue_number} reset to original body ({len(raw)} chars)",
         issue=issue_number)
