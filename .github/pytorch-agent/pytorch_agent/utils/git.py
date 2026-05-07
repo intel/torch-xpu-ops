@@ -142,12 +142,14 @@ def get_issue_detail(repo: str, number: int) -> dict:
 
 def add_issue_comment(repo: str, number: int, body: str) -> None:
     """Add a comment to an issue."""
-    _gh(["issue", "comment", str(number), "--repo", repo, "--body", body])
+    _gh(["issue", "comment", str(number), "--repo", repo, "--body", body],
+         token=_token_for_repo(repo))
 
 
 def close_issue(repo: str, number: int) -> None:
     """Close an issue."""
-    _gh(["issue", "close", str(number), "--repo", repo])
+    _gh(["issue", "close", str(number), "--repo", repo],
+         token=_token_for_repo(repo))
 
 
 def update_issue_body(repo: str, number: int, body: str) -> None:
@@ -159,19 +161,22 @@ def update_issue_body(repo: str, number: int, body: str) -> None:
 def add_label(repo: str, number: int, label: str) -> None:
     """Add a label to an issue. Creates the label if it doesn't exist."""
     try:
-        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label])
+        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label],
+             token=_token_for_repo(repo))
     except subprocess.CalledProcessError:
         try:
             _gh_api(f"/repos/{repo}/labels", method="POST",
-                    name=label, color="c5def5")
+                    token=_token_for_repo(repo), name=label, color="c5def5")
         except subprocess.CalledProcessError:
             pass
-        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label])
+        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label],
+             token=_token_for_repo(repo))
 
 
 def remove_label(repo: str, number: int, label: str) -> None:
     """Remove a label from an issue."""
-    _gh(["issue", "edit", str(number), "--repo", repo, "--remove-label", label])
+    _gh(["issue", "edit", str(number), "--repo", repo, "--remove-label", label],
+         token=_token_for_repo(repo))
 
 
 def get_issue_comments(repo: str, number: int) -> list[dict]:

@@ -23,7 +23,7 @@ git remote add review <your-private-review-fork-url>
 
 ```bash
 REPO=ZhaoqiongZ/torch-xpu-ops-exp  # or your ISSUE_REPO
-for label in agent:active agent:blocked agent:done agent:skipped agent:needs-human agent:paused; do
+for label in agent:active agent:needs-human; do
   gh label create "$label" --repo $REPO --color ededed --force
 done
 ```
@@ -67,10 +67,10 @@ torch-xpu-ops/.github/pytorch-agent/
 │   ├── utils/
 │   │   ├── config.py                 # All constants & env vars
 │   │   ├── logger.py                 # Simple file logger
-│   │   ├── github_client.py          # gh CLI wrappers
+│   │   ├── git.py                    # Git + GitHub CLI wrappers
 │   │   ├── issue_body.py             # Issue body read/write helpers
+│   │   ├── json_utils.py             # JSON extraction from agent output
 │   │   ├── agent_backend.py          # OpenCode/Copilot dispatch
-│   │   ├── git.py                    # Git operations
 │   │   ├── notify.py                 # Notification helpers
 │   │   └── review_handler.py         # PR review parsing
 │   ├── discovery_agent.py            # Format raw issues into template
@@ -84,7 +84,6 @@ torch-xpu-ops/.github/pytorch-agent/
 │       └── close_issue.py            # Close issue, cleanup branch
 ├── scripts/
 │   ├── run_pipeline.py               # Polling loop
-│   ├── run_oneshot.sh                # Single run with lock
 │   ├── cron.sh                       # Cron wrapper
 │   └── status_report.py              # Print status table
 └── logs/                             # Runtime logs
@@ -207,6 +206,7 @@ The agent uses skills (in `.github/skills/`) to guide LLM behavior at each stage
 | `pytorch-triage-e2e` | triage_agent | How to triage end-to-end test failures |
 | `pytorch-fix` | implement.py | How to fix XPU CI failures |
 | `pytorch-ci-triage` | ci_watch.py | How to triage CI failures on PRs |
+| `pytorch-review-fix` | private_review.py | How to address code review feedback |
 | `xpu-ops-pr-creation` | implement.py | PR format and conventions |
 
 ---

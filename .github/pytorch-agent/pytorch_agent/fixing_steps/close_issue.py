@@ -6,13 +6,12 @@ Entry point:
 from __future__ import annotations
 
 import argparse
-import re
 
 from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PUBLIC_TARGET_REPO, PRIVATE_REVIEW_REPO,
 )
-from ..utils.issue_body import get_status, set_status, append_log, get_metadata
+from ..utils.issue_body import get_status, set_status, append_log, get_metadata, check_action_item
 from ..utils.logger import log
 
 

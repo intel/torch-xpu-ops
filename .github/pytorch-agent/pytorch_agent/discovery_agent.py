@@ -74,7 +74,7 @@ def run(issue_number: int) -> None:
     timeout = STAGE_TIMEOUTS.get("DISCOVERY", 300)
     output, log_path, session_id = backend.run(
         prompt, skill="pytorch-issue-discovery",
-        issue=issue_number, stage="DISCOVERY",
+        issue=issue_number, stage="DISCOVERY", timeout=timeout,
     )
     log("INFO", f"Discovery agent log: {log_path}", issue=issue_number)
 

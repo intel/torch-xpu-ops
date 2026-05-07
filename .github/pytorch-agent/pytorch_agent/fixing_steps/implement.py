@@ -18,8 +18,7 @@ from ..utils.config import (
     REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
 )
 from ..utils.issue_body import (
-    get_status, set_status, check_action_item, append_log,
-    parse_sections,
+    get_status, set_status, check_action_item, append_log, set_metadata,
 )
 from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
@@ -157,8 +156,8 @@ def run(issue_number: int) -> None:
     new_body = body
     # Record PR and SHA for downstream stages (private_review, ci_watch)
     tracking_pr_num = pr.get("number")
-    new_body = f"<!-- tracking_pr: #{tracking_pr_num} -->\n" + new_body
-    new_body = f"<!-- last_push_sha: {sha} -->\n" + new_body
+    new_body = set_metadata(new_body, "tracking_pr", f"#{tracking_pr_num}")
+    new_body = set_metadata(new_body, "last_push_sha", sha)
     new_body = check_action_item(new_body, "Fix implemented")
     new_body = check_action_item(new_body, "Fix verified")
     new_body = set_status(new_body, "IN_REVIEW")

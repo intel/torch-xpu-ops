@@ -15,7 +15,7 @@ from ..utils.config import (
     MAX_REVIEW_ITERATIONS, ISSUE_REPO, STAGE_TIMEOUTS,
 )
 from ..utils.issue_body import (
-    get_status, set_status, append_log,
+    get_status, set_status, append_log, get_metadata, set_metadata,
 )
 from ..utils.review_handler import (
     get_pending_reviews, format_reviews_for_prompt, get_review_state,
@@ -118,7 +118,6 @@ def run(issue_number: int) -> None:
     tracking_pr = int(tracking_pr_str)
 
     last_push_sha = get_metadata(body, "last_push_sha")
-    last_push_sha = sha_match.group(1) if sha_match else None
 
     state = get_review_state(tracking_pr, last_push_sha)
 
@@ -137,8 +136,7 @@ def run(issue_number: int) -> None:
         return
 
     # changes_requested — get iteration count
-    iter_match = re.search(r"review_iteration:\s*(\d+)", body)
-    review_iteration = int(iter_match.group(1)) if iter_match else 0
+    review_iteration = int(get_metadata(body, "review_iteration") or "0")
     review_iteration += 1
 
     if review_iteration > MAX_REVIEW_ITERATIONS:
@@ -226,14 +224,8 @@ def run(issue_number: int) -> None:
     # Update iteration and sha in body
     new_sha = git("rev-parse", "HEAD", issue=issue_number).stdout.strip()
     new_body = body
-    if iter_match:
-        new_body = new_body[:iter_match.start()] + f"review_iteration: {review_iteration}" + new_body[iter_match.end():]
-    else:
-        new_body += f"\n<!-- review_iteration: {review_iteration} -->\n"
-    if sha_match:
-        new_body = new_body.replace(sha_match.group(0), f"last_push_sha: {new_sha}")
-    else:
-        new_body += f"\n<!-- last_push_sha: {new_sha} -->\n"
+    new_body = set_metadata(new_body, "review_iteration", str(review_iteration))
+    new_body = set_metadata(new_body, "last_push_sha", new_sha)
 
     new_body = append_log(new_body, "review",
                           f"Review iteration {review_iteration} — "
