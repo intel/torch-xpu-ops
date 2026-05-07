@@ -144,6 +144,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -153,6 +154,8 @@ jobs:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
+        id: ut-check
+        continue-on-error: true
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
@@ -190,6 +193,115 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
+      - name: Extract new failure errors
+        if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
+        id: extract-failures
+        run: |
+          cd ${{ github.workspace }}/ut_log/
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          ut_dir="${latest_dir}/${{ inputs.ut }}"
+          # Collect all new failure files
+          new_failures_combined="${{ github.workspace }}/ut_log/new_failures_all.txt"
+          : > "$new_failures_combined"
+          if [ "${{ inputs.ut }}" == "basic" ]; then
+            ut_list="op_regression op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          for ut_name in ${ut_list}; do
+            filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
+            if [ -s "$filtered_file" ]; then
+              echo "--- ${ut_name} ---" >> "$new_failures_combined"
+              cat "$filtered_file" >> "$new_failures_combined"
+            fi
+          done
+          # Extract error messages from test logs
+          error_report="${{ github.workspace }}/ut_log/new_failure_errors.txt"
+          if [ -s "$new_failures_combined" ]; then
+            # Merge all new failure names (skip header lines)
+            grep -v "^---" "$new_failures_combined" | grep -v "^$" > "${{ github.workspace }}/ut_log/new_failure_names.txt" || true
+            bash ${{ github.workspace }}/.github/scripts/extract_new_failure_errors.sh \
+              "${{ github.workspace }}/ut_log/new_failure_names.txt" \
+              "$ut_dir" \
+              "$error_report"
+            echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new failures found." > "$error_report"
+            echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload new failure report
+        if: ${{ ! cancelled() && steps.extract-failures.outputs.has_new_failures == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ github.workspace }}/ut_log/new_failures_all.txt
+            ${{ github.workspace }}/ut_log/new_failure_names.txt
+            ${{ github.workspace }}/ut_log/new_failure_errors.txt
+      - name: Comment on PR for new failures
+        if: ${{ ! cancelled() && github.event_name == 'pull_request' && steps.extract-failures.outputs.has_new_failures == 'true' && contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prNumber = context.issue.number;
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const ut = '${{ inputs.ut }}';
+            const artifactName = `New-UT-Failures-${prNumber}-${ut}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+
+            // Read new failure names
+            let failureList = '';
+            const namesFile = '${{ github.workspace }}/ut_log/new_failure_names.txt';
+            if (fs.existsSync(namesFile)) {
+              failureList = fs.readFileSync(namesFile, 'utf8').trim();
+            }
+
+            // Read error report (truncate if too large)
+            let errorReport = '';
+            const errFile = '${{ github.workspace }}/ut_log/new_failure_errors.txt';
+            if (fs.existsSync(errFile)) {
+              const raw = fs.readFileSync(errFile, 'utf8');
+              const maxLen = 50000;
+              errorReport = raw.length > maxLen
+                ? '... (truncated, see full report in artifact)\n' + raw.slice(-maxLen)
+                : raw;
+            }
+
+            const body = [
+              `@copilot New UT failures detected in **${ut}** tests. Please check these new failures with the artifact link below and analyze whether they are caused by the PR changes.`,
+              '',
+              '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
+              '',
+              `Full log: ${jobUrl}`,
+              `Artifact: \`${artifactName}\` (download from the Actions run page)`,
+              '',
+              '**New failures:**',
+              '```',
+              failureList,
+              '```',
+              '',
+              '<details><summary>Error details</summary>',
+              '',
+              '```',
+              errorReport,
+              '```',
+              '',
+              '</details>',
+              '',
+              'Instructions:',
+              '1. Analyze each new failure and determine if it is caused by PR changes',
+              '2. If caused by PR changes, fix those failures on this PR branch directly',
+              '3. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
+              '4. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -197,3 +309,8 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           overwrite: true
+      - name: Fail if UT check failed
+        if: ${{ steps.ut-check.outcome == 'failure' }}
+        run: |
+          echo "::error::UT check failed with new failures"
+          exit 1

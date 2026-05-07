@@ -79,12 +79,15 @@ jobs:
           printf -v COMMENT_BODY '%s\n' \
             "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
             "" \
+            "**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**" \
+            "" \
             "Lint job log: ${JOB_URL}" \
             "" \
             "Instructions:" \
             "1. Review the lint failure log via the link above" \
             "2. Fix all lint errors in the relevant source files" \
-            "3. Ensure both Python lint and Clang format checks pass"
+            "3. Ensure both Python lint and Clang format checks pass" \
+            "4. Use reply comments to report progress - do NOT modify the PR description plan directly"
           gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
       - name: Fail if lint failed
         if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
