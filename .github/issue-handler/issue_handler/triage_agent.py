@@ -11,7 +11,7 @@ import json
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
 from .utils.body_templates import (
-    get_status, parse_sections, update_section, set_status,
+    get_status, update_section, set_status,
     check_action_item, append_log,
 )
 from .utils.agent_backend import get_backend
