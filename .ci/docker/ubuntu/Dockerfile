@@ -68,9 +68,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
         zlib1g-dev \
         # Python and pip
         python3 \
-        python3-dev \
-        python3-venv \
-        python3-pip && \
+        python3-dev && \
     # Setup gcc 13 as default
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
@@ -85,6 +83,9 @@ RUN --mount=type=cache,target=/var/cache/apt \
         /var/tmp/* \
         /usr/share/doc/* \
         /usr/share/man/*
+
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
 
 # Install Conda
 RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh && \

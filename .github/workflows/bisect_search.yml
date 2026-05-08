@@ -65,7 +65,7 @@ jobs:
     needs: get_runner
     runs-on: ${{ needs.get_runner.outputs.runner_id }}
     container:
-      image: ${{ contains(needs.get_runner.outputs.runner_id, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-24.04-rolling:26.05' }}
+      image: ${{ contains(needs.get_runner.outputs.runner_id, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
