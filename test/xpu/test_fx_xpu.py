@@ -60,7 +60,7 @@ def _parse_event_name(line):
     end = line.find(" node=")
     if end == -1:
         return None
-    return line[len("event="):end]
+    return line[len("event=") : end]
 
 
 # Drop UR/ZE bookkeeping events (zeKernelSetArgumentValue, zeKernelCreate,
@@ -89,7 +89,7 @@ def _canonicalize_xpu_launch_events(actual_traces):
     for line in actual_traces.split("\n"):
         name = _parse_event_name(line)
         if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
-            line = f"event={_XPU_KERNEL_LAUNCH_EVENT}" + line[len(f"event={name}"):]
+            line = f"event={_XPU_KERNEL_LAUNCH_EVENT}" + line[len(f"event={name}") :]
         lines.append(line)
     return "\n".join(lines)
 
