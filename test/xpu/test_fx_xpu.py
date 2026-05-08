@@ -38,44 +38,25 @@ with XPUPatchForImport(False):
     from test_fx import _enrich_profiler_traces, TestFX
 
 
-# The XPU profiler emits many Level Zero / Unified Runtime bookkeeping events
-# per aten op (zeKernelSetArgumentValue, zeKernelSetGroupSize, zeKernelCreate,
-# zeCommandListAppendLaunchKernel, zeModuleCreate, ...). Upstream CUDA
-# baselines assume one cudaLaunchKernel per kernel dispatch and the HIP path
-# filters hipGetDeviceProperties for the same reason. We drop the UR/ZE
-# bookkeeping so the test asserts the same invariant upstream does: that each
-# kernel launch event is attributed to its aten op via the FX stack trace.
-#
-# Canonical kernel launch event token used in test baselines. The trace may
-# contain different Unified Runtime launch API names depending on the Intel
-# LLVM SYCL runtime version; all variants get normalized to this single
-# name by _canonicalize_xpu_launch_events before assertions.
+# Canonical kernel launch event token used in test baselines.
 _XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
 
-# The Intel LLVM SYCL runtime emits one of two UR kernel launch APIs:
-# - "urEnqueueKernelLaunch" (UR API id 17)
-# - "urEnqueueKernelLaunchWithArgsExp" (UR API id 295, added to PTI's core
-#   map in pti commit a4f2ce39 on 2026-01-07 alongside nightly Intel LLVM
-#   SYCL runtime 2026-01-06, intended to become the default)
-#
-# The latter name exceeds the 30-char cap in _canonicalize_profiler_events
-# (profiler_util.py:1581) and arrives truncated as
-# "urEnqueueKernelLaunchWithArgsE".
-#
-# Accept both so the test works regardless of which SYCL runtime the
-# machine has installed. The canonical name must appear in this tuple too,
-# so the filter below recognizes it as a launch event and does not drop it
-# via the "ur" prefix deny-list.
+# The SYCL runtime may emit either "urEnqueueKernelLaunch" or
+# "urEnqueueKernelLaunchWithArgsExp" (the latter truncated to 30 chars by
+# _canonicalize_profiler_events). Accept both.
 _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
     _XPU_KERNEL_LAUNCH_EVENT,
     "urEnqueueKernelLaunchWithArgsE",
 )
 
-# Names of runtime helper events known to be emitted on XPU that carry an
-# aten parent context but are not kernel launches we want to assert on.
 _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
 
 
+# Drop UR/ZE bookkeeping events (zeKernelSetArgumentValue, zeKernelCreate,
+# etc.) that XPU emits per aten op but upstream CUDA/HIP baselines don't
+# include. Keep aten ops and the canonical launch event so the test
+# asserts the same invariant upstream does: every kernel launch is
+# attributed to its aten op via the FX stack trace.
 def _filter_xpu_runtime_events(actual_traces):
     kept = []
     for line in actual_traces.split("\n"):
@@ -89,8 +70,6 @@ def _filter_xpu_runtime_events(actual_traces):
 
 
 def _canonicalize_xpu_launch_events(actual_traces):
-    """Normalize PTI-version-specific launch event names to
-    _XPU_KERNEL_LAUNCH_EVENT so baselines are stable across PTI versions."""
     result = actual_traces
     for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
         result = result.replace(f"event={e} ", f"event={_XPU_KERNEL_LAUNCH_EVENT} ")
@@ -206,17 +185,9 @@ def _test_profiler_stack_trace_augmentation(self):
         _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
     )
 
-    # Mirror upstream's two-slot naming so the test can distinguish launches
-    # for BLAS-path ops (addmm) from elementwise ops (relu). On CUDA+cuBLASLt
-    # these both happen to be cudaLaunchKernel; on ROCm they differ
-    # (hipExtModuleLaunchKernel vs hipLaunchKernel). XPU currently uses the
-    # same UR launch entry point for both paths.
     kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     if IS_WINDOWS:
-        # XPU uses oneDNN/oneMKL (not cuBLASLt), so addmm emits one launch
-        # rather than upstream's two. The Windows-vs-Linux split here only
-        # changes the stack-trace text format; the event shape matches Linux.
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
@@ -240,9 +211,6 @@ event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weig
 event=aten::empty node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
     else:
-        # XPU addmm decomposes into more real aten calls than CUDA's fused
-        # addmm+cuBLASLt path: resize_/expand/as_strided/empty are emitted
-        # before the kernel launch. All must attribute to node=addmm.
         expected = f"""\
 event=aten::t node=t stack_trace=x = self.linear1(x)
 event=aten::transpose node=t stack_trace=x = self.linear1(x)
