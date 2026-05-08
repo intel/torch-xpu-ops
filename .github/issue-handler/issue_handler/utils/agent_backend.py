@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 import subprocess
 
@@ -38,7 +39,7 @@ class AgentBackend(ABC):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: 'Callable[[str], None] | None' = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
         """Run LLM agent with prompt.
 
         Returns (agent_output_text, log_file_path, session_id_or_None).
@@ -52,7 +53,7 @@ class OpenCodeBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: 'Callable[[str], None] | None' = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
         workdir = workdir or str(PYTORCH_DIR)
         timeout = timeout or 1800
 
@@ -89,7 +90,7 @@ class OpenCodeBackend(AgentBackend):
 
         with open(log_path, "w") as log_f:
             log_f.write(f"=== COMMAND ===\n{' '.join(cmd[:6])} <prompt>\n\n")
-            log_f.write(f"=== OUTPUT (real-time) ===\n")
+            log_f.write("=== OUTPUT (real-time) ===\n")
             log_f.flush()
 
             # stdout = JSON events; discard stderr to avoid pipe buffer deadlock
@@ -177,7 +178,7 @@ class CopilotBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: 'Callable[[str], None] | None' = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
         raise NotImplementedError("Copilot backend not yet implemented")
 
 

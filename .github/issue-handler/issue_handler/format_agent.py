@@ -36,7 +36,7 @@ def _load_label_mapping() -> dict[str, str]:
 def _extract_label_info(labels: list[dict]) -> dict[str, str]:
     """Extract test_type, category, dependency from label names."""
     mapping = _load_label_mapping()
-    info = {field: "" for field in mapping.values()}
+    info = dict.fromkeys(mapping.values(), "")
     for label in labels:
         name = label.get("name", "") if isinstance(label, dict) else label
         for prefix, field in mapping.items():
