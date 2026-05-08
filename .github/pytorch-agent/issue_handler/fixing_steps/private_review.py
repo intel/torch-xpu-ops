@@ -1,7 +1,7 @@
 """Handle private review on the private review fork.
 
 Entry point:
-  python -m pytorch_agent.fixing_steps.private_review --issue 123
+  python -m issue_handler.fixing_steps.private_review --issue 123
 """
 from __future__ import annotations
 

@@ -7,9 +7,9 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pytorch_agent.utils import git as gh
-from pytorch_agent.utils.config import ISSUE_REPO
-from pytorch_agent.utils.body_templates import get_status
+from issue_handler.utils import git as gh
+from issue_handler.utils.config import ISSUE_REPO
+from issue_handler.utils.body_templates import get_status
 
 
 def main() -> None:

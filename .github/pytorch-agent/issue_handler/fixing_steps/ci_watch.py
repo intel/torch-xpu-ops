@@ -1,7 +1,7 @@
 """Watch CI on public PR and handle failures.
 
 Entry point:
-  python -m pytorch_agent.fixing_steps.ci_watch --issue 123
+  python -m issue_handler.fixing_steps.ci_watch --issue 123
 """
 from __future__ import annotations
 

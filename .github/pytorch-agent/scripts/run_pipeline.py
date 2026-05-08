@@ -12,11 +12,11 @@ import argparse
 # Add parent to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pytorch_agent.issue_fixing_agent import advance
-from pytorch_agent.utils import git as gh
-from pytorch_agent.utils.config import ISSUE_REPO, POLL_INTERVAL, ISSUE_LABEL, TERMINAL_STAGES, MAX_ADVANCE_LOOPS
-from pytorch_agent.utils.body_templates import get_status
-from pytorch_agent.utils.logger import log
+from issue_handler.orchestrator import advance
+from issue_handler.utils import git as gh
+from issue_handler.utils.config import ISSUE_REPO, POLL_INTERVAL, ISSUE_LABEL, TERMINAL_STAGES, MAX_ADVANCE_LOOPS
+from issue_handler.utils.body_templates import get_status
+from issue_handler.utils.logger import log
 
 
 

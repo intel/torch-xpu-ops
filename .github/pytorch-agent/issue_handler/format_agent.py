@@ -1,7 +1,7 @@
 """Discovery agent — read raw issue, format into structured template.
 
 Entry point:
-  python -m pytorch_agent.discovery_agent --issue 123
+  python -m issue_handler.format_agent --issue 123
 """
 from __future__ import annotations
 

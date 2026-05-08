@@ -1,4 +1,4 @@
-"""Tests for discovery_agent — covers bugs found during Step 1 testing.
+"""Tests for format_agent — covers bugs found during Step 1 testing.
 
 Bugs tested:
 1. _token_for_repo used raw env vars instead of config constants
@@ -27,11 +27,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pytorch_agent.utils.body_templates import (
+from issue_handler.utils.body_templates import (
     get_status, set_status, render_initial_body,
     check_action_item, append_log, sync_labels,
 )
-from pytorch_agent.discovery_agent import (
+from issue_handler.format_agent import (
     _extract_label_info, _extract_environment, reset, run,
 )
 
@@ -134,25 +134,25 @@ class TestAppendLogIndentation:
 # ---------------------------------------------------------------------------
 
 class TestSyncLabels:
-    @patch("pytorch_agent.utils.git.add_label")
-    @patch("pytorch_agent.utils.git.remove_label")
+    @patch("issue_handler.utils.git.add_label")
+    @patch("issue_handler.utils.git.remove_label")
     def test_sync_labels_adds_correct_label(self, mock_remove, mock_add):
         """DISCOVERED stage should map to agent:active label."""
-        with patch("pytorch_agent.utils.config.STAGE_TO_LABEL",
+        with patch("issue_handler.utils.config.STAGE_TO_LABEL",
                     {"DISCOVERED": "agent:active", "DONE": "agent:done"}), \
-             patch("pytorch_agent.utils.config.ALL_AGENT_LABELS",
+             patch("issue_handler.utils.config.ALL_AGENT_LABELS",
                     ["agent:active", "agent:done", "agent:needs-human"]):
             sync_labels("repo/name", 42, "DISCOVERED")
         mock_add.assert_called_once_with("repo/name", 42, "agent:active")
         mock_remove.assert_any_call("repo/name", 42, "agent:done")
 
-    @patch("pytorch_agent.utils.git.add_label")
-    @patch("pytorch_agent.utils.git.remove_label")
+    @patch("issue_handler.utils.git.add_label")
+    @patch("issue_handler.utils.git.remove_label")
     def test_sync_labels_with_body_text_would_fail(self, mock_remove, mock_add):
         """Passing body text instead of stage string should not match any label."""
-        with patch("pytorch_agent.utils.config.STAGE_TO_LABEL",
+        with patch("issue_handler.utils.config.STAGE_TO_LABEL",
                     {"DISCOVERED": "agent:active"}), \
-             patch("pytorch_agent.utils.config.ALL_AGENT_LABELS",
+             patch("issue_handler.utils.config.ALL_AGENT_LABELS",
                     ["agent:active"]):
             sync_labels("repo/name", 42, "<!-- agent:status:DISCOVERED -->...")
         mock_add.assert_not_called()
@@ -163,7 +163,7 @@ class TestSyncLabels:
 # ---------------------------------------------------------------------------
 
 class TestReset:
-    @patch("pytorch_agent.discovery_agent.gh")
+    @patch("issue_handler.format_agent.gh")
     def test_reset_extracts_original_body(self, mock_gh):
         original = "### Bug\nSome original content here"
         formatted_body = (
@@ -180,7 +180,7 @@ class TestReset:
         written_body = mock_gh.update_issue_body.call_args[0][2]
         assert written_body == original
 
-    @patch("pytorch_agent.discovery_agent.gh")
+    @patch("issue_handler.format_agent.gh")
     def test_reset_warns_on_no_original(self, mock_gh):
         """If no Original Issue section, reset should warn and not update."""
         mock_gh.get_issue_detail.return_value = {"body": "no original section"}
@@ -266,14 +266,14 @@ class TestExtractLabelInfo:
 class TestTokenRouting:
     @patch.dict(os.environ, {"GH_TOKEN": "gh_token", "REVIEW_GH_TOKEN": "review_token"})
     def test_issue_repo_uses_review_token(self):
-        from pytorch_agent.utils.git import _token_for_repo
-        from pytorch_agent.utils.config import ISSUE_REPO
+        from issue_handler.utils.git import _token_for_repo
+        from issue_handler.utils.config import ISSUE_REPO
         token = _token_for_repo(ISSUE_REPO)
         assert token == "review_token"
 
     @patch.dict(os.environ, {"GH_TOKEN": "gh_token", "REVIEW_GH_TOKEN": "review_token"})
     def test_unknown_repo_uses_gh_token(self):
-        from pytorch_agent.utils.git import _token_for_repo
+        from issue_handler.utils.git import _token_for_repo
         token = _token_for_repo("random/repo")
         assert token == "gh_token"
 
@@ -331,8 +331,8 @@ class TestExtractEnvironment:
 
 
 class TestSkipAlreadyFormatted:
-    @patch("pytorch_agent.discovery_agent.gh")
-    @patch("pytorch_agent.discovery_agent.get_backend")
+    @patch("issue_handler.format_agent.gh")
+    @patch("issue_handler.format_agent.get_backend")
     def test_skips_when_status_present(self, mock_backend, mock_gh):
         mock_gh.get_issue_detail.return_value = {
             "body": "<!-- agent:status:DISCOVERED -->\nstuff",

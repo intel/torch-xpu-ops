@@ -1,7 +1,7 @@
 """Close the source issue after public PR is merged.
 
 Entry point:
-  python -m pytorch_agent.fixing_steps.close_issue --issue 123
+  python -m issue_handler.fixing_steps.close_issue --issue 123
 """
 from __future__ import annotations
 

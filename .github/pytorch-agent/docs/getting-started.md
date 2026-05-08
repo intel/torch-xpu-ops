@@ -63,10 +63,10 @@ torch-xpu-ops/.github/
     ├── AGENTS.md
     ├── config/
     │   └── agent_config.yml         # All tunable constants
-    ├── pytorch_agent/
-    │   ├── discovery_agent.py       # Format raw issues
+    ├── issue_handler/
+    │   ├── format_agent.py       # Format raw issues
     │   ├── triage_agent.py          # Root cause analysis
-    │   ├── issue_fixing_agent.py    # Stage orchestrator
+    │   ├── orchestrator.py    # Stage orchestrator
     │   ├── fixing_steps/
     │   │   ├── code_fix.py          # Branch, code, push, PR
     │   │   ├── private_review.py    # Handle review feedback
@@ -105,13 +105,13 @@ python scripts/run_pipeline.py --issue 123
 
 ```bash
 # Format raw issue → structured template (input: raw issue body, output: formatted issue body)
-python -m pytorch_agent.discovery_agent --issue 123
+python -m issue_handler.format_agent --issue 123
 
 # Analyze root cause → verdict (input: formatted issue body, output: root cause + fix strategy + IMPLEMENTING/NEEDS_HUMAN)
-python -m pytorch_agent.triage_agent --issue 123
+python -m issue_handler.triage_agent --issue 123
 
 # Advance one stage (input: issue at any stage, output: issue advanced to next stage)
-python -m pytorch_agent.issue_fixing_agent --issue 123
+python -m issue_handler.orchestrator --issue 123
 ```
 
 ### Automated polling
@@ -134,7 +134,7 @@ python scripts/run_pipeline.py --interval 300  # Custom interval
 
 | Stage | Agent | What happens |
 |-------|-------|-------------|
-| *(raw)* | discovery_agent | Formats issue into structured template |
+| *(raw)* | format_agent | Formats issue into structured template |
 | TRIAGING | triage_agent | Root cause + fix strategy → IMPLEMENTING or NEEDS_HUMAN |
 | IMPLEMENTING | code_fix.py | Branch, LLM fix, push, create PR on review fork |
 | IN_REVIEW | private_review.py | Wait for review, address feedback (max 3 iterations) |
@@ -166,7 +166,7 @@ ls -1t logs/cycle-*.log | head -1 | xargs cat
 ## Troubleshooting
 
 - **Not picked up?** Check issue exists in `ISSUE_REPO` with `ai_generated` label.
-- **Stuck?** Read issue body action items and `<details>` logs. Retry with `python -m pytorch_agent.issue_fixing_agent --issue N`.
+- **Stuck?** Read issue body action items and `<details>` logs. Retry with `python -m issue_handler.orchestrator --issue N`.
 - **NEEDS_HUMAN?** Check logs, fix manually, set `<!-- agent:status:DONE -->`.
 - **Backend errors?** Verify `opencode run --dir ~/pytorch "echo hello"` works.
 - **Token issues?** `REVIEW_GH_TOKEN` → issue/review/public repos. `GH_TOKEN` → upstream repo.

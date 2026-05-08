@@ -1,7 +1,7 @@
 """Submit fix as public PR to pytorch/pytorch.
 
 Entry point:
-  python -m pytorch_agent.fixing_steps.public_submit --issue 123
+  python -m issue_handler.fixing_steps.public_submit --issue 123
 """
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ Issues sourced from `ISSUE_REPO` (default: `ZhaoqiongZ/torch-xpu-ops-exp`).
 ## Architecture
 
 ```
-discovery_agent.py → triage_agent.py → issue_fixing_agent.py
+format_agent.py → triage_agent.py → orchestrator.py
                                               ↓
                                        fixing_steps/
                            code_fix → private_review → public_submit
@@ -20,9 +20,9 @@ discovery_agent.py → triage_agent.py → issue_fixing_agent.py
 |--------|---------|-------|
 | `scripts/run_pipeline.py` | Polling loop (temporary) | `python scripts/run_pipeline.py --once` |
 | `scripts/status_report.py` | Print tracked issue status | `python scripts/status_report.py` |
-| `discovery_agent.py` | Format raw issue into structured template | `python -m pytorch_agent.discovery_agent --issue 123` |
-| `triage_agent.py` | Analyze issue, determine root cause & verdict | `python -m pytorch_agent.triage_agent --issue 123` |
-| `issue_fixing_agent.py` | Advance a tracked issue through stages | `python -m pytorch_agent.issue_fixing_agent --issue 123` |
+| `format_agent.py` | Format raw issue into structured template | `python -m issue_handler.format_agent --issue 123` |
+| `triage_agent.py` | Analyze issue, determine root cause & verdict | `python -m issue_handler.triage_agent --issue 123` |
+| `orchestrator.py` | Advance a tracked issue through stages | `python -m issue_handler.orchestrator --issue 123` |
 
 ## State Tracking
 
@@ -60,7 +60,7 @@ Agent prompts reference skills in `.github/skills/`:
 
 | Skill | Used by |
 |-------|---------|
-| `pytorch-issue-discovery` | discovery_agent |
+| `pytorch-issue-discovery` | format_agent |
 | `pytorch-triage-ut` / `pytorch-triage-e2e` | triage_agent |
 | `pytorch-fix` | code_fix |
 | `pytorch-review-fix` | private_review |

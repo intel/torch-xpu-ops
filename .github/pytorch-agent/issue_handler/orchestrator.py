@@ -1,7 +1,7 @@
 """Issue fixing agent — orchestrate all stages from discovery to close.
 
 Entry point:
-  python -m pytorch_agent.issue_fixing_agent --issue 123
+  python -m issue_handler.orchestrator --issue 123
 
 Reads stage from issue body (<!-- agent:status:STAGE -->) and dispatches
 to the appropriate agent/step.
@@ -61,7 +61,7 @@ def advance(issue_number: int) -> None:
     match stage:
         case "DISCOVERED":
             # Re-run discovery to fill any blanks (idempotent)
-            from .discovery_agent import run
+            from .format_agent import run
             _run_step("discovery", run, issue_number)
         case "TRIAGING":
             from .triage_agent import run
