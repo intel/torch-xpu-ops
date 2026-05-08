@@ -1,4 +1,4 @@
-"""Simple structured file + console logger for issue-handler agent."""
+"""Simple structured file + console logger for issue-handler."""
 import sys
 import traceback
 from datetime import datetime

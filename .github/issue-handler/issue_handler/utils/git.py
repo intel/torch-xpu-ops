@@ -32,49 +32,12 @@ def git_out(*args: str, **kwargs) -> str:
     return git(*args, **kwargs).stdout
 
 
-def add_and_commit(message: str, *, issue: int | None = None,
-                   workdir: Path | None = None) -> bool:
-    """Stage tracked files (excluding third_party/*) and commit if dirty.
-
-    Returns True if a commit was made, False if tree was clean.
-    """
-    cwd = workdir or PYTORCH_DIR
-    status = git("status", "--porcelain", workdir=cwd, issue=issue).stdout
-    if not status.strip():
-        return False
-
-    # Filter out submodule pointer changes (third_party/*)
-    files = []
-    for line in status.splitlines():
-        parts = line.split(maxsplit=1)
-        if len(parts) < 2:
-            continue
-        fname = parts[1].strip()
-        if " -> " in fname:
-            fname = fname.split(" -> ", 1)[1]
-        if fname.startswith("third_party/"):
-            log("INFO", f"Skipping submodule change: {fname}", issue=issue)
-            continue
-        files.append(fname)
-
-    if not files:
-        return False
-
-    git("add", "--", *files, workdir=cwd, issue=issue)
-    git("commit", "-m", message, workdir=cwd, issue=issue)
-    return True
-
-
 # ---------------------------------------------------------------------------
 # GitHub CLI helpers
 # ---------------------------------------------------------------------------
 
 def _token_for_repo(repo: str) -> str | None:
-    """Pick the right GH token based on which repo we're accessing.
-
-    REVIEW_GH_TOKEN → for PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, and ISSUE_REPO
-    GH_TOKEN → for everything else (upstream issues)
-    """
+    """Pick the right GH token based on which repo we're accessing."""
     from .config import PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO
     review_token = os.environ.get("REVIEW_GH_TOKEN")
     if review_token and repo in (PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO):
@@ -138,18 +101,6 @@ def get_issue_detail(repo: str, number: int) -> dict:
     return json.loads(raw)
 
 
-def add_issue_comment(repo: str, number: int, body: str) -> None:
-    """Add a comment to an issue."""
-    _gh(["issue", "comment", str(number), "--repo", repo, "--body", body],
-         token=_token_for_repo(repo))
-
-
-def close_issue(repo: str, number: int) -> None:
-    """Close an issue."""
-    _gh(["issue", "close", str(number), "--repo", repo],
-         token=_token_for_repo(repo))
-
-
 def update_issue_body(repo: str, number: int, body: str) -> None:
     """Update an issue's body text."""
     _gh_api(f"/repos/{repo}/issues/{number}", method="PATCH",
@@ -177,29 +128,42 @@ def remove_label(repo: str, number: int, label: str) -> None:
          token=_token_for_repo(repo))
 
 
+def add_and_commit(message: str, *, issue: int | None = None,
+                   workdir: Path | None = None) -> bool:
+    """Stage tracked files (excluding third_party/*) and commit if dirty.
 
-def list_pulls(repo: str, head: str = "", state: str = "open") -> list[dict]:
-    """List pull requests, optionally filtered by head label and state."""
-    kwargs = {"state": state}
-    if head:
-        kwargs["head"] = head
-    return _gh_api(f"/repos/{repo}/pulls", token=_token_for_repo(repo), **kwargs)
+    Returns True if a commit was made, False if tree was clean.
+    """
+    cwd = workdir or PYTORCH_DIR
+    status = git("status", "--porcelain", workdir=cwd, issue=issue).stdout
+    if not status.strip():
+        return False
+
+    # Filter out submodule pointer changes (third_party/*)
+    files = []
+    for line in status.splitlines():
+        parts = line.split(maxsplit=1)
+        if len(parts) < 2:
+            continue
+        fname = parts[1].strip()
+        if " -> " in fname:
+            fname = fname.split(" -> ", 1)[1]
+        if fname.startswith("third_party/"):
+            log("INFO", f"Skipping submodule change: {fname}", issue=issue)
+            continue
+        files.append(fname)
+
+    if not files:
+        return False
+
+    git("add", "--", *files, workdir=cwd, issue=issue)
+    git("commit", "-m", message, workdir=cwd, issue=issue)
+    return True
 
 
 # ---------------------------------------------------------------------------
-# Pull Requests
+# GitHub CLI helpers
 # ---------------------------------------------------------------------------
-
-def add_pr_comment(repo: str, number: int, body: str) -> dict:
-    """Add a comment to a PR."""
-    return _gh_api(f"/repos/{repo}/issues/{number}/comments",
-                   method="POST", token=_token_for_repo(repo), body=body)
-
-
-def update_pr_comment(repo: str, comment_id: int, body: str) -> None:
-    """Update an existing PR comment."""
-    _gh_api(f"/repos/{repo}/issues/comments/{comment_id}",
-            method="PATCH", token=_token_for_repo(repo), body=body)
 
 
 def create_draft_pr(repo: str, title: str, body: str, head: str,
@@ -212,49 +176,10 @@ def create_draft_pr(repo: str, title: str, body: str, head: str,
     )
 
 
-def update_pr_body(repo: str, pr_number: int, body: str) -> None:
-    """Update a PR's body."""
-    _gh_api(f"/repos/{repo}/pulls/{pr_number}", method="PATCH",
-            token=_token_for_repo(repo), body=body)
-
-
 def mark_pr_ready(repo: str, pr_number: int) -> None:
     """Mark a draft PR as ready for review."""
     _gh(["pr", "ready", str(pr_number), "--repo", repo],
         token=_token_for_repo(repo))
-
-
-def get_pr_reviews(repo: str, pr_number: int) -> list[dict]:
-    """Get all reviews on a PR."""
-    return _gh_api(f"/repos/{repo}/pulls/{pr_number}/reviews",
-                   token=_token_for_repo(repo))
-
-
-def get_pr_review_comments(repo: str, pr_number: int) -> list[dict]:
-    """Get all review comments on a PR."""
-    return _gh_api(f"/repos/{repo}/pulls/{pr_number}/comments",
-                   token=_token_for_repo(repo))
-
-
-def get_pr_status(repo: str, pr_number: int) -> str:
-    """Get PR merge status: 'open', 'closed', or 'merged'."""
-    pr = _gh_api(f"/repos/{repo}/pulls/{pr_number}",
-                 token=_token_for_repo(repo))
-    if pr.get("merged"):
-        return "merged"
-    return pr.get("state", "unknown")
-
-
-def create_cross_fork_pr(head_repo: str, head_branch: str,
-                         base_repo: str, title: str, body: str,
-                         base_branch: str = "main") -> dict:
-    """Create a cross-fork PR (e.g. reviewfork:branch → pytorch/pytorch:main)."""
-    owner = head_repo.split("/")[0]
-    return _gh_api(
-        f"/repos/{base_repo}/pulls", method="POST",
-        token=_token_for_repo(base_repo), title=title, body=body,
-        head=f"{owner}:{head_branch}", base=base_branch,
-    )
 
 
 def list_prs(repo: str, state: str = "open",
@@ -275,28 +200,8 @@ def list_prs(repo: str, state: str = "open",
 # CI
 # ---------------------------------------------------------------------------
 
-def get_ci_checks(repo: str, pr_number: int) -> list[dict]:
-    """Get CI check runs for a PR's head commit."""
-    token = _token_for_repo(repo)
-    pr = _gh_api(f"/repos/{repo}/pulls/{pr_number}", token=token)
-    sha = pr.get("head", {}).get("sha")
-    if not sha:
-        return []
-    result = _gh_api(f"/repos/{repo}/commits/{sha}/check-runs", token=token)
-    return result.get("check_runs", [])
 
-
-def delete_branch(repo: str, branch: str) -> None:
-    """Delete a branch from a remote repo."""
-    try:
-        _gh_api(f"/repos/{repo}/git/refs/heads/{branch}", method="DELETE",
-                token=_token_for_repo(repo))
-    except subprocess.CalledProcessError:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# PR body builder (merged from _issue_format.py)
-# ---------------------------------------------------------------------------
-
-
+def update_pr_body(repo: str, pr_number: int, body: str) -> None:
+    """Update a PR's body."""
+    _gh_api(f"/repos/{repo}/pulls/{pr_number}", method="PATCH",
+            token=_token_for_repo(repo), body=body)

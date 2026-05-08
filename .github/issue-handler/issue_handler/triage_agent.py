@@ -19,7 +19,13 @@ from .utils.json_utils import extract_json
 from .utils.logger import log
 
 
-TRIAGE_SKILL = "issue-triage"
+def _select_skill(labels: list) -> str:
+    """Select triage skill based on issue labels."""
+    for label in labels:
+        name = label.get("name", "") if isinstance(label, dict) else label
+        if "agent_test: e2e" in name or "agent_test:e2e" in name:
+            return "issue-triage"
+    return "issue-triage"
 
 
 
@@ -39,8 +45,9 @@ def run(issue_number: int) -> tuple[str, str]:
         return ("skip", f"already at {status}")
 
     # Select skill and call LLM (no inline prompt)
+    skill = _select_skill(labels)
     prompt = (
-        f"Read the {TRIAGE_SKILL} skill and triage issue #{issue_number}.\n\n"
+        f"Read the {skill} skill and triage issue #{issue_number}.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
         f"{body[:8000]}"
     )
@@ -48,7 +55,7 @@ def run(issue_number: int) -> tuple[str, str]:
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
     output, log_path, session_id = backend.run(
-        prompt, skill=TRIAGE_SKILL,
+        prompt, skill=skill,
         issue=issue_number, stage="TRIAGING",
         timeout=timeout,
     )
