@@ -45,7 +45,9 @@ def update_section(body: str, section: str, content: str) -> str:
     If the section doesn't exist, append it before Action Items
     (or at the end).
     """
-    # Find the section heading and replace content until next heading
+    # Match: "## Section Name\n" (group 1 = heading line),
+    # then capture everything (group 2 = content) until the next
+    # heading (## or ###) or end of string.
     pattern = re.compile(
         r"(^#{1,4}\s+" + re.escape(section) + r"\s*\n)(.*?)(?=^#{1,4}\s|\Z)",
         re.MULTILINE | re.DOTALL,
