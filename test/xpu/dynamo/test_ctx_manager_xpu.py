@@ -17,6 +17,8 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE
 
+sys.path.append("../../../../test/dynamo")
+
 try:
     from . import test_functions
 except ImportError:
