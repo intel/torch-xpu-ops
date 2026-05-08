@@ -631,7 +631,9 @@ def _int_mm_errors(self, device):
         ),
     )
 
+
 TestLinalg.test__int_mm_errors = _int_mm_errors
+
 
 @dtypes(*floating_and_complex_types())
 @precisionOverride({torch.float32: 1e-3})
