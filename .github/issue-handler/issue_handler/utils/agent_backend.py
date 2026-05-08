@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 import subprocess
 
-from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR
+from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR, CONFIG_DIR
 from .logger import log as pipeline_log
 
 
@@ -49,6 +49,29 @@ class AgentBackend(ABC):
         ...
 
 
+OPENCODEIGNORE_TEMPLATE = CONFIG_DIR / "opencodeignore.default"
+
+
+def _ensure_opencodeignore(workdir: Path) -> None:
+    """Copy .opencodeignore into workdir if it doesn't exist yet.
+
+    OpenCode's file watcher hangs on inotify init for large repos
+    (200K+ files like pytorch). The ignore file excludes third_party/,
+    build artifacts, and .git/ to keep the watcher fast.
+    """
+    target = workdir / ".opencodeignore"
+    if target.exists():
+        return
+    if not workdir.is_dir():
+        return
+    if OPENCODEIGNORE_TEMPLATE.exists():
+        import shutil
+        shutil.copy2(OPENCODEIGNORE_TEMPLATE, target)
+        pipeline_log("INFO", f"Created {target} from template")
+    else:
+        pipeline_log("WARN", f"No opencodeignore template at {OPENCODEIGNORE_TEMPLATE}")
+
+
 class OpenCodeBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
@@ -56,6 +79,10 @@ class OpenCodeBackend(AgentBackend):
             on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
         workdir = workdir or str(PYTORCH_DIR)
         timeout = timeout or 1800
+
+        # Ensure .opencodeignore exists in workdir to prevent file watcher
+        # from hanging on large repos (e.g. pytorch with 200K+ files)
+        _ensure_opencodeignore(Path(workdir))
 
         # Point OpenCode to XPU agent skills in torch-xpu-ops.
         # OpenCode runs in ~/pytorch, so it won't auto-discover them.
