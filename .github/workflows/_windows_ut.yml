@@ -135,9 +135,6 @@ jobs:
           )
           git clone %PYTORCH_REPO% pytorch
           cd pytorch && git checkout %PYTORCH_COMMIT%
-          REM Remove pip from requirements-ci.txt to avoid pip self-upgrade causing stricter wheel validation
-          powershell -Command "(Get-Content '.ci\docker\requirements-ci.txt') | Where-Object { $_ -notmatch 'pip' } | Set-Content '.ci\docker\requirements-ci.txt'"
-          python -m pip install -r .ci\docker\requirements-ci.txt
           if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
@@ -169,6 +166,8 @@ jobs:
           
           for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
           python -m pip install "%TORCH_WHL%"
+          cd %GITHUB_WORKSPACE%\..\pytorch
+          python -m pip install -r .ci\docker\requirements-ci.txt
       - name: Torch Config Check
         shell: cmd
         run: |
