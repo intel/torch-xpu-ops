@@ -38,7 +38,8 @@ void onecclAllReduce(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
     onecclAllReduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -49,7 +50,8 @@ void onecclAllReduce(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
     ccl::allreduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -72,7 +74,8 @@ void onecclReduce(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
     onecclReduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -84,7 +87,8 @@ void onecclReduce(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
     ccl::reduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -138,7 +142,8 @@ void onecclReduceScatter(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
     onecclReduceScatter(
         input.data_ptr(),
         output.data_ptr(),
@@ -149,7 +154,8 @@ void onecclReduceScatter(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
+    auto xcclReduceOp =
+        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
     ccl::reduce_scatter(
         input.data_ptr(),
         output.data_ptr(),

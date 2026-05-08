@@ -3717,9 +3717,9 @@ class AssociativeScanTests(TestCase):
         result_exp_flatten = [r for r in result_exp_flatten if r.requires_grad]
 
         # Check the result and parameter lists
-        assert len(result_flatten) == len(
-            result_exp_flatten
-        ), "The number of elements requiring gradients is different for the results and the expected results"
+        assert len(result_flatten) == len(result_exp_flatten), (
+            "The number of elements requiring gradients is different for the results and the expected results"
+        )
 
         grad_exp_init = [torch.ones_like(el) for el in result_exp_flatten]
         expected_grads = torch.autograd.grad(
