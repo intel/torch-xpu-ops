@@ -12661,7 +12661,6 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             with self.assertRaisesRegex(RuntimeError, "has weakref"):
                 torch.utils.swap_tensors(t1, t2)
 
-
     @unittest.skipIf(TEST_WITH_TORCHDYNAMO, "Dynamo adds weakrefs")
     def test_swap_fail_slots(self):
         class MyTwoTensor(TwoTensor):
