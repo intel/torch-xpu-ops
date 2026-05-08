@@ -91,7 +91,7 @@ jobs:
           call conda remove --all -y -n windows_ut
           call conda create -n windows_ut python=${{ inputs.python }} -y
           call conda activate windows_ut
-          pip install pyyaml requests pytest-timeout pytest pytest-xdist
+          python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
           call conda install -y libuv
           call conda install -y rust
           cd ..
@@ -135,7 +135,7 @@ jobs:
           )
           git clone %PYTORCH_REPO% pytorch
           cd pytorch && git checkout %PYTORCH_COMMIT%
-          pip install -r .ci\docker\requirements-ci.txt
+          python -m pip install -r .ci\docker\requirements-ci.txt
           if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
@@ -166,7 +166,7 @@ jobs:
           call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           
           for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
-          pip install "%TORCH_WHL%"
+          python -m pip install --force-reinstall "%TORCH_WHL%"
       - name: Torch Config Check
         shell: cmd
         run: |
