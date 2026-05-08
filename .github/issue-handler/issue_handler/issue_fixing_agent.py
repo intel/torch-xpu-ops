@@ -60,6 +60,7 @@ def advance(issue_number: int) -> None:
 
     match stage:
         case "DISCOVERED":
+            # Re-run discovery to fill any blanks (idempotent)
             from .discovery_agent import run
             _run_step("discovery", run, issue_number)
         case "TRIAGING":
