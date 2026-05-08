@@ -1,7 +1,7 @@
 """Triage agent — analyze formatted issue, determine root cause and fix strategy.
 
 Entry point:
-  python -m pytorch_agent.triage_agent --issue 123
+  python -m issue_handler.triage_agent --issue 123
 """
 from __future__ import annotations
 
