@@ -15,7 +15,7 @@ from subprocess import CalledProcessError
 from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
-    REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
+    REVIEW_REMOTE, STAGE_TIMEOUTS,
 )
 from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
