@@ -138,10 +138,12 @@ class TestSyncLabels:
     @patch("issue_handler.utils.git.remove_label")
     def test_sync_labels_adds_correct_label(self, mock_remove, mock_add):
         """DISCOVERED stage should map to agent:active label."""
-        with patch("issue_handler.utils.config.STAGE_TO_LABEL",
-                    {"DISCOVERED": "agent:active", "DONE": "agent:done"}), \
-             patch("issue_handler.utils.config.ALL_AGENT_LABELS",
-                    ["agent:active", "agent:done", "agent:needs-human"]):
+        with (
+            patch("issue_handler.utils.config.STAGE_TO_LABEL",
+                  {"DISCOVERED": "agent:active", "DONE": "agent:done"}),
+            patch("issue_handler.utils.config.ALL_AGENT_LABELS",
+                  ["agent:active", "agent:done", "agent:needs-human"]),
+        ):
             sync_labels("repo/name", 42, "DISCOVERED")
         mock_add.assert_called_once_with("repo/name", 42, "agent:active")
         mock_remove.assert_any_call("repo/name", 42, "agent:done")
@@ -150,10 +152,12 @@ class TestSyncLabels:
     @patch("issue_handler.utils.git.remove_label")
     def test_sync_labels_with_body_text_would_fail(self, mock_remove, mock_add):
         """Passing body text instead of stage string should not match any label."""
-        with patch("issue_handler.utils.config.STAGE_TO_LABEL",
-                    {"DISCOVERED": "agent:active"}), \
-             patch("issue_handler.utils.config.ALL_AGENT_LABELS",
-                    ["agent:active"]):
+        with (
+            patch("issue_handler.utils.config.STAGE_TO_LABEL",
+                  {"DISCOVERED": "agent:active"}),
+            patch("issue_handler.utils.config.ALL_AGENT_LABELS",
+                  ["agent:active"]),
+        ):
             sync_labels("repo/name", 42, "<!-- agent:status:DISCOVERED -->...")
         mock_add.assert_not_called()
 
@@ -205,6 +209,7 @@ class TestNoAgentLogSection:
 class TestEnvironmentSection:
     def test_environment_section_exists(self):
         assert "## Environment" in SAMPLE_BODY
+
     def test_environment_in_collapsible_code_block(self):
         """Environment should be inside a collapsible details block."""
         assert "<details><summary>collect_env</summary>" in SAMPLE_BODY
