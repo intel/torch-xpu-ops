@@ -38,19 +38,24 @@ with XPUPatchForImport(False):
     from test_fx import _enrich_profiler_traces, TestFX
 
 
-# The XPU profiler emits many Level Zero / Unified Runtime bookkeeping events per
-# aten op (zeKernelSetArgumentValue, zeKernelSetGroupSize, zeEventCreate,
-# zeMemGetAllocProperties, zeCommandListAppendLaunchKernel, ...). Upstream CUDA
+# The XPU profiler emits many Level Zero / Unified Runtime bookkeeping events
+# per aten op (zeKernelSetArgumentValue, zeKernelSetGroupSize, zeKernelCreate,
+# zeCommandListAppendLaunchKernel, zeModuleCreate, ...). Upstream CUDA
 # baselines assume one cudaLaunchKernel per kernel dispatch and the HIP path
 # filters hipGetDeviceProperties for the same reason. We drop the UR/ZE
 # bookkeeping so the test asserts the same invariant upstream does: that each
-# real kernel launch event is attributed to its aten op via the FX stack trace.
-# Everything kept here (aten:: ops + the canonical launch event) must still be
-# correctly augmented; nothing is aggregated away.
-# _canonicalize_profiler_events truncates event names at 30 chars
-# (profiler_util.py:1581). The full UR launch event is
-# urEnqueueKernelLaunchWithArgsExp, which shows up truncated as:
-_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunchWithArgsE"
+# kernel launch event is attributed to its aten op via the FX stack trace.
+#
+# The canonical kernel launch event varies across PTI versions. Older PTI
+# emits "urEnqueueKernelLaunch"; newer PTI emits
+# "urEnqueueKernelLaunchWithArgsExp" which is truncated to
+# "urEnqueueKernelLaunchWithArgsE" by _canonicalize_profiler_events' 30-char
+# cap. Accept both so the test works regardless of which PTI the runtime
+# links against.
+_XPU_KERNEL_LAUNCH_EVENTS = (
+    "urEnqueueKernelLaunch",
+    "urEnqueueKernelLaunchWithArgsE",
+)
 
 # Names of runtime helper events known to be emitted on XPU that carry an
 # aten parent context but are not kernel launches we want to assert on.
@@ -60,13 +65,23 @@ _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
 def _filter_xpu_runtime_events(actual_traces):
     kept = []
     for line in actual_traces.split("\n"):
-        if f"event={_XPU_KERNEL_LAUNCH_EVENT}" in line:
+        if any(f"event={e} " in line for e in _XPU_KERNEL_LAUNCH_EVENTS):
             kept.append(line)
             continue
         if any(f"event={p}" in line for p in _XPU_RUNTIME_EVENT_PREFIXES):
             continue
         kept.append(line)
     return "\n".join(kept)
+
+
+def _canonicalize_xpu_launch_events(actual_traces):
+    """Normalize PTI-version-specific launch event names so baselines are
+    stable across PTI versions. Both urEnqueueKernelLaunch and the truncated
+    urEnqueueKernelLaunchWithArgsE map to the same canonical token."""
+    result = actual_traces
+    for e in _XPU_KERNEL_LAUNCH_EVENTS:
+        result = result.replace(f"event={e} ", "event=urEnqueueKernelLaunch ")
+    return result
 
 
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
@@ -174,16 +189,17 @@ def _test_profiler_stack_trace_augmentation(self):
     ) as prof:
         result = compiled_model(torch.randn(10, 10, device="xpu"))
 
-    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
 
     # Mirror upstream's two-slot naming so the test can distinguish launches
     # for BLAS-path ops (addmm) from elementwise ops (relu). On CUDA+cuBLASLt
     # these both happen to be cudaLaunchKernel; on ROCm they differ
-    # (hipExtModuleLaunchKernel vs hipLaunchKernel). Both XPU slots default to
-    # urEnqueueKernelLaunch and must be updated if the actual trace shows a
-    # different launch entry point per path.
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
-    kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
+    # (hipExtModuleLaunchKernel vs hipLaunchKernel). XPU currently uses the
+    # same UR launch entry point for both paths.
+    kernel_event = "urEnqueueKernelLaunch"
+    kernel_event_relu = "urEnqueueKernelLaunch"
     if IS_WINDOWS:
         # XPU uses oneDNN/oneMKL (not cuBLASLt), so addmm emits one launch
         # rather than upstream's two. The Windows-vs-Linux split here only
@@ -275,8 +291,10 @@ def _test_profiler_multiple_modules(self):
         result_a = compiled_a(torch.randn(10, 10, device="xpu"))
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
-    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
+    kernel_event = "urEnqueueKernelLaunch"
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -327,8 +345,10 @@ def _test_profiler_nested_graph_modules(self):
             torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
         )
 
-    actual_traces = _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
+    kernel_event = "urEnqueueKernelLaunch"
     self.assertExpectedInline(
         actual_traces,
         f"""\
