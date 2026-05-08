@@ -110,25 +110,98 @@ def update_issue_body(repo: str, number: int, body: str) -> None:
 def add_label(repo: str, number: int, label: str) -> None:
     """Add a label to an issue. Creates the label if it doesn't exist."""
     try:
-        _gh(
-            ["issue", "edit", str(number), "--repo", repo, "--add-label", label],
-            token=_token_for_repo(repo),
-        )
+        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label],
+             token=_token_for_repo(repo))
     except subprocess.CalledProcessError:
         try:
             _gh_api(f"/repos/{repo}/labels", method="POST",
                     token=_token_for_repo(repo), name=label, color="c5def5")
         except subprocess.CalledProcessError:
             pass
-        _gh(
-            ["issue", "edit", str(number), "--repo", repo, "--add-label", label],
-            token=_token_for_repo(repo),
-        )
+        _gh(["issue", "edit", str(number), "--repo", repo, "--add-label", label],
+             token=_token_for_repo(repo))
 
 
 def remove_label(repo: str, number: int, label: str) -> None:
     """Remove a label from an issue."""
-    _gh(
-        ["issue", "edit", str(number), "--repo", repo, "--remove-label", label],
-        token=_token_for_repo(repo),
+    _gh(["issue", "edit", str(number), "--repo", repo, "--remove-label", label],
+         token=_token_for_repo(repo))
+
+
+def add_and_commit(message: str, *, issue: int | None = None,
+                   workdir: Path | None = None) -> bool:
+    """Stage tracked files (excluding third_party/*) and commit if dirty.
+
+    Returns True if a commit was made, False if tree was clean.
+    """
+    cwd = workdir or PYTORCH_DIR
+    status = git("status", "--porcelain", workdir=cwd, issue=issue).stdout
+    if not status.strip():
+        return False
+
+    # Filter out submodule pointer changes (third_party/*)
+    files = []
+    for line in status.splitlines():
+        parts = line.split(maxsplit=1)
+        if len(parts) < 2:
+            continue
+        fname = parts[1].strip()
+        if " -> " in fname:
+            fname = fname.split(" -> ", 1)[1]
+        if fname.startswith("third_party/"):
+            log("INFO", f"Skipping submodule change: {fname}", issue=issue)
+            continue
+        files.append(fname)
+
+    if not files:
+        return False
+
+    git("add", "--", *files, workdir=cwd, issue=issue)
+    git("commit", "-m", message, workdir=cwd, issue=issue)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# GitHub CLI helpers
+# ---------------------------------------------------------------------------
+
+
+def create_draft_pr(repo: str, title: str, body: str, head: str,
+                    base: str = "main") -> dict:
+    """Create a draft PR via gh api."""
+    return _gh_api(
+        f"/repos/{repo}/pulls", method="POST",
+        token=_token_for_repo(repo), title=title, body=body,
+        head=head, base=base, draft=True,
     )
+
+
+def mark_pr_ready(repo: str, pr_number: int) -> None:
+    """Mark a draft PR as ready for review."""
+    _gh(["pr", "ready", str(pr_number), "--repo", repo],
+        token=_token_for_repo(repo))
+
+
+def list_prs(repo: str, state: str = "open",
+             search: str | None = None) -> list[dict]:
+    """List PRs with optional search filter."""
+    cmd = [
+        "pr", "list", "--repo", repo, "--state", state,
+        "--json", "number,title,body,url,state,isDraft,headRefName",
+        "--limit", "100",
+    ]
+    if search:
+        cmd += ["--search", search]
+    raw = _gh(cmd, token=_token_for_repo(repo))
+    return json.loads(raw) if raw.strip() else []
+
+
+# ---------------------------------------------------------------------------
+# CI
+# ---------------------------------------------------------------------------
+
+
+def update_pr_body(repo: str, pr_number: int, body: str) -> None:
+    """Update a PR's body."""
+    _gh_api(f"/repos/{repo}/pulls/{pr_number}", method="PATCH",
+            token=_token_for_repo(repo), body=body)
