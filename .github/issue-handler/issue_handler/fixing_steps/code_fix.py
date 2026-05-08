@@ -15,7 +15,7 @@ from subprocess import CalledProcessError
 from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
-    REVIEW_REMOTE, STAGE_TIMEOUTS,
+    REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
 )
 from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
@@ -65,7 +65,7 @@ def run(issue_number: int) -> None:
         log("INFO", f"Branch {branch} already has changes, skipping agent re-run",
             issue=issue_number)
     else:
-        # --- Call LLM ---
+        # --- Call LLM (with retry) ---
         prompt = (
             f"Read the issue-fix skill and fix issue #{issue_number}.\n\n"
             f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
@@ -78,14 +78,26 @@ def run(issue_number: int) -> None:
 
         backend = get_backend()
         timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 3600)
-        output, log_path, session_id = backend.run(
-            prompt, workdir=str(PYTORCH_DIR),
-            skill="issue-fix", timeout=timeout,
-            issue=issue_number, stage="IMPLEMENTING",
-            on_session_start=_post_session_id,
-        )
-        log("INFO", f"Implementation agent log: {log_path}", issue=issue_number)
 
+        last_error = None
+        for attempt in range(1, MAX_AGENT_ATTEMPTS + 1):
+            try:
+                output, log_path, session_id = backend.run(
+                    prompt, workdir=str(PYTORCH_DIR),
+                    skill="issue-fix", timeout=timeout,
+                    issue=issue_number, stage="IMPLEMENTING",
+                    on_session_start=_post_session_id,
+                )
+                log("INFO", f"Implementation agent log: {log_path} "
+                    f"(attempt {attempt}/{MAX_AGENT_ATTEMPTS})",
+                    issue=issue_number)
+                break
+            except Exception as e:
+                last_error = e
+                log("WARN", f"Agent attempt {attempt}/{MAX_AGENT_ATTEMPTS} "
+                    f"failed: {e}", issue=issue_number)
+                if attempt == MAX_AGENT_ATTEMPTS:
+                    raise
         post_agent_completed(ISSUE_REPO, issue_number,
                              "Implementation completed", log_path, output)
 
