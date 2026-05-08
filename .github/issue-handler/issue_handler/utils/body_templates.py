@@ -46,9 +46,10 @@ def update_section(body: str, section: str, content: str) -> str:
     If the section doesn't exist, append it before Action Items
     (or at the end).
     """
-    # Match: "## Section Name\n" (group 1 = heading line),
-    # then capture everything (group 2 = content) until the next
-    # heading (## or ###) or end of string.
+    # Regex: capture the heading line (group 1: "## Section Name\n") and
+    # everything after it (group 2: content) until the next heading (# through ####)
+    # or end of string. DOTALL makes . match newlines; MULTILINE makes ^ match
+    # at line starts.
     pattern = re.compile(
         r"(^#{1,4}\s+" + re.escape(section) + r"\s*\n)(.*?)(?=^#{1,4}\s|\Z)",
         re.MULTILINE | re.DOTALL,
