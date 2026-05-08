@@ -12651,7 +12651,10 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                 t3 = t1.clone().detach().requires_grad_(True)
                 out = t3 * 2
                 torch.utils.swap_tensors(t3, t2)
-                with self.assertRaisesRegex(RuntimeError, "AccumulateGrad node that was poisoned by swap_tensors"):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "AccumulateGrad node that was poisoned by swap_tensors"
+                ):
                     out.sum().backward()
 
             _wr = weakref.ref(t1)
