@@ -1216,9 +1216,9 @@ def copy_tests(
     generic_base_class_members = set(generic_base_class.__dict__.keys()) - set(
         generic_test_class.__dict__.keys()
     )
-    assert not (
-        applicable_list and bypass_list
-    ), "Does not support setting both applicable list and bypass list."
+    assert not (applicable_list and bypass_list), (
+        "Does not support setting both applicable list and bypass list."
+    )
     if applicable_list:
         generic_base_class_members = [
             x for x in generic_base_class_members if x in applicable_list

@@ -242,12 +242,15 @@ def torch_vital_set(value):
 # Tests Vital Signs for Torch
 # FIXME: document or deprecate whatever this is
 class TestBasicVitalSigns(TestCase):
+    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
+    @onlyCUDA
     def test_basic_vitals(self):
         with torch_vital_set(""):
             self.assertFalse(torch.vitals_enabled())
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
 
+    @onlyCUDA
     def test_basic_vitals_read_write(self):
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
@@ -258,6 +261,7 @@ class TestBasicVitalSigns(TestCase):
             self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
             self.assertIn("CUDA.used", torch.read_vitals())
 
+    @onlyCUDA
     def test_dataloader_vitals(self):
         with torch_vital_set("ON"):
             inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
@@ -1329,7 +1333,7 @@ class TestTorchDeviceType(TestCase):
         self.assertFalse(t1.is_set_to(t4))
         self.assertFalse(
             torch.tensor([]).is_set_to(torch.tensor([])),
-            "Tensors with no storages should not appear to be set " "to each other",
+            "Tensors with no storages should not appear to be set to each other",
         )
 
         t1 = torch.tensor([True, True], dtype=torch.bool, device=device)
@@ -9642,9 +9646,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     def test_torch_from_file(self):
@@ -9675,9 +9680,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     @unittest.skipIf(
