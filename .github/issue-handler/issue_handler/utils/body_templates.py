@@ -197,3 +197,59 @@ def sync_labels(repo: str, number: int, stage: str) -> None:
                 gh.remove_label(repo, number, label)
             except Exception:
                 pass
+
+
+def set_metadata(body: str, key: str, value: str) -> str:
+    """Set or update a metadata HTML comment. Adds if missing."""
+    pattern = rf"(<!--\s*{re.escape(key)}:\s*)#?(.+?)(\s*-->)"
+    if re.search(pattern, body):
+        return re.sub(pattern, rf"\g<1>{value}\3", body)
+    return body + f"\n<!-- {key}: {value} -->\n"
+
+
+def get_metadata(body: str, key: str) -> str | None:
+    """Extract a metadata value from an HTML comment like <!-- key: value -->."""
+    m = re.search(rf"<!--\s*{re.escape(key)}:\s*#?(.+?)\s*-->", body)
+    return m.group(1).strip() if m else None
+
+
+def render_pr_body(
+    *,
+    upstream_issue_repo: str,
+    source_number: int,
+    title: str,
+    triage_reason: str | None = None,
+    issue_body: str = "",
+    include_diff_stat: bool = False,
+    diff_stat: str = "",
+    reviewer: str = "",
+) -> str:
+    """Build a PR description from issue details using pr_body_template.md."""
+    issue_url = f"https://github.com/{upstream_issue_repo}/issues/{source_number}"
+
+    root_cause_section = f"**Root Cause:** {triage_reason}\n" if triage_reason else ""
+
+    sections = parse_sections(issue_body)
+    failed_tests_section = (
+        f"**Failed Tests:**\n{sections['Failed Tests']}\n" if sections.get("Failed Tests") else ""
+    )
+    failure_type_section = (
+        f"---\n\n**Failure Type:** {sections['Failure Type']}\n" if sections.get("Failure Type") else ""
+    )
+    diff_stat_section = (
+        f"---\n\n**Diff stat:**\n```\n{diff_stat}\n```\n" if include_diff_stat and diff_stat else ""
+    )
+    reviewer_section = f"---\n\ncc @{reviewer}\n" if reviewer else ""
+
+    return build_body(
+        PR_TEMPLATE_PATH,
+        upstream_issue_repo=upstream_issue_repo,
+        source_number=source_number,
+        issue_url=issue_url,
+        title=title,
+        root_cause_section=root_cause_section,
+        failed_tests_section=failed_tests_section,
+        failure_type_section=failure_type_section,
+        diff_stat_section=diff_stat_section,
+        reviewer_section=reviewer_section,
+    )

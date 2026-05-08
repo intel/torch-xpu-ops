@@ -1,0 +1,1 @@
+2026-05-08 01:47:52 [ERROR] Cycle failed: Command '['gh', 'issue', 'list', '--repo', 'intel/torch-xpu-ops', '--label', 'ai_generated', '--state', 'open', '--json', 'number,title,labels,body,createdAt,url', '--limit', '100']' returned non-zero exit status 1.
