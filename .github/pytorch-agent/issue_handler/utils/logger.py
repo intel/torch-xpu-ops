@@ -1,4 +1,4 @@
-"""Simple structured file + console logger for pytorch-agent."""
+"""Simple structured file + console logger for issue-handler agent."""
 import sys
 import traceback
 from datetime import datetime

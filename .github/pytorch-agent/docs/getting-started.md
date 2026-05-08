@@ -1,4 +1,4 @@
-# pytorch-agent — Getting Started
+# Issue Handler Agent — Getting Started
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ torch-xpu-ops/.github/
     │   └── utils/
     │       ├── config.py            # Loads agent_config.yml + env
     │       ├── git.py               # Git + GitHub API
-    │       ├── issue_body.py        # Issue body parsing & templates
+    │       ├── body_templates.py    # Issue body parsing & templates
     │       ├── agent_backend.py     # OpenCode/Copilot dispatch
     │       ├── json_utils.py        # JSON extraction
     │       ├── logger.py            # Structured logging

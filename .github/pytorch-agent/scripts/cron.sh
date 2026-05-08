@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pytorch-agent cron wrapper
+# issue-handler cron wrapper
 # Runs one discovery+advance cycle, logs output
 # Install: crontab -e → */5 * * * * ~/.github/pytorch-agent/scripts/cron.sh
 

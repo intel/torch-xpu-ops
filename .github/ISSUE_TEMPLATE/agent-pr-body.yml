@@ -3,7 +3,7 @@
 # Placeholders use Python str.format() syntax: {field_name}
 
 name: "Agent PR Body"
-description: "Template for PRs submitted by the pytorch-agent pipeline"
+description: "Template for PRs submitted by the issue-handler pipeline"
 
 body: |
   ## Summary

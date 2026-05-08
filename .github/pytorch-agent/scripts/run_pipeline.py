@@ -87,7 +87,7 @@ def run_single(issue_number: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Polling loop for pytorch-agent pipeline"
+        description="Polling loop for issue-handler pipeline"
     )
     parser.add_argument("--once", action="store_true", help="Run single cycle")
     parser.add_argument("--issue", type=int, help="Run pipeline for a single issue")

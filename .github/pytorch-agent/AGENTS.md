@@ -1,6 +1,6 @@
-# AGENTS.md — PyTorch Agent (pytorch-agent)
+# AGENTS.md — Issue Handler Agent
 
-Autonomous agent for triaging and fixing `ai_generated` issues in `pytorch/pytorch`.
+Autonomous agent for triaging and fixing CI failure issues across repos (pytorch, torch-xpu-ops, etc.).
 Issues sourced from `ISSUE_REPO` (default: `ZhaoqiongZ/torch-xpu-ops-exp`).
 
 ## Architecture
@@ -60,13 +60,9 @@ Agent prompts reference skills in `.github/skills/`:
 
 | Skill | Used by |
 |-------|---------|
-| `pytorch-issue-discovery` | format_agent |
-| `pytorch-triage-ut` / `pytorch-triage-e2e` | triage_agent |
-| `pytorch-fix` | code_fix |
-| `pytorch-review-fix` | private_review |
-| `pytorch-review-task-extraction` | private_review |
-| `pytorch-ci-triage` | ci_watch |
-| `xpu-ops-pr-creation` | code_fix |
+| `issue-discovery` | format_agent |
+| `issue-triage` | triage_agent |
+| `issue-fix` | code_fix |
 
 ## Templates
 
@@ -75,7 +71,7 @@ Issue/PR body templates in `.github/ISSUE_TEMPLATE/`:
 - `agent-issue-body.yml` — programmatic issue body template
 - `agent-pr-body.yml` — PR description template
 
-Loaded via `build_body()` in `issue_body.py`.
+Loaded via `build_body()` in `body_templates.py`.
 
 ## Utilities
 
@@ -83,7 +79,7 @@ Loaded via `build_body()` in `issue_body.py`.
 |--------|---------|
 | `utils/config.py` | Loads `config/agent_config.yml` + env overrides |
 | `utils/git.py` | Git CLI + GitHub API operations |
-| `utils/issue_body.py` | Issue body parsing, template rendering, metadata |
+| `utils/body_templates.py` | Issue body parsing, template rendering, metadata |
 | `utils/agent_backend.py` | LLM agent dispatch (OpenCode / Copilot) |
 | `utils/json_utils.py` | JSON extraction from agent output |
 | `utils/logger.py` | Structured logging |
