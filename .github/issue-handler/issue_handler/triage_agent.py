@@ -29,7 +29,6 @@ def run(issue_number: int) -> tuple[str, str]:
     """Triage an issue. Returns (verdict, reason)."""
     detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
     body = detail.get("body", "") or ""
-    labels = detail.get("labels", [])
 
     # Check status — triage accepts DISCOVERED or TRIAGING
     status = get_status(body)
@@ -47,7 +46,7 @@ def run(issue_number: int) -> tuple[str, str]:
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
-    output, log_path, session_id = backend.run(
+    output, log_path, _ = backend.run(
         prompt, skill=TRIAGE_SKILL,
         issue=issue_number, stage="TRIAGING",
         timeout=timeout,
