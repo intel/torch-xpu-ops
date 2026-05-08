@@ -1705,9 +1705,6 @@ void spatial_softmax_forward(
     }
 
     if (use_slow_path) {
-      // The kernel always vectorizes input reads based on input alignment,
-      // and handles output alignment independently (vectorized store when
-      // aligned, scalar store otherwise).
       if (can_use_32bit_index) {
         SOFTMAX_FORWARD_IMPL(
             /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
