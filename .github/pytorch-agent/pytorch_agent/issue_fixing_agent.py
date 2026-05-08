@@ -60,6 +60,7 @@ def advance(issue_number: int) -> None:
 
     match stage:
         case "DISCOVERED":
+            # Re-run discovery to fill any blanks (idempotent)
             from .discovery_agent import run
             _run_step("discovery", run, issue_number)
         case "TRIAGING":
@@ -68,18 +69,9 @@ def advance(issue_number: int) -> None:
         case "IMPLEMENTING":
             from .fixing_steps.code_fix import run
             _run_step("code_fix", run, issue_number)
-        case "IN_REVIEW":
-            from .fixing_steps.private_review import run
-            _run_step("private_review", run, issue_number)
-        case "PUBLIC_PR":
-            from .fixing_steps.public_submit import run
-            _run_step("public_submit", run, issue_number)
-        case "CI_WATCH":
-            from .fixing_steps.ci_watch import run
-            _run_step("ci_watch", run, issue_number)
-        case "MERGED" | "DONE":
-            from .fixing_steps.close_issue import run
-            _run_step("close_issue", run, issue_number)
+        case "IN_REVIEW" | "PUBLIC_PR" | "CI_WATCH" | "MERGED" | "DONE":
+            log("INFO", f"Issue #{issue_number} at stage {stage} — not yet implemented",
+                issue=issue_number)
         case "NEEDS_HUMAN":
             log("INFO", f"Issue #{issue_number} needs human intervention, skipping",
                 issue=issue_number)

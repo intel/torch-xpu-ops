@@ -1,7 +1,6 @@
 """Issue body read/write helpers — all state lives in the issue body.
 
-Replaces state.py comment-based tracking. Pure string manipulation,
-no GitHub API calls — callers handle reading/writing the issue.
+Pure string manipulation, no GitHub API calls — callers handle reading/writing.
 """
 from __future__ import annotations
 
@@ -46,7 +45,9 @@ def update_section(body: str, section: str, content: str) -> str:
     If the section doesn't exist, append it before Action Items
     (or at the end).
     """
-    # Find the section heading and replace content until next heading
+    # Match: "## Section Name\n" (group 1 = heading line),
+    # then capture everything (group 2 = content) until the next
+    # heading (## or ###) or end of string.
     pattern = re.compile(
         r"(^#{1,4}\s+" + re.escape(section) + r"\s*\n)(.*?)(?=^#{1,4}\s|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -80,7 +81,6 @@ def set_status(body: str, stage: str) -> str:
     new_marker = f"<!-- agent:status:{stage} -->"
     if STATUS_PATTERN.search(body):
         return STATUS_PATTERN.sub(new_marker, body)
-    # Insert at the very top
     return new_marker + "\n\n" + body
 
 
@@ -99,19 +99,14 @@ def check_action_item(body: str, item_substring: str) -> str:
     return re.sub(r"^- \[ \] .+$", _replace, body, flags=re.MULTILINE)
 
 
-
 # ---------------------------------------------------------------------------
 # Folded logs  <!-- agent:MARKER-log -->
 # ---------------------------------------------------------------------------
 
 def append_log(body: str, marker: str, log_text: str) -> str:
-    """Append text inside a <details> block identified by <!-- agent:MARKER-log -->.
-
-    Looks for the marker comment and inserts log_text before it.
-    """
+    """Append text inside a <details> block identified by <!-- agent:MARKER-log -->."""
     marker_tag = f"<!-- agent:{marker}-log -->"
     if marker_tag not in body:
-        # Append a new details block at the end
         body += (
             f"\n<details><summary>{marker} log</summary>\n"
             f"{log_text}\n"
@@ -120,9 +115,7 @@ def append_log(body: str, marker: str, log_text: str) -> str:
         )
         return body
 
-    # Insert before the marker, preserving indentation
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Detect indentation of the marker line
     marker_match = re.search(r'^([ \t]*)' + re.escape(marker_tag), body, re.MULTILINE)
     indent = marker_match.group(1) if marker_match else ""
     log_lines = f"**[{ts}]**\n{log_text}".splitlines()
@@ -136,15 +129,10 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # ---------------------------------------------------------------------------
 
 ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue-body.yml"
-PR_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-pr-body.yml"
 
 
 def build_body(template_path: Path, **kwargs: str) -> str:
-    """Load a YAML template file and fill placeholders in its 'body' field.
-
-    Generic renderer — works for issue bodies, PR bodies, or any
-    YAML template with a 'body' field containing {placeholder} strings.
-    """
+    """Load a YAML template file and fill placeholders in its 'body' field."""
     with open(template_path, encoding="utf-8") as f:
         template_data = yaml.safe_load(f)
     template = template_data.get("body", "")
@@ -191,14 +179,8 @@ def render_initial_body(
 
 
 # ---------------------------------------------------------------------------
-# Metadata extraction helpers (HTML comment markers)
+# Label sync
 # ---------------------------------------------------------------------------
-
-def get_metadata(body: str, key: str) -> str | None:
-    """Extract a metadata value from an HTML comment like <!-- key: value -->."""
-    m = re.search(rf"<!--\s*{re.escape(key)}:\s*#?(.+?)\s*-->", body)
-    return m.group(1).strip() if m else None
-
 
 def sync_labels(repo: str, number: int, stage: str) -> None:
     """Ensure issue labels match the current stage."""
@@ -213,53 +195,3 @@ def sync_labels(repo: str, number: int, stage: str) -> None:
                 gh.remove_label(repo, number, label)
             except Exception:
                 pass
-
-
-def set_metadata(body: str, key: str, value: str) -> str:
-    """Set or update a metadata HTML comment. Adds if missing."""
-    pattern = rf"(<!--\s*{re.escape(key)}:\s*)#?(.+?)(\s*-->)"
-    if re.search(pattern, body):
-        return re.sub(pattern, rf"\g<1>{value}\3", body)
-    return body + f"\n<!-- {key}: {value} -->\n"
-
-
-def render_pr_body(
-    *,
-    upstream_issue_repo: str,
-    source_number: int,
-    title: str,
-    triage_reason: str | None = None,
-    issue_body: str = "",
-    include_diff_stat: bool = False,
-    diff_stat: str = "",
-    reviewer: str = "",
-) -> str:
-    """Build a PR description from issue details using pr_body_template.md."""
-    issue_url = f"https://github.com/{upstream_issue_repo}/issues/{source_number}"
-
-    root_cause_section = f"**Root Cause:** {triage_reason}\n" if triage_reason else ""
-
-    sections = parse_sections(issue_body)
-    failed_tests_section = (
-        f"**Failed Tests:**\n{sections['Failed Tests']}\n" if sections.get("Failed Tests") else ""
-    )
-    failure_type_section = (
-        f"---\n\n**Failure Type:** {sections['Failure Type']}\n" if sections.get("Failure Type") else ""
-    )
-    diff_stat_section = (
-        f"---\n\n**Diff stat:**\n```\n{diff_stat}\n```\n" if include_diff_stat and diff_stat else ""
-    )
-    reviewer_section = f"---\n\ncc @{reviewer}\n" if reviewer else ""
-
-    return build_body(
-        PR_TEMPLATE_PATH,
-        upstream_issue_repo=upstream_issue_repo,
-        source_number=source_number,
-        issue_url=issue_url,
-        title=title,
-        root_cause_section=root_cause_section,
-        failed_tests_section=failed_tests_section,
-        failure_type_section=failure_type_section,
-        diff_stat_section=diff_stat_section,
-        reviewer_section=reviewer_section,
-    )

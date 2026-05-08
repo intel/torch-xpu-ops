@@ -67,7 +67,7 @@ def run(issue_number: int) -> None:
     else:
         # --- Call LLM ---
         prompt = (
-            f"Read the pytorch-fix skill and fix issue #{issue_number}.\n\n"
+            f"Read the issue-fix skill and fix issue #{issue_number}.\n\n"
             f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
             f"{body[:10000]}"
         )
@@ -80,7 +80,7 @@ def run(issue_number: int) -> None:
         timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 3600)
         output, log_path, session_id = backend.run(
             prompt, workdir=str(PYTORCH_DIR),
-            skill="pytorch-fix", timeout=timeout,
+            skill="issue-fix", timeout=timeout,
             issue=issue_number, stage="IMPLEMENTING",
             on_session_start=_post_session_id,
         )
@@ -114,12 +114,8 @@ def run(issue_number: int) -> None:
             f"Fixes {ISSUE_REPO}#{issue_number}",
             issue=issue_number)
 
-    # --- Push ---
-    try:
-        git("push", REVIEW_REMOTE, branch, issue=issue_number)
-    except CalledProcessError:
-        git("push", "--force-with-lease", "--set-upstream", REVIEW_REMOTE, branch,
-            issue=issue_number)
+    # --- Push (never force-push — keeps commit history trackable) ---
+    git("push", "--set-upstream", REVIEW_REMOTE, branch, issue=issue_number)
 
     sha = git_out("rev-parse", "HEAD", issue=issue_number).strip()
 
