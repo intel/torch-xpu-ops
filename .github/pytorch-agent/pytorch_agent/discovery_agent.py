@@ -113,7 +113,7 @@ def run(issue_number: int) -> None:
 
     # Call LLM with skill (no inline prompt)
     prompt = (
-        f"Read the pytorch-issue-discovery skill and the template file "
+        f"Read the issue-discovery skill and the template file "
         f".github/ISSUE_TEMPLATE/agent-issue-body.yml to understand the "
         f"output fields. Extract structured info from issue #{issue_number}.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
@@ -124,7 +124,7 @@ def run(issue_number: int) -> None:
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("DISCOVERED", 300)
     output, log_path, session_id = backend.run(
-        prompt, skill="pytorch-issue-discovery",
+        prompt, skill="issue-discovery",
         issue=issue_number, stage="DISCOVERED", timeout=timeout,
     )
     log("INFO", f"Discovery agent log: {log_path}", issue=issue_number)
