@@ -74,7 +74,7 @@ class TestOpenCodeBackend:
         assert session_id == "sess-123"
 
     def test_run_with_skill_adds_hint(self, tmp_path):
-        skill_dir = tmp_path / "pytorch-triage"
+        skill_dir = tmp_path / "issue-triage"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# Triage skill\nDo triage.")
         log_dir = tmp_path / "logs"
@@ -87,11 +87,11 @@ class TestOpenCodeBackend:
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
              patch("issue_handler.utils.agent_backend.SKILLS_DIR", tmp_path), \
              patch("issue_handler.utils.agent_backend.LOG_DIR", log_dir):
-            backend.run("triage issue #5", skill="pytorch-triage")
+            backend.run("triage issue #5", skill="issue-triage")
 
         cmd = mock_popen.call_args[0][0]
         prompt = cmd[-1]
-        assert "pytorch-triage" in prompt
+        assert "issue-triage" in prompt
         assert "triage issue #5" in prompt
 
     def test_run_raises_on_failure(self, tmp_path):
