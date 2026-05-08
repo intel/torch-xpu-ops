@@ -221,7 +221,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: BMG-816374
       pytorch: distributed_2.11
       torch_xpu_ops: daisyden/distributed_2.11
       ut: ${{ matrix.ut_name }}

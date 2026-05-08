@@ -154,6 +154,7 @@ runs:
         export BACKEND="xccl"
         export WORLD_SIZE=4
         export USE_CCL_V2=1
+        sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
         pip install transformers pulp
         sudo rm -rf /tmp/torchinductor_jenkins/
         python run_distributed_local.py \
