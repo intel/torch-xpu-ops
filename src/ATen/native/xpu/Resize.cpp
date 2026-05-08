@@ -15,7 +15,6 @@
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-#include <ATen/native/Resize.h>
 #include <ATen/ops/copy.h>
 #include <ATen/ops/resize_native.h>
 #include <ATen/ops/set_native.h>

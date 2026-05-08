@@ -285,7 +285,7 @@ parser.add_argument("--label-smoothing", default=0.0, type=float)
 parser.add_argument(
     "--dummy",
     action="store_true",
-    help="use dummy data for " "benchmark training or val",
+    help="use dummy data for benchmark training or val",
 )
 parser.add_argument(
     "--lr-scheduler",
@@ -317,7 +317,7 @@ parser.add_argument(
     "--benchmark",
     default=0,
     type=int,
-    help="for int8 benchmark " "performance, move H2D out of E2E time",
+    help="for int8 benchmark performance, move H2D out of E2E time",
 )
 parser.add_argument(
     "--save",

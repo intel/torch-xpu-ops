@@ -13,8 +13,6 @@
 #include <ATen/native/xpu/sycl/RepeatKernel.h>
 #include <comm/SYCLContext.h>
 
-#include <ATen/native/xpu/sycl/RepeatKernel.h>
-
 namespace at::native::xpu {
 template <typename index_t>
 struct RepeatInterleaveKernelFunctor {
