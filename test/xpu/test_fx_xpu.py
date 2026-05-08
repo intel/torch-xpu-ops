@@ -52,6 +52,17 @@ _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
 _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
 
 
+def _parse_event_name(line):
+    """Extract NAME from a line shaped "event=NAME node=... stack_trace=...",
+    or return None if the line doesn't match the expected format."""
+    if not line.startswith("event="):
+        return None
+    end = line.find(" node=")
+    if end == -1:
+        return None
+    return line[len("event="):end]
+
+
 # Drop UR/ZE bookkeeping events (zeKernelSetArgumentValue, zeKernelCreate,
 # etc.) that XPU emits per aten op but upstream CUDA/HIP baselines don't
 # include. Keep aten ops and the canonical launch event so the test
@@ -60,20 +71,27 @@ _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
 def _filter_xpu_runtime_events(actual_traces):
     kept = []
     for line in actual_traces.split("\n"):
-        if any(f"event={e} " in line for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS):
+        name = _parse_event_name(line)
+        if name is None:
             kept.append(line)
             continue
-        if any(f"event={p}" in line for p in _XPU_RUNTIME_EVENT_PREFIXES):
+        if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+            kept.append(line)
+            continue
+        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES):
             continue
         kept.append(line)
     return "\n".join(kept)
 
 
 def _canonicalize_xpu_launch_events(actual_traces):
-    result = actual_traces
-    for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
-        result = result.replace(f"event={e} ", f"event={_XPU_KERNEL_LAUNCH_EVENT} ")
-    return result
+    lines = []
+    for line in actual_traces.split("\n"):
+        name = _parse_event_name(line)
+        if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+            line = f"event={_XPU_KERNEL_LAUNCH_EVENT}" + line[len(f"event={name}"):]
+        lines.append(line)
+    return "\n".join(lines)
 
 
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
