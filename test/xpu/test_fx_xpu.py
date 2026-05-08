@@ -94,6 +94,12 @@ def _canonicalize_xpu_launch_events(actual_traces):
     return "\n".join(lines)
 
 
+def _get_normalized_xpu_traces(prof):
+    return _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
+
+
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
 # test_common_passes sets Devices = ["cpu"] (+ "cuda" when available) at
 # module-scope and decorates TestCommonPass with @instantiate_parametrized_tests.
@@ -199,9 +205,7 @@ def _test_profiler_stack_trace_augmentation(self):
     ) as prof:
         result = compiled_model(torch.randn(10, 10, device="xpu"))
 
-    actual_traces = _canonicalize_xpu_launch_events(
-        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
-    )
+    actual_traces = _get_normalized_xpu_traces(prof)
 
     kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
@@ -290,9 +294,7 @@ def _test_profiler_multiple_modules(self):
         result_a = compiled_a(torch.randn(10, 10, device="xpu"))
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
-    actual_traces = _canonicalize_xpu_launch_events(
-        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
-    )
+    actual_traces = _get_normalized_xpu_traces(prof)
     kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
@@ -344,9 +346,7 @@ def _test_profiler_nested_graph_modules(self):
             torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
         )
 
-    actual_traces = _canonicalize_xpu_launch_events(
-        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
-    )
+    actual_traces = _get_normalized_xpu_traces(prof)
     kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
