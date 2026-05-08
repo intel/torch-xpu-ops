@@ -262,7 +262,7 @@ jobs:
       - name: UT Test Results Summary
         shell: bash
         run: |
-          pip install junitparser
+          python -m pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
           python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs
