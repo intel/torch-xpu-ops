@@ -151,11 +151,15 @@ def add_and_commit(message: str, *, issue: int | None = None,
     if not status.strip():
         return False
 
-    # Filter out submodule pointer changes (third_party/*)
+    # Filter out submodule pointer changes (third_party/*) and untracked files
     files = []
     for line in status.splitlines():
         parts = line.split(maxsplit=1)
         if len(parts) < 2:
+            continue
+        status_code = parts[0]
+        # Skip untracked files to avoid committing generated artifacts
+        if status_code == "??":
             continue
         fname = parts[1].strip()
         if " -> " in fname:
