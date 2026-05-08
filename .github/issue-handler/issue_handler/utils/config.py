@@ -1,4 +1,4 @@
-"""Configuration constants for pytorch-agent.
+"""Configuration constants for issue-handler.
 
 All tunable values live in config/agent_config.yml.
 This module loads them once at import time and exposes them as module-level constants.

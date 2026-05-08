@@ -11,19 +11,19 @@ import os
 # Add parent to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pytorch_agent.utils.agent_backend import (
+from issue_handler.utils.agent_backend import (
     OpenCodeBackend, CopilotBackend, get_backend, parse_opencode_events
 )
 
 
 class TestGetBackend:
     def test_default_returns_opencode(self):
-        with patch("pytorch_agent.utils.config.AGENT_BACKEND", "opencode"):
+        with patch("issue_handler.utils.config.AGENT_BACKEND", "opencode"):
             backend = get_backend()
             assert isinstance(backend, OpenCodeBackend)
 
     def test_copilot_returns_copilot(self):
-        with patch("pytorch_agent.utils.config.AGENT_BACKEND", "copilot"):
+        with patch("issue_handler.utils.config.AGENT_BACKEND", "copilot"):
             backend = get_backend()
             assert isinstance(backend, CopilotBackend)
 
@@ -66,7 +66,7 @@ class TestOpenCodeBackend:
         mock_proc = _make_mock_popen(events)
 
         with patch("subprocess.Popen", return_value=mock_proc), \
-             patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
+             patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
             output, log_path, session_id = backend.run("fix the bug", workdir="/tmp/pytorch")
 
         assert output == "agent output"
@@ -85,8 +85,8 @@ class TestOpenCodeBackend:
         mock_proc = _make_mock_popen(events)
 
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
-             patch("pytorch_agent.utils.agent_backend.SKILLS_DIR", tmp_path), \
-             patch("pytorch_agent.utils.agent_backend.LOG_DIR", log_dir):
+             patch("issue_handler.utils.agent_backend.SKILLS_DIR", tmp_path), \
+             patch("issue_handler.utils.agent_backend.LOG_DIR", log_dir):
             backend.run("triage issue #5", skill="pytorch-triage")
 
         cmd = mock_popen.call_args[0][0]
@@ -100,7 +100,7 @@ class TestOpenCodeBackend:
         mock_proc = _make_mock_popen(events, returncode=1)
 
         with patch("subprocess.Popen", return_value=mock_proc), \
-             patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
+             patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
             with pytest.raises(RuntimeError, match="OpenCode failed"):
                 backend.run("fail")
 
@@ -110,7 +110,7 @@ class TestOpenCodeBackend:
         mock_proc = _make_mock_popen(events)
 
         with patch("subprocess.Popen", return_value=mock_proc), \
-             patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
+             patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
             output, log_path, _ = backend.run("fix it", issue=42, stage="IMPLEMENTING")
 
         assert "issue-42" in log_path.name
@@ -128,7 +128,7 @@ class TestOpenCodeBackend:
         callback = MagicMock()
 
         with patch("subprocess.Popen", return_value=mock_proc), \
-             patch("pytorch_agent.utils.agent_backend.LOG_DIR", tmp_path):
+             patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
             backend.run("test", on_session_start=callback)
 
         callback.assert_called_once_with("sess-456")
