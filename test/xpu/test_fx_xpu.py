@@ -37,6 +37,66 @@ with XPUPatchForImport(False):
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 
+
+# The XPU profiler emits many Level Zero / Unified Runtime bookkeeping events
+# per aten op (zeKernelSetArgumentValue, zeKernelSetGroupSize, zeKernelCreate,
+# zeCommandListAppendLaunchKernel, zeModuleCreate, ...). Upstream CUDA
+# baselines assume one cudaLaunchKernel per kernel dispatch and the HIP path
+# filters hipGetDeviceProperties for the same reason. We drop the UR/ZE
+# bookkeeping so the test asserts the same invariant upstream does: that each
+# kernel launch event is attributed to its aten op via the FX stack trace.
+#
+# Canonical kernel launch event token used in test baselines. The trace may
+# contain different Unified Runtime launch API names depending on the Intel
+# LLVM SYCL runtime version; all variants get normalized to this single
+# name by _canonicalize_xpu_launch_events before assertions.
+_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
+
+# The Intel LLVM SYCL runtime emits one of two UR kernel launch APIs:
+# - "urEnqueueKernelLaunch" (UR API id 17)
+# - "urEnqueueKernelLaunchWithArgsExp" (UR API id 295, added to PTI's core
+#   map in pti commit a4f2ce39 on 2026-01-07 alongside nightly Intel LLVM
+#   SYCL runtime 2026-01-06, intended to become the default)
+#
+# The latter name exceeds the 30-char cap in _canonicalize_profiler_events
+# (profiler_util.py:1581) and arrives truncated as
+# "urEnqueueKernelLaunchWithArgsE".
+#
+# Accept both so the test works regardless of which SYCL runtime the
+# machine has installed. The canonical name must appear in this tuple too,
+# so the filter below recognizes it as a launch event and does not drop it
+# via the "ur" prefix deny-list.
+_XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
+    _XPU_KERNEL_LAUNCH_EVENT,
+    "urEnqueueKernelLaunchWithArgsE",
+)
+
+# Names of runtime helper events known to be emitted on XPU that carry an
+# aten parent context but are not kernel launches we want to assert on.
+_XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
+
+
+def _filter_xpu_runtime_events(actual_traces):
+    kept = []
+    for line in actual_traces.split("\n"):
+        if any(f"event={e} " in line for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS):
+            kept.append(line)
+            continue
+        if any(f"event={p}" in line for p in _XPU_RUNTIME_EVENT_PREFIXES):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _canonicalize_xpu_launch_events(actual_traces):
+    """Normalize PTI-version-specific launch event names to
+    _XPU_KERNEL_LAUNCH_EVENT so baselines are stable across PTI versions."""
+    result = actual_traces
+    for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+        result = result.replace(f"event={e} ", f"event={_XPU_KERNEL_LAUNCH_EVENT} ")
+    return result
+
+
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
 # test_common_passes sets Devices = ["cpu"] (+ "cuda" when available) at
 # module-scope and decorates TestCommonPass with @instantiate_parametrized_tests.
@@ -142,29 +202,30 @@ def _test_profiler_stack_trace_augmentation(self):
     ) as prof:
         result = compiled_model(torch.randn(10, 10, device="xpu"))
 
-    actual_traces = _enrich_profiler_traces(prof)
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
 
-    # Handle platform-specific event names
-    if torch.version.hip:
-        actual_traces = "\n".join(
-            line
-            for line in actual_traces.split("\n")
-            if "hipGetDeviceProperties" not in line
-        )
-        kernel_event = "hipExtModuleLaunchKernel"
-        kernel_event_relu = "hipLaunchKernel"
-    else:
-        kernel_event = "xpuLaunchKernel"
-        kernel_event_relu = "xpuLaunchKernel"
+    # Mirror upstream's two-slot naming so the test can distinguish launches
+    # for BLAS-path ops (addmm) from elementwise ops (relu). On CUDA+cuBLASLt
+    # these both happen to be cudaLaunchKernel; on ROCm they differ
+    # (hipExtModuleLaunchKernel vs hipLaunchKernel). XPU currently uses the
+    # same UR launch entry point for both paths.
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     if IS_WINDOWS:
+        # XPU uses oneDNN/oneMKL (not cuBLASLt), so addmm emits one launch
+        # rather than upstream's two. The Windows-vs-Linux split here only
+        # changes the stack-trace text format; the event shape matches Linux.
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::relu node=relu stack_trace=return F.relu(input, inplace=self.inplace)
 event=aten::clamp_min node=relu stack_trace=return F.relu(input, inplace=self.inplace)
@@ -173,16 +234,24 @@ event=aten::t node=t_1 stack_trace=return F.linear(input, self.weight, self.bias
 event=aten::transpose node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
-event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
     else:
+        # XPU addmm decomposes into more real aten calls than CUDA's fused
+        # addmm+cuBLASLt path: resize_/expand/as_strided/empty are emitted
+        # before the kernel launch. All must attribute to node=addmm.
         expected = f"""\
 event=aten::t node=t stack_trace=x = self.linear1(x)
 event=aten::transpose node=t stack_trace=x = self.linear1(x)
 event=aten::as_strided node=t stack_trace=x = self.linear1(x)
 event=aten::addmm node=addmm stack_trace=x = self.linear1(x)
+event=aten::resize_ node=addmm stack_trace=x = self.linear1(x)
+event=aten::expand node=addmm stack_trace=x = self.linear1(x)
+event=aten::as_strided node=addmm stack_trace=x = self.linear1(x)
+event=aten::empty node=addmm stack_trace=x = self.linear1(x)
 event={kernel_event} node=addmm stack_trace=x = self.linear1(x)
 event=aten::relu node=relu stack_trace=x = self.relu(x)
 event=aten::clamp_min node=relu stack_trace=x = self.relu(x)
@@ -191,6 +260,10 @@ event=aten::t node=t_1 stack_trace=x = self.linear2(x)
 event=aten::transpose node=t_1 stack_trace=x = self.linear2(x)
 event=aten::as_strided node=t_1 stack_trace=x = self.linear2(x)
 event=aten::addmm node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::resize_ node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::expand node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::as_strided node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::empty node=addmm_1 stack_trace=x = self.linear2(x)
 event={kernel_event} node=addmm_1 stack_trace=x = self.linear2(x)"""
 
     self.assertExpectedInline(actual_traces, expected)
@@ -231,8 +304,10 @@ def _test_profiler_multiple_modules(self):
         result_a = compiled_a(torch.randn(10, 10, device="xpu"))
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
-    actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -283,8 +358,10 @@ def _test_profiler_nested_graph_modules(self):
             torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
         )
 
-    actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    actual_traces = _canonicalize_xpu_launch_events(
+        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+    )
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
