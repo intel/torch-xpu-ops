@@ -47,19 +47,25 @@ with XPUPatchForImport(False):
 # kernel launch event is attributed to its aten op via the FX stack trace.
 #
 # Canonical kernel launch event token used in test baselines. The trace may
-# contain PTI-version-specific variants; all variants get normalized to this
-# single name by _canonicalize_xpu_launch_events before assertions.
+# contain different Unified Runtime launch API names depending on the Intel
+# LLVM SYCL runtime version; all variants get normalized to this single
+# name by _canonicalize_xpu_launch_events before assertions.
 _XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
 
-# PTI versions emit different launch entry-point names:
-# - Older/current PyPI PTI: "urEnqueueKernelLaunch"
-# - Newer PTI: "urEnqueueKernelLaunchWithArgsExp", truncated to
-#   "urEnqueueKernelLaunchWithArgsE" by _canonicalize_profiler_events'
-#   30-char cap.
-# Accept both so the test works regardless of which PTI the runtime links
-# against. The canonical name must appear in this tuple too, so the filter
-# below recognizes it as a launch event and doesn't drop it via the "ur"
-# prefix deny-list.
+# The Intel LLVM SYCL runtime emits one of two UR kernel launch APIs:
+# - "urEnqueueKernelLaunch" (UR API id 17)
+# - "urEnqueueKernelLaunchWithArgsExp" (UR API id 295, added to PTI's core
+#   map in pti commit a4f2ce39 on 2026-01-07 alongside nightly Intel LLVM
+#   SYCL runtime 2026-01-06, intended to become the default)
+#
+# The latter name exceeds the 30-char cap in _canonicalize_profiler_events
+# (profiler_util.py:1581) and arrives truncated as
+# "urEnqueueKernelLaunchWithArgsE".
+#
+# Accept both so the test works regardless of which SYCL runtime the
+# machine has installed. The canonical name must appear in this tuple too,
+# so the filter below recognizes it as a launch event and does not drop it
+# via the "ur" prefix deny-list.
 _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
     _XPU_KERNEL_LAUNCH_EVENT,
     "urEnqueueKernelLaunchWithArgsE",
