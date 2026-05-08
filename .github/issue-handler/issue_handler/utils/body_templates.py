@@ -131,6 +131,7 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # ---------------------------------------------------------------------------
 
 ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue-body.yml"
+PR_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "pr-body-template.md"
 
 
 def build_body(template_path: Path, **kwargs: str) -> str:
