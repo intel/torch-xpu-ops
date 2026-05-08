@@ -7206,9 +7206,7 @@ class TestTorchDeviceType(TestCase):
         scaler.update()
 
     @onlyNativeDeviceTypes
-    @skipIfXpu(
-        msg="Skip due xpu not support this API."
-    )
+    @skipIfXpu(msg="Skip due xpu not support this API.")
     def test_grad_scaler_deprecated_warning(self, device):
         device = torch.device(device)
         GradScaler = (
