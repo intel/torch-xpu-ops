@@ -186,7 +186,7 @@ function install_ubuntu_client() {
     . /etc/os-release
 
     local -r supported_lts_versions=("plucky")
-    local -r supported_rolling_versions=("noble" "plucky")
+    local -r supported_rolling_versions=("noble" "plucky" "resolute")
 
     if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
         log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
