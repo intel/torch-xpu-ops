@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
@@ -37,11 +38,18 @@ def run(issue_number: int) -> tuple[str, str]:
             issue=issue_number)
         return ("skip", f"already at {status}")
 
+    # Strip the Environment section (collect_env) — it's huge and not useful for triage
+    triage_body = re.sub(
+        r'## Environment\s*\n<details>.*?</details>',
+        '## Environment\n_(stripped for triage prompt)_',
+        body, flags=re.DOTALL,
+    )
+
     # Select skill and call LLM (no inline prompt)
     prompt = (
         f"Read the {TRIAGE_SKILL} skill and triage issue #{issue_number}.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
-        f"{body[:8000]}"
+        f"{triage_body[:4000]}"
     )
 
     backend = get_backend()
