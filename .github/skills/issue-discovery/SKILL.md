@@ -36,8 +36,13 @@ Issues may range from well-structured (reproducer, logs, context) to minimal
    If none found, leave empty.
 
 3. **Reproducer** — copy the reproducer **verbatim** from the issue body.
-   Look for code blocks with `python` invocations, bash commands, or sections titled
-   "Reproducer" / "How to reproduce". Do NOT rewrite or simplify.
+   It may appear as any of these formats:
+   - `python -m pytest test_xxx.py` (unit test)
+   - `python scripts.py xxx` (e2e test)
+   - A standalone script or code snippet (random reproducer)
+   - Bash commands or other invocations
+   Look for code blocks, sections titled "Reproducer" / "How to reproduce",
+   or commands in the error context. Do NOT rewrite or simplify.
    If no reproducer exists, leave empty (do NOT fabricate one).
 
 4. **Context** — copy relevant additional context verbatim: upstream PR/issue links,
