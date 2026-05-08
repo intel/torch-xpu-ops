@@ -21,6 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.testing._internal.common_device_type import (
+    dtypes,
     expectedFailureXLA,
     instantiate_device_type_tests,
 )
@@ -248,8 +249,9 @@ class TestDropoutNNDeviceType(NNTestCase):
             self.assertTrue(result[b, c].count_nonzero() in (0, channel_numel))
 
     @expectedFailureXLA  # seems like freeze_rng_state is not honoured by XLA
-    def test_Dropout1d(self, device):
-        with set_default_dtype(torch.double):
+    @dtypes(torch.double)
+    def test_Dropout1d(self, device, dtype):
+        with set_default_dtype(dtype):
             N, C, L = (
                 random.randint(10, 15),
                 random.randint(10, 15),

@@ -127,7 +127,7 @@ jobs:
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.runner_id }}
     container:
-      image: ${{ contains(needs.prepare.outputs.runner_id, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-24.04-rolling:26.05' }}
+      image: ${{ contains(needs.prepare.outputs.runner_id, 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.prepare.outputs.render_id }}

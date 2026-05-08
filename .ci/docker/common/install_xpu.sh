@@ -209,7 +209,11 @@ function install_ubuntu_client() {
 
     # Add Intel GPU repository key
     apt-get install -y software-properties-common
-    add-apt-repository -y ppa:kobuk-team/intel-graphics
+    if [ "${UBUNTU_VERSION}" != "26.04" ];then
+        add-apt-repository -y ppa:kobuk-team/intel-graphics
+    else
+        add-apt-repository -y ppa:kobuk-team/intel-graphics-testing
+    fi
 
     # Update repository index
     apt-get update -y

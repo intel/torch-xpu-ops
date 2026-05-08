@@ -9,7 +9,9 @@
  */
 
 #pragma once
-
+#ifdef RESTRICT
+#undef RESTRICT
+#endif
 #ifdef _WIN32
 #define RESTRICT __restrict
 #else
