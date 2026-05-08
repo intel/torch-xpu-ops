@@ -224,10 +224,19 @@ jobs:
           echo "has_new_failures=${has_new}" >> "$GITHUB_OUTPUT"
       - name: Upload new failure list
         if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
+        id: upload-new-failures
         uses: actions/upload-artifact@v4
         with:
           name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/new_failures/
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        id: upload-ut-log
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true
       - name: Comment on PR for new failures
         if: ${{ ! cancelled() && github.event_name == 'pull_request' && steps.new-failures.outputs.has_new_failures == 'true' && contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
         uses: actions/github-script@v7
@@ -239,8 +248,8 @@ jobs:
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const ut = '${{ inputs.ut }}';
-            const fullLogArtifact = `Inductor-XPU-UT-Data-${prNumber}-${ut}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
-            const newFailureArtifact = `New-UT-Failures-${prNumber}-${ut}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+            const newFailureUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
+            const fullLogUrl = '${{ steps.upload-ut-log.outputs.artifact-url }}';
 
             // Read new failure names from all filtered files
             const newFailDir = '${{ github.workspace }}/new_failures';
@@ -261,8 +270,8 @@ jobs:
               '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
               '',
               `Job log: ${jobUrl}`,
-              `Full UT log artifact: \`${fullLogArtifact}\` (contains all failure details and error messages)`,
-              `New failure list artifact: \`${newFailureArtifact}\``,
+              `Full UT log artifact (contains all failure details and error messages): ${fullLogUrl}`,
+              `New failure list artifact: ${newFailureUrl}`,
               '',
               '**New failures:**',
               '```',
@@ -283,13 +292,6 @@ jobs:
               issue_number: prNumber,
               body: body
             });
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log
-          overwrite: true
       - name: Fail if UT check failed
         if: ${{ steps.ut-check.outcome == 'failure' }}
         run: |
