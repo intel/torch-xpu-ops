@@ -42,6 +42,7 @@ def parse_sections(body: str) -> dict[str, str]:
 def update_section(body: str, section: str, content: str) -> str:
     """Replace content of a named section, preserving other sections.
 
+    Matches heading levels # through #### as section delimiters.
     If the section doesn't exist, append it before Action Items
     (or at the end).
     """

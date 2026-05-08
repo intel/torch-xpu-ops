@@ -11,7 +11,7 @@ import json
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
 from .utils.body_templates import (
-    get_status, parse_sections, update_section, set_status,
+    get_status, update_section, set_status,
     check_action_item, append_log,
 )
 from .utils.agent_backend import get_backend
@@ -19,13 +19,7 @@ from .utils.json_utils import extract_json
 from .utils.logger import log
 
 
-def _select_skill(labels: list) -> str:
-    """Select triage skill based on issue labels."""
-    for label in labels:
-        name = label.get("name", "") if isinstance(label, dict) else label
-        if "agent_test: e2e" in name or "agent_test:e2e" in name:
-            return "issue-triage"
-    return "issue-triage"
+TRIAGE_SKILL = "issue-triage"
 
 
 
@@ -35,7 +29,6 @@ def run(issue_number: int) -> tuple[str, str]:
     """Triage an issue. Returns (verdict, reason)."""
     detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
     body = detail.get("body", "") or ""
-    labels = detail.get("labels", [])
 
     # Check status — triage accepts DISCOVERED or TRIAGING
     status = get_status(body)
@@ -45,17 +38,16 @@ def run(issue_number: int) -> tuple[str, str]:
         return ("skip", f"already at {status}")
 
     # Select skill and call LLM (no inline prompt)
-    skill = _select_skill(labels)
     prompt = (
-        f"Read the {skill} skill and triage issue #{issue_number}.\n\n"
+        f"Read the {TRIAGE_SKILL} skill and triage issue #{issue_number}.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
         f"{body[:8000]}"
     )
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
-    output, log_path, session_id = backend.run(
-        prompt, skill=skill,
+    output, log_path, _ = backend.run(
+        prompt, skill=TRIAGE_SKILL,
         issue=issue_number, stage="TRIAGING",
         timeout=timeout,
     )

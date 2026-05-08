@@ -15,7 +15,7 @@ from subprocess import CalledProcessError
 from ..utils import git as gh
 from ..utils.config import (
     ISSUE_REPO, PRIVATE_REVIEW_REPO, PYTORCH_DIR,
-    REVIEW_REMOTE, MAX_AGENT_ATTEMPTS, STAGE_TIMEOUTS,
+    REVIEW_REMOTE, STAGE_TIMEOUTS,
 )
 from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
@@ -146,7 +146,7 @@ def run(issue_number: int) -> None:
         else:
             raise
 
-    gh.mark_pr_ready(PRIVATE_REVIEW_REPO, pr.get("number"))
+    # Keep PR as draft until review passes (don't call mark_pr_ready)
 
     # --- Update issue body ---
     new_body = body
@@ -155,7 +155,7 @@ def run(issue_number: int) -> None:
     new_body = set_metadata(new_body, "tracking_pr", f"#{tracking_pr_num}")
     new_body = set_metadata(new_body, "last_push_sha", sha)
     new_body = check_action_item(new_body, "Fix implemented")
-    new_body = check_action_item(new_body, "Fix verified")
+    new_body = check_action_item(new_body, "PR proposed")
     new_body = set_status(new_body, "IN_REVIEW")
     new_body = append_log(
         new_body, "fix",
