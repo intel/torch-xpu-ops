@@ -46,14 +46,22 @@ with XPUPatchForImport(False):
 # bookkeeping so the test asserts the same invariant upstream does: that each
 # kernel launch event is attributed to its aten op via the FX stack trace.
 #
-# The canonical kernel launch event varies across PTI versions. Older PTI
-# emits "urEnqueueKernelLaunch"; newer PTI emits
-# "urEnqueueKernelLaunchWithArgsExp" which is truncated to
-# "urEnqueueKernelLaunchWithArgsE" by _canonicalize_profiler_events' 30-char
-# cap. Accept both so the test works regardless of which PTI the runtime
-# links against.
-_XPU_KERNEL_LAUNCH_EVENTS = (
-    "urEnqueueKernelLaunch",
+# Canonical kernel launch event token used in test baselines. The trace may
+# contain PTI-version-specific variants; all variants get normalized to this
+# single name by _canonicalize_xpu_launch_events before assertions.
+_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
+
+# PTI versions emit different launch entry-point names:
+# - Older/current PyPI PTI: "urEnqueueKernelLaunch"
+# - Newer PTI: "urEnqueueKernelLaunchWithArgsExp", truncated to
+#   "urEnqueueKernelLaunchWithArgsE" by _canonicalize_profiler_events'
+#   30-char cap.
+# Accept both so the test works regardless of which PTI the runtime links
+# against. The canonical name must appear in this tuple too, so the filter
+# below recognizes it as a launch event and doesn't drop it via the "ur"
+# prefix deny-list.
+_XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
+    _XPU_KERNEL_LAUNCH_EVENT,
     "urEnqueueKernelLaunchWithArgsE",
 )
 
@@ -65,7 +73,7 @@ _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
 def _filter_xpu_runtime_events(actual_traces):
     kept = []
     for line in actual_traces.split("\n"):
-        if any(f"event={e} " in line for e in _XPU_KERNEL_LAUNCH_EVENTS):
+        if any(f"event={e} " in line for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS):
             kept.append(line)
             continue
         if any(f"event={p}" in line for p in _XPU_RUNTIME_EVENT_PREFIXES):
@@ -75,12 +83,11 @@ def _filter_xpu_runtime_events(actual_traces):
 
 
 def _canonicalize_xpu_launch_events(actual_traces):
-    """Normalize PTI-version-specific launch event names so baselines are
-    stable across PTI versions. Both urEnqueueKernelLaunch and the truncated
-    urEnqueueKernelLaunchWithArgsE map to the same canonical token."""
+    """Normalize PTI-version-specific launch event names to
+    _XPU_KERNEL_LAUNCH_EVENT so baselines are stable across PTI versions."""
     result = actual_traces
-    for e in _XPU_KERNEL_LAUNCH_EVENTS:
-        result = result.replace(f"event={e} ", "event=urEnqueueKernelLaunch ")
+    for e in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+        result = result.replace(f"event={e} ", f"event={_XPU_KERNEL_LAUNCH_EVENT} ")
     return result
 
 
@@ -198,8 +205,8 @@ def _test_profiler_stack_trace_augmentation(self):
     # these both happen to be cudaLaunchKernel; on ROCm they differ
     # (hipExtModuleLaunchKernel vs hipLaunchKernel). XPU currently uses the
     # same UR launch entry point for both paths.
-    kernel_event = "urEnqueueKernelLaunch"
-    kernel_event_relu = "urEnqueueKernelLaunch"
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     if IS_WINDOWS:
         # XPU uses oneDNN/oneMKL (not cuBLASLt), so addmm emits one launch
         # rather than upstream's two. The Windows-vs-Linux split here only
@@ -294,7 +301,7 @@ def _test_profiler_multiple_modules(self):
     actual_traces = _canonicalize_xpu_launch_events(
         _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
     )
-    kernel_event = "urEnqueueKernelLaunch"
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -348,7 +355,7 @@ def _test_profiler_nested_graph_modules(self):
     actual_traces = _canonicalize_xpu_launch_events(
         _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
     )
-    kernel_event = "urEnqueueKernelLaunch"
+    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
     self.assertExpectedInline(
         actual_traces,
         f"""\
