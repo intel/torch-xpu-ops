@@ -1,7 +1,7 @@
 """Implement a fix for a triaged issue.
 
 Entry point:
-  python -m pytorch_agent.fixing_steps.code_fix --issue 123
+  python -m issue_handler.fixing_steps.code_fix --issue 123
 
 Slim wrapper: reads structured issue body (which already has root cause,
 fix strategy, reproducer), calls LLM with fix skill, then handles
