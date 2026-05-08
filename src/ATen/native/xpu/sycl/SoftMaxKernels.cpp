@@ -598,6 +598,16 @@ struct SoftmaxForwardKernelFunctor {
       sum_value = accscalar_t(1) / sum_value;
 
     // update result
+    constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
+    using out_vec_t =
+        at::native::memory::aligned_vector<outscalar_t, out_vec_size>;
+    constexpr int store_rounds = vec_size / out_vec_size;
+    static_assert(
+        store_rounds >= 1 && vec_size == out_vec_size * store_rounds,
+        "vec_size must be a multiple of out_vec_size");
+    bool can_vec_store =
+        ((uint64_t)(out_data_ + group_offset - start)) % align_bytes == 0;
+
     for (IndexType i = local_id; i < loops_end; i += local_size_) {
       auto remaining = dim_size_ + start - i * vec_size;
       if ((start > 0 && i == 0) || (remaining < vec_size)) {
@@ -622,24 +632,34 @@ struct SoftmaxForwardKernelFunctor {
       } else {
         vec_t in_val = *(reinterpret_cast<const vec_t*>(
             in_data_ + group_offset - start + i * vec_size));
-        using out_vec_t =
-            at::native::memory::aligned_vector<outscalar_t, vec_size>;
-        out_vec_t out_val;
+        outscalar_t results[vec_size];
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax)
-            out_val[j] =
+            results[j] =
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
           else if (
               is_safe_softmax &&
               max_value == std::numeric_limits<accscalar_t>::lowest())
-            out_val[j] = static_cast<outscalar_t>(0);
+            results[j] = static_cast<outscalar_t>(0);
           else
-            out_val[j] = static_cast<outscalar_t>(
+            results[j] = static_cast<outscalar_t>(
                 std::exp(in_val[j] - max_value) * sum_value);
         }
-        *(reinterpret_cast<out_vec_t*>(
-            out_data_ + group_offset - start + i * vec_size)) = out_val;
+        if (can_vec_store) {
+#pragma unroll(store_rounds)
+          for (int r = 0; r < store_rounds; ++r) {
+            *(reinterpret_cast<out_vec_t*>(
+                out_data_ + group_offset - start + i * vec_size +
+                r * out_vec_size)) =
+                *(reinterpret_cast<out_vec_t*>(&results[r * out_vec_size]));
+          }
+        } else {
+#pragma unroll(vec_size)
+          for (int j = 0; j < vec_size; ++j) {
+            out_data_[group_offset + i * vec_size + j - start] = results[j];
+          }
+        }
       }
     }
   }
@@ -1685,22 +1705,15 @@ void spatial_softmax_forward(
     }
 
     if (use_slow_path) {
+      // The kernel always vectorizes input reads based on input alignment,
+      // and handles output alignment independently (vectorized store when
+      // aligned, scalar store otherwise).
       if (can_use_32bit_index) {
-        // the start psition of tensor pointer should be the same
-        // the kernel can handle the non-aligned status
-        if (input_start == output_start) {
-          SOFTMAX_FORWARD_IMPL(
-              /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
-        } else {
-          SOFTMAX_FORWARD_IMPL(/*vec_size*/ 1, /*IndexType*/ uint32_t);
-        }
+        SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
       } else {
-        if (input_start == output_start) {
-          SOFTMAX_FORWARD_IMPL(
-              /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
-        } else {
-          SOFTMAX_FORWARD_IMPL(/*vec_size*/ 1, /*IndexType*/ uint64_t);
-        }
+        SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
       }
     }
   } else {
