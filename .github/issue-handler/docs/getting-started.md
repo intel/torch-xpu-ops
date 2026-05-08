@@ -59,7 +59,7 @@ torch-xpu-ops/.github/
 │   ├── agent-issue-body.yml         # Programmatic issue body template
 │   └── agent-pr-body.yml           # PR description template
 ├── skills/                          # LLM skill prompts
-└── pytorch-agent/
+└── issue-handler/
     ├── AGENTS.md
     ├── config/
     │   └── agent_config.yml         # All tunable constants
@@ -96,7 +96,7 @@ torch-xpu-ops/.github/
 ### Single issue end-to-end
 
 ```bash
-cd ~/torch-xpu-ops/.github/pytorch-agent
+cd ~/torch-xpu-ops/.github/issue-handler
 source .env
 python scripts/run_pipeline.py --issue 123
 ```
@@ -152,7 +152,7 @@ cp .env.example .env  # Edit with your config
 ./scripts/cron.sh     # Test manually
 
 # Install (every 5 min)
-(crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/torch-xpu-ops/.github/pytorch-agent/scripts/cron.sh") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/torch-xpu-ops/.github/issue-handler/scripts/cron.sh") | crontab -
 ```
 
 Check logs:

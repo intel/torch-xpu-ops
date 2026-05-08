@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # issue-handler cron wrapper
 # Runs one discovery+advance cycle, logs output
-# Install: crontab -e → */5 * * * * ~/.github/pytorch-agent/scripts/cron.sh
+# Install: crontab -e → */5 * * * * ~/.github/issue-handler/scripts/cron.sh
 
 set -euo pipefail
 
