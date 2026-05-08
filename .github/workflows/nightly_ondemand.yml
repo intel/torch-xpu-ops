@@ -212,18 +212,27 @@ jobs:
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
+  Windows-Nightly-Ondemand-Build:
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
+    name: windows-build
+    needs: [Conditions-Filter]
+    secrets: inherit
+    uses: ./.github/workflows/_windows_build.yml
+    with:
+      python: ${{ needs.Conditions-Filter.outputs.python }}
+      build_runner: Windows_CI_Build
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    name: windows
-    needs: [Conditions-Filter]
+    name: windows-ut
+    needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      src_changed: false
-      has_label: true
       runner: Windows_CI
-      build_runner: Windows_CI_Build
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
