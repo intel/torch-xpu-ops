@@ -12653,7 +12653,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                 torch.utils.swap_tensors(t3, t2)
                 with self.assertRaisesRegex(
                     RuntimeError,
-                    "AccumulateGrad node that was poisoned by swap_tensors"
+                    "AccumulateGrad node that was poisoned by swap_tensors",
                 ):
                     out.sum().backward()
 
