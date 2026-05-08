@@ -8,11 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/ATen.h>
 #include <ATen/NumericUtils.h>
@@ -48,7 +47,7 @@ struct AdaptiveMaxPool2dKernelFunctor {
       int64_t iendW = end_index(ow, osizeW_, isizeW_);
 
       scalar_t max = at::numeric_limits<scalar_t>::lower_bound();
-      index_t argmax;
+      index_t argmax = istartH * isizeW_ + istartW;
       int64_t i_bp_off = ob * istrideB_ + op * istrideP_;
       for (int64_t ih = istartH; ih < iendH; ih++) {
         for (int64_t iw = istartW; iw < iendW; iw++) {
@@ -397,5 +396,6 @@ void adaptive_max_pool2d_backward_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on
