@@ -18,23 +18,18 @@ res = 0
 res2 = 0
 fail_test = []
 
-# Add the path to the pipelining test utilities and pytest_configs (for the
-# xpu_worker_restart pytest plugin) to PYTHONPATH so subprocess pytest runs
-# can import them. We only append; never overwrite, so existing entries
-# (such as the job-level pytest_configs path) are preserved.
-pipelining_path = str(Path("../../../../test/distributed/pipelining").resolve())
-pytest_configs_path = str(
-    Path(__file__).resolve().parents[2] / ".github" / "scripts" / "pytest_configs"
+# Ensure pytest subprocesses can import:
+#   * pipelining test utilities (../../../../test/distributed/pipelining)
+# Append-only: preserve any caller-provided PYTHONPATH entries.
+HERE = Path(__file__).resolve().parent
+extra_paths = [
+    str((HERE / "../../../../test/distributed/pipelining").resolve()),
+]
+entries = os.environ.get("PYTHONPATH", "").split(os.pathsep)
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    dict.fromkeys(p for p in (*entries, *extra_paths) if p)
 )
-existing_pythonpath = os.environ.get("PYTHONPATH", "")
-pythonpath_entries = (
-    existing_pythonpath.split(os.pathsep) if existing_pythonpath else []
-)
-for extra in (pipelining_path, pytest_configs_path):
-    if extra not in pythonpath_entries:
-        pythonpath_entries.append(extra)
-os.environ["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
-print(str("PYTHONPATH=" + os.environ.get("PYTHONPATH")))
+print(f"PYTHONPATH={os.environ['PYTHONPATH']}")
 
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
