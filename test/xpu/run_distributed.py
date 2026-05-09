@@ -18,17 +18,20 @@ res = 0
 res2 = 0
 fail_test = []
 
-# Add the path to the pipelining test utilities to the system path
+# Add the path to the pipelining test utilities and pytest_configs (for the
+# xpu_worker_restart pytest plugin) to PYTHONPATH so subprocess pytest runs
+# can import them. We only append; never overwrite, so existing entries
+# (such as the job-level pytest_configs path) are preserved.
 pipelining_path = str(Path("../../../../test/distributed/pipelining").resolve())
-existing_pythonpath = os.environ.get("PYTHONPATH")
-if existing_pythonpath:
-    pythonpath_entries = existing_pythonpath.split(os.pathsep)
-    if pipelining_path not in pythonpath_entries:
-        os.environ["PYTHONPATH"] = os.pathsep.join(
-            pythonpath_entries + [pipelining_path]
-        )
-else:
-    os.environ["PYTHONPATH"] = pipelining_path
+pytest_configs_path = str(
+    Path(__file__).resolve().parents[2] / ".github" / "scripts" / "pytest_configs"
+)
+existing_pythonpath = os.environ.get("PYTHONPATH", "")
+pythonpath_entries = existing_pythonpath.split(os.pathsep) if existing_pythonpath else []
+for extra in (pipelining_path, pytest_configs_path):
+    if extra not in pythonpath_entries:
+        pythonpath_entries.append(extra)
+os.environ["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
 print(str("PYTHONPATH=" + os.environ.get("PYTHONPATH")))
 
 # Get the xelink group card affinity
