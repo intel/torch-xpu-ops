@@ -29,6 +29,7 @@ if existing_pythonpath:
         )
 else:
     os.environ["PYTHONPATH"] = pipelining_path
+print(str("PYTHONPATH=" + os.environ.get("PYTHONPATH")))
 
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
