@@ -4,7 +4,6 @@ ARG UBUNTU_VERSION=24.04
 FROM ubuntu:${UBUNTU_VERSION} AS builder
 
 # Environment configuration
-ENV UBUNTU_VERSION=${UBUNTU_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
