@@ -17,7 +17,7 @@ on:
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
-        default: '3.11'
+        default: '3.12'
         description: Python version
       ut:
         required: true
