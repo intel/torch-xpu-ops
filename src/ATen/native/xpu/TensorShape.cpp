@@ -21,7 +21,6 @@
 #include <ATen/ops/as_strided_copy_native.h>
 #include <ATen/ops/as_strided_native.h>
 #include <ATen/ops/cat_native.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 

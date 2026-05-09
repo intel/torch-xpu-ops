@@ -12,7 +12,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/LossNLLKernel.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/ops/nll_loss_backward_native.h>

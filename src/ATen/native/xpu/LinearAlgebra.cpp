@@ -22,7 +22,6 @@
 
 #include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
 #include <ATen/native/xpu/sycl/ReduceNormKernel.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {

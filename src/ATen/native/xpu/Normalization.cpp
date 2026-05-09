@@ -14,8 +14,6 @@
 #include <ATen/native/Normalization.h>
 #include <ATen/native/xpu/sycl/RenormKernel.h>
 
-#include <comm/RegisterUtils.h>
-
 namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(

@@ -21,7 +21,8 @@ on:
         default: "build-cicd"
         description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -221,6 +222,8 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+      contents: read
       issues: write
     steps:
       - name: Install gh-cli

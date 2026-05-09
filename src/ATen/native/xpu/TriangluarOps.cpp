@@ -11,7 +11,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/TriangularOpsKernels.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/ops/tril_native.h>

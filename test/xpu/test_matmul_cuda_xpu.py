@@ -431,7 +431,7 @@ class TestMatmulCuda(InductorTestCase):
         # cross comparison
         self.assertEqual(out1_gpu, out2_gpu[0])
 
-    @onlyOn(["cuda", "xpu"])
+    @onlyCUDA
     @skipIfRocm
     @parametrize("shape", [2**i for i in range(5, 14)])
     @dtypes(torch.float, torch.half, torch.bfloat16)

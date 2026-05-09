@@ -13,8 +13,6 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/TensorTopKKernel.h>
 
-#include <comm/RegisterUtils.h>
-
 #include <ATen/ops/topk_native.h>
 
 namespace at {

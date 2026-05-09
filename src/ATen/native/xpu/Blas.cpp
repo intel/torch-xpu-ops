@@ -9,7 +9,6 @@
  */
 
 #include <ATen/ATen.h>
-#include <ATen/native/ComplexHelper.h>
 #include <ATen/native/xpu/Blas.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BlasImpl.h>
@@ -19,6 +18,7 @@
 #else
 #include <ATen/ops/dot_native.h>
 #include <ATen/ops/vdot_native.h>
+#include <ATen/ops/view_as_real_native.h>
 #endif
 #include <torch/library.h>
 
@@ -52,7 +52,7 @@ class ConjPhysicalGuard final {
   }
 
   Tensor real() const {
-    return at::view_as_real(tmp_);
+    return at::native::view_as_real(tmp_);
   }
 
  private:
@@ -71,8 +71,8 @@ Tensor& mm_complex_fallback(
       "Complex matrix multiplication is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
-  auto self_real = at::view_as_real(self.resolve_conj());
-  auto mat2_real = at::view_as_real(mat2.resolve_conj());
+  auto self_real = at::native::view_as_real(self.resolve_conj());
+  auto mat2_real = at::native::view_as_real(mat2.resolve_conj());
 
   auto A_r = self_real.select(-1, 0);
   auto A_i = self_real.select(-1, 1);
@@ -101,8 +101,8 @@ Tensor& bmm_complex_fallback(
       "Complex batch matrix multiplication is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
-  auto self_real = at::view_as_real(self.resolve_conj());
-  auto mat2_real = at::view_as_real(mat2.resolve_conj());
+  auto self_real = at::native::view_as_real(self.resolve_conj());
+  auto mat2_real = at::native::view_as_real(mat2.resolve_conj());
 
   auto A_r = self_real.select(-1, 0);
   auto A_i = self_real.select(-1, 1);
@@ -152,7 +152,7 @@ Tensor& addmm_complex_fallback(
   // Only process self when beta != 0
   Tensor C_r, C_i;
   if (!beta_zero) {
-    auto self_real = at::view_as_real(self.resolve_conj());
+    auto self_real = at::native::view_as_real(self.resolve_conj());
     C_r = self_real.select(-1, 0).contiguous();
     C_i = self_real.select(-1, 1).contiguous();
   }
@@ -160,8 +160,8 @@ Tensor& addmm_complex_fallback(
   // Only process mat1/mat2 when alpha != 0
   Tensor A_r, A_i, B_r, B_i;
   if (!alpha_zero) {
-    auto mat1_real = at::view_as_real(mat1.resolve_conj());
-    auto mat2_real = at::view_as_real(mat2.resolve_conj());
+    auto mat1_real = at::native::view_as_real(mat1.resolve_conj());
+    auto mat2_real = at::native::view_as_real(mat2.resolve_conj());
     A_r = mat1_real.select(-1, 0);
     A_i = mat1_real.select(-1, 1);
     B_r = mat2_real.select(-1, 0);
@@ -236,7 +236,7 @@ Tensor& baddbmm_complex_fallback(
   // Only process self when beta != 0
   Tensor C_r, C_i;
   if (!beta_zero) {
-    auto self_real = at::view_as_real(self.resolve_conj());
+    auto self_real = at::native::view_as_real(self.resolve_conj());
     C_r = self_real.select(-1, 0).contiguous();
     C_i = self_real.select(-1, 1).contiguous();
   }
@@ -244,8 +244,8 @@ Tensor& baddbmm_complex_fallback(
   // Only process batch1/batch2 when alpha != 0
   Tensor A_r, A_i, B_r, B_i;
   if (!alpha_zero) {
-    auto batch1_real = at::view_as_real(batch1.resolve_conj());
-    auto batch2_real = at::view_as_real(batch2.resolve_conj());
+    auto batch1_real = at::native::view_as_real(batch1.resolve_conj());
+    auto batch2_real = at::native::view_as_real(batch2.resolve_conj());
     A_r = batch1_real.select(-1, 0);
     A_i = batch1_real.select(-1, 1);
     B_r = batch2_real.select(-1, 0);
