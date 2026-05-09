@@ -27,7 +27,9 @@ pytest_configs_path = str(
     Path(__file__).resolve().parents[2] / ".github" / "scripts" / "pytest_configs"
 )
 existing_pythonpath = os.environ.get("PYTHONPATH", "")
-pythonpath_entries = existing_pythonpath.split(os.pathsep) if existing_pythonpath else []
+pythonpath_entries = (
+    existing_pythonpath.split(os.pathsep) if existing_pythonpath else []
+)
 for extra in (pipelining_path, pytest_configs_path):
     if extra not in pythonpath_entries:
         pythonpath_entries.append(extra)
