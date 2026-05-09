@@ -13,7 +13,6 @@
 #include <ATen/native/Cross.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/xpu/sycl/CrossKernel.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {

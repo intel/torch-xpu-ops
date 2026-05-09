@@ -8,7 +8,16 @@
 
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from itertools import product
+
+import numpy as np
+from torch.testing import make_tensor
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    dtypesIfXPU,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_dtype import all_types_complex_float8_and
 from torch.testing._internal.common_utils import DeterministicGuard, run_tests
 
 try:
@@ -70,9 +79,108 @@ with XPUPatchForImport(False):
         out_cpu = func1(t, ind, val)
         self.assertEqual(out_cuda.cpu(), out_cpu)
 
+    @dtypes(
+        torch.cfloat, torch.cdouble, torch.float, torch.bfloat16, torch.long, torch.bool
+    )
+    @dtypesIfXPU(
+        torch.cfloat,
+        torch.cdouble,
+        torch.half,
+        torch.long,
+        torch.bool,
+        torch.bfloat16,
+        torch.float8_e5m2,
+        torch.float8_e4m3fn,
+    )
+    def index_put_src_datatype(self, device, dtype):
+        src = torch.ones(3, 2, 4, device=device, dtype=dtype)
+        vals = torch.ones(3, 2, 4, device=device, dtype=dtype)
+        indices = (torch.tensor([0, 2, 1]),)
+        res = src.index_put_(indices, vals, accumulate=True)
+        self.assertEqual(res.shape, src.shape)
+
+    @dtypes(*all_types_complex_float8_and(torch.half, torch.bool, torch.bfloat16))
+    def index_select(self, device, dtype):
+        num_src, num_out = 3, 5
+
+        def make_arg(batch_sizes, n, dim, contig):
+            size_arg = batch_sizes[:dim] + (n,) + batch_sizes[dim:]
+            return make_tensor(
+                size_arg,
+                dtype=dtype,
+                device=device,
+                low=None,
+                high=None,
+                noncontiguous=not contig,
+            )
+
+        def ref_index_select(src, dim, idx):
+            # some types not supported on numpy
+            not_np_dtypes = (
+                torch.bfloat16,
+                torch.float8_e5m2,
+                torch.float8_e5m2fnuz,
+                torch.float8_e4m3fn,
+                torch.float8_e4m3fnuz,
+            )
+            if dtype in not_np_dtypes:
+                src = src.float()
+            out = torch.from_numpy(
+                np.take(src.cpu().numpy(), idx.cpu().numpy(), axis=dim)
+            )
+            if dtype in not_np_dtypes:
+                out = out.to(device=device, dtype=dtype)
+            return out
+
+        for src_contig, idx_contig in product([True, False], repeat=2):
+            for other_sizes in ((), (4, 5)):
+                for dim in range(len(other_sizes)):
+                    src = make_arg(other_sizes, num_src, dim, src_contig)
+                    idx = make_tensor(
+                        (num_out,),
+                        dtype=torch.int64,
+                        device=device,
+                        low=0,
+                        high=num_src,
+                        noncontiguous=not idx_contig,
+                    )
+                    out = torch.index_select(src, dim, idx)
+                    out2 = ref_index_select(src, dim, idx)
+                    self.assertEqual(out, out2)
+
+        for idx_type in (torch.int32, torch.int64):
+            other_sizes = (3, 2)
+            dim = 1
+            src = make_arg(other_sizes, num_src, dim, True)
+            idx = make_tensor(
+                (num_out,),
+                dtype=idx_type,
+                device=device,
+                low=0,
+                high=num_src,
+                noncontiguous=False,
+            )
+            out = torch.index_select(src, dim, idx)
+            out2 = ref_index_select(src, dim, idx)
+            self.assertEqual(out, out2)
+
+        # Create the 4 possible combinations of scalar sizes for index / source
+        scalars = (
+            (
+                make_tensor(size_s, dtype=dtype, device=device),
+                torch.zeros(size_i, dtype=torch.int64, device=device),
+            )
+            for size_s, size_i in product([(), (1,)], repeat=2)
+        )
+        for source, idx in scalars:
+            out = source.index_select(0, idx)
+            self.assertEqual(out.item(), source.item())
+
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
+    TestIndexing.test_index_put_src_datatype = index_put_src_datatype
+    TestIndexing.test_index_select = index_select
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 

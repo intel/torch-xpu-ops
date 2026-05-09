@@ -13,7 +13,6 @@
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
-#include <comm/RegisterUtils.h>
 
 #include <ATen/ops/_upsample_bicubic2d_aa_backward_native.h>
 #include <ATen/ops/_upsample_bicubic2d_aa_native.h>

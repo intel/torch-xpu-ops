@@ -40,11 +40,7 @@ macro(set_build_flags)
     set(SYCL_OFFLINE_COMPILER_CG_OPTIONS)
     set(SYCL_OFFLINE_COMPILER_FLAGS)
 
-    if(REPLACE_FLAGS_FOR_SYCLTLA)
-      set(CPP_STD c++20)
-    else()
-      set(CPP_STD c++17)
-    endif()
+    set(CPP_STD c++20)
     # # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
@@ -58,6 +54,7 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -104,16 +101,17 @@ macro(set_build_flags)
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
       # Suppress warnings about dllexport.
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-nans)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-infinities)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fma)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
     endif()
 

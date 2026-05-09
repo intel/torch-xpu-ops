@@ -119,6 +119,29 @@ class Namespace:
                 self.precision = test_case.precision
                 self.rel_tol = test_case.rel_tol
 
+        def test_compare_cpu(self, device, dtype, op):
+            # Copied and adapted from:
+            # https://github.com/pytorch/pytorch/blob/e9516b564737b0f1c172f0e0723130e0aba4f51f/test/test_ops.py#L499
+            def to_cpu(arg):
+                if isinstance(arg, torch.Tensor):
+                    return arg.to(device="cpu")
+                return arg
+
+            samples = op.reference_inputs(device, dtype)
+
+            for sample in samples:
+                cpu_sample = sample.transform(to_cpu)
+                xpu_results = op(sample.input, *sample.args, **sample.kwargs)
+                cpu_results = op(
+                    cpu_sample.input, *cpu_sample.args, **cpu_sample.kwargs
+                )
+
+                xpu_results = sample.output_process_fn_grad(xpu_results)
+                cpu_results = cpu_sample.output_process_fn_grad(cpu_results)
+
+                # CHANGED: Use 1e-3 for all dtypes on XPU
+                self.assertEqual(xpu_results, cpu_results, atol=1e-3, rtol=1e-3)
+
     class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
         def __init__(self, test_case=None):
             if test_case:

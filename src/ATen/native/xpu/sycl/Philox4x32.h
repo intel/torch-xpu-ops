@@ -261,6 +261,14 @@ static inline void rand_init(
   state->index = 0;
   skipahead_sequence(subsequence, state);
   skipahead(offset, state);
+  // Reset Box-Muller transform state. These fields are not part of the core
+  // Philox counter/key, but cache an extra normal variate generated from a
+  // previous Box-Muller call. When (re)initializing the Philox state, this
+  // cache must be cleared to avoid reusing a value derived from an old
+  // seed/subsequence/offset configuration.
+  state->boxmuller_flag = 0;
+  state->boxmuller_extra = 0.0f;
+  state->boxmuller_flag_double = 0;
 }
 
 static inline unsigned int rand(randStatePhilox4_32_10_t* state) {

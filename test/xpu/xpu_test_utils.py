@@ -347,6 +347,8 @@ _cuda_xfail_xpu_pass = [
     ("rsqrt", "test_reference_numerics_large"),
     ("_batch_norm_with_update", "test_noncontiguous_samples"),
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
+    ("_native_batch_norm_legit", "test_out"),
+    ("native_batch_norm", "test_out"),
     ("histc", "test_out"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
@@ -999,8 +1001,14 @@ class XPUPatchForImport:
         self.cuda_get_device_capability = torch.cuda.get_device_capability
         self.skipXPU = common_device_type.skipXPU
 
+    @staticmethod
+    def _preserve_cuda_only_decorators_on_xpu(op_name):
+        return "jiterator" in op_name
+
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
+            if self._preserve_cuda_only_decorators_on_xpu(op_name):
+                return False, list(wrappers)
             wrapper_xpu = []
             replaced = False
             for wrapper in wrappers:
@@ -1208,9 +1216,9 @@ def copy_tests(
     generic_base_class_members = set(generic_base_class.__dict__.keys()) - set(
         generic_test_class.__dict__.keys()
     )
-    assert not (
-        applicable_list and bypass_list
-    ), "Does not support setting both applicable list and bypass list."
+    assert not (applicable_list and bypass_list), (
+        "Does not support setting both applicable list and bypass list."
+    )
     if applicable_list:
         generic_base_class_members = [
             x for x in generic_base_class_members if x in applicable_list

@@ -91,9 +91,9 @@ void fused_adam_amsgrad_kernel(
       max_exp_avg_sqs.vec()};
 
   const float* grad_scale_ptr =
-      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+      grad_scale.has_value() ? grad_scale->const_data_ptr<float>() : nullptr;
   const float* found_inf_ptr =
-      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
+      found_inf.has_value() ? found_inf->const_data_ptr<float>() : nullptr;
   const float* lr_ptr = lr.const_data_ptr<float>();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
