@@ -17,7 +17,7 @@ on:
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
-        default: '3.12'
+        default: '3.10'
         description: Python version
       ut:
         required: true
@@ -103,9 +103,16 @@ jobs:
     timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTEST_ADDOPTS: -v
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
