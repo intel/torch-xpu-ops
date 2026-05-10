@@ -153,6 +153,7 @@ runs:
         export BACKEND="xccl"
         export WORLD_SIZE=4
         export USE_CCL_V2=1
+        export CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0
         sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
         sed -i '51d' run_distributed_local.py
         pip install transformers pulp
