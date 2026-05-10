@@ -1354,8 +1354,10 @@ class TestSparseCompressed(TestCase):
             # if label != "indices and values mismatch of device index":
             #     continue
             with self.assertRaisesRegex(RuntimeError, errmsg):
-                print("go on")                
-                print(f"label: {label}, target: {target}, compressed_indices: {compressed_indices}, plain_indices: {plain_indices}, values: {values}, size: {size}, layout: {layout}")
+                print("go on")
+                print(
+                    f"label: {label}, target: {target}, compressed_indices: {compressed_indices}, plain_indices: {plain_indices}, values: {values}, size: {size}, layout: {layout}"
+                )
                 print(f"errmsg: {errmsg}")
                 if target == "validate_sparse_compressed_tensor_args":
                     torch._validate_sparse_compressed_tensor_args(
