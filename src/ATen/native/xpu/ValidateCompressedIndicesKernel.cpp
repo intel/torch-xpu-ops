@@ -24,8 +24,7 @@ struct XPUKernelLauncher {
     xpu::gpu_kernel(iter, f);
   }
 };
-
-}
+} // namespace
 
 void _validate_compressed_sparse_indices_xpu(
     const bool is_crow,

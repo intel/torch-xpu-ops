@@ -346,7 +346,8 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
   int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
   std::cout << "N: " << N << std::endl;
-  std::cout << "wg_sz: "<< wg_sz << "num_wg: " << num_wg << "hw_max_num_wg: " << hw_max_num_wg << std::endl;
+  std::cout << "wg_sz: " << wg_sz << "num_wg: " << num_wg
+            << "hw_max_num_wg: " << hw_max_num_wg << std::endl;
   std::cout << "sycl_kernel_submit ElementwiseGlobalRangeKernel" << std::endl;
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -410,13 +411,14 @@ static inline void launch_vectorized_kernel(
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
     TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                      \
-      std::cout << "VectorizedElementwiseKernel" << std::endl;             \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
+      std::cout << "VectorizedElementwiseKernel" << std::endl;               \
       auto ker =                                                             \
           VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
               N, f, data, input_calc);                                       \
-      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);              \
-      std::cout << "sycl_kernel_submit VectorizedElementwiseKernel" << std::endl; \
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
+      std::cout << "sycl_kernel_submit VectorizedElementwiseKernel"          \
+                << std::endl;                                                \
       sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
     }                                                                        \
   }
@@ -535,7 +537,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   bool contiguous = iter.is_contiguous();
   bool latency_case = numel <= syclMaxWorkItemsPerSubSlice() *
           4; /* on tuning for different data types */
-  std::cout << "contiguous from gpu_kernel_impl_nocast: " << contiguous << std::endl;
+  std::cout << "contiguous from gpu_kernel_impl_nocast: " << contiguous
+            << std::endl;
   int vec_size;
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
@@ -567,7 +570,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
 template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
-  std::cout << "enter gpu_kernel_impl: " <<  std::endl;
+  std::cout << "enter gpu_kernel_impl: " << std::endl;
   if (!needs_dynamic_casting<func_t>::check(iter)) {
     return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec>(iter, f);
   }

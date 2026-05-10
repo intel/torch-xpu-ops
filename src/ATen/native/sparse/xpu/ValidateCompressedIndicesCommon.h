@@ -20,145 +20,11 @@
 
 #define NAME "compressed_index_invariance_checks_xpu"
 
-
 #define INVARIANT_CHECK_FUNC_API static INLINE FUNCAPI void
 
 namespace at::native {
 
 namespace {
-
-// NOTE: all the checks but the very last one are designed
-// to work with vectors.
-// To enable vectorization one would need to write a conversion
-// Vec -> bool and make kernel launchers call into vectorized
-// execution paths.
-
-// All the invariants are described in
-// https://pearu.github.io/bsr_tensor_invariants.html NOTE: in the code we also
-// use `cidx/idx` to refer to `compressed_indices/plain_indices` respectively.
-
-// INVARIANT_CHECK_FUNC_API
-// _assert(const bool cond, const char* const message) {
-// #ifdef GPUCC
-//   CUDA_KERNEL_ASSERT(cond && message);
-// #else
-//   TORCH_CHECK(cond, message);
-// #endif
-// }
-
-// enum class CDimName : bool { CRow, CCol };
-
-// // Invariant 5.1
-// // compressed_index[..., 0] == 0.
-// template <CDimName cdim_name, typename index_t>
-// INVARIANT_CHECK_FUNC_API _check_first_cidx_is_zero(
-//     const index_t& cidx,
-//     const index_t& zero) {
-//   const bool invariant = cidx == zero;
-//   if (cdim_name == CDimName::CRow) {
-//     _assert(invariant, "`crow_indices[..., 0] == 0` is not satisfied.");
-//   } else {
-//     _assert(invariant, "`ccol_indices[..., 0] == 0` is not satisfied.");
-//   }
-// }
-
-// Invariant 5.2
-// compressed_index[..., -1] == nnz.
-// template <CDimName cdim_name, typename index_t>
-// INVARIANT_CHECK_FUNC_API _check_last_cidx_is_nnz(
-//     const index_t& cidx,
-//     const index_t& nnz) {
-//   const bool invariant = cidx == nnz;
-//   if (cdim_name == CDimName::CRow) {
-//     _assert(invariant, "`crow_indices[..., -1] == nnz` is not satisfied.");
-//   } else {
-//     _assert(invariant, "`ccol_indices[..., -1] == nnz` is not satisfied.");
-//   }
-// }
-
-// Invariant 5.3
-// 0 <= compressed_indices[..., 1:] - compressed_indices[..., :-1] <= plain_dim.
-// template <CDimName cdim_name, typename index_t>
-// INVARIANT_CHECK_FUNC_API _check_cidx_nondecreasing_locally_bounded_sequence(
-//     const index_t& cidx,
-//     const index_t& cidx_next,
-//     const index_t& zero,
-//     const index_t& dim) {
-//   const auto s_cidx = cidx_next - cidx;
-//   const bool invariant = zero <= s_cidx && s_cidx <= dim;
-//   if (cdim_name == CDimName::CRow) {
-//     _assert(
-//         invariant,
-//         "`0 <= crow_indices[..., 1:] - crow_indices[..., :-1] <= ncols` is not satisfied.");
-//   } else {
-//     _assert(
-//         invariant,
-//         "`0 <= ccol_indices[..., 1:] - ccol_indices[..., :-1] <= nrows` is not satisfied.");
-//   }
-// }
-
-// Invariants 5.4 and 5.5
-// 0 <= plain_index < plain_dim.
-// template <CDimName cdim_name, typename index_t>
-// INVARIANT_CHECK_FUNC_API _check_idx_bounds(
-//     const index_t& idx,
-//     const index_t& zero,
-//     const index_t& dim) {
-//   const bool invariant = zero <= idx && idx < dim;
-//   if (cdim_name == CDimName::CRow) {
-//     _assert(invariant, "`0 <= col_indices < ncols` is not satisfied.");
-//   } else {
-//     _assert(invariant, "`0 <= row_indices < nrows` is not satisfied.");
-//   }
-// }
-
-// Invariant 5.6
-// plain_indices[..., compressed_indices[..., i - 1]:compressed_indices[..., i]]
-// for all i = 1, ..., compressed_dim
-// are sorted and distinct along the last dimension values.
-// template <CDimName cdim_name, typename index_t>
-// INVARIANT_CHECK_FUNC_API _check_idx_sorted_distinct_vals_slices_with_cidx(
-//     const index_t* RESTRICT ptr_idx_batch,
-//     const index_t cidx,
-//     const index_t cidx_next) {
-//   // Note that ptr_idx_batch = &idx[batch_idx] and is contiguous.
-//   const auto* RESTRICT slice_begin = ptr_idx_batch + cidx;
-//   const auto* RESTRICT slice_end = ptr_idx_batch + cidx_next;
-//   for (auto* RESTRICT curr = slice_begin; (slice_begin < slice_end) && (curr + 1 < slice_end); ++curr) {
-//     const auto invariant = *curr < *(curr + 1);
-//     if (cdim_name == CDimName::CRow) {
-//       _assert(
-//           invariant,
-//           "`col_indices[..., crow_indices[..., i - 1]:crow_indices[..., i]] "
-//           "for all i = 1, ..., nrows "
-//           "are sorted and distinct along the last dimension values` "
-//           "is not satisfied.");
-//     } else {
-//       _assert(
-//           invariant,
-//           "`row_indices[..., ccol_indices[..., i - 1]:ccol_indices[..., i]] "
-//           "for all i = 1, ..., ncols "
-//           "are sorted and distinct along the last dimension values` "
-//           "is not satisfied.");
-//     }
-//   }
-// }
-
-// inline int64_t indexCount(IntArrayRef sizes) {
-//   int64_t res = 1;
-//   for (const auto& s : sizes) {
-//     res *= s;
-//   }
-//   return res;
-// }
-
-// template <typename func_t, typename vec_func_t>
-// struct EmptyVecKernel {
-//   static void launch(
-//       TensorIteratorBase& iter,
-//       const func_t& f,
-//       const vec_func_t& vec_f) {}
-// };
 
 template <typename scalar_t>
 using DummyVec = scalar_t;
@@ -185,15 +51,12 @@ using DummyVec = scalar_t;
 
 template <CDimName cdim_name, typename index_t>
 struct CheckIdxBoundsFunctor {
-  index_t operator()(
-      index_t idx
-      ) const {
+  index_t operator()(index_t idx) const {
     _check_idx_bounds<cdim_name, index_t>(idx, zero_, dim_);
     return 0;
   }
 
-  CheckIdxBoundsFunctor(index_t zero, index_t dim)
-      : zero_(zero), dim_(dim) {}
+  CheckIdxBoundsFunctor(index_t zero, index_t dim) : zero_(zero), dim_(dim) {}
 
  private:
   const index_t zero_;
@@ -207,14 +70,14 @@ struct CheckCIdxFunctor {
       index_t cidx_last,
       index_t cidx_curr,
       index_t cidx_next,
-      index_t batch_idx
-      ) const {
+      index_t batch_idx) const {
     // Invariant 5.1
     _check_first_cidx_is_zero<cdim_name, index_t>(cidx_first, zero_);
     // Invariant 5.2
     _check_last_cidx_is_nnz<cdim_name, index_t>(cidx_last, nnz_);
     // Invariant 5.3
-    _check_cidx_nondecreasing_locally_bounded_sequence<cdim_name, index_t>(cidx_curr, cidx_next, zero_, dim_);
+    _check_cidx_nondecreasing_locally_bounded_sequence<cdim_name, index_t>(
+        cidx_curr, cidx_next, zero_, dim_);
     // Invariant 5.6
     // NOTE: the implementation below is sync-less, but,
     // unfortunately, work is not guaranteed to be well-balanced
@@ -225,27 +88,35 @@ struct CheckCIdxFunctor {
     int64_t idx_offset = 0;
     // assuming idx contiguity per batch:
     int64_t tmp = batch_idx * nnz_;
-    // `nnz == idx_sizes[idx_ndims - 1]` is checked above as `nnz == idx.size(-1)`
-    for (int i = idx_ndims_ - 1;
-      i >= 0 && nnz_ > 0;  // break early when nnz==0
-      i--) {
+    // `nnz == idx_sizes[idx_ndims - 1]` is checked above as `nnz ==
+    // idx.size(-1)`
+    for (int i = idx_ndims_ - 1; i >= 0 && nnz_ > 0; // break early when nnz==0
+         i--) {
       int64_t div = tmp / idx_sizes_[i];
       idx_offset += (tmp - div * idx_sizes_[i]) * idx_strides_[i];
       tmp = div;
-      }
+    }
     const auto* RESTRICT ptr_idx_batch = ptr_idx_ + idx_offset;
-    _check_idx_sorted_distinct_vals_slices_with_cidx<cdim_name, index_t>(ptr_idx_batch, cidx_curr, cidx_next);
+    _check_idx_sorted_distinct_vals_slices_with_cidx<cdim_name, index_t>(
+        ptr_idx_batch, cidx_curr, cidx_next);
     return 0;
   }
 
-  CheckCIdxFunctor(index_t zero,
-    index_t dim,
-    int64_t nnz,
-    int64_t idx_ndims,
-    std::array<int64_t, static_shape_max_len> idx_sizes,
-    std::array<int64_t, static_shape_max_len> idx_strides,
-    const void* ptr_idx)
-      : zero_(zero), dim_(dim), nnz_(nnz), idx_ndims_(idx_ndims), idx_sizes_(idx_sizes), idx_strides_(idx_strides), ptr_idx_(ptr_idx)  {}
+  CheckCIdxFunctor(
+      index_t zero,
+      index_t dim,
+      int64_t nnz,
+      int64_t idx_ndims,
+      std::array<int64_t, static_shape_max_len> idx_sizes,
+      std::array<int64_t, static_shape_max_len> idx_strides,
+      const void* ptr_idx)
+      : zero_(zero),
+        dim_(dim),
+        nnz_(nnz),
+        idx_ndims_(idx_ndims),
+        idx_sizes_(idx_sizes),
+        idx_strides_(idx_strides),
+        ptr_idx_(ptr_idx) {}
 
  private:
   const index_t zero_;
@@ -320,18 +191,33 @@ void _validate_compressed_sparse_indices_kernel_xpu(
   {
     AT_DISPATCH_INDEX_TYPES(idx.scalar_type(), NAME, [cdim, dim, nnz]() {
       if (cdim_name == CDimName::CRow) {
-        TORCH_CHECK(static_cast<int64_t>(static_cast<index_t>(dim)) == dim,
-                    sizeof(index_t) * 8, "-bit integer overflow in column dimension = ", dim);
-        TORCH_CHECK(static_cast<int64_t>(static_cast<index_t>(cdim)) == cdim,
-                    sizeof(index_t) * 8, "-bit integer overflow in row dimension = ", cdim);
+        TORCH_CHECK(
+            static_cast<int64_t>(static_cast<index_t>(dim)) == dim,
+            sizeof(index_t) * 8,
+            "-bit integer overflow in column dimension = ",
+            dim);
+        TORCH_CHECK(
+            static_cast<int64_t>(static_cast<index_t>(cdim)) == cdim,
+            sizeof(index_t) * 8,
+            "-bit integer overflow in row dimension = ",
+            cdim);
       } else {
-        TORCH_CHECK(static_cast<int64_t>(static_cast<index_t>(dim)) == dim,
-                    sizeof(index_t) * 8, "-bit integer overflow in row dimension = ", dim);
-        TORCH_CHECK(static_cast<int64_t>(static_cast<index_t>(cdim)) == cdim,
-                    sizeof(index_t) * 8, "-bit integer overflow in column dimension = ", cdim);
+        TORCH_CHECK(
+            static_cast<int64_t>(static_cast<index_t>(dim)) == dim,
+            sizeof(index_t) * 8,
+            "-bit integer overflow in row dimension = ",
+            dim);
+        TORCH_CHECK(
+            static_cast<int64_t>(static_cast<index_t>(cdim)) == cdim,
+            sizeof(index_t) * 8,
+            "-bit integer overflow in column dimension = ",
+            cdim);
       }
-      TORCH_CHECK(static_cast<int64_t>(static_cast<index_t>(nnz)) == nnz,
-                  sizeof(index_t) * 8, "-bit integer overflow in nnz = ", nnz);
+      TORCH_CHECK(
+          static_cast<int64_t>(static_cast<index_t>(nnz)) == nnz,
+          sizeof(index_t) * 8,
+          "-bit integer overflow in nnz = ",
+          nnz);
     });
   }
 
@@ -349,7 +235,8 @@ void _validate_compressed_sparse_indices_kernel_xpu(
       std::cout << "launch CheckIdxBoundsFunctor" << std::endl;
       auto caller = CheckIdxBoundsFunctor<cdim_name, index_t>(zero, dim);
       KernelLauncher::launch(iter, caller);
-      // KernelLauncher::launch(iter, [zero, dim] FUNCAPI(index_t idx) -> index_t {
+      // KernelLauncher::launch(iter, [zero, dim] FUNCAPI(index_t idx) ->
+      // index_t {
       //   _check_idx_bounds<cdim_name, index_t>(idx, zero, dim);
       //   return 0;
       // });
@@ -371,7 +258,8 @@ void _validate_compressed_sparse_indices_kernel_xpu(
 
     const auto idx_ndims = idx.dim();
 
-    const auto idx_geometry_holder = at::sparse::TensorGeometryHolder<static_shape_max_len>(idx);
+    const auto idx_geometry_holder =
+        at::sparse::TensorGeometryHolder<static_shape_max_len>(idx);
     const auto idx_sizes = std::get<0>(*idx_geometry_holder);
     const auto idx_strides = std::get<1>(*idx_geometry_holder);
 
@@ -392,17 +280,20 @@ void _validate_compressed_sparse_indices_kernel_xpu(
           const auto* RESTRICT ptr_idx = idx.const_data_ptr<index_t>();
           const auto zero = index_t{0};
           // KernelLauncher::launch(
-          //     iter, CheckCIdxFunctor(zero, dim, nnz, idx_ndims, idx_sizes, idx_strides, ptr_idx));
+          //     iter, CheckCIdxFunctor(zero, dim, nnz, idx_ndims, idx_sizes,
+          //     idx_strides, ptr_idx));
           // KernelLauncher::launch(
           //     iter,
-          //     [zero, dim, nnz, idx_ndims, idx_sizes, idx_strides, ptr_idx] FUNCAPI(
+          //     [zero, dim, nnz, idx_ndims, idx_sizes, idx_strides, ptr_idx]
+          //     FUNCAPI(
           //         index_t cidx_first,
           //         index_t cidx_last,
           //         index_t cidx_curr,
           //         index_t cidx_next,
           //         index_t batch_idx) -> index_t {
           //       // Invariant 5.1
-          //       _check_first_cidx_is_zero<cdim_name, index_t>(cidx_first, zero);
+          //       _check_first_cidx_is_zero<cdim_name, index_t>(cidx_first,
+          //       zero);
           //       // Invariant 5.2
           //       _check_last_cidx_is_nnz<cdim_name, index_t>(cidx_last, nnz);
           //       // Invariant 5.3
@@ -419,7 +310,8 @@ void _validate_compressed_sparse_indices_kernel_xpu(
           //       int64_t idx_offset = 0;
           //       // assuming idx contiguity per batch:
           //       int64_t tmp = batch_idx * nnz;
-          //       // `nnz == idx_sizes[idx_ndims - 1]` is checked above as `nnz == idx.size(-1)`
+          //       // `nnz == idx_sizes[idx_ndims - 1]` is checked above as `nnz
+          //       // == idx.size(-1)`
           //       for (int i = idx_ndims - 1;
           //            i >= 0 && nnz > 0;  // break early when nnz==0
           //            i--) {
@@ -461,8 +353,7 @@ void validate_compressed_sparse_indices_kernel_xpu(
           vec_kernel_t,
           Vec,
           idx_max_ndims>(cidx, idx, cdim, dim, nnz);
-    }
-    else {
+    } else {
       _validate_compressed_sparse_indices_kernel_xpu<
           CDimName::CRow,
           kernel_t,
@@ -477,8 +368,7 @@ void validate_compressed_sparse_indices_kernel_xpu(
           vec_kernel_t,
           Vec,
           idx_max_ndims>(cidx, idx, cdim, dim, nnz);
-    }
-    else {
+    } else {
       _validate_compressed_sparse_indices_kernel_xpu<
           CDimName::CCol,
           kernel_t,
