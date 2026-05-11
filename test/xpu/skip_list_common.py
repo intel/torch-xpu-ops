@@ -395,4 +395,5 @@ skip_dict = {
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
+    "dynamo/test_higher_order_ops_xpu.py": None,
 }
