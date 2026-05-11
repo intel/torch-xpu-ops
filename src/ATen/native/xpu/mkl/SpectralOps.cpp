@@ -391,8 +391,8 @@ Tensor& _fft_c2c_mkl_out(
     Tensor& out) {
   // For ComplexHalf or empty dim, fall back to the non-out variant which
   // handles type promotion and cloning correctly.
-  bool is_half = (self.scalar_type() == ScalarType::ComplexHalf);
-  if (!is_half && !dim.empty()) {
+  bool is_complex_half = (self.scalar_type() == ScalarType::ComplexHalf);
+  if (!is_complex_half && !dim.empty()) {
     // Compute directly into out to avoid an intermediate allocation and copy_.
     auto promoted_self = impl::promote_fft_input(self);
     auto sorted_dims = impl::_sort_dims(promoted_self, dim);
@@ -503,8 +503,8 @@ Tensor& _fft_c2r_mkl_out(
     Tensor& out) {
   // For ComplexHalf or empty dim, fall back to the non-out variant which
   // handles type promotion correctly.
-  bool is_half = (self.scalar_type() == ScalarType::ComplexHalf);
-  if (!is_half && !dim.empty()) {
+  bool is_complex_half = (self.scalar_type() == ScalarType::ComplexHalf);
+  if (!is_complex_half && !dim.empty()) {
     // Compute directly into out to avoid an intermediate allocation and copy_.
     auto promoted_self = impl::promote_fft_input(self);
     auto input = promoted_self;
