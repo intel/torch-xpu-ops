@@ -107,6 +107,12 @@ def update_issue_body(repo: str, number: int, body: str) -> None:
             token=_token_for_repo(repo), body=body)
 
 
+def add_issue_comment(repo: str, number: int, body: str) -> None:
+    """Add a comment to an issue."""
+    _gh_api(f"/repos/{repo}/issues/{number}/comments", method="POST",
+            token=_token_for_repo(repo), body=body)
+
+
 def add_label(repo: str, number: int, label: str) -> None:
     """Add a label to an issue. Creates the label if it doesn't exist."""
     try:

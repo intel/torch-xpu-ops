@@ -47,7 +47,7 @@ stage_labels:
 # Per-stage timeouts (seconds)
 stage_timeouts:
   DISCOVERED: 300
-  TRIAGING: 300
+  TRIAGING: 900
   IMPLEMENTING: 3600
   IN_REVIEW: 1800
   CI_WATCH: 600
