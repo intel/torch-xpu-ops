@@ -10555,6 +10555,19 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         x = torch.empty((), device="meta")
         self.assertEqual(format(x), repr(x))
 
+    # For testing int64 support in upsample_nearest3d
+    # See https://github.com/intel/torch-xpu-ops/issues/3599
+    @onlyXPU
+    @largeTensorTest("56GB", device="xpu")
+    @dtypes(torch.bfloat16)
+    @unittest.skipIf(IS_JETSON, "Large tensor tests are too large for Jetson.")
+    def test_int64_upsample3d(self, device, dtype):
+        x = torch.ones((1, 256, 16, 720, 1280), dtype=dtype, device=device)
+        try:
+            torch.nn.functional.interpolate(x, scale_factor=2, mode="nearest")
+        except Exception as e:
+            self.fail(f"Unexpected exception raised: {e}")
+
     def test_upsample_nearest1d_meta(self):
         # TODO: this test should be triggered by test_nn.py but right
         # now meta is not enabled (and even if it was, we are probably
