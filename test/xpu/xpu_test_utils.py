@@ -1268,7 +1268,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     return os.system(test_command)
 
 
-def ensure_pytorch_test_path(patcher):
-    test_dir = os.path.abspath(patcher.test_package[0])
+def ensure_pytorch_test_path(test_dir):
+    test_dir = os.path.abspath(test_dir)
     if test_dir not in sys.path:
         sys.path.append(test_dir)

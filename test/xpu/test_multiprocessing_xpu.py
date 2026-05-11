@@ -29,7 +29,8 @@ with XPUPatchForImport(False) as patcher:
     from test_multiprocessing import TestMultiprocessing
 
 
-ensure_pytorch_test_path(patcher)
+test_dir = os.path.abspath(patcher.test_package[0])
+ensure_pytorch_test_path(test_dir)
 
 
 def queue_get_exception(inqueue, outqueue):
