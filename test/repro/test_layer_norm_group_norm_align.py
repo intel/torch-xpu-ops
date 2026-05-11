@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
+
 # Regression tests for XPU LayerNorm and GroupNorm kernels.
 # These tests validate XPU correctness by comparing against CPU reference
 # implementations, covering the same kernel paths as the CUDA/ROCm regression
@@ -14,7 +16,6 @@
 import torch
 import torch.nn as nn
 from torch.testing._internal.common_utils import run_tests, TestCase
-
 
 xpu_device = torch.device("xpu")
 cpu_device = torch.device("cpu")
@@ -49,9 +50,7 @@ class TestLayerNormAlign(TestCase):
         y_cpu.backward(grad_output)
         y_xpu.backward(grad_output.to(xpu_device))
 
-        self.assertEqual(
-            x_cpu.grad, x_xpu.grad.to(cpu_device), atol=atol, rtol=rtol
-        )
+        self.assertEqual(x_cpu.grad, x_xpu.grad.to(cpu_device), atol=atol, rtol=rtol)
         self.assertEqual(
             weight_cpu.grad, weight_xpu.grad.to(cpu_device), atol=atol, rtol=rtol
         )
@@ -107,9 +106,7 @@ class TestGroupNormAlign(TestCase):
         y_cpu.backward(grad_output)
         y_xpu.backward(grad_output.to(xpu_device))
 
-        self.assertEqual(
-            x_cpu.grad, x_xpu.grad.to(cpu_device), atol=atol, rtol=rtol
-        )
+        self.assertEqual(x_cpu.grad, x_xpu.grad.to(cpu_device), atol=atol, rtol=rtol)
         self.assertEqual(
             weight_cpu.grad, weight_xpu.grad.to(cpu_device), atol=atol, rtol=rtol
         )
@@ -144,6 +141,7 @@ class TestGroupNormAlign(TestCase):
     def test_group_norm_2d_large_batch_float16(self):
         # HxW > 1, N > 128, float16
         self._run_group_norm(torch.float16, N=256, C=32, G=4, HxW=16)
+
 
 if __name__ == "__main__":
     run_tests()
