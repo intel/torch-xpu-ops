@@ -535,6 +535,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertExpectedInline(str(cnts.op_count), """16""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
+    @unittest.skip(
+        "streams::record_event() receives stream_index=None under torch.compile: "
+        "https://github.com/intel/torch-xpu-ops/issues/3388"
+    )
     def test_cuda_event_method(self):
         def fn(x):
             x = torch.mul(x, 1)
