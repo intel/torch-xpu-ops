@@ -176,7 +176,7 @@ struct Msg {
 // SYCL_KERNEL_ASSERT_MSG is not ready
 template <typename scalar_t>
 struct AssertAsyncKernelFunctor1 {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     SYCL_KERNEL_ASSERT(input_[0] != 0);
   }
   AssertAsyncKernelFunctor1(const scalar_t* input, Msg msg)
@@ -188,7 +188,7 @@ struct AssertAsyncKernelFunctor1 {
 };
 
 struct AssertAsyncKernelFunctor2 {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
   }
   AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg msg)
@@ -200,7 +200,7 @@ struct AssertAsyncKernelFunctor2 {
 };
 
 struct AssertAsyncKernelFunctor3 {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
   }
   AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg msg)
@@ -214,19 +214,19 @@ struct AssertAsyncKernelFunctor3 {
 template <typename scalar_t>
 void launch_assert_async_kernel(const scalar_t* input, Msg msg) {
   AssertAsyncKernelFunctor1<scalar_t> kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), kfn);
 }
 
 template <>
 void launch_assert_async_kernel(const c10::complex<float>* input, Msg msg) {
   AssertAsyncKernelFunctor2 kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), kfn);
 }
 
 template <>
 void launch_assert_async_kernel(const c10::complex<double>* input, Msg msg) {
   AssertAsyncKernelFunctor3 kfn(input, msg);
-  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), kfn);
 }
 
 void _assert_async_msg_kernel(
