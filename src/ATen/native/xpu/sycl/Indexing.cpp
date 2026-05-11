@@ -2196,15 +2196,21 @@ Tensor& index_select_kernel(
     int64_t dim,
     const Tensor& index,
     Tensor& out) {
-  static constexpr std::string_view DIM_WARNING =
-      "Tensor too large or too many (> 25) dimensions";
   at::assert_no_internal_overlap(out);
   at::assert_no_overlap(out, self);
   at::assert_no_overlap(out, index);
 
   dim = at::maybe_wrap_dim(dim, self);
-  TORCH_CHECK(self.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
-  TORCH_CHECK(index.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(
+      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "Tensor too large or too many (> ",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dimensions");
+  TORCH_CHECK(
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "Tensor too large or too many (> ",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dimensions");
 
   AT_DISPATCH_V2(
       out.scalar_type(),
