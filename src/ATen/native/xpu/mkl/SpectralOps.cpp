@@ -389,6 +389,38 @@ Tensor& _fft_c2c_mkl_out(
     int64_t normalization,
     bool forward,
     Tensor& out) {
+  // For ComplexHalf or empty dim, fall back to the non-out variant which
+  // handles type promotion and cloning correctly.
+  bool is_half = (self.scalar_type() == ScalarType::ComplexHalf);
+  if (!is_half && !dim.empty()) {
+    // Compute directly into out to avoid an intermediate allocation and copy_.
+    auto promoted_self = impl::promote_fft_input(self);
+    auto sorted_dims = impl::_sort_dims(promoted_self, dim);
+    const auto out_sizes = promoted_self.sizes();
+    at::native::resize_output(out, out_sizes);
+    auto working_tensor = promoted_self;
+    while (!sorted_dims.empty()) {
+      const auto max_dims =
+          std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+      auto fft_dims = IntArrayRef(sorted_dims)
+                          .slice(sorted_dims.size() - max_dims, max_dims);
+      impl::_exec_fft(out, working_tensor, out_sizes, fft_dims, false, forward);
+      sorted_dims.resize(sorted_dims.size() - max_dims);
+      if (sorted_dims.empty()) {
+        break;
+      }
+      sorted_dims = impl::_sort_dims(promoted_self, sorted_dims);
+      // Keep `out` as the permanent target. Save the current result into
+      // `working_tensor` so it can serve as input for the next pass.
+      if (working_tensor.is_same(promoted_self)) {
+        working_tensor = out.clone(MemoryFormat::Contiguous);
+      } else {
+        working_tensor.copy_(out);
+      }
+    }
+    impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+    return out;
+  }
   auto result = _fft_c2c_mkl(self, dim, normalization, forward);
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
@@ -469,6 +501,37 @@ Tensor& _fft_c2r_mkl_out(
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& out) {
+  // For ComplexHalf or empty dim, fall back to the non-out variant which
+  // handles type promotion correctly.
+  bool is_half = (self.scalar_type() == ScalarType::ComplexHalf);
+  if (!is_half && !dim.empty()) {
+    // Compute directly into out to avoid an intermediate allocation and copy_.
+    auto promoted_self = impl::promote_fft_input(self);
+    auto input = promoted_self;
+    if (dim.size() > 1) {
+      auto c2c_dims = dim.slice(0, dim.size() - 1);
+      input = _fft_c2c_mkl(
+          promoted_self,
+          c2c_dims,
+          static_cast<int64_t>(fft_norm_mode::none),
+          /*forward=*/false);
+    }
+    auto in_sizes = input.sizes();
+    DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+    out_sizes[dim.back()] = last_dim_size;
+    at::native::resize_output(out, out_sizes);
+    input = input.clone(MemoryFormat::Contiguous);
+    HermitSymm(input, dim.back(), out_sizes[dim.back()]);
+    impl::_exec_fft(
+        out,
+        input,
+        out_sizes,
+        dim.back(),
+        /*onesided=*/true,
+        /*forward=*/false);
+    impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+    return out;
+  }
   auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
@@ -558,8 +621,64 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
+  // For Half or empty dim, fall back to the non-out variant which handles
+  // type promotion correctly.
+  bool is_half = (self.scalar_type() == ScalarType::Half);
+  if (!is_half && !dim.empty()) {
+    // Compute directly into out to avoid an intermediate allocation and copy_.
+    auto promoted_self = impl::promote_fft_input(self);
+    auto input_sizes = promoted_self.sizes();
+    DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
+    auto last_dim = dim.back();
+    auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
+    onesided_sizes[last_dim] = last_dim_halfsize;
+    IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
+    at::native::resize_output(out, out_sizes);
+    auto working_tensor = promoted_self.contiguous();
+    // First do the R2C transform on the last dimension
+    impl::_exec_fft(
+        out, working_tensor, out_sizes, last_dim, onesided, /*forward=*/true);
+    // Allocate a dedicated buffer for subsequent C2C passes so that `out`
+    // remains as our permanent output target and is never rebound.
+    Tensor c2c_buf;
+    DimVector sorted_dims(dim.begin(), dim.end() - 1);
+    if (!sorted_dims.empty()) {
+      c2c_buf = at::empty(
+          out_sizes,
+          promoted_self.options().dtype(
+              c10::toComplexType(promoted_self.scalar_type())));
+      c2c_buf.copy_(out);
+      working_tensor = c2c_buf;
+    }
+    while (!sorted_dims.empty()) {
+      sorted_dims = impl::_sort_dims(promoted_self, sorted_dims);
+      const auto max_dims =
+          std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+      auto fft_dims = IntArrayRef(sorted_dims)
+                          .slice(sorted_dims.size() - max_dims, max_dims);
+      impl::_exec_fft(
+          out, working_tensor, out_sizes, fft_dims, onesided, /*forward=*/true);
+      sorted_dims.resize(sorted_dims.size() - max_dims);
+      if (!sorted_dims.empty()) {
+        working_tensor.copy_(out);
+      }
+    }
+    // Only need to normalize the onesided slice since data in the other half
+    // is overwritten
+    auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
+    impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
+    if (!onesided) {
+      if (out.sizes()[last_dim] != out_sizes[last_dim]) {
+        // Expand out to the full size without rebinding it.
+        auto tmp = out.clone(MemoryFormat::Contiguous);
+        out.resize_(out_sizes, MemoryFormat::Contiguous);
+        out.slice(last_dim, 0, last_dim_halfsize).copy_(tmp);
+      }
+      at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+    }
+    return out;
+  }
   auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
-
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
   return out;
