@@ -95,7 +95,8 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
         auto alpha = value.to<scalar_t>();
         auto c_val = iter.scalar_value<scalar_t>(3);
         iter.remove_operand(3);
-        gpu_kernel(iter, AddcmulComplexCpuScalarFunctor<scalar_t>(alpha, c_val));
+        gpu_kernel(
+            iter, AddcmulComplexCpuScalarFunctor<scalar_t>(alpha, c_val));
       });
     } else {
       AT_DISPATCH_ALL_TYPES_AND2(
