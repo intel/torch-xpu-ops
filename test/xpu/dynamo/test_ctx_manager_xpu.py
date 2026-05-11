@@ -641,6 +641,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(exported.dtype, torch.bfloat16)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
+    @unittest.skipIf(
+        device_type == "xpu",
+        "float64 is not a supported autocast dtype for XPU",
+    )
     def test_cuda_amp_autocast(self):
         class MyModule(torch.nn.Module):
             def forward(self, x):
@@ -915,6 +919,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(out_32.dtype, torch.float32)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
+    @unittest.skipIf(
+        device_type == "xpu",
+        "float64 is not a supported autocast dtype for XPU",
+    )
     def test_autocast_float64(self):
         class MyModule(torch.nn.Module):
             def forward(self, x):
