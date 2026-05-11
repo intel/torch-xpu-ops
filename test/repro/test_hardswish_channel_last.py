@@ -61,8 +61,8 @@ def test_hardswish_inplace_channels_last_4d(dtype):
 @pytest.mark.skipif(not torch.xpu.is_available(), reason="XPU not available")
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_hardswish_inplace_channels_last_3d(dtype):
-    """hardswish_ on a 5-D channel-last-3d tensor must produce the correct
-    result and preserve the channels_last_3d memory format."""
+    """hardswish_ on a 5-D tensor with channels_last_3d memory format (NDHWC)
+    must produce the correct result and preserve the channels_last_3d layout."""
     shape = (2, 4, 4, 4, 4)
     x_cpu = torch.randn(shape, dtype=dtype)
     x_ref = x_cpu.clone()
