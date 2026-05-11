@@ -1,6 +1,9 @@
 skip_dict = {
     "distributed/test_c10d_ops_xccl.py": (
-        "test_batch_isend_irecv",
+        # https://github.com/intel/torch-xpu-ops/issues/3570
+        "test_allgather_graph_replay",
+        "test_allreduce_graph_replay",
+        "test_reduce_scatter_graph_replay",
     ),
     "distributed/test_c10d_xccl.py": None,
     "../../../../test/distributed/fsdp/test_checkpoint_wrapper.py": None,
