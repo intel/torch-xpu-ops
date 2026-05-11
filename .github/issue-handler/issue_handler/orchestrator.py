@@ -52,17 +52,19 @@ def advance(issue_number: int) -> None:
     stage = get_status(body)
 
     if stage is None:
-        # No status marker → needs discovery
-        stage = "DISCOVERED"
+        # No status marker → needs formatting first
+        from .format_agent import run
+        _run_step("format", run, issue_number)
+        return
 
     log("INFO", f"Advancing issue #{issue_number} at stage {stage}",
         issue=issue_number)
 
     match stage:
         case "DISCOVERED":
-            # Raw issue needs formatting
-            from .format_agent import run
-            _run_step("format", run, issue_number)
+            # Formatted issue — advance to triage
+            from .triage_agent import run
+            _run_step("triage", run, issue_number)
         case "TRIAGING":
             from .triage_agent import run
             _run_step("triage", run, issue_number)
