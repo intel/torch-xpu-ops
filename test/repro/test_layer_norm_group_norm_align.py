@@ -6,8 +6,10 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-# Regression tests aligning XPU LayerNorm and GroupNorm kernels with
-# stock PyTorch (CUDA) implementations.
+# Regression tests for XPU LayerNorm and GroupNorm kernels.
+# These tests validate XPU correctness by comparing against CPU reference
+# implementations, covering the same kernel paths as the CUDA/ROCm regression
+# tests in stock PyTorch (small-batch, large-batch tile-based reduction, etc.).
 
 import torch
 import torch.nn as nn
