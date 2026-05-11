@@ -8,6 +8,8 @@ OpenCode CLI notes (from `opencode run --help`):
 from abc import ABC, abstractmethod
 from datetime import datetime
 import json
+import os
+import select
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -138,14 +140,47 @@ class OpenCodeBackend(AgentBackend):
             start_time = time.monotonic()
             effective_timeout = timeout or 600
             try:
-                for line in proc.stdout:
-                    # Enforce timeout during streaming
-                    if time.monotonic() - start_time > effective_timeout:
+                # Use select() to enforce timeout even when no output arrives.
+                # opencode --format json may not emit events during long tool
+                # calls, so `for line in proc.stdout` would block indefinitely.
+                has_fileno = hasattr(proc.stdout, 'fileno')
+                if has_fileno:
+                    fd = proc.stdout.fileno()
+                buf = ""
+                def _read_lines():
+                    """Yield lines from stdout, using select() when available."""
+                    nonlocal buf
+                    if not has_fileno:
+                        # Fallback for mocked/non-fd streams
+                        for raw_line in proc.stdout:
+                            yield raw_line
+                        return
+                    while True:
+                        remaining = effective_timeout - (time.monotonic() - start_time)
+                        if remaining <= 0:
+                            proc.kill()
+                            proc.wait()
+                            log_f.write("\n=== TIMEOUT (wall-clock) ===\n")
+                            raise subprocess.TimeoutExpired(
+                                cmd, effective_timeout)
+                        ready, _, _ = select.select([fd], [], [], min(remaining, 30))
+                        if not ready:
+                            continue
+                        chunk = os.read(fd, 65536)
+                        if not chunk:
+                            break
+                        buf += chunk.decode("utf-8", errors="replace")
+                        while "\n" in buf:
+                            line, buf = buf.split("\n", 1)
+                            yield line + "\n"
+
+                for line in _read_lines():
+                    # Enforce timeout (for fallback path)
+                    if not has_fileno and time.monotonic() - start_time > effective_timeout:
                         proc.kill()
                         proc.wait()
-                        log_f.write("\n=== TIMEOUT (during streaming) ===\n")
-                        raise subprocess.TimeoutExpired(
-                            cmd, effective_timeout)
+                        log_f.write("\n=== TIMEOUT (wall-clock) ===\n")
+                        raise subprocess.TimeoutExpired(cmd, effective_timeout)
                     log_f.write(line)
                     log_f.flush()
                     line = line.strip()
@@ -170,8 +205,6 @@ class OpenCodeBackend(AgentBackend):
                             except Exception:
                                 pass
                     # Collect text output from assistant
-                    # Note: intentionally separate from parse_opencode_events() —
-                    # streaming side effects (session-id extraction, live logging)
                     if event.get("type") == "text":
                         part = event.get("part", {})
                         text_parts.append(part.get("text", ""))
