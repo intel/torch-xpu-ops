@@ -98,7 +98,7 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
         gpu_kernel(iter, AddcmulComplexCpuScalarFunctor<scalar_t>(alpha, c_val));
       });
     } else {
-      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      AT_DISPATCH_ALL_TYPES_AND2(
           at::ScalarType::Half,
           at::ScalarType::BFloat16,
           iter.dtype(),

@@ -44,6 +44,11 @@ def test_addcmul_cpu_scalar_tensor2(dtype):
     expected = torch.addcmul(
         a.cpu(), b.cpu(), c, value=alpha
     ).to(device)
-    assert torch.allclose(actual.float(), expected.float(), atol=1e-4), (
-        f"Mismatch for dtype={dtype}: {actual} vs {expected}"
-    )
+    if dtype.is_floating_point or dtype.is_complex:
+        assert torch.allclose(actual.float(), expected.float(), atol=1e-4), (
+            f"Mismatch for dtype={dtype}: {actual} vs {expected}"
+        )
+    else:
+        assert torch.equal(actual, expected), (
+            f"Mismatch for dtype={dtype}: {actual} vs {expected}"
+        )
