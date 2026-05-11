@@ -103,16 +103,9 @@ jobs:
     timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
-              -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v
+    env:
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+      PYTEST_ADDOPTS: -v
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -122,6 +115,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          skip_setup_python: 'true'
       - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-uttest
         with:

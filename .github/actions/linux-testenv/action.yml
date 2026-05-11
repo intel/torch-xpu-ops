@@ -17,6 +17,10 @@ inputs:
     type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+  skip_setup_python:
+    type: string
+    default: 'false'
+    description: Skip setup-python and use preinstalled Python on host
 
 runs:
   using: composite
@@ -37,9 +41,19 @@ runs:
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
+      if: ${{ inputs.skip_setup_python != 'true' }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python }}
+    - name: Install preinstalled Python-${{ inputs.python }}
+      if: ${{ inputs.skip_setup_python == 'true' }}
+      shell: bash -xe {0}
+      run: |
+        sudo apt update
+        sudo apt install -y python${{ inputs.python }} python${{ inputs.python }}-venv python${{ inputs.python }}-dev
+        sudo update-alternatives --remove python /usr/bin/python${{ inputs.python }} 2>/dev/null || true
+        sudo update-alternatives --install /usr/bin/python python /usr/bin/python${{ inputs.python }} 1
+        which python && python -V
     - name: Check python
       shell: bash -xe {0}
       run: |
