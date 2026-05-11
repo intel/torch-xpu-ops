@@ -243,23 +243,17 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda"
     )
     def test_cuda_stream_across_graph_break(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
-            s = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            s = device_module.Stream()
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
 
             print("foo")
 
-            tcs = (
-                torch.cuda.stream(s)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(s)
-            )
-            current_stream = (
-                torch.cuda.current_stream()
-                if torch.cuda.is_available()
-                else torch.xpu.current_stream()
-            )
+            tcs = device_module.stream(s)
+            current_stream = device_module.current_stream()
             s.wait_stream(current_stream)
 
             with tcs:
@@ -285,41 +279,25 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "requires cuda or xpu",
     )
     def test_cuda_stream_context_manager2(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x, s):
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
 
-            current_stream = (
-                torch.cuda.current_stream()
-                if torch.cuda.is_available()
-                else torch.xpu.current_stream()
-            )
+            current_stream = device_module.current_stream()
             s.wait_stream(current_stream)
 
-            with (
-                torch.cuda.stream(s)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(s)
-            ):
+            with device_module.stream(s):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s)
-            with (
-                torch.cuda.stream(current_stream)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(current_stream)
-            ):
+            with device_module.stream(current_stream):
                 x = torch.relu(x)
 
-            s2 = (
-                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-            )
+            s2 = device_module.Stream()
             s2.wait_stream(current_stream)
-            with (
-                torch.cuda.stream(s2)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(s2)
-            ):
+            with device_module.stream(s2):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s2)
@@ -328,7 +306,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             return x
 
         x = torch.randn((2, 2), device=GPU_TYPE)
-        s = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        s = device_module.Stream()
         ref = fn(x, s)
         cnts = torch._dynamo.testing.CompileCounter()
         opt_fn = torch.compile(fn, backend=cnts, fullgraph=True)
@@ -342,25 +320,17 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "requires cuda or xpu",
     )
     def test_cuda_stream_method(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
 
-            new_stream = (
-                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-            )
-            cur_stream = (
-                torch.cuda.current_stream()
-                if torch.cuda.is_available()
-                else torch.xpu.current_stream()
-            )
+            new_stream = device_module.Stream()
+            cur_stream = device_module.current_stream()
             new_stream.wait_stream(cur_stream)
 
-            with (
-                torch.cuda.stream(new_stream)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(new_stream)
-            ):
+            with device_module.stream(new_stream):
                 x = torch.sin(x)
                 x = torch.add(x, 3)
 
@@ -370,11 +340,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             cur_stream.query()
             cur_stream.synchronize()
 
-            with (
-                torch.cuda.stream(new_stream)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(new_stream)
-            ):
+            with device_module.stream(new_stream):
                 x = torch.add(x, 5)
             new_stream.synchronize()
 
@@ -429,14 +395,16 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "requires cuda or xpu",
     )
     def test_cuda_stream_compared_with_stream(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x, s0, s1):
             if s0 == s1:
                 return x + 1
             else:
                 return x - 1
 
-        s0 = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-        s1 = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        s0 = device_module.Stream()
+        s1 = device_module.Stream()
         x = torch.randn(2, 2)
         cnts = torch._dynamo.testing.CompileCounter()
         opt_fn = torch.compile(fn, backend=cnts, fullgraph=True)
@@ -475,8 +443,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
     def test_cuda_event_reconstruct(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
-            e = torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            e = device_module.Event()
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
             return x, e
@@ -498,18 +468,17 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
     def test_cuda_event_across_graph_break(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
-            e = torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            e = device_module.Event()
             e.record()
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
 
             print("foo")
 
-            if torch.cuda.is_available():
-                torch.cuda.current_stream().wait_event(e)
-            else:
-                torch.xpu.current_stream().wait_event(e)
+            device_module.current_stream().wait_event(e)
             x = torch.add(x, 1)
             x = torch.cos(x)
             return x, e
@@ -570,6 +539,8 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
     def test_cuda_event_method_create_stream_outside_of_compile(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x, cur_stream, new_stream):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -580,16 +551,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             event.query()
 
             new_stream.wait_event(event)
-            with (
-                torch.cuda.stream(new_stream)
-                if torch.cuda.is_available()
-                else torch.xpu.stream(new_stream)
-            ):
+            with device_module.stream(new_stream):
                 x = torch.add(x, 4)
 
-            new_event = (
-                torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
-            )
+            new_event = device_module.Event()
             new_event.record(new_stream)
 
             new_event.wait(cur_stream)
@@ -603,14 +568,8 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             return x
 
         x = torch.randn((2, 2), device=GPU_TYPE)
-        cur_stream = (
-            torch.cuda.current_stream()
-            if torch.cuda.is_available()
-            else torch.xpu.current_stream()
-        )
-        new_stream = (
-            torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-        )
+        cur_stream = device_module.current_stream()
+        new_stream = device_module.Stream()
         ref = fn(x, cur_stream, new_stream)
         cnts = torch._dynamo.testing.CompileCounter()
         opt_fn = torch.compile(fn, backend=cnts, fullgraph=True)
@@ -624,18 +583,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         "requires cuda or xpu",
     )
     def test_cuda_event_method(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
 
-            cur_stream = (
-                torch.cuda.current_stream()
-                if torch.cuda.is_available()
-                else torch.xpu.current_stream()
-            )
-            new_stream = (
-                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-            )
+            cur_stream = device_module.current_stream()
+            new_stream = device_module.Stream()
 
             x = torch.add(x, 3)
 
@@ -643,12 +598,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
             event.query()
 
             new_stream.wait_event(event)
-            device_module = torch.get_device_module(GPU_TYPE)
             with device_module.stream(new_stream):
                 x = torch.add(x, 4)
 
-            Event = torch.cuda.Event if torch.cuda.is_available() else torch.xpu.Event
-            new_event = Event()
+            new_event = device_module.Event()
             new_event.record(new_stream)
 
             new_event.wait(cur_stream)
