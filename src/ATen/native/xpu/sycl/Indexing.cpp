@@ -69,6 +69,7 @@ void index_kernel(
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
       kComplexHalf,
       kHalf,
       kBool,
@@ -613,6 +614,7 @@ void index_put_kernel(
         }),
         AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
         AT_EXPAND(AT_FLOAT8_TYPES),
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
         kComplexHalf,
         kHalf,
         kBool,
@@ -725,6 +727,7 @@ void index_put_deterministic_kernel(
           kFloat8_e5m2,
           kFloat8_e4m3fnuz,
           kFloat8_e5m2fnuz,
+          kFloat8_e8m0fnu,
           kComplexHalf,
           kHalf,
           kBool,
@@ -754,6 +757,7 @@ void index_put_deterministic_kernel(
           kFloat8_e5m2,
           kFloat8_e4m3fnuz,
           kFloat8_e5m2fnuz,
+          kFloat8_e8m0fnu,
           kComplexHalf,
           kHalf,
           kBool,
@@ -945,16 +949,17 @@ void index_copy_kernel(
     const Tensor& index,
     const Tensor& source,
     Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND6(
+  AT_DISPATCH_V2(
+      out.scalar_type(),
+      "index_copy_xpu",
+      AT_WRAP([&]() { index_copy_impl<scalar_t>(out, dim, index, source); }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
       at::ScalarType::ComplexHalf,
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
-      at::ScalarType::Float8_e4m3fn,
-      at::ScalarType::Float8_e5m2,
-      out.scalar_type(),
-      "index_copy_xpu",
-      [&]() { index_copy_impl<scalar_t>(out, dim, index, source); });
+      at::ScalarType::Bool);
 }
 
 template <typename scalar_t, typename offset_cal_t>

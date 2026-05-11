@@ -89,8 +89,11 @@ with XPUPatchForImport(False):
         torch.long,
         torch.bool,
         torch.bfloat16,
-        torch.float8_e5m2,
         torch.float8_e4m3fn,
+        torch.float8_e4m3fnuz,
+        torch.float8_e5m2,
+        torch.float8_e5m2fnuz,
+        torch.float8_e8m0fnu,
     )
     def index_put_src_datatype(self, device, dtype):
         src = torch.ones(3, 2, 4, device=device, dtype=dtype)
@@ -122,6 +125,7 @@ with XPUPatchForImport(False):
                 torch.float8_e5m2fnuz,
                 torch.float8_e4m3fn,
                 torch.float8_e4m3fnuz,
+                torch.float8_e8m0fnu,
             )
             if dtype in not_np_dtypes:
                 src = src.float()

@@ -98,7 +98,8 @@ void where_kernel(TensorIterator& iter) {
       kBFloat16,
       kBool,
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-      AT_EXPAND(AT_FLOAT8_TYPES));
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 void isposinf_kernel(TensorIteratorBase& iter) {
