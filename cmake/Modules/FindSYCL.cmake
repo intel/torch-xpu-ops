@@ -288,8 +288,22 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
+      # If the source file requests no AOT compilation, strip the AOT target
+      # flags from SYCL_COMPILE_FLAGS for this file only. The spir64_gen
+      # target triggers ahead-of-time compilation; removing -fsycl-targets
+      # falls back to JIT-only (spir64).
+      get_source_file_property(_no_aot "${source_file}" SYCL_NO_AOT)
+      if(_no_aot)
+        set(_saved_SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS})
+        list(FILTER SYCL_COMPILE_FLAGS EXCLUDE REGEX "-fsycl-targets")
+      endif()
+
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
+
+      if(_no_aot)
+        set(SYCL_COMPILE_FLAGS ${_saved_SYCL_COMPILE_FLAGS})
+      endif()
       file(GENERATE
         OUTPUT "${custom_target_script}"
         INPUT "${custom_target_script_pregen}"
