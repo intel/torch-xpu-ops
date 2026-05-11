@@ -4418,7 +4418,11 @@ class TestVmapOperatorsOpInfo(TestCase):
     )
     def test_vmap_exhaustive(self, device, dtype, op):
         # needs to be fixed
-        inplace_failure_list = ()
+        inplace_failure_list = (
+            # in-place vmap path produces numerically incorrect results on XPU;
+            # upstream fix is tracked in pytorch/pytorch#178498
+            "addmv",
+        )
         self.opinfo_vmap_test(
             device,
             dtype,
