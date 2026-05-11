@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 """
 Regression test for:
     torch._dynamo.exc.InternalTorchDynamoError:
@@ -72,3 +73,9 @@ def test_xpu_current_stream_attrs():
     x = torch.zeros(1, device="xpu")
     compiled = torch.compile(fn, backend="eager", fullgraph=True)
     assert compiled(x) == fn(x)
+
+
+if __name__ == "__main__":
+    raise RuntimeError(
+        "Run this test file using pytest: pytest test/repro/test_xpu_dynamo_event.py"
+    )
