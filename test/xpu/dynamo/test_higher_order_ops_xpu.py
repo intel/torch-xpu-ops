@@ -21,7 +21,7 @@ import torch._dynamo
 import torch._functorch
 import torch._functorch.config
 from torch._dynamo.backends.common import aot_autograd
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import TestCase, run_tests
 from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON
 from torch.testing._internal.triton_utils import requires_xpu_and_triton
 
@@ -99,9 +99,7 @@ def _apply_xpu_rng_patches() -> None:
     prims_common.CUDARngStateHelper.get_torch_state_as_tuple = (
         _get_torch_state_as_tuple_xpu
     )
-    prims_common.CUDARngStateHelper.set_torch_state_tensor = (
-        _set_torch_state_tensor_xpu
-    )
+    prims_common.CUDARngStateHelper.set_torch_state_tensor = _set_torch_state_tensor_xpu
     prims_common.CUDARngStateHelper.set_new_offset = _set_new_offset_xpu
 
     # ------------------------------------------------------------------
@@ -112,7 +110,9 @@ def _apply_xpu_rng_patches() -> None:
     # ------------------------------------------------------------------
 
     @_reg_decomp([torch.ops.aten.rand], rng_decompositions)  # type: ignore[arg-type]
-    def _rand_xpu(shape, dtype=None, layout=torch.strided, device=None, pin_memory=False):
+    def _rand_xpu(
+        shape, dtype=None, layout=torch.strided, device=None, pin_memory=False
+    ):
         if device and device.type not in ("cuda", "xpu"):
             raise RuntimeError(
                 f"You are trying to functionalize a {device.type} RNG operator "
