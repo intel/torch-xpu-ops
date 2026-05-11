@@ -375,9 +375,9 @@ skip_dict = {
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures are tracked separately as a real bug.
+        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
         "test_cache_hot_load_device_cpu",
-        # CPU test
+        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
         "test_cache_lazy_backward_for_compiled_autograd",
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
