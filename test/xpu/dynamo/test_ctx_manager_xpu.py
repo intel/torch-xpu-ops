@@ -32,6 +32,15 @@ k_glb = 0
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 requires_gpu = torch.cuda.is_available() or torch.xpu.is_available()
 
+# Check if PyTorch has XPUDeviceVariable support (pytorch/pytorch#181847).
+# Without it, torch.xpu.device() cannot be traced with fullgraph=True.
+try:
+    from torch._dynamo.variables import XPUDeviceVariable  # noqa: F401
+
+    _has_xpu_device_dynamo_support = True
+except ImportError:
+    _has_xpu_device_dynamo_support = False
+
 
 @contextlib.contextmanager
 def set_default_dtype(dtype):
@@ -575,6 +584,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertExpectedInline(str(cnts.op_count), """16""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
+    @unittest.skipUnless(
+        _has_xpu_device_dynamo_support,
+        "requires PyTorch with XPUDeviceVariable support (pytorch/pytorch#181847)",
+    )
     def test_cuda_device(self):
         def fn(x):
             with torch.get_device_module(device_type).device(x.device.index - 1):
