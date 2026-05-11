@@ -71,8 +71,8 @@ skip_dict = {
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
     "test_foreach_xpu.py": (
-        # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "use_cuda_graph_True",
+        # RuntimeError: XPUGraph is not fully supported (feature gap in xpugraph)
+        "use_xpu_graph_True",
     ),
     "test_indexing_xpu.py": None,
     "test_linalg_xpu.py": (
@@ -360,6 +360,16 @@ skip_dict = {
     "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_backends_xpu.py": (
+        # xpugraph feature gap: XPUGraph is not fully supported
+        "test_aot_cudagraphs",
+    ),
+    "dynamo/test_cudagraphs_xpu.py": None,
+    "dynamo/test_cudagraphs_expandable_segments_xpu.py": None,
+    "dynamo/test_structured_trace_xpu.py": (
+        # xpugraph feature gap: XPUGraph is not fully supported
+        "test_gpugraphs",
+    ),
     "functorch/test_control_flow_xpu.py": None,
     "functorch/test_aot_joint_with_descriptors_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
