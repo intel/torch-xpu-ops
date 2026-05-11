@@ -150,7 +150,7 @@ SparseTensor& hspmm_out_sparse_xpu(
     const Tensor& dense,
     SparseTensor& r_) {
   TORCH_CHECK(
-      sparse_.is_xpu(), "hspmm: expected 'self' to be XPU, but got CPU");
+      sparse_.is_xpu(), "hspmm: expected 'mat1' to be XPU, but got CPU");
   TORCH_CHECK(r_.is_xpu(), "hspmm: expected 'out' to be XPU, but got CPU");
   TORCH_CHECK(dense.is_xpu(), "hspmm: expected 'mat2' to be XPU, but got CPU");
 
