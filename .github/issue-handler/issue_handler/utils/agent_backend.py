@@ -8,21 +8,14 @@ OpenCode CLI notes (from `opencode run --help`):
 from abc import ABC, abstractmethod
 from datetime import datetime
 import json
-<<<<<<< HEAD
-=======
 import os
 import select
->>>>>>> agent/fix-agent-v1
 import time
 from collections.abc import Callable
 from pathlib import Path
 import subprocess
 
-<<<<<<< HEAD
-from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR
-=======
 from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR, CONFIG_DIR
->>>>>>> agent/fix-agent-v1
 from .logger import log as pipeline_log
 
 
@@ -58,8 +51,6 @@ class AgentBackend(ABC):
         ...
 
 
-<<<<<<< HEAD
-=======
 OPENCODEIGNORE_TEMPLATE = CONFIG_DIR / "opencodeignore.default"
 
 
@@ -83,7 +74,6 @@ def _ensure_opencodeignore(workdir: Path) -> None:
         pipeline_log("WARN", f"No opencodeignore template at {OPENCODEIGNORE_TEMPLATE}")
 
 
->>>>>>> agent/fix-agent-v1
 class OpenCodeBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
@@ -92,13 +82,10 @@ class OpenCodeBackend(AgentBackend):
         workdir = workdir or str(PYTORCH_DIR)
         timeout = timeout or 1800
 
-<<<<<<< HEAD
-=======
         # Ensure .opencodeignore exists in workdir to prevent file watcher
         # from hanging on large repos (e.g. pytorch with 200K+ files)
         _ensure_opencodeignore(Path(workdir))
 
->>>>>>> agent/fix-agent-v1
         # Point OpenCode to XPU agent skills in torch-xpu-ops.
         # OpenCode runs in ~/pytorch, so it won't auto-discover them.
         # We inline a short pointer — OpenCode reads the files itself.
@@ -153,16 +140,6 @@ class OpenCodeBackend(AgentBackend):
             start_time = time.monotonic()
             effective_timeout = timeout or 600
             try:
-<<<<<<< HEAD
-                for line in proc.stdout:
-                    # Enforce timeout during streaming
-                    if time.monotonic() - start_time > effective_timeout:
-                        proc.kill()
-                        proc.wait()
-                        log_f.write("\n=== TIMEOUT (during streaming) ===\n")
-                        raise subprocess.TimeoutExpired(
-                            cmd, effective_timeout)
-=======
                 # Use select() to enforce timeout even when no output arrives.
                 # opencode --format json may not emit events during long tool
                 # calls, so `for line in proc.stdout` would block indefinitely.
@@ -204,7 +181,6 @@ class OpenCodeBackend(AgentBackend):
                         proc.wait()
                         log_f.write("\n=== TIMEOUT (wall-clock) ===\n")
                         raise subprocess.TimeoutExpired(cmd, effective_timeout)
->>>>>>> agent/fix-agent-v1
                     log_f.write(line)
                     log_f.flush()
                     line = line.strip()
@@ -229,11 +205,6 @@ class OpenCodeBackend(AgentBackend):
                             except Exception:
                                 pass
                     # Collect text output from assistant
-<<<<<<< HEAD
-                    # Note: intentionally separate from parse_opencode_events() —
-                    # streaming side effects (session-id extraction, live logging)
-=======
->>>>>>> agent/fix-agent-v1
                     if event.get("type") == "text":
                         part = event.get("part", {})
                         text_parts.append(part.get("text", ""))

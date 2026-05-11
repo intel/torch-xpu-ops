@@ -53,14 +53,7 @@ stage_timeouts:
   CI_WATCH: 600
 # Limits
 limits:
-<<<<<<< HEAD
-  max_review_iterations: 3
-  max_ci_iterations: 3
   max_agent_attempts: 3
-  max_advance_loops: 10
-=======
-  max_agent_attempts: 3
->>>>>>> agent/fix-agent-v1
 
 # Terminal stages — pipeline stops advancing when issue reaches one of these
 terminal_stages:
