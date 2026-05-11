@@ -3690,7 +3690,7 @@
   device_check: NoCheck   # TensorIterator
   python_module: nn
   dispatch:
-    XPU: hardswish_
+    XPU: hardswish__xpu
 
 - func: hardswish_backward(Tensor grad_output, Tensor self) -> Tensor
   python_module: nn

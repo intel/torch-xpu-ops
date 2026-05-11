@@ -127,5 +127,19 @@ Tensor log_sigmoid_backward_xpu(
   return iter.output();
 }
 
+// Override for hardswish_(Tensor(a!) self) -> Tensor(a!)
+// For channel-last (and other non-overlapping dense non-contiguous) tensors,
+// use multi_tensor_apply which iterates in raw memory order, avoiding the
+// extra copy that TensorIterator introduces for such layouts.
+Tensor& hardswish__xpu(Tensor& self) {
+  if (!self.is_contiguous() && self.is_non_overlapping_and_dense()) {
+    xpu::hardswish_inplace_multi_tensor_kernel({self});
+  } else {
+    auto iter = TensorIterator::unary_op(self, self);
+    xpu::hardswish_kernel(iter);
+  }
+  return self;
+}
+
 } // namespace native
 } // namespace at
