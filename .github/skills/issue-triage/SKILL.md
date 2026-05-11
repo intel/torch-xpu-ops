@@ -1,49 +1,38 @@
 ---
 name: issue-triage
 description: >
-  Triage a unit test CI failure — determine root cause and whether
-  an agent can fix it or it needs human intervention.
+  Triage a discovered issue — determine root cause, fix strategy,
+  and whether an agent can fix it or it needs human intervention.
+  Used for both UT and E2E failures.
 ---
 
-# Unit Test Triage
-
-## When to Use
-When triaging an issue with `agent_test: ut` label.
+# Issue Triage
 
 ## Your Task
 Analyze the structured issue and determine:
 1. **Root cause** — what exactly is failing and why
-2. **Verdict** — can an agent fix this (`IMPLEMENTING`) or does it need a human (`NEEDS_HUMAN`)
+2. **Fix strategy** — what files/functions to change
+3. **Verdict** — can an agent fix this (`IMPLEMENTING`) or does it need a human (`NEEDS_HUMAN`)
 
 ## Analysis Steps
 
-1. **Read the error log** — identify the exception type and message:
-   - `RuntimeError: ... not implemented for 'XPU'` → missing XPU kernel dispatch
-   - `AssertionError: ... not close enough` → tolerance/precision issue
-   - `AttributeError: ... has no attribute` → API change in upstream pytorch
-   - `ImportError` / `ModuleNotFoundError` → missing dependency
-   - `SYCL error` / `PI_ERROR` → driver/runtime issue
+1. **Read the issue body carefully** — error log, reproducer, context, labels.
+2. **Search the codebase** to understand the failing code path.
+3. **Determine root cause** — trace from error message to the actual bug.
+4. **Assess fixability**:
+   - If the fix is within pytorch or torch-xpu-ops source → `IMPLEMENTING`
+   - If it requires external dependency updates, hardware changes, or complex
+     architecture redesign → `NEEDS_HUMAN`
 
-2. **Check the dependency label**:
-   - `upstream-pytorch` → likely fixable in pytorch/pytorch
-   - `oneDNN` → needs oneDNN update, usually NEEDS_HUMAN
-   - `triton` → needs triton-xpu update, usually NEEDS_HUMAN
-   - `driver` / `oneAPI` → environment issue, NEEDS_HUMAN
-   - `CPU fallback` → workaround exists but may need proper XPU impl
+## Reproducer
 
-3. **Determine fixability**:
-   - **IMPLEMENTING** — missing XPU dispatch, tolerance fix, dtype support, test adaptation
-   - **NEEDS_HUMAN** — third-party dependency, hardware issue, complex architecture change
+Extract the reproducer command from the issue description. It may be:
+- A pytest command
+- A python script
+- A bash command
+- Or just a test name with no explicit command
 
-## Common Fix Patterns (UT)
-
-| Error Pattern | Root Cause | Fix Location |
-|---|---|---|
-| `not implemented for 'XPU'` | Missing kernel dispatch | `aten/src/ATen/xpu/` or `torch/xpu/` |
-| `not close enough` / tolerance | Precision difference | Adjust `atol`/`rtol` in test or fix kernel |
-| `expected XPU but got CPU` | Missing device propagation | Op implementation |
-| `XFAIL` removed upstream | Test was expected to fail, now needs fixing | Test file or kernel |
-| `shape mismatch` | Kernel output shape bug | Kernel implementation |
+Use whatever the issue provides. Do NOT assume it's always pytest.
 
 ## Output
 Return ONLY valid JSON:
@@ -55,3 +44,9 @@ Return ONLY valid JSON:
   "reason": "one-line reason"
 }
 ```
+
+## Data Collection
+
+When you encounter error patterns during triage, note them in your analysis.
+Over time, patterns will emerge. Do NOT rely on pre-defined error categories —
+each issue is unique.

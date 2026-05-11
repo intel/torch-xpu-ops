@@ -2,37 +2,48 @@
 name: issue-discovery
 description: >
   Format a raw CI failure issue into a structured template.
-  Used by the discovery agent to enrich sparse issues with
-  reproducer, error log, test info, and context.
+  Used by the discovery agent when a raw issue has labels
+  (agent_test, agent_category, agent_dependency) but the body
+  is sparse or unstructured.
 ---
 
-# Issue Discovery — Format Raw CI Failures
-
-## When to Use
-When a raw issue has labels (agent_test, agent_category, agent_dependency)
-but the body is sparse or unstructured.
+# Issue Discovery — Format Raw Issues
 
 ## Your Task
 1. Read the template file at `.github/ISSUE_TEMPLATE/agent-issue-body.yml`.
 2. Identify all `{placeholder}` fields in the template's `body` value.
-3. Given the raw issue body + labels, extract a value for **each placeholder**.
+3. Given the raw issue body + labels, **search** for a value for each placeholder.
 4. Return a JSON object with one key per placeholder.
 
-## Extraction Rules
+## Search Strategy
+
+Issues may range from well-structured (reproducer, logs, context) to minimal
+(just a title with no body). Handle the worst case gracefully:
+
+1. **Search** the issue body for each piece of information.
+2. **If found**, extract it verbatim (preserve formatting, URLs, code blocks).
+3. **If not found**, leave the field as an empty string `""`.
+4. The triage agent will fill in blanks later — do NOT hallucinate content.
+
+## Extraction Guidelines
 
 1. **Failed Tests** — look for test names in backticks, bullet lists, or log output.
    Format as `- \`test_file.py::TestClass::test_method\`` (one per line).
+   If none found, leave empty.
 
 2. **Error Log** — extract the actual error traceback/assertion.
    Truncate to last ~50 lines. Remove CI infrastructure noise.
+   If none found, leave empty.
 
 3. **Reproducer** — copy the reproducer **verbatim** from the issue body.
-   Look for code blocks with `python` invocations, bash commands, or sections titled
-   "Reproducer" / "How to reproduce". Do NOT rewrite or simplify.
-   If no reproducer exists at all, construct from the test name:
-   ```bash
-   python -m pytest test/<test_file>.py -k <test_name> -x
-   ```
+   It may appear as any of these formats:
+   - `python -m pytest test_xxx.py` (unit test)
+   - `python scripts.py xxx` (e2e test)
+   - A standalone script or code snippet (random reproducer)
+   - Bash commands or other invocations
+   Look for code blocks, sections titled "Reproducer" / "How to reproduce",
+   or commands in the error context. Do NOT rewrite or simplify.
+   If no reproducer exists, leave empty (do NOT fabricate one).
 
 4. **Context** — copy relevant additional context verbatim: upstream PR/issue links,
    commit references, version info, env details. Preserve original URLs and formatting.

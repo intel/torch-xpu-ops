@@ -69,6 +69,10 @@ AGENT_PR_PREFIX: str = _git.get("pr_prefix", "[Agent]")
 _paths = _cfg.get("paths", {})
 PYTORCH_DIR = Path(os.environ.get("PYTORCH_DIR", os.path.expanduser(_paths.get("pytorch_dir", "~/pytorch"))))
 LOG_DIR = AGENT_DIR / "logs"
+<<<<<<< HEAD
+=======
+CONFIG_DIR = AGENT_DIR / "config"
+>>>>>>> agent/fix-agent-v1
 SKILLS_DIR = AGENT_DIR.parent / "skills"
 
 # ---------------------------------------------------------------------------
