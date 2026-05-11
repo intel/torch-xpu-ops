@@ -9,7 +9,7 @@
 """
 Regression test for incorrect strides in addmv/mv XPU ops.
 
-Reported in: https://github.com/intel/torch-xpu-ops/issues/<issue_number>
+Related issue: https://github.com/intel/torch-xpu-ops/issues/2669
 Failing tests:
   - test_ops_xpu.py::TestCommonXPU::test_out_addmv_xpu_float32
   - test_ops_xpu.py::TestCommonXPU::test_out_mv_xpu_float32
