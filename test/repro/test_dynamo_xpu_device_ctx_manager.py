@@ -1,5 +1,7 @@
+# Owner(s): ["module: dynamo"]
 import pytest
 import torch
+from torch.testing._internal.common_utils import run_tests
 
 
 @pytest.mark.skipif(not torch._dynamo.is_dynamo_supported(), reason="requires dynamo")
@@ -16,3 +18,7 @@ def test_dynamo_xpu_device_ctx_manager():
         opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
         res = opt_fn(x)
     torch.testing.assert_close(ref, res)
+
+
+if __name__ == "__main__":
+    run_tests()
