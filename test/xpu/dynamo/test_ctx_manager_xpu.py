@@ -583,8 +583,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
 
         x = torch.randn((2, 2), device=device_type)
         ref = fn(x)
-        opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
-        res = opt_fn(x)
+        trace_ctx = (
+            torch._dynamo.dont_skip_tracing()
+            if device_type == "xpu"
+            else contextlib.nullcontext()
+        )
+        with trace_ctx:
+            opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
+            res = opt_fn(x)
         self.assertEqual(ref, res)
 
     def test_autograd_profiler_enabled(self):
