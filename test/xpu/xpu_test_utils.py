@@ -1271,4 +1271,4 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 def ensure_pytorch_test_path(test_dir):
     test_dir = os.path.abspath(test_dir)
     if test_dir not in sys.path:
-        sys.path.append(test_dir)
+        sys.path.insert(0, test_dir)
