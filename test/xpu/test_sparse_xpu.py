@@ -25,7 +25,10 @@ from typing import Any
 import torch
 
 # Some editable/source-tree setups may import distributed helpers before torch exposes _opaque_base.
-import torch._opaque_base  # noqa: F401
+try:
+    import torch._opaque_base  # noqa: F401
+except ImportError:
+    pass
 import torch.testing._internal.common_device_type as common_device_type_mod
 from packaging import version
 from torch.testing import make_tensor

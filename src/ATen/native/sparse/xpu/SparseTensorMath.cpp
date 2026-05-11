@@ -194,27 +194,19 @@ SparseTensor& hspmm_out_sparse_xpu(
     return r_;
   }
 
-  Tensor indices = at::empty({1, nnz}, sparse._indices().options());
+  Tensor spIndices = sparse._indices();
+  Tensor row_indices = spIndices.select(0, 0);
+  Tensor col_indices = spIndices.select(0, 1);
 
-  Tensor values = at::empty({n, nnz}, dense.options());
-  values.transpose_(0, 1);
+  Tensor indices = at::empty({1, nnz}, spIndices.options());
+  indices.copy_(row_indices);
 
-  SparseTensor newSparse = sparse.clone();
-  Tensor spIndices = newSparse._indices();
-  Tensor dstIndices = spIndices.select(0, 0);
+  Tensor gathered = dense.index_select(0, col_indices);
+  Tensor values = gathered * sparse._values().unsqueeze(1);
 
-  indices.copy_(dstIndices);
-  dstIndices.copy_(at::arange(nnz, dstIndices.options()));
-
-  std::vector<int64_t> new_size = get_sparse_impl(newSparse)->sizes().vec();
-  new_size[0] = nnz;
-  get_sparse_impl(newSparse)->raw_resize_(
-      get_sparse_impl(newSparse)->sparse_dim(),
-      get_sparse_impl(newSparse)->dense_dim(),
-      new_size);
-
-  s_addmm_out_sparse_dense_xpu(values, values, newSparse, dense, 0, 1);
   get_sparse_impl(r_)->set_indices_and_values_unsafe(indices, values);
+  get_sparse_impl(r_)->set_nnz_and_narrow(nnz);
+  get_sparse_impl(r_)->set_coalesced(false);
 
   return r_;
 }
