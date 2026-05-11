@@ -10,3 +10,4 @@
 */**/**/**/**/*.pyc
 .lintbin
 yaml/templates
+lint.json
