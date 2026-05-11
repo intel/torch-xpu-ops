@@ -21,7 +21,7 @@ import torch._dynamo
 import torch._functorch
 import torch._functorch.config
 from torch._dynamo.backends.common import aot_autograd
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON
 from torch.testing._internal.triton_utils import requires_xpu_and_triton
 

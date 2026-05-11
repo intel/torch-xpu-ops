@@ -28,7 +28,7 @@ import sys
 import unittest
 
 import torch
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
     from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON
