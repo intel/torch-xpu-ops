@@ -393,8 +393,7 @@ class TestProfilerCorrectness(TestCase):
         self.assertIn(
             custom_label,
             event_names,
-            f"Custom label '{custom_label}' not found in events. "
-            f"Found: {event_names}",
+            f"Custom label '{custom_label}' not found in events. Found: {event_names}",
         )
 
     def test_profiler_schedule_callback(self):

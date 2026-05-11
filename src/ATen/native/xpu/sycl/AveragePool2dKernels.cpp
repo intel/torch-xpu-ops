@@ -24,8 +24,6 @@
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
-#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
-
 namespace at::native {
 namespace xpu {
 
