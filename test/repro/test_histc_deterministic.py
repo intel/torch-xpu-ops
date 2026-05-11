@@ -8,8 +8,7 @@
 
 # Owner(s): ["module: intel"]
 import torch
-import pytest
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestHistcDeterministic(TestCase):
@@ -40,4 +39,4 @@ class TestHistcDeterministic(TestCase):
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    run_tests()
