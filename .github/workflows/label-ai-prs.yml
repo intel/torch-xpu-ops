@@ -9,6 +9,7 @@ jobs:
     if: github.event.pull_request.user.login == 'copilot[bot]'
     runs-on: ubuntu-latest
     permissions:
+      issues: write
       pull-requests: write
     steps:
       - uses: actions/github-script@v7
