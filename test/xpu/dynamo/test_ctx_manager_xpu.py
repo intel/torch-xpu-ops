@@ -577,18 +577,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
     def test_cuda_device(self):
         def fn(x):
-            with torch.get_device_module(device_type).device(x.device.index - 1):
+            safe_device_index = max(x.device.index - 1, 0)
+            with torch.get_device_module(device_type).device(safe_device_index):
                 x = torch.sin(x + 1)
             return x
 
         x = torch.randn((2, 2), device=device_type)
         ref = fn(x)
-        trace_ctx = (
-            torch._dynamo.dont_skip_tracing()
-            if device_type == "xpu"
-            else contextlib.nullcontext()
-        )
-        with trace_ctx:
+        with torch._dynamo.dont_skip_tracing():
             opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
             res = opt_fn(x)
         self.assertEqual(ref, res)

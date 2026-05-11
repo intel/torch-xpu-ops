@@ -6,7 +6,8 @@ import torch
 @pytest.mark.skipif(not torch.xpu.is_available(), reason="requires xpu")
 def test_dynamo_xpu_device_ctx_manager():
     def fn(x):
-        with torch.xpu.device(x.device.index - 1):
+        safe_device_index = max(x.device.index - 1, 0)
+        with torch.xpu.device(safe_device_index):
             return torch.sin(x + 1)
 
     x = torch.randn((2, 2), device="xpu")
