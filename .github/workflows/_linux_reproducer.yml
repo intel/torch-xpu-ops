@@ -19,6 +19,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      pytorch_prs:
+        type: string
+        default: ''
+        description: Space-delimited list of extra PyTorch PR URLs to apply before running reproducer tests
 
 permissions:
   contents: read
@@ -66,6 +70,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          pytorch_prs: ${{ inputs.pytorch_prs }}
       - name: Run reproducer tests
         id: reproducer
         continue-on-error: true
