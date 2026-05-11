@@ -28,7 +28,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from issue_handler.utils.body_templates import (
-    get_status, set_status, render_initial_body,
+    get_status, set_status, render_initial_body, render_nonbug_body,
     check_action_item, append_log, sync_labels,
 )
 from issue_handler.format_agent import (
@@ -345,3 +345,141 @@ class TestSkipAlreadyFormatted:
         }
         run(999)
         mock_backend.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Non-bug template
+# ---------------------------------------------------------------------------
+
+SAMPLE_NONBUG_BODY = render_nonbug_body(
+    stage="DISCOVERED",
+    summary="Enable FP8/MXFP8 ops for XPU",
+    category="enhancement",
+    platform="xpu",
+    related_components="aten/src/ATen/native/xpu",
+    objective="Add FP8 support aligned with CUDA",
+    current_status="- [x] fill\n- [ ] flip",
+    context="Tracking issue for FP8 ops",
+    original_issue="raw body here",
+)
+
+
+class TestNonBugTemplate:
+    def test_has_discovered_status(self):
+        assert get_status(SAMPLE_NONBUG_BODY) == "DISCOVERED"
+
+    def test_has_type_section(self):
+        assert "## Type" in SAMPLE_NONBUG_BODY
+
+    def test_has_objective_section(self):
+        assert "## Objective" in SAMPLE_NONBUG_BODY
+
+    def test_no_failed_tests_section(self):
+        assert "## Failed Tests" not in SAMPLE_NONBUG_BODY
+
+    def test_no_error_log_section(self):
+        assert "## Error Log" not in SAMPLE_NONBUG_BODY
+
+    def test_no_root_cause_section(self):
+        assert "## Root Cause Analysis" not in SAMPLE_NONBUG_BODY
+
+    def test_category_rendered(self):
+        assert "enhancement" in SAMPLE_NONBUG_BODY
+
+    def test_objective_rendered(self):
+        assert "Add FP8 support aligned with CUDA" in SAMPLE_NONBUG_BODY
+
+    def test_original_issue_preserved(self):
+        assert "raw body here" in SAMPLE_NONBUG_BODY
+
+    def test_has_discovery_action_item(self):
+        assert "🔍 Issue formatted" in SAMPLE_NONBUG_BODY
+
+    def test_no_environment_section(self):
+        assert "## Environment" not in SAMPLE_NONBUG_BODY
+        assert "collect_env" not in SAMPLE_NONBUG_BODY
+
+
+class TestIssueTypeRouting:
+    @patch("issue_handler.format_agent.gh")
+    @patch("issue_handler.format_agent.get_backend")
+    def test_nonbug_uses_nonbug_template(self, mock_backend, mock_gh):
+        """When LLM returns issue_type=nonbug, non-bug template is used."""
+        mock_gh.get_issue_detail.return_value = {
+            "body": "Enable FP8 ops",
+            "labels": [{"name": "enhancement"}],
+        }
+        llm_output = json.dumps({
+            "issue_type": "nonbug",
+            "summary": "Enable FP8",
+            "category": "enhancement",
+            "platform": "xpu",
+            "related_components": "aten",
+            "objective": "Add FP8",
+            "current_status": "",
+            "context": "",
+        })
+        mock_backend_instance = MagicMock()
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend.return_value = mock_backend_instance
+
+        run(42)
+
+        written_body = mock_gh.update_issue_body.call_args[0][2]
+        assert "## Type" in written_body
+        assert "## Objective" in written_body
+        assert "## Failed Tests" not in written_body
+
+    @patch("issue_handler.format_agent.gh")
+    @patch("issue_handler.format_agent.get_backend")
+    def test_bug_uses_bug_template(self, mock_backend, mock_gh):
+        """When LLM returns issue_type=bug, bug template is used."""
+        mock_gh.get_issue_detail.return_value = {
+            "body": "RuntimeError in test_foo",
+            "labels": [],
+        }
+        llm_output = json.dumps({
+            "issue_type": "bug",
+            "summary": "RuntimeError in test_foo",
+            "failed_tests": "- `test_foo`",
+            "error_log": "RuntimeError: boom",
+            "reproducer": "",
+            "commit_scope": "",
+            "context": "",
+        })
+        mock_backend_instance = MagicMock()
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend.return_value = mock_backend_instance
+
+        run(43)
+
+        written_body = mock_gh.update_issue_body.call_args[0][2]
+        assert "## Failed Tests" in written_body
+        assert "## Error Log" in written_body
+        assert "## Type" not in written_body
+
+    @patch("issue_handler.format_agent.gh")
+    @patch("issue_handler.format_agent.get_backend")
+    def test_default_is_bug_when_no_issue_type(self, mock_backend, mock_gh):
+        """When LLM output has no issue_type field, default to bug template."""
+        mock_gh.get_issue_detail.return_value = {
+            "body": "some issue",
+            "labels": [],
+        }
+        llm_output = json.dumps({
+            "summary": "some issue",
+            "failed_tests": "",
+            "error_log": "",
+            "reproducer": "",
+            "commit_scope": "",
+            "context": "",
+        })
+        mock_backend_instance = MagicMock()
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend.return_value = mock_backend_instance
+
+        run(44)
+
+        written_body = mock_gh.update_issue_body.call_args[0][2]
+        assert "## Failed Tests" in written_body
+        assert "## Type" not in written_body

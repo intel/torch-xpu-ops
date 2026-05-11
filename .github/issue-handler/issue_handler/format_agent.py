@@ -14,7 +14,8 @@ import yaml
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS, AGENT_DIR
 from .utils.body_templates import (
-    get_status, render_initial_body, check_action_item, append_log, sync_labels,
+    get_status, render_initial_body, render_nonbug_body,
+    check_action_item, append_log, sync_labels,
 )
 from .utils.agent_backend import get_backend
 from .utils.json_utils import extract_json
@@ -113,9 +114,11 @@ def run(issue_number: int) -> None:
 
     # Call LLM with skill (no inline prompt)
     prompt = (
-        f"Read the issue-discovery skill and the template file "
-        f".github/ISSUE_TEMPLATE/agent-issue-body.yml to understand the "
-        f"output fields. Extract structured info from issue #{issue_number}.\n\n"
+        f"Read the issue-discovery skill at "
+        f".github/skills/issue-discovery/SKILL.md. "
+        f"Follow its classification rules and output format exactly. "
+        f"Do NOT read any other files — all info is below. "
+        f"Return ONLY a JSON object, no markdown fences.\n\n"
         f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
         f"### Labels\n" + "\n".join(f"- {l}" for l in label_names) + "\n\n"
         f"### Body\n{body[:5000]}"
@@ -156,22 +159,36 @@ def run(issue_number: int) -> None:
     if isinstance(ft, list):
         data["failed_tests"] = "\n".join(ft)
 
-    # Render formatted body
-    new_body = render_initial_body(
-        stage="DISCOVERED",
-        summary=data.get("summary", detail.get("title", "")),
-        test_type=data.get("test_type", ""),
-        category=data.get("category", ""),
-        dependency=data.get("dependency", ""),
-        platform=data.get("platform", ""),
-        failed_tests=data.get("failed_tests", ""),
-        error_log=data.get("error_log", ""),
-        reproducer=data.get("reproducer", ""),
-        commit_scope=data.get("commit_scope", ""),
-        context=data.get("context", ""),
-        environment=_extract_environment(body),
-        original_issue=body,
-    )
+    # Route to bug or non-bug template
+    issue_type = data.get("issue_type", "bug")
+    if issue_type == "nonbug":
+        new_body = render_nonbug_body(
+            stage="DISCOVERED",
+            summary=data.get("summary", detail.get("title", "")),
+            category=data.get("category", ""),
+            platform=data.get("platform", ""),
+            related_components=data.get("related_components", ""),
+            objective=data.get("objective", ""),
+            current_status=data.get("current_status", ""),
+            context=data.get("context", ""),
+            original_issue=body,
+        )
+    else:
+        new_body = render_initial_body(
+            stage="DISCOVERED",
+            summary=data.get("summary", detail.get("title", "")),
+            test_type=data.get("test_type", ""),
+            category=data.get("category", ""),
+            dependency=data.get("dependency", ""),
+            platform=data.get("platform", ""),
+            failed_tests=data.get("failed_tests", ""),
+            error_log=data.get("error_log", ""),
+            reproducer=data.get("reproducer", ""),
+            commit_scope=data.get("commit_scope", ""),
+            context=data.get("context", ""),
+            environment=_extract_environment(body),
+            original_issue=body,
+        )
 
     # Check action item and append log with extraction summary
     new_body = check_action_item(new_body, "Issue formatted")

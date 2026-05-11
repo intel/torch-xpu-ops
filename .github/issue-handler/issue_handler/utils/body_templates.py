@@ -131,6 +131,7 @@ def append_log(body: str, marker: str, log_text: str) -> str:
 # ---------------------------------------------------------------------------
 
 ISSUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue-body.yml"
+NONBUG_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "agent-issue-body-nonbug.yml"
 PR_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "ISSUE_TEMPLATE" / "pr-body-template.md"
 
 
@@ -212,6 +213,33 @@ def get_metadata(body: str, key: str) -> str | None:
     """Extract a metadata value from an HTML comment like <!-- key: value -->."""
     m = re.search(rf"<!--\s*{re.escape(key)}:\s*#?(.+?)\s*-->", body)
     return m.group(1).strip() if m else None
+
+
+def render_nonbug_body(
+    *,
+    stage: str = "DISCOVERED",
+    summary: str = "",
+    category: str = "",
+    platform: str = "",
+    related_components: str = "",
+    objective: str = "",
+    current_status: str = "",
+    context: str = "",
+    original_issue: str = "",
+) -> str:
+    """Render the non-bug issue body template (enhancement/task/perf/question)."""
+    return build_body(
+        NONBUG_TEMPLATE_PATH,
+        stage=stage,
+        summary=summary,
+        category=category,
+        platform=platform,
+        related_components=related_components,
+        objective=objective,
+        current_status=current_status,
+        context=context,
+        original_issue=original_issue,
+    )
 
 
 def render_pr_body(
