@@ -40,9 +40,11 @@ Tensor _histc_xpu(
     int64_t nbins,
     const Scalar& min,
     const Scalar& max) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("_histc_xpu");
+  if (self.is_floating_point()) {
+    // See Note [Writing Nondeterministic Operations]
+    // Nondeterministic for floating point because of atomicAdd usage
+    globalContext().alertNotDeterministic("_histc_xpu");
+  }
   return native::xpu::_histc_kernel(self, nbins, min, max);
 }
 
