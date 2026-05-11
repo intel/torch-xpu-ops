@@ -9600,4 +9600,5 @@
 - func: addmv.out(Tensor self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
+    XPU: addmv_out_xpu
     SparseCsrXPU: addmv_out_sparse_compressed_xpu

@@ -40,6 +40,14 @@ TORCH_XPU_API Tensor& baddbmm_complex_out_xpu(
     const Scalar& alpha,
     Tensor& out);
 
+TORCH_XPU_API Tensor& addmv_out_xpu(
+    const Tensor& self,
+    const Tensor& mat,
+    const Tensor& vec,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& out);
+
 TORCH_XPU_API Tensor dot_xpu(const Tensor& self, const Tensor& other);
 
 TORCH_XPU_API Tensor vdot_xpu(const Tensor& self, const Tensor& other);
