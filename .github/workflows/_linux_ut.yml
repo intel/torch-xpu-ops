@@ -206,29 +206,42 @@ jobs:
           cd ${{ github.workspace }}/ut_log/
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
           ut_dir="${latest_dir}/${{ inputs.ut }}"
-          new_failures_dir="${{ github.workspace }}/new_failures"
-          mkdir -p "$new_failures_dir"
           if [ "${{ inputs.ut }}" == "basic" ]; then
             ut_list="op_regression op_extended op_regression_dev1"
           else
             ut_list="${{ inputs.ut }}"
           fi
-          has_new=false
+          # Collect new failure case names from filtered logs
+          new_failure_names=$(mktemp)
           for ut_name in ${ut_list}; do
             filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
             if [ -s "$filtered_file" ]; then
-              cp "$filtered_file" "$new_failures_dir/"
-              has_new=true
+              cat "$filtered_file" >> "$new_failure_names"
             fi
           done
-          echo "has_new_failures=${has_new}" >> "$GITHUB_OUTPUT"
+          # Filter ut_failure_list.csv to keep only new failures (with error messages)
+          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          ut_failure_csv="${{ github.workspace }}/ut_log/ut_failure_list.csv"
+          if [ -s "$new_failure_names" ] && [ -f "$ut_failure_csv" ]; then
+            # Keep header line
+            head -2 "$ut_failure_csv" > "$new_failure_csv"
+            # Match rows by class_name and test_name from filtered log (format: category,class_name,test_name)
+            while IFS=',' read -r category class_name test_name; do
+              [ -z "$test_name" ] && continue
+              grep -F "$test_name" "$ut_failure_csv" >> "$new_failure_csv" || true
+            done < "$new_failure_names"
+            echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f "$new_failure_names"
       - name: Upload new failure list
         if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
         id: upload-new-failures
         uses: actions/upload-artifact@v4
         with:
           name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/new_failures/
+          path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -243,23 +256,20 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const path = require('path');
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const ut = '${{ inputs.ut }}';
             const newFailureUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
 
-            // Read new failure names from all filtered files
-            const newFailDir = '${{ github.workspace }}/new_failures';
-            let failureList = '';
-            if (fs.existsSync(newFailDir)) {
-              const files = fs.readdirSync(newFailDir).filter(f => f.endsWith('.log'));
-              for (const f of files) {
-                const content = fs.readFileSync(path.join(newFailDir, f), 'utf8').trim();
-                if (content) {
-                  failureList += `--- ${f} ---\n${content}\n`;
-                }
-              }
+            // Read new failure list csv
+            const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
+            let failureTable = '';
+            if (fs.existsSync(csvFile)) {
+              const raw = fs.readFileSync(csvFile, 'utf8').trim();
+              const maxLen = 50000;
+              failureTable = raw.length > maxLen
+                ? '... (truncated, see full report in artifact)\n' + raw.slice(-maxLen)
+                : raw;
             }
 
             const body = [
@@ -271,9 +281,8 @@ jobs:
               `New failure list artifact: ${newFailureUrl}`,
               '',
               '**New failures:**',
-              '```',
-              failureList.trim(),
-              '```',
+              '',
+              failureTable,
               '',
               'Instructions:',
               '1. Analyze whether the failures are caused by PR changes',
