@@ -104,6 +104,15 @@ struct FLASH_FWD_params : public QKV_params {
   bool is_causal;
   float scale;
   bool is_fp16;
+
+  // Variable-length (varlen) attention fields for nested tensor support.
+  // When non-null, the kernel operates in packed/varlen mode:
+  // Q is [total_q, num_heads, head_dim], K/V are [total_k, num_heads,
+  // head_dim], and cu_seqlens_q/k are int32 arrays of shape [batch_size + 1].
+  int* cu_seqlens_q = nullptr;
+  int* cu_seqlens_k = nullptr;
+  int total_q = 0;
+  int total_k = 0;
 };
 
 struct FLASH_BWD_params : public FLASH_FWD_params {

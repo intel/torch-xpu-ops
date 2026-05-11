@@ -31,6 +31,18 @@ flash_attention_forward_sycltla(
     const bool is_causal,
     const float scale);
 
+std::tuple<at::Tensor, at::Tensor> flash_attention_forward_varlen_sycltla(
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const at::Tensor& cu_seqlens_q,
+    const at::Tensor& cu_seqlens_k,
+    const int64_t max_seqlen_q,
+    const int64_t max_seqlen_k,
+    const double dropout,
+    const bool is_causal,
+    const float scale);
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
     const at::Tensor& grad_out,
     const at::Tensor& query,

@@ -43,6 +43,11 @@
 // batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
 using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
 
+#include <flash_attention_v2/collective/fmha_fusion.hpp>
+
+// batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
+using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
+
 namespace cute {
 
 template <class...>
@@ -264,7 +269,226 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
   runner.run(queue, params, hw_info);
 }
 
-template <typename T, bool IS_CAUSAL>
+template <class...>
+class MhaName;
+
+template <class FMHAPrefillKernel, bool isVarLen>
+struct FA2Runner {
+  using ElementQ = typename FMHAPrefillKernel::ElementQ;
+  using ElementK = typename FMHAPrefillKernel::ElementK;
+  using ElementV = typename FMHAPrefillKernel::ElementV;
+  using ElementO = typename FMHAPrefillKernel::ElementO;
+
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
+
+  //
+  // Methods
+  //
+
+  // Note that the GemmUniversalAdapter currently doesn't support flash
+  // attention, which is why this secondary `run` function is required to launch
+  // the kernel.
+  void run(sycl::queue& queue, typename FMHAPrefillKernel::Params params) {
+    namespace syclex = sycl::ext::oneapi::experimental;
+    namespace intelex = sycl::ext::intel::experimental;
+
+    dim3 const block = FMHAPrefillKernel::get_block_shape();
+    dim3 const grid = FMHAPrefillKernel::get_grid_shape(params);
+
+    // configure smem size and carveout
+    int smem_size = FMHAPrefillKernel::SharedStorageSize;
+
+    const auto sycl_block = compat::dim3(block.x, block.y, block.z);
+    const auto sycl_grid = compat::dim3(grid.x, grid.y, grid.z);
+
+    // Launch parameters depend on whether SYCL compiler supports work-group
+    // scratch memory extension
+    compat::experimental::launch_properties launch_props{
+        syclex::work_group_scratch_size(smem_size),
+    };
+    compat::experimental::kernel_properties kernel_props{
+        syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
+    compat::experimental::launch_policy policy{
+        sycl_grid, sycl_block, launch_props, kernel_props};
+    compat::experimental::launch<
+        cutlass::device_kernel<FMHAPrefillKernel>,
+        MhaName<FMHAPrefillKernel>>(policy, queue, params);
+  }
+
+  void run(
+      sycl::queue& queue,
+      FLASH_FWD_params& params,
+      const cutlass::KernelHardwareInfo& hw_info) {
+    int batch = params.batch_size;
+    int num_heads_qo = params.num_heads_qo;
+    int num_heads_kv = params.num_heads_kv;
+    int seq_len_qo = params.seqlen_qo;
+    int seq_len_kv = params.seqlen_kv;
+    int head_size_qk = params.head_size_qk;
+    int head_size_vo = params.head_size_vo;
+
+    ProblemShapeType shape;
+    shape.batch = batch;
+    shape.num_heads_q = num_heads_qo;
+    shape.num_heads_kv = num_heads_kv;
+    shape.seq_len_qo = seq_len_qo;
+    shape.seq_len_kv = seq_len_kv;
+    shape.head_size_qk = head_size_qk;
+    shape.head_size_vo = head_size_vo;
+
+    const ElementQ* q_ptr = static_cast<const ElementQ*>(params.q_ptr);
+    const ElementK* k_ptr = static_cast<const ElementK*>(params.k_ptr);
+    const ElementV* v_ptr = static_cast<const ElementV*>(params.v_ptr);
+    ElementO* o_ptr = static_cast<ElementO*>(params.o_ptr);
+    float* lse_ptr = static_cast<float*>(params.lse_ptr);
+    float softmax_scale = params.scale;
+
+    typename FMHAPrefillKernel::Arguments arguments{
+        {
+            shape,
+            q_ptr,
+            params.q_batch_stride,
+            params.q_head_stride,
+            params.q_row_stride,
+            k_ptr,
+            params.k_batch_stride,
+            params.k_head_stride,
+            params.k_row_stride,
+            v_ptr,
+            params.v_batch_stride,
+            params.v_head_stride,
+            params.v_row_stride,
+            o_ptr,
+            params.o_batch_stride,
+            params.o_head_stride,
+            params.o_row_stride,
+            lse_ptr,
+        },
+        {softmax_scale},
+        {},
+        hw_info};
+
+    // Define device-global scratch memory
+    size_t workspace_size = FMHAPrefillKernel::get_workspace_size(arguments);
+    at::Tensor workspace_tensor = at::empty(
+        {static_cast<int64_t>(workspace_size)},
+        at::device(at::kXPU).dtype(at::kByte));
+
+    if (!FMHAPrefillKernel::can_implement(arguments)) {
+      TORCH_CHECK(
+          false,
+          "Invalid Problem Size",
+          batch,
+          "x",
+          num_heads_qo,
+          "x",
+          seq_len_qo,
+          "x",
+          seq_len_kv,
+          "x",
+          head_size_qk,
+          "x",
+          head_size_vo);
+      return;
+    }
+
+    // Initialize the workspace
+    CUTLASS_CHECK(FMHAPrefillKernel::initialize_workspace(
+        arguments, workspace_tensor.data_ptr()));
+
+    // Convert host-side arguments to device-side arguments to be passed to the
+    // kernel
+    auto kernel_params = FMHAPrefillKernel::to_underlying_arguments(
+        arguments, workspace_tensor.data_ptr());
+
+    // Launch a SYCL kernel using scratch/shared memory
+    run(queue, kernel_params);
+  }
+};
+
+template <
+    typename T,
+    bool IS_CAUSAL,
+    typename TileShapeQK,
+    typename TileShapePV,
+    typename TileShapeOutPut,
+    typename SubgroupLayoutQK,
+    int PipelineStages,
+    bool isVarLen = false>
+void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
+  using ElementQ = T;
+  using ElementK = T;
+  using ElementV = T;
+  using ElementO = T;
+  using StrideQ = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideK = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideV = Stride<_1, int64_t, int64_t, int64_t>;
+  using StrideO = Stride<int64_t, _1, int64_t, int64_t>;
+  auto make_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  auto make_const_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<const decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  using TensorQ = decltype(make_const_dummy_tensor(ElementQ{}, StrideQ{}));
+  using TensorK = decltype(make_const_dummy_tensor(ElementK{}, StrideK{}));
+  using TensorV = decltype(make_const_dummy_tensor(ElementV{}, StrideV{}));
+  using TensorO = decltype(make_dummy_tensor(ElementO{}, StrideO{}));
+
+  static constexpr int SGTileQ =
+      get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})))();
+  static_assert(SGTileQ <= 16, "Subgroup tile in Q dimension must be <= 16");
+  using MMAOperation = XE_DPAS_TT<cute::gcd(SGTileQ, 8), float, T>;
+  using SubgroupLayoutPV =
+      decltype(cutlass::fmha::collective::get_sg_layout_pv(SubgroupLayoutQK{}));
+  using TiledMMAQK = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapeQK>,
+      SubgroupLayoutQK>::TiledMMA;
+  using TiledMMAPV = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapePV>,
+      SubgroupLayoutPV>::TiledMMA;
+  static_assert(
+      get<0>(TileShapeOutPut{}) == get<0>(TileShapePV{}),
+      "Output tile and P*V tile have different sizes in Q dimension");
+  constexpr int VTiles = get<1>(TileShapeOutPut{}) / get<1>(TileShapePV{});
+
+  cutlass::KernelHardwareInfo hw_info;
+
+  // Mainloop
+  using MainloopDispatchPolicy = cutlass::fmha::XeDefault<PipelineStages>;
+  using CollectiveMainloop = cutlass::fmha::collective::FMHAFwdMainloop<
+      MainloopDispatchPolicy,
+      IS_CAUSAL,
+      TiledMMAQK,
+      TiledMMAPV,
+      VTiles,
+      TensorQ,
+      TensorK,
+      TensorV>;
+
+  // Epilogue
+  using CollectiveEpilogue = cutlass::fmha::collective::
+      FMHAFwdEpilogue<CollectiveMainloop, TileShapeOutPut, TensorO>;
+
+  using Scheduler = cutlass::fmha::kernel::XeFMHAIndividualTileScheduler;
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
+  using FMHAPrefillKernel = cutlass::fmha::kernel::XeFMHAFwdKernel<
+      ProblemShapeType,
+      CollectiveMainloop,
+      CollectiveEpilogue,
+      Scheduler>;
+
+  FA2Runner<FMHAPrefillKernel, isVarLen> runner;
+  runner.run(queue, params, hw_info);
+}
+
+template <typename T, bool IS_CAUSAL, bool IS_VARLEN = false>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
   const int headdim = params.head_size_vo;
 
@@ -354,6 +578,14 @@ void run_mha_fwd(sycl::queue& queue, FLASH_FWD_params& params) {
   FP16_SWITCH(params.is_fp16, [&] {
     BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
       run_mha_fwd_<elem_type, IS_CAUSAL>(queue, params);
+    });
+  });
+}
+
+void run_mha_fwd_varlen(sycl::queue& queue, FLASH_FWD_params& params) {
+  FP16_SWITCH(params.is_fp16, [&] {
+    BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
+      run_mha_fwd_<elem_type, IS_CAUSAL, /*IS_VARLEN=*/true>(queue, params);
     });
   });
 }
@@ -502,6 +734,129 @@ flash_attention_forward_sycltla(
       /* max_seqlen_batch_k */ c10::SymInt(seqlen_kv),
       /* philox_seed */ at::empty({}, at::dtype(at::kLong)),
       /* philox_offset */ at::empty({}, at::dtype(at::kLong))};
+}
+
+std::tuple<at::Tensor, at::Tensor> flash_attention_forward_varlen_sycltla(
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const at::Tensor& cu_seqlens_q,
+    const at::Tensor& cu_seqlens_k,
+    const int64_t max_seqlen_q,
+    const int64_t max_seqlen_k,
+    const double dropout,
+    const bool is_causal,
+    const float scale) {
+  TORCH_CHECK(
+      dropout == 0.0,
+      "FlashAttentionForwardXPU varlen does not support dropout > 0.0 yet");
+
+  CHECK_DEVICE(query);
+  CHECK_DEVICE(key);
+  CHECK_DEVICE(value);
+  CHECK_DEVICE(cu_seqlens_q);
+  CHECK_DEVICE(cu_seqlens_k);
+
+  auto dtype = query.scalar_type();
+  TORCH_CHECK(
+      dtype == at::kHalf || dtype == at::kBFloat16,
+      "FlashAttentionForwardXPU varlen only supports fp16 and bf16");
+  TORCH_CHECK(
+      key.scalar_type() == dtype && value.scalar_type() == dtype,
+      "FlashAttentionForwardXPU varlen: query, key, value must have the same dtype");
+
+  // Inputs are packed: query is [total_q, num_heads, head_dim],
+  // key/value are [total_k, num_heads_kv, head_dim].
+  TORCH_CHECK(
+      query.dim() == 3 && key.dim() == 3 && value.dim() == 3,
+      "FlashAttentionForwardXPU varlen requires query, key, value to be 3 dimensional "
+      "(packed format: [total_tokens, num_heads, head_dim])");
+
+  const int total_q = query.sizes()[0];
+  const int numhead_qo = query.sizes()[1];
+  const int headsize_qk = query.sizes()[2];
+  const int total_k = key.sizes()[0];
+  const int numhead_kv = key.sizes()[1];
+  const int headsize_vo = value.sizes()[2];
+
+  const int batch_size = cu_seqlens_q.sizes()[0] - 1;
+  TORCH_CHECK(
+      batch_size > 0,
+      "FlashAttentionForwardXPU varlen: batch_size must be > 0");
+  TORCH_CHECK(
+      cu_seqlens_k.sizes()[0] - 1 == batch_size,
+      "FlashAttentionForwardXPU varlen: cu_seqlens_q and cu_seqlens_k must have the same batch_size");
+
+  TORCH_CHECK(
+      numhead_qo % numhead_kv == 0,
+      "FlashAttentionForwardXPU varlen: numhead_qo must be divisible by numhead_kv");
+
+  TORCH_CHECK(
+      query.stride(-1) == 1 && key.stride(-1) == 1 && value.stride(-1) == 1,
+      "FlashAttentionForwardXPU varlen: input tensors must have contiguous last dimension");
+
+  auto opts = query.options();
+  at::Tensor out = at::empty({total_q, numhead_qo, headsize_vo}, opts);
+
+  at::Tensor logsumexp =
+      at::empty({numhead_qo, total_q}, opts.dtype(at::kFloat));
+
+  // Convert cu_seqlens to int32 on device if needed
+  at::Tensor cu_seqlens_q_int32 = cu_seqlens_q.to(at::kInt).contiguous();
+  at::Tensor cu_seqlens_k_int32 = cu_seqlens_k.to(at::kInt).contiguous();
+
+  auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
+
+  FLASH_FWD_params params;
+  params = {};
+  params.is_fp16 = dtype == at::kHalf;
+
+  // Set pointers
+  params.q_ptr = const_cast<void*>(query.data_ptr());
+  params.k_ptr = const_cast<void*>(key.data_ptr());
+  params.v_ptr = const_cast<void*>(value.data_ptr());
+  params.o_ptr = out.data_ptr();
+  params.lse_ptr = logsumexp.data_ptr();
+
+  // For packed format: batch_stride = 0 (offsets come from cu_seqlens)
+  params.q_batch_stride = 0;
+  params.k_batch_stride = 0;
+  params.v_batch_stride = 0;
+  params.o_batch_stride = 0;
+
+  // Strides within each token: [total, num_heads, head_dim]
+  params.q_head_stride = query.stride(1);
+  params.k_head_stride = key.stride(1);
+  params.v_head_stride = value.stride(1);
+  params.o_head_stride = out.stride(1);
+  params.q_row_stride = query.stride(0);
+  params.k_row_stride = key.stride(0);
+  params.v_row_stride = value.stride(0);
+  params.o_row_stride = out.stride(0);
+
+  // Dimensions
+  params.batch_size = batch_size;
+  params.num_heads_qo = numhead_qo;
+  params.num_heads_kv = numhead_kv;
+  params.seqlen_qo = max_seqlen_q;
+  params.seqlen_kv = max_seqlen_k;
+  params.head_size_qk = headsize_qk;
+  params.head_size_vo = headsize_vo;
+  params.seqlen_qo_pad = 0;
+  params.seqlen_kv_pad = 0;
+
+  params.is_causal = is_causal;
+  params.scale = scale;
+
+  // Varlen-specific fields
+  params.cu_seqlens_q = cu_seqlens_q_int32.data_ptr<int>();
+  params.cu_seqlens_k = cu_seqlens_k_int32.data_ptr<int>();
+  params.total_q = total_q;
+  params.total_k = total_k;
+
+  cute::run_mha_fwd_varlen(sycl_queue, params);
+
+  return std::make_tuple(out, logsumexp);
 }
 
 } // namespace sycltla
