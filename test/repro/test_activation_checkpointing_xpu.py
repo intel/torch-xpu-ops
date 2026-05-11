@@ -76,5 +76,5 @@ def test_dropout_activation_checkpointing_xpu():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../xpu/dynamo"))
     import test_higher_order_ops_xpu as m
 
-    t = m.ActivationCheckpointingViaTagsTests()
+    t = m.ActivationCheckpointingTests()
     t.test_dropout()

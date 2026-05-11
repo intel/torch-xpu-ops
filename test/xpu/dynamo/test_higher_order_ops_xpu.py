@@ -255,7 +255,7 @@ def count_ops(gm, args, freq, op):
 # =============================================================================
 
 
-class ActivationCheckpointingViaTagsTests(TestCase):
+class ActivationCheckpointingTests(TestCase):
     """
     XPU adaptation of upstream PyTorch's ActivationCheckpointingTests from
     ``test/dynamo/test_higher_order_ops.py``.
