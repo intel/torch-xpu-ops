@@ -35,7 +35,7 @@ Return JSON with these fields:
   "dependency": "upstream | ... if applicable",
   "platform": "xpu | BMG | ...",
   "failed_tests": "- `test_file.py::TestClass::test_method`\n- ...",
-  "error_log": "the actual error traceback (last ~50 lines, no CI noise)",
+  "error_log": "the COMPLETE error traceback verbatim — include full stack trace, do NOT truncate or summarize",
   "reproducer": "verbatim reproducer from the issue body",
   "commit_scope": "SHA hashes, compare links, or last pass/first fail",
   "context": "additional context: links, version info, notes"
@@ -63,7 +63,8 @@ Return JSON with these fields:
 2. **If a field is not found**, leave it as an empty string `""`.
 3. **Do NOT hallucinate** — if info isn't in the issue, leave it empty.
 4. **Failed Tests** — format as `- \`test_file.py::TestClass::test_method\`` (one per line).
-5. **Error Log** — extract the actual error traceback/assertion. Truncate to ~50 lines.
+5. **Error Log** — extract the COMPLETE error traceback/assertion VERBATIM from the issue.
+   Include the full stack trace. Do NOT truncate, summarize, or shorten.
 6. **Reproducer** — copy **verbatim**. Look for code blocks, "Reproducer", "How to reproduce".
    Do NOT fabricate. The reproducer could be a pytest command, a script, or bash commands.
 7. **Labels are authoritative** — if labels say `agent_test: ut`, test_type is `ut`.
