@@ -10564,9 +10564,10 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
     def test_int64_upsample3d(self, device, dtype):
         x = torch.ones((1, 256, 16, 720, 1280), dtype=dtype, device=device)
         try:
-            torch.nn.functional.interpolate(x, scale_factor=2, mode="nearest")
+            result = torch.nn.functional.interpolate(x, scale_factor=2, mode="nearest")
         except Exception as e:
             self.fail(f"Unexpected exception raised: {e}")
+        self.assertEqual(result.shape, torch.Size([1, 256, 32, 1440, 2560]))
 
     def test_upsample_nearest1d_meta(self):
         # TODO: this test should be triggered by test_nn.py but right

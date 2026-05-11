@@ -30,7 +30,7 @@ struct UpsampleNearest3dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t dst_idx = item.get_global_linear_id();
 
-    if (dst_idx >= (int64_t)(dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_))
+    if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
     int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
@@ -48,7 +48,7 @@ struct UpsampleNearest3dKernelFunctor {
 
     int64_t src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
         src_y * src_dim_w_ + src_x;
-    for (int64_t b = 0; b < (int64_t)dim_b_; b++) {
+    for (int64_t b = 0; b < dim_b_; b++) {
       output_[dst_idx] = input_[src_idx];
       src_idx += dim_c_ * src_c_stride;
       dst_idx += dim_c_ * dst_c_stride;
@@ -233,7 +233,7 @@ struct UpsampleNearest3dBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t dst_idx = item.get_global_linear_id();
 
-    if (dst_idx >= (int64_t)(dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_))
+    if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
     int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
@@ -253,7 +253,7 @@ struct UpsampleNearest3dBackwardFunctor {
     int64_t src_x = index_bw_op_(width_scale_, dst_x, src_dim_w_);
     int64_t src_x_up = index_bw_op_(width_scale_, dst_x + 1, src_dim_w_);
 
-    for (int64_t b = 0; b < (int64_t)dim_b_; b++) {
+    for (int64_t b = 0; b < dim_b_; b++) {
       accscalar_t grad = 0;
       for (int64_t z = src_z; z < src_z_up; z++) {
         for (int64_t y = src_y; y < src_y_up; y++) {
