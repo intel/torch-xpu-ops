@@ -17,12 +17,18 @@ Analyze the structured issue and determine:
 ## Analysis Steps
 
 1. **Read the issue body carefully** — error log, reproducer, context, labels.
-2. **Search the codebase** to understand the failing code path.
-3. **Determine root cause** — trace from error message to the actual bug.
-4. **Assess fixability**:
+2. **Quick classification (BEFORE deep analysis):**
+   - If labeled as `[Task]`, `[Feature]`, or describes broad alignment/enablement work → immediately return `NEEDS_HUMAN` with reason "Umbrella/task issue, not a single fixable bug"
+   - If it describes a "feature gap" or "blocked by missing feature" → `NEEDS_HUMAN`
+   - If it has a clear error message/stack trace → proceed to step 3
+3. **Search the codebase** to understand the failing code path. **Limit to 3 file reads** — if you haven't found the root cause after reading 3 files, output your best analysis with what you have.
+4. **Determine root cause** — trace from error message to the actual bug.
+5. **Assess fixability**:
    - If the fix is within pytorch or torch-xpu-ops source → `IMPLEMENTING`
    - If it requires external dependency updates, hardware changes, or complex
      architecture redesign → `NEEDS_HUMAN`
+
+**TIME BUDGET: You MUST output your JSON within 5 minutes. If unsure, output IMPLEMENTING with your best guess — don't keep searching.**
 
 ## Reproducer
 
