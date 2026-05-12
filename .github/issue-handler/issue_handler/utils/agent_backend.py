@@ -203,9 +203,12 @@ class OpenCodeBackend(AgentBackend):
                 if has_fileno:
                     fd = proc.stdout.fileno()
                 buf = ""
+                idle_timeout = 180  # kill if no output for 3 minutes
+                last_output_time = time.monotonic()
+
                 def _read_lines():
                     """Yield lines from stdout, using select() when available."""
-                    nonlocal buf
+                    nonlocal buf, last_output_time
                     if not has_fileno:
                         # Fallback for mocked/non-fd streams
                         for raw_line in proc.stdout:
@@ -219,6 +222,14 @@ class OpenCodeBackend(AgentBackend):
                             log_f.write("\n=== TIMEOUT (wall-clock) ===\n")
                             raise subprocess.TimeoutExpired(
                                 cmd, effective_timeout)
+                        # Idle timeout: kill if no output for too long
+                        idle_elapsed = time.monotonic() - last_output_time
+                        if idle_elapsed > idle_timeout:
+                            proc.kill()
+                            proc.wait()
+                            log_f.write(f"\n=== IDLE TIMEOUT ({idle_timeout}s no output) ===\n")
+                            raise subprocess.TimeoutExpired(
+                                cmd, effective_timeout)
                         ready, _, _ = select.select([fd], [], [], min(remaining, 30))
                         if not ready:
                             continue
@@ -226,6 +237,7 @@ class OpenCodeBackend(AgentBackend):
                         if not chunk:
                             break
                         buf += chunk.decode("utf-8", errors="replace")
+                        last_output_time = time.monotonic()
                         while "\n" in buf:
                             line, buf = buf.split("\n", 1)
                             yield line + "\n"
@@ -271,7 +283,12 @@ class OpenCodeBackend(AgentBackend):
                         if tokens:
                             token_usage.add_step(tokens)
                         token_usage.add_cost(part.get("cost", 0))
-                proc.wait(timeout=timeout)
+                # Ensure the process is dead after stdout EOF
+                # (opencode may close stdout while still waiting on API)
+                if proc.poll() is None:
+                    log_f.write("\n=== PROCESS STILL ALIVE AFTER EOF — killing ===\n")
+                    proc.kill()
+                proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
