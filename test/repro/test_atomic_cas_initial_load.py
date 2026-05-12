@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
+
 """
 Reproducer for: mixed non-atomic/atomic memory access in CAS loop initial loads.
 
@@ -64,9 +66,9 @@ def test_scatter_add_fp_dtypes(xpu, dtype):
     index_cpu = index.cpu()
     dst_ref = torch.zeros(n // 2, dtype=torch.float32)
     dst_ref.scatter_add_(0, index_cpu, src_cpu)
-    assert torch.allclose(
-        dst.cpu().float(), dst_ref, atol=1e-2
-    ), f"Mismatch for dtype={dtype}"
+    assert torch.allclose(dst.cpu().float(), dst_ref, atol=1e-2), (
+        f"Mismatch for dtype={dtype}"
+    )
 
 
 def test_histc_float_atomic(xpu):
@@ -84,3 +86,9 @@ def test_index_add_concurrent_atomic(xpu):
     dst = torch.zeros(1, dtype=torch.float32, device=xpu)
     dst.index_add_(0, index, src)
     assert dst[0].item() == pytest.approx(n, abs=1e-3)
+
+
+if __name__ == "__main__":
+    raise RuntimeError(
+        "This reproducer uses pytest fixtures. Run with: pytest test/repro/test_atomic_cas_initial_load.py"
+    )
