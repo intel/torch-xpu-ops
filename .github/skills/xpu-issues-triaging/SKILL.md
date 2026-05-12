@@ -1,7 +1,7 @@
 ---
-name: issue-fix
+name: issue-triaging
 description: >
-  Propose for issue fix. Works for both pytorch and torch-xpu-ops repos.
+  Propose for issue triaging. Works for both pytorch and torch-xpu-ops repos.
 ---
 
 # Fix XPU Issue
@@ -82,10 +82,9 @@ dedicated workflow:
    - Genuine behavioral difference requiring XPU-specific handling
 5. Continue to Step 2 with the root cause.
 
-## Step 2: Implement the Fix
+## Step 2: Propose the Fix
 
-Follow the **Proposed Fix Strategy** from the issue. This is **issue-driven
-development** — the fix must address the root cause described in the issue,
+This is **issue-driven development** — the fix must address the root cause described in the issue,
 not merely make a single reproducer pass.
 
 Key principles:
