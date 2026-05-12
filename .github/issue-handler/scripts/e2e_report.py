@@ -54,19 +54,37 @@ TOKEN_PATTERN = re.compile(
 
 def parse_issue_status(body: str) -> dict:
     """Parse an issue's Action Items to determine stage, tokens, and failure info."""
+    from issue_handler.utils.body_templates import get_status as _get_status
+
     result = {
         "stage": "unformatted",
         "stages_done": [],
         "tokens": {},
         "failure_reason": None,
         "failure_category": None,
+        "pipeline_status": _get_status(body),  # DISCOVERED/TRIAGING/IMPLEMENTING/IN_REVIEW/NEEDS_HUMAN
     }
 
-    # Determine completed stages
+    # Determine completed stages from checkboxes
     for stage_name, pattern in STAGE_PATTERNS:
         if pattern.search(body):
             result["stages_done"].append(stage_name)
             result["stage"] = stage_name
+
+    # Infer stages from pipeline_status if checkboxes are missing (nonbug template gap)
+    status = result["pipeline_status"]
+    if status in ("IMPLEMENTING", "IN_REVIEW", "NEEDS_HUMAN") and "triaged" not in result["stages_done"]:
+        result["stages_done"].append("triaged")
+        if result["stage"] in ("unformatted", "formatted"):
+            result["stage"] = "triaged"
+    if status == "IN_REVIEW" and "fixed" not in result["stages_done"]:
+        result["stages_done"].append("fixed")
+        result["stages_done"].append("pr_proposed")
+        result["stage"] = "pr_proposed"
+    if "formatted" not in result["stages_done"] and status:
+        result["stages_done"].insert(0, "formatted")
+        if result["stage"] == "unformatted":
+            result["stage"] = "formatted"
 
     # Extract token usage per agent log section
     for marker, label in [("discovery", "format"), ("triage", "triage"), ("fix", "fix")]:
@@ -244,14 +262,24 @@ def build_report(results: list[dict], repo: str | None = None,
         tokens_str = " / ".join(tokens_parts)
         cost_str = f"${total_cost:.4f}" if total_cost > 0 else "—"
 
-        # Result
+        # Result — use pipeline_status as authoritative source
         failure = r.get("failure_reason", "")
         category = r.get("failure_category", "")
+        pipeline_status = r.get("pipeline_status", "")
+
         if "merged" in stages or "reviewed" in stages:
             result = "✅ PASSED"
             total_pass += 1
+        elif pipeline_status == "NEEDS_HUMAN":
+            result = "❌ NEEDS_HUMAN"
+            total_fail += 1
+            if not failure:
+                failure = "Triage timeout or too complex"
+                category = "timeout"
+        elif pipeline_status == "IN_REVIEW":
+            result = "🔄 IN REVIEW"
+            total_in_progress += 1
         elif failure:
-            cat_desc = FAILURE_CATEGORIES.get(category, category)
             result = "❌ FAILED"
             total_fail += 1
         elif r["stage"] == "unformatted":

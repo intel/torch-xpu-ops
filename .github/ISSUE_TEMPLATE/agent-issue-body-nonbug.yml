@@ -30,6 +30,18 @@ body: |
     <details><summary>Discovery log</summary>
     <!-- agent:discovery-log -->
     </details>
+  - [ ] 🧠 Root cause identified (Triage Agent)
+    <details><summary>Triage log</summary>
+    <!-- agent:triage-log -->
+    </details>
+  - [ ] 🔧 Fix implemented (Fix Agent)
+    <details><summary>Fix log</summary>
+    <!-- agent:fix-log -->
+    </details>
+  - [ ] ✅ Fix verified locally
+  - [ ] 📋 PR proposed
+  - [ ] 👀 Human review
+  - [ ] 🎉 PR merged
 
   ## Original Issue
   <details><summary>Original issue body</summary>
