@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/complex.h>
+#include <ATen/ops/empty_strided.h>
 #include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/real.h>
@@ -434,6 +435,15 @@ Tensor _fft_c2r_mkl(
         c2c_dims,
         static_cast<int64_t>(fft_norm_mode::none),
         /*forward=*/false);
+  }
+
+  // HermitSymm mutates in-place; avoid mutating user-visible input when
+  // aliased.
+  if (input.is_same(self)) {
+    auto input_copy =
+        at::empty_strided(input.sizes(), input.strides(), input.options());
+    input_copy.copy_(input);
+    input = input_copy;
   }
 
   auto in_sizes = input.sizes();
