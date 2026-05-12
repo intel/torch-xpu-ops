@@ -160,10 +160,34 @@ def _stage_emoji(stages_done: list[str], stage: str) -> str:
     return "⬜"
 
 
-def build_report(results: list[dict], repo: str | None = None) -> str:
-    """Build markdown report table."""
+def _parse_existing_rows(body: str) -> dict[int, str]:
+    """Parse existing table rows from a tracking issue body.
+
+    Returns {issue_number: full_row_line} for rows that match the expected format.
+    """
+    rows: dict[int, str] = {}
+    if not body:
+        return rows
+    for line in body.splitlines():
+        # Match rows like: | [#123](url) | title | ...
+        m = re.match(r"\|\s*\[#(\d+)\]", line)
+        if m:
+            rows[int(m.group(1))] = line
+    return rows
+
+
+def build_report(results: list[dict], repo: str | None = None,
+                 existing_body: str | None = None) -> str:
+    """Build markdown report table, merging with existing rows if provided.
+
+    If existing_body is given, rows for issues NOT in the current results
+    are preserved (appended after the new/updated rows).
+    """
     report_repo = repo or ISSUE_REPO
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    # Parse existing rows to preserve
+    existing_rows = _parse_existing_rows(existing_body) if existing_body else {}
 
     lines = [
         f"# E2E Pipeline Test Dashboard",
@@ -240,6 +264,14 @@ def build_report(results: list[dict], repo: str | None = None) -> str:
             f"| {model_name} | {tokens_str} | {cost_str} | {result} | {failure_display} |"
         )
 
+    # Append preserved rows from previous runs (issues not in current batch)
+    current_nums = {r["number"] for r in results}
+    preserved = [row for num, row in sorted(existing_rows.items()) if num not in current_nums]
+    if preserved:
+        lines.extend(preserved)
+
+    total_rows = len(results) + len(preserved)
+
     lines.extend([
         "",
         "## Summary",
@@ -247,7 +279,7 @@ def build_report(results: list[dict], repo: str | None = None) -> str:
         f"- **Passed:** {total_pass}",
         f"- **Failed:** {total_fail}",
         f"- **In Progress:** {total_in_progress}",
-        f"- **Total:** {len(results)}",
+        f"- **Total:** {total_rows}",
     ])
 
     # Failure breakdown
@@ -284,13 +316,20 @@ def find_tracking_issue(repo: str) -> int | None:
     return None
 
 
-def update_tracking_issue(repo: str, report: str) -> int:
-    """Create or update the tracking issue with the report."""
+def update_tracking_issue(repo: str, results: list[dict]) -> int:
+    """Create or update the tracking issue with the report.
+
+    When updating, fetches existing body and merges with new results
+    so rows from previous batches are preserved.
+    """
     existing = find_tracking_issue(repo)
     if existing:
+        existing_body = gh.get_issue_detail(repo, existing).get("body", "")
+        report = build_report(results, repo=repo, existing_body=existing_body)
         gh.update_issue_body(repo, existing, report)
         return existing
     else:
+        report = build_report(results, repo=repo)
         import subprocess, json as _json
         token = gh._token_for_repo(repo)
         env = {**__import__("os").environ, "GH_TOKEN": token} if token else None
@@ -344,7 +383,7 @@ def main() -> None:
     if args.dry_run:
         print(report)
     else:
-        tracking_num = update_tracking_issue(args.repo, report)
+        tracking_num = update_tracking_issue(args.repo, results)
         print(f"Updated tracking issue #{tracking_num}")
 
 

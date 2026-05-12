@@ -106,3 +106,30 @@ class TestBuildReport:
         assert "IN PROGRESS" in report
         assert "Cost" in report
         assert "Model" in report
+
+    def test_build_report_merges_existing_rows(self):
+        """Rows from previous batches are preserved when building a new report."""
+        existing_body = (
+            "# E2E Pipeline Test Dashboard\n\n"
+            "| # | Title | Format | Triage | Fix | PR | Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |\n"
+            "|---|-------|--------|--------|-----|----|--------|-------|---------------------|------|--------|----------------|\n"
+            "| [#99](https://github.com/test/repo/issues/99) | Old issue | ✅ | ✅ | ✅ | ✅ | ⬜ | claude-sonnet-4 | 10K / 20K / 30K | $0.50 | 🔄 IN PROGRESS | — |\n"
+        )
+        new_results = [{
+            "number": 200,
+            "title": "New issue",
+            "stage": "formatted",
+            "stages_done": ["formatted"],
+            "tokens": {"format": "tokens: 5K"},
+            "failure_reason": None,
+            "failure_category": None,
+            "state": "open",
+        }]
+        report = build_report(new_results, existing_body=existing_body)
+        # New issue present
+        assert "#200" in report
+        # Old issue preserved
+        assert "#99" in report
+        assert "Old issue" in report
+        # Total includes both
+        assert "Total:** 2" in report

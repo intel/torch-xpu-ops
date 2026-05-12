@@ -99,7 +99,7 @@ def main() -> None:
             try:
                 report_results = collect_results(ISSUE_REPO, processed_issues)
                 report = build_report(report_results, repo=ISSUE_REPO)
-                tracking_num = update_tracking_issue(ISSUE_REPO, report)
+                tracking_num = update_tracking_issue(ISSUE_REPO, report_results)
                 _log(f"E2E report updated: #{tracking_num}")
             except Exception as e:
                 _log(f"E2E report failed: {e}")
