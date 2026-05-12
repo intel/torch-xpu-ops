@@ -416,9 +416,9 @@ struct DeformableCol2ImKernel {
           index_t yp = (index_t)y + dy;
           index_t xp = (index_t)x + dx;
           if (0 <= yp && yp < height && 0 <= xp && xp < width &&
-              std::abs(y - yp) < 1 && std::abs(x - xp) < 1) {
+              sycl::fabs(y - yp) < 1 && sycl::fabs(x - xp) < 1) {
             index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
-            scalar_t weight = (1 - std::abs(y - yp)) * (1 - std::abs(x - xp));
+            scalar_t weight = (1 - sycl::fabs(y - yp)) * (1 - sycl::fabs(x - xp));
             atomicAdd(
                 sycl_global_ptr<scalar_t>(grad_im + grad_pos),
                 mask_value * weight * col[index]);
