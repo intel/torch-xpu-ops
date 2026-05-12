@@ -428,7 +428,8 @@ Tensor& addmv_out_xpu(
   } else {
     // result = beta * self + alpha * (mat @ vec)
     // Use copy_ to write into result, preserving its strides
-    result.copy_(self.expand(result.sizes()).mul(beta).add_(mat_vec.mul(alpha)));
+    result.copy_(
+        self.expand(result.sizes()).mul(beta).add_(mat_vec.mul(alpha)));
   }
 
   return result;

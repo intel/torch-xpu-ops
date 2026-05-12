@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
+
 """
 Regression test for incorrect strides in addmv/mv XPU ops.
 
@@ -25,6 +27,7 @@ write into non-contiguous output tensors while preserving their strides.
 
 import pytest
 import torch
+from torch.testing._internal.common_utils import run_tests
 
 
 @pytest.mark.skipif(not torch.xpu.is_available(), reason="XPU not available")
@@ -51,9 +54,9 @@ def test_addmv_out_preserves_strides_xpu():
     torch.addmv(self, mat, vec, out=out)
 
     # Check that strides are preserved
-    assert out.stride() == (
-        2,
-    ), f"Strides changed! Expected (2,) but got {out.stride()}"
+    assert out.stride() == (2,), (
+        f"Strides changed! Expected (2,) but got {out.stride()}"
+    )
 
     # Check that values are correct
     torch.testing.assert_close(out, expected)
@@ -80,7 +83,9 @@ def test_addmv_out_beta_zero_preserves_strides_xpu():
 
     torch.addmv(self, mat, vec, beta=0, alpha=2.0, out=out)
 
-    assert out.stride() == (2,), f"Strides changed! Expected (2,) but got {out.stride()}"
+    assert out.stride() == (2,), (
+        f"Strides changed! Expected (2,) but got {out.stride()}"
+    )
     torch.testing.assert_close(out, expected)
 
 
@@ -105,9 +110,9 @@ def test_mv_out_preserves_strides_xpu():
 
     torch.mv(mat, vec, out=out)
 
-    assert out.stride() == (
-        2,
-    ), f"Strides changed! Expected (2,) but got {out.stride()}"
+    assert out.stride() == (2,), (
+        f"Strides changed! Expected (2,) but got {out.stride()}"
+    )
     torch.testing.assert_close(out, expected)
 
 
@@ -130,3 +135,7 @@ def test_addmv_contiguous_output_xpu():
 
     assert out.stride() == (1,)
     torch.testing.assert_close(out, expected)
+
+
+if __name__ == "__main__":
+    run_tests()
