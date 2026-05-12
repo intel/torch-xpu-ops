@@ -276,7 +276,7 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
         self.assertEqual(x, ret[0])
 
     def test_missing_abstract_impl(self, device):
-        if device == "xpu":
+        if device.startswith("xpu"):
             self.skipTest("XPU opcheck path for missing abstract impl is not supported")
 
         lib = self.lib()
