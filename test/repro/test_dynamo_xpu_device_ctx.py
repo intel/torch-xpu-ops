@@ -59,9 +59,7 @@ if torch.xpu.is_available():
 
 
 @unittest.skipIf(not torch.xpu.is_available(), "requires XPU")
-@unittest.skipIf(
-    not torch._dynamo.is_dynamo_supported(), "dynamo is not supported"
-)
+@unittest.skipIf(not torch._dynamo.is_dynamo_supported(), "dynamo is not supported")
 class TestDynamoXpuDeviceCtx(unittest.TestCase):
     """Verify torch.xpu.device context manager is traceable under fullgraph=True."""
 
