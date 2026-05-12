@@ -444,8 +444,6 @@ Tensor _fft_c2r_mkl(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
-  input = input.clone(MemoryFormat::Contiguous);
-
   HermitSymm(input, dim.back(), out_sizes[dim.back()]);
 
   impl::_exec_fft(

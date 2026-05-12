@@ -132,9 +132,9 @@ Tensor& max_unpooling2d_forward_kernel(
   int64_t inputHeight;
   int64_t inputWidth;
 
-  auto memory_format = self_.suggest_memory_format();
-  auto self = self_.contiguous(memory_format);
-  auto indices = indices_.contiguous(memory_format);
+  constexpr auto memory_format = at::MemoryFormat::Contiguous;
+  auto self = self_.contiguous();
+  auto indices = indices_.contiguous();
 
   if (self.ndimension() == 4) {
     numBatch = self.size(0);
