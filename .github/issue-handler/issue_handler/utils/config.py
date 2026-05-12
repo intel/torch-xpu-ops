@@ -69,6 +69,7 @@ AGENT_PR_PREFIX: str = _git.get("pr_prefix", "[Agent]")
 
 _paths = _cfg.get("paths", {})
 PYTORCH_DIR = Path(os.environ.get("PYTORCH_DIR", os.path.expanduser(_paths.get("pytorch_dir", "~/pytorch"))))
+TORCH_XPU_OPS_DIR = Path(os.environ.get("TORCH_XPU_OPS_DIR", os.path.expanduser(_paths.get("torch_xpu_ops_dir", "~/torch-xpu-ops"))))
 LOG_DIR = AGENT_DIR / "logs"
 CONFIG_DIR = AGENT_DIR / "config"
 SKILLS_DIR = AGENT_DIR.parent / "skills"

@@ -31,7 +31,7 @@ from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
 from .utils.body_templates import (
     get_status, update_section, set_status,
-    check_action_item, append_log,
+    check_action_item, append_log, set_metadata,
 )
 from .utils.agent_backend import get_backend
 from .utils.json_utils import extract_json
@@ -100,11 +100,20 @@ def run(issue_number: int) -> tuple[str, str]:
     reason = data.get("reason", "")
     root_cause = data.get("root_cause", "")
     fix_strategy = data.get("fix_strategy", "")
+    target_repo = data.get("target_repo", "").lower().strip()
+    # Infer target_repo from fix_strategy if not explicitly provided
+    if not target_repo:
+        fs_lower = fix_strategy.lower()
+        if "src/aten/native/xpu" in fs_lower or "torch-xpu-ops" in fs_lower:
+            target_repo = "torch-xpu-ops"
+        else:
+            target_repo = "pytorch"
 
     # Update issue body
     new_body = body
     new_body = update_section(new_body, "Root Cause Analysis", root_cause)
     new_body = update_section(new_body, "Proposed Fix Strategy", fix_strategy)
+    new_body = set_metadata(new_body, "target_repo", target_repo)
     new_body = check_action_item(new_body, "Root cause identified")
 
     if verdict == "IMPLEMENTING":

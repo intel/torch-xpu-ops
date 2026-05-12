@@ -46,11 +46,11 @@ struct AtomicIntegerImplLocal<T, 1> {
   inline void operator()(T* address, T val, const func_t& func) {
     size_t offset = (size_t)address & 3;
     uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
-    uint32_t assumed = *address_as_ui;
     uint32_t shift = offset * 8;
     uint32_t newval;
     uint32_t newval_byte;
     sycl_atomic_ref_rlx_wg_local_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = assumed;
@@ -70,10 +70,10 @@ struct AtomicIntegerImplLocal<T, 2> {
     size_t offset = (size_t)address & 2;
     uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
     bool is_32_align = offset;
-    uint32_t assumed = *address_as_ui;
     uint32_t newval;
     uint32_t newval_bytes;
     sycl_atomic_ref_rlx_wg_local_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = assumed;
@@ -92,9 +92,9 @@ struct AtomicIntegerImplLocal<T, 4> {
   template <typename func_t>
   inline void operator()(T* address, T val, const func_t& func) {
     uint32_t* address_as_ui = (uint32_t*)(address);
-    uint32_t assumed = *address_as_ui;
     uint32_t newval;
     sycl_atomic_ref_rlx_wg_local_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = static_cast<uint32_t>(func(val, static_cast<T>(assumed)));
@@ -107,9 +107,9 @@ struct AtomicIntegerImplLocal<T, 8> {
   template <typename func_t>
   inline void operator()(T* address, T val, const func_t& func) {
     unsigned long long* address_as_ull = (unsigned long long*)(address);
-    unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
     sycl_atomic_ref_rlx_wg_local_t<unsigned long long> target(*address_as_ull);
+    unsigned long long assumed = target.load();
 
     do {
       newval = static_cast<uint64_t>(func(val, static_cast<T>(assumed)));
@@ -133,11 +133,11 @@ struct AtomicIntegerImpl<T, 1> {
   inline void operator()(T* address, T val, const func_t& func) {
     size_t offset = (size_t)address & 3;
     uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
-    uint32_t assumed = *address_as_ui;
     uint32_t shift = offset * 8;
     uint32_t newval;
     uint32_t newval_byte;
     sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = assumed;
@@ -157,10 +157,10 @@ struct AtomicIntegerImpl<T, 2> {
     size_t offset = (size_t)address & 2;
     uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
     bool is_32_align = offset;
-    uint32_t assumed = *address_as_ui;
     uint32_t newval;
     uint32_t newval_bytes;
     sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = assumed;
@@ -179,9 +179,9 @@ struct AtomicIntegerImpl<T, 4> {
   template <typename func_t>
   inline void operator()(T* address, T val, const func_t& func) {
     uint32_t* address_as_ui = (uint32_t*)(address);
-    uint32_t assumed = *address_as_ui;
     uint32_t newval;
     sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    uint32_t assumed = target.load();
 
     do {
       newval = static_cast<uint32_t>(func(val, static_cast<T>(assumed)));
@@ -194,10 +194,10 @@ struct AtomicIntegerImpl<T, 8> {
   template <typename func_t>
   inline void operator()(T* address, T val, const func_t& func) {
     unsigned long long* address_as_ull = (unsigned long long*)(address);
-    unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
     sycl_atomic_ref_rlx_dev_global_t<unsigned long long> target(
         *address_as_ull);
+    unsigned long long assumed = target.load();
 
     do {
       newval = static_cast<uint64_t>(func(val, static_cast<T>(assumed)));
@@ -221,14 +221,13 @@ struct AtomicFPImpl<at::Half> {
   inline void operator()(at::Half* address, at::Half val, const func_t& func) {
     unsigned int* address_as_ui =
         (unsigned int*)((char*)address - ((size_t)address & 2));
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = assumed;
       at::Half hsum;
-      hsum.x = (size_t)address & 2 ? (newval >> 16) : (newval & 0xffff);
       hsum = func(hsum, val);
       newval = (size_t)address & 2 ? (newval & 0xffff) | (hsum.x << 16)
                                    : (newval & 0xffff0000) | hsum.x;
@@ -245,9 +244,9 @@ struct AtomicFPImpl<at::BFloat16> {
       const func_t& func) {
     unsigned int* address_as_ui =
         (unsigned int*)((char*)address - ((size_t)address & 2));
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = assumed;
@@ -265,9 +264,9 @@ struct AtomicFPImpl<float> {
   template <typename func_t>
   inline void operator()(float* address, float val, const func_t& func) {
     unsigned int* address_as_ui = (unsigned int*)address;
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = __float_as_int(func(val, __int_as_float(assumed)));
@@ -280,10 +279,10 @@ struct AtomicFPImpl<double> {
   template <typename func_t>
   inline void operator()(double* address, double val, const func_t& func) {
     unsigned long long* address_as_ull = (unsigned long long*)address;
-    unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
     sycl_atomic_ref_rlx_dev_global_t<unsigned long long> target(
         *address_as_ull);
+    unsigned long long assumed = target.load();
 
     do {
       newval = __double_as_long_long(func(val, __long_long_as_double(assumed)));
@@ -306,9 +305,9 @@ struct AtomicFPImplLocal<at::Half> {
   inline void operator()(at::Half* address, at::Half val, const func_t& func) {
     unsigned int* address_as_ui =
         (unsigned int*)((char*)address - ((size_t)address & 2));
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = assumed;
@@ -330,9 +329,9 @@ struct AtomicFPImplLocal<at::BFloat16> {
       const func_t& func) {
     unsigned int* address_as_ui =
         (unsigned int*)((char*)address - ((size_t)address & 2));
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = assumed;
@@ -350,9 +349,9 @@ struct AtomicFPImplLocal<float> {
   template <typename func_t>
   inline void operator()(float* address, float val, const func_t& func) {
     unsigned int* address_as_ui = (unsigned int*)address;
-    unsigned int assumed = *address_as_ui;
     unsigned int newval;
     sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+    unsigned int assumed = target.load();
 
     do {
       newval = __float_as_int(func(val, __int_as_float(assumed)));
@@ -365,9 +364,9 @@ struct AtomicFPImplLocal<double> {
   template <typename func_t>
   inline void operator()(double* address, double val, const func_t& func) {
     unsigned long long* address_as_ull = (unsigned long long*)address;
-    unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
     sycl_atomic_ref_rlx_wg_local_t<unsigned long long> target(*address_as_ull);
+    unsigned long long assumed = target.load();
 
     do {
       newval = __double_as_long_long(func(val, __long_long_as_double(assumed)));

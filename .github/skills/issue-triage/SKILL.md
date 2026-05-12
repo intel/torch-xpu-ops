@@ -40,10 +40,15 @@ Return ONLY valid JSON:
 {
   "root_cause": "detailed analysis (2-3 sentences)",
   "fix_strategy": "specific files/functions to change",
+  "target_repo": "pytorch or torch-xpu-ops",
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
   "reason": "one-line reason"
 }
 ```
+
+### target_repo rules:
+- `"torch-xpu-ops"` — if the fix is in `src/ATen/native/xpu/sycl/`, `src/ATen/native/xpu/`, or any path relative to torch-xpu-ops root
+- `"pytorch"` — if the fix is in `torch/`, `aten/src/ATen/`, `test/`, `c10/`, `torch/_dynamo/`, `torch/_inductor/`, or any top-level pytorch path
 
 ## Data Collection
 
