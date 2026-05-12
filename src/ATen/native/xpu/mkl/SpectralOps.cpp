@@ -389,9 +389,70 @@ Tensor& _fft_c2c_mkl_out(
     int64_t normalization,
     bool forward,
     Tensor& out) {
-  auto result = _fft_c2c_mkl(self, dim, normalization, forward);
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  if (dim.empty()) {
+    at::native::resize_output(out, self.sizes());
+    out.copy_(self);
+    return out;
+  }
+
+  const bool needs_type_promotion =
+      self.scalar_type() == ScalarType::ComplexHalf;
+  auto promoted = impl::promote_fft_input(self);
+
+  auto sorted_dims = impl::_sort_dims(promoted, dim);
+  auto out_sizes = promoted.sizes();
+  auto input_sizes = promoted.sizes();
+  auto working_tensor = promoted;
+
+  // Use out directly for non-half types; use local buffer for half types
+  Tensor result;
+  if (needs_type_promotion) {
+    result = at::empty(out_sizes, promoted.options());
+  } else {
+    at::native::resize_output(out, out_sizes);
+    result = out;
+  }
+
+  while (!sorted_dims.empty()) {
+    const auto max_dims =
+        std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+    auto fft_dims =
+        IntArrayRef(sorted_dims).slice(sorted_dims.size() - max_dims, max_dims);
+
+    impl::_exec_fft(
+        result,
+        working_tensor,
+        out_sizes,
+        fft_dims,
+        /*onesided=*/false,
+        forward);
+
+    sorted_dims.resize(sorted_dims.size() - max_dims);
+
+    if (sorted_dims.empty()) {
+      break;
+    }
+
+    sorted_dims = impl::_sort_dims(promoted, sorted_dims);
+
+    if (working_tensor.is_same(promoted)) {
+      working_tensor = std::move(result);
+      result = at::empty(out_sizes, promoted.options());
+    } else {
+      std::swap(result, working_tensor);
+    }
+  }
+
+  impl::_fft_apply_normalization(result, normalization, input_sizes, dim);
+
+  if (needs_type_promotion) {
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+  } else if (!result.is_same(out)) {
+    // Multi-pass swapped result away from out; copy back
+    out.copy_(result);
+  }
+
   return out;
 }
 
@@ -469,9 +530,50 @@ Tensor& _fft_c2r_mkl_out(
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& out) {
-  auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  if (dim.empty()) {
+    at::native::resize_output(out, self.sizes());
+    out.copy_(self);
+    return out;
+  }
+
+  const bool needs_type_promotion =
+      self.scalar_type() == ScalarType::ComplexHalf;
+  auto promoted = impl::promote_fft_input(self);
+
+  auto input = promoted;
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c_mkl(
+        promoted,
+        c2c_dims,
+        static_cast<int64_t>(fft_norm_mode::none),
+        /*forward=*/false);
+  }
+
+  auto in_sizes = input.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
+  input = input.clone(MemoryFormat::Contiguous);
+  HermitSymm(input, dim.back(), out_sizes[dim.back()]);
+
+  if (needs_type_promotion) {
+    auto result = at::empty(
+        out_sizes,
+        promoted.options().dtype(c10::toRealValueType(promoted.scalar_type())));
+    impl::_exec_fft(
+        result, input, out_sizes, dim.back(), /*onesided=*/true, /*forward=*/false);
+    impl::_fft_apply_normalization(result, normalization, out_sizes, dim);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+  } else {
+    at::native::resize_output(out, out_sizes);
+    impl::_exec_fft(
+        out, input, out_sizes, dim.back(), /*onesided=*/true, /*forward=*/false);
+    impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  }
+
   return out;
 }
 
@@ -558,10 +660,92 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
-  auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
+  if (dim.empty()) {
+    at::native::resize_output(out, self.sizes());
+    out.copy_(self);
+    return out;
+  }
 
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  const bool needs_type_promotion = self.scalar_type() == ScalarType::Half;
+  auto promoted = impl::promote_fft_input(self);
+
+  auto input_sizes = promoted.sizes();
+  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
+  onesided_sizes[last_dim] = last_dim_halfsize;
+
+  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
+
+  Tensor working_out;
+  if (needs_type_promotion) {
+    working_out = at::empty(
+        out_sizes,
+        promoted.options().dtype(c10::toComplexType(promoted.scalar_type())));
+  } else {
+    at::native::resize_output(out, out_sizes);
+    working_out = out;
+  }
+
+  auto working_tensor = promoted.contiguous();
+
+  // First do the R2C transform on the last dimension
+  impl::_exec_fft(
+      working_out,
+      working_tensor,
+      out_sizes,
+      last_dim,
+      onesided,
+      /*forward=*/true);
+
+  if (dim.size() > 1) {
+    working_tensor = at::empty(
+        out_sizes,
+        promoted.options().dtype(c10::toComplexType(promoted.scalar_type())));
+  }
+
+  DimVector sorted_dims(dim.begin(), dim.end() - 1);
+
+  while (!sorted_dims.empty()) {
+    sorted_dims = impl::_sort_dims(promoted, sorted_dims);
+
+    std::swap(working_out, working_tensor);
+
+    const auto max_dims =
+        std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+    auto fft_dims =
+        IntArrayRef(sorted_dims).slice(sorted_dims.size() - max_dims, max_dims);
+    impl::_exec_fft(
+        working_out,
+        working_tensor,
+        out_sizes,
+        fft_dims,
+        onesided,
+        /*forward=*/true);
+    sorted_dims.resize(sorted_dims.size() - max_dims);
+  }
+
+  // Only need to normalize the onesided slice since data in the other half is
+  // overwritten
+  auto out_slice = working_out.slice(last_dim, 0, last_dim_halfsize);
+  impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
+
+  if (!onesided) {
+    if (working_out.sizes()[last_dim] != out_sizes[last_dim]) {
+      working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
+      working_tensor.slice(last_dim, 0, last_dim_halfsize).copy_(working_out);
+      working_out = std::move(working_tensor);
+    }
+    at::native::_fft_fill_with_conjugate_symmetry_(working_out, dim);
+  }
+
+  if (needs_type_promotion) {
+    at::native::resize_output(out, working_out.sizes());
+    out.copy_(working_out.to(ScalarType::ComplexHalf));
+  } else if (!working_out.is_same(out)) {
+    out.copy_(working_out);
+  }
+
   return out;
 }
 
