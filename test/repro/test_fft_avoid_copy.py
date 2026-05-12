@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
+
 # Reproducer for: Consider how to avoid copy in FFT kernels
 # Verifies that _fft_c2c_mkl_out, _fft_c2r_mkl_out, and _fft_r2c_mkl_out
 # produce correct results when writing directly into a pre-allocated output
@@ -14,7 +16,7 @@
 
 import pytest
 import torch
-
+from torch.testing._internal.common_utils import run_tests
 
 requires_xpu = pytest.mark.skipif(
     not torch.xpu.is_available(), reason="XPU device not available"
@@ -85,7 +87,11 @@ def test_fft_c2c_out_norm_modes(dtype):
 @pytest.mark.parametrize("n", [63, 64])
 def test_fft_r2c_out_1d(dtype, n):
     x = torch.randn(n, dtype=dtype, device="xpu")
-    out = torch.empty(n // 2 + 1, dtype=torch.complex64 if dtype == torch.float32 else torch.complex128, device="xpu")
+    out = torch.empty(
+        n // 2 + 1,
+        dtype=torch.complex64 if dtype == torch.float32 else torch.complex128,
+        device="xpu",
+    )
     result = torch.fft.rfft(x, out=out)
     expected = torch.fft.rfft(x)
     assert result.data_ptr() == out.data_ptr(), "result must share storage with out"
@@ -158,3 +164,7 @@ def test_fft_c2r_out_norm_modes(dtype):
         result = torch.fft.irfft(x, n=n, norm=norm, out=out)
         expected = torch.fft.irfft(x, n=n, norm=norm)
         torch.testing.assert_close(result, expected, atol=1e-4, rtol=1e-5)
+
+
+if __name__ == "__main__":
+    run_tests()
