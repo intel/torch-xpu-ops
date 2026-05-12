@@ -199,20 +199,28 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
-          # Save new failure list for later steps
-          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
-          : > "$new_failure_list"
-          for ut_name in ${ut_list}; do
-            filtered_file="failures_${ut_name}_filtered.log"
-            if [ -s "$filtered_file" ]; then
-              cat "$filtered_file" >> "$new_failure_list"
-            fi
-          done
       - name: Collect new failures with error messages
         if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
         id: new-failures
         run: |
+          cd ${{ github.workspace }}/ut_log/
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          ut_dir="${latest_dir}/${{ inputs.ut }}"
+          if [ "${{ inputs.ut }}" == "basic" ]; then
+            ut_list="op_regression op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          # Collect new failure case names from filtered logs produced by ut_result_check.sh
           new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          : > "$new_failure_list"
+          for ut_name in ${ut_list}; do
+            filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
+            if [ -s "$filtered_file" ]; then
+              cat "$filtered_file" >> "$new_failure_list"
+            fi
+          done
+          # Filter ut_failure_list.csv to keep only new failures (with error messages)
           ut_failure_csv="${{ github.workspace }}/ut_log/ut_failure_list.csv"
           new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
           if [ -s "$new_failure_list" ] && [ -f "$ut_failure_csv" ]; then
