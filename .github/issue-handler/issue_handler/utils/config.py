@@ -28,6 +28,7 @@ UPSTREAM_ISSUE_REPO = os.environ.get("UPSTREAM_ISSUE_REPO", _repos.get("xpu_ops_
 ISSUE_REPO = os.environ.get("ISSUE_REPO", _repos.get("xpu_ops_issue", "ZhaoqiongZ/torch-xpu-ops-exp"))
 PRIVATE_REVIEW_REPO = os.environ.get("PRIVATE_REVIEW_REPO") or _repos.get("pytorch_private", "chuanqi129/pytorch")
 PUBLIC_TARGET_REPO = os.environ.get("PUBLIC_TARGET_REPO", _repos.get("pytorch_public", "pytorch/pytorch"))
+TRACKING_REPO = os.environ.get("TRACKING_REPO", _repos.get("tracking", "ZhaoqiongZ/torch-xpu-ops-exp"))
 
 # ---------------------------------------------------------------------------
 # Labels
