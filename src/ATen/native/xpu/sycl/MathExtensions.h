@@ -615,7 +615,7 @@ static const scalar_t _igam_helper_asymptotic_series(
   } else {
     eta = 0;
   }
-  res = 0.5 * std::erfc(sgn * eta * std::sqrt(a / 2));
+  res = 0.5 * sycl::erfc(sgn * eta * std::sqrt(a / 2));
 
   for (k = 0; k < 25; k++) {
     ck = d[k][0];

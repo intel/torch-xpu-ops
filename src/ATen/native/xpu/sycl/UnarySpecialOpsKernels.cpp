@@ -60,14 +60,14 @@ struct ErfFunctor<double> {
 template <typename scalar_t>
 struct ErfcFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erfc(float(a));
+    return sycl::erfc(float(a));
   }
 };
 
 template <>
 struct ErfcFunctor<double> {
   double operator()(double a) const {
-    return std::erfc(a);
+    return sycl::erfc(a);
   }
 };
 
