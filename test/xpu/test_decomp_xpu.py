@@ -440,11 +440,10 @@ CROSS_REF_EXCLUDE_SET = {
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific exclude cases
+    # ("xpu", torch.float16, "nn.functional.some_op"),
     # max_pool2d_with_indices_backward tests are not applicable
     # More details in https://github.com/pytorch/pytorch/pull/182619
     (None, None, "max_pool2d_with_indices_backward"),
-    (None, None, "nn.functional.max_pool1d"),
-    (None, None, "nn.functional.max_pool2d"),
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
@@ -458,6 +457,10 @@ CROSS_REF_BACKWARD_EXCLUDE_SET = {
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific backward exclude cases
     # ("xpu", torch.float16, "nn.functional.some_op"),
+    # max_pool2d_with_indices_backward tests are not applicable
+    # More details in https://github.com/pytorch/pytorch/pull/182619
+    (None, None, "nn.functional.max_pool1d"),
+    (None, None, "nn.functional.max_pool2d"),
 }
 
 all_decomposed = set()
