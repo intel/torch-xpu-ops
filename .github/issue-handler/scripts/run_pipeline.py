@@ -21,6 +21,12 @@ from issue_handler.utils import git as gh
 from issue_handler.utils.config import ISSUE_REPO, ISSUE_LABEL, TERMINAL_STAGES
 from issue_handler.utils.body_templates import get_status
 
+# Import e2e report (scripts/ dir, add to path)
+_scripts_dir = str(__import__("pathlib").Path(__file__).resolve().parent)
+if _scripts_dir not in sys.path:
+    sys.path.insert(0, _scripts_dir)
+from e2e_report import collect_results, build_report, update_tracking_issue
+
 
 def _get_open_agent_issues() -> list[int]:
     """Fetch all open issues with the ai_generated label."""
@@ -86,6 +92,17 @@ def main() -> None:
     if args.once:
         results = run_cycle(args.issues)
         _log(f"Cycle complete: {results}")
+
+        # Generate and publish E2E report
+        processed_issues = list(results.keys())
+        if processed_issues:
+            try:
+                report_results = collect_results(ISSUE_REPO, processed_issues)
+                report = build_report(report_results, repo=ISSUE_REPO)
+                tracking_num = update_tracking_issue(ISSUE_REPO, report)
+                _log(f"E2E report updated: #{tracking_num}")
+            except Exception as e:
+                _log(f"E2E report failed: {e}")
     else:
         print("Continuous mode not implemented. Use --once with cron.", file=sys.stderr)
         sys.exit(1)

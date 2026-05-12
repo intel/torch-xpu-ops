@@ -79,6 +79,7 @@ git:
 backend:
   type: "opencode"            # or "copilot"
   opencode_cmd: "opencode"
+  model: "claude-sonnet-4"    # model name for cost estimation & reporting
 
 # ---------------------------------------------------------------------------
 # Paths (relative to AGENT_DIR unless absolute)

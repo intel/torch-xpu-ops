@@ -31,6 +31,7 @@ from issue_handler.utils.body_templates import (
     get_status, set_status, render_initial_body, render_nonbug_body,
     check_action_item, append_log, sync_labels,
 )
+from issue_handler.utils.agent_backend import TokenUsage
 from issue_handler.format_agent import (
     _extract_label_info, _extract_environment, reset, run,
 )
@@ -401,9 +402,10 @@ class TestNonBugTemplate:
 
 
 class TestIssueTypeRouting:
+    @patch("issue_handler.format_agent.sync_labels")
     @patch("issue_handler.format_agent.gh")
     @patch("issue_handler.format_agent.get_backend")
-    def test_nonbug_uses_nonbug_template(self, mock_backend, mock_gh):
+    def test_nonbug_uses_nonbug_template(self, mock_backend, mock_gh, mock_sync):
         """When LLM returns issue_type=nonbug, non-bug template is used."""
         mock_gh.get_issue_detail.return_value = {
             "body": "Enable FP8 ops",
@@ -420,7 +422,7 @@ class TestIssueTypeRouting:
             "context": "",
         })
         mock_backend_instance = MagicMock()
-        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1", TokenUsage(total=1000))
         mock_backend.return_value = mock_backend_instance
 
         run(42)
@@ -430,9 +432,10 @@ class TestIssueTypeRouting:
         assert "## Objective" in written_body
         assert "## Failed Tests" not in written_body
 
+    @patch("issue_handler.format_agent.sync_labels")
     @patch("issue_handler.format_agent.gh")
     @patch("issue_handler.format_agent.get_backend")
-    def test_bug_uses_bug_template(self, mock_backend, mock_gh):
+    def test_bug_uses_bug_template(self, mock_backend, mock_gh, mock_sync):
         """When LLM returns issue_type=bug, bug template is used."""
         mock_gh.get_issue_detail.return_value = {
             "body": "RuntimeError in test_foo",
@@ -448,7 +451,7 @@ class TestIssueTypeRouting:
             "context": "",
         })
         mock_backend_instance = MagicMock()
-        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1", TokenUsage(total=1000))
         mock_backend.return_value = mock_backend_instance
 
         run(43)
@@ -458,9 +461,10 @@ class TestIssueTypeRouting:
         assert "## Error Log" in written_body
         assert "## Type" not in written_body
 
+    @patch("issue_handler.format_agent.sync_labels")
     @patch("issue_handler.format_agent.gh")
     @patch("issue_handler.format_agent.get_backend")
-    def test_default_is_bug_when_no_issue_type(self, mock_backend, mock_gh):
+    def test_default_is_bug_when_no_issue_type(self, mock_backend, mock_gh, mock_sync):
         """When LLM output has no issue_type field, default to bug template."""
         mock_gh.get_issue_detail.return_value = {
             "body": "some issue",
@@ -475,7 +479,7 @@ class TestIssueTypeRouting:
             "context": "",
         })
         mock_backend_instance = MagicMock()
-        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1")
+        mock_backend_instance.run.return_value = (llm_output, "/tmp/log", "sess1", TokenUsage(total=1000))
         mock_backend.return_value = mock_backend_instance
 
         run(44)

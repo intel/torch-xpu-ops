@@ -21,7 +21,7 @@ from ..utils.body_templates import (
     get_status, set_status, check_action_item, append_log, set_metadata,
     parse_sections, render_pr_body,
 )
-from ..utils.agent_backend import get_backend
+from ..utils.agent_backend import get_backend, TokenUsage
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
@@ -64,6 +64,7 @@ def run(issue_number: int) -> None:
     if existing_diff:
         log("INFO", f"Branch {branch} already has changes, skipping agent re-run",
             issue=issue_number)
+        token_usage = TokenUsage()
     else:
         # --- Call LLM (with retry) ---
         prompt = (
@@ -82,14 +83,15 @@ def run(issue_number: int) -> None:
         last_error = None
         for attempt in range(1, MAX_AGENT_ATTEMPTS + 1):
             try:
-                output, log_path, session_id = backend.run(
+                output, log_path, session_id, token_usage = backend.run(
                     prompt, workdir=str(PYTORCH_DIR),
                     skill="issue-fix", timeout=timeout,
                     issue=issue_number, stage="IMPLEMENTING",
                     on_session_start=_post_session_id,
                 )
                 log("INFO", f"Implementation agent log: {log_path} "
-                    f"(attempt {attempt}/{MAX_AGENT_ATTEMPTS})",
+                    f"(attempt {attempt}/{MAX_AGENT_ATTEMPTS}) | "
+                    f"{token_usage.summary()}",
                     issue=issue_number)
                 break
             except Exception as e:
@@ -172,7 +174,8 @@ def run(issue_number: int) -> None:
     new_body = append_log(
         new_body, "fix",
         f"Branch: `{branch}`\nSHA: `{sha}`\n"
-        f"PR: {pr.get('html_url', pr.get('url', 'N/A'))}",
+        f"PR: {pr.get('html_url', pr.get('url', 'N/A'))}\n"
+        f"**Tokens:** {token_usage.summary()}",
     )
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
 

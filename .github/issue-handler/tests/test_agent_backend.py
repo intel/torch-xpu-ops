@@ -12,7 +12,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from issue_handler.utils.agent_backend import (
-    OpenCodeBackend, CopilotBackend, get_backend, parse_opencode_events
+    OpenCodeBackend, CopilotBackend, get_backend, parse_opencode_events,
+    TokenUsage
 )
 
 
@@ -57,21 +58,27 @@ def _make_mock_popen(events: list[dict], returncode: int = 0):
 
 
 class TestOpenCodeBackend:
-    def test_run_returns_3_tuple(self, tmp_path):
+    def test_run_returns_4_tuple(self, tmp_path):
         backend = OpenCodeBackend()
         events = [
             {"sessionID": "sess-123", "type": "start"},
             {"type": "text", "part": {"text": "agent output"}},
+            {"type": "step_finish", "part": {"tokens": {"total": 1000, "input": 500, "output": 200, "cache": {"read": 200, "write": 100}}, "cost": 0.01}},
         ]
         mock_proc = _make_mock_popen(events)
-
         with patch("subprocess.Popen", return_value=mock_proc), \
              patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
-            output, log_path, session_id = backend.run("fix the bug", workdir="/tmp/pytorch")
-
+            output, log_path, session_id, token_usage = backend.run("fix the bug", workdir="/tmp/pytorch")
         assert output == "agent output"
         assert log_path.exists()
         assert session_id == "sess-123"
+        assert isinstance(token_usage, TokenUsage)
+        assert token_usage.total == 1000
+        assert token_usage.input == 500
+        assert token_usage.output == 200
+        assert token_usage.cache_read == 200
+        assert token_usage.cache_write == 100
+        assert token_usage.cost == 0.01
 
     def test_run_with_skill_adds_hint(self, tmp_path):
         skill_dir = tmp_path / "issue-triage"
@@ -111,7 +118,7 @@ class TestOpenCodeBackend:
 
         with patch("subprocess.Popen", return_value=mock_proc), \
              patch("issue_handler.utils.agent_backend.LOG_DIR", tmp_path):
-            output, log_path, _ = backend.run("fix it", issue=42, stage="IMPLEMENTING")
+            output, log_path, _, token_usage = backend.run("fix it", issue=42, stage="IMPLEMENTING")
 
         assert "issue-42" in log_path.name
         assert "implementing" in log_path.name

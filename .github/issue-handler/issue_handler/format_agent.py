@@ -126,11 +126,12 @@ def run(issue_number: int) -> None:
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("DISCOVERED", 300)
-    output, log_path, session_id = backend.run(
+    output, log_path, session_id, token_usage = backend.run(
         prompt, skill="issue-discovery",
         issue=issue_number, stage="DISCOVERED", timeout=timeout,
     )
-    log("INFO", f"Discovery agent log: {log_path}", issue=issue_number)
+    log("INFO", f"Discovery agent log: {log_path} | {token_usage.summary()}",
+        issue=issue_number)
 
     # Parse JSON from LLM output
     try:
@@ -196,7 +197,8 @@ def run(issue_number: int) -> None:
         f"**Summary:** {data.get('summary', 'N/A')}\n"
         f"**Failed tests:** {data.get('failed_tests', 'N/A')}\n"
         f"**Dependency:** {data.get('dependency', 'N/A')}\n"
-        f"**Commit scope:** {data.get('commit_scope', 'N/A')}"
+        f"**Commit scope:** {data.get('commit_scope', 'N/A')}\n"
+        f"**Tokens:** {token_usage.summary()}"
     )
     new_body = append_log(new_body, "discovery", log_summary)
 

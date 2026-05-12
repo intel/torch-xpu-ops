@@ -54,12 +54,12 @@ def run(issue_number: int) -> tuple[str, str]:
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("TRIAGING", 300)
-    output, log_path, session_id = backend.run(
+    output, log_path, session_id, token_usage = backend.run(
         prompt, skill=TRIAGE_SKILL,
         issue=issue_number, stage="TRIAGING",
         timeout=timeout,
     )
-    log("INFO", f"Triage agent log: {log_path} (session: {session_id})",
+    log("INFO", f"Triage agent log: {log_path} (session: {session_id}) | {token_usage.summary()}",
         issue=issue_number)
 
     # Parse result
@@ -96,6 +96,7 @@ def run(issue_number: int) -> tuple[str, str]:
         f"**Verdict:** {verdict}\n**Reason:** {reason}\n\n"
         f"**Root Cause:** {root_cause}\n\n"
         f"**Fix Strategy:** {fix_strategy}\n\n"
+        f"**Tokens:** {token_usage.summary()}\n"
         f"Log: `{log_path.name}`",
     )
 

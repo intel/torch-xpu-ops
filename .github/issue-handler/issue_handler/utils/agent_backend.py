@@ -6,6 +6,7 @@ OpenCode CLI notes (from `opencode run --help`):
   - Use --dangerously-skip-permissions for autonomous operation
 """
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import os
@@ -15,8 +16,62 @@ from collections.abc import Callable
 from pathlib import Path
 import subprocess
 
-from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR, CONFIG_DIR
+from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR, CONFIG_DIR, AGENT_MODEL
 from .logger import log as pipeline_log
+
+
+@dataclass
+class TokenUsage:
+    """Accumulated token usage across all steps in one agent run."""
+    input: int = 0
+    output: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
+    total: int = 0
+    cost: float = 0.0
+
+    def add_step(self, tokens: dict) -> None:
+        """Accumulate from a step_finish event's 'tokens' dict."""
+        self.input += tokens.get("input", 0)
+        self.output += tokens.get("output", 0)
+        cache = tokens.get("cache", {})
+        self.cache_read += cache.get("read", 0)
+        self.cache_write += cache.get("write", 0)
+        self.total += tokens.get("total", 0)
+
+    def add_cost(self, cost: float) -> None:
+        self.cost += cost or 0.0
+
+    def estimated_cost(self) -> float:
+        """Estimate cost using Claude Sonnet 4 pricing ($/M tokens).
+        Input: $3, Output: $15, Cache read: $0.30, Cache write: $3.75.
+        """
+        return (
+            self.input * 3.0 / 1_000_000
+            + self.output * 15.0 / 1_000_000
+            + self.cache_read * 0.30 / 1_000_000
+            + self.cache_write * 3.75 / 1_000_000
+        )
+
+    def summary(self) -> str:
+        """Human-readable summary for Action Items log."""
+        def _fmt(n: int) -> str:
+            if n >= 1_000_000:
+                return f"{n / 1_000_000:.1f}M"
+            if n >= 1_000:
+                return f"{n / 1_000:.1f}K"
+            return str(n)
+        parts = [f"model: {AGENT_MODEL}", f"tokens: {_fmt(self.total)}"]
+        parts.append(f"in: {_fmt(self.input)}")
+        parts.append(f"out: {_fmt(self.output)}")
+        if self.cache_read:
+            parts.append(f"cache_read: {_fmt(self.cache_read)}")
+        if self.cache_write:
+            parts.append(f"cache_write: {_fmt(self.cache_write)}")
+        # Use reported cost if available, otherwise estimate
+        cost = self.cost if self.cost > 0 else self.estimated_cost()
+        parts.append(f"cost: ${cost:.4f}")
+        return " | ".join(parts)
 
 
 def parse_opencode_events(raw_output: str) -> str:
@@ -41,10 +96,10 @@ class AgentBackend(ABC):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None, TokenUsage]:
         """Run LLM agent with prompt.
 
-        Returns (agent_output_text, log_file_path, session_id_or_None).
+        Returns (agent_output_text, log_file_path, session_id_or_None, token_usage).
         on_session_start: optional callback(session_id) called as soon as
             the agent session ID is known (while still running).
         """
@@ -78,7 +133,7 @@ class OpenCodeBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None, TokenUsage]:
         workdir = workdir or str(PYTORCH_DIR)
         timeout = timeout or 1800
 
@@ -137,6 +192,7 @@ class OpenCodeBackend(AgentBackend):
 
             session_id = None
             text_parts = []
+            token_usage = TokenUsage()
             start_time = time.monotonic()
             effective_timeout = timeout or 600
             try:
@@ -208,6 +264,13 @@ class OpenCodeBackend(AgentBackend):
                     if event.get("type") == "text":
                         part = event.get("part", {})
                         text_parts.append(part.get("text", ""))
+                    # Accumulate token usage from step_finish events
+                    if event.get("type") == "step_finish":
+                        part = event.get("part", {})
+                        tokens = part.get("tokens", {})
+                        if tokens:
+                            token_usage.add_step(tokens)
+                        token_usage.add_cost(part.get("cost", 0))
                 proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
@@ -221,14 +284,14 @@ class OpenCodeBackend(AgentBackend):
         full_output = "".join(text_parts)
 
         pipeline_log("INFO", f"Agent finished (rc={proc.returncode}), "
-                     f"log: {log_path}", issue=issue)
+                     f"log: {log_path} | {token_usage.summary()}", issue=issue)
 
         if proc.returncode != 0:
             raise RuntimeError(
                 f"OpenCode failed (rc={proc.returncode}), "
                 f"log: {log_path}\n{full_output[-500:]}"
             )
-        return full_output, log_path, session_id
+        return full_output, log_path, session_id, token_usage
 
 
 class CopilotBackend(AgentBackend):
@@ -238,7 +301,7 @@ class CopilotBackend(AgentBackend):
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,
-            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None]:
+            on_session_start: Callable[[str], None] | None = None) -> tuple[str, Path, str | None, TokenUsage]:
         raise NotImplementedError("Copilot backend not yet implemented")
 
 

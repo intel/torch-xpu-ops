@@ -26,7 +26,7 @@ with open(_CONFIG_PATH, encoding="utf-8") as _f:
 _repos = _cfg.get("repos", {})
 UPSTREAM_ISSUE_REPO = os.environ.get("UPSTREAM_ISSUE_REPO", _repos.get("xpu_ops_upstream", "intel/torch-xpu-ops"))
 ISSUE_REPO = os.environ.get("ISSUE_REPO", _repos.get("xpu_ops_issue", "ZhaoqiongZ/torch-xpu-ops-exp"))
-PRIVATE_REVIEW_REPO = os.environ.get("PRIVATE_REVIEW_REPO", _repos.get("pytorch_private", "chuanqi129/pytorch"))
+PRIVATE_REVIEW_REPO = os.environ.get("PRIVATE_REVIEW_REPO") or _repos.get("pytorch_private", "chuanqi129/pytorch")
 PUBLIC_TARGET_REPO = os.environ.get("PUBLIC_TARGET_REPO", _repos.get("pytorch_public", "pytorch/pytorch"))
 
 # ---------------------------------------------------------------------------
@@ -85,3 +85,4 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", str(_cfg.get("poll_interval"
 _backend = _cfg.get("backend", {})
 AGENT_BACKEND = os.environ.get("AGENT_BACKEND", _backend.get("type", "opencode"))
 OPENCODE_CMD = os.environ.get("OPENCODE_CMD", _backend.get("opencode_cmd", "opencode"))
+AGENT_MODEL = os.environ.get("AGENT_MODEL", _backend.get("model", "claude-sonnet-4"))
