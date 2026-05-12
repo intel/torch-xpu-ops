@@ -14,6 +14,7 @@ Supports two target repos:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from subprocess import CalledProcessError
 
 from ..utils import git as gh
@@ -77,13 +78,24 @@ def run(issue_number: int) -> None:
     branch = f"agent/issue-{issue_number}"
 
     if target_repo == "torch-xpu-ops":
-        # For torch-xpu-ops: fetch origin, branch off origin/main
-        git("fetch", "origin", workdir=workdir, issue=issue_number)
+        # For torch-xpu-ops: use a worktree so we don't disturb the pipeline's
+        # checked-out branch in the main repo.
+        import tempfile
+        worktree_dir = Path(tempfile.mkdtemp(
+            prefix=f"agent-fix-{issue_number}-", dir="/tmp"))
+        git("fetch", "origin", workdir=TORCH_XPU_OPS_DIR, issue=issue_number)
         try:
-            git("checkout", "-b", branch, "origin/main",
-                workdir=workdir, issue=issue_number)
+            git("worktree", "add", str(worktree_dir), "-b", branch,
+                "origin/main", workdir=TORCH_XPU_OPS_DIR, issue=issue_number)
         except CalledProcessError:
-            git("checkout", branch, workdir=workdir, issue=issue_number)
+            # Branch exists — attach worktree to existing branch
+            import shutil
+            shutil.rmtree(worktree_dir, ignore_errors=True)
+            worktree_dir = Path(tempfile.mkdtemp(
+                prefix=f"agent-fix-{issue_number}-", dir="/tmp"))
+            git("worktree", "add", str(worktree_dir), branch,
+                workdir=TORCH_XPU_OPS_DIR, issue=issue_number)
+        workdir = worktree_dir
     else:
         # For pytorch: existing flow (fetch upstream + review remote)
         git("fetch", "upstream", workdir=workdir, issue=issue_number)
@@ -159,6 +171,12 @@ def run(issue_number: int) -> None:
     if not diff:
         log("WARN", f"Agent produced no changes for #{issue_number}",
             issue=issue_number)
+        # Cleanup worktree if used
+        if target_repo == "torch-xpu-ops":
+            import shutil
+            git("worktree", "remove", str(workdir), check=False,
+                workdir=TORCH_XPU_OPS_DIR, issue=issue_number)
+            shutil.rmtree(workdir, ignore_errors=True)
         return
 
     # --- Squash ---
@@ -228,6 +246,13 @@ def run(issue_number: int) -> None:
 
     log("INFO", f"Implementation complete for #{issue_number}",
         issue=issue_number)
+
+    # --- Cleanup worktree if used ---
+    if target_repo == "torch-xpu-ops":
+        import shutil
+        git("worktree", "remove", str(workdir), check=False,
+            workdir=TORCH_XPU_OPS_DIR, issue=issue_number)
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def main() -> None:
