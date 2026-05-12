@@ -6,7 +6,10 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
+
 import pytest
+from torch.testing._internal.common_utils import run_tests
 
 torch = pytest.importorskip("torch")
 
@@ -40,3 +43,7 @@ def test_slice_scatter_xpu_compile_backward_matches_cpu():
     assert torch.allclose(out.cpu(), out_cpu, atol=1e-4, rtol=1e-4)
     assert torch.allclose(x.grad.cpu(), x_cpu.grad, atol=1e-4, rtol=1e-4)
     assert torch.allclose(y.grad.cpu(), y_cpu.grad, atol=1e-4, rtol=1e-4)
+
+
+if __name__ == "__main__":
+    run_tests()
