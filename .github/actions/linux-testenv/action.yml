@@ -49,15 +49,17 @@ runs:
       if: ${{ inputs.skip_setup_python == 'true' }}
       shell: bash -xe {0}
       run: |
+        MINIFORGE_DIR="${HOME}/miniforge3"
         if ! command -v conda &>/dev/null; then
           curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
-          bash /tmp/miniforge.sh -b -p /opt/miniforge
+          bash /tmp/miniforge.sh -b -p "${MINIFORGE_DIR}"
           rm /tmp/miniforge.sh
         fi
-        export PATH="/opt/miniforge/bin:$PATH"
+        export PATH="${MINIFORGE_DIR}/bin:$PATH"
         conda create -n xpu-py python=${{ inputs.python }} -y --force
-        echo "/opt/miniforge/envs/xpu-py/bin" >> $GITHUB_PATH
-        /opt/miniforge/envs/xpu-py/bin/python -V
+        CONDA_BASE="$(conda info --base)"
+        echo "${CONDA_BASE}/envs/xpu-py/bin" >> $GITHUB_PATH
+        "${CONDA_BASE}/envs/xpu-py/bin/python" -V
     - name: Check python
       shell: bash -xe {0}
       run: |
