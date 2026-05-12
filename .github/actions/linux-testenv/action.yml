@@ -21,7 +21,7 @@ runs:
     - name: Check runner
       shell: bash -xe {0}
       run: |
-        hostname && id
+        {hostname && id} || true
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
