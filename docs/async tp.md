@@ -2,7 +2,7 @@
 # Model inference
 
 - Attn layer: Norm + GEMM (QKV) + Attn + GEMM(output projection) + Allreduce
-- MLP layer: Norm + GEMM(gate up projection) + Act + GEMM(down projection) + AllReduce
+- MLP layer: Norm + GEMM(gate up projection) + Act(SiluAndMul) + GEMM(down projection) + AllReduce
 
 ## No fusion pattern
 
