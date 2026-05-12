@@ -45,7 +45,7 @@ struct DivFloorWithScalarFunctor {
       : b_(b), inv_b_(inv_b) {}
 
   scalar_t operator()(scalar_t a) const {
-    auto mod = std::fmod(a, b_);
+    auto mod = sycl::fmod(a, b_);
     auto div = (a - mod) * inv_b_;
     if ((mod != 0) && (b_ < 0) != (mod < 0)) {
       div -= scalar_t(1);
