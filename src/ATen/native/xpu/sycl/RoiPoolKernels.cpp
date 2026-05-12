@@ -54,9 +54,9 @@ struct RoiPoolForwardKernel {
       int wstart =
           static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
       int hend =
-          static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
+          static_cast<int>(sycl::ceil(static_cast<T>(ph + 1) * bin_size_h));
       int wend =
-          static_cast<int>(std::ceil(static_cast<T>(pw + 1) * bin_size_w));
+          static_cast<int>(sycl::ceil(static_cast<T>(pw + 1) * bin_size_w));
 
       // Add roi offsets and clip to input boundaries
       hstart = std::min(std::max(hstart + roi_start_h, 0), height_);
