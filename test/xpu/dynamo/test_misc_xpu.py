@@ -1472,9 +1472,33 @@ graph():
         guard_code_str = "\n".join(guard_code)
 
         # Make sure that the dict_contains are present in the order of added
-        self.assertExpectedInline(
-            guard_code_str,
-            """\
+        if TEST_XPU:
+            self.assertExpectedInline(
+                guard_code_str,
+                """\
+L['x'].size()[1] == L['x'].size()[0]
+L['x'].storage_offset() == 0
+2 <= L['x'].size()[0]
+utils_device.CURRENT_DEVICE == None
+str(L['x'].dtype) == 'torch.float32'
+str(L['x'].device) == 'cpu'
+L['x'].requires_grad == False
+L['x'].ndimension() == 2
+hasattr(L['x'], '_dynamo_dynamic_indices') == False
+hasattr(L['x'], '_dynamo_weak_dynamic_indices') == False
+hasattr(L['x'], '_dynamo_unbacked_indices') == False
+hasattr(L['x'], '_dynamo_strict_unbacked_indices') == False
+hasattr(L['x'], '_dynamo_static_indices') == False
+L['x'] is L['y']
+not ___dict_contains('aaaaaaaa', G['sys'].modules)
+not ___dict_contains('bbbbbbbb', G['sys'].modules)
+___dict_contains('operator', G['sys'].modules)
+not ___dict_contains('cccccccc', G['sys'].modules)""",
+            )
+        else:
+            self.assertExpectedInline(
+                guard_code_str,
+                """\
 L['x'].size()[1] == L['x'].size()[0]
 L['x'].storage_offset() == 0
 2 <= L['x'].size()[0]
@@ -1489,7 +1513,7 @@ not ___dict_contains('aaaaaaaa', G['sys'].modules)
 not ___dict_contains('bbbbbbbb', G['sys'].modules)
 ___dict_contains('operator', G['sys'].modules)
 not ___dict_contains('cccccccc', G['sys'].modules)""",
-        )
+            )
 
     def test_fold(self):
         def fn(a):
