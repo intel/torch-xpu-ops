@@ -9,7 +9,9 @@ description: >
 # Fix CI Failure
 
 ## Step 0: Verify Environment
-1. Verify torch is importable: `python -c "import torch; print(torch.__version__)"`
+1. Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
+   - If `torch-xpu-ops`: you're fixing XPU kernel/operator code (files under `src/`)
+   - If `pytorch`: you're fixing PyTorch core code (files under `torch/`, `aten/`, `test/`, `c10/`)
 2. Verify the worktree is clean: `git status` should show no uncommitted changes
 3. Start from a clean base: checkout the main branch (or your reproducer branch)
 
@@ -23,16 +25,16 @@ Extract the reproducer command from the issue description. It may be:
 Run it exactly as specified. If the issue has no reproducer, construct one
 from the failed test name and error context.
 
-If you modified C++/CUDA/SYCL code (not just Python), rebuild pytorch first:
-```bash
-python setup.py develop 2>&1 | tail -20
-```
+If you modified C++/CUDA/SYCL code (not just Python), rebuild first:
+- **pytorch repo**: `python setup.py develop 2>&1 | tail -20`
+- **torch-xpu-ops repo**: No separate build step needed (built as part of pytorch)
 
 ## Step 2: Implement the Fix
 Follow the **Proposed Fix Strategy** from the issue. Key principles:
 - **Minimal changes** — fix only what's broken
 - **Never skip tests** — no `@skipIfXpu`, `@skip`, `unittest.skip`
-- **Never modify submodules** — no changes to `third_party/*`
+- **Stay in your repo** — if in pytorch, don't modify `third_party/*`; if in torch-xpu-ops, only modify files under `src/`
+- **Never modify unrelated files**
 
 ## Step 3: Verify
 Run the reproducer command again to confirm the fix works.
@@ -54,7 +56,7 @@ After fixing, update the issue body with:
 
 ## HARD RULES
 - NEVER add skip decorators. FIX the test.
-- NEVER commit submodule changes (`third_party/*`).
+- NEVER modify files outside your repo scope (pytorch: no `third_party/*`; torch-xpu-ops: only `src/`).
 - NEVER modify unrelated files.
 - NEVER force-push. This makes commits un-trackable.
 - Use `git add` on specific files only.
