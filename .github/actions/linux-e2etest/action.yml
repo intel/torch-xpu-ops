@@ -93,7 +93,7 @@ runs:
         for scenario in $(echo ${{ inputs.scenario }} | tr ',' ' ')
         do
           if [ "${scenario}" == "performance" ]; then
-            export ZE_AFFINITY_MASK=0
+            export ZE_AFFINITY_MASK=0,1,2,3,4,5,6,7
           fi
           python ./run_dynamo.py --suite "${{ inputs.suite }}" \
                                --dt "${{ inputs.dt }}" \
