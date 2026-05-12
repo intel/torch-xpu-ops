@@ -199,49 +199,34 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
-      - name: Collect new failures
+          # Save new failure list for later steps
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          : > "$new_failure_list"
+          for ut_name in ${ut_list}; do
+            filtered_file="failures_${ut_name}_filtered.log"
+            if [ -s "$filtered_file" ]; then
+              cat "$filtered_file" >> "$new_failure_list"
+            fi
+          done
+      - name: Collect new failures with error messages
         if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
         id: new-failures
         run: |
-          cd ${{ github.workspace }}/ut_log/
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
-          ut_dir="${latest_dir}/${{ inputs.ut }}"
-          if [ "${{ inputs.ut }}" == "basic" ]; then
-            ut_list="op_regression op_extended op_regression_dev1"
-          else
-            ut_list="${{ inputs.ut }}"
-          fi
-          # Collect new failure case names from filtered logs
-          new_failure_names=$(mktemp)
-          for ut_name in ${ut_list}; do
-            filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
-            if [ -s "$filtered_file" ]; then
-              cat "$filtered_file" >> "$new_failure_names"
-            fi
-          done
-          # Filter ut_failure_list.csv to keep only new failures (with error messages)
-          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
           ut_failure_csv="${{ github.workspace }}/ut_log/ut_failure_list.csv"
-          if [ -s "$new_failure_names" ] && [ -f "$ut_failure_csv" ]; then
-            # Keep header line
+          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          if [ -s "$new_failure_list" ] && [ -f "$ut_failure_csv" ]; then
+            # Keep header lines
             head -2 "$ut_failure_csv" > "$new_failure_csv"
-            # Match rows by class_name and test_name from filtered log (format: category,class_name,test_name)
+            # Match rows by test_name from filtered log (format: category,class_name,test_name)
             while IFS=',' read -r category class_name test_name; do
               [ -z "$test_name" ] && continue
               grep -F "$test_name" "$ut_failure_csv" >> "$new_failure_csv" || true
-            done < "$new_failure_names"
+            done < "$new_failure_list"
             echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
           fi
-          rm -f "$new_failure_names"
-      - name: Upload new failure list
-        if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
-        id: upload-new-failures
-        uses: actions/upload-artifact@v4
-        with:
-          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -259,7 +244,6 @@ jobs:
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const ut = '${{ inputs.ut }}';
-            const newFailureUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
 
             // Read new failure list csv
             const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
@@ -268,17 +252,16 @@ jobs:
               const raw = fs.readFileSync(csvFile, 'utf8').trim();
               const maxLen = 50000;
               failureTable = raw.length > maxLen
-                ? '... (truncated, see full report in artifact)\n' + raw.slice(-maxLen)
+                ? '... (truncated, see full log in job link)\n' + raw.slice(-maxLen)
                 : raw;
             }
 
             const body = [
-              `@copilot New UT failures detected in **${ut}** tests. Please check these new failures with the artifact link below and analyze whether they are caused by the PR changes.`,
+              `@copilot New UT failures detected in **${ut}** tests. Please check these new failures and analyze whether they are caused by the PR changes.`,
               '',
               '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
               '',
               `Job log: ${jobUrl}`,
-              `New failure list artifact: ${newFailureUrl}`,
               '',
               '**New failures:**',
               '',
@@ -300,5 +283,11 @@ jobs:
       - name: Fail if UT check failed
         if: ${{ steps.ut-check.outcome == 'failure' }}
         run: |
-          echo "::error::UT check failed with new failures"
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          if [ -s "$new_failure_list" ]; then
+            echo "::error::UT check failed with new failures:"
+            cat "$new_failure_list"
+          else
+            echo "::error::UT check failed"
+          fi
           exit 1
