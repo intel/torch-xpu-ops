@@ -20,6 +20,7 @@ Analyze the structured issue and determine:
 2. **Quick classification (BEFORE deep analysis):**
    - If labeled as `[Task]`, `[Feature]`, or describes broad alignment/enablement work → immediately return `NEEDS_HUMAN` with reason "Umbrella/task issue, not a single fixable bug"
    - If it describes a "feature gap" or "blocked by missing feature" → `NEEDS_HUMAN`
+   - If category is "performance" and there's no specific failing test → `NEEDS_HUMAN` with reason "Performance optimization requires human design decision"
    - If it has a clear error message/stack trace → proceed to step 3
 3. **Search the codebase** to understand the failing code path. **Limit to 3 file reads** — if you haven't found the root cause after reading 3 files, output your best analysis with what you have.
 4. **Determine root cause** — trace from error message to the actual bug.
