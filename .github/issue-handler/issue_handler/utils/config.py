@@ -46,7 +46,7 @@ _limits = _cfg.get("limits", {})
 MAX_AGENT_ATTEMPTS: int = _limits.get("max_agent_attempts", 3)
 
 # Terminal stages
-TERMINAL_STAGES: set[str] = set(_cfg.get("terminal_stages", ["DONE", "SKIPPED", "NEEDS_HUMAN"]))
+TERMINAL_STAGES: set[str] = set(_cfg.get("terminal_stages", ["DONE", "SKIPPED", "NEEDS_HUMAN", "IN_REVIEW"]))
 
 # ---------------------------------------------------------------------------
 # Timeouts

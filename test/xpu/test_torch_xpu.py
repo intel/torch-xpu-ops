@@ -2212,13 +2212,28 @@ else:
     @skipIfMPS
     def test_nondeterministic_alert_histc(self, device):
         a = torch.tensor([], device=device)
+        device_type = torch.device(device).type
+        if device_type in ("cuda", "xpu"):
+            msg = f"_histc_{device_type} with floating point input"
+        else:
+            msg = f"_histc_{device_type}"
         for op_call in [torch.histc, torch.Tensor.histc]:
             self.check_nondeterministic_alert(
                 lambda: op_call(a, min=0, max=3),
-                "_histc_" + torch.device(device).type,
-                torch.device(device).type == "cuda"
-                or torch.device(device).type == "xpu",
+                msg,
+                device_type == "cuda" or device_type == "xpu",
             )
+
+    @skipIfMPS
+    def test_nondeterministic_alert_histc_int(self, device):
+        # Integer histc is deterministic (integer atomicAdd is exact), so it
+        # should not raise even when deterministic algorithms are enabled.
+        if torch.device(device).type not in ("cuda", "xpu"):
+            return
+        a = torch.zeros(4, device=device, dtype=torch.int64)
+        with torch.use_deterministic_algorithms(True):
+            for op_call in [torch.histc, torch.Tensor.histc]:
+                op_call(a, bins=4, min=0, max=3)
 
     @skipIfMPS
     def test_nondeterministic_alert_bincount(self, device):
