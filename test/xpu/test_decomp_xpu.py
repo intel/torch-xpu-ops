@@ -442,9 +442,9 @@ CROSS_REF_EXCLUDE_SET = {
     # XPU specific exclude cases
     # max_pool2d_with_indices_backward tests are not applicable
     # More details in https://github.com/pytorch/pytorch/pull/182619
-    (None, None, "max_pool2d_with_indices_backward"),  # XPU uses native kernel
-    (None, None, "nn.functional.max_pool1d"),  # backward uses max_pool2d_with_indices_backward
-    (None, None, "nn.functional.max_pool2d"),  # backward uses max_pool2d_with_indices_backward
+    (None, None, "max_pool2d_with_indices_backward"),
+    (None, None, "nn.functional.max_pool1d"),
+    (None, None, "nn.functional.max_pool2d"),
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
