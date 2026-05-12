@@ -9,7 +9,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestFFTC2RValidation(TestCase):
@@ -30,3 +30,7 @@ class TestFFTC2RValidation(TestCase):
         t = torch.full((3, 1, 3, 1), 0.372049, dtype=torch.cfloat, device="xpu")
         with self.assertRaisesRegex(RuntimeError, "Invalid number of data points"):
             torch._fft_c2r(t, [2], 2, 0)
+
+
+if __name__ == "__main__":
+    run_tests()
