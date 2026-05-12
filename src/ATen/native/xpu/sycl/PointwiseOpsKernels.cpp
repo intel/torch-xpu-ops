@@ -45,6 +45,36 @@ struct AddcmulComplexFunctor {
   scalar_t alpha_;
 };
 
+template <typename scalar_t>
+struct AddcmulScalarTensor2ComplexFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return a + alpha_ * b * c_;
+  }
+
+  AddcmulScalarTensor2ComplexFunctor(scalar_t alpha, scalar_t c)
+      : alpha_(alpha), c_(c) {}
+
+ private:
+  scalar_t alpha_;
+  scalar_t c_;
+};
+
+template <typename scalar_t>
+struct AddcmulScalarTensor2Functor {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return static_cast<accscalar_t>(a) +
+        alpha_ * static_cast<accscalar_t>(b) * c_;
+  }
+
+  AddcmulScalarTensor2Functor(accscalar_t alpha, accscalar_t c)
+      : alpha_(alpha), c_(c) {}
+
+ private:
+  accscalar_t alpha_;
+  accscalar_t c_;
+};
+
 void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
   TORCH_CHECK(
       !iter.is_cpu_scalar(1),
@@ -61,8 +91,16 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {
-      auto alpha = value.to<scalar_t>();
-      gpu_kernel(iter, AddcmulComplexFunctor<scalar_t>(alpha));
+      if (iter.is_cpu_scalar(3)) {
+        auto tensor2_val = iter.scalar_value<scalar_t>(3);
+        iter.remove_operand(3);
+        auto alpha = value.to<scalar_t>();
+        gpu_kernel(
+            iter, AddcmulScalarTensor2ComplexFunctor<scalar_t>(alpha, tensor2_val));
+      } else {
+        auto alpha = value.to<scalar_t>();
+        gpu_kernel(iter, AddcmulComplexFunctor<scalar_t>(alpha));
+      }
     });
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
@@ -72,8 +110,18 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
         "addcmul_xpu",
         [&]() {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          auto alpha = value.to<accscalar_t>();
-          gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
+          if (iter.is_cpu_scalar(3)) {
+            auto tensor2_val = iter.scalar_value<scalar_t>(3);
+            iter.remove_operand(3);
+            auto alpha = value.to<accscalar_t>();
+            gpu_kernel(
+                iter,
+                AddcmulScalarTensor2Functor<scalar_t>(
+                    alpha, static_cast<accscalar_t>(tensor2_val)));
+          } else {
+            auto alpha = value.to<accscalar_t>();
+            gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
+          }
         });
   }
 }
