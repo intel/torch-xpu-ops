@@ -12,7 +12,6 @@
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -72,40 +71,6 @@ void hardswish_backward_kernel(TensorIterator& iter) {
       iter.dtype(),
       "hardswish_backward_xpu",
       [&]() { gpu_kernel(iter, HardswishBackwardFunctor<scalar_t>()); });
-}
-
-// Functor used with multi_tensor_apply for the in-place channel-last fast path.
-// The Op template must match the signature expected by UnaryOpFunctor: T(T).
-template <typename T>
-struct HardswishMTAFunctor {
-  T operator()(T t) const {
-    const T zero(0.0f);
-    const T one_sixth(1.0f / 6.0f);
-    const T three(3.0f);
-    const T six(6.0f);
-    return t * std::min(std::max(t + three, zero), six) * one_sixth;
-  }
-};
-
-void hardswish_inplace_multi_tensor_kernel(TensorList tensors) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      tensors[0].scalar_type(),
-      "hardswish__xpu",
-      [&]() {
-        using opmath_t = at::opmath_type<scalar_t>;
-        std::vector<std::vector<at::Tensor>> tensor_lists;
-        tensor_lists.emplace_back(tensors.vec());
-        multi_tensor_apply<1>(
-            tensor_lists,
-            UnaryOpFunctor<
-                scalar_t,
-                /* depth */ 1,
-                /* r_args_depth */ 1,
-                /* res_arg_index */ 0>(),
-            HardswishMTAFunctor<opmath_t>());
-      });
 }
 
 } // namespace xpu

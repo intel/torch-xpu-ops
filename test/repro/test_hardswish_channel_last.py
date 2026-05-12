@@ -9,16 +9,10 @@
 # Owner(s): ["module: intel"]
 
 """
-Regression test for: channel-last aten::hardswish_ triggering extra copy kernel.
+Regression test for: channel-last aten::hardswish_ correctness.
 
-When hardswish_ is called in-place on a channel-last tensor the XPU backend
-must apply the activation directly in memory-order (via multi_tensor_apply)
-instead of going through TensorIterator, which would otherwise introduce an
-extra contiguous-copy kernel launch.
-
-The test verifies:
-1. Numerical correctness of hardswish_ on channel-last 2-D and 4-D tensors.
-2. Memory format is preserved after the in-place call.
+Verifies that hardswish_ called in-place on channel-last tensors produces the
+correct numerical result and preserves the memory format.
 """
 
 import torch
@@ -113,7 +107,7 @@ class TestHardswishChannelLast(TestCase):
 
         # Out-of-place (uses TensorIterator with a freshly-allocated output)
         y_out = F.hardswish(x_outplace)
-        # In-place (our fixed multi_tensor_apply path)
+        # In-place
         x_inplace.hardswish_()
 
         torch.testing.assert_close(x_inplace, y_out)

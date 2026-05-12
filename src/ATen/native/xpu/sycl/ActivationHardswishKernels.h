@@ -10,7 +10,6 @@
 
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
 
 namespace at {
@@ -20,8 +19,6 @@ namespace xpu {
 TORCH_XPU_API void hardswish_kernel(TensorIterator& iter);
 
 TORCH_XPU_API void hardswish_backward_kernel(TensorIterator& iter);
-
-TORCH_XPU_API void hardswish_inplace_multi_tensor_kernel(TensorList tensors);
 
 } // namespace xpu
 } // namespace native
