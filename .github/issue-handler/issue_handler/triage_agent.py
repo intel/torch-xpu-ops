@@ -9,6 +9,24 @@ import argparse
 import json
 import re
 
+def _parse_markdown_triage(text: str) -> dict | None:
+    """Fallback parser for when triage agent returns markdown instead of JSON."""
+    # Look for **Verdict:** `VALUE` or **Verdict:** VALUE
+    verdict_m = re.search(r'\*\*Verdict:\*\*\s*`?(\w+)`?', text)
+    if not verdict_m:
+        return None
+    verdict = verdict_m.group(1).upper()
+    # Extract other fields
+    root_m = re.search(r'\*\*Root Cause:\*\*\s*(.+?)(?=\n\n|\n\*\*|\Z)', text, re.DOTALL)
+    fix_m = re.search(r'\*\*Fix Strategy:\*\*\s*(.+?)(?=\n\n|\n\*\*|\Z)', text, re.DOTALL)
+    reason_m = re.search(r'\*\*Reason:\*\*\s*(.+?)(?=\n\n|\n\*\*|\Z)', text, re.DOTALL)
+    return {
+        "verdict": verdict,
+        "root_cause": root_m.group(1).strip() if root_m else "",
+        "fix_strategy": fix_m.group(1).strip() if fix_m else "",
+        "reason": reason_m.group(1).strip() if reason_m else "",
+    }
+
 from .utils import git as gh
 from .utils.config import ISSUE_REPO, STAGE_TIMEOUTS
 from .utils.body_templates import (
@@ -67,13 +85,16 @@ def run(issue_number: int) -> tuple[str, str]:
         json_str = extract_json(output)
         data = json.loads(json_str)
     except (json.JSONDecodeError, ValueError) as e:
-        log("WARN", f"Failed to parse triage output: {e}", issue=issue_number)
-        data = {
-            "root_cause": f"Could not parse triage output (length={len(output)})",
-            "fix_strategy": "",
-            "verdict": "NEEDS_HUMAN",
-            "reason": "Triage output parsing failed",
-        }
+        # Fallback: try to parse structured markdown output
+        data = _parse_markdown_triage(output)
+        if not data:
+            log("WARN", f"Failed to parse triage output: {e}", issue=issue_number)
+            data = {
+                "root_cause": f"Could not parse triage output (length={len(output)})",
+                "fix_strategy": "",
+                "verdict": "NEEDS_HUMAN",
+                "reason": "Triage output parsing failed",
+            }
 
     verdict = data.get("verdict", "NEEDS_HUMAN").upper()
     reason = data.get("reason", "")
