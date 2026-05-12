@@ -49,23 +49,21 @@ runs:
       if: ${{ inputs.skip_setup_python == 'true' }}
       shell: bash -xe {0}
       run: |
-        MINIFORGE_DIR="${HOME}/miniforge3"
         if ! command -v conda &>/dev/null; then
           curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
-          bash /tmp/miniforge.sh -b -p "${MINIFORGE_DIR}"
+          bash /tmp/miniforge.sh -b -p /opt/miniforge
           rm /tmp/miniforge.sh
         fi
-        export PATH="${MINIFORGE_DIR}/bin:$PATH"
-        conda create -n xpu-py python=${{ inputs.python }} -y --force
-        CONDA_BASE="$(conda info --base)"
-        echo "${CONDA_BASE}/envs/xpu-py/bin" >> $GITHUB_PATH
-        "${CONDA_BASE}/envs/xpu-py/bin/python" -V
+        export PATH="/opt/miniforge/bin:$PATH"
+        conda create -n xpu-py python=${{ inputs.python }} pip wheel setuptools -y --force
+        echo "/opt/miniforge/envs/xpu-py/bin" >> $GITHUB_PATH
+        /opt/miniforge/envs/xpu-py/bin/python -V
     - name: Check python
       shell: bash -xe {0}
       run: |
         which python && python -V
         which pip && pip list
-        pip install -U pip wheel setuptools
+        pip install -U --break-system-packages pip wheel setuptools 2>/dev/null || true
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
