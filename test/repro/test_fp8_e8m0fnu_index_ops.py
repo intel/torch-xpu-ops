@@ -16,7 +16,7 @@ that support so that operations like printing an e8m0fnu tensor work correctly.
 """
 
 import torch
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 FLOAT8_DTYPES = (
     torch.float8_e4m3fn,
