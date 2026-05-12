@@ -1,3 +1,5 @@
+# Owner(s): ["module: tests"]
+
 # Reproducer for https://github.com/intel/torch-xpu-ops/issues/3599
 # XPU upsample_nearest3d kernel should support tensors with > INT32_MAX elements.
 # Previously the kernel had an explicit TORCH_CHECK rejecting outputs exceeding
@@ -19,3 +21,7 @@ def test_upsample_nearest3d_large_tensor_xpu():
     x = torch.ones((1, 256, 16, 720, 1280), dtype=torch.bfloat16, device="xpu")
     result = torch.nn.functional.interpolate(x, scale_factor=2, mode="nearest")
     assert result.shape == torch.Size([1, 256, 32, 1440, 2560])
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
