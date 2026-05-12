@@ -31,13 +31,27 @@ def _run_step(step_name: str, run_fn, issue_number: int) -> None:
     except Exception as e:
         tb = traceback.format_exc()
         log("ERROR", f"{step_name} step failed: {e}", issue=issue_number, exc=e)
-        # Post error to source issue so it's visible remotely
+        # Sanitize error: strip long command args and local paths
+        err_str = str(e)
+        # If error contains a full command list, truncate to just the error type
+        if "timed out after" in err_str:
+            short_err = f"Agent timed out after the configured timeout"
+        elif "failed (rc=" in err_str:
+            short_err = err_str.split(", log:")[0][:200]
+        else:
+            # Strip anything that looks like a prompt dump
+            short_err = err_str[:200]
+        # Strip local paths from traceback
+        clean_tb = tb.replace("/home/stonepia/", "~/")
+        # Only keep the last few lines of traceback (actual error chain)
+        tb_lines = clean_tb.strip().split("\n")
+        short_tb = "\n".join(tb_lines[-6:]) if len(tb_lines) > 6 else clean_tb
         gh.add_issue_comment(
             ISSUE_REPO, issue_number,
             f"❌ **Agent error** in `{step_name}` step:\n\n"
-            f"```\n{str(e)[:500]}\n```\n\n"
-            f"<details><summary>Full traceback</summary>\n\n"
-            f"```\n{tb[-1500:]}\n```\n</details>",
+            f"```\n{short_err}\n```\n\n"
+            f"<details><summary>Traceback</summary>\n\n"
+            f"```\n{short_tb}\n```\n</details>",
         )
         raise
 
