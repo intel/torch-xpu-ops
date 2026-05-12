@@ -177,13 +177,18 @@ def _parse_existing_rows(body: str) -> dict[int, str]:
 
 
 def build_report(results: list[dict], repo: str | None = None,
-                 existing_body: str | None = None) -> str:
+                 existing_body: str | None = None,
+                 issue_repo: str | None = None) -> str:
     """Build markdown report table, merging with existing rows if provided.
 
     If existing_body is given, rows for issues NOT in the current results
     are preserved (appended after the new/updated rows).
+
+    Args:
+        repo: Legacy param (unused for links now).
+        issue_repo: Repo for issue links (default: ISSUE_REPO).
     """
-    report_repo = repo or ISSUE_REPO
+    report_repo = issue_repo or ISSUE_REPO
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Parse existing rows to preserve
@@ -325,11 +330,12 @@ def update_tracking_issue(repo: str, results: list[dict]) -> int:
     existing = find_tracking_issue(repo)
     if existing:
         existing_body = gh.get_issue_detail(repo, existing).get("body", "")
-        report = build_report(results, repo=repo, existing_body=existing_body)
+        report = build_report(results, repo=repo, existing_body=existing_body,
+                              issue_repo=ISSUE_REPO)
         gh.update_issue_body(repo, existing, report)
         return existing
     else:
-        report = build_report(results, repo=repo)
+        report = build_report(results, repo=repo, issue_repo=ISSUE_REPO)
         import subprocess, json as _json
         token = gh._token_for_repo(repo)
         env = {**__import__("os").environ, "GH_TOKEN": token} if token else None
