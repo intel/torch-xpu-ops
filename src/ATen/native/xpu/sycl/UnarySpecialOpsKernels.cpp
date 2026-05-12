@@ -46,14 +46,14 @@ void sigmoid_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erf(float(a));
+    return sycl::erf(float(a));
   }
 };
 
 template <>
 struct ErfFunctor<double> {
   double operator()(double a) const {
-    return std::erf(a);
+    return sycl::erf(a);
   }
 };
 
