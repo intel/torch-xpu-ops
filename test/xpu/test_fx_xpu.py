@@ -94,9 +94,9 @@ def _canonicalize_xpu_launch_events(actual_traces):
     return "\n".join(lines)
 
 
-def _get_normalized_xpu_traces(prof):
+def _get_normalized_xpu_traces(actual_traces):
     return _canonicalize_xpu_launch_events(
-        _filter_xpu_runtime_events(_enrich_profiler_traces(prof))
+        _filter_xpu_runtime_events(actual_traces)
     )
 
 
@@ -205,10 +205,22 @@ def _test_profiler_stack_trace_augmentation(self):
     ) as prof:
         result = compiled_model(torch.randn(10, 10, device="xpu"))
 
-    actual_traces = _get_normalized_xpu_traces(prof)
+    actual_traces = _enrich_profiler_traces(prof)
 
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
-    kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
+    if torch.version.hip:
+        actual_traces = '\n'.join(
+            line for line in actual_traces.split('\n')
+            if 'hipGetDeviceProperties' not in line
+        )
+        kernel_event = "hipExtModuleLaunchKernel"
+        kernel_event_relu = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+        kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
+    else:
+        kernel_event = "cudaLaunchKernel"
+        kernel_event_relu = "cudaLaunchKernel"
     if IS_WINDOWS:
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
@@ -294,8 +306,14 @@ def _test_profiler_multiple_modules(self):
         result_a = compiled_a(torch.randn(10, 10, device="xpu"))
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
-    actual_traces = _get_normalized_xpu_traces(prof)
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    actual_traces = _enrich_profiler_traces(prof)
+    if torch.version.hip:
+        kernel_event = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    else:
+        kernel_event = "cudaLaunchKernel"
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -346,8 +364,14 @@ def _test_profiler_nested_graph_modules(self):
             torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
         )
 
-    actual_traces = _get_normalized_xpu_traces(prof)
-    kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    actual_traces = _enrich_profiler_traces(prof)
+    if torch.version.hip:
+        kernel_event = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    else:
+        kernel_event = "cudaLaunchKernel"
     self.assertExpectedInline(
         actual_traces,
         f"""\
