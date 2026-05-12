@@ -87,18 +87,11 @@ void memcpyAsync(
     TORCH_INTERNAL_ASSERT(p2p_enabled == true);
   }
   auto q = copy_stream.queue();
-  auto device_architecture =
-      q.get_device()
-          .get_info<
-              sycl::ext::oneapi::experimental::info::device::architecture>();
-  constexpr auto unsupported_architectures =
-      std::array<sycl::ext::oneapi::experimental::architecture, 2>{
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg};
-  if (std::find(
-          unsupported_architectures.begin(),
-          unsupported_architectures.end(),
-          device_architecture) == unsupported_architectures.end()) {
+  auto dev = q.get_device();
+  if (dev.ext_oneapi_architecture_is(
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc) ||
+      dev.ext_oneapi_architecture_is(
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg)) {
     copy_kernel(iter);
   } else {
     auto dst = (char*)iter.data_ptr(0);
