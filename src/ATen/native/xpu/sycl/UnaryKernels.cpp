@@ -27,7 +27,7 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct SqrtFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sqrt(a);
+    return sycl::sqrt(a);
   }
 };
 

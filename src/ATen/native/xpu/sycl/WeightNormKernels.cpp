@@ -69,7 +69,7 @@ struct WeightNormReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
       if (id.chunk_off == 0) {
-        oinfo_.data[str_off] = is_final_ ? sqrtf(value) : value;
+        oinfo_.data[str_off] = is_final_ ? sycl::sqrt(value) : value;
       }
     }
   }
@@ -284,7 +284,7 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     int n_slid = (int)id.glb_batch % batch_wg_range_;
     if (id.glb_batch < cfg_.problem_batch_ && id.chunk_off == 0) {
-      value = sqrtf(value);
+      value = sycl::sqrt(value);
       ninfo_.data[n_off] = value;
       shared_[n_slid] = value;
     }

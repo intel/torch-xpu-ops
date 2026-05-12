@@ -479,7 +479,7 @@ void _transform_bias_rescale_qkv_kernel(
                     offsets_ptr,
                     sizes_ptr,
                     qkv_acc,
-                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
+                    1.0 / sycl::sqrt(static_cast<scalar_t>(dim_per_head)),
                     true);
             sycl_kernel_submit(
                 global_range * local_range,
@@ -496,7 +496,7 @@ void _transform_bias_rescale_qkv_kernel(
                     offsets_ptr,
                     sizes_ptr,
                     qkv_acc,
-                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
+                    1.0 / sycl::sqrt(static_cast<scalar_t>(dim_per_head)),
                     false);
 
             sycl_kernel_submit(
@@ -513,7 +513,7 @@ void _transform_bias_rescale_qkv_kernel(
               kfn(qkv.packed_accessor64<scalar_t, 3>(),
                   qkv_bias.packed_accessor64<scalar_t, 1>(),
                   q_k_v.packed_accessor64<scalar_t, 5>(),
-                  1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
+                  1.0 / sycl::sqrt(static_cast<scalar_t>(dim_per_head)),
                   aligned);
 
           sycl_kernel_submit(
