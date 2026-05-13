@@ -14,6 +14,8 @@ Supports two target repos:
 from __future__ import annotations
 
 import argparse
+import re
+import subprocess
 from pathlib import Path
 from subprocess import CalledProcessError
 
@@ -32,6 +34,134 @@ from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
 
 
+# ---------------------------------------------------------------------------
+# Verification helpers
+# ---------------------------------------------------------------------------
+
+def _get_test_command(body: str) -> str | None:
+    """Extract test command from issue body.
+
+    Priority:
+      1. "Reproducer" section — use verbatim bash block
+      2. "Failed Tests" section — construct pytest command from test names
+      3. None (skip verification)
+    """
+    sections = parse_sections(body)
+
+    # 1. Reproducer section
+    reproducer = sections.get("Reproducer", "").strip()
+    if reproducer:
+        # Extract bash code block if present
+        m = re.search(r"```(?:bash|sh)?\s*\n(.+?)```", reproducer, re.DOTALL)
+        if m:
+            cmd = m.group(1).strip()
+            if cmd:
+                return cmd
+        # If no code block but non-empty text that looks like a command
+        if reproducer and not reproducer.startswith("_Pending"):
+            lines = [l.strip() for l in reproducer.splitlines()
+                     if l.strip() and not l.strip().startswith("#")
+                     and not l.strip().startswith("```")]
+            if lines:
+                return "\n".join(lines)
+
+    # 2. Failed Tests section
+    failed_tests = sections.get("Failed Tests", "").strip()
+    if failed_tests:
+        # Extract test paths like `test_ops.py::TestClass::test_method`
+        tests = re.findall(
+            r"`([^`]+(?:::|-k\s+)[^`]*)`", failed_tests)
+        if not tests:
+            # Try lines starting with - that look like test paths
+            tests = re.findall(
+                r"[-*]\s+`?(\S+::\S+)`?", failed_tests)
+        if tests:
+            # Build pytest command
+            test_args = " ".join(f'"{t}"' for t in tests[:5])  # limit to 5
+            return f"pytest -xvs {test_args}"
+
+    return None
+
+
+def _run_build(workdir: Path, target_repo: str, remote: str,
+               base_ref: str, issue: int) -> tuple[bool, str]:
+    """Run incremental build if C++/SYCL files were modified.
+
+    Returns (success, output). For torch-xpu-ops, no build needed.
+    """
+    if target_repo == "torch-xpu-ops":
+        return True, ""
+
+    # Check if any C++/SYCL files were modified
+    diff_files = git_out("diff", "--name-only", f"{remote}/{base_ref}..HEAD",
+                         workdir=workdir, issue=issue).strip()
+    if not diff_files:
+        return True, ""
+
+    cpp_extensions = {'.cpp', '.h', '.cu', '.cuh', '.hpp', '.sycl'}
+    needs_build = any(
+        Path(f).suffix in cpp_extensions
+        for f in diff_files.splitlines()
+    )
+
+    if not needs_build:
+        return True, ""  # Python-only change, no build needed
+
+    log("INFO", "C++/SYCL files modified, running incremental build",
+        issue=issue)
+
+    # Incremental build
+    try:
+        result = subprocess.run(
+            ["python", "setup.py", "develop"],
+            cwd=str(workdir), capture_output=True, text=True,
+            timeout=1800,
+        )
+        if result.returncode == 0:
+            return True, result.stdout[-2000:]
+        output = (result.stdout + result.stderr)[-3000:]
+    except subprocess.TimeoutExpired:
+        output = "Build timed out (30min)"
+        log("WARN", "Incremental build timed out", issue=issue)
+        # Fall through to clean build
+
+    # Clean build fallback
+    log("INFO", "Incremental build failed, trying clean build", issue=issue)
+    try:
+        result = subprocess.run(
+            "python setup.py clean && python setup.py develop",
+            cwd=str(workdir), capture_output=True, text=True,
+            timeout=2400, shell=True,
+        )
+        if result.returncode == 0:
+            return True, result.stdout[-2000:]
+        return False, (result.stdout + result.stderr)[-3000:]
+    except subprocess.TimeoutExpired:
+        return False, "Clean build timed out (40min)"
+
+
+def _run_verification(workdir: Path, test_cmd: str,
+                      issue: int) -> tuple[bool, str]:
+    """Run verification test command. Returns (success, output)."""
+    log("INFO", f"Running verification: {test_cmd[:200]}", issue=issue)
+    try:
+        result = subprocess.run(
+            test_cmd, cwd=str(workdir),
+            capture_output=True, text=True,
+            timeout=600, shell=True,
+        )
+        output = (result.stdout + result.stderr)[-5000:]
+        if result.returncode == 0:
+            return True, output
+        return False, output
+    except subprocess.TimeoutExpired:
+        return False, "Test timed out (10min)"
+
+
+# ---------------------------------------------------------------------------
+# Main logic
+# ---------------------------------------------------------------------------
+
 def _detect_target_repo(body: str) -> str:
     """Determine target repo from triage metadata or fix strategy heuristic."""
     target = get_metadata(body, "target_repo")
@@ -46,7 +176,7 @@ def _detect_target_repo(body: str) -> str:
 
 
 def run(issue_number: int) -> None:
-    """Implement a fix: branch, dispatch agent, push, create PR."""
+    """Implement a fix: branch, dispatch agent, verify, push, create PR."""
     # Read issue
     detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
     body = detail.get("body", "") or ""
@@ -121,22 +251,44 @@ def run(issue_number: int) -> None:
             issue=issue_number)
         token_usage = TokenUsage()
     else:
-        # --- Call LLM (with retry) ---
-        prompt = (
-            f"Read the issue-fix skill and fix issue #{issue_number}.\n\n"
-            f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
-            f"{body[:10000]}"
-        )
+        # --- Extract test command for verification ---
+        test_cmd = _get_test_command(body)
+        if test_cmd:
+            log("INFO", f"Verification command: {test_cmd[:200]}",
+                issue=issue_number)
+        else:
+            log("INFO", "No verification command found, will skip verification",
+                issue=issue_number)
 
+        # --- Fix + Verify loop ---
         def _post_session_id(sid: str):
             post_session_started(ISSUE_REPO, issue_number,
                                  "Implementation", sid, str(workdir))
 
         backend = get_backend()
         timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 3600)
+        verification_error = ""
+        verified = False
 
-        last_error = None
         for attempt in range(1, MAX_AGENT_ATTEMPTS + 1):
+            # --- Call agent ---
+            prompt = (
+                f"Read the issue-fix skill and fix issue #{issue_number}.\n\n"
+                f"## Issue #{issue_number}: {detail.get('title', '')}\n\n"
+                f"{body[:10000]}"
+            )
+            if verification_error:
+                prompt += (
+                    f"\n\n---\n"
+                    f"## PREVIOUS FIX ATTEMPT FAILED VERIFICATION\n\n"
+                    f"Your previous fix attempt FAILED verification.\n\n"
+                    f"Test command: `{test_cmd}`\n\n"
+                    f"Test output (last 200 lines):\n```\n"
+                    f"{verification_error[-5000:]}\n```\n\n"
+                    f"Please analyze the failure and produce a corrected fix. "
+                    f"Do NOT repeat the same approach.\n"
+                )
+
             try:
                 output, log_path, session_id, token_usage = backend.run(
                     prompt, workdir=str(workdir),
@@ -148,24 +300,85 @@ def run(issue_number: int) -> None:
                     f"(attempt {attempt}/{MAX_AGENT_ATTEMPTS}) | "
                     f"{token_usage.summary()}",
                     issue=issue_number)
-                break
             except Exception as e:
-                last_error = e
                 log("WARN", f"Agent attempt {attempt}/{MAX_AGENT_ATTEMPTS} "
                     f"failed: {e}", issue=issue_number)
                 if attempt == MAX_AGENT_ATTEMPTS:
                     raise
+                continue
+
+            # --- Commit agent changes ---
+            add_and_commit(
+                f"Fix for {ISSUE_REPO}#{issue_number} (attempt {attempt})\n\n"
+                f"{detail.get('title', 'Agent fix')}",
+                issue=issue_number,
+                workdir=workdir,
+            )
+
+            # Check if agent produced changes
+            diff = git_out("diff", "--stat", f"{remote}/{base_ref}..HEAD",
+                           workdir=workdir, issue=issue_number).strip()
+            if not diff:
+                log("WARN", f"Agent produced no changes (attempt {attempt})",
+                    issue=issue_number)
+                if attempt < MAX_AGENT_ATTEMPTS:
+                    verification_error = "Agent produced no code changes."
+                    continue
+                break
+
+            # --- Build (pytorch only) ---
+            build_ok, build_output = _run_build(
+                workdir, target_repo, remote, base_ref, issue_number)
+            if not build_ok:
+                log("WARN", f"Build failed (attempt {attempt})",
+                    issue=issue_number)
+                if attempt < MAX_AGENT_ATTEMPTS:
+                    # Reset to base for retry
+                    git("reset", "--hard", f"{remote}/{base_ref}",
+                        workdir=workdir, issue=issue_number)
+                    verification_error = (
+                        f"Build failed:\n{build_output}")
+                    continue
+                break
+
+            # --- Verify ---
+            if not test_cmd:
+                # No test command — check for agent-created repro
+                repro_files = list(
+                    Path(workdir).glob("test/repro/test_*.py"))
+                if repro_files:
+                    test_cmd = f"pytest -xvs {repro_files[0]}"
+                    log("INFO", f"Found agent repro: {test_cmd}",
+                        issue=issue_number)
+
+            if test_cmd:
+                verify_ok, verify_output = _run_verification(
+                    workdir, test_cmd, issue_number)
+                if verify_ok:
+                    log("INFO", f"Verification PASSED (attempt {attempt})",
+                        issue=issue_number)
+                    verified = True
+                    break
+                else:
+                    log("WARN", f"Verification FAILED (attempt {attempt})",
+                        issue=issue_number)
+                    if attempt < MAX_AGENT_ATTEMPTS:
+                        # Reset to base for retry
+                        git("reset", "--hard", f"{remote}/{base_ref}",
+                            workdir=workdir, issue=issue_number)
+                        verification_error = verify_output
+                        continue
+                    # Last attempt — keep whatever we have
+                    break
+            else:
+                log("INFO", "No verification command, skipping verification",
+                    issue=issue_number)
+                break
+
         post_agent_completed(ISSUE_REPO, issue_number,
                              "Implementation completed", log_path, output)
 
-    # --- Commit ---
-    add_and_commit(
-        f"Fix for {ISSUE_REPO}#{issue_number}\n\n"
-        f"{detail.get('title', 'Agent fix')}",
-        issue=issue_number,
-        workdir=workdir,
-    )
-
+    # --- Final diff check ---
     diff = git_out("diff", "--stat", f"{remote}/{base_ref}..HEAD",
                    workdir=workdir, issue=issue_number).strip()
     if not diff:
@@ -234,12 +447,17 @@ def run(issue_number: int) -> None:
     new_body = set_metadata(new_body, "tracking_pr", f"#{tracking_pr_num}")
     new_body = set_metadata(new_body, "last_push_sha", sha)
     new_body = check_action_item(new_body, "Fix implemented")
+    if verified:
+        new_body = check_action_item(new_body, "Fix verified locally")
     new_body = check_action_item(new_body, "PR proposed")
     new_body = set_status(new_body, "IN_REVIEW")
+
+    verify_note = "✅ Verified" if verified else "⚠️ Not verified (no test cmd or all attempts failed)"
     new_body = append_log(
         new_body, "fix",
         f"Target: `{target_repo}`\nBranch: `{branch}`\nSHA: `{sha}`\n"
         f"PR: {pr.get('html_url', pr.get('url', 'N/A'))}\n"
+        f"Verification: {verify_note}\n"
         f"**Tokens:** {token_usage.summary()}",
     )
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
