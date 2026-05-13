@@ -28,7 +28,8 @@ struct SinhComplexFunctor {
 template <typename scalar_t>
 struct SinhFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sinh(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::sinh(static_cast<opmath_t>(a));
   }
 };
 
