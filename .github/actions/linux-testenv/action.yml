@@ -49,7 +49,7 @@ runs:
       if: ${{ inputs.skip_setup_python == 'true' }}
       shell: bash -xe {0}
       run: |
-        MINIFORGE_PATH="/home/jenkins/miniforge3"
+        MINIFORGE_PATH="${HOME}/miniforge3"
         if [ ! -d "${MINIFORGE_PATH}" ]; then
           curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
           bash /tmp/miniforge.sh -b -p ${MINIFORGE_PATH}
@@ -66,7 +66,7 @@ runs:
     - name: Check python
       shell: bash -xe {0}
       run: |
-        source /home/jenkins/miniforge3/etc/profile.d/conda.sh
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
         conda activate xpu-py
         which python && python -V
         which pip && pip list
@@ -82,7 +82,7 @@ runs:
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
-        source /home/jenkins/miniforge3/etc/profile.d/conda.sh
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
         conda activate xpu-py
         # install pytorch
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
@@ -112,7 +112,7 @@ runs:
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
-        source /home/jenkins/miniforge3/etc/profile.d/conda.sh
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
         conda activate xpu-py
         cd pytorch
         rm -rf third_party/torch-xpu-ops
@@ -134,7 +134,7 @@ runs:
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
-        source /home/jenkins/miniforge3/etc/profile.d/conda.sh
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
         conda activate xpu-py
         # common
         pip install pandas psutil scipy pyyaml
@@ -220,7 +220,7 @@ runs:
     - name: Torch Config
       shell: bash -xe {0}
       run: |
-        source /home/jenkins/miniforge3/etc/profile.d/conda.sh
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
         conda activate xpu-py
         printenv
         python -c "import torch; print(torch.__config__.show())"
