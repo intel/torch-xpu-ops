@@ -175,8 +175,14 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
+  int64_t num_tiles_64 =
+      (static_cast<int64_t>(num_elements) + method_t::PROCESSING_LENGTH - 1) /
       method_t::PROCESSING_LENGTH;
+  TORCH_CHECK(
+      num_tiles_64 <= std::numeric_limits<int>::max(),
+      "num_tiles overflow: ",
+      num_tiles_64);
+  int num_tiles = static_cast<int>(num_tiles_64);
   auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
       keys_in, counts, num_elements, begin_bit, end_bit);
   sycl_kernel_submit(
@@ -307,8 +313,14 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
+  int64_t num_tiles_64 =
+      (static_cast<int64_t>(num_elements) + method_t::PROCESSING_LENGTH - 1) /
       method_t::PROCESSING_LENGTH;
+  TORCH_CHECK(
+      num_tiles_64 <= std::numeric_limits<int>::max(),
+      "num_tiles overflow: ",
+      num_tiles_64);
+  int num_tiles = static_cast<int>(num_tiles_64);
   auto caller =
       SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
           keys_in,
