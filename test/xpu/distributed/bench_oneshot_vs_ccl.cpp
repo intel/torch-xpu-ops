@@ -71,10 +71,7 @@ inline void wait_signal_dev(uint32_t* addr) {
 }
 
 // ---------- reduce kernels (bf16, ws=4 only — matches §12.6 bench) ----------
-#ifndef BENCH_WS
-#define BENCH_WS 4
-#endif
-constexpr int kWorldSize = BENCH_WS;
+constexpr int kWorldSize = 4;
 constexpr int kN = kVecBytes / (int)sizeof(bf16); // 8
 
 struct OneShotKernel {
@@ -194,7 +191,7 @@ static inline void init_launch_cfg(
 
 // ---------- main ----------
 int main(int argc, char** argv) {
-  int min_log2 = 10, max_log2 = 22, warmup = 10, iters = 50, step = 2;
+  int min_log2 = 10, max_log2 = 22, warmup = 10, iters = 50;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto nxt = [&](int d) { return (i + 1 < argc) ? std::atoi(argv[++i]) : d; };
@@ -202,7 +199,6 @@ int main(int argc, char** argv) {
     else if (a == "--max") max_log2 = nxt(max_log2);
     else if (a == "--warmup") warmup = nxt(warmup);
     else if (a == "--iters") iters = nxt(iters);
-    else if (a == "--step") step = nxt(step);
   }
 
   int provided = 0;
@@ -302,7 +298,7 @@ int main(int argc, char** argv) {
         "fused_BW", "nofuse_BW", "ccl_BW");
   }
 
-  for (int lg = min_log2; lg <= max_log2; lg += step) {
+  for (int lg = min_log2; lg <= max_log2; lg += 2) {
     int64_t numel = (int64_t)1 << lg;
     if (numel % kN != 0) continue;
 

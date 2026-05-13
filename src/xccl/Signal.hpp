@@ -82,6 +82,16 @@ void put_signal(uint32_t* addr) {
   store_release(addr, 1);
 }
 
+// Release-only put: skip the "wait until slot == 0" PCIe-load handshake.
+// PRECONDITION: caller guarantees `*addr == 0` at entry (slot lifecycle
+// must be managed externally, e.g. via single-write-per-call + matching
+// wait_signal clear-to-0 + end-of-iter back-sync). Saves one remote PCIe
+// load per put when the precondition holds (see instruction.md §12.18 c).
+template <std::memory_order Sem>
+inline void put_signal_release_only(uint32_t* addr) {
+  store_release(addr, 1);
+}
+
 // =============================================================================
 // Wait signal: wait until addr == 1, then set to 0 (acquire semantics)
 // =============================================================================
