@@ -221,9 +221,9 @@ jobs:
             fi
           done
           # Filter ut_failure_list.csv to keep only new failures (with error messages)
-          ut_failure_csv="${{ github.workspace }}/ut_log/ut_failure_list.csv"
+          ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
           new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
-          if [ -s "$new_failure_list" ] && [ -f "$ut_failure_csv" ]; then
+          if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
             # Keep header lines
             head -2 "$ut_failure_csv" > "$new_failure_csv"
             # Match rows by test_name from filtered log (format: category,class_name,test_name)
