@@ -28,7 +28,8 @@ struct AsinhComplexFunctor {
 template <typename scalar_t>
 struct AsinhFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::asinh(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::asinh(static_cast<opmath_t>(a));
   }
 };
 

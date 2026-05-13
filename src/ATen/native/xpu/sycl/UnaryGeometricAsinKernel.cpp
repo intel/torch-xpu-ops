@@ -28,7 +28,8 @@ struct AsinComplexFunctor {
 template <typename scalar_t>
 struct AsinFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::asin(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::asin(static_cast<opmath_t>(a));
   }
 };
 
