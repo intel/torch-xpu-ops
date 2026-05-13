@@ -113,27 +113,6 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         }
       }
     }
-
-    if (chunk_idx == chunks_per_batch_ - 1) {
-      const int64_t tail_start = vecs_per_embedding_dim * vec_size;
-      for (int64_t dense_val_idx = tail_start + item_id;
-           dense_val_idx < embedding_dim_;
-           dense_val_idx += group_size) {
-        const int64_t dense_val_offset =
-            batch_idx * embedding_dim_ + dense_val_idx;
-        const scalar_t dense_val =
-            reinterpret_cast<const scalar_t*>(dense_vec_)[dense_val_offset];
-        for (int64_t elem_offset_in_batch = dense_val_idx;
-             elem_offset_in_batch < batch_elem_count;
-             elem_offset_in_batch += embedding_dim_) {
-          const int64_t target_idx = batch_start_elem + elem_offset_in_batch;
-          const scalar_t input_val =
-              reinterpret_cast<const scalar_t*>(input_vec_)[target_idx];
-          reinterpret_cast<scalar_t*>(output_vec_)[target_idx] =
-              func_(input_val, dense_val);
-        }
-      }
-    }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
@@ -263,7 +242,7 @@ void nested_op_dense_esuhm_xpu(
           default:
             TORCH_CHECK(
                 false,
-                "Unsupported NESTED_DENSE_OP in _nested_op_dense_esuhm_xpu");
+                "Unsupported NESTED_DENSE_OP in nested_op_dense_esuhm_xpu");
         }
       }),
       AT_EXPAND(AT_ALL_TYPES),
