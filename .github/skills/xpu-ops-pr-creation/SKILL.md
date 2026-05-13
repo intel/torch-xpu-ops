@@ -13,8 +13,8 @@ placeholders:
 
 # PR Creation — torch-xpu-ops
 
-Read `.github/copilot-instructions.md` for full repo context before starting.
-
+- Read `.github/copilot-instructions.md` for full repo context before starting.
+- Read `.github/skills/xpu-issues-triaging` for issue triaging before actually do PR. BE SURE to triage and understand the root cause first, then create PR.
 ---
 
 ## Step 1: Verify your branch

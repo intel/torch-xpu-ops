@@ -49,6 +49,7 @@ on the PyTorch **main** branch:
 - If the root cause is in **device-agnostic / framework code** (e.g.,
   `torch/`, `aten/src/ATen/`, `c10/`), the fix belongs in **pytorch**, not
   torch-xpu-ops. Do NOT submit a PR to torch-xpu-ops for such issues.
+  Comment on the original issue. Or create an empty PR indicating the logic.
 - If the root cause is in **XPU-specific kernel or dispatch code** (e.g.,
   `src/ATen/native/xpu/`), the fix belongs in **torch-xpu-ops**.
 
