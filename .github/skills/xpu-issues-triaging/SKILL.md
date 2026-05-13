@@ -1,10 +1,10 @@
 ---
 name: issue-triaging
 description: >
-  Propose for issue triaging. Works for both pytorch and torch-xpu-ops repos.
+  Instructions for issue triaging. Works for both pytorch and torch-xpu-ops repos.
 ---
 
-# Fix XPU Issue
+# Triage & Fix XPU Issue
 
 ## Step 0: Triage the Issue
 

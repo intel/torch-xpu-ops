@@ -1,7 +1,7 @@
 ---
 name: copilot-instructions
 description: The overall hot memory that should be loaded in all LLM agents when developing on torch-xpu-ops.
-license: MIT
+license: Apache-2.0
 ---
 
 # Copilot Instructions — Torch XPU Ops Repository
@@ -57,7 +57,7 @@ interactions within this repository.
 
 <!-- Guidelines below adapted from https://github.com/forrestchang/andrej-karpathy-skills (MIT License) -->
 
-# Guidelines
+## Guidelines
 
 ## 1. Think Before Coding
 
@@ -114,5 +114,3 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-
