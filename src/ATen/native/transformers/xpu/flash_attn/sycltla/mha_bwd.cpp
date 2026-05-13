@@ -192,8 +192,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   }
   TORCH_CHECK(batch_size > 0, "mha_bwd on xpu: batch size must be positive");
   TORCH_CHECK(
-      headsize_qk <= 192,
-      "mha_bwd on xpu: only supports head dimension at most 192");
+      headsize_qk <= 256,
+      "mha_bwd on xpu: only supports head dimension at most 256");
   TORCH_CHECK(
       numhead_qo % numhead_kv == 0,
       "mha_bwd on xpu: number of heads in key/value must divide number of heads in query");
@@ -253,12 +253,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     dout_padded = at::constant_pad_nd(dout, {0, pad}, 0);
   }
 
-  q_padded = ensure_alignment_for_sdpa(q_padded);
-  k_padded = ensure_alignment_for_sdpa(k_padded);
-  v_padded = ensure_alignment_for_sdpa(v_padded);
-  out_padded = ensure_alignment_for_sdpa(out_padded);
-  dout_padded = ensure_alignment_for_sdpa(dout_padded);
-
   auto opts = q.options();
   // Allocate padded buffers for the kernel when headsize padding is needed.
   auto dq_padded = needs_headsize_pad
@@ -282,6 +276,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     dk_expanded = dk_padded;
     dv_expanded = dv_padded;
   }
+
+  q_padded = ensure_alignment_for_sdpa(q_padded);
+  k_padded = ensure_alignment_for_sdpa(k_padded);
+  v_padded = ensure_alignment_for_sdpa(v_padded);
+  out_padded = ensure_alignment_for_sdpa(out_padded);
+  dout_padded = ensure_alignment_for_sdpa(dout_padded);
+  dq_padded = ensure_alignment_for_sdpa(dq_padded);
+  dk_expanded = ensure_alignment_for_sdpa(dk_expanded);
+  dv_expanded = ensure_alignment_for_sdpa(dv_expanded);
 
   int seqlen_qo_pad = (seqlen_qo + kBwdMPad - 1) / kBwdMPad * kBwdMPad;
   int seqlen_kv_pad = (seqlen_kv + kBwdNPad - 1) / kBwdNPad * kBwdNPad;

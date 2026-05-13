@@ -223,8 +223,8 @@ mha_fwd(
       headsize_vo == headsize_qk,
       "mha_fwd on xpu: only support headsize_qk equal to headsize_vo");
   TORCH_CHECK(
-      headsize_qk <= 192,
-      "mha_fwd on xpu: only support head dimension at most 192");
+      headsize_qk <= 256,
+      "mha_fwd on xpu: only support head dimension at most 256");
 
   const int headsize_padded = round_up_headdim(headsize_qk);
   const bool needs_headsize_pad = headsize_padded > headsize_qk;
@@ -238,11 +238,6 @@ mha_fwd(
     k_padded = at::constant_pad_nd(k, {0, pad}, 0);
     v_padded = at::constant_pad_nd(v, {0, pad}, 0);
   }
-
-  // Base pointers must be 64-byte aligned for block 2D load
-  q_padded = ensure_alignment_for_sdpa(q_padded);
-  k_padded = ensure_alignment_for_sdpa(k_padded);
-  v_padded = ensure_alignment_for_sdpa(v_padded);
 
   auto opts = q.options();
   at::Tensor out;
@@ -262,6 +257,12 @@ mha_fwd(
   at::Tensor out_padded = needs_headsize_pad
       ? at::empty({batch_size, seqlen_qo, numhead_qo, headsize_padded}, opts)
       : out;
+
+  // Base pointers must be 64-byte aligned for block 2D load
+  q_padded = ensure_alignment_for_sdpa(q_padded);
+  k_padded = ensure_alignment_for_sdpa(k_padded);
+  v_padded = ensure_alignment_for_sdpa(v_padded);
+  out_padded = ensure_alignment_for_sdpa(out_padded);
 
   if (seqlen_qo > seqlen_kv && is_causal) {
     // When seqlen_qo is greater than seqlen_kv and is_causal(lower_right causal
