@@ -251,16 +251,19 @@ void _nested_op_dense_esuhm_xpu(
       self.scalar_type(),
       "_nested_op_dense_esuhm",
       AT_WRAP([&] {
-        if (op == NESTED_DENSE_OP::ADD) {
-          _nested_op_dense_esuhm_kernel<scalar_t>(
-              result, self, other, AddFunctor<scalar_t>{});
-        } else if (op == NESTED_DENSE_OP::MUL) {
-          _nested_op_dense_esuhm_kernel<scalar_t>(
-              result, self, other, MulFunctor<scalar_t>{});
-        } else {
-          TORCH_CHECK(
-              false,
-              "Unsupported NESTED_DENSE_OP in _nested_op_dense_esuhm_xpu");
+        switch (op) {
+          case NESTED_DENSE_OP::ADD:
+            _nested_op_dense_esuhm_kernel<scalar_t>(
+                result, self, other, AddFunctor<scalar_t>{});
+            break;
+          case NESTED_DENSE_OP::MUL:
+            _nested_op_dense_esuhm_kernel<scalar_t>(
+                result, self, other, MulFunctor<scalar_t>{});
+            break;
+          default:
+            TORCH_CHECK(
+                false,
+                "Unsupported NESTED_DENSE_OP in _nested_op_dense_esuhm_xpu");
         }
       }),
       AT_EXPAND(AT_ALL_TYPES),
