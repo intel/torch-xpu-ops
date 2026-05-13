@@ -217,7 +217,7 @@ void nested_op_dense_kernel_impl(
 }
 
 template <typename scalar_t, typename func_t>
-void _nested_op_dense_esuhm_kernel(
+void nested_op_dense_esuhm_kernel(
     Tensor& result,
     const Tensor& self,
     const Tensor& other,
@@ -242,7 +242,7 @@ void _nested_op_dense_esuhm_kernel(
       func);
 }
 
-void _nested_op_dense_esuhm_xpu(
+void nested_op_dense_esuhm_xpu(
     Tensor& result,
     const Tensor& self,
     const Tensor& other,
@@ -253,11 +253,11 @@ void _nested_op_dense_esuhm_xpu(
       AT_WRAP([&] {
         switch (op) {
           case NESTED_DENSE_OP::ADD:
-            _nested_op_dense_esuhm_kernel<scalar_t>(
-                result, self, other, AddFunctor<scalar_t>{});
+          nested_op_dense_esuhm_kernel<scalar_t>(
+              result, self, other, AddFunctor<scalar_t>{});
             break;
           case NESTED_DENSE_OP::MUL:
-            _nested_op_dense_esuhm_kernel<scalar_t>(
+            nested_op_dense_esuhm_kernel<scalar_t>(
                 result, self, other, MulFunctor<scalar_t>{});
             break;
           default:

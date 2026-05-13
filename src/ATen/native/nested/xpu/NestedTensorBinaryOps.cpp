@@ -15,6 +15,6 @@ namespace at::native {
 
 REGISTER_XPU_DISPATCH(
     nested_dense_elementwise_stub,
-    &xpu::_nested_op_dense_esuhm_xpu)
+    &xpu::nested_op_dense_esuhm_xpu)
 
 } // namespace at::native
