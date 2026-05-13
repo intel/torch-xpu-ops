@@ -40,6 +40,7 @@ jobs:
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
+          set -o pipefail
           bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_python_errors.log
       - name: Checkout PyTorch (for headers)
         uses: actions/checkout@v4
@@ -56,8 +57,9 @@ jobs:
         run: |
           cd ./torch-xpu-ops
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
+          set -o pipefail
           bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_clang_errors.log
-      - name: Comment on lint failure for AI-generated PR
+      - name: Comment on lint failure
         if: >-
           ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure') }}
         env:
@@ -75,8 +77,9 @@ jobs:
             fi
           fi
           JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
           printf -v COMMENT_BODY '%s\n' \
-            "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
+            "@${PR_AUTHOR} The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
             "" \
             "Lint job log: ${JOB_URL}" \
             "" \
