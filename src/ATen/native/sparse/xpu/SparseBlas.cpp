@@ -21,24 +21,13 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/_sparse_csr_tensor_unsafe_native.h>
-#include <ATen/ops/abs.h>
 #include <ATen/ops/add.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/index.h>
-#include <ATen/ops/matmul.h>
-#include <ATen/ops/mm.h>
 #include <ATen/ops/mul.h>
-#include <ATen/ops/ones_like.h>
 #include <ATen/ops/repeat_interleave.h>
-#include <ATen/ops/resize_as_sparse_native.h>
-#include <ATen/ops/scalar_tensor_native.h>
-#include <ATen/ops/sgn.h>
 #include <ATen/ops/sparse_sampled_addmm_native.h>
-#include <ATen/ops/zeros.h>
-#include <ATen/ops/zeros_like.h>
 #endif
-
-// #include <c10/util/MaybeOwned.h>
 
 namespace at::native {
 
@@ -88,10 +77,10 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
 
   // elment counts of all rows [B1, B2, ..., M]
   auto row_counts =
-      (crow.narrow(-1, 1, M) - crow.narrow(-1, 0, M)).reshape((-1));
+      (crow.narrow(-1, 1, M) - crow.narrow(-1, 0, M)).reshape({-1});
 
   // row_base of [0, 1, ..., M-1] to flat to all batches
-  auto row_base = at::arange(M, crow.options()).repeat((total_batch));
+  auto row_base = at::arange(M, crow.options()).repeat({total_batch});
   auto row_indices = at::repeat_interleave(row_base, row_counts);
 
   auto nnz_per_batch = (crow.select(-1, M) - crow.select(-1, 0)).reshape({-1});
@@ -125,16 +114,8 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
 
   auto new_values = (dot_products * alpha) + (values.reshape({-1}) * beta);
 
-  auto result_temp = at::native::_sparse_csr_tensor_unsafe(
-      crow,
-      col,
-      new_values.view_as(values),
-      sizes,
-      new_values.scalar_type(),
-      self.layout(),
-      new_values.device());
+  result.values().copy_(new_values.view_as(values));
 
-  result.copy_(result_temp);
   return result;
 }
 

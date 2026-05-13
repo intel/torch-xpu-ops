@@ -80,7 +80,7 @@ def customized_ctx_manager_with_graph_break(mode):
         torch._C._set_grad_enabled(prev)
 
 
-class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
+class CtxManagerTests(torch._dynamo.test_case.TestCase):
     def test_no_grad(self):
         def fn1(a, b):
             x = a + 1
@@ -572,7 +572,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         res = opt_fn(x)
         self.assertEqual(ref, res)
         self.assertEqual(cnts.frame_count, 1)
-        self.assertExpectedInline(str(cnts.op_count), """16""")
+        self.assertExpectedInline(str(cnts.op_count), """17""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
     def test_cuda_device(self):
@@ -1923,9 +1923,7 @@ class GraphModule(torch.nn.Module):
         self.assertGreater(len(counters["graph_break"]), 0)
 
 
-class ContextlibContextManagerTests(
-    torch._dynamo.test_case.TestCaseWithNestedGraphBreaks
-):
+class ContextlibContextManagerTests(torch._dynamo.test_case.TestCase):
     def setUp(self):
         super().setUp()
         self._prev = torch._dynamo.config.enable_trace_contextlib
