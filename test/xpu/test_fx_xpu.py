@@ -95,9 +95,7 @@ def _canonicalize_xpu_launch_events(actual_traces):
 
 
 def _get_normalized_xpu_traces(actual_traces):
-    return _canonicalize_xpu_launch_events(
-        _filter_xpu_runtime_events(actual_traces)
-    )
+    return _canonicalize_xpu_launch_events(_filter_xpu_runtime_events(actual_traces))
 
 
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
@@ -208,9 +206,10 @@ def _test_profiler_stack_trace_augmentation(self):
     actual_traces = _enrich_profiler_traces(prof)
 
     if torch.version.hip:
-        actual_traces = '\n'.join(
-            line for line in actual_traces.split('\n')
-            if 'hipGetDeviceProperties' not in line
+        actual_traces = "\n".join(
+            line
+            for line in actual_traces.split("\n")
+            if "hipGetDeviceProperties" not in line
         )
         kernel_event = "hipExtModuleLaunchKernel"
         kernel_event_relu = "hipLaunchKernel"
