@@ -233,7 +233,7 @@ jobs:
             echo "| sycltla          | ${{ inputs.target_sycltla || 'pinned' }} | ${{ inputs.baseline_sycltla || 'pinned' }} |"
             echo ""
             echo "Scope: UT=\`op_p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
-          } >> "${GITHUB_STEP_SUMMARY}"
+          } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
         uses: actions/download-artifact@v4
