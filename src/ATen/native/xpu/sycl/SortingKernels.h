@@ -110,8 +110,10 @@ struct SegmentedRadixSortPairsUpsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
+    int64_t num_tiles_64 = (static_cast<int64_t>(num_elements_) +
+                            method_t::PROCESSING_LENGTH - 1) /
         method_t::PROCESSING_LENGTH;
+    int num_tiles = static_cast<int>(num_tiles_64);
     int seg_idx = item.get_group(0) / num_tiles;
     int tile_idx = item.get_group(0) % num_tiles;
     auto keys_in_seg = keys_in_ + seg_idx * num_elements_;
@@ -238,8 +240,10 @@ struct SegmentedRadixSortPairsDownsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
+    int64_t num_tiles_64 = (static_cast<int64_t>(num_elements_) +
+                            method_t::PROCESSING_LENGTH - 1) /
         method_t::PROCESSING_LENGTH;
+    int num_tiles = static_cast<int>(num_tiles_64);
     int seg_idx = item.get_group(0) / num_tiles;
     int tile_idx = item.get_group(0) % num_tiles;
     int seg_offset = seg_idx * num_elements_;
