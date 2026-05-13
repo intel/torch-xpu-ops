@@ -52,85 +52,85 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const int64_t* offsets,
       int64_t chunks_per_batch,
       const func_t func)
-      : input_vec(input_vec),
-        dense_vec(dense_vec),
-        output_vec(output_vec),
-        batch_size(batch_size),
-        embedding_dim(embedding_dim),
-        offsets(offsets),
-        chunks_per_batch(chunks_per_batch),
-        func(func) {}
+      : input_vec_(input_vec),
+        dense_vec_(dense_vec),
+        output_vec_(output_vec),
+        batch_size_(batch_size),
+        embedding_dim_(embedding_dim),
+        offsets_(offsets),
+        chunks_per_batch_(chunks_per_batch),
+        func_(func) {}
 
   void operator()(sycl::nd_item<1> item) const {
     const int64_t item_id = item.get_local_id(0);
     const int64_t group_id = item.get_group(0);
     const int64_t group_size = item.get_local_range(0);
 
-    const int64_t batch_idx = group_id / chunks_per_batch;
-    const int64_t chunk_idx = group_id % chunks_per_batch;
-    if (batch_idx >= batch_size) {
+    const int64_t batch_idx = group_id / chunks_per_batch_;
+    const int64_t chunk_idx = group_id % chunks_per_batch_;
+    if (batch_idx >= batch_size_) {
       return;
     }
 
-    const int64_t vecs_per_embedding_dim = embedding_dim / vec_size;
+    const int64_t vecs_per_embedding_dim = embedding_dim_ / vec_size;
     const int64_t vecs_per_chunk =
-        ceil_div(vecs_per_embedding_dim, chunks_per_batch);
+        ceil_div(vecs_per_embedding_dim, chunks_per_batch_);
     const int64_t vec_start = chunk_idx * vecs_per_chunk;
     const int64_t chunk_end_vec = vec_start + vecs_per_chunk;
     const int64_t vec_end = std::min(chunk_end_vec, vecs_per_embedding_dim);
     const int64_t chunk_vec_count = vec_end - vec_start;
-    const int64_t batch_start_elem = offsets[batch_idx];
-    const int64_t batch_end_elem = offsets[batch_idx + 1];
+    const int64_t batch_start_elem = offsets_[batch_idx];
+    const int64_t batch_end_elem = offsets_[batch_idx + 1];
     const int64_t batch_elem_count = batch_end_elem - batch_start_elem;
 
     if (chunk_vec_count > 0) {
       const int64_t chunk_vec_base =
           batch_idx * vecs_per_embedding_dim + vec_start;
 
-      const bool use_slm = embedding_dim > SLM_TILING_THRESHOLD;
+      const bool use_slm = embedding_dim_ > SLM_TILING_THRESHOLD;
       if (use_slm) {
         for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
-          slm_dense[i] = dense_vec[chunk_vec_base + i];
+          slm_dense_[i] = dense_vec_[chunk_vec_base + i];
         }
         sycl::group_barrier(item.get_group());
       }
 
       for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
         VEC_T vec_dense_val =
-            use_slm ? slm_dense[i] : dense_vec[chunk_vec_base + i];
+            use_slm ? slm_dense_[i] : dense_vec_[chunk_vec_base + i];
         for (int64_t elem_offset_in_batch = (vec_start + i) * vec_size;
              elem_offset_in_batch < batch_elem_count;
-             elem_offset_in_batch += embedding_dim) {
+             elem_offset_in_batch += embedding_dim_) {
           const int64_t global_vec_idx =
               (batch_start_elem + elem_offset_in_batch) / vec_size;
-          VEC_T vec_input_val = input_vec[global_vec_idx];
+          VEC_T vec_input_val = input_vec_[global_vec_idx];
           VEC_T vec_result;
 #pragma unroll
           for (int v = 0; v < vec_size; ++v) {
-            vec_result[v] = func(vec_input_val[v], vec_dense_val[v]);
+            vec_result[v] = func_(vec_input_val[v], vec_dense_val[v]);
           }
-          output_vec[global_vec_idx] = vec_result;
+          output_vec_[global_vec_idx] = vec_result;
         }
       }
     }
 
-    if (chunk_idx == chunks_per_batch - 1) {
+    if (chunk_idx == chunks_per_batch_ - 1) {
       const int64_t tail_start = vecs_per_embedding_dim * vec_size;
       for (int64_t dense_val_idx = tail_start + item_id;
-           dense_val_idx < embedding_dim;
+           dense_val_idx < embedding_dim_;
            dense_val_idx += group_size) {
         const int64_t dense_val_offset =
-            batch_idx * embedding_dim + dense_val_idx;
+            batch_idx * embedding_dim_ + dense_val_idx;
         const scalar_t dense_val =
-            reinterpret_cast<const scalar_t*>(dense_vec)[dense_val_offset];
+            reinterpret_cast<const scalar_t*>(dense_vec_)[dense_val_offset];
         for (int64_t elem_offset_in_batch = dense_val_idx;
              elem_offset_in_batch < batch_elem_count;
-             elem_offset_in_batch += embedding_dim) {
+             elem_offset_in_batch += embedding_dim_) {
           const int64_t target_idx = batch_start_elem + elem_offset_in_batch;
           const scalar_t input_val =
-              reinterpret_cast<const scalar_t*>(input_vec)[target_idx];
-          reinterpret_cast<scalar_t*>(output_vec)[target_idx] =
-              func(input_val, dense_val);
+              reinterpret_cast<const scalar_t*>(input_vec_)[target_idx];
+          reinterpret_cast<scalar_t*>(output_vec_)[target_idx] =
+              func_(input_val, dense_val);
         }
       }
     }
@@ -138,20 +138,20 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     int64_t vecs_per_chunk =
-        ceil_div(embedding_dim / vec_size, chunks_per_batch);
-    slm_dense =
+        ceil_div(embedding_dim_ / vec_size, chunks_per_batch_);
+    slm_dense_ =
         sycl_local_acc_t<VEC_T>(vecs_per_chunk == 0 ? 1 : vecs_per_chunk, cgh);
   }
 
-  const VEC_T* input_vec;
-  const VEC_T* dense_vec;
-  VEC_T* output_vec;
-  int64_t batch_size;
-  int64_t embedding_dim;
-  const int64_t* offsets;
-  int64_t chunks_per_batch;
-  const func_t func;
-  sycl_local_acc_t<VEC_T> slm_dense;
+  const VEC_T* input_vec_;
+  const VEC_T* dense_vec_;
+  VEC_T* output_vec_;
+  int64_t batch_size_;
+  int64_t embedding_dim_;
+  const int64_t* offsets_;
+  int64_t chunks_per_batch_;
+  const func_t func_;
+  sycl_local_acc_t<VEC_T> slm_dense_;
 };
 
 #define LAUNCH_VEC_CASE(SIZE)                                           \
