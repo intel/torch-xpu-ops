@@ -54,7 +54,13 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
-      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
+      if(REPLACE_FLAGS_FOR_SYCLTLA)
+        # sycl-tla headers trigger unused-variable, unused-local-typedefs and
+        # reorder warnings that we cannot fix locally, so downgrade to warnings.
+        list(APPEND SYCL_HOST_FLAGS -Wno-error)
+      else()
+        list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
+      endif()
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
