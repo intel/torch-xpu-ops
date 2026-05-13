@@ -21,15 +21,17 @@ def test_autocast_float64_disabled_on_xpu():
     """
     Verify that torch.autocast with dtype=float64 is silently disabled on XPU.
     float64 is not in device_supported_dtypes for non-CUDA devices, so autocast
-    does not promote float32 inputs to float64.
+    does not promote float32 inputs to float64. The output of torch.mm remains
+    float32 rather than being promoted to float64.
     """
     a = torch.rand((8, 8), device="xpu")
     b = torch.rand((8, 8), device="xpu")
     with torch.autocast(device_type="xpu", dtype=torch.float64):
-        enabled = torch.is_autocast_xpu_enabled()
-    # autocast is disabled because float64 is not a supported dtype for XPU
-    assert not enabled, (
-        "Expected autocast to be disabled for XPU with float64, but it was enabled"
+        c = torch.mm(a, b)
+    # autocast is silently disabled because float64 is not a supported dtype for XPU,
+    # so no promotion occurs and the output stays float32
+    assert c.dtype == torch.float32, (
+        f"Expected float32 output (autocast disabled for float64 on XPU), got {c.dtype}"
     )
 
 
