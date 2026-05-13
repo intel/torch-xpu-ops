@@ -253,8 +253,8 @@ void nested_op_dense_esuhm_xpu(
       AT_WRAP([&] {
         switch (op) {
           case NESTED_DENSE_OP::ADD:
-          nested_op_dense_esuhm_kernel<scalar_t>(
-              result, self, other, AddFunctor<scalar_t>{});
+            nested_op_dense_esuhm_kernel<scalar_t>(
+                result, self, other, AddFunctor<scalar_t>{});
             break;
           case NESTED_DENSE_OP::MUL:
             nested_op_dense_esuhm_kernel<scalar_t>(
