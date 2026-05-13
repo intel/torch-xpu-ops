@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 """
 Reproducer for: torch.autocast("xpu", dtype=torch.float64) silently disables autocast.
 
@@ -10,6 +11,7 @@ output dtype.
 Fix: skip test_cuda_amp_autocast and test_autocast_float64 for XPU in
 test/xpu/dynamo/test_ctx_manager_xpu.py.
 """
+
 import pytest
 import torch
 
@@ -45,3 +47,7 @@ def test_autocast_bfloat16_enabled_on_xpu():
     assert c.dtype == torch.bfloat16, (
         f"Expected bfloat16 output with autocast, got {c.dtype}"
     )
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
