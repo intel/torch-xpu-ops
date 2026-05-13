@@ -50,6 +50,7 @@ must name existing tests that validate the change.
 Use this exact template:
 
 ```
+Fixes <original_issue_link>
 <description of what the PR does and why>
 
 Test: <one of the three forms below>
