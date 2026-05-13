@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 
-constexpr int64_t SLM_TILING_THRESHOLD{1024};
+constexpr int64_t CHUNK_THRESHOLD{1024};
 
 namespace at::native::xpu {
 
@@ -42,7 +42,7 @@ struct MulFunctor {
 };
 
 template <typename scalar_t, typename VEC_T, int vec_size, typename func_t>
-struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct OpDenseVectorizedFunctor {
   OpDenseVectorizedFunctor(
       const VEC_T* input_vec,
       const VEC_T* dense_vec,
@@ -87,17 +87,8 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const int64_t chunk_vec_base =
           batch_idx * vecs_per_embedding_dim + vec_start;
 
-      const bool use_slm = embedding_dim_ > SLM_TILING_THRESHOLD;
-      if (use_slm) {
-        for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
-          slm_dense_[i] = dense_vec_[chunk_vec_base + i];
-        }
-        sycl::group_barrier(item.get_group());
-      }
-
       for (int64_t i = item_id; i < chunk_vec_count; i += group_size) {
-        VEC_T vec_dense_val =
-            use_slm ? slm_dense_[i] : dense_vec_[chunk_vec_base + i];
+        VEC_T vec_dense_val = dense_vec_[chunk_vec_base + i];
         for (int64_t elem_offset_in_batch = (vec_start + i) * vec_size;
              elem_offset_in_batch < batch_elem_count;
              elem_offset_in_batch += embedding_dim_) {
@@ -115,13 +106,6 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    int64_t vecs_per_chunk =
-        ceil_div(embedding_dim_ / vec_size, chunks_per_batch_);
-    slm_dense_ =
-        sycl_local_acc_t<VEC_T>(vecs_per_chunk == 0 ? 1 : vecs_per_chunk, cgh);
-  }
-
   const VEC_T* input_vec_;
   const VEC_T* dense_vec_;
   VEC_T* output_vec_;
@@ -130,7 +114,6 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const int64_t* offsets_;
   int64_t chunks_per_batch_;
   const func_t func_;
-  sycl_local_acc_t<VEC_T> slm_dense_;
 };
 
 #define LAUNCH_VEC_CASE(SIZE)                                           \
@@ -177,8 +160,8 @@ void nested_op_dense_kernel_impl(
     }
   }
 
-  int64_t chunks_per_batch = (embedding_dim > SLM_TILING_THRESHOLD)
-      ? ceil_div(embedding_dim, SLM_TILING_THRESHOLD)
+  int64_t chunks_per_batch = (embedding_dim > CHUNK_THRESHOLD)
+      ? ceil_div(embedding_dim, CHUNK_THRESHOLD)
       : 1;
   int64_t total_groups = batch_size * chunks_per_batch;
   if (total_groups == 0) {
