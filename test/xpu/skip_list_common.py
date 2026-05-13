@@ -27,6 +27,10 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_max_pool2d_cudnn_xpu",
+        "test_qgelu_xpu",
+        "test_qrelu_xpu",
     ),
     "quantization/core/test_quantized_tensor_xpu.py": None,
     "quantization/core/test_workflow_module_xpu.py": None,
@@ -128,12 +132,20 @@ skip_dict = {
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
         "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
+        # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
+        # Known upstream issue: https://github.com/pytorch/pytorch/issues/159150
+        "test_fake_crossref_backward_amp_nn_functional_bilinear_xpu_float32",
+        # Known upstream issue: https://github.com/pytorch/pytorch/issues/159151
+        "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
     "test_scatter_gather_ops_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_shape_ops_xpu.py": None,
+    "test_shape_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_flip_xpu_float32",
+    ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,
@@ -347,7 +359,12 @@ skip_dict = {
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
-    "dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_ctx_manager_xpu.py": (
+        # Autocast to float64 is CUDA-specific and not supported on XPU.
+        # More details in https://github.com/pytorch/pytorch/pull/179141
+        "test_autocast_float64",
+        "test_cuda_amp_autocast",
+    ),
     "functorch/test_control_flow_xpu.py": None,
     "functorch/test_aot_joint_with_descriptors_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
@@ -368,6 +385,18 @@ skip_dict = {
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
+    "test_basic_torch_np_xpu.py": None,
+    "test_fx_xpu.py": None,
+    "test_multiprocessing_xpu.py": None,
+    "test_numba_integration_xpu.py": None,
+    "test_numpy_interop_xpu.py": None,
+    "test_out_dtype_op_xpu.py": None,
+    "test_prims_xpu.py": None,
+    "test_proxy_tensor_xpu.py": None,
+    "test_python_dispatch_xpu.py": None,
+    "test_scaled_matmul_cuda_xpu.py": None,
+    "test_serialization_xpu.py": None,
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
