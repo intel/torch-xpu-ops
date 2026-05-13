@@ -187,7 +187,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: PVC-7901
+      runner: pvc_rolling
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   linux-ut:
@@ -221,7 +221,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: BMG-816374
+      runner: bmg-test
       pytorch: distributed_2.11
       torch_xpu_ops: daisyden/distributed_2.11
       ut: ${{ matrix.ut_name }}
