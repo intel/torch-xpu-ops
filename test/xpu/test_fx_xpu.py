@@ -41,12 +41,20 @@ with XPUPatchForImport(False):
 # Canonical kernel launch event token used in test baselines.
 _XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
 
-# The SYCL runtime may emit either "urEnqueueKernelLaunch" or
-# "urEnqueueKernelLaunchWithArgsExp" (the latter truncated to 30 chars by
-# _canonicalize_profiler_events). Accept both.
+# Match the full launch-event family rather than relying only on a specific
+# canonicalization length. Depending on upstream profiler normalization, the
+# SYCL runtime may emit:
+#   * "urEnqueueKernelLaunch"
+#   * "urEnqueueKernelLaunchWithArgsE"      (historically truncated)
+#   * "urEnqueueKernelLaunchWithArgsExp"    (full name)
+# Keep the explicit variants for compatibility, and also record the stable
+# prefix shared by these launch events so they are not accidentally dropped by
+# later generic "ur*" runtime-event filtering if canonicalization changes.
+_XPU_KERNEL_LAUNCH_EVENT_PREFIX = "urEnqueueKernelLaunch"
 _XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
     _XPU_KERNEL_LAUNCH_EVENT,
     "urEnqueueKernelLaunchWithArgsE",
+    "urEnqueueKernelLaunchWithArgsExp",
 )
 
 _XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
