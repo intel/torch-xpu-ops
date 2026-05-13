@@ -378,13 +378,38 @@ void segmented_radix_sort_pairs_kernel(
   key_t* keys_temp;
   value_t* values_temp;
 
-  at::DataPtr counts_data = c10::GetAllocator(kXPU)->allocate(
-      static_cast<size_t>(num_segments) * RADIX_BUCKETS * num_tiles *
-      sizeof(int));
-  at::DataPtr keys_temp_data = c10::GetAllocator(kXPU)->allocate(
-      static_cast<size_t>(num_segments) * num_elements * sizeof(key_t));
-  at::DataPtr values_temp_data = c10::GetAllocator(kXPU)->allocate(
-      static_cast<size_t>(num_segments) * num_elements * sizeof(value_t));
+  auto checked_mul_size = [](size_t a, size_t b, const char* name) {
+    TORCH_CHECK(
+        a == 0 || b <= std::numeric_limits<size_t>::max() / a,
+        name,
+        " allocation size overflow");
+    return a * b;
+  };
+
+  const size_t num_segments_sz = static_cast<size_t>(num_segments);
+  const size_t num_elements_sz = static_cast<size_t>(num_elements);
+  const size_t num_tiles_sz = static_cast<size_t>(num_tiles);
+
+  size_t counts_bytes =
+      checked_mul_size(num_segments_sz, RADIX_BUCKETS, "counts");
+  counts_bytes = checked_mul_size(counts_bytes, num_tiles_sz, "counts");
+  counts_bytes = checked_mul_size(counts_bytes, sizeof(int), "counts");
+
+  at::DataPtr counts_data = c10::GetAllocator(kXPU)->allocate(counts_bytes);
+
+  size_t keys_temp_bytes =
+      checked_mul_size(num_segments_sz, num_elements_sz, "keys_temp");
+  keys_temp_bytes =
+      checked_mul_size(keys_temp_bytes, sizeof(key_t), "keys_temp");
+  at::DataPtr keys_temp_data =
+      c10::GetAllocator(kXPU)->allocate(keys_temp_bytes);
+
+  size_t values_temp_bytes =
+      checked_mul_size(num_segments_sz, num_elements_sz, "values_temp");
+  values_temp_bytes =
+      checked_mul_size(values_temp_bytes, sizeof(value_t), "values_temp");
+  at::DataPtr values_temp_data =
+      c10::GetAllocator(kXPU)->allocate(values_temp_bytes);
 
   counts = (int*)counts_data.get();
   keys_temp = (key_t*)keys_temp_data.get();
