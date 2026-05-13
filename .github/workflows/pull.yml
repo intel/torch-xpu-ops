@@ -234,7 +234,7 @@ jobs:
           fi
 
   linux-ut:
-    needs: [reproducer-status-check]
+    needs: [linux-build,reproducer-status-check]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
@@ -252,7 +252,7 @@ jobs:
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [reproducer-status-check]
+    needs: [linux-build, reproducer-status-check]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions:
@@ -273,7 +273,7 @@ jobs:
     name: linux-e2e
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
-    needs: [reproducer-status-check]
+    needs: [linux-build, reproducer-status-check]
     strategy:
       fail-fast: false
       matrix:
