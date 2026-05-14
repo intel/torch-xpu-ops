@@ -102,7 +102,10 @@ def advance(issue_number: int) -> None:
             # All targets go through local code_fix agent
             from .fixing_steps.code_fix import run
             _run_step("code_fix", run, issue_number)
-        case "IN_REVIEW" | "PUBLIC_PR" | "CI_WATCH" | "MERGED" | "DONE":
+        case "IN_REVIEW":
+            from .verify_fix import run as verify_fix_run
+            _run_step("verify_fix", verify_fix_run, issue_number)
+        case "PUBLIC_PR" | "CI_WATCH" | "MERGED" | "DONE":
             log("INFO", f"Issue #{issue_number} at stage {stage} — not yet implemented",
                 issue=issue_number)
         case "NEEDS_HUMAN":
