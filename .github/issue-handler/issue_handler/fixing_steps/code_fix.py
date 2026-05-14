@@ -55,6 +55,10 @@ def _get_test_command(body: str) -> str | None:
         m = re.search(r"```(?:bash|sh)?\s*\n(.+?)```", reproducer, re.DOTALL)
         if m:
             cmd = m.group(1).strip()
+            # Strip nested fence markers (LLM sometimes double-wraps)
+            cmd = re.sub(r'^```(?:bash|sh)?\s*\n', '', cmd)
+            cmd = re.sub(r'\n```\s*$', '', cmd)
+            cmd = cmd.strip()
             if cmd:
                 return cmd
         # If no code block but non-empty text that looks like a command
@@ -77,8 +81,8 @@ def _get_test_command(body: str) -> str | None:
                 r"[-*]\s+`?(\S+::\S+)`?", failed_tests)
         if tests:
             # Build pytest command
-            test_args = " ".join(f'"{t}"' for t in tests[:5])  # limit to 5
-            return f"pytest -xvs {test_args}"
+            test_args = " ".join(f'"{t}"' for t in tests)
+            return f"pytest -v {test_args}"
 
     return None
 

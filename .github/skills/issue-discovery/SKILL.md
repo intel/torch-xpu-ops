@@ -65,8 +65,15 @@ Return JSON with these fields:
 4. **Failed Tests** — format as `- \`test_file.py::TestClass::test_method\`` (one per line).
 5. **Error Log** — extract the COMPLETE error traceback/assertion VERBATIM from the issue.
    Include the full stack trace. Do NOT truncate, summarize, or shorten.
-6. **Reproducer** — copy **verbatim**. Look for code blocks, "Reproducer", "How to reproduce".
-   Do NOT fabricate. The reproducer could be a pytest command, a script, or bash commands.
+6. **Reproducer** — build a command that reproduces ALL failed tests, not just one.
+   If the issue has a single test command in a code block but lists additional failing tests,
+   construct a pytest command that runs ALL of them. Format as a bash code block.
+   Example: if 7 tests fail across 2 files, the reproducer should be:
+   ```bash
+   pytest -v "test/file1.py::Test::test_a" "test/file1.py::Test::test_b" "test/file2.py::Test::test_c"
+   ```
+   Do NOT just copy one test from an error log and ignore the rest.
+   If the issue already has a complete reproducer covering all tests, copy it verbatim.
 7. **Labels are authoritative** — if labels say `agent_test: ut`, test_type is `ut`.
 8. **Do NOT extract environment/versions** — handled programmatically.
 9. **current_status** — copy markdown tables, checklists (🟢🟡❌), and progress notes
