@@ -139,6 +139,7 @@ skip_dict = {
     "test_sparse_xpu.py": None,
     "test_spectral_ops_xpu.py": None,
     "test_tensor_creation_ops_xpu.py": None,
+    "test_testing_xpu.py": None,
     "test_torch_xpu.py": (
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
