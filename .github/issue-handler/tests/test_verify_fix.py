@@ -96,7 +96,7 @@ class TestVerifyFixRun:
         result = run(1234)
         assert result is False
 
-    @patch("issue_handler.verify_fix._restore_xpu_txt")
+    @patch("issue_handler.verify_fix._restore_submodule")
     @patch("issue_handler.verify_fix._cleanup_xpu_ops_worktree")
     @patch("issue_handler.verify_fix._checkout_xpu_ops_pr")
     @patch("issue_handler.verify_fix._sync_to_pytorch")
@@ -130,7 +130,7 @@ class TestVerifyFixRun:
         comment = mock_gh.add_issue_comment.call_args[0][2]
         assert "verification passed" in comment.lower()
 
-    @patch("issue_handler.verify_fix._restore_xpu_txt")
+    @patch("issue_handler.verify_fix._restore_submodule")
     @patch("issue_handler.verify_fix._cleanup_xpu_ops_worktree")
     @patch("issue_handler.verify_fix._checkout_xpu_ops_pr")
     @patch("issue_handler.verify_fix._sync_to_pytorch")

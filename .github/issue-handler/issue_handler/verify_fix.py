@@ -47,15 +47,26 @@ def _needs_rebuild(diff_files: str) -> bool:
 
 
 def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
-    """Run incremental rebuild if C++ files changed."""
-    log("INFO", "Running incremental pytorch rebuild", issue=issue)
+    """Run incremental rebuild via ninja (much faster than setup.py develop).
+
+    Uses ninja directly in the build directory to avoid CMake reconfiguration.
+    Only recompiles changed translation units.
+    """
+    log("INFO", "Running incremental pytorch rebuild (ninja)", issue=issue)
+    build_dir = workdir / "build"
     env_setup = (
         "source ~/intel/oneapi/setvars.sh --force 2>/dev/null; "
         "source ~/pytorch/.venv/bin/activate; "
     )
+    if build_dir.exists() and (build_dir / "build.ninja").exists():
+        # Fast path: incremental ninja build
+        cmd = env_setup + f"ninja -C {build_dir}"
+    else:
+        # Fallback: full rebuild
+        cmd = env_setup + "python setup.py develop"
     try:
         result = subprocess.run(
-            env_setup + "python setup.py develop",
+            cmd,
             cwd=str(workdir), capture_output=True, text=True,
             timeout=1800, shell=True, executable="/bin/bash",
         )
@@ -115,40 +126,40 @@ def _checkout_xpu_ops_pr(branch: str, issue: int) -> tuple[Path, str]:
 
 
 def _sync_to_pytorch(worktree_dir: Path, branch: str, issue: int) -> None:
-    """Update ~/pytorch/third_party/xpu.txt to pin the PR branch commit.
+    """Checkout the PR branch directly in ~/pytorch/third_party/torch-xpu-ops/.
 
-    pytorch's CMake reads third_party/xpu.txt for the torch-xpu-ops commit
-    SHA, then fetches+checks out that commit into third_party/torch-xpu-ops/.
-    So we update the pin to the PR branch HEAD, which makes the next rebuild
-    pick up the fix automatically.
+    Instead of changing xpu.txt (which triggers CMake reconfiguration and
+    a full rebuild), we directly checkout the PR branch in the submodule
+    directory and use ninja for an incremental build of only the changed files.
     """
-    # Get the HEAD commit of the PR branch
-    commit_sha = git_out(
-        "rev-parse", "HEAD",
-        workdir=worktree_dir, issue=issue,
-    ).strip()
-
-    xpu_txt = PYTORCH_DIR / "third_party" / "xpu.txt"
-    if not xpu_txt.exists():
-        log("WARN", f"third_party/xpu.txt not found at {xpu_txt}",
+    submodule = PYTORCH_DIR / "third_party" / "torch-xpu-ops"
+    if not submodule.exists():
+        log("WARN", f"third_party/torch-xpu-ops not found at {submodule}",
             issue=issue)
         return
 
-    # Save original pin for restoration
-    original_pin = xpu_txt.read_text().strip()
-    log("INFO", f"Updating xpu.txt pin: {original_pin[:12]} → {commit_sha[:12]}",
+    # Save current HEAD for restoration
+    original_sha = git_out(
+        "rev-parse", "HEAD", workdir=submodule, issue=issue,
+    ).strip()
+    log("INFO", f"Saving torch-xpu-ops HEAD: {original_sha[:12]}", issue=issue)
+
+    # Fetch the PR branch and checkout
+    git("fetch", "origin", branch, workdir=submodule, issue=issue)
+    git("checkout", f"origin/{branch}", workdir=submodule, issue=issue)
+    new_sha = git_out("rev-parse", "HEAD", workdir=submodule, issue=issue).strip()
+    log("INFO", f"Checked out {branch} in third_party/torch-xpu-ops: {new_sha[:12]}",
         issue=issue)
 
-    xpu_txt.write_text(commit_sha + "\n")
 
-
-def _restore_xpu_txt(issue: int) -> None:
-    """Restore third_party/xpu.txt to its git-committed state."""
+def _restore_submodule(issue: int) -> None:
+    """Restore third_party/torch-xpu-ops to its xpu.txt-pinned commit."""
+    submodule = PYTORCH_DIR / "third_party" / "torch-xpu-ops"
     xpu_txt = PYTORCH_DIR / "third_party" / "xpu.txt"
-    if xpu_txt.exists():
-        git("checkout", "third_party/xpu.txt",
-            workdir=PYTORCH_DIR, issue=issue)
-        log("INFO", "Restored third_party/xpu.txt to committed state",
+    if submodule.exists() and xpu_txt.exists():
+        pinned_sha = xpu_txt.read_text().strip()
+        git("checkout", pinned_sha, workdir=submodule, issue=issue)
+        log("INFO", f"Restored third_party/torch-xpu-ops to pinned {pinned_sha[:12]}",
             issue=issue)
 
 
@@ -223,14 +234,11 @@ def run(issue_number: int) -> bool:
             _sync_to_pytorch(worktree_dir, branch, issue_number)
             # Tests always run from pytorch dir
             test_workdir = PYTORCH_DIR
-            # Check if we need a rebuild (always rebuild for xpu.txt pin change)
+            # Check if we need a rebuild
             diff_files = git_out(
                 "diff", "--name-only", f"origin/main..HEAD",
                 workdir=worktree_dir, issue=issue_number,
             ).strip()
-            # Force rebuild since xpu.txt pin changed — CMake will
-            # fetch+checkout the new commit into third_party/torch-xpu-ops/
-            needs_build = True
         else:
             test_workdir, base_ref = _checkout_pytorch_pr(
                 branch, issue_number)
@@ -242,10 +250,7 @@ def run(issue_number: int) -> bool:
             ).strip()
 
         # --- Build if needed ---
-        if target_repo == "torch-xpu-ops":
-            # Always rebuild: xpu.txt pin changed, CMake will fetch new commit
-            do_build = True
-        elif diff_files and _needs_rebuild(diff_files):
+        if diff_files and _needs_rebuild(diff_files):
             do_build = True
         else:
             do_build = False
@@ -323,7 +328,7 @@ def run(issue_number: int) -> bool:
         # Cleanup
         if worktree_dir and worktree_dir.exists():
             _cleanup_xpu_ops_worktree(worktree_dir, issue_number)
-            _restore_xpu_txt(issue_number)
+            _restore_submodule(issue_number)
         elif target_repo == "pytorch":
             # Restore pytorch to its previous state
             try:

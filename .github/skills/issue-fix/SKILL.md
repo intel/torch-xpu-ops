@@ -35,13 +35,14 @@ During CMake build, pytorch reads this SHA, fetches the torch-xpu-ops repo,
 and checks out that exact commit into `third_party/torch-xpu-ops/`.
 
 **To test a torch-xpu-ops fix inside pytorch:**
-1. Update `third_party/xpu.txt` with the commit SHA of your fix branch
-2. Rebuild pytorch (`python setup.py develop`) — CMake will automatically
-   fetch and checkout the new torch-xpu-ops commit
+1. Checkout the fix branch directly in `~/pytorch/third_party/torch-xpu-ops/`
+2. Run `ninja -C ~/pytorch/build` for an incremental rebuild (only recompiles changed files)
 3. Run tests from the pytorch root directory
+4. After testing, restore: `cd third_party/torch-xpu-ops && git checkout $(cat ../xpu.txt)`
 
-**Do NOT** manually copy files into `third_party/torch-xpu-ops/` — the
-build system will overwrite them from the xpu.txt pin.
+**Do NOT** modify `third_party/xpu.txt` for local testing — changing the pin
+triggers CMake reconfiguration and a full rebuild from scratch (~hours).
+Direct checkout + ninja is much faster (minutes).
 
 ## Step 2: Implement the Fix
 Follow the **Proposed Fix Strategy** from the issue. Key principles:
