@@ -193,7 +193,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     sycl::group_barrier(item.get_group());
 
     IndexT numIterations =
-        ((sliceSize + block_size - 1) / block_size) * block_size;
+        at::ceil_div(sliceSize, static_cast<IndexT>(block_size)) * block_size;
 
     for (IndexT i = lid; i < numIterations; i += block_size) {
       bool inRange = (i < sliceSize);
@@ -242,6 +242,9 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int sg_lid = sg.get_local_linear_id();
     int sg_id = sg.get_group_linear_id();
     constexpr int num_sgs = SBTOPK_BLOCK / SIMD;
+    static_assert(
+        num_sgs <= SMEM_FOUND_FLAG,
+        "num_sgs exceeds SMEM_FOUND_FLAG; SLM layout collision");
 
     int sg_inclusive =
         sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
