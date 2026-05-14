@@ -203,7 +203,7 @@ class OpenCodeBackend(AgentBackend):
                 if has_fileno:
                     fd = proc.stdout.fileno()
                 buf = ""
-                idle_timeout = 180  # kill if no output for 3 minutes
+                idle_timeout = 300  # kill if no output for 5 minutes
                 last_output_time = time.monotonic()
 
                 def _read_lines():
@@ -232,6 +232,24 @@ class OpenCodeBackend(AgentBackend):
                                 cmd, effective_timeout)
                         ready, _, _ = select.select([fd], [], [], min(remaining, 30))
                         if not ready:
+                            # Check if process exited while we were waiting
+                            if proc.poll() is not None:
+                                # Drain any remaining data
+                                while True:
+                                    r, _, _ = select.select([fd], [], [], 0)
+                                    if not r:
+                                        break
+                                    leftover = os.read(fd, 65536)
+                                    if not leftover:
+                                        break
+                                    buf += leftover.decode("utf-8", errors="replace")
+                                    last_output_time = time.monotonic()
+                                    while "\n" in buf:
+                                        line, buf = buf.split("\n", 1)
+                                        yield line + "\n"
+                                # Process exited and pipe drained
+                                log_f.write("\n=== PROCESS EXITED (rc=%d) ===\n" % proc.returncode)
+                                break
                             continue
                         chunk = os.read(fd, 65536)
                         if not chunk:

@@ -254,6 +254,7 @@ def run(issue_number: int) -> None:
         log("INFO", f"Branch {branch} already has changes, skipping agent re-run",
             issue=issue_number)
         token_usage = TokenUsage()
+        verified = False
     else:
         # --- Extract test command for verification ---
         test_cmd = _get_test_command(body)

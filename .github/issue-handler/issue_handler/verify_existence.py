@@ -68,6 +68,10 @@ def _get_test_command(body: str) -> str | None:
         m = re.search(r"```(?:bash|sh)?\s*\n(.+?)```", reproducer, re.DOTALL)
         if m:
             cmd = m.group(1).strip()
+            # Strip nested fence markers (LLM sometimes double-wraps)
+            cmd = re.sub(r'^```(?:bash|sh)?\s*\n', '', cmd)
+            cmd = re.sub(r'\n```\s*$', '', cmd)
+            cmd = cmd.strip()
             # Validate it looks like a shell command (not CI metadata like "op_ut,...")
             if cmd and _is_shell_command(cmd):
                 return cmd

@@ -31,6 +31,8 @@ Analyze the structured issue and determine:
 
 **TIME BUDGET: You MUST output your JSON within 5 minutes. If unsure, output IMPLEMENTING with your best guess — don't keep searching.**
 
+**IMPORTANT: Do NOT use the `task` tool or spawn subagents. Do all analysis yourself with `read` and `grep` only. Subagents hang in large repos.**
+
 ## Reproducer
 
 Extract the reproducer command from the issue description. It may be:
