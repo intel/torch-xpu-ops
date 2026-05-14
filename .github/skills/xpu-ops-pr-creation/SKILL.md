@@ -13,8 +13,8 @@ placeholders:
 
 # PR Creation — torch-xpu-ops
 
-Read `.github/copilot-instructions.md` for full repo context before starting.
-
+- Read `.github/copilot-instructions.md` for full repo context before starting.
+- Read `.github/skills/xpu-issues-triaging/SKILL.md` for issue triaging before creating a PR. BE SURE to triage and understand the root cause first, then create PR.
 ---
 
 ## Step 1: Verify your branch
@@ -50,6 +50,7 @@ must name existing tests that validate the change.
 Use this exact template:
 
 ```
+Fixes <original_issue_link>
 <description of what the PR does and why>
 
 Test: <one of the three forms below>
