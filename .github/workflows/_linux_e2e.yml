@@ -107,6 +107,7 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
+          overwrite_model_list: 'false'
       - name: CICD Timm_models BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -115,6 +116,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          overwrite_model_list: 'false'
       - name: CICD Torchbench BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -123,6 +125,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          overwrite_model_list: 'false'
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -238,6 +241,7 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: accuracy,performance
+          overwrite_model_list: 'false'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -246,6 +250,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: accuracy,performance
+          overwrite_model_list: 'false'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}
