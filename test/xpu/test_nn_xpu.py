@@ -17509,10 +17509,7 @@ if __name__ == '__main__':
             if (
                 batch_first
                 and not training
-                and (
-                    "cuda" in str(device)
-                    or "cpu" in str(device)
-                )
+                and ("cuda" in str(device) or "cpu" in str(device))
                 and not TEST_WITH_CROSSREF
             ):
                 encoder_input[0][-1] = torch.zeros_like(encoder_input[0][1])
