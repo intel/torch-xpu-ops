@@ -806,6 +806,11 @@ code = 'META_NO_CREATE_UNBACKED'
 include_patterns = [
   "**/*.py"
 ]
+exclude_patterns = [
+  # Port of upstream test/dynamo/test_misc.py which legitimately calls
+  # ShapeEnv.create_unbacked_* to test ShapeEnv equality.
+  "test/xpu/dynamo/test_misc_xpu.py",
+]
 command = [
     'python3',
     'tools/linter/adapters/grep_linter.py',
