@@ -177,8 +177,15 @@ def add_and_commit(message: str, *, issue: int | None = None,
         if " -> " in fname:
             fname = fname.split(" -> ", 1)[1]
         if fname.startswith("third_party/"):
-            log("INFO", f"Skipping submodule change: {fname}", issue=issue)
-            continue
+            # Allow file edits inside third_party/torch-xpu-ops/ (actual
+            # source changes).  Only skip bare submodule-pointer updates
+            # (e.g. "third_party/torch-xpu-ops" with no deeper path).
+            if "/" not in fname[len("third_party/"):]:
+                log("INFO", f"Skipping submodule pointer change: {fname}",
+                    issue=issue)
+                continue
+            log("INFO", f"Including third_party file change: {fname}",
+                issue=issue)
         files.append(fname)
 
     if not files:

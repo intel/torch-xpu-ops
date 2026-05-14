@@ -56,7 +56,7 @@ After fixing, update the issue body with:
 
 ## HARD RULES
 - NEVER add skip decorators. FIX the test.
-- NEVER modify files outside your repo scope (pytorch: no `third_party/*`; torch-xpu-ops: only `src/`).
+- NEVER modify files outside your repo scope. Exception: if you're in the pytorch repo and the issue targets `third_party/torch-xpu-ops/` files, you may edit those (they are torch-xpu-ops source bundled as a submodule). Do NOT modify other `third_party/*` submodules. If in torch-xpu-ops: only modify files under `src/`.
 - NEVER modify unrelated files.
 - NEVER force-push. This makes commits un-trackable.
 - Use `git add` on specific files only.

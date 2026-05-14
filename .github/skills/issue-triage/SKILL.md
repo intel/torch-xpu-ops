@@ -56,8 +56,8 @@ Return ONLY valid JSON:
 ```
 
 ### target_repo rules:
-- `"torch-xpu-ops"` — if the fix is in `src/ATen/native/xpu/sycl/`, `src/ATen/native/xpu/`, or any path relative to torch-xpu-ops root
-- `"pytorch"` — if the fix is in `torch/`, `aten/src/ATen/`, `test/`, `c10/`, `torch/_dynamo/`, `torch/_inductor/`, or any top-level pytorch path
+- `"torch-xpu-ops"` — if the fix is in `src/ATen/native/xpu/sycl/`, `src/ATen/native/xpu/`, or any path relative to torch-xpu-ops root. **This includes files under `third_party/torch-xpu-ops/` in the pytorch tree** — those are torch-xpu-ops source files bundled as a submodule; fixes belong in torch-xpu-ops, not pytorch.
+- `"pytorch"` — if the fix is in `torch/`, `aten/src/ATen/`, `test/`, `c10/`, `torch/_dynamo/`, `torch/_inductor/`, or any top-level pytorch path (but NOT `third_party/torch-xpu-ops/`)
 
 ## Data Collection
 
