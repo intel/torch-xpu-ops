@@ -560,7 +560,7 @@ class GitHubIssueTracker:
                 subprocess.run(
                     ['gh', '--repo', repo, 'issue', 'edit', str(issue_id),
                      '--body-file', str(body_file)],
-                    capture_output=True, timeout=30,
+                    capture_output=True, timeout=30, check=True,
                 )
                 body_file.unlink(missing_ok=True)
 
@@ -575,7 +575,7 @@ class GitHubIssueTracker:
                 subprocess.run(
                     ['gh', '--repo', repo, 'issue', 'comment', str(issue_id),
                      '--body', comment],
-                    capture_output=True, timeout=30,
+                    capture_output=True, timeout=30, check=True,
                 )
 
                 updated += 1

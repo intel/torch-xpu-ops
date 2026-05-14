@@ -218,8 +218,8 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
             if result_type == "accuracy":
                 rec["accuracy"] = row["accuracy"]
             else:
-                speedup = row.get("speedup")
-                abs_lat = row.get("abs_latency")
+                speedup = pd.to_numeric(row.get("speedup"), errors="coerce")
+                abs_lat = pd.to_numeric(row.get("abs_latency"), errors="coerce")
                 if pd.isna(speedup) or pd.isna(abs_lat):
                     log.debug(
                         "Missing speedup/abs_latency for %s in %s",

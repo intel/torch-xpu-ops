@@ -9,17 +9,17 @@ name: OnDemand Acceptance Comparison
 #           (training amp_fp16 + inference bfloat16, accuracy + performance)
 #
 # Flexibility is on the *component* under test: select one component
-# (`pytorch`, `torch_xpu_ops`, `triton`, `onednn`) via `test_component`,
-# then set `target_version` / `baseline_version` for that component.
-# Other components use their base inputs or upstream-pinned defaults.
+# (`triton`, `onednn`) via `test_component`, then set `target_version` /
+# `baseline_version` for that component. Other components use their base
+# inputs or upstream-pinned defaults.
 
 on:
   workflow_dispatch:
     inputs:
       runner:
-        type: string
-        default: pvc_rolling
-        description: 'Runner label for the test pool (UT + E2E). Build jobs always use the dedicated `build` runner pool.'
+        type: choice
+        options: [acceptance]
+        description: 'Runner label for the test pool (UT + E2E).'
       python:
         type: string
         required: true
@@ -30,17 +30,17 @@ on:
       pytorch:
         type: string
         default: 'main'
-        description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`). Overridden when test_component=pytorch.'
+        description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`).'
       torch_xpu_ops:
         type: string
         default: 'main'
-        description: 'Base torch-xpu-ops ref, or `pinned`. Overridden when test_component=torch_xpu_ops.'
+        description: 'Base torch-xpu-ops ref, or `pinned`.'
 
       # ----- Component under test -----
       test_component:
         type: choice
-        options: [onednn, triton, torch_xpu_ops, pytorch]
-        default: pytorch
+        options: [onednn, triton]
+        default: onednn
         description: 'Which component varies between target and baseline.'
       target_version:
         type: string
@@ -83,8 +83,8 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.target_version || inputs.torch_xpu_ops }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
       onednn: ${{ inputs.test_component == 'onednn' && inputs.target_version || '' }}
       python: ${{ inputs.python }}
@@ -100,11 +100,12 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.target_version || inputs.torch_xpu_ops }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
       ut: p0
       category: target
+      skip_summary: true
 
   target-e2e:
     name: target / e2e
@@ -117,8 +118,8 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      test_type: build-comparison
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
+      test_type: build-acceptance
+      pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
       category: target
@@ -132,8 +133,8 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.baseline_version || inputs.torch_xpu_ops }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
       onednn: ${{ inputs.test_component == 'onednn' && inputs.baseline_version || '' }}
       python: ${{ inputs.python }}
@@ -149,11 +150,12 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.baseline_version || inputs.torch_xpu_ops }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
       ut: p0
       category: baseline
+      skip_summary: true
 
   baseline-e2e:
     name: baseline / e2e
@@ -166,8 +168,8 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      test_type: build-comparison
-      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
+      test_type: build-acceptance
+      pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
       category: baseline
@@ -255,6 +257,8 @@ jobs:
           python -m pip install --quiet pandas numpy openpyxl PyGithub
 
       - name: E2E comparison (compare-e2e.py)
+        id: e2e-cmp
+        continue-on-error: true
         run: |
           # Flatten per-suite artifact directories so compare-e2e.py finds csvs
           for side in target baseline; do
@@ -270,7 +274,7 @@ jobs:
             -t "${{ github.workspace }}/results/target/e2e" \
             -b "${{ github.workspace }}/results/baseline/e2e" \
             -o "${{ github.workspace }}/comparison/e2e_comparison.xlsx" \
-            -m "${{ github.workspace }}/comparison/e2e_comparison.md" || true
+            -m "${{ github.workspace }}/comparison/e2e_comparison.md"
           {
             echo ""
             echo "### E2E (target vs baseline)"
@@ -283,6 +287,8 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: UT comparison (compare-ut.py)
+        id: ut-cmp
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -293,7 +299,7 @@ jobs:
             -o "${{ github.workspace }}/comparison/ut_comparison.xlsx" \
             -m \
             --markdown-output "${{ github.workspace }}/comparison/ut_comparison.md" \
-            --no-github || true
+            --no-github
           {
             echo ""
             echo "### UT (target vs baseline)"

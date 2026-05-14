@@ -229,17 +229,17 @@ jobs:
           dt: ${{ steps.dtypes.outputs.pt2e_dtypes }}
           scenario: ${{ inputs.scenario }}
 
-      # Acceptance comparison launch (fixed scope: training amp_fp16 + inference bfloat16, accuracy+performance)
-      - name: Comparison Test - training (${{ inputs.suite }})
-        if: ${{ contains(inputs.test_type, 'comparison') }}
+      # Acceptance test launch (fixed scope: training amp_fp16 + inference bfloat16, accuracy+performance)
+      - name: Acceptance Test - training (${{ inputs.suite }})
+        if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
           dt: amp_fp16
           mode: training
           scenario: accuracy,performance
-      - name: Comparison Test - inference (${{ inputs.suite }})
-        if: ${{ contains(inputs.test_type, 'comparison') }}
+      - name: Acceptance Test - inference (${{ inputs.suite }})
+        if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
