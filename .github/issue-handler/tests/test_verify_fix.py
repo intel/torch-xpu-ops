@@ -96,17 +96,18 @@ class TestVerifyFixRun:
         result = run(1234)
         assert result is False
 
-    @patch("issue_handler.verify_fix._restore_pytorch_submodule")
+    @patch("issue_handler.verify_fix._restore_xpu_txt")
     @patch("issue_handler.verify_fix._cleanup_xpu_ops_worktree")
     @patch("issue_handler.verify_fix._checkout_xpu_ops_pr")
     @patch("issue_handler.verify_fix._sync_to_pytorch")
+    @patch("issue_handler.verify_fix._rebuild_pytorch")
     @patch("issue_handler.verify_fix._run_test")
     @patch("issue_handler.verify_fix.git_out")
     @patch("issue_handler.verify_fix.git")
     @patch("issue_handler.verify_fix.gh")
     def test_torch_xpu_ops_pass(self, mock_gh, mock_git, mock_git_out,
-                                 mock_run_test, mock_sync, mock_checkout,
-                                 mock_cleanup, mock_restore):
+                                 mock_run_test, mock_rebuild, mock_sync,
+                                 mock_checkout, mock_cleanup, mock_restore):
         """Should verify successfully for torch-xpu-ops target."""
         mock_gh.get_issue_detail.return_value = {
             "body": _make_issue_body(
@@ -114,6 +115,7 @@ class TestVerifyFixRun:
         }
         mock_checkout.return_value = (Path("/tmp/verify-1234"), "main")
         mock_git_out.return_value = "src/ATen/native/xpu/Foo.py\n"
+        mock_rebuild.return_value = (True, "Build OK")
         mock_run_test.return_value = (True, "1 passed\n")
 
         result = run(1234)
@@ -128,17 +130,18 @@ class TestVerifyFixRun:
         comment = mock_gh.add_issue_comment.call_args[0][2]
         assert "verification passed" in comment.lower()
 
-    @patch("issue_handler.verify_fix._restore_pytorch_submodule")
+    @patch("issue_handler.verify_fix._restore_xpu_txt")
     @patch("issue_handler.verify_fix._cleanup_xpu_ops_worktree")
     @patch("issue_handler.verify_fix._checkout_xpu_ops_pr")
     @patch("issue_handler.verify_fix._sync_to_pytorch")
+    @patch("issue_handler.verify_fix._rebuild_pytorch")
     @patch("issue_handler.verify_fix._run_test")
     @patch("issue_handler.verify_fix.git_out")
     @patch("issue_handler.verify_fix.git")
     @patch("issue_handler.verify_fix.gh")
     def test_torch_xpu_ops_fail(self, mock_gh, mock_git, mock_git_out,
-                                 mock_run_test, mock_sync, mock_checkout,
-                                 mock_cleanup, mock_restore):
+                                 mock_run_test, mock_rebuild, mock_sync,
+                                 mock_checkout, mock_cleanup, mock_restore):
         """Should move to NEEDS_HUMAN on verification failure."""
         mock_gh.get_issue_detail.return_value = {
             "body": _make_issue_body(
@@ -146,6 +149,7 @@ class TestVerifyFixRun:
         }
         mock_checkout.return_value = (Path("/tmp/verify-1234"), "main")
         mock_git_out.return_value = "src/ATen/native/xpu/Foo.py\n"
+        mock_rebuild.return_value = (True, "Build OK")
         mock_run_test.return_value = (False, "FAILED test_bar\n")
 
         result = run(1234)
