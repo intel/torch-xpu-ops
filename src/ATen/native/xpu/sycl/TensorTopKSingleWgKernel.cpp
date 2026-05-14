@@ -620,15 +620,21 @@ static void single_wg_launch_kernel(
                        : 1;
 
   // Determine VEC_SIZE: largest power-of-2 dividing sliceSize,
-  // capped by type max AND by EPT (vec <= ept required)
+  // capped by type max AND by EPT (vec <= ept required).
+  // Also check input pointer alignment — a non-zero storage offset
+  // can break alignment even for contiguous tensors.
   constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
   int cap = MAX_VEC < ept ? MAX_VEC : ept;
+  auto input_align = reinterpret_cast<uintptr_t>(input);
+  auto aligned = [&](int v) {
+    return input_align % (sizeof(scalar_t) * v) == 0;
+  };
   int vec = 1;
-  if (cap >= 8 && sliceSize % 8 == 0)
+  if (cap >= 8 && sliceSize % 8 == 0 && aligned(8))
     vec = 8;
-  else if (cap >= 4 && sliceSize % 4 == 0)
+  else if (cap >= 4 && sliceSize % 4 == 0 && aligned(4))
     vec = 4;
-  else if (cap >= 2 && sliceSize % 2 == 0)
+  else if (cap >= 2 && sliceSize % 2 == 0 && aligned(2))
     vec = 2;
 
   // Dispatch: VEC determines which EPT values are valid (EPT >= VEC, EPT % VEC
