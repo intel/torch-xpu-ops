@@ -4,7 +4,7 @@ name: OnDemand Acceptance Comparison
 # baseline) in the same workflow run, then compares their results.
 #
 # Test scope is fixed to the acceptance comparison scope:
-#   * UT  : op_p0 only
+#   * UT  : p0 only
 #   * E2E : huggingface, timm_models, torchbench
 #           (training amp_fp16 + inference bfloat16, accuracy + performance)
 #
@@ -103,7 +103,7 @@ jobs:
       pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.target_version || inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: op_p0
+      ut: p0
       category: target
 
   target-e2e:
@@ -152,7 +152,7 @@ jobs:
       pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.baseline_version || inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
-      ut: op_p0
+      ut: p0
       category: baseline
 
   baseline-e2e:
@@ -204,7 +204,7 @@ jobs:
             echo "| Base pytorch     | ${{ inputs.pytorch }} |"
             echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
             echo ""
-            echo "Scope: UT=\`op_p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
+            echo "Scope: UT=\`p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
           } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
