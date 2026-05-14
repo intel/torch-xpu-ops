@@ -359,7 +359,12 @@ skip_dict = {
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
-    "dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_ctx_manager_xpu.py": (
+        # Autocast to float64 is CUDA-specific and not supported on XPU.
+        # More details in https://github.com/pytorch/pytorch/pull/179141
+        "test_autocast_float64",
+        "test_cuda_amp_autocast",
+    ),
     "functorch/test_control_flow_xpu.py": None,
     "functorch/test_aot_joint_with_descriptors_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
@@ -380,6 +385,21 @@ skip_dict = {
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "dynamo/test_aot_autograd_cache_xpu.py": (
+        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
+        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
+        "test_cache_hot_load_device_cpu",
+        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
+        "test_cache_lazy_backward_for_compiled_autograd",
+    ),
+    "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_deviceguard_xpu.py": None,
+    "dynamo/test_functions_xpu.py": None,
+    "dynamo/test_higher_order_ops_xpu.py": None,
+    "dynamo/test_misc_xpu.py": None,
+    "dynamo/test_regional_inductor_xpu.py": None,
+    "dynamo/test_streams_xpu.py": None,
+    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "test_basic_torch_np_xpu.py": None,
     "test_fx_xpu.py": None,

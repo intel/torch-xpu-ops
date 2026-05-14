@@ -2213,8 +2213,8 @@ class TestTorchDeviceType(TestCase):
                 or torch.device(device).type == "xpu",
             )
 
-    @dtypes(torch.float32)
-    @dtypesIfCUDA(torch.float32, torch.int32)
+
+    @dtypes(torch.float32, torch.int32)
     @skipIfMPS
     def test_nondeterministic_alert_histc(self, device, dtype):
         a = torch.tensor([], device=device, dtype=dtype)
