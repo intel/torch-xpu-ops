@@ -403,6 +403,15 @@ def _compile_int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
         if self.device_type == "xpu":
+            # XPU's _weight_int4pack_mm kernel expects a 2D int32 view of the
+            # already-packed uint8 weight (one int32 per 8 consecutive nibbles),
+            # so we reinterpret the buffer directly with .view(torch.int32) rather
+            # than going through torch._convert_weight_to_int4pack.
+            # In contrast, CUDA's _convert_weight_to_int4pack returns a 4D int32
+            # tensor with shape (n//8, k//(inner_k_tiles*16), inner_k_tiles, 16)
+            # that encodes an additional tiling dimension required by the CUDA
+            # kernel.  The two representations are not interchangeable, which is
+            # why torch.compile on XPU must bypass the generic CUDA packing path.
             b_int4pack = b_tmp.view(torch.int32)
             self.assertTrue(b_int4pack.dtype is torch.int32)
             self.assertTrue(b_int4pack.dim() == 2)
