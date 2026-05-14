@@ -283,14 +283,24 @@ def run(issue_number: int) -> None:
                         issue=issue_number)
                     verified = True
                 else:
-                    log("WARN", "Existing fix verification FAILED",
+                    log("WARN", "Existing fix verification FAILED — resetting "
+                        "branch and re-running agent",
                         issue=issue_number)
+                    git("reset", "--hard", f"{remote}/{base_ref}",
+                        workdir=workdir, issue=issue_number)
+                    # Fall through to the fix loop below
+                    existing_diff = None
             else:
-                log("WARN", "Existing fix build FAILED", issue=issue_number)
+                log("WARN", "Existing fix build FAILED — resetting",
+                    issue=issue_number)
+                git("reset", "--hard", f"{remote}/{base_ref}",
+                    workdir=workdir, issue=issue_number)
+                existing_diff = None
         else:
             log("INFO", "No verification command, skipping verification",
                 issue=issue_number)
-    else:
+
+    if not existing_diff:
         # --- Extract test command for verification ---
         test_cmd = _get_test_command(body)
         if test_cmd:
