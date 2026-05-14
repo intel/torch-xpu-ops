@@ -29,6 +29,20 @@ If you modified C++/CUDA/SYCL code (not just Python), rebuild first:
 - **pytorch repo**: `python setup.py develop 2>&1 | tail -20`
 - **torch-xpu-ops repo**: No separate build step needed (built as part of pytorch)
 
+### torch-xpu-ops submodule pin (xpu.txt)
+pytorch pins torch-xpu-ops at a specific commit via `third_party/xpu.txt`.
+During CMake build, pytorch reads this SHA, fetches the torch-xpu-ops repo,
+and checks out that exact commit into `third_party/torch-xpu-ops/`.
+
+**To test a torch-xpu-ops fix inside pytorch:**
+1. Update `third_party/xpu.txt` with the commit SHA of your fix branch
+2. Rebuild pytorch (`python setup.py develop`) — CMake will automatically
+   fetch and checkout the new torch-xpu-ops commit
+3. Run tests from the pytorch root directory
+
+**Do NOT** manually copy files into `third_party/torch-xpu-ops/` — the
+build system will overwrite them from the xpu.txt pin.
+
 ## Step 2: Implement the Fix
 Follow the **Proposed Fix Strategy** from the issue. Key principles:
 - **Minimal changes** — fix only what's broken
