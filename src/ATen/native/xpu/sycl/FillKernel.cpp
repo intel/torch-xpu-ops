@@ -36,7 +36,23 @@ void fill_kernel(TensorIterator& iter, const Scalar& value) {
       iter.dtype(),
       "fill_xpu",
       AT_WRAP([&]() {
-        gpu_kernel(iter, FillFunctor<scalar_t>(value.to<scalar_t>()));
+        // For reduced-precision float types, use static_cast via double to allow
+        // out-of-range values to saturate to ±inf (matching CPU behavior in
+        // aten/src/ATen/ScalarOps.cpp fill_inplace), rather than throwing a
+        // RuntimeError on overflow.
+        scalar_t val;
+        if constexpr (
+            std::is_same_v<scalar_t, at::Half> ||
+            std::is_same_v<scalar_t, at::BFloat16> ||
+            std::is_same_v<scalar_t, at::Float8_e4m3fn> ||
+            std::is_same_v<scalar_t, at::Float8_e5m2> ||
+            std::is_same_v<scalar_t, at::Float8_e4m3fnuz> ||
+            std::is_same_v<scalar_t, at::Float8_e5m2fnuz>) {
+          val = static_cast<scalar_t>(value.to<double>());
+        } else {
+          val = value.to<scalar_t>();
+        }
+        gpu_kernel(iter, FillFunctor<scalar_t>(val));
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       kComplexHalf,
