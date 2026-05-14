@@ -51,7 +51,7 @@ git submodule sync && git submodule update --init --recursive
 # Each variable, when set to a non-empty value other than "pinned",
 # replaces the default pinned version of the corresponding component.
 
-# oneDNN: pytorch's mkl-dnn submodule lives under third_party/ideep/mkl-dnn
+# oneDNN: ExternalProject_Add in cmake/Modules/FindMKLDNN.cmake
 if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
     if [[ "${ONEDNN_COMMIT}" == *"@"* ]]; then
         ONEDNN_REPO_URL="${ONEDNN_COMMIT%@*}"
@@ -60,17 +60,12 @@ if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
         ONEDNN_REPO_URL=""
         ONEDNN_REF="${ONEDNN_COMMIT}"
     fi
-    pushd third_party/ideep/mkl-dnn >/dev/null
+    FIND_MKLDNN_CMAKE="cmake/Modules/FindMKLDNN.cmake"
     if [ -n "${ONEDNN_REPO_URL}" ]; then
-        git remote set-url origin "${ONEDNN_REPO_URL}"
+        sed -i -E "s#GIT_REPOSITORY[[:space:]]+[^[:space:]]+#GIT_REPOSITORY ${ONEDNN_REPO_URL}#" "${FIND_MKLDNN_CMAKE}"
     fi
-    # Try fetching the ref directly (works for branch/tag/SHA on servers
-    # with uploadpack.allowReachableSHA1InWant); fall back to a full fetch.
-    git fetch --tags --force origin "${ONEDNN_REF}" || git fetch --tags --force origin
-    git checkout --force "${ONEDNN_REF}"
-    git submodule update --init --recursive
-    git rev-parse HEAD
-    popd >/dev/null
+    sed -i -E "s#GIT_TAG[[:space:]]+[^[:space:]]+#GIT_TAG ${ONEDNN_REF}#" "${FIND_MKLDNN_CMAKE}"
+    grep -E 'GIT_REPOSITORY|GIT_TAG' "${FIND_MKLDNN_CMAKE}"
 fi
 
 # SYCLTLA: cmake FetchContent in torch-xpu-ops/cmake/SYCLTLA.cmake
