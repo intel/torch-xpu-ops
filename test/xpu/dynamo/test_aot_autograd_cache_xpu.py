@@ -195,8 +195,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             eager_result = fn(a, b)
             compiled_result = compiled_fn(a, b)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
@@ -237,8 +237,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             compiled_result = compiled_fn(a, b)
             self.assertEqual(eager_result, compiled_result)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
                 self.assertEqual(counters["inductor"]["fxgraph_cache_hit"], 0)
@@ -270,8 +270,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             eager_result = fn(a, b)
             compiled_result = compiled_fn(a, b)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
@@ -2095,8 +2095,8 @@ class AOTAutogradCacheTests(InductorTestCase):
                 torch.compile(dynamic=dynamic)
             ):
                 actual_grads = torch.autograd.grad(compiled_result.sum(), inputs=(a, b))
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             self.assertEqual(expected_grads[0], actual_grads[0])
             self.assertEqual(expected_grads[1], actual_grads[1])
@@ -2157,8 +2157,8 @@ class AOTAutogradCacheTests(InductorTestCase):
                     actual_grads = torch.autograd.grad(
                         compiled_result.sum(), inputs=(a, b)
                     )
-                if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                    del a._dynamo_weak_dynamic_indices
+                if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                    del a._dynamo_propagated_dynamic_indices
                 self.assertEqual(eager_result, compiled_result)
                 self.assertEqual(expected_grads[0], actual_grads[0])
                 self.assertEqual(expected_grads[1], actual_grads[1])
