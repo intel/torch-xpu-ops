@@ -22,7 +22,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <c10/util/llvmMathExtras.h>

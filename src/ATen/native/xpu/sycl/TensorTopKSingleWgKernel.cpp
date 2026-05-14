@@ -11,29 +11,24 @@
  * Output is UNSORTED. Caller applies segmented sort if sorted output needed.
  *
  * CUDA sources translated 1:1:
- *   - SortingRadixSelect.cuh: countRadixUsingMask (line 176), findPattern (239)
- *   - ScanUtils.cuh: inclusiveBinaryPrefixScan (16), exclusiveBinaryPrefixScan
- * (64)
- *   - TensorTopK.cu: gatherTopK (lines 40-182), radixSelect (860)
+ *   - SortingRadixSelect.cuh: countRadixUsingMask, findPattern
+ *   - ScanUtils.cuh: inclusiveBinaryPrefixScan, exclusiveBinaryPrefixScan
+ *   - TensorTopK.cu: gatherTopK, radixSelect
  *
  * Key CUDA -> SYCL mappings:
- *   WARP_BALLOT(pred)         -> sycl::ext::oneapi::group_ballot(sg, pred)
- *   __popc(ballot)            -> ballot.count()  (or extract_bits +
- * __builtin_popcount) getLaneMaskLe() & ballot  -> extract_bits + manual
- * le_mask + __builtin_popcount getLaneId()               ->
- * sg.get_local_linear_id() atomicAdd (smem)          -> sycl::atomic_ref
- * (local_space)
- *   __syncthreads()           -> sycl::group_barrier(item.get_group())
- *   doLdg(ptr)                -> direct load (no read-only cache hint in SYCL)
- *   Bitfield<T>::getBitfield  -> software shift+mask (no PTX BFE/BFI in SYCL)
- *   smem[]                    -> IndexT* from local accessor
+ *   WARP_BALLOT(pred)       -> sycl::ext::oneapi::group_ballot(sg, pred)
+ *   __popc(ballot)          -> ballot.count()
+ *   getLaneMaskLe() & ballot -> extract_bits + manual le_mask + popcount
+ *   getLaneId()             -> sg.get_local_linear_id()
+ *   atomicAdd (smem)        -> sycl::atomic_ref (local_space)
+ *   __syncthreads()         -> sycl::group_barrier(item.get_group())
+ *   doLdg(ptr)              -> direct load (no read-only cache hint in SYCL)
+ *   Bitfield<T>::getBitfield -> software shift+mask (no PTX BFE/BFI in SYCL)
+ *   smem[]                  -> IndexT* from local accessor
  *
  * withinSliceStride = 1 (input is .contiguous() before calling this kernel).
  * Uses SBTOPK_RADIX_BITS=4, SBTOPK_RADIX_SIZE=16, SBTOPK_RADIX_MASK=15
  * (halving radix passes vs the original RADIX_BITS=2).
- *
- * Future: CUDA multi-block radix path will be added for very large
- * (nsegments × nelements) workloads.
  */
 
 #include <ATen/ATen.h>
@@ -41,6 +36,8 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
+#include <c10/util/llvmMathExtras.h>
+#include <comm/SYCLHelpers.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
@@ -74,7 +71,7 @@ template <
     int ELEMS_PER_THREAD = 32,
     int SIMD = 32,
     typename IndexT = int>
-struct SbtopkGatherFunctor {
+struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
   // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
@@ -92,7 +89,7 @@ struct SbtopkGatherFunctor {
   // Eliminates all group_ballot calls in counting.
   // Result: all threads have identical counts[0..RADIX_SIZE-1].
   // ================================================================
-  __attribute__((noinline)) void countRadixUsingMask(
+  C10_NOINLINE void countRadixUsingMask(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       IndexT* smem,
@@ -178,7 +175,7 @@ struct SbtopkGatherFunctor {
   // SYCL uses smem[SMEM_FOUND_FLAG]=flag, smem[SMEM_FOUND_IDX]=index,
   // then convert(data[index]).
   // ================================================================
-  __attribute__((noinline)) RadixT findPattern(
+  C10_NOINLINE RadixT findPattern(
       sycl::nd_item<1> item,
       IndexT* smem,
       const scalar_t* data,
@@ -235,7 +232,7 @@ struct SbtopkGatherFunctor {
   // Sub-group level: inclusive_scan_over_group + group_broadcast
   // Cross sub-group: smem serial scan (same pattern as binary version)
   // ================================================================
-  __attribute__((noinline)) void exclusiveIntPrefixScan(
+  C10_NOINLINE void exclusiveIntPrefixScan(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       IndexT* smem,
@@ -282,7 +279,7 @@ struct SbtopkGatherFunctor {
   // found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
   // End: return desired (RadixT, fully determined)
   // ================================================================
-  __attribute__((noinline)) RadixT radixSelect(
+  C10_NOINLINE RadixT radixSelect(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       IndexT* smem,
@@ -541,16 +538,18 @@ struct SbtopkGatherFunctor {
       IndexT numSlices,
       IndexT sliceSize,
       int k,
-      bool largest,
-      sycl::local_accessor<IndexT, 1> local_mem)
+      bool largest)
       : inputData_(inputData),
         topKData_(topKData),
         indicesData_(indicesData),
         numSlices_(numSlices),
         sliceSize_(sliceSize),
         k_(k),
-        largest_(largest),
-        local_mem_(local_mem) {}
+        largest_(largest) {}
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_mem_ = sycl::local_accessor<IndexT, 1>(SMEM_ELEMS, cgh);
+  }
 
   const scalar_t* inputData_;
   scalar_t* topKData_;
@@ -570,7 +569,7 @@ template <
     int VEC_SIZE,
     int ELEMS_PER_THREAD,
     typename IndexT>
-static void sbtopk_launch_impl(
+static void single_wg_launch_impl(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
@@ -585,30 +584,23 @@ static void sbtopk_launch_impl(
   using Functor =
       SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
 
-  syclex::properties kernel_props{
-      syclex::sub_group_size<SIMD>, intelex::grf_size<128>};
+  Functor functor(input, topK, indices, numSlices, sliceSize, k, largest);
 
-  auto& q = at::xpu::getCurrentSYCLQueue();
-  q.submit([&](sycl::handler& cgh) {
-    sycl::local_accessor<IndexT, 1> local_mem(SMEM_ELEMS, cgh);
-    Functor functor(
-        input, topK, indices, numSlices, sliceSize, k, largest, local_mem);
-    cgh.parallel_for<Functor>(
-        sycl::nd_range<1>(
-            sycl::range<1>(static_cast<size_t>(numSlices) * SBTOPK_BLOCK),
-            sycl::range<1>(SBTOPK_BLOCK)),
-        kernel_props,
-        functor);
-  });
+  sycl_kernel_submit(
+      static_cast<int64_t>(numSlices) * SBTOPK_BLOCK,
+      static_cast<int64_t>(SBTOPK_BLOCK),
+      at::xpu::getCurrentSYCLQueue(),
+      syclex::properties{syclex::sub_group_size<SIMD>, intelex::grf_size<128>},
+      functor);
 }
 
 // Dispatch macro to reduce boilerplate
-#define SBTOPK_LAUNCH(V, E)                   \
-  sbtopk_launch_impl<scalar_t, V, E, IndexT>( \
+#define SINGLE_WG_LAUNCH(V, E)                   \
+  single_wg_launch_impl<scalar_t, V, E, IndexT>( \
       input, topK, indices, numSlices, sliceSize, k, largest)
 
 template <typename scalar_t, typename IndexT>
-static void sbtopk_launch_kernel(
+static void single_wg_launch_kernel(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
@@ -616,20 +608,16 @@ static void sbtopk_launch_kernel(
     IndexT sliceSize,
     int k,
     bool largest) {
-  // Determine ELEMS_PER_THREAD based on dim: target ~4 iterations
-  int ept;
-  if (sliceSize >= 32 * SBTOPK_BLOCK)
-    ept = 32;
-  else if (sliceSize >= 16 * SBTOPK_BLOCK)
-    ept = 16;
-  else if (sliceSize >= 8 * SBTOPK_BLOCK)
-    ept = 8;
-  else if (sliceSize >= 4 * SBTOPK_BLOCK)
-    ept = 4;
-  else if (sliceSize >= 2 * SBTOPK_BLOCK)
-    ept = 2;
-  else
-    ept = 1;
+  // ELEMS_PER_THREAD: largest power-of-2 such that
+  // ept * SBTOPK_BLOCK <= sliceSize, capped at 32.
+  // With ept=32 and 1024 threads, each iteration covers 32K elements,
+  // keeping the number of gatherTopK iterations small (~4 for dim=131072).
+  int64_t ratio = sliceSize / SBTOPK_BLOCK;
+  int ept = ratio >= 1 ? std::min(
+                             32,
+                             static_cast<int>(c10::llvm::PowerOf2Floor(
+                                 static_cast<uint64_t>(ratio))))
+                       : 1;
 
   // Determine VEC_SIZE: largest power-of-2 dividing sliceSize,
   // capped by type max AND by EPT (vec <= ept required)
@@ -650,67 +638,67 @@ static void sbtopk_launch_kernel(
     if (vec == 8) {
       switch (ept) {
         case 8:
-          SBTOPK_LAUNCH(8, 8);
+          SINGLE_WG_LAUNCH(8, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(8, 16);
+          SINGLE_WG_LAUNCH(8, 16);
           return;
         default:
-          SBTOPK_LAUNCH(8, 32);
+          SINGLE_WG_LAUNCH(8, 32);
           return;
       }
     } else if (vec == 4) {
       switch (ept) {
         case 4:
-          SBTOPK_LAUNCH(4, 4);
+          SINGLE_WG_LAUNCH(4, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(4, 8);
+          SINGLE_WG_LAUNCH(4, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(4, 16);
+          SINGLE_WG_LAUNCH(4, 16);
           return;
         default:
-          SBTOPK_LAUNCH(4, 32);
+          SINGLE_WG_LAUNCH(4, 32);
           return;
       }
     } else if (vec == 2) {
       switch (ept) {
         case 2:
-          SBTOPK_LAUNCH(2, 2);
+          SINGLE_WG_LAUNCH(2, 2);
           return;
         case 4:
-          SBTOPK_LAUNCH(2, 4);
+          SINGLE_WG_LAUNCH(2, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(2, 8);
+          SINGLE_WG_LAUNCH(2, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(2, 16);
+          SINGLE_WG_LAUNCH(2, 16);
           return;
         default:
-          SBTOPK_LAUNCH(2, 32);
+          SINGLE_WG_LAUNCH(2, 32);
           return;
       }
     } else {
       switch (ept) {
         case 1:
-          SBTOPK_LAUNCH(1, 1);
+          SINGLE_WG_LAUNCH(1, 1);
           return;
         case 2:
-          SBTOPK_LAUNCH(1, 2);
+          SINGLE_WG_LAUNCH(1, 2);
           return;
         case 4:
-          SBTOPK_LAUNCH(1, 4);
+          SINGLE_WG_LAUNCH(1, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(1, 8);
+          SINGLE_WG_LAUNCH(1, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(1, 16);
+          SINGLE_WG_LAUNCH(1, 16);
           return;
         default:
-          SBTOPK_LAUNCH(1, 32);
+          SINGLE_WG_LAUNCH(1, 32);
           return;
       }
     }
@@ -719,62 +707,62 @@ static void sbtopk_launch_kernel(
     if (vec >= 4) {
       switch (ept) {
         case 4:
-          SBTOPK_LAUNCH(4, 4);
+          SINGLE_WG_LAUNCH(4, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(4, 8);
+          SINGLE_WG_LAUNCH(4, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(4, 16);
+          SINGLE_WG_LAUNCH(4, 16);
           return;
         default:
-          SBTOPK_LAUNCH(4, 32);
+          SINGLE_WG_LAUNCH(4, 32);
           return;
       }
     } else if (vec == 2) {
       switch (ept) {
         case 2:
-          SBTOPK_LAUNCH(2, 2);
+          SINGLE_WG_LAUNCH(2, 2);
           return;
         case 4:
-          SBTOPK_LAUNCH(2, 4);
+          SINGLE_WG_LAUNCH(2, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(2, 8);
+          SINGLE_WG_LAUNCH(2, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(2, 16);
+          SINGLE_WG_LAUNCH(2, 16);
           return;
         default:
-          SBTOPK_LAUNCH(2, 32);
+          SINGLE_WG_LAUNCH(2, 32);
           return;
       }
     } else {
       switch (ept) {
         case 1:
-          SBTOPK_LAUNCH(1, 1);
+          SINGLE_WG_LAUNCH(1, 1);
           return;
         case 2:
-          SBTOPK_LAUNCH(1, 2);
+          SINGLE_WG_LAUNCH(1, 2);
           return;
         case 4:
-          SBTOPK_LAUNCH(1, 4);
+          SINGLE_WG_LAUNCH(1, 4);
           return;
         case 8:
-          SBTOPK_LAUNCH(1, 8);
+          SINGLE_WG_LAUNCH(1, 8);
           return;
         case 16:
-          SBTOPK_LAUNCH(1, 16);
+          SINGLE_WG_LAUNCH(1, 16);
           return;
         default:
-          SBTOPK_LAUNCH(1, 32);
+          SINGLE_WG_LAUNCH(1, 32);
           return;
       }
     }
   }
 }
 
-#undef SBTOPK_LAUNCH
+#undef SINGLE_WG_LAUNCH
 
 bool single_wg_topk_try_launch(
     const at::Tensor& self,
@@ -806,7 +794,7 @@ bool single_wg_topk_try_launch(
                 static_cast<int64_t>(std::numeric_limits<int>::max()) &&
             nsegments <= static_cast<int64_t>(std::numeric_limits<int>::max()) /
                     (nelements > 0 ? nelements : 1)) {
-          sbtopk_launch_kernel<scalar_t, int>(
+          single_wg_launch_kernel<scalar_t, int>(
               input,
               topK,
               idx,
@@ -815,7 +803,7 @@ bool single_wg_topk_try_launch(
               static_cast<int>(k),
               largest);
         } else {
-          sbtopk_launch_kernel<scalar_t, int64_t>(
+          single_wg_launch_kernel<scalar_t, int64_t>(
               input,
               topK,
               idx,
