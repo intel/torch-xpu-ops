@@ -38,6 +38,7 @@ from ..utils.notify import post_agent_completed, post_session_started
 # Verification helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_test_command(body: str) -> str | None:
     """Extract test command from issue body.
 
@@ -64,6 +65,9 @@ def _get_test_command(body: str) -> str | None:
                 # (the cwd is already set to the correct workdir)
                 cmd = re.sub(
                     r'^cd\s+(?:<[^>]+>|/\S+)\s*&&\s*', '', cmd).strip()
+                # Fix bare test file paths in pytest commands
+                from ..verify_existence import _fix_pytest_paths
+                cmd = _fix_pytest_paths(cmd)
                 return cmd
         # If no code block but non-empty text that looks like a command
         if reproducer and not reproducer.startswith("_Pending"):
@@ -84,8 +88,9 @@ def _get_test_command(body: str) -> str | None:
             tests = re.findall(
                 r"[-*]\s+`?(\S+::\S+)`?", failed_tests)
         if tests:
-            # Build pytest command
-            test_args = " ".join(f'"{t}"' for t in tests)
+            from ..verify_existence import _fix_test_path
+            fixed = [_fix_test_path(t) for t in tests]
+            test_args = " ".join(f'"{t}"' for t in fixed)
             return f"pytest -v {test_args}"
 
     return None

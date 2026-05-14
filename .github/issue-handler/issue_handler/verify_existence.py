@@ -51,6 +51,43 @@ def _is_shell_command(text: str) -> bool:
         return True
     return False
 
+
+def _fix_test_path(test_path: str) -> str:
+    """Fix bare test file paths to include the correct directory prefix.
+
+    Handles:
+      test/xpu/foo.py::... → third_party/torch-xpu-ops/test/xpu/foo.py::...
+      test_foo_xpu.py::...  → third_party/torch-xpu-ops/test/xpu/test_foo_xpu.py::...
+      test_foo.py::...      → test/test_foo.py::...  (upstream pytorch test)
+    """
+    # Split off test class/method part (file::class::method)
+    parts = test_path.split("::", 1)
+    file_part = parts[0]
+    rest = f"::{parts[1]}" if len(parts) > 1 else ""
+
+    # Already has a directory prefix
+    if "/" in file_part:
+        if file_part.startswith("test/xpu/"):
+            return f"third_party/torch-xpu-ops/{file_part}{rest}"
+        return test_path
+
+    # Bare filename — infer directory from naming convention
+    if file_part.endswith("_xpu.py"):
+        return f"third_party/torch-xpu-ops/test/xpu/{file_part}{rest}"
+    if file_part.startswith("test_") and file_part.endswith(".py"):
+        return f"test/{file_part}{rest}"
+
+    return test_path
+
+
+def _fix_pytest_paths(cmd: str) -> str:
+    """Apply _fix_test_path to all test file paths in a pytest command string."""
+    def replacer(m):
+        return _fix_test_path(m.group(0))
+    return re.sub(r'(?<=["\s])test_\S+\.py(?:::\S+)?|^test_\S+\.py(?:::\S+)?',
+                  replacer, cmd)
+
+
 def _get_test_command(body: str) -> str | None:
     """Extract test command from issue body.
 
@@ -74,7 +111,7 @@ def _get_test_command(body: str) -> str | None:
             cmd = cmd.strip()
             # Validate it looks like a shell command (not CI metadata like "op_ut,...")
             if cmd and _is_shell_command(cmd):
-                return cmd
+                return _fix_pytest_paths(cmd)
         # If no code block but non-empty text that looks like a command
         if reproducer and not reproducer.startswith("_Pending"):
             lines = [l.strip() for l in reproducer.splitlines()
@@ -82,7 +119,7 @@ def _get_test_command(body: str) -> str | None:
                      and not l.strip().startswith("```")]
             joined = "\n".join(lines)
             if lines and _is_shell_command(joined):
-                return joined
+                return _fix_pytest_paths(joined)
 
     # 2. Failed Tests section
     failed_tests = sections.get("Failed Tests", "").strip()
@@ -95,12 +132,7 @@ def _get_test_command(body: str) -> str | None:
             tests = re.findall(
                 r"[-*]\s+`?(\S+::\S+)`?", failed_tests)
         if tests:
-            # Prefix test/xpu/ paths for pytorch root execution
-            fixed = []
-            for t in tests:
-                if t.startswith("test/xpu/"):
-                    t = f"third_party/torch-xpu-ops/{t}"
-                fixed.append(t)
+            fixed = [_fix_test_path(t) for t in tests]
             test_args = " ".join(f'"{t}"' for t in fixed)
             return f"pytest -v {test_args}"
 

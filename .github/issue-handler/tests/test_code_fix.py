@@ -10,7 +10,7 @@ class TestGetTestCommand:
             "```bash\npytest -xvs test_ops.py -k test_fake_autocast\n```\n"
             "## Other\nstuff"
         )
-        assert _get_test_command(body) == "pytest -xvs test_ops.py -k test_fake_autocast"
+        assert _get_test_command(body) == "pytest -xvs test/test_ops.py -k test_fake_autocast"
 
     def test_reproducer_plain_command(self):
         body = (
@@ -52,4 +52,4 @@ class TestGetTestCommand:
             "```bash\npytest -v test_ops.py -k <case>\n```\n"
         )
         cmd = _get_test_command(body)
-        assert cmd == "pytest -v test_ops.py -k <case>"
+        assert cmd == "pytest -v test/test_ops.py -k <case>"
