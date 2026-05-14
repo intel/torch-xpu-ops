@@ -213,7 +213,7 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     tensor_size = (tensor_size // world_size) * world_size
     results = {}
 
-    print(f"Benchmark torch.distributed.all_reduce (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
+    # print(f"Benchmark torch.distributed.all_reduce (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
     tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
         dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
@@ -227,7 +227,7 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     end = time.perf_counter()
     results["dist.all_reduce"] = (end - start) / num_iters * 1000
 
-    print(f"Benchmark specified implementation (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
+    # print(f"Benchmark specified implementation (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
     tensor_impl = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
         impl_func(tensor_impl, op="sum")

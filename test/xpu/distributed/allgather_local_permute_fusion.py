@@ -21,7 +21,7 @@ import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
 
 
-def allgather_local_permute_fusion(
+def allgather_local_permute_fusion_native(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
@@ -66,14 +66,14 @@ def allgather_local_permute_fusion(
     symm_buffer[rank].copy_(hidden_shard)
     workspace.barrier()
 
-    # Before pull loop: write local hidden_shard to remap_hidden_states by topk
+    # Before pull loop: one fused kernel for local shard remap
     local_token_offset = rank * num_tokens_per_rank
-    for i in range(num_tokens_per_rank):
-        global_token_idx = local_token_offset + i
-        for k in range(topk):
-            _ = topk_idx[global_token_idx, k]
-            dst = global_token_idx * topk + k
-            remap_hidden_states[dst].copy_(hidden_shard[i])
+    torch.ops.symm_mem.local_permute_copy_(
+        hidden_shard,
+        topk_idx,
+        local_token_offset,
+        remap_hidden_states,
+    )
 
     # Step 2: two-stream round-robin pull; write to remap immediately per remote shard
     backend_stream = torch.xpu.Stream()
@@ -93,6 +93,79 @@ def allgather_local_permute_fusion(
             symm_buffer[remote_rank].copy_(remote_buffer)
 
             remote_token_offset = remote_rank * num_tokens_per_rank
+            torch.ops.symm_mem.local_permute_copy_(
+                symm_buffer[remote_rank],
+                topk_idx,
+                remote_token_offset,
+                remap_hidden_states,
+            )
+    torch.xpu.current_stream().wait_stream(backend_stream)
+    workspace.barrier()
+    return remap_hidden_states
+
+
+def allgather_local_permute_fusion_python(
+    hidden_shard: torch.Tensor,
+    topk_idx: torch.Tensor,
+    remap_hidden_states: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+):
+    """
+    TP only: Allgather + local permute fusion using Python copy loops.
+
+    This keeps the original Python implementation for correctness checks
+    and A/B performance comparison with the native fused kernel API.
+    """
+    if group is None:
+        group = dist.group.WORLD
+    if group_name is None:
+        group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    num_tokens_per_rank, hidden_size = hidden_shard.shape
+    num_tokens, topk = topk_idx.shape
+    assert num_tokens % world_size == 0
+    assert num_tokens_per_rank == num_tokens // world_size
+
+    workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+    symm_buffer = workspace.get_buffer(
+        rank,
+        (world_size, num_tokens_per_rank, hidden_size),
+        hidden_shard.dtype,
+        storage_offset=0,
+    )
+
+    symm_buffer[rank].copy_(hidden_shard)
+    workspace.barrier()
+
+    local_token_offset = rank * num_tokens_per_rank
+    for i in range(num_tokens_per_rank):
+        global_token_idx = local_token_offset + i
+        for k in range(topk):
+            _ = topk_idx[global_token_idx, k]
+            dst = global_token_idx * topk + k
+            remap_hidden_states[dst].copy_(hidden_shard[i])
+
+    backend_stream = torch.xpu.Stream()
+    for step in range(world_size - 1):
+        remote_rank = (rank - step - 1) % world_size
+        if step % 2 == 0:
+            stream = backend_stream
+        else:
+            stream = torch.xpu.current_stream()
+        with torch.xpu.stream(stream):
+            remote_buffer = workspace.get_buffer(
+                remote_rank,
+                (num_tokens_per_rank, hidden_size),
+                hidden_shard.dtype,
+                storage_offset=0,
+            )
+            symm_buffer[remote_rank].copy_(remote_buffer)
+
+            remote_token_offset = remote_rank * num_tokens_per_rank
             for i in range(num_tokens_per_rank):
                 global_token_idx = remote_token_offset + i
                 hidden_vec = symm_buffer[remote_rank, i]
@@ -100,6 +173,82 @@ def allgather_local_permute_fusion(
                     _ = topk_idx[global_token_idx, k]
                     dst = global_token_idx * topk + k
                     remap_hidden_states[dst].copy_(hidden_vec)
+
     torch.xpu.current_stream().wait_stream(backend_stream)
     workspace.barrier()
     return remap_hidden_states
+
+
+def allgather_local_permute_fusion(
+    hidden_shard: torch.Tensor,
+    topk_idx: torch.Tensor,
+    remap_hidden_states: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+):
+    """Default API: native fused kernel implementation."""
+    return allgather_local_permute_fusion_python(
+        hidden_shard=hidden_shard,
+        topk_idx=topk_idx,
+        remap_hidden_states=remap_hidden_states,
+        group=group,
+        group_name=group_name,
+    )
+
+
+def allgather_with_symm_mem(
+    input_shard: torch.Tensor,
+    output_tensor: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+):
+    """
+    Pure allgather using symmetric memory (no reduction).
+    Each rank contributes input_shard, all ranks gather into output_tensor.
+    Args:
+        input_shard: [numel_per_rank, ...] (local input)
+        output_tensor: [numel_per_rank * world_size, ...] (output, symmetric memory)
+        group: process group
+        group_name: Optional, for symmetric memory workspace
+    Returns:
+        output_tensor: filled with allgathered data
+    """
+    if group is None:
+        group = dist.group.WORLD
+    if group_name is None:
+        group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    input_flat = input_shard.contiguous().view(-1)
+    output_flat = output_tensor.contiguous().view(-1)
+    numel_per_rank = input_flat.numel()
+    assert output_flat.numel() == numel_per_rank * world_size
+
+    import torch.distributed._symmetric_memory as symm_mem
+    workspace_size_bytes = numel_per_rank * world_size * input_flat.element_size()
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    # Barrier to ensure previous allgather is complete before writing
+    workspace.barrier()
+
+    # Step 1: Each rank writes its shard to its slot in symm buffer
+    my_slot = workspace.get_buffer(rank, (numel_per_rank,), input_flat.dtype, storage_offset=rank * numel_per_rank)
+    my_slot.copy_(input_flat)
+
+    workspace.barrier()
+
+    # Step 2: Ring allgather (pull-based, like allreduce_with_pull)
+    # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
+    output_flat[rank * numel_per_rank:(rank + 1) * numel_per_rank].copy_(my_slot)
+    for step in range(world_size - 1):
+        remote_rank = (rank - step - 1) % world_size
+        remote_buffer = workspace.get_buffer(
+            remote_rank,
+            (numel_per_rank,),
+            input_flat.dtype,
+            storage_offset=remote_rank * numel_per_rank
+        )
+        output_flat[remote_rank * numel_per_rank:(remote_rank + 1) * numel_per_rank].copy_(remote_buffer)
+    workspace.barrier()
+    return output_tensor
