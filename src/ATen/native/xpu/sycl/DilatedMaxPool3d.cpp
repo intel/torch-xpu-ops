@@ -423,8 +423,6 @@ void max_pool3d_with_indices_kernel(
     bool ceil_mode,
     Tensor& output,
     Tensor& indices) {
-  NoNamesGuard guard;
-
   TensorArg output_arg{output, "output", 1};
   TensorArg indices_arg{indices, "indices", 2};
   TensorArg input_arg{input, "input", 3};

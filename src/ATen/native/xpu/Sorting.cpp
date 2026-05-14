@@ -45,7 +45,6 @@ std::tuple<Tensor&, Tensor&> median_with_indices_impl(
   // choosing which of the duplicates to use for the indices output is
   // nondeterministic.
   at::globalContext().alertNotDeterministic("median XPU with indices output");
-  NoNamesGuard guard;
 
   dim = at::maybe_wrap_dim(dim, self.dim());
   Tensor in = self.dim() > 0 ? self.contiguous() : self.unsqueeze(0);
@@ -85,16 +84,10 @@ std::tuple<Tensor&, Tensor&> median_with_indices_impl(
     at::native::xpu::launch_median_kernel(vals, inds, in, dim, ignore_nan);
   }
 
-  guard.reset();
-  namedinference::propagate_names_for_reduction(values, self, dim, keepdim);
-  namedinference::propagate_names_for_reduction(indices, self, dim, keepdim);
-
   return std::forward_as_tuple(values, indices);
 }
 
 Tensor median_impl(const Tensor& self, bool ignore_nan) {
-  NoNamesGuard guard;
-
   int64_t size = self.numel();
   // Return nan for empty tensors
   if (size <= 0) {
@@ -202,14 +195,8 @@ std::tuple<Tensor&, Tensor&> kthvalue_out_xpu(
   // choosing which of the duplicates to use for the indices output is
   // nondeterministic.
   at::globalContext().alertNotDeterministic("kthvalue XPU");
-  auto result = [&]() {
-    NoNamesGuard guard;
-    // `kthvalue_out_impl` expects contiguous in input `self`.
-    return kthvalue_out_impl(
-        values, indices, self.contiguous(), k, dim, keepdim);
-  }();
-  namedinference::propagate_names_for_reduction(values, self, dim, keepdim);
-  namedinference::propagate_names_for_reduction(indices, self, dim, keepdim);
+  auto result = kthvalue_out_impl(
+      values, indices, self.contiguous(), k, dim, keepdim);
   return result;
 }
 
