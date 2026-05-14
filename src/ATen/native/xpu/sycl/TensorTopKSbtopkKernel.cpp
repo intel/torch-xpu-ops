@@ -31,9 +31,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 namespace syclex = sycl::ext::oneapi::experimental;
 namespace intelex = sycl::ext::intel::experimental;
@@ -521,6 +519,4 @@ SbtopkResult sbtopk_try_launch(
   return SbtopkResult::FAILED;
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
