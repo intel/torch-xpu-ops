@@ -79,7 +79,7 @@ profiling_python_scripts=(
 )
 
 declare -A distributed_tests=(
-    ["test/distributed/_composable.fsdp/test_fully_shard_state_dict.py"]="$PYTORCH_ROOT_DIR"
+    ["test/distributed/_composable/fsdp/test_fully_shard_state_dict.py"]="$PYTORCH_ROOT_DIR"
     ["test/distributed/_composable/fsdp/test_fully_shard_frozen.py"]="$PYTORCH_ROOT_DIR"
     ["test/distributed/_composable/test_checkpoint.py"]="$PYTORCH_ROOT_DIR"
     ["test/distributed/_composable/test_contract.py"]="$PYTORCH_ROOT_DIR"

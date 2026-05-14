@@ -176,6 +176,7 @@ runs:
 
     # Summary
     - name: UT Test Results Summary
+      if: ${{ !cancelled() }}
       shell: timeout 180 bash -xe {0}
       run: |
         pip install junitparser
