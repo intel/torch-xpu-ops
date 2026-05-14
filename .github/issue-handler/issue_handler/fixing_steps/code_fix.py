@@ -440,6 +440,10 @@ def run(issue_number: int) -> None:
 
     # Keep PR as draft until review passes (don't call mark_pr_ready)
 
+    # Add disable_all label for torch-xpu-ops PRs (skip CI)
+    if target_repo == "torch-xpu-ops":
+        gh.add_label(pr_repo, pr["number"], "disable_all")
+
     # --- Update issue body ---
     new_body = body
     # Record PR and SHA for downstream stages (private_review, ci_watch)

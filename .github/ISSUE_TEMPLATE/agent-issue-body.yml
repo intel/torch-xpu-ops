@@ -39,6 +39,9 @@ body: |
   ## Proposed Fix Strategy
   {fix_strategy}
 
+  ## Target Repository
+  {target_repo}
+
   ## Action Items
   - [ ] 🔍 Issue formatted (Discovery Agent)
     <details><summary>Discovery log</summary>

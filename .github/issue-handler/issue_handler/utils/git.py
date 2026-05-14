@@ -113,6 +113,18 @@ def add_issue_comment(repo: str, number: int, body: str) -> None:
             token=_token_for_repo(repo), body=body)
 
 
+def close_issue(repo: str, number: int) -> None:
+    """Close an issue."""
+    _gh_api(f"/repos/{repo}/issues/{number}", method="PATCH",
+            token=_token_for_repo(repo), state="closed")
+
+
+def assign_issue(repo: str, number: int, assignee: str) -> None:
+    """Assign a user to an issue."""
+    _gh_api(f"/repos/{repo}/issues/{number}/assignees", method="POST",
+            token=_token_for_repo(repo), assignees=[assignee])
+
+
 def add_label(repo: str, number: int, label: str) -> None:
     """Add a label to an issue. Creates the label if it doesn't exist."""
     try:

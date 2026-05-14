@@ -17,6 +17,18 @@ from .utils.body_templates import get_status, sync_labels
 from .utils.logger import log
 
 
+def _assign_copilot(issue_number: int) -> None:
+    """Assign Copilot to a torch-xpu-ops issue and hand off."""
+    log("INFO", f"Assigning Copilot to #{issue_number} (torch-xpu-ops fix)",
+        issue=issue_number)
+    gh.assign_issue(ISSUE_REPO, issue_number, "Copilot")
+    gh.add_issue_comment(
+        ISSUE_REPO, issue_number,
+        "🤖 **Routed to Copilot** — this issue is in torch-xpu-ops scope.\n\n"
+        "@Copilot please fix this issue.",
+    )
+
+
 def _run_step(step_name: str, run_fn, issue_number: int) -> None:
     """Run a step with error reporting to the source issue."""
     log("INFO", f"Dispatching {step_name} step", issue=issue_number)
@@ -76,15 +88,26 @@ def advance(issue_number: int) -> None:
 
     match stage:
         case "DISCOVERED":
-            # Formatted issue — advance to triage
+            # Verify if issue still reproduces before triaging
+            from .verify_existence import run as verify_run
+            if verify_run(issue_number):
+                # Issue is already fixed — no further work
+                return
             from .triage_agent import run
             _run_step("triage", run, issue_number)
         case "TRIAGING":
             from .triage_agent import run
             _run_step("triage", run, issue_number)
         case "IMPLEMENTING":
-            from .fixing_steps.code_fix import run
-            _run_step("code_fix", run, issue_number)
+            from .utils.body_templates import get_metadata
+            target = get_metadata(body, "target_repo") or "pytorch"
+            if target == "torch-xpu-ops":
+                # Assign Copilot — all further work happens online
+                _assign_copilot(issue_number)
+            else:
+                # pytorch path — local agent
+                from .fixing_steps.code_fix import run
+                _run_step("code_fix", run, issue_number)
         case "IN_REVIEW" | "PUBLIC_PR" | "CI_WATCH" | "MERGED" | "DONE":
             log("INFO", f"Issue #{issue_number} at stage {stage} — not yet implemented",
                 issue=issue_number)

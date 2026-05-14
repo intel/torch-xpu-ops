@@ -121,9 +121,11 @@ def run(issue_number: int) -> tuple[str, str]:
     else:
         new_body = set_status(new_body, "NEEDS_HUMAN")
 
+    new_body = update_section(new_body, "Target Repository", target_repo)
     new_body = append_log(
         new_body, "triage",
         f"**Verdict:** {verdict}\n**Reason:** {reason}\n\n"
+        f"**Target Repository:** `{target_repo}`\n\n"
         f"**Root Cause:** {root_cause}\n\n"
         f"**Fix Strategy:** {fix_strategy}\n\n"
         f"**Tokens:** {token_usage.summary()}\n"

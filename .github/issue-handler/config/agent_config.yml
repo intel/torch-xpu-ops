@@ -11,6 +11,7 @@ repos:
   # torch-xpu-ops repos
   xpu_ops_upstream: "intel/torch-xpu-ops"           # upstream torch-xpu-ops
   xpu_ops_issue: "intel/torch-xpu-ops"     # issues + PRs for torch-xpu-ops fixes
+  tracking: "intel/torch-xpu-ops"                  # tracking/dashboard issues
   # pytorch repos
   pytorch_public: "pytorch/pytorch"                  # upstream pytorch
   pytorch_private: "chuanqi129/pytorch"              # private review PRs for pytorch fixes
