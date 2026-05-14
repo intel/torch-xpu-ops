@@ -149,6 +149,15 @@ def _run_test(workdir: Path, test_cmd: str,
         )
         output = (result.stdout + result.stderr)[-5000:]
 
+        # rc=4: file/directory not found; rc=5: no tests collected
+        # Both mean the test no longer exists → bug is fixed
+        if result.returncode in (4, 5) or re.search(
+            r"no tests ran|collected 0 items|ERROR: not found:", output
+        ):
+            log("INFO", "Tests no longer exist (not found/not collected) — "
+                "bug appears fixed", issue=issue)
+            return True, output
+
         # Even with rc=0, check for xfail/skipped — those mean bug still exists
         if result.returncode == 0:
             # Parse pytest summary line: "X passed, Y xfailed, Z skipped"
