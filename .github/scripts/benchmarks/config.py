@@ -1,0 +1,43 @@
+"""Shared configuration: types, constants, and mutable global settings."""
+
+import platform
+import threading
+from dataclasses import dataclass
+
+IS_WINDOWS = platform.system() == "Windows"
+
+
+@dataclass
+class TestTask:
+    """A single benchmark task to execute."""
+
+    suite: str
+    dt: str
+    mode: str
+    scenario: str
+    model: str
+    quant: str = ""
+
+
+# Valid parameter sets
+VALID_SUITES: set[str] = {"huggingface", "timm_models", "torchbench", "pt2e"}
+VALID_DT: set[str] = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16", "int8"}
+VALID_MODES: set[str] = {"inference", "training"}
+VALID_SCENARIOS: set[str] = {"accuracy", "performance"}
+
+# GPU memory monitoring settings (mutable at runtime via CLI args)
+gpu_memory_threshold: float = 0.8 if IS_WINDOWS else 0.9
+gpu_memory_monitor_enabled: bool = True
+
+# Patterns that trigger process kill when detected in output or GPU metrics.
+# Text patterns are matched case-insensitively; "Memory>N" triggers GPU memory
+# utilisation polling with threshold N.
+error_patterns: list[str] = [
+    "out of memory",
+    "OutOfMemory",
+    "UR_RESULT_ERROR",
+    f"Memory>{gpu_memory_threshold}",
+]
+
+# Thread-safe lock for CSV file writes
+csv_lock = threading.Lock()
