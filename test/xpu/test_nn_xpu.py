@@ -17285,6 +17285,7 @@ if __name__ == '__main__':
     @skipIfMPS  # TODO(hvaara): Investigate as possible bug. macOS 13 passes, while 14 and 15 fails.
     @dtypes(torch.float)
     @dtypesIfCUDA(torch.double, torch.float, torch.half)
+    @dtypesIfXPU(torch.double, torch.float, torch.half)
     def test_transformerencoderlayer(self, device, dtype):
         # this is a deterministic test for TransformerEncoderLayer
         d_model = 4
@@ -17345,7 +17346,7 @@ if __name__ == '__main__':
             torch.testing.assert_close(result, ref_output, atol=atol, rtol=rtol)
             mask = torch.tensor([[1]], device=device) == 1
             result = model(encoder_input, src_key_padding_mask=mask)
-            fast_path_device = result.is_cuda or result.is_cpu or result.is_xpu
+            fast_path_device = result.is_cuda or result.is_cpu
             result = result.cpu().detach().numpy()
             # Non Fast Paths
             if (
