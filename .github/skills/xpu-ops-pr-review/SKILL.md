@@ -44,6 +44,12 @@ Check whether:
 - out / inplace / backward behavior is correct
 - Error handling and unsupported cases are explicit
 
+### 3. Review performance
+Check whether:
+- The change may affect kernel performance
+- The change may affect host performance
+
+
 ### 3. Review XPU-specific risks
 Pay special attention to:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
