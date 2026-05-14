@@ -130,7 +130,6 @@ struct MaxPool2dKernelFunctor {
               outputW;
         }
         scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
-        index_t maxIndex = -1;
         index_t StartH = outputH * dH_ - padH_;
         index_t StartW = outputW * dW_ - padW_;
         index_t EndH =
@@ -141,6 +140,7 @@ struct MaxPool2dKernelFunctor {
           StartH += dilationH_;
         while (StartW < 0)
           StartW += dilationW_;
+        index_t maxIndex = StartH * inputSizeW_ + StartW;
 #pragma unroll
         for (index_t h = StartH; h < EndH; h += dilationH_) {
 #pragma unroll
@@ -247,10 +247,6 @@ struct MaxPool2dChannelLastVec {
       for (int i = 0; i < vec_size; i++) {
         maxVal_vec[i] = at::numeric_limits<scalar_t>::lower_bound();
       }
-      int64_t maxIndex[vec_size];
-      for (int i = 0; i < vec_size; i++) {
-        maxIndex[i] = int64_t(-1);
-      }
       index_t StartH = outputH * dH_ - padH_;
       index_t StartW = outputW * dW_ - padW_;
       index_t EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
@@ -259,6 +255,10 @@ struct MaxPool2dChannelLastVec {
         StartH += dilationH_;
       while (StartW < 0)
         StartW += dilationW_;
+      int64_t maxIndex[vec_size];
+      for (int i = 0; i < vec_size; i++) {
+        maxIndex[i] = StartH * inputSizeW_ + StartW;
+      }
       for (index_t h = StartH; h < EndH; h += dilationH_) {
         for (index_t w = StartW; w < EndW; w += dilationW_) {
           load_offset =
