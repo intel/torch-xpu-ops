@@ -41,9 +41,7 @@
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 // Uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
 // Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int,
@@ -800,9 +798,7 @@ bool single_wg_topk_try_launch(
         if (nsegments <=
                 static_cast<int64_t>(std::numeric_limits<int>::max()) &&
             nelements <=
-                static_cast<int64_t>(std::numeric_limits<int>::max()) &&
-            nsegments <= static_cast<int64_t>(std::numeric_limits<int>::max()) /
-                    (nelements > 0 ? nelements : 1)) {
+                static_cast<int64_t>(std::numeric_limits<int>::max())) {
           single_wg_launch_kernel<scalar_t, int>(
               input,
               topK,
@@ -826,6 +822,4 @@ bool single_wg_topk_try_launch(
   return true;
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
