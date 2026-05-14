@@ -591,10 +591,12 @@ void batch_norm_stats_template(
   // Ensure contiguous memory layout required by the kernel. If the
   // user-provided out= tensors are non-contiguous after resize_output, use
   // contiguous temporaries for the kernel and copy results back afterward.
-  Tensor mean_c = out_mean.is_contiguous()
+  const bool mean_is_contiguous = out_mean.is_contiguous();
+  const bool invstd_is_contiguous = out_invstd.is_contiguous();
+  Tensor mean_c = mean_is_contiguous
       ? out_mean
       : at::empty({n_input}, out_mean.options());
-  Tensor invstd_c = out_invstd.is_contiguous()
+  Tensor invstd_c = invstd_is_contiguous
       ? out_invstd
       : at::empty({n_input}, out_invstd.options());
 
@@ -660,10 +662,10 @@ void batch_norm_stats_template(
         kfn);
   }
 
-  if (!out_mean.is_contiguous()) {
+  if (!mean_is_contiguous) {
     out_mean.copy_(mean_c);
   }
-  if (!out_invstd.is_contiguous()) {
+  if (!invstd_is_contiguous) {
     out_invstd.copy_(invstd_c);
   }
 }
@@ -911,10 +913,12 @@ void batch_norm_stats_channels_last_template(
   // Ensure contiguous memory layout required by the kernel. If the
   // user-provided out= tensors are non-contiguous after resize_output, use
   // contiguous temporaries for the kernel and copy results back afterward.
-  Tensor mean_c = out_mean.is_contiguous()
+  const bool mean_is_contiguous = out_mean.is_contiguous();
+  const bool invstd_is_contiguous = out_invstd.is_contiguous();
+  Tensor mean_c = mean_is_contiguous
       ? out_mean
       : at::empty({stride}, out_mean.options());
-  Tensor invstd_c = out_invstd.is_contiguous()
+  Tensor invstd_c = invstd_is_contiguous
       ? out_invstd
       : at::empty({stride}, out_invstd.options());
 
@@ -960,10 +964,10 @@ void batch_norm_stats_channels_last_template(
       kfn.set_semaphores(semaphores_ptr);
       sycl_kernel_submit(
           kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
-      if (!out_mean.is_contiguous()) {
+      if (!mean_is_contiguous) {
         out_mean.copy_(mean_c);
       }
-      if (!out_invstd.is_contiguous()) {
+      if (!invstd_is_contiguous) {
         out_invstd.copy_(invstd_c);
       }
       return;
@@ -1014,10 +1018,10 @@ void batch_norm_stats_channels_last_template(
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 
-  if (!out_mean.is_contiguous()) {
+  if (!mean_is_contiguous) {
     out_mean.copy_(mean_c);
   }
-  if (!out_invstd.is_contiguous()) {
+  if (!invstd_is_contiguous) {
     out_invstd.copy_(invstd_c);
   }
 }
