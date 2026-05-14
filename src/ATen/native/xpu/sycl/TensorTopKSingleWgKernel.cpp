@@ -160,7 +160,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     sycl::group_barrier(item.get_group());
 
-    // All threads read block-level totals
+    // All threads read workgroup-level totals
 #pragma unroll
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       counts[j] = smem[j];
