@@ -443,7 +443,7 @@ CROSS_REF_EXCLUDE_SET = {
     # ("xpu", None, "some_xpu_specific_op"),
     # max_pool2d_with_indices_backward tests are not applicable
     # More details in https://github.com/pytorch/pytorch/pull/182619
-    (None, None, "max_pool2d_with_indices_backward"),
+    ("xpu", None, "max_pool2d_with_indices_backward"),
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
@@ -459,8 +459,8 @@ CROSS_REF_BACKWARD_EXCLUDE_SET = {
     # ("xpu", torch.float16, "nn.functional.some_op"),
     # max_pool2d_with_indices_backward tests are not applicable
     # More details in https://github.com/pytorch/pytorch/pull/182619
-    (None, None, "nn.functional.max_pool1d"),
-    (None, None, "nn.functional.max_pool2d"),
+    ("xpu", None, "nn.functional.max_pool1d"),
+    ("xpu", None, "nn.functional.max_pool2d"),
 }
 
 all_decomposed = set()
@@ -956,6 +956,7 @@ def forward(self, scores_1, mask_1, value_1):
     def do_cross_ref(self, device, dtype, op, *, run_all):
         test_keys = [
             (torch.device(device).type, dtype, op.name),
+            (torch.device(device).type, None, op.name),
             (None, dtype, op.name),
             (None, None, op.name),
         ]
