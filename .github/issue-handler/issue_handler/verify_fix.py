@@ -47,23 +47,16 @@ def _needs_rebuild(diff_files: str) -> bool:
 
 
 def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
-    """Run incremental rebuild via ninja (much faster than setup.py develop).
+    """Run incremental rebuild via python setup.py develop.
 
-    Uses ninja directly in the build directory to avoid CMake reconfiguration.
-    Only recompiles changed translation units.
+    This handles CMake reconfiguration and incremental builds correctly.
     """
-    log("INFO", "Running incremental pytorch rebuild (ninja)", issue=issue)
-    build_dir = workdir / "build"
+    log("INFO", "Running incremental pytorch rebuild", issue=issue)
     env_setup = (
         "source ~/intel/oneapi/setvars.sh --force 2>/dev/null; "
         "source ~/pytorch/.venv/bin/activate; "
     )
-    if build_dir.exists() and (build_dir / "build.ninja").exists():
-        # Fast path: incremental ninja build
-        cmd = env_setup + f"ninja -C {build_dir}"
-    else:
-        # Fallback: full rebuild
-        cmd = env_setup + "python setup.py develop"
+    cmd = env_setup + f"cd {workdir} && USE_XPU=1 python setup.py develop"
     try:
         result = subprocess.run(
             cmd,
