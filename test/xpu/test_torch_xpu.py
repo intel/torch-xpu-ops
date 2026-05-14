@@ -2153,15 +2153,15 @@ else:
                 or torch.device(device).type == "xpu",
             )
 
+    @dtypes(torch.float32, torch.int32)
     @skipIfMPS
-    def test_nondeterministic_alert_histc(self, device):
-        a = torch.tensor([], device=device)
+    def test_nondeterministic_alert_histc(self, device, dtype):
+        a = torch.tensor([], device=device, dtype=dtype)
         for op_call in [torch.histc, torch.Tensor.histc]:
             self.check_nondeterministic_alert(
                 lambda: op_call(a, min=0, max=3),
-                "_histc_" + torch.device(device).type,
-                torch.device(device).type == "cuda"
-                or torch.device(device).type == "xpu",
+                "_histc_xpu with floating point input",
+                torch.device(device).type == "xpu" and dtype.is_floating_point,
             )
 
     @skipIfMPS
@@ -12594,16 +12594,14 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             if t1.is_floating_point():
                 t3 = t1.clone().detach().requires_grad_(True)
                 out = t3 * 2
-                with self.assertRaisesRegex(
-                    RuntimeError, "Expected single reference to a's"
-                ):
-                    torch.utils.swap_tensors(t3, t2)
-                del out
-                # Now succeeds
                 torch.utils.swap_tensors(t3, t2)
-                torch.utils.swap_tensors(t1, t2)
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "AccumulateGrad node that was poisoned by swap_tensors",
+                ):
+                    out.sum().backward()
 
-            wr = weakref.ref(t1)
+            _wr = weakref.ref(t1)
             with self.assertRaisesRegex(RuntimeError, "has weakref"):
                 torch.utils.swap_tensors(t1, t2)
 
