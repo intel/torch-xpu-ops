@@ -36,9 +36,9 @@ void fill_kernel(TensorIterator& iter, const Scalar& value) {
       iter.dtype(),
       "fill_xpu",
       AT_WRAP([&]() {
-        // For reduced-precision float types, use static_cast via double to allow
-        // out-of-range values to saturate to ±inf (matching CPU behavior in
-        // aten/src/ATen/ScalarOps.cpp fill_inplace), rather than throwing a
+        // For reduced-precision float types, use static_cast via double to
+        // allow out-of-range values to saturate to ±inf (matching CPU behavior
+        // in aten/src/ATen/ScalarOps.cpp fill_inplace), rather than throwing a
         // RuntimeError on overflow.
         scalar_t val;
         if constexpr (
