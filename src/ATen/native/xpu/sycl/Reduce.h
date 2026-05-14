@@ -26,6 +26,7 @@
 #include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
+#include <numeric>
 #include <type_traits>
 #include <utility>
 
