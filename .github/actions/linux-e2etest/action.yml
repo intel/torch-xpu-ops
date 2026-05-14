@@ -60,8 +60,10 @@ runs:
           # set models to run
           if [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
-          else
+          elif [ "${{ inputs.overwrite_model_list }}" != "true" ];then
             models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
+          else
+            models_list_args=""
           fi
           # shards to run
           # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
