@@ -99,15 +99,9 @@ def advance(issue_number: int) -> None:
             from .triage_agent import run
             _run_step("triage", run, issue_number)
         case "IMPLEMENTING":
-            from .utils.body_templates import get_metadata
-            target = get_metadata(body, "target_repo") or "pytorch"
-            if target == "torch-xpu-ops":
-                # Assign Copilot — all further work happens online
-                _assign_copilot(issue_number)
-            else:
-                # pytorch path — local agent
-                from .fixing_steps.code_fix import run
-                _run_step("code_fix", run, issue_number)
+            # All targets go through local code_fix agent
+            from .fixing_steps.code_fix import run
+            _run_step("code_fix", run, issue_number)
         case "IN_REVIEW" | "PUBLIC_PR" | "CI_WATCH" | "MERGED" | "DONE":
             log("INFO", f"Issue #{issue_number} at stage {stage} — not yet implemented",
                 issue=issue_number)
