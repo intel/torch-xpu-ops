@@ -1209,6 +1209,12 @@ class XPUPatchForImport:
 # class.
 
 
+def register_test(cls, func):
+    name = func.__name__.lstrip("_")
+    func.__name__ = name
+    setattr(cls, name, func)
+
+
 def copy_tests(
     generic_test_class, generic_base_class, applicable_list=None, bypass_list=None
 ):

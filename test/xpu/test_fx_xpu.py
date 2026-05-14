@@ -297,9 +297,9 @@ event={kernel_event} node=add stack_trace=a = s + self.c""",
     )
 
 
-TestFX.test_profiler_stack_trace_augmentation = _test_profiler_stack_trace_augmentation
-TestFX.test_profiler_multiple_modules = _test_profiler_multiple_modules
-TestFX.test_profiler_nested_graph_modules = _test_profiler_nested_graph_modules
+register_test(TestFX, _test_profiler_stack_trace_augmentation)
+register_test(TestFX, _test_profiler_multiple_modules)
+register_test(TestFX, _test_profiler_nested_graph_modules)
 
 
 if __name__ == "__main__":

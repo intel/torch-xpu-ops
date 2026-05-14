@@ -19,7 +19,7 @@ torch_xpu_ops_path = Path(__file__).resolve().parents[1]
 if str(torch_xpu_ops_path) not in sys.path:
     sys.path.insert(0, str(torch_xpu_ops_path))
 
-from xpu_test_utils import XPUPatchForImport
+from xpu_test_utils import XPUPatchForImport, register_test
 
 with XPUPatchForImport(patch_test_case=False) as patcher:
     __pytorch_test_dir = Path(patcher.test_package[0]).resolve()
@@ -183,7 +183,7 @@ test_export.TestExport.test_export_associative_scan_symbol_scandim = (
 test_export.TestExport.test_export_associative_scan_lifted_buffers = (
     _test_export_associative_scan_lifted_buffers
 )
-test_export.TestExport.test_exception = _test_exception
+register_test(test_export.TestExport, _test_exception)
 
 test_classes = {}
 

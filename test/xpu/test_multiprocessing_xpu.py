@@ -82,8 +82,8 @@ def _test_is_shared_xpu(self):
     self.assertTrue(t.is_shared())
 
 
-TestMultiprocessing.test_cuda_bad_call = _test_cuda_bad_call
-TestMultiprocessing.test_wrong_cuda_fork = _test_wrong_cuda_fork
+register_test(TestMultiprocessing, _test_cuda_bad_call)
+register_test(TestMultiprocessing, _test_wrong_cuda_fork)
 TestMultiprocessing.test_empty_tensor_sharing_cuda = _test_empty_tensor_sharing_xpu
 TestMultiprocessing.test_is_shared_cuda = _test_is_shared_xpu
 

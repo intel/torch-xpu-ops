@@ -17,9 +17,9 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImport, register_test
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImport, register_test
 with XPUPatchForImport(False):
     from test_distributions import (
         _get_examples,
@@ -182,12 +182,12 @@ def _test_torch_binomial_dtype_errors(self):
                 torch.binomial(total_count, total_prob)
 
 
-TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
-TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
-TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
-TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
-TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
-TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
+register_test(TestDistributions, _test_beta_underflow_gpu)
+register_test(TestDistributions, _test_zero_excluded_binomial)
+register_test(TestDistributions, _test_gamma_gpu_sample)
+register_test(TestDistributions, _test_gamma_gpu_shape)
+register_test(TestDistributions, _test_poisson_gpu_sample)
+register_test(TestDistributions, _test_torch_binomial_dtype_errors)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )
