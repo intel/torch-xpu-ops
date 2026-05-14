@@ -126,11 +126,12 @@ def _checkout_xpu_ops_pr(branch: str, issue: int) -> tuple[Path, str]:
 
 
 def _sync_to_pytorch(worktree_dir: Path, branch: str, issue: int) -> None:
-    """Checkout the PR branch directly in ~/pytorch/third_party/torch-xpu-ops/.
+    """Copy only the changed files from the PR branch into pytorch's submodule.
 
-    Instead of changing xpu.txt (which triggers CMake reconfiguration and
-    a full rebuild), we directly checkout the PR branch in the submodule
-    directory and use ninja for an incremental build of only the changed files.
+    Instead of doing a full checkout (which changes mtimes on all files and
+    triggers a massive ninja rebuild), we copy only the files that differ
+    between main and the PR branch. This keeps ninja's incremental build
+    fast — only the actually-changed translation units get recompiled.
     """
     submodule = PYTORCH_DIR / "third_party" / "torch-xpu-ops"
     if not submodule.exists():
@@ -138,28 +139,38 @@ def _sync_to_pytorch(worktree_dir: Path, branch: str, issue: int) -> None:
             issue=issue)
         return
 
-    # Save current HEAD for restoration
-    original_sha = git_out(
-        "rev-parse", "HEAD", workdir=submodule, issue=issue,
+    # Get list of changed files relative to origin/main
+    diff_files = git_out(
+        "diff", "--name-only", "origin/main..HEAD",
+        workdir=worktree_dir, issue=issue,
     ).strip()
-    log("INFO", f"Saving torch-xpu-ops HEAD: {original_sha[:12]}", issue=issue)
 
-    # Fetch the PR branch and checkout
-    git("fetch", "origin", branch, workdir=submodule, issue=issue)
-    git("checkout", f"origin/{branch}", workdir=submodule, issue=issue)
-    new_sha = git_out("rev-parse", "HEAD", workdir=submodule, issue=issue).strip()
-    log("INFO", f"Checked out {branch} in third_party/torch-xpu-ops: {new_sha[:12]}",
-        issue=issue)
+    if not diff_files:
+        log("INFO", "No changed files to sync", issue=issue)
+        return
+
+    copied = 0
+    for fname in diff_files.splitlines():
+        fname = fname.strip()
+        if not fname:
+            continue
+        src = worktree_dir / fname
+        dst = submodule / fname
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+            copied += 1
+            log("INFO", f"Synced {fname} → third_party/torch-xpu-ops/",
+                issue=issue)
+    log("INFO", f"Synced {copied} file(s) from PR branch", issue=issue)
 
 
 def _restore_submodule(issue: int) -> None:
-    """Restore third_party/torch-xpu-ops to its xpu.txt-pinned commit."""
+    """Restore third_party/torch-xpu-ops to its clean state."""
     submodule = PYTORCH_DIR / "third_party" / "torch-xpu-ops"
-    xpu_txt = PYTORCH_DIR / "third_party" / "xpu.txt"
-    if submodule.exists() and xpu_txt.exists():
-        pinned_sha = xpu_txt.read_text().strip()
-        git("checkout", pinned_sha, workdir=submodule, issue=issue)
-        log("INFO", f"Restored third_party/torch-xpu-ops to pinned {pinned_sha[:12]}",
+    if submodule.exists():
+        git("checkout", ".", workdir=submodule, issue=issue)
+        log("INFO", "Restored third_party/torch-xpu-ops to clean state",
             issue=issue)
 
 
