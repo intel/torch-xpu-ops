@@ -120,6 +120,14 @@ def run(issue_number: int) -> tuple[str, str]:
         new_body = set_status(new_body, "IMPLEMENTING")
     else:
         new_body = set_status(new_body, "NEEDS_HUMAN")
+        # Add visible reason why the agent can't handle this
+        assessment = (
+            f"**Verdict:** {verdict}\n\n"
+            f"**Why this needs human intervention:**\n{reason}\n\n"
+            f"**Root Cause:** {root_cause}\n\n"
+            f"**Proposed Fix Strategy:** {fix_strategy}"
+        )
+        new_body = update_section(new_body, "Agent Assessment", assessment)
 
     new_body = update_section(new_body, "Target Repository", target_repo)
     new_body = append_log(
