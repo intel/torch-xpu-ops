@@ -590,8 +590,12 @@ void batch_norm_stats_template(
 
   // The kernel requires contiguous output tensors, but out= may provide
   // non-contiguous tensors. Use contiguous temporaries and copy back.
-  Tensor mean_tmp = out_mean.is_contiguous() ? out_mean : at::empty({n_input}, out_mean.options());
-  Tensor invstd_tmp = out_invstd.is_contiguous() ? out_invstd : at::empty({n_input}, out_invstd.options());
+  Tensor mean_tmp = out_mean.is_contiguous()
+      ? out_mean
+      : at::empty({n_input}, out_mean.options());
+  Tensor invstd_tmp = out_invstd.is_contiguous()
+      ? out_invstd
+      : at::empty({n_input}, out_invstd.options());
 
   auto input =
       get_packed_accessor<const scalar_t, 3, RestrictPtrTraits, index_t>(
@@ -914,14 +918,17 @@ void batch_norm_stats_channels_last_template(
   // non-contiguous tensors. Use contiguous temporaries and copy back.
   bool mean_need_copy = !out_mean.is_contiguous();
   bool invstd_need_copy = !out_invstd.is_contiguous();
-  Tensor mean_contig = mean_need_copy ? at::empty({stride}, out_mean.options()) : out_mean;
-  Tensor invstd_contig = invstd_need_copy ? at::empty({stride}, out_invstd.options()) : out_invstd;
+  Tensor mean_contig =
+      mean_need_copy ? at::empty({stride}, out_mean.options()) : out_mean;
+  Tensor invstd_contig =
+      invstd_need_copy ? at::empty({stride}, out_invstd.options()) : out_invstd;
 
   TORCH_INTERNAL_ASSERT(
       invstd_contig.dim() == 1 && invstd_contig.is_contiguous() &&
       invstd_contig.sizes()[0]);
   TORCH_INTERNAL_ASSERT(
-      mean_contig.dim() == 1 && mean_contig.is_contiguous() && mean_contig.sizes()[0]);
+      mean_contig.dim() == 1 && mean_contig.is_contiguous() &&
+      mean_contig.sizes()[0]);
 
   at::Tensor staging_data;
   at::Tensor semaphores;
@@ -965,8 +972,10 @@ void batch_norm_stats_channels_last_template(
       kfn.set_semaphores(semaphores_ptr);
       sycl_kernel_submit(
           kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
-      if (mean_need_copy) out_mean.copy_(mean_contig);
-      if (invstd_need_copy) out_invstd.copy_(invstd_contig);
+      if (mean_need_copy)
+        out_mean.copy_(mean_contig);
+      if (invstd_need_copy)
+        out_invstd.copy_(invstd_contig);
       return;
     }
   }
@@ -1016,8 +1025,10 @@ void batch_norm_stats_channels_last_template(
   }
 
   // Copy results back to original out tensors if we used temporaries
-  if (mean_need_copy) out_mean.copy_(mean_contig);
-  if (invstd_need_copy) out_invstd.copy_(invstd_contig);
+  if (mean_need_copy)
+    out_mean.copy_(mean_contig);
+  if (invstd_need_copy)
+    out_invstd.copy_(invstd_contig);
 }
 
 std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
