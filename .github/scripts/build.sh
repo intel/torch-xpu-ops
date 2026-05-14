@@ -68,20 +68,6 @@ if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
     grep -E 'GIT_REPOSITORY|GIT_TAG' "${FIND_MKLDNN_CMAKE}"
 fi
 
-# SYCLTLA: cmake FetchContent in torch-xpu-ops/cmake/SYCLTLA.cmake
-if [ -n "${SYCLTLA_COMMIT:-}" ] && [ "${SYCLTLA_COMMIT,,}" != "pinned" ]; then
-    SYCLTLA_CMAKE="third_party/torch-xpu-ops/cmake/SYCLTLA.cmake"
-    if [[ "${SYCLTLA_COMMIT}" == *"@"* ]]; then
-        SYCLTLA_REPO_URL="${SYCLTLA_COMMIT%@*}"
-        SYCLTLA_REF="${SYCLTLA_COMMIT##*@}"
-        sed -i -E "s#GIT_REPOSITORY[[:space:]]+[^[:space:]]+#GIT_REPOSITORY ${SYCLTLA_REPO_URL}#" "${SYCLTLA_CMAKE}"
-    else
-        SYCLTLA_REF="${SYCLTLA_COMMIT}"
-    fi
-    sed -i -E "s#GIT_TAG[[:space:]]+[^[:space:]]+#GIT_TAG        ${SYCLTLA_REF}#" "${SYCLTLA_CMAKE}"
-    grep -E 'GIT_REPOSITORY|GIT_TAG' "${SYCLTLA_CMAKE}"
-fi
-
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1

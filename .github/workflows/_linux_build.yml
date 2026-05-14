@@ -26,11 +26,6 @@ on:
         type: string
         default: ''
         description: 'oneDNN ref (commit/branch/tag) or `repo@ref`. Empty/`pinned` keeps pytorch default.'
-      sycltla:
-        required: false
-        type: string
-        default: ''
-        description: 'SYCLTLA ref (commit/branch/tag) or `repo@ref`. Empty/`pinned` keeps pytorch default.'
       python:
         type: string
         default: '3.10'
@@ -146,7 +141,6 @@ jobs:
           source /opt/rh/gcc-toolset-13/enable
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           export ONEDNN_COMMIT='${{ inputs.onednn }}'
-          export SYCLTLA_COMMIT='${{ inputs.sycltla }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
