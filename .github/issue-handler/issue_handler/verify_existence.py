@@ -183,12 +183,20 @@ def _run_test(workdir: Path, test_cmd: str,
 
         # rc=4: file/directory not found; rc=5: no tests collected
         # Both mean the test no longer exists → bug is fixed
-        if result.returncode in (4, 5) or re.search(
-            r"no tests ran|collected 0 items|ERROR: not found:", output
-        ):
-            log("INFO", "Tests no longer exist (not found/not collected) — "
-                "bug appears fixed", issue=issue)
-            return True, output
+        # BUT: distinguish genuine "file not found" from import errors
+        # (e.g. "Torch not compiled with XPU enabled")
+        if result.returncode in (4, 5):
+            has_import_error = re.search(
+                r"ImportError|ModuleNotFoundError|AssertionError.*not compiled",
+                output)
+            if has_import_error:
+                log("INFO", "Tests failed to import (env issue, not fixed)",
+                    issue=issue)
+                return False, output
+            if re.search(r"no tests ran|collected 0 items", output):
+                log("INFO", "Tests no longer exist (not found/not collected) — "
+                    "bug appears fixed", issue=issue)
+                return True, output
 
         # Even with rc=0, check for xfail/skipped — those mean bug still exists
         if result.returncode == 0:
