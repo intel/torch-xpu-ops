@@ -73,6 +73,8 @@ if(BUILD_TEST)
   if(BUILD_TEST_XPU_BARRIER)
     add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/xpu/barrier ${CMAKE_BINARY_DIR}/test_xpu_barrier)
   endif()
+  # Always build test/xpu/csrc (contains LocalPermuteCopy)
+  add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/xpu/csrc ${CMAKE_BINARY_DIR}/test_xpu_csrc)
 endif()
 
 if(NOT TORCH_ROOT)

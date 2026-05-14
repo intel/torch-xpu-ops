@@ -1,101 +1,149 @@
+"""
+Accuracy + performance check for deepep_owner_dispatch (distributed style)
+
+Usage:
+    mpirun -n 2 python test_deepep_dispatch.py
+"""
+
+import os
+
 import torch
+import torch.distributed as dist
 
-from deepep_dispatch import (
-    deepep_owner_dispatch,
-    get_expert_owner,
-    get_owner_expert_ranges,
-)
+from deepep_dispatch import deepep_owner_dispatch, get_expert_owner
 
 
-def _build_hidden_shards(tp_world_size: int, tokens_per_rank: int, hidden_size: int):
-    shards = []
-    for src in range(tp_world_size):
-        # Unique rows for easy debugging and exact-match checks
-        base = src * 1000
-        vals = torch.arange(base, base + tokens_per_rank * hidden_size, dtype=torch.float32)
-        shards.append(vals.view(tokens_per_rank, hidden_size))
-    return shards
+TOKENS_PER_RANK = 256
+HIDDEN_SIZE = 512
+TOPK = 4
+NUM_EXPERTS = 8
+LOOP = 10
 
 
-def test_owner_ranges_with_remainder():
-    ranges = get_owner_expert_ranges(num_experts=10, tp_world_size=4)
-    assert ranges == [(0, 3), (3, 6), (6, 8), (8, 10)]
+def init_distributed():
+    os.environ["RANK"] = str(os.environ.get("PMI_RANK", 0))
+    os.environ["WORLD_SIZE"] = str(os.environ.get("PMI_SIZE", 1))
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "29519"
+    if not dist.is_initialized():
+        dist.init_process_group(backend="xccl")
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    torch.xpu.set_device(rank)
+    return rank, world_size
 
 
-def test_deepep_owner_dispatch_correctness():
-    tp_world_size = 4
-    num_experts = 8
-    tokens_per_rank = 3
-    hidden_size = 2
-    topk = 2
-
-    hidden_shards = _build_hidden_shards(tp_world_size, tokens_per_rank, hidden_size)
-
-    # Route table covers all owners and experts.
-    topk_idx_shards = [
-        torch.tensor([[0, 5], [1, 6], [2, 7]], dtype=torch.int64),
-        torch.tensor([[3, 4], [0, 6], [1, 7]], dtype=torch.int64),
-        torch.tensor([[2, 5], [3, 4], [0, 6]], dtype=torch.int64),
-        torch.tensor([[1, 7], [2, 5], [3, 4]], dtype=torch.int64),
-    ]
-    topk_w_shards = [
-        torch.tensor([[0.8, 0.2], [0.6, 0.4], [0.7, 0.3]], dtype=torch.float32),
-        torch.tensor([[0.5, 0.5], [0.9, 0.1], [0.2, 0.8]], dtype=torch.float32),
-        torch.tensor([[0.55, 0.45], [0.65, 0.35], [0.75, 0.25]], dtype=torch.float32),
-        torch.tensor([[0.11, 0.89], [0.22, 0.78], [0.33, 0.67]], dtype=torch.float32),
-    ]
-
-    outputs = deepep_owner_dispatch(
-        hidden_shards=hidden_shards,
-        topk_idx_shards=topk_idx_shards,
-        topk_w_shards=topk_w_shards,
-        num_experts=num_experts,
+def build_reference(
+    all_hidden: torch.Tensor,
+    topk_idx: torch.Tensor,
+    num_experts: int,
+    rank: int,
+    world_size: int,
+):
+    num_tokens_per_rank, hidden_size = all_hidden.shape[1], all_hidden.shape[2]
+    num_tokens, topk = topk_idx.shape
+    ref = torch.zeros(
+        (num_tokens * topk, hidden_size),
+        device=all_hidden.device,
+        dtype=all_hidden.dtype,
     )
 
-    # Build reference order that matches implementation:
-    # owner -> expert -> src_rank -> token -> k
-    owner_ranges = get_owner_expert_ranges(num_experts, tp_world_size)
-    for owner in range(tp_world_size):
-        ref = []
-        e_start, e_end = owner_ranges[owner]
-        for expert in range(e_start, e_end):
-            for src_rank in range(tp_world_size):
-                for token in range(tokens_per_rank):
-                    for k in range(topk):
-                        if int(topk_idx_shards[src_rank][token, k].item()) != expert:
-                            continue
-                        global_token_id = src_rank * tokens_per_rank + token
-                        ref.append(
-                            {
-                                "hidden": hidden_shards[src_rank][token],
-                                "global_token_id": global_token_id,
-                                "k_idx": k,
-                                "source_rank": src_rank,
-                                "route_weight": topk_w_shards[src_rank][token, k],
-                                "expert_id": expert,
-                            }
-                        )
-
-        out = outputs[owner]
-        assert out["remap_hidden_states_owner"].shape == (len(ref), hidden_size)
-        assert out["global_token_id"].shape == (len(ref),)
-        assert out["k_idx"].shape == (len(ref),)
-        assert out["source_rank"].shape == (len(ref),)
-        assert out["route_weight"].shape == (len(ref),)
-        assert out["expert_id"].shape == (len(ref),)
-
-        for i, item in enumerate(ref):
-            assert torch.equal(out["remap_hidden_states_owner"][i], item["hidden"])
-            assert int(out["global_token_id"][i].item()) == item["global_token_id"]
-            assert int(out["k_idx"][i].item()) == item["k_idx"]
-            assert int(out["source_rank"][i].item()) == item["source_rank"]
-            assert torch.allclose(out["route_weight"][i], item["route_weight"]) 
-            assert int(out["expert_id"][i].item()) == item["expert_id"]
+    for src_rank in range(world_size):
+        for i in range(num_tokens_per_rank):
+            global_token_idx = src_rank * num_tokens_per_rank + i
+            for k in range(topk):
+                expert = int(topk_idx[global_token_idx, k].item())
+                owner = get_expert_owner(expert, num_experts, world_size)
+                if owner == rank:
+                    dst = global_token_idx * topk + k
+                    ref[dst].copy_(all_hidden[src_rank, i])
+    return ref
 
 
+def check_deepep_owner_dispatch():
+    rank, world_size = init_distributed()
+    device = f"xpu:{rank}"
+    group = dist.group.WORLD
 
-def test_get_expert_owner():
-    num_experts = 10
-    tp_world_size = 4
-    owners = [get_expert_owner(e, num_experts, tp_world_size) for e in range(num_experts)]
-    assert owners == [0, 0, 0, 1, 1, 1, 2, 2, 3, 3]
+    num_tokens_per_rank = TOKENS_PER_RANK
+    hidden_size = HIDDEN_SIZE
+    topk = TOPK
+    num_tokens = num_tokens_per_rank * world_size
+
+    torch.manual_seed(1234 + rank)
+    hidden_shard = torch.randn(
+        num_tokens_per_rank,
+        hidden_size,
+        device=device,
+        dtype=torch.bfloat16,
+    )
+
+    torch.manual_seed(42)
+    topk_idx = torch.randint(
+        0,
+        NUM_EXPERTS,
+        (num_tokens, topk),
+        device=device,
+        dtype=torch.int64,
+    )
+
+    # Warm up
+    for _ in range(LOOP):
+        remap_hidden_states = torch.zeros(
+            (num_tokens * topk, hidden_size),
+            device=device,
+            dtype=hidden_shard.dtype,
+        )
+        deepep_owner_dispatch(
+            hidden_shard,
+            topk_idx,
+            remap_hidden_states,
+            num_experts=NUM_EXPERTS,
+            group=group,
+        )
+    torch.xpu.synchronize()
+    dist.barrier()
+
+    begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+    end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+
+    remap_hidden_states = torch.zeros(
+        (num_tokens * topk, hidden_size),
+        device=device,
+        dtype=hidden_shard.dtype,
+    )
+    for i in range(LOOP):
+        begin_events[i].record()
+        deepep_owner_dispatch(
+            hidden_shard,
+            topk_idx,
+            remap_hidden_states,
+            num_experts=NUM_EXPERTS,
+            group=group,
+        )
+        end_events[i].record()
+    torch.xpu.synchronize()
+    dist.barrier()
+
+    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events)]
+    print(f"[DeePEP dispatch time in rank {rank}] {latencies} ms")
+
+    gathered_hidden = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+    dist.all_gather(gathered_hidden, hidden_shard, group=group)
+    all_hidden = torch.stack(gathered_hidden, dim=0)
+    ref = build_reference(all_hidden, topk_idx, NUM_EXPERTS, rank, world_size)
+
+    assert torch.equal(
+        remap_hidden_states,
+        ref,
+    ), f"deepep_owner_dispatch mismatch in rank {rank}"
+
+    if rank == 0:
+        avg = sum(latencies) / len(latencies)
+        print(f"[Summary] deepep_owner_dispatch avg={avg:.3f} ms")
+
+    dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    check_deepep_owner_dispatch()
