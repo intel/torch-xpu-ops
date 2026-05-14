@@ -12507,7 +12507,6 @@ fn
         c2 = _debug_get_cache_entry_list(fn.__code__)
         self.assertIs(c1[1], c2[0])
 
-
     def test_inspect_signature_bind(self):
         import inspect
 
