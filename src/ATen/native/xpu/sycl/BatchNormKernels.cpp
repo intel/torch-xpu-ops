@@ -593,9 +593,8 @@ void batch_norm_stats_template(
   // contiguous temporaries for the kernel and copy results back afterward.
   const bool mean_is_contiguous = out_mean.is_contiguous();
   const bool invstd_is_contiguous = out_invstd.is_contiguous();
-  Tensor mean_c = mean_is_contiguous
-      ? out_mean
-      : at::empty({n_input}, out_mean.options());
+  Tensor mean_c =
+      mean_is_contiguous ? out_mean : at::empty({n_input}, out_mean.options());
   Tensor invstd_c = invstd_is_contiguous
       ? out_invstd
       : at::empty({n_input}, out_invstd.options());
@@ -915,9 +914,8 @@ void batch_norm_stats_channels_last_template(
   // contiguous temporaries for the kernel and copy results back afterward.
   const bool mean_is_contiguous = out_mean.is_contiguous();
   const bool invstd_is_contiguous = out_invstd.is_contiguous();
-  Tensor mean_c = mean_is_contiguous
-      ? out_mean
-      : at::empty({stride}, out_mean.options());
+  Tensor mean_c =
+      mean_is_contiguous ? out_mean : at::empty({stride}, out_mean.options());
   Tensor invstd_c = invstd_is_contiguous
       ? out_invstd
       : at::empty({stride}, out_invstd.options());
