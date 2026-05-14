@@ -235,6 +235,13 @@ jobs:
           else
             echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Upload new failure report
+        if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
+        id: upload-new-failures
+        uses: actions/upload-artifact@v4
+        with:
+          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -252,34 +259,55 @@ jobs:
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const ut = '${{ inputs.ut }}';
+            const artifactUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
 
-            // Read new failure list csv
+            // Read and parse new failure list csv (markdown table format)
             const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
             let failureTable = '';
+            let totalCount = 0;
             if (fs.existsSync(csvFile)) {
-              const raw = fs.readFileSync(csvFile, 'utf8').trim();
-              const maxLen = 50000;
-              failureTable = raw.length > maxLen
-                ? '... (truncated, see full log in job link)\n' + raw.slice(-maxLen)
-                : raw;
+              const lines = fs.readFileSync(csvFile, 'utf8').trim().split('\n');
+              // Parse markdown table: remove last column (Source) and format as table
+              // Header is first line, separator is second line, data starts at third
+              if (lines.length > 2) {
+                const dataLines = lines.slice(2);
+                totalCount = dataLines.length;
+                const displayLines = dataLines.slice(0, 5);
+
+                // Build table without last column (Source)
+                const header = '| Category | Class name | Test name | Status | Message |';
+                const separator = '| --- | --- | --- | --- | --- |';
+                const rows = displayLines.map(line => {
+                  const cols = line.split(' | ');
+                  // Remove last column and rejoin
+                  return cols.slice(0, -1).join(' | ');
+                });
+
+                failureTable = [header, separator, ...rows].join('\n');
+                if (totalCount > 5) {
+                  failureTable += `\n\n... and ${totalCount - 5} more failures. See full list in artifact.`;
+                }
+              }
             }
 
             const body = [
-              `@copilot New UT failures detected in **${ut}** tests. Please check these new failures and analyze whether they are caused by the PR changes.`,
+              `@copilot New UT failures detected in **${ut}** tests (${totalCount} total). Please check these new failures and analyze whether they are caused by the PR changes.`,
               '',
               '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
               '',
               `Job log: ${jobUrl}`,
+              `Full new failure report: ${artifactUrl}`,
               '',
               '**New failures:**',
               '',
               failureTable,
               '',
               'Instructions:',
-              '1. Analyze whether the failures are caused by PR changes',
-              '2. If caused by PR changes, fix those failures on this PR branch directly',
-              '3. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
-              '4. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
+              '1. Download the full new failure report artifact for complete error messages',
+              '2. Analyze whether the failures are caused by PR changes',
+              '3. If caused by PR changes, fix those failures on this PR branch directly',
+              '4. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
+              '5. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
             ].join('\n');
 
             await github.rest.issues.createComment({
