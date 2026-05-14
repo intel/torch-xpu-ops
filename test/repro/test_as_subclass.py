@@ -6,6 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# Owner(s): ["module: intel"]
 # Regression test for https://github.com/intel/torch-xpu-ops/issues/2518
 #
 # PyTorch changed Tensor.as_subclass() to raise TypeError (instead of
@@ -16,7 +17,7 @@
 # Run: pytest test/repro/test_as_subclass.py
 
 import torch
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class SubTensor(torch.Tensor):
