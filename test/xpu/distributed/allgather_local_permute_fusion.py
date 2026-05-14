@@ -16,9 +16,21 @@ Inputs:
 
 """
 
+import os
+
 import torch
 import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
+
+# Try to load the native local_permute_copy kernel
+_LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "liblocal_permute_copy.so")
+_HAS_LOCAL_PERMUTE_KERNEL = False
+if os.path.exists(_LIB_PATH):
+    try:
+        torch.ops.load_library(_LIB_PATH)
+        _HAS_LOCAL_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_permute_copy_")
+    except Exception:
+        pass
 
 
 def allgather_local_permute_fusion_native(
@@ -82,13 +94,14 @@ def allgather_local_permute_fusion_native(
         if step % 2 == 0:
             stream = backend_stream
         else:
-            stream = torch.xpu.current_stream()       
+            stream = torch.xpu.current_stream()
         with torch.xpu.stream(stream):
+            remote_offset = remote_rank * num_tokens_per_rank * hidden_size
             remote_buffer = workspace.get_buffer(
                 remote_rank,
                 (num_tokens_per_rank, hidden_size),
                 hidden_shard.dtype,
-                storage_offset=0,
+                storage_offset=remote_offset,
             )
             symm_buffer[remote_rank].copy_(remote_buffer)
 
@@ -157,11 +170,12 @@ def allgather_local_permute_fusion_python(
         else:
             stream = torch.xpu.current_stream()
         with torch.xpu.stream(stream):
+            remote_offset = remote_rank * num_tokens_per_rank * hidden_size
             remote_buffer = workspace.get_buffer(
                 remote_rank,
                 (num_tokens_per_rank, hidden_size),
                 hidden_shard.dtype,
-                storage_offset=0,
+                storage_offset=remote_offset,
             )
             symm_buffer[remote_rank].copy_(remote_buffer)
 
@@ -186,7 +200,15 @@ def allgather_local_permute_fusion(
     group: dist.ProcessGroup = None,
     group_name: str = None,
 ):
-    """Default API: native fused kernel implementation."""
+    """Default API: uses native kernel if available, otherwise Python fallback."""
+    if _HAS_LOCAL_PERMUTE_KERNEL:
+        return allgather_local_permute_fusion_native(
+            hidden_shard=hidden_shard,
+            topk_idx=topk_idx,
+            remap_hidden_states=remap_hidden_states,
+            group=group,
+            group_name=group_name,
+        )
     return allgather_local_permute_fusion_python(
         hidden_shard=hidden_shard,
         topk_idx=topk_idx,

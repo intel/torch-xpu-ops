@@ -96,6 +96,23 @@ def check_allgather_local_permute_fusion():
 
     print(f"[Fusion time in rank {rank}] {latencies} ms")
 
+    # Accuracy check: run one fresh pass and compare against reference
+    remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
+    allgather_local_permute_fusion(
+        hidden_shard, topk_idx, remap_hidden_states=remap_check, group=group,
+    )
+    gathered = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+    dist.all_gather(gathered, hidden_shard, group=group)
+    all_hidden = torch.stack(gathered, dim=0)  # [world_size, tokens_per_rank, hidden_size]
+    ref = torch.zeros_like(remap_check)
+    for src_rank in range(world_size):
+        for i in range(num_tokens_per_rank):
+            global_idx = src_rank * num_tokens_per_rank + i
+            for k in range(topk):
+                dst = global_idx * topk + k
+                ref[dst].copy_(all_hidden[src_rank, i])
+    assert torch.equal(remap_check, ref), f"allgather_local_permute_fusion mismatch in rank {rank}"
+
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
         print(f"[Summary] avg_fused={avg_fused:.3f} ms")
@@ -174,5 +191,5 @@ def check_allgather_with_symm_mem():
     dist.destroy_process_group()
 
 if __name__ == "__main__":
-    # check_allgather_local_permute_fusion()
-    check_allgather_with_symm_mem()
+    check_allgather_local_permute_fusion()
+    #check_allgather_with_symm_mem()
