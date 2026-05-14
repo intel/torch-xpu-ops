@@ -16,8 +16,21 @@ from allgather_local_permute_fusion import allgather_local_permute_fusion, allga
 TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
 TOPK = 8
-LOOP = 10
+NUM_EXPERTS = 128
+LOOP = 40
+WARMUP = 20
 ENABLE_PROFILE = False
+ENABLE_PROJECTION = False
+CROSS_GPU_BW_GBPS = 30.0
+HBM_BW_GBPS = 1300.0
+
+def bytes_to_mb(num_bytes):
+    return num_bytes / (1024 * 1024)
+
+
+def project_time_ms(bytes_count, bw_gbps):
+    # GB/s is interpreted as 1e9 bytes/s for bandwidth projection.
+    return bytes_count / (bw_gbps * 1e9) * 1e3
 
 def init_distributed():
     os.environ['RANK'] = str(os.environ.get('PMI_RANK', 0))
@@ -64,7 +77,7 @@ def check_allgather_local_permute_fusion():
 
     with prof:
         # Warm up fused path
-        for _ in range(LOOP):
+        for _ in range(WARMUP):
             remap_hidden_states = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
             output_fused = allgather_local_permute_fusion(
                 hidden_shard,
@@ -78,18 +91,20 @@ def check_allgather_local_permute_fusion():
         remap_hidden_states = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
         # Timed fused path
         for i in range(LOOP):
-            begin_events[i].record()
+            if i >= WARMUP:
+                begin_events[i].record()
             output_fused = allgather_local_permute_fusion(
                 hidden_shard,
                 topk_idx,
                 remap_hidden_states=remap_hidden_states,
                 group=group,
             )
-            end_events[i].record()
+            if i >= WARMUP:
+                end_events[i].record()
         torch.xpu.synchronize()
         dist.barrier()
 
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events)]
+    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events) if b is not None and e is not None]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_local_permute_fusion_rank{rank}.json")
@@ -116,6 +131,31 @@ def check_allgather_local_permute_fusion():
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
         print(f"[Summary] avg_fused={avg_fused:.3f} ms")
+
+        if ENABLE_PROJECTION:
+            elem_size = hidden_shard.element_size()
+
+            # Per-rank communication payload received from peers for allgather.
+            allgather_bytes = (world_size - 1) * num_tokens_per_rank * hidden_size * elem_size
+
+            # Local permute is modeled as one read + one write in HBM for remapped output.
+            local_permute_elems = num_tokens * topk * hidden_size
+            local_permute_bytes = local_permute_elems * elem_size * 2
+
+            proj_allgather_ms = project_time_ms(allgather_bytes, CROSS_GPU_BW_GBPS)
+            proj_local_permute_ms = project_time_ms(local_permute_bytes, HBM_BW_GBPS)
+
+            print(
+                f"[Projection] allgather_bytes={bytes_to_mb(allgather_bytes):.2f} MB "
+                f"@{CROSS_GPU_BW_GBPS:.1f} GB/s -> {proj_allgather_ms:.3f} ms"
+            )
+            print(
+                f"[Projection] local_permute_bytes={bytes_to_mb(local_permute_bytes):.2f} MB "
+                f"@{HBM_BW_GBPS:.1f} GB/s -> {proj_local_permute_ms:.3f} ms"
+            )
+            print(
+                f"[Projection] fused_lower_bound={proj_allgather_ms + proj_local_permute_ms:.3f} ms"
+            )
 
     dist.destroy_process_group()
 
@@ -148,7 +188,7 @@ def check_allgather_with_symm_mem():
 
     with prof:
         # Warm up
-        for _ in range(LOOP):
+        for _ in range(WARMUP):
             output = torch.empty(total_numel, device=device, dtype=input_shard.dtype)
             allgather_with_symm_mem(
                 input_shard,
@@ -161,17 +201,19 @@ def check_allgather_with_symm_mem():
         output = torch.empty(total_numel, device=device, dtype=input_shard.dtype)
         # Timed path
         for i in range(LOOP):
-            begin_events[i].record()
+            if i >= WARMUP:
+                begin_events[i].record()
             allgather_with_symm_mem(
                 input_shard,
                 output_tensor=output,
                 group=group,
             )
-            end_events[i].record()
+            if i >= WARMUP:
+                end_events[i].record()
         torch.xpu.synchronize()
         dist.barrier()
 
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events)]
+    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events) if b is not None and e is not None]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_with_symm_mem_rank{rank}.json")

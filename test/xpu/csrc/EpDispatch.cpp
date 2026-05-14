@@ -11,28 +11,29 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
-// TP+EP owner-based dispatch kernel.
+// TP+EP owner-based dispatch kernel (optimized).
 //
-// Single kernel launch processes all (global_token, k, h) work items.
-// Each thread:
-//   1. Computes (global_token_idx, k, h) from its global index
-//   2. Looks up expert from topk_idx, computes expert owner rank
-//   3. Skips if expert is NOT owned by this rank (no remote read)
-//   4. Otherwise: determines source rank from global_token_idx,
-//      reads the token directly from that rank's symmetric memory
-//      via the pointer table, and writes to remap_hidden_states
+// Improvements over the original scalar-per-thread kernel:
+// 1. Vectorized load/store (VEC_SIZE=8 elements per thread)
+// 2. int32 arithmetic to avoid expensive 64-bit div/mod on GPU
+// 3. Precomputed ownership constants (base/rem/boundary)
+// 4. Scalar fallback for non-aligned hidden_size
 
+// Scalar fallback kernel for non-aligned hidden_size.
+// Uses int64 for safety, but benefits from precomputed ownership constants.
 template <typename T>
-struct EpDispatchKernel {
-  const int64_t* rank_ptrs;      // [world_size] device ptrs to each rank's buffer
-  const int64_t* topk_idx_ptr;   // [num_tokens, topk]
-  T* remap_ptr;                  // [num_tokens * topk, hidden_size]
+struct EpDispatchScalarKernel {
+  const int64_t* rank_ptrs;
+  const int64_t* topk_idx_ptr;
+  T* remap_ptr;
   int64_t num_tokens_per_rank;
   int64_t hidden_size;
   int64_t topk;
-  int64_t num_experts;
   int64_t rank;
   int64_t world_size;
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
 
   void operator()(sycl::nd_item<1> item) const {
     const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
@@ -40,36 +41,93 @@ struct EpDispatchKernel {
     const int64_t total = num_tokens * topk * hidden_size;
     if (idx >= total) return;
 
-    // Decompose flat index → (global_token_idx, k, h)
     const int64_t h = idx % hidden_size;
     const int64_t t0 = idx / hidden_size;
     const int64_t k = t0 % topk;
     const int64_t global_token_idx = t0 / topk;
 
-    // Expert ownership check (handles remainder distribution)
-    const int64_t expert = topk_idx_ptr[global_token_idx * topk + k];
-    const int64_t base = num_experts / world_size;
-    const int64_t rem = num_experts % world_size;
-    const int64_t boundary = rem * (base + 1);
-    int64_t owner;
+    const int32_t expert = static_cast<int32_t>(
+        topk_idx_ptr[global_token_idx * topk + k]);
+    int32_t owner;
     if (expert < boundary) {
-      owner = expert / (base + 1);
+      owner = expert / (base_experts + 1);
     } else {
-      owner = rem + (expert - boundary) / base;
+      owner = rem_experts + (expert - boundary) / base_experts;
     }
 
-    // Only process tokens whose expert is owned by this rank
-    if (owner != rank) return;
+    if (owner != static_cast<int32_t>(rank)) return;
 
-    // Determine source rank and local token index
     const int64_t src_rank = global_token_idx / num_tokens_per_rank;
     const int64_t local_token_idx = global_token_idx % num_tokens_per_rank;
 
-    // Selective read: directly access source rank's symmetric memory
     const T* src = reinterpret_cast<const T*>(rank_ptrs[src_rank]);
     const int64_t dst_row = global_token_idx * topk + k;
     remap_ptr[dst_row * hidden_size + h] =
         src[local_token_idx * hidden_size + h];
+  }
+};
+
+// Vectorized kernel: each work item loads VEC_SIZE contiguous elements from
+// the source rank's symmetric memory and writes them to remap_hidden_states.
+// Reduces total work items by VEC_SIZE× and improves memory throughput via
+// wider load/store transactions.
+template <typename scalar_t, int VEC_SIZE>
+struct EpDispatchVecKernel {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const int64_t* rank_ptrs;
+  const int64_t* topk_idx_ptr;
+  scalar_t* remap_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;  // hidden_size / VEC_SIZE
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    const int32_t num_tokens = num_tokens_per_rank * world_size;
+    const int32_t total = num_tokens * topk * hidden_vecs;
+    if (idx >= total) return;
+
+    // Adjacent threads handle adjacent vec positions → coalesced access
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t token_k = idx / hidden_vecs;
+    const int32_t k = token_k % topk;
+    const int32_t global_token_idx = token_k / topk;
+
+    // Expert ownership check with precomputed constants
+    const int32_t expert = static_cast<int32_t>(
+        topk_idx_ptr[global_token_idx * topk + k]);
+    int32_t owner;
+    if (expert < boundary) {
+      owner = expert / (base_experts + 1);
+    } else {
+      owner = rem_experts + (expert - boundary) / base_experts;
+    }
+
+    if (owner != rank) return;
+
+    const int32_t src_rank = global_token_idx / num_tokens_per_rank;
+    const int32_t local_token_idx = global_token_idx % num_tokens_per_rank;
+
+    // Vectorized read from source rank's symmetric memory
+    const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
+    auto src_vec = reinterpret_cast<const vec_t*>(
+        src + static_cast<int64_t>(local_token_idx) * hidden_size);
+    vec_t v = src_vec[vec_h];
+
+    // Vectorized write to remap
+    const int32_t dst_row = global_token_idx * topk + k;
+    auto dst_vec = reinterpret_cast<vec_t*>(
+        remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
+    dst_vec[vec_h] = v;
   }
 };
 
@@ -107,13 +165,18 @@ at::Tensor ep_dispatch(
       remap_hidden_states.size(0) == num_tokens * topk,
       "ep_dispatch: remap_hidden_states first dim mismatch");
 
-  const int64_t total = num_tokens * topk * hidden_size;
-  if (total == 0) {
+  const int64_t total_elems = num_tokens * topk * hidden_size;
+  if (total_elems == 0) {
     return remap_hidden_states;
   }
 
+  // Precompute ownership constants on host
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+
+  constexpr int VEC_SIZE = 8;
   constexpr int64_t threads = 256;
-  const int64_t blocks = (total + threads - 1) / threads;
 
   c10::Device device(c10::DeviceType::XPU, remap_hidden_states.device().index());
   c10::DeviceGuard guard(device);
@@ -122,21 +185,48 @@ at::Tensor ep_dispatch(
 
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       remap_hidden_states.scalar_type(), "ep_dispatch", [&]() {
-        auto kfn = EpDispatchKernel<scalar_t>{
-            rank_buffers_ptr.data_ptr<int64_t>(),
-            topk_idx.data_ptr<int64_t>(),
-            remap_hidden_states.data_ptr<scalar_t>(),
-            num_tokens_per_rank,
-            hidden_size,
-            topk,
-            num_experts,
-            rank,
-            world_size};
-        sycl_kernel_submit(
-            sycl::range<1>(blocks * threads),
-            sycl::range<1>(threads),
-            queue,
-            kfn);
+        if (hidden_size % VEC_SIZE == 0) {
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          const int64_t total = num_tokens * topk * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = EpDispatchVecKernel<scalar_t, VEC_SIZE>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int64_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts,
+              rem_experts,
+              boundary};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        } else {
+          const int64_t blocks = (total_elems + threads - 1) / threads;
+          auto kfn = EpDispatchScalarKernel<scalar_t>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int64_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              num_tokens_per_rank,
+              hidden_size,
+              topk,
+              rank,
+              world_size,
+              base_experts,
+              rem_experts,
+              boundary};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        }
       });
 
   return remap_hidden_states;

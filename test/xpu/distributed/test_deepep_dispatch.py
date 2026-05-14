@@ -12,12 +12,73 @@ import torch.distributed as dist
 
 from deepep_dispatch import deepep_owner_dispatch, get_expert_owner
 
-
-TOKENS_PER_RANK = 256
-HIDDEN_SIZE = 512
-TOPK = 4
-NUM_EXPERTS = 8
+TOKENS_PER_RANK = 2048
+HIDDEN_SIZE = 2048
+TOPK = 8
+NUM_EXPERTS = 128
 LOOP = 10
+ENABLE_PROJECTION = False
+CROSS_GPU_BW_GBPS = 30.0
+HBM_BW_GBPS = 1300.0
+
+
+def bytes_to_mb(num_bytes: float) -> float:
+    return num_bytes / (1024 * 1024)
+
+
+def project_time_ms(bytes_count: float, bw_gbps: float) -> float:
+    # GB/s is interpreted as 1e9 bytes/s for bandwidth projection.
+    return bytes_count / (bw_gbps * 1e9) * 1e3
+
+
+def build_dispatch_projection(
+    topk_idx: torch.Tensor,
+    num_tokens_per_rank: int,
+    hidden_size: int,
+    elem_size: int,
+    num_experts: int,
+    world_size: int,
+):
+    num_tokens, topk = topk_idx.shape
+
+    owner_table = torch.tensor(
+        [get_expert_owner(e, num_experts, world_size) for e in range(num_experts)],
+        device=topk_idx.device,
+        dtype=torch.int64,
+    )
+    owners = owner_table[topk_idx.reshape(-1)]
+
+    token_ids = torch.arange(num_tokens, device=topk_idx.device, dtype=torch.int64)
+    src_ranks = (token_ids // num_tokens_per_rank).repeat_interleave(topk)
+
+    pair_ids = src_ranks * world_size + owners
+    pair_counts = torch.bincount(pair_ids, minlength=world_size * world_size).reshape(world_size, world_size)
+
+    diag = torch.diagonal(pair_counts)
+    send_counts = pair_counts.sum(dim=1) - diag
+    recv_counts = pair_counts.sum(dim=0) - diag
+    local_assign_counts = pair_counts.sum(dim=0)
+
+    bytes_per_assignment = hidden_size * elem_size
+
+    send_bytes = send_counts.to(torch.float64) * bytes_per_assignment
+    recv_bytes = recv_counts.to(torch.float64) * bytes_per_assignment
+    comm_bytes = torch.maximum(send_bytes, recv_bytes)
+
+    # One read + one write for local remap data movement.
+    local_permute_bytes = local_assign_counts.to(torch.float64) * bytes_per_assignment * 2
+
+    comm_ms = comm_bytes / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
+    local_ms = local_permute_bytes / (HBM_BW_GBPS * 1e9) * 1e3
+
+    return {
+        "send_bytes": send_bytes,
+        "recv_bytes": recv_bytes,
+        "comm_ms": comm_ms,
+        "local_permute_bytes": local_permute_bytes,
+        "local_ms": local_ms,
+        "fused_ms": comm_ms + local_ms,
+    }
 
 
 def init_distributed():
@@ -141,6 +202,43 @@ def check_deepep_owner_dispatch():
     if rank == 0:
         avg = sum(latencies) / len(latencies)
         print(f"[Summary] deepep_owner_dispatch avg={avg:.3f} ms")
+
+        if ENABLE_PROJECTION:
+            projection = build_dispatch_projection(
+                topk_idx=topk_idx,
+                num_tokens_per_rank=num_tokens_per_rank,
+                hidden_size=hidden_size,
+                elem_size=hidden_shard.element_size(),
+                num_experts=NUM_EXPERTS,
+                world_size=world_size,
+            )
+
+            send_bytes = projection["send_bytes"].to("cpu").tolist()
+            recv_bytes = projection["recv_bytes"].to("cpu").tolist()
+            comm_ms = projection["comm_ms"].to("cpu").tolist()
+            local_permute_bytes = projection["local_permute_bytes"].to("cpu").tolist()
+            local_ms = projection["local_ms"].to("cpu").tolist()
+            fused_ms = projection["fused_ms"].to("cpu").tolist()
+
+            for r in range(world_size):
+                print(
+                    f"[Projection][rank {r}] "
+                    f"send={bytes_to_mb(send_bytes[r]):.2f} MB, "
+                    f"recv={bytes_to_mb(recv_bytes[r]):.2f} MB, "
+                    f"comm@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms[r]:.3f} ms"
+                )
+                print(
+                    f"[Projection][rank {r}] "
+                    f"local_permute={bytes_to_mb(local_permute_bytes[r]):.2f} MB, "
+                    f"hbm@{HBM_BW_GBPS:.1f}GB/s={local_ms[r]:.3f} ms, "
+                    f"fused_lower_bound={fused_ms[r]:.3f} ms"
+                )
+
+            worst_rank = max(range(world_size), key=lambda r: fused_ms[r])
+            print(
+                f"[Projection][Summary] worst_rank={worst_rank}, "
+                f"fused_lower_bound={fused_ms[worst_rank]:.3f} ms"
+            )
 
     dist.destroy_process_group()
 
