@@ -8,11 +8,10 @@ name: OnDemand Acceptance Comparison
 #   * E2E : huggingface, timm_models, torchbench
 #           (training amp_fp16 + inference bfloat16, accuracy + performance)
 #
-# Flexibility is on the *components* under test: vary any subset of
-# `pytorch`, `torch_xpu_ops`, `triton`, `onednn` between the two
-# pipelines via independent `target_*` / `baseline_*` inputs. Empty /
-# `pinned` keeps the upstream-pinned version. If both sides are equal, that
-# component is unchanged.
+# Flexibility is on the *component* under test: select one component
+# (`pytorch`, `torch_xpu_ops`, `triton`, `onednn`) via `test_component`,
+# then set `target_version` / `baseline_version` for that component.
+# Other components use their base inputs or upstream-pinned defaults.
 
 on:
   workflow_dispatch:
@@ -27,51 +26,35 @@ on:
         default: '3.10'
         description: Python version (e.g. 3.10, 3.11, 3.12)
 
-      # ----- Target versions -----
-      target_pytorch:
+      # ----- Common base refs -----
+      pytorch:
         type: string
         default: 'main'
-        description: 'Target pytorch ref (commit/branch/tag, or `repo@ref`)'
-      target_torch_xpu_ops:
+        description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`). Overridden when test_component=pytorch.'
+      torch_xpu_ops:
         type: string
         default: 'main'
-        description: 'Target torch-xpu-ops ref, or `pinned`'
-      target_triton:
-        type: string
-        default: ''
-        description: 'Target Triton ref. Empty/`pinned` = pytorch-pinned.'
-      target_onednn:
-        type: string
-        default: ''
-        description: 'Target oneDNN ref. Empty/`pinned` = pytorch-pinned.'
+        description: 'Base torch-xpu-ops ref, or `pinned`. Overridden when test_component=torch_xpu_ops.'
 
-      # ----- Baseline versions -----
-      baseline_pytorch:
+      # ----- Component under test -----
+      test_component:
+        type: choice
+        options: [onednn, triton, torch_xpu_ops, pytorch]
+        default: pytorch
+        description: 'Which component varies between target and baseline.'
+      target_version:
         type: string
-        default: 'main'
-        description: 'Baseline pytorch ref'
-      baseline_torch_xpu_ops:
+        required: true
+        description: 'Target ref for the selected test_component.'
+      baseline_version:
         type: string
-        default: 'main'
-        description: 'Baseline torch-xpu-ops ref, or `pinned`'
-      baseline_triton:
-        type: string
-        default: ''
-        description: 'Baseline Triton ref. Empty/`pinned` = pytorch-pinned.'
-      baseline_onednn:
-        type: string
-        default: ''
-        description: 'Baseline oneDNN ref. Empty/`pinned` = pytorch-pinned.'
+        required: true
+        description: 'Baseline ref for the selected test_component.'
 
 permissions: read-all
 
 run-name: >-
-  Acceptance / ${{
-    inputs.target_triton  != inputs.baseline_triton  && format('triton {0} vs {1}',  inputs.target_triton  || 'pinned', inputs.baseline_triton  || 'pinned') ||
-    inputs.target_onednn  != inputs.baseline_onednn  && format('onednn {0} vs {1}',  inputs.target_onednn  || 'pinned', inputs.baseline_onednn  || 'pinned') ||
-    inputs.target_torch_xpu_ops != inputs.baseline_torch_xpu_ops && format('torch-xpu-ops {0} vs {1}', inputs.target_torch_xpu_ops, inputs.baseline_torch_xpu_ops) ||
-    inputs.target_pytorch != inputs.baseline_pytorch && format('pytorch {0} vs {1}', inputs.target_pytorch, inputs.baseline_pytorch) ||
-    'identical (sanity)' }}
+  Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
 
 jobs:
   # ==================================================================
@@ -100,10 +83,10 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ inputs.target_pytorch }}
-      torch_xpu_ops: ${{ inputs.target_torch_xpu_ops }}
-      triton: ${{ inputs.target_triton }}
-      onednn: ${{ inputs.target_onednn }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.target_version || inputs.torch_xpu_ops }}
+      triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
+      onednn: ${{ inputs.test_component == 'onednn' && inputs.target_version || '' }}
       python: ${{ inputs.python }}
       category: target
 
@@ -117,8 +100,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      pytorch: ${{ inputs.target_pytorch }}
-      torch_xpu_ops: ${{ inputs.target_torch_xpu_ops }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.target_version || inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
       ut: op_p0
       category: target
@@ -135,7 +118,7 @@ jobs:
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
       test_type: build-comparison
-      pytorch: ${{ inputs.target_pytorch }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.target_version || inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
       category: target
@@ -149,10 +132,10 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ inputs.baseline_pytorch }}
-      torch_xpu_ops: ${{ inputs.baseline_torch_xpu_ops }}
-      triton: ${{ inputs.baseline_triton }}
-      onednn: ${{ inputs.baseline_onednn }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.baseline_version || inputs.torch_xpu_ops }}
+      triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
+      onednn: ${{ inputs.test_component == 'onednn' && inputs.baseline_version || '' }}
       python: ${{ inputs.python }}
       category: baseline
 
@@ -166,8 +149,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      pytorch: ${{ inputs.baseline_pytorch }}
-      torch_xpu_ops: ${{ inputs.baseline_torch_xpu_ops }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.test_component == 'torch_xpu_ops' && inputs.baseline_version || inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
       ut: op_p0
       category: baseline
@@ -184,7 +167,7 @@ jobs:
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
       test_type: build-comparison
-      pytorch: ${{ inputs.baseline_pytorch }}
+      pytorch: ${{ inputs.test_component == 'pytorch' && inputs.baseline_version || inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
       category: baseline
@@ -213,12 +196,13 @@ jobs:
           {
             echo "## Acceptance comparison"
             echo ""
-            echo "| Component | Target | Baseline |"
-            echo "| --- | --- | --- |"
-            echo "| pytorch          | ${{ inputs.target_pytorch }} | ${{ inputs.baseline_pytorch }} |"
-            echo "| torch-xpu-ops    | ${{ inputs.target_torch_xpu_ops }} | ${{ inputs.baseline_torch_xpu_ops }} |"
-            echo "| triton           | ${{ inputs.target_triton  || 'pinned' }} | ${{ inputs.baseline_triton  || 'pinned' }} |"
-            echo "| onednn           | ${{ inputs.target_onednn  || 'pinned' }} | ${{ inputs.baseline_onednn  || 'pinned' }} |"
+            echo "| | Value |"
+            echo "| --- | --- |"
+            echo "| **Component under test** | ${{ inputs.test_component }} |"
+            echo "| Target version   | \`${{ inputs.target_version }}\` |"
+            echo "| Baseline version | \`${{ inputs.baseline_version }}\` |"
+            echo "| Base pytorch     | ${{ inputs.pytorch }} |"
+            echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
             echo ""
             echo "Scope: UT=\`op_p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
           } > "${GITHUB_STEP_SUMMARY}"
