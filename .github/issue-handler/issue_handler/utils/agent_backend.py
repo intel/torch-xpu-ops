@@ -254,6 +254,25 @@ class OpenCodeBackend(AgentBackend):
                         chunk = os.read(fd, 65536)
                         if not chunk:
                             break
+                        # If the main process exited, drain remaining and stop
+                        # (child processes may keep pipe open indefinitely)
+                        if proc.poll() is not None:
+                            buf += chunk.decode("utf-8", errors="replace")
+                            last_output_time = time.monotonic()
+                            # Drain with short timeout
+                            while True:
+                                r, _, _ = select.select([fd], [], [], 0.5)
+                                if not r:
+                                    break
+                                leftover = os.read(fd, 65536)
+                                if not leftover:
+                                    break
+                                buf += leftover.decode("utf-8", errors="replace")
+                            while "\n" in buf:
+                                line, buf = buf.split("\n", 1)
+                                yield line + "\n"
+                            log_f.write("\n=== PROCESS EXITED (rc=%d, drained) ===\n" % proc.returncode)
+                            return
                         buf += chunk.decode("utf-8", errors="replace")
                         last_output_time = time.monotonic()
                         while "\n" in buf:

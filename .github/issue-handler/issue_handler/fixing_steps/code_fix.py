@@ -60,6 +60,10 @@ def _get_test_command(body: str) -> str | None:
             cmd = re.sub(r'\n```\s*$', '', cmd)
             cmd = cmd.strip()
             if cmd:
+                # Strip 'cd <pytorch> &&' or 'cd /path/to/pytorch &&' prefix
+                # (the cwd is already set to the correct workdir)
+                cmd = re.sub(
+                    r'^cd\s+(?:<[^>]+>|/\S+)\s*&&\s*', '', cmd).strip()
                 return cmd
         # If no code block but non-empty text that looks like a command
         if reproducer and not reproducer.startswith("_Pending"):
@@ -241,6 +245,9 @@ def run(issue_number: int) -> None:
         except CalledProcessError:
             log("WARN", "Could not sync review/main with upstream/main",
                 issue=issue_number)
+        # Clean working tree before switching branches (prior runs may leave
+        # uncommitted changes that block checkout)
+        git("checkout", ".", workdir=workdir, issue=issue_number)
         try:
             git("checkout", "-b", branch, f"{remote}/main",
                 workdir=workdir, issue=issue_number)
@@ -254,7 +261,30 @@ def run(issue_number: int) -> None:
         log("INFO", f"Branch {branch} already has changes, skipping agent re-run",
             issue=issue_number)
         token_usage = TokenUsage()
+
+        # Still verify the existing fix
+        test_cmd = _get_test_command(body)
         verified = False
+        if test_cmd:
+            log("INFO", f"Verifying existing fix: {test_cmd[:200]}",
+                issue=issue_number)
+            build_ok, build_output = _run_build(
+                workdir, target_repo, remote, base_ref, issue_number)
+            if build_ok:
+                verify_ok, verify_output = _run_verification(
+                    workdir, test_cmd, issue_number)
+                if verify_ok:
+                    log("INFO", "Existing fix verification PASSED",
+                        issue=issue_number)
+                    verified = True
+                else:
+                    log("WARN", "Existing fix verification FAILED",
+                        issue=issue_number)
+            else:
+                log("WARN", "Existing fix build FAILED", issue=issue_number)
+        else:
+            log("INFO", "No verification command, skipping verification",
+                issue=issue_number)
     else:
         # --- Extract test command for verification ---
         test_cmd = _get_test_command(body)
