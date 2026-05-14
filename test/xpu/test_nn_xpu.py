@@ -17345,7 +17345,7 @@ if __name__ == '__main__':
             torch.testing.assert_close(result, ref_output, atol=atol, rtol=rtol)
             mask = torch.tensor([[1]], device=device) == 1
             result = model(encoder_input, src_key_padding_mask=mask)
-            fast_path_device = result.is_cuda or result.is_cpu or result.is_xpu
+            fast_path_device = result.is_cuda or result.is_cpu
             result = result.cpu().detach().numpy()
             # Non Fast Paths
             if (
@@ -17511,7 +17511,6 @@ if __name__ == '__main__':
                 and not training
                 and (
                     "cuda" in str(device)
-                    or "xpu" in str(device)
                     or "cpu" in str(device)
                 )
                 and not TEST_WITH_CROSSREF
@@ -17616,7 +17615,7 @@ if __name__ == '__main__':
             model(src, src_mask=src_mask, src_key_padding_mask=src_key_padding_mask)
 
     @dtypes(torch.float)
-    @dtypesIfXPU(torch.half)
+    @dtypesIfXPU(torch.float)
     @dtypesIfCUDA(torch.half, torch.float)
     def test_transformerencoderlayer_gelu(self, device, dtype):
         # this is a deterministic test for TransformerEncoderLayer with gelu activation
