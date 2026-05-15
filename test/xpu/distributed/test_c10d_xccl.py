@@ -32,11 +32,6 @@ import torch.distributed as c10d
 import torch.distributed as dist
 import torch.distributed._functional_collectives as _functional_collectives
 import torch.distributed._symmetric_memory as symm_mem
-from torch._C._distributed_c10d import _SymmetricMemory
-from torch.distributed._symmetric_memory import (
-    _fused_all_gather_matmul_fallback,
-    _fused_matmul_reduce_scatter_fallback,
-)
 import torch.testing._internal.common_utils as common
 from torch.testing._internal.common_distributed import (
     MultiProcContinuousTest,
@@ -1537,9 +1532,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
         if world.rank() < world.size() // 2:
             self.assertTrue(buf.eq(peer_sub).all().item())
         else:
-            self.assertTrue(
-                buf.eq(peer_sub + world.size() // 2).all().item()
-            )
+            self.assertTrue(buf.eq(peer_sub + world.size() // 2).all().item())
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
@@ -1557,12 +1550,15 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
         hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
         hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
 
+
 instantiate_parametrized_tests(XCCLTraceTest)
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
+
 
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
+
 
 if __name__ == "__main__":
     run_tests()

@@ -11,7 +11,6 @@
 
 #include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
-#include <cstdlib>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -421,8 +420,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::device dev = current_queue.get_device();
 
   namespace syclexp = sycl::ext::oneapi::experimental;
-  syclexp::ipc_memory::handle local_handle =
-      syclexp::ipc_memory::get(ptr, ctx);
+  syclexp::ipc_memory::handle local_handle = syclexp::ipc_memory::get(ptr, ctx);
   syclexp::ipc_memory::handle_data_t local_handle_bytes = local_handle.data();
   std::vector<uint8_t> local_payload(
       reinterpret_cast<const uint8_t*>(local_handle_bytes.data()),
@@ -454,8 +452,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 
     handles[r] = remote_base;
     buffers[r] = remote_base;
-    signal_pads[r] =
-        (void*)((uintptr_t)remote_base + block->signal_pad_offset);
+    signal_pads[r] = (void*)((uintptr_t)remote_base + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
 
