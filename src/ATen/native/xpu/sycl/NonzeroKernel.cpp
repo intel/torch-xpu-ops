@@ -24,7 +24,7 @@ struct FlattenIdxtoRealIdxKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     auto global_id = item_id.get_global_linear_id();
 
-    if (global_id < N_) {
+    if (global_id < static_cast<size_t>(N_)) {
       auto dim = global_id / num_nonzeros_;
       auto index = global_id % num_nonzeros_;
       out_begin_[global_id] =
