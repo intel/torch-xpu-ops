@@ -3,11 +3,11 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'main'
+    default: 'https://github.com/daisyden/pytorch.git@distributed_2.11'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'main'
+    default: 'daisyden/distributed_2.11'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -17,6 +17,10 @@ inputs:
     type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+  skip_setup_python:
+    type: string
+    default: 'false'
+    description: Skip setup-python and use preinstalled Python on host
 
 runs:
   using: composite
@@ -37,15 +41,35 @@ runs:
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
+      if: ${{ inputs.skip_setup_python != 'true' }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python }}
+    - name: Install preinstalled Python-${{ inputs.python }}
+      if: ${{ inputs.skip_setup_python == 'true' }}
+      shell: bash -xe {0}
+      run: |
+        MINIFORGE_PATH="${HOME}/miniforge3"
+        if [ ! -d "${MINIFORGE_PATH}" ]; then
+          curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
+          bash /tmp/miniforge.sh -b -p ${MINIFORGE_PATH}
+          rm /tmp/miniforge.sh
+        fi
+        export PATH="${MINIFORGE_PATH}/bin:$PATH"
+        conda create -n xpu-py python=${{ inputs.python }} pip wheel setuptools -y --force
+        echo "PIP_BREAK_SYSTEM_PACKAGES=1" >> ${GITHUB_ENV}
+        # Make conda environment active for all subsequent steps
+        echo ". ${MINIFORGE_PATH}/etc/profile.d/conda.sh" >> ~/.bashrc
+        echo "conda activate xpu-py" >> ~/.bashrc
+        source ~/.bashrc
+        python -V
     - name: Check python
       shell: bash -xe {0}
       run: |
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
+        conda activate xpu-py
         which python && python -V
         which pip && pip list
-        pip install -U pip wheel setuptools
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
@@ -58,6 +82,8 @@ runs:
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
+        conda activate xpu-py
         # install pytorch
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
@@ -71,9 +97,9 @@ runs:
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         else
-          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
@@ -86,6 +112,8 @@ runs:
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
+        conda activate xpu-py
         cd pytorch
         rm -rf third_party/torch-xpu-ops
         if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
@@ -99,18 +127,15 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-        fi
+        git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+        cd third_party/torch-xpu-ops
+        git checkout ${TORCH_XPU_OPS_COMMIT}
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
+        conda activate xpu-py
         # common
         pip install pandas psutil scipy pyyaml
         cd pytorch
@@ -195,6 +220,8 @@ runs:
     - name: Torch Config
       shell: bash -xe {0}
       run: |
+        source ${HOME}/miniforge3/etc/profile.d/conda.sh
+        conda activate xpu-py
         printenv
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"
