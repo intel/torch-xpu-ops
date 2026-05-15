@@ -72,6 +72,15 @@ if(USE_SYCLTLA)
   set_build_flags()
   replace_cmake_build_flags()
 
+  # Apply per_kernel device code split to reduce compilation time for
+  # template-heavy SYCLTLA source files. This lets the compiler split device
+  # code at the kernel boundary, avoiding the need to manually split source
+  # files for each template instantiation.
+  foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
+    set_source_files_properties(${sycl_src} PROPERTIES
+      SYCL_COMPILE_FLAGS "-fsycl-device-code-split=per_kernel")
+  endforeach()
+
   foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
     set(sycl_lib torch-xpu-ops-sycltla-${name})

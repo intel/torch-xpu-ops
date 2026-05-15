@@ -288,8 +288,16 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
+      # Support per-file compile flags via SYCL_COMPILE_FLAGS source file property
+      set(_SYCL_COMPILE_FLAGS_BACKUP ${SYCL_COMPILE_FLAGS})
+      get_source_file_property(_per_file_flags ${file} SYCL_COMPILE_FLAGS)
+      if(_per_file_flags AND NOT _per_file_flags STREQUAL "NOTFOUND")
+        list(APPEND SYCL_COMPILE_FLAGS ${_per_file_flags})
+      endif()
+
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
+      set(SYCL_COMPILE_FLAGS ${_SYCL_COMPILE_FLAGS_BACKUP})
       file(GENERATE
         OUTPUT "${custom_target_script}"
         INPUT "${custom_target_script_pregen}"
