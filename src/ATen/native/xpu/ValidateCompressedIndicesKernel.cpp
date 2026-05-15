@@ -34,7 +34,7 @@ void _validate_compressed_sparse_indices_xpu(
     const int64_t dim,
     const int64_t nnz) {
   std::cout << "call _validate_compressed_sparse_indices_xpu" << std::endl;
-  validate_compressed_sparse_indices_kernel_xpu<XPUKernelLauncher>(
+  validate_compressed_sparse_indices_kernel<XPUKernelLauncher>(
       is_crow, cidx, idx, cdim, dim, nnz);
 }
 
