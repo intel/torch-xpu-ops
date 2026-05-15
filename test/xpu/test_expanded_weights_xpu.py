@@ -648,8 +648,11 @@ class TestExpandedWeightModule(TestCase):
                 actual_grads.append(param.grad_sample)
                 del param.grad_sample
             if diff_input:
-                actual_grads.append(input.grad.clone())
-                input.grad = torch.zeros_like(input.grad)
+                if input.grad is not None:
+                    actual_grads.append(input.grad.clone())
+                    input.grad = torch.zeros_like(input.grad)
+                else:
+                    actual_grads.append(None)
 
             # get per sample grads with a for loop
             expected_res = torch.tensor(
@@ -711,8 +714,11 @@ class TestExpandedWeightModule(TestCase):
                 actual_grads.append(param.grad_sample)
                 del param.grad_sample
             if diff_input:
-                actual_grads.append(input.grad.clone())
-                input.grad = torch.zeros_like(input.grad)
+                if input.grad is not None:
+                    actual_grads.append(input.grad.clone())
+                    input.grad = torch.zeros_like(input.grad)
+                else:
+                    actual_grads.append(None)
 
             # get per sample grads with a for loop, running over the input twice
             expected_grads = []
