@@ -97,6 +97,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
@@ -147,6 +148,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
