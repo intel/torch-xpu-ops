@@ -1300,8 +1300,7 @@ class TestSparseCompressed(TestCase):
             subtest("sparse_compressed_tensor"),
             subtest("sparse_compressed_tensor_no_size"),
         ],
-    )
-    @skipCPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2229")
+    )    
     def test_invalid_input(self, layout, device, target):
         for (
             label,
@@ -1351,8 +1350,6 @@ class TestSparseCompressed(TestCase):
             }:
                 # Skip invalid size input as a valid size is estimated for other inputs
                 continue
-            # if label != "indices and values mismatch of device index":
-            #     continue
             with self.assertRaisesRegex(RuntimeError, errmsg):
                 print("go on")
                 print(

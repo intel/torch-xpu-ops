@@ -9,7 +9,7 @@
  */
 
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/native/sparse/xpu/ValidateCompressedIndicesCommon.h>
+#include <ATen/native/sparse/ValidateCompressedIndicesCommon.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native {
