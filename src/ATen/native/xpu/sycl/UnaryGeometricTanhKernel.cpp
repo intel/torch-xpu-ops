@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,11 @@ template <typename scalar_t>
 struct TanhFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return std::tanh(static_cast<opmath_t>(a));
+    if constexpr (c10::is_complex<opmath_t>::value) {
+      return std::tanh(static_cast<opmath_t>(a));
+    } else {
+      return sycl::tanh(static_cast<opmath_t>(a));
+    }
   }
 };
 

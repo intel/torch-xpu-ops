@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
-#include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
 #include <ATen/ops/add.h>
@@ -244,64 +243,6 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
 static inline TensorOptions options_to_value_type(TensorOptions opts) {
   auto scalar_type = typeMetaToScalarType(opts.dtype());
   return opts.dtype(c10::toRealValueType(scalar_type));
-}
-
-Tensor std_xpu(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim) {
-  Tensor result = at::empty({0}, options_to_value_type(self.options()));
-  return std_var_out("std", result, self, dim, correction, keepdim, true);
-}
-
-Tensor& std_xpu_out(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim,
-    Tensor& result) {
-  return std_var_out("std", result, self, dim, correction, keepdim, true);
-}
-
-Tensor& var_xpu_out(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim,
-    Tensor& result) {
-  return std_var_out("var", result, self, dim, correction, keepdim, false);
-}
-
-Tensor var_xpu(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim) {
-  Tensor result = at::empty({0}, options_to_value_type(self.options()));
-  return std_var_out("var", result, self, dim, correction, keepdim, false);
-}
-
-std::tuple<Tensor, Tensor> var_mean_xpu(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim) {
-  Tensor result1 = at::empty({0}, options_to_value_type(self.options()));
-  Tensor result2 = at::empty({0}, self.options());
-  return std_var_mean_out(
-      "var_mean", result1, result2, self, dim, correction, keepdim, false);
-}
-
-std::tuple<Tensor, Tensor> std_mean_xpu(
-    const Tensor& self,
-    at::OptionalIntArrayRef dim,
-    const std::optional<Scalar>& correction,
-    bool keepdim) {
-  Tensor result1 = at::empty({0}, options_to_value_type(self.options()));
-  Tensor result2 = at::empty({0}, self.options());
-  return std_var_mean_out(
-      "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
 
 void cummax_helper_xpu(

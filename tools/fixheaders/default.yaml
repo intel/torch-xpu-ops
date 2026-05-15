@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -8,7 +8,7 @@
 
 # Default header applied to all files unless specified otherwise
 default_header: |
-  Copyright 2020-2025 Intel Corporation
+  Copyright 2020-2026 Intel Corporation
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -25,4 +25,3 @@ exclude:
   - "yaml/**/*"
   - "**/__init__.py"
   - "lint/**/*"
-  - "src/ATen/native/xpu/sycl/Philox4x32.h" #TODO: Remove after https://github.com/intel/torch-xpu-ops/issues/2485 is closed

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,12 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct CosFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::cos(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::cos(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::cos(static_cast<opmath_t>(a));
+    }
   }
 };
 

@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,12 +63,32 @@ from torch.testing._internal.common_utils import (
     skipIfRocm,
     TEST_WITH_ASAN,
     TEST_WITH_ROCM,
+    TEST_XPU,
     TestCase,
     unMarkDynamoStrictTest,
 )
 from torch.testing._internal.opinfo.core import SampleInput
 from torch.utils import _pytree as pytree
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+
+for op in op_db:
+    if (
+        op.name == "nn.functional.batch_norm"
+        and op.variant_test_name == "without_cudnn"
+    ):
+        # Assign XPU-specific dtypes
+        if hasattr(op, "_dispatch_dtypes"):
+            cuda_dtypes = op._dispatch_dtypes.get("cuda")
+            if cuda_dtypes:
+                op._dispatch_dtypes["xpu"] = cuda_dtypes
+        # Keep others like 'disablecuDNN' which are usually harmless or handled
+        if hasattr(op, "supported_device_types"):
+            op.supported_device_types = op.supported_device_types.union({"xpu"})
+        op.decorators = tuple(
+            d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d))
+        )
+
+        break
 
 aten = torch.ops.aten
 
@@ -477,8 +497,8 @@ class TestOperators(TestCase):
                 # Fused attention kernels require last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
             }
@@ -780,8 +800,8 @@ class TestOperators(TestCase):
                 # The fused attention kernels require the last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
                 # BUG
@@ -1065,9 +1085,6 @@ class TestOperators(TestCase):
                 xfail("_native_batch_norm_legit"),
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
-                xfail(
-                    "unbind_copy"
-                ),  # Batching rule not implemented for aten::unbind_copy.int.
             }
         ),
     )
@@ -1199,7 +1216,7 @@ class TestOperators(TestCase):
             xfail("chalf", ""),
             xfail("scatter_reduce", "prod"),  # item call
             # Batching rule not implemented for aten::_use_cudnn_ctc_loss.Tensor
-            xfail("nn.functional.ctc_loss", device_type=device_type),
+            xfail("nn.functional.ctc_loss", device_type="cuda"),
             # NYI: querying is_contiguous inside of vmap for memory_format other than torch.contiguous_format
             xfail("nn.functional.max_unpool2d"),
             xfail("nn.functional.max_unpool2d", "grad"),
@@ -1207,9 +1224,6 @@ class TestOperators(TestCase):
             xfail("sparse.mm", "reduce"),
             xfail("as_strided_scatter", ""),  # calls as_strided
             xfail("index_reduce", "prod"),  # .item() call
-            xfail(
-                "unbind_copy"
-            ),  # Batching rule not implemented for aten::unbind_copy.int.
             # ---------------------------------------------------------------------
         }
     )
@@ -1350,9 +1364,6 @@ class TestOperators(TestCase):
         xfail("_native_batch_norm_legit"),
         # TODO: implement batching rule
         xfail("_batch_norm_with_update"),
-        xfail(
-            "unbind_copy"
-        ),  # Batching rule not implemented for aten::unbind_copy.int.
         # ----------------------------------------------------------------------
     }
 
@@ -1660,9 +1671,6 @@ class TestOperators(TestCase):
                 xfail("__getitem__", ""),
                 xfail("index_put", ""),
                 xfail("view_as_complex"),
-                xfail(
-                    "unbind_copy"
-                ),  # Batching rule not implemented for aten::unbind_copy.int.
                 xfail("nn.functional.gaussian_nll_loss"),
                 xfail("masked_select"),
                 xfail(
@@ -1696,6 +1704,22 @@ class TestOperators(TestCase):
                 xfail("_batch_norm_with_update"),
                 xfail("as_strided", "partial_views"),
             }
+        ),
+    )
+    @opsToleranceOverride(
+        "TestOperators",
+        "test_vjpvmap",
+        (
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
+            tol1(
+                "nn.functional.conv2d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
         ),
     )
     def test_vjpvmap(self, device, dtype, op):
@@ -1859,6 +1883,11 @@ class TestOperators(TestCase):
             tol2(
                 "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}
             ),
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=3e-05, rtol=5e-6)},
+                device_type="xpu",
+            ),
         ),
     )
     def test_jvpvjp(self, device, dtype, op):
@@ -1957,9 +1986,6 @@ class TestOperators(TestCase):
                 xfail(
                     "as_strided_scatter"
                 ),  # AssertionError: Tensor-likes are not close!
-                xfail(
-                    "unbind_copy"
-                ),  # Batching rule not implemented for aten::unbind_copy.int.
                 xfail("bernoulli"),  # calls random op
                 xfail("bfloat16"),  # required rank 4 tensor to use channels_last format
                 xfail("cdist"),  # Forward AD not implemented and no decomposition
@@ -2194,9 +2220,9 @@ class TestOperators(TestCase):
                 else:
                     weight = torch.randn(weight_shape, device=device)
                 target = torch.randint(0, C, target_shape, device=device)
-                target[
-                    0
-                ] = 1  # since we're ignoring index 0, at least one element must be non-zero
+                target[0] = (
+                    1  # since we're ignoring index 0, at least one element must be non-zero
+                )
 
                 fn = functools.partial(
                     torch.nn.functional.nll_loss, target=target, weight=weight, **kwargs

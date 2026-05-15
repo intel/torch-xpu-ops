@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_native_functions import TestNativeFunctions  # noqa: F401`
+    from test_native_functions import TestNativeFunctions  # noqa: F401
 
 if __name__ == "__main__":
     run_tests()

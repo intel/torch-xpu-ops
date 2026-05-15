@@ -14,7 +14,7 @@ import fnmatch
 import argparse
 import pandas as pd
 from statistics import geometric_mean
-from typing import List, Tuple, Any, Optional
+from typing import Any, Optional
 
 
 def multiple_replace(text: str) -> str:
@@ -36,7 +36,7 @@ def multiple_replace(text: str) -> str:
     return text
 
 
-def find_files(pattern: str, search_path: str) -> List[str]:
+def find_files(pattern: str, search_path: str) -> list[str]:
     """
     Find files matching pattern in directory tree.
 
@@ -94,7 +94,7 @@ def write_report(cases: pd.DataFrame, filename: str,
             file.write(f"\n\n{message}\n\n{output}\n\n")
 
 
-def calculate_latencies(value: Optional[pd.Series]) -> Tuple[float, float, float]:
+def calculate_latencies(value: Optional[pd.Series]) -> tuple[float, float, float]:
     """
     Calculate eager and inductor latencies from value row.
 
@@ -130,7 +130,7 @@ def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> Optional[pd.S
 
 
 def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
-                               refer_value: Optional[pd.Series]) -> Tuple[float, float]:
+                               refer_value: Optional[pd.Series]) -> tuple[float, float]:
     """
     Calculate performance comparison ratios between target and baseline.
 
@@ -156,7 +156,7 @@ def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
     return eager_ratio, inductor_ratio
 
 
-def process_comparison_data(args: argparse.Namespace) -> Tuple[List[List[Any]], List[str]]:
+def process_comparison_data(args: argparse.Namespace) -> tuple[list[list[Any]], list[str]]:
     """
     Process and compare performance data between target and baseline.
 
@@ -203,7 +203,7 @@ def process_comparison_data(args: argparse.Namespace) -> Tuple[List[List[Any]], 
 
 
 def process_matching_models(xpu_data: pd.DataFrame, refer_data: pd.DataFrame,
-                           category: str, output_data: List[List[Any]]) -> None:
+                           category: str, output_data: list[list[Any]]) -> None:
     """
     Process models that exist in both target and baseline.
     """
@@ -228,7 +228,7 @@ def process_matching_models(xpu_data: pd.DataFrame, refer_data: pd.DataFrame,
 
 
 def process_target_only_models(xpu_data: pd.DataFrame, category: str,
-                              output_data: List[List[Any]]) -> None:
+                              output_data: list[list[Any]]) -> None:
     """
     Process models that only exist in target data.
     """
@@ -244,7 +244,7 @@ def process_target_only_models(xpu_data: pd.DataFrame, category: str,
 
 
 def process_baseline_only_models(args: argparse.Namespace,
-                                output_data: List[List[Any]]) -> None:
+                                output_data: list[list[Any]]) -> None:
     """
     Process models that only exist in baseline data.
     """

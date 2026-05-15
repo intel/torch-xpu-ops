@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ void complex_kernel(TensorIterator& iter) {
 template <typename scalar_t>
 struct PolarFunctor {
   c10::complex<scalar_t> operator()(scalar_t a, scalar_t b) const {
-    return c10::complex<scalar_t>(a * std::cos(b), a * std::sin(b));
+    return c10::complex<scalar_t>(a * sycl::cos(b), a * sycl::sin(b));
   }
 };
 

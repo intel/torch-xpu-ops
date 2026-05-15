@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -403,13 +403,13 @@ static inline void launch_vectorized_kernel(
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
-    TORCH_CHECK(max_scalar_bytes * vec_size <= 16);                          \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
     if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
       auto ker =                                                             \
           VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
               N, f, data, input_calc);                                       \
       int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
-      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker); \
+      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
     }                                                                        \
   }
 

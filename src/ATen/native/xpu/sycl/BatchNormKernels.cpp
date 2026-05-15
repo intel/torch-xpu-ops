@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -432,8 +432,7 @@ template <
     typename index_t>
 struct BatchNormCollectStatisticsKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     int plane = item.get_group(1);
     int tid = item.get_local_linear_id();
 
@@ -470,7 +469,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0 / fmaxf(1.0, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
@@ -501,7 +501,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0f / fmaxf(1.0f, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
@@ -1883,8 +1884,7 @@ template <
     typename index_t>
 struct BatchNormBackwardReduceKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
 
     stat_accscalar_t r_mean = mean_[plane];
@@ -3832,12 +3832,16 @@ void batch_norm_mean_var(
   const double dummy_epsilon = 1e-5;
   switch (batch_norm_choose_impl(self)) {
     case Impl::Contiguous: {
-      AT_DISPATCH_FLOATING_TYPES_AND2(
-          kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
-            batch_norm_stats_template<scalar_t, int32_t, Var>(
-                save_mean, save_var, self, dummy_epsilon);
-          });
-      return;
+      if ((!save_mean.defined() || save_mean.is_contiguous()) &&
+          (!save_var.defined() || save_var.is_contiguous())) {
+        AT_DISPATCH_FLOATING_TYPES_AND2(
+            kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
+              batch_norm_stats_template<scalar_t, int32_t, Var>(
+                  save_mean, save_var, self, dummy_epsilon);
+            });
+        return;
+      }
+      [[fallthrough]];
     }
     case Impl::ChannelsLast: {
       if ((!save_mean.defined() || save_mean.is_contiguous()) &&
@@ -4171,8 +4175,7 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 
@@ -4379,8 +4382,7 @@ template <
     typename index_t>
 struct BatchNormBackwardVectorizedKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 

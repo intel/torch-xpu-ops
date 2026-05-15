@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ set(XPU_CODEGEN_COMMAND
   "${Python_EXECUTABLE}" -m torchgen.gen
   --source-path ${CODEGEN_XPU_YAML_DIR}
   --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+  --headeronly-install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
   --per-operator-headers
   --backend-whitelist XPU SparseXPU SparseCsrXPU NestedTensorXPU
   --xpu

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,12 @@ struct AtanComplexFunctor {
 template <typename scalar_t>
 struct AtanFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::atan(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::atan(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::atan(static_cast<opmath_t>(a));
+    }
   }
 };
 

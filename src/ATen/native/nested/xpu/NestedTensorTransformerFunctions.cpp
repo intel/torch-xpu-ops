@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ namespace {
 int64_t padded_tensor_numel(const Tensor& sizes) {
   const auto sizes_num_rows = sizes.sizes()[0];
   const auto sizes_row_length = sizes.sizes()[1];
-  const auto* sizes_data = sizes.data_ptr<int64_t>();
+  const auto* sizes_data = sizes.const_data_ptr<int64_t>();
   int64_t numel = 0;
   for (const auto row_num : c10::irange(sizes_num_rows)) {
     const auto* row_ptr = sizes_data + row_num * sizes_row_length;
@@ -120,7 +120,7 @@ Tensor nested_from_padded_xpu(
 }
 
 static Tensor batch_offsets_from_efficient_size(const Tensor& ef_sizes) {
-  int64_t* nt_sizes_ptr = ef_sizes.data_ptr<int64_t>();
+  const int64_t* nt_sizes_ptr = ef_sizes.const_data_ptr<int64_t>();
   int64_t ef_sizes_size_0 = ef_sizes.sizes()[0];
   Tensor offsets = at::empty({1 + ef_sizes_size_0}, at::kLong);
   int64_t* offsets_ptr = offsets.mutable_data_ptr<int64_t>();
@@ -215,7 +215,7 @@ Tensor NestedTensor_to_padded_tensor_xpu(
   return NestedTensor_to_padded_tensor_generic(t, padding, output_size);
 }
 
-at::Tensor _fbgemm_jagged_to_padded_dense_forward(
+at::Tensor _jagged_to_padded_dense_forward_xpu(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
@@ -231,8 +231,19 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward(
   c10::OptionalDeviceGuard device_guard;
   device_guard.reset_device(values.device());
 
-  return at::native::xpu::_fbgemm_jagged_to_padded_dense_forward_kernel(
+  return at::native::xpu::jagged_to_padded_dense_forward_xpu_kernel(
       values, offsets, max_lengths, padding_value);
+}
+
+Tensor _padded_dense_to_jagged_forward_symint_xpu(
+    const Tensor& padded,
+    TensorList offsets_list,
+    std::optional<c10::SymInt> total_L) {
+  c10::OptionalDeviceGuard device_guard;
+  device_guard.reset_device(padded.device());
+
+  return at::native::xpu::dense_to_jagged_forward_kernel(
+      padded, offsets_list, total_L);
 }
 
 } // namespace at::native

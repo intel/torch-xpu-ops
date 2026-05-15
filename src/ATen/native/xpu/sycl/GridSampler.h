@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,8 +64,7 @@ static inline scalar_t safe_downgrade_to_int_range(scalar_t x) {
   // it's not within_bounds_2d or within_bounds_3d, and does not cause
   // undefined behavior.
   // We avoid using double here because some platforms may not support it.
-  if (static_cast<int64_t>(x) > INT_MAX - 1 || x < INT_MIN ||
-      !std::isfinite(x))
+  if (static_cast<int64_t>(x) > INT_MAX - 1 || x < INT_MIN || !std::isfinite(x))
     return static_cast<scalar_t>(-100.0f);
   return x;
 }

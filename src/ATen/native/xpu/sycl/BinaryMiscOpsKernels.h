@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,5 +23,7 @@ TORCH_XPU_API void huber_kernel(TensorIterator& iter, double delta);
 TORCH_XPU_API void xlogy_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void xlog1py_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void ldexp_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

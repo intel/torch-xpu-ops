@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -120,7 +120,10 @@ struct TanhBackwardComplexFunctor {
 template <typename scalar_t>
 struct TanhBackwardFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a * (scalar_t{1.} - b * b);
+    using opmath_t = at::opmath_type<scalar_t>;
+    const auto a0 = static_cast<opmath_t>(a);
+    const auto b0 = static_cast<opmath_t>(b);
+    return static_cast<scalar_t>(a0 * (opmath_t{1} - b0 * b0));
   }
 };
 

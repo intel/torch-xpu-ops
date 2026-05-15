@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -74,17 +73,28 @@ def has_license_keywords(text: str) -> bool:
 
 
 def normalize_header_text(text: str) -> str:
-    """Extract and normalize the actual text content from a header, ignoring comment syntax."""
+    """Extract and normalize the actual text content from a header, ignoring comment syntax.
+
+    Normalizes within paragraphs (blank-line-separated blocks) so that
+    different line wrapping (e.g. from clang-format) does not cause
+    false mismatches.
+    """
     # Remove block comment markers
     text = re.sub(r'/\*|\*/', '', text)
     # Remove line comment markers (both // and # and leading *)
     text = re.sub(r'^[ \t]*(?://|#|\*)+[ \t]?', '', text, flags=re.MULTILINE)
-    # Normalize whitespace
-    lines = [line.strip() for line in text.strip().split('\n') if line.strip()]
-    return '\n'.join(lines).lower()
+    # Split into paragraphs (separated by blank lines), normalize each
+    paragraphs = re.split(r'\n\s*\n', text.strip())
+    normalized = []
+    for para in paragraphs:
+        # Collapse all whitespace within each paragraph into single spaces
+        words = ' '.join(para.split())
+        if words:
+            normalized.append(words.lower())
+    return '\n\n'.join(normalized)
 
 
-def get_file_type(filepath: Path) -> Optional[str]:
+def get_file_type(filepath: Path) -> str | None:
     """Determine the file type based on extension or filename."""
     if filepath.name == "CMakeLists.txt":
         return "cmake"
@@ -110,7 +120,7 @@ def format_header(header_text: str, file_type: str) -> str:
         return "\n".join(formatted_lines) + "\n\n"
 
 
-def extract_existing_header(content: str, file_type: str) -> Optional[str]:
+def extract_existing_header(content: str, file_type: str) -> str | None:
     """Extract the existing license header from content."""
     # Skip shebang for Python
     check_content = content
@@ -179,7 +189,7 @@ def remove_existing_header(content: str, file_type: str) -> str:
         first_newline = content.find("\n")
         if first_newline != -1:
             shebang = content[: first_newline + 1]
-            content = content[first_newline + 1 :]
+            content = content[first_newline + 1 :].lstrip()
 
     # Only remove the header we actually detected
     header = extract_existing_header(content, file_type)

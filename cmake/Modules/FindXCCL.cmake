@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ find_file(
 # Find XCCL library fullname.
 find_library(
   XCCL_LIBRARY
-  NAMES ccl
+  NAMES libccl.so.1
   HINTS ${XCCL_LIBRARY_DIR}
   NO_DEFAULT_PATH
 )

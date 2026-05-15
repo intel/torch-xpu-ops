@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,8 +32,7 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         weight_dequant(weight_dequant) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {}
-  SYCL_REQD_SUB_GROUP_SIZE(SgSize) void operator()(
-      sycl::nd_item<1> it) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SgSize) void operator()(sycl::nd_item<1> it) const {
     int constexpr GroupN = TileN;
     int constexpr GroupK = SgSize * TileK;
     assert(blocksize % TileK == 0);
@@ -131,9 +130,9 @@ void dequant_int4_kernel(
                 SgSize>(
                 n,
                 k,
-                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const uint8_t*>(weight_int4.const_data_ptr()),
                 reinterpret_cast<const scalar_sycl_t*>(
-                    qScaleAndZeros.data_ptr<scalar_t>()),
+                    qScaleAndZeros.const_data_ptr<scalar_t>()),
                 reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
@@ -147,9 +146,9 @@ void dequant_int4_kernel(
                 SgSize>(
                 n,
                 k,
-                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const uint8_t*>(weight_int4.const_data_ptr()),
                 reinterpret_cast<const scalar_sycl_t*>(
-                    qScaleAndZeros.data_ptr<scalar_t>()),
+                    qScaleAndZeros.const_data_ptr<scalar_t>()),
                 reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
@@ -163,9 +162,9 @@ void dequant_int4_kernel(
                 SgSize>(
                 n,
                 k,
-                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const uint8_t*>(weight_int4.const_data_ptr()),
                 reinterpret_cast<const scalar_sycl_t*>(
-                    qScaleAndZeros.data_ptr<scalar_t>()),
+                    qScaleAndZeros.const_data_ptr<scalar_t>()),
                 reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
@@ -179,9 +178,9 @@ void dequant_int4_kernel(
                 SgSize>(
                 n,
                 k,
-                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const uint8_t*>(weight_int4.const_data_ptr()),
                 reinterpret_cast<const scalar_sycl_t*>(
-                    qScaleAndZeros.data_ptr<scalar_t>()),
+                    qScaleAndZeros.const_data_ptr<scalar_t>()),
                 reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
@@ -195,9 +194,9 @@ void dequant_int4_kernel(
                 SgSize>(
                 n,
                 k,
-                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const uint8_t*>(weight_int4.const_data_ptr()),
                 reinterpret_cast<const scalar_sycl_t*>(
-                    qScaleAndZeros.data_ptr<scalar_t>()),
+                    qScaleAndZeros.const_data_ptr<scalar_t>()),
                 reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;

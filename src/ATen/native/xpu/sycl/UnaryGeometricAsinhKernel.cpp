@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ struct AsinhComplexFunctor {
 template <typename scalar_t>
 struct AsinhFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::asinh(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::asinh(static_cast<opmath_t>(a));
   }
 };
 

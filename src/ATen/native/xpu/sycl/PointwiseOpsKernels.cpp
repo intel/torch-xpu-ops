@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +46,18 @@ struct AddcmulComplexFunctor {
 };
 
 void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
+  TORCH_CHECK(
+      !iter.is_cpu_scalar(1),
+      "CPU Scalar support for self argument is not supported when "
+      "calling addcmul on XPU tensors.");
+
+  TORCH_CHECK(
+      !iter.is_cpu_scalar(2),
+      "CPU Scalar support for tensor1 argument is not supported when "
+      "calling addcmul on XPU tensors. "
+      "However, CPU Scalar support for tensor2 is supported, "
+      "please swap your tensor1 and tensor2 terms.");
+
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {

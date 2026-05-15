@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
-#include <ATen/native/xpu/sycl/CopyKernel.h>
-#include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 
 namespace at::native::xpu {

@@ -1,9 +1,26 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #define CCL_ENABLE_ZE
 #define CCL_ENABLE_SYCL
 
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUEvent.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <oneapi/ccl.h>
@@ -27,10 +44,10 @@
 #endif // oneCCL version >= 2021.15
 
 #if defined(CCL_MAJOR_VERSION) &&  \
-    ((CCL_MAJOR_VERSION > 2021) || \
-     (CCL_MAJOR_VERSION == 2021) && (CCL_MINOR_VERSION >= 17))
+    ((CCL_MAJOR_VERSION > 2022) || \
+     (CCL_MAJOR_VERSION == 2022) && (CCL_MINOR_VERSION >= 0))
 #define ENABLE_XCCL_PREMUL_SUM_SUPPORT
-#endif // oneCCL version >= 2021.17
+#endif // oneCCL version >= 2022.0
 
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
@@ -237,7 +254,7 @@ inline xcclRedOpRAIIV1 unpackPreMulSumV1(
     const ReduceOp& reduceOp,
     const ccl::communicator& comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<PreMulSumSupplement*>(reduceOp.supplement_.get());
   ccl::reduction preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
@@ -261,7 +278,7 @@ inline xcclRedOpRAIIV2 unpackPreMulSumV2(
     const ReduceOp& reduceOp,
     onecclComm_t comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<PreMulSumSupplement*>(reduceOp.supplement_.get());
   onecclRedOp_t preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
@@ -359,7 +376,7 @@ inline xcclRedOpRAIIV1 getXcclReduceOpV1(
               "PreMulSum Data type must be half, float, bfloat16 or double");
       }
 #else
-      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2022.0");
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
     }
     return xcclRedOpRAIIV1(xcclOpsV1.at(reduceOp));
@@ -406,7 +423,7 @@ inline xcclRedOpRAIIV2 getXcclReduceOpV2(
               "PreMulSum Data type must be half, float, bfloat16 or double");
       }
 #else
-      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2022.0");
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
     }
     return xcclRedOpRAIIV2(xcclOpsV2.at(reduceOp));

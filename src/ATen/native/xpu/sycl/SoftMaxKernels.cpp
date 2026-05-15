@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -226,8 +226,7 @@ template <
     bool is_same_dtype>
 struct DispatchSoftmaxForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -599,6 +598,16 @@ struct SoftmaxForwardKernelFunctor {
       sum_value = accscalar_t(1) / sum_value;
 
     // update result
+    constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
+    using out_vec_t =
+        at::native::memory::aligned_vector<outscalar_t, out_vec_size>;
+    constexpr int store_rounds = vec_size / out_vec_size;
+    static_assert(
+        store_rounds >= 1 && vec_size == out_vec_size * store_rounds,
+        "vec_size must be a multiple of out_vec_size");
+    bool can_vec_store =
+        ((uint64_t)(out_data_ + group_offset - start)) % align_bytes == 0;
+
     for (IndexType i = local_id; i < loops_end; i += local_size_) {
       auto remaining = dim_size_ + start - i * vec_size;
       if ((start > 0 && i == 0) || (remaining < vec_size)) {
@@ -623,20 +632,33 @@ struct SoftmaxForwardKernelFunctor {
       } else {
         vec_t in_val = *(reinterpret_cast<const vec_t*>(
             in_data_ + group_offset - start + i * vec_size));
-        outscalar_t* out_data_p =
-            out_data_ + group_offset - start + i * vec_size;
+        outscalar_t results[vec_size];
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax)
-            out_data_p[j] =
+            results[j] =
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
           else if (
               is_safe_softmax &&
               max_value == std::numeric_limits<accscalar_t>::lowest())
-            out_data_p[j] = static_cast<outscalar_t>(0);
+            results[j] = static_cast<outscalar_t>(0);
           else
-            out_data_p[j] = static_cast<outscalar_t>(
+            results[j] = static_cast<outscalar_t>(
                 std::exp(in_val[j] - max_value) * sum_value);
+        }
+        if (can_vec_store) {
+#pragma unroll(store_rounds)
+          for (int r = 0; r < store_rounds; ++r) {
+            *(reinterpret_cast<out_vec_t*>(
+                out_data_ + group_offset - start + i * vec_size +
+                r * out_vec_size)) =
+                *(reinterpret_cast<out_vec_t*>(&results[r * out_vec_size]));
+          }
+        } else {
+#pragma unroll(vec_size)
+          for (int j = 0; j < vec_size; ++j) {
+            out_data_[group_offset + i * vec_size + j - start] = results[j];
+          }
         }
       }
     }
@@ -943,8 +965,7 @@ template <
     bool is_same_dtype = false>
 struct DispatchSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -1333,7 +1354,7 @@ void softmax_backward_kernel(
     inscalar_t* gradInput,
     const outscalar_t* output,
     const outscalar_t* gradOutput,
-    int dim_size,
+    int64_t dim_size,
     int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
@@ -1347,9 +1368,9 @@ void softmax_backward_kernel(
       align_bytes,
       is_same_dtype>;
 
-  int local_size = std::min(
+  int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(syclMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
@@ -1685,21 +1706,11 @@ void spatial_softmax_forward(
 
     if (use_slow_path) {
       if (can_use_32bit_index) {
-        // the start psition of tensor pointer should be the same
-        // the kernel can handle the non-aligned status
-        if (input_start == output_start) {
-          SOFTMAX_FORWARD_IMPL(
-              /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
-        } else {
-          SOFTMAX_FORWARD_IMPL(/*vec_size*/ 1, /*IndexType*/ uint32_t);
-        }
+        SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
       } else {
-        if (input_start == output_start) {
-          SOFTMAX_FORWARD_IMPL(
-              /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
-        } else {
-          SOFTMAX_FORWARD_IMPL(/*vec_size*/ 1, /*IndexType*/ uint64_t);
-        }
+        SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
       }
     }
   } else {

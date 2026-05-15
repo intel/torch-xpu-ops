@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -8,9 +8,11 @@
 
 # Owner(s): ["module: intel"]
 import torch
+from torch.testing._internal.common_device_type import largeTensorTest
 from torch.testing._internal.common_utils import TestCase
 
 
+@largeTensorTest("32GB")
 class TestSimpleBinary(TestCase):
     def test_tril(self, dtype=torch.bool):
         max_seq_length = 131072

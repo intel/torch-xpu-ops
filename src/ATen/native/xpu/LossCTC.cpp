@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/LossCTCKernels.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {

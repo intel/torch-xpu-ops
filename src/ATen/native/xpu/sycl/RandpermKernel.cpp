@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,7 +177,7 @@ Tensor randperm_kernel(
     AT_DISPATCH_ALL_TYPES_AND(kHalf, result.scalar_type(), "randperm_xpu", [&] {
       using dtype = OpaqueType<sizeof(scalar_t)>;
       auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
-      auto* range_data = reinterpret_cast<const dtype*>(range.data_ptr());
+      auto* range_data = reinterpret_cast<const dtype*>(range.const_data_ptr());
 
       sort_pairs<key_type, dtype>(
           keys.const_data_ptr<key_type>(),

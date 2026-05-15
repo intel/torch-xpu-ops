@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@
  * Copyright (c) 2012-2014 Deepmind Technologies    (Koray Kavukcuoglu)
  * Copyright (c) 2011-2012 NEC Laboratories America (Koray Kavukcuoglu)
  * Copyright (c) 2011-2013 NYU                      (Clement Farabet)
- * Copyright (c) 2006-2010 NEC Laboratories America (Ronan Collobert, Leon Bottou, Iain Melvin, Jason Weston)
- * Copyright (c) 2006      Idiap Research Institute (Samy Bengio)
- * Copyright (c) 2001-2004 Idiap Research Institute (Ronan Collobert, Samy Bengio, Johnny Mariethoz)
+ * Copyright (c) 2006-2010 NEC Laboratories America (Ronan Collobert, Leon
+ * Bottou, Iain Melvin, Jason Weston) Copyright (c) 2006      Idiap Research
+ * Institute (Samy Bengio) Copyright (c) 2001-2004 Idiap Research Institute
+ * (Ronan Collobert, Samy Bengio, Johnny Mariethoz)
  *
  * All rights reserved.
  *
@@ -33,10 +34,10 @@
  * notice, this list of conditions and the following disclaimer in the
  * documentation and/or other materials provided with the distribution.
  *
- * 3. Neither the names of Facebook, Deepmind Technologies, NYU, NEC Laboratories America
- * and IDIAP Research Institute nor the names of its contributors may be
- * used to endorse or promote products derived from this software without
- * specific prior written permission.
+ * 3. Neither the names of Facebook, Deepmind Technologies, NYU, NEC
+ * Laboratories America and IDIAP Research Institute nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -54,7 +55,8 @@
  * pytroch's implementation using radix-selection
  * - from pytorch/aten/src/THC/THCTensorTopK.cuh
  * https://github.com/pytorch/pytorch/blob/d792c21f72b6bcace80face2a4157528d977bfa9/aten/src/THC/THCTensorTopK.cuh
- * - warning: ignore some types, for eg., does not include THCNumerics for T==half
+ * - warning: ignore some types, for eg., does not include THCNumerics for
+ * T==half
  */
 
 #pragma once

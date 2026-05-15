@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -8,9 +8,9 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/Context.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
-#include <comm/SYCLContext.h>
 
 #include <ATen/ops/bincount_native.h>
 
@@ -41,8 +41,11 @@ Tensor _histc_xpu(
     const Scalar& min,
     const Scalar& max) {
   // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("_histc_xpu");
+  // Nondeterministic for floating types because of atomicAdd usage
+  if (at::isFloatingType(self.scalar_type())) {
+    globalContext().alertNotDeterministic(
+        "_histc_xpu with floating point input");
+  }
   return native::xpu::_histc_kernel(self, nbins, min, max);
 }
 

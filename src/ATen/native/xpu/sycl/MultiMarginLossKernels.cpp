@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,10 +44,14 @@ void multi_margin_loss_shape_check(
 
   TORCH_CHECK(
       target.dim() <= 1 && target.numel() == nframe,
-      "inconsistent target size, expected ",
+      "multi_margin_loss: target tensor should be 1-D with size equal to "
+      "the number of input samples (batch size). Expected target size [",
       nframe,
-      " but got ",
-      target.sizes());
+      "], but got ",
+      target.sizes(),
+      ". Input has shape ",
+      input.sizes(),
+      ".");
   if (weight && weight->defined()) {
     TORCH_CHECK(
         weight->dim() <= 1 && weight->numel() == dim,

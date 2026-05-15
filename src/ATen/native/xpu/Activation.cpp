@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,8 +12,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/DispatchStub.h>
-#include <ATen/native/TensorIterator.h>
-
 #include <ATen/native/TensorIterator.h>
 
 #include <ATen/ops/empty.h>

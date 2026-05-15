@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,6 @@
 #include <ATen/xpu/PhiloxXpuState.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
-
-#include <ATen/ops/empty.h>
 
 namespace at {
 namespace native {
@@ -472,11 +470,7 @@ void random_from_to_kernel(
       iter.dtype(),
       "random_from_to_kernel_xpu",
       AT_WRAP([&] {
-        if ((std::is_same<scalar_t, int64_t>::value ||
-             std::is_same<scalar_t, double>::value ||
-             std::is_same<scalar_t, float>::value ||
-             std::is_same<scalar_t, at::BFloat16>::value) &&
-            range >= 1ULL << 32) {
+        if (range >= 1ULL << 28) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,

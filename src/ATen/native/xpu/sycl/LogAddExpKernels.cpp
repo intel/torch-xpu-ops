@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ c10::complex<scalar_t> _logaddexp_minmax(
   }
 }
 
-// Fast complex exponential for finite values: exp(x+iy) = exp(x) * (cos(y) + i*sin(y))
+// Fast complex exponential for finite values: exp(x+iy) = exp(x) * (cos(y) +
+// i*sin(y))
 template <typename scalar_t>
 c10::complex<scalar_t> _fast_build_exp(const c10::complex<scalar_t>& x) {
   auto xreal = std::real(x);
@@ -58,7 +59,7 @@ template <typename scalar_t>
 c10::complex<scalar_t> _fast_build_exp_inf(const c10::complex<scalar_t>& x) {
   auto ximag = std::imag(x);
   constexpr auto exp_x_abs = std::numeric_limits<scalar_t>::infinity();
-  if (!std::isfinite(ximag)) {  // Consistent with std::exp behavior
+  if (!std::isfinite(ximag)) { // Consistent with std::exp behavior
     return {exp_x_abs, std::numeric_limits<scalar_t>::quiet_NaN()};
   }
   auto sin = std::sin(ximag);
@@ -75,10 +76,8 @@ template <typename scalar_t>
 c10::complex<scalar_t> _log_add_exp_helper(
     const c10::complex<scalar_t>& x,
     const c10::complex<scalar_t>& y) {
-  c10::complex<scalar_t> min =
-      _logaddexp_minmax<scalar_t, /*min=*/true>(x, y);
-  c10::complex<scalar_t> max =
-      _logaddexp_minmax<scalar_t, /*min=*/false>(x, y);
+  c10::complex<scalar_t> min = _logaddexp_minmax<scalar_t, /*min=*/true>(x, y);
+  c10::complex<scalar_t> max = _logaddexp_minmax<scalar_t, /*min=*/false>(x, y);
   scalar_t min_real = std::real(min);
   scalar_t max_real = std::real(max);
 

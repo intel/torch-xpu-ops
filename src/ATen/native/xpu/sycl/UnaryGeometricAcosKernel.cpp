@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -9,16 +9,21 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 
 namespace at::native::xpu {
-template <typename scalar_t, typename acc_t = scalar_t>
+template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct AcosFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::acos(static_cast<acc_t>(a));
+    if constexpr (c10::is_complex<acc_t>::value) {
+      return std::acos(static_cast<acc_t>(a));
+    } else {
+      return sycl::acos(static_cast<acc_t>(a));
+    }
   }
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -8,7 +8,14 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <c10/xpu/XPUStream.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <xccl/XPUEventCache.hpp>
 #include <map>
 

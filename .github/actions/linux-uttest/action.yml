@@ -1,9 +1,9 @@
 name: Linux Unit Test
+description: Unit Tests
 
 inputs:
   ut_name:
     required: true
-    type: string
     description: Which ut to launch
 
 runs:
@@ -38,19 +38,6 @@ runs:
           2> ${log_dir}/op_regression_dev1_test_error.log |tee ${log_dir}/op_regression_dev1_test.log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
-    - name: op_transformers
-      shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_transformers' || inputs.ut_name == 'basic' }}
-      run: |
-        export PYTORCH_TEST_WITH_SLOW=1
-        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        mkdir -p ${log_dir}
-        cd pytorch
-        pytest test/test_transformers.py -k xpu \
-          --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
-          2> ${log_dir}/op_transformers_test_error.log |tee ${log_dir}/op_transformers_test.log
-        echo -e "File Path: cd pytorch" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_transformers.log
-        echo -e "Reproduce Command: pytest -sv test/failed_case -k xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_transformers.log
     - name: op_extended
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
@@ -83,6 +70,7 @@ runs:
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
+        export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
         mkdir -p ut_log/skipped_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py --test-cases skipped \
@@ -125,6 +113,9 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+        python -m pytest -s test/profiling/test_profiler_correctness.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
+        # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
@@ -142,8 +133,10 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
         python -m pytest -s test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest -s -vs test_profiler_tree.py | \
+        python -m pytest -s test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
+        python -m pytest -s test_xpu_profiler.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}

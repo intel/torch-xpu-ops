@@ -47,9 +47,6 @@ python tools/fixheaders/fixheaders.py force .
 # Dry-run check with verbose output
 python tools/fixheaders/fixheaders.py check . --dry-run --verbose
 
-# Use custom config for CUDA-derived files
-python tools/fixheaders/fixheaders.py replace . --config tools/fixheaders/cuda.yaml
-
 # Add headers to specific directory
 python tools/fixheaders/fixheaders.py add src/ATen/native/xpu/
 ```

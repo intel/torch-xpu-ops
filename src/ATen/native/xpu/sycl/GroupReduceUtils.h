@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,8 +63,8 @@ inline T& GroupReduceSumWithoutBroadcast(
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
-  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum are
-                                  // called in a row.
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
+                                         // are called in a row.
   if (n_sg == 1) {
     return val;
   }
@@ -106,8 +106,8 @@ inline T& GroupReduceMaxWithoutBroadcast(
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceMaxWithoutBroadcast<T, SIMD, DIM>(item, val);
-  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum are
-                                  // called in a row.
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum
+                                         // are called in a row.
   if (n_sg == 1) {
     return val;
   }
@@ -152,7 +152,7 @@ inline T& GroupReduceWithoutBroadcast(
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
   sycl::group_barrier(item.get_group()); // prevent races when GroupReduce
-                                  // are called in a row.
+                                         // are called in a row.
   if (n_sg == 1) {
     return val;
   }

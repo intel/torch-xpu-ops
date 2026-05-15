@@ -21,7 +21,7 @@ Once you implement and test your feature or bug-fix, submit a Pull Request to ht
 ## Developing Torch XPU Operators project on XPU
 
 
-To develop on your machine, need to built this project as a submodule of PyTorch, after install Intel GPU Driver and oneAPI Base Toolkit Packages.
+To develop on your machine, you need to build this project as a submodule of PyTorch, after installing Intel GPU Driver and oneAPI Base Toolkit Packages.
 Here are some tips:
 
 ```bash
