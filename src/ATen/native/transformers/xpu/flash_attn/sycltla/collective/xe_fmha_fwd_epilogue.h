@@ -211,8 +211,12 @@ class FMHAFwdEpilogue {
       // The softmax scale was multiplied by the kLog2e in the mainloop
       // Need to divide it to restore the value
       double kLog2e = 1.4426950408889634074;
-      tA_max[0] = tA_max[0] / kLog2e;
-      float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
+      // Use double-precision log for LSE to match CUDA flash-attn reference
+      // logf (float) can produce different scalar values causing
+      // inductor flash_attention_dynamic test failures on XPU
+      float lse_val = static_cast<float>(
+          static_cast<double>(tA_max[0] / kLog2e) +
+          log(static_cast<double>(non_reciprocal_rAsum)));
       *(pLSE + lse_offset + tile_row_idx) = lse_val == -INFINITY ? 0 : lse_val;
     }
   }
