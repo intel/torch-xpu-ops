@@ -14,6 +14,7 @@
 
 
 import copy
+import functools
 import logging
 import os
 import sys
@@ -1209,10 +1210,22 @@ class XPUPatchForImport:
 # class.
 
 
-def register_test(cls, func):
-    name = func.__name__.lstrip("_")
-    func.__name__ = name
-    setattr(cls, name, func)
+def register_test(cls, func, *, name=None):
+    if not callable(func):
+        raise TypeError(f"Expected callable test function, got {type(func)}")
+    test_name = name if name is not None else func.__name__.removeprefix("_")
+    if not test_name.startswith("test"):
+        raise ValueError(
+            f"Registered test name must start with 'test', got {test_name!r}"
+        )
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    wrapper.__name__ = test_name
+    wrapper.__qualname__ = f"{cls.__name__}.{test_name}"
+    setattr(cls, test_name, wrapper)
 
 
 def copy_tests(

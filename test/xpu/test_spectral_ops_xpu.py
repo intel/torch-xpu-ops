@@ -27,9 +27,9 @@ from torch.testing._internal.common_methods_invocations import (
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImport, register_test
 except Exception as e:
-    from ..xpu_test_utils import XPUPatchForImport
+    from ..xpu_test_utils import XPUPatchForImport, register_test
 
 with XPUPatchForImport(False):
     from test_spectral_ops import TestFFT
@@ -138,10 +138,12 @@ def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
     self.assertEqual(xpu_result, cpu_result, exact_dtype=False)
 
 
-TestFFT.test_reference_1d = _test_reference_1d
+register_test(TestFFT, _test_reference_1d)
 TestFFT._compare_xpu_cpu = _compare_xpu_cpu
-TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
-    _test_fft_half_and_chalf_not_power_of_two
+register_test(
+    TestFFT,
+    _test_fft_half_and_chalf_not_power_of_two,
+    name="test_fft_half_and_chalf_not_power_of_two_error",
 )
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)

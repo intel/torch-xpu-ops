@@ -22,9 +22,9 @@ from torch.testing._internal.common_dtype import all_types_and, floating_types_a
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImport, register_test
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImport, register_test
 
 with XPUPatchForImport(False):
     from test_sort_and_select import TestSortAndSelect
@@ -124,7 +124,7 @@ with XPUPatchForImport(False):
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
-    TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
+    register_test(TestSortAndSelect, _test_sort_large_slice)
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
