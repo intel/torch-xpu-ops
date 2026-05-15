@@ -3,9 +3,7 @@
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
-// A set of store-based exchange methods with a preset prefix typically type of
-// the SymmetricMemory.  Most used as static instances at respective
-// SymmetricMemory implementation files.
+
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/un.h>
@@ -19,10 +17,6 @@ namespace c10d {
 namespace symmetric_memory {
 
 std::string getSymmMemBackendXPU();
-
-// bool device_has_multicast_support(int device_idx);
-
-// bool allow_overlapping_devices();
 
 class IpcChannel {
  public:
@@ -105,20 +99,40 @@ class StoreExchange {
     all_gather(store, rank, world_size, 0);
   }
 
+  // Variable-length byte all_gather (used to exchange SYCL IPC handles, whose
+  // serialized size is opaque and may differ from platform to platform).
+  std::vector<std::vector<uint8_t>> all_gather_bytes(
+      const c10::intrusive_ptr<c10d::Store>& store,
+      int rank,
+      int world_size,
+      const std::vector<uint8_t>& payload) {
+    std::vector<std::string> peer_keys;
+    peer_keys.reserve(world_size);
+    for (int r = 0; r < world_size; ++r) {
+      std::ostringstream oss;
+      oss << store_prefix_ << "/bytes/" << seq_id_ << "/" << r;
+      peer_keys.push_back(oss.str());
+    }
+    ++seq_id_;
+
+    store->set(peer_keys[rank], payload);
+
+    std::vector<std::vector<uint8_t>> peer_vals(world_size);
+    peer_vals[rank] = payload;
+    for (int r = 0; r < world_size; ++r) {
+      if (r == rank) {
+        continue;
+      }
+      store->wait({peer_keys[r]});
+      peer_vals[r] = store->get(peer_keys[r]);
+    }
+    return peer_vals;
+  }
+
  private:
   const std::string store_prefix_;
   size_t seq_id_ = 0;
 };
-
-// Returns a pointer of virtual address that is mapped to the physical memory
-// held by the handle.
-// todo: will follow such physical memory handle map with virtual address,
-// when L0 provides physical handle exchange API and we have multicast support.
-// void map_block(
-//     void** ptr,
-//     ze_physical_mem_handle_t handle,
-//     size_t size,
-//     int device_idx);
 
 } // namespace symmetric_memory
 } // namespace c10d

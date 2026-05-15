@@ -9,6 +9,9 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 
+#include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
+
+#include <cstdlib>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -16,6 +19,18 @@ namespace c10d {
 namespace symmetric_memory {
 
 static StoreExchange storeExchange = StoreExchange("XPUSymmetricMemory");
+
+namespace {
+
+bool use_signal_barrier_enabled() {
+  static const bool cached_value = []() {
+    const char* env = std::getenv("USE_SIGNAL_BARRIER");
+    return env != nullptr && std::string(env) == "1";
+  }();
+  return cached_value;
+}
+
+} // namespace
 
 AllocationRef::AllocationRef(
     void* ptr,
@@ -34,6 +49,9 @@ AllocationRef::~AllocationRef() {
     return;
   }
   // Currently, we cannot free virtual memory exchanged from other device.
+  // (SYCL `ipc_memory::close` is available but calling it during teardown
+  // has been observed to hang on this stack; match the original L0 path
+  // which also skips remote unmap.)
   if (!local_allocation) {
     return;
   }
@@ -98,8 +116,8 @@ size_t XPUSymmetricMemory::get_buffer_size() {
   return buffer_size_;
 }
 
-size_t XPUSymmetricMemory::get_signal_pad_size() {
-  return signal_pad_size;
+size_t XPUSymmetricMemory::get_offset() {
+  return 0;
 }
 
 bool XPUSymmetricMemory::has_multicast_support() {
@@ -149,7 +167,8 @@ void check_channel(int channel, int world_size) {
       "must be greater than 0 (got ",
       channel,
       ")");
-  const size_t num_channels = signal_pad_size / sizeof(uint32_t) * world_size;
+  const size_t num_channels =
+      get_signal_pad_size() / sizeof(uint32_t) * world_size;
   TORCH_CHECK(
       static_cast<size_t>(channel) < num_channels,
       "The maximum supported channel for barrier(), put_signal() and wait_signal() is ",
@@ -164,56 +183,51 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-//  auto stream = at::xpu::getCurrentXPUStream();
+  if (use_signal_barrier_enabled()) {
+    auto stream = at::xpu::getCurrentXPUStream();
+    barrier_impl_xpu(
+        reinterpret_cast<uint32_t**>(signal_pads_dev_),
+        channel,
+        rank_,
+        world_size_,
+        timeout_ms,
+        stream);
+    return;
+  }
 
-//  barrier_impl_xpu(
-//      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-//      channel,
-//      rank_,
-//      world_size_,
-//      timeout_ms,
-//      stream);
-   // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
-   // implementation.
-   auto group = c10d::resolve_process_group(group_name_);
-   if (group == nullptr) {
-     TORCH_WARN(
-         "Process group '",
-         group_name_,
-         "' not found, please init process group first before calling
-         SymmetricMemory");
-     throw std::runtime_error("Process group not found");
-   }
-   auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
-       group->getBackend(c10::DeviceType::XPU).get());
+  auto group = c10d::resolve_process_group(group_name_);
+  TORCH_CHECK(
+      group != nullptr,
+      "Process group '",
+      group_name_,
+      "' not found, please init process group first before calling "
+      "SymmetricMemory");
 
-   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-   c10::DeviceGuard guard(local_device);
+  auto backend = group->getBackend(c10::DeviceType::XPU);
 
-   static thread_local at::Tensor barrier_tensor;
-   if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-     barrier_tensor = at::zeros(
-         {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-   } else {
-     barrier_tensor.zero_();
-   }
+  static thread_local at::Tensor barrier_tensor;
+  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
+    barrier_tensor = at::zeros(
+        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
+  } else {
+    barrier_tensor.zero_();
+  }
 
-   c10d::AllreduceOptions arOpts;
-   arOpts.asyncOp = false;
-   auto work =
-       xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier",
-       arOpts);
+  c10d::AllreduceOptions arOpts;
+  arOpts.asyncOp = false;
+  std::vector<at::Tensor> tensors = {barrier_tensor};
+  auto work = backend->allreduce(tensors, arOpts);
 
-   if (work) {
-     bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-     TORCH_CHECK(
-         success,
-         "Barrier timeout after ",
-         timeout_ms,
-         " ms for group '",
-         group_name_,
-         "'");
-   }
+  if (work) {
+    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
+    TORCH_CHECK(
+        success,
+        "Barrier timeout after ",
+        timeout_ms,
+        " ms for group '",
+        group_name_,
+        "'");
+  }
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -287,7 +301,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
     int device_idx,
     const std::optional<std::string>& group_name) {
   size_t signal_pad_offset = at::round_up(size, 16UL);
-  size_t block_size = signal_pad_offset + signal_pad_size;
+  size_t block_size = signal_pad_offset + get_signal_pad_size();
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   void* ptr = sycl::malloc_device(block_size, current_queue);
@@ -383,10 +397,10 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
   c10::DeviceGuard guard(local_device);
 
-  auto group_info = get_group_info(group_name_);
-  auto store = group_info.store;
-  int rank = group_info.rank;
-  int world_size = group_info.world_size;
+  auto group = resolve_process_group(group_name_);
+  auto rank = group->getRank();
+  auto world_size = group->getSize();
+  auto store = group->getStore();
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
 
   auto local_req = RendezvousRequest{
@@ -399,66 +413,49 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
-  std::vector<int> pids(world_size);
-  for (int r = 0; r < world_size; ++r) {
-    pids[r] = reqs[r].pid;
-  }
-
-  // Step 1: Get base address and offset
+  // Step 1: Get SYCL experimental IPC handle from the allocation base.
+  // `ptr` is always a base pointer here: alloc() stores ptr_to_block_[ptr]
+  // keyed by the malloc_device return value, and find_block() does an exact
+  // lookup, so by the time rendezvous() is called we already have the base.
   sycl::context ctx = current_queue.get_context();
-  auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-  auto l0_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(
-      current_queue.get_device());
+  sycl::device dev = current_queue.get_device();
 
-  void* base_addr;
-  size_t base_size;
-  ZE_CHECK(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
-  size_t offset = (char*)ptr - (char*)base_addr;
+  namespace syclexp = sycl::ext::oneapi::experimental;
+  syclexp::ipc_memory::handle local_handle =
+      syclexp::ipc_memory::get(ptr, ctx);
+  syclexp::ipc_memory::handle_data_t local_handle_bytes = local_handle.data();
+  std::vector<uint8_t> local_payload(
+      reinterpret_cast<const uint8_t*>(local_handle_bytes.data()),
+      reinterpret_cast<const uint8_t*>(local_handle_bytes.data()) +
+          local_handle_bytes.size());
 
-  // Step 2: Get IPC mem handle from base address
-  ze_ipc_mem_handle_t local_ipc_handle;
-  ZE_CHECK(zeMemGetIpcHandle(l0_ctx, base_addr, &local_ipc_handle));
+  // Step 2: Exchange IPC-handle bytes via store (variable-length payload).
+  auto peer_handle_payloads =
+      storeExchange.all_gather_bytes(store, rank, world_size, local_payload);
 
-  // Step 3: Extract fd from IPC handle (ze_ipc_mem_handle_t's first field is
-  // fd)
-  int local_fd = *reinterpret_cast<int*>(&local_ipc_handle);
-
-  // Step 4: Exchange offsets via store
-  auto offsets = storeExchange.all_gather(store, rank, world_size, offset);
-
-  // Step 5: Exchange fds via IpcChannel (uses Unix domain socket + SCM_RIGHTS)
-  IpcChannel ipc_channel;
-  auto fds = ipc_channel.all_gather_fds(rank, pids, local_fd);
-
-  // Step 6: Reconstruct remote IPC handles and open them
+  // Step 3: Open peer IPC handles via SYCL API.
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
   std::vector<void*> signal_pads(world_size, nullptr);
 
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {
-      handles[r] = base_addr; // Store base address as handle
+      handles[r] = ptr;
       buffers[r] = ptr;
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
     }
 
-    // Reconstruct remote IPC handle by setting the fd field
-    ze_ipc_mem_handle_t remote_ipc_handle = local_ipc_handle; // Copy structure
-    *reinterpret_cast<int*>(&remote_ipc_handle) = fds[r]; // Set remote fd
+    const auto& payload = peer_handle_payloads[r];
+    syclexp::ipc_memory::handle_data_t peer_bytes(
+        reinterpret_cast<const std::byte*>(payload.data()),
+        reinterpret_cast<const std::byte*>(payload.data()) + payload.size());
+    void* remote_base = syclexp::ipc_memory::open(peer_bytes, ctx, dev);
 
-    // Open IPC handle to get remote base address
-    void* remote_base;
-    ZE_CHECK(zeMemOpenIpcHandle(
-        l0_ctx,
-        l0_device,
-        remote_ipc_handle,
-        ZE_IPC_MEMORY_FLAG_BIAS_CACHED,
-        &remote_base));
-
-    handles[r] = remote_base; // Store remote base address as handle
-    buffers[r] = (char*)remote_base + offsets[r];
-    signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
+    handles[r] = remote_base;
+    buffers[r] = remote_base;
+    signal_pads[r] =
+        (void*)((uintptr_t)remote_base + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
 
@@ -483,8 +480,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       mc_addr,
       block->buffer_size,
       block->device_idx,
-      group_info.rank,
-      group_info.world_size);
+      rank,
+      world_size);
   symm_mem->set_group_name(group_name_);
   block->symm_mems[group_name_] = symm_mem;
   return symm_mem;

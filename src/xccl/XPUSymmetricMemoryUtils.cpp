@@ -9,15 +9,14 @@
 
 namespace c10d::symmetric_memory {
 
-// Query environment variable to get the backend used for XPU Symmetric Memory.
 std::string getSymmMemBackendXPU() {
   // TORCH_SYMMMEM environment variable can be used to indicate the preferred
   // backend.
   static auto val = c10::utils::get_env("TORCH_SYMMMEM");
   if (val.has_value()) {
     TORCH_CHECK(
-        val.value() == "XPU" || val.value() == "ISHMEM",
-        "TORCH_SYMMMEM environment variable must be one of 'XPU', 'ISHMEM'.")
+        val.value() == "XPU",
+        "TORCH_SYMMMEM environment variable must be 'XPU'.")
     return val.value();
   }
   return "XPU";

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <level_zero/ze_api.h>
 #include <xccl/Signal.hpp>
 
 #include <ATen/ATen.h>
@@ -9,16 +8,8 @@
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
 
-#define ZE_CHECK(call)               \
-  do {                               \
-    ze_result_t result = (call);     \
-    TORCH_CHECK(                     \
-        result == ZE_RESULT_SUCCESS, \
-        "Level Zero error: ",        \
-        #call,                       \
-        " returned ",                \
-        result);                     \
-  } while (0)
+#include <shared_mutex>
+
 namespace c10d::symmetric_memory {
 
 // Resource wrapper that owns a (vaddr, allocation handle) pair. Upon
@@ -60,7 +51,8 @@ class XPUSymmetricMemory : public SymmetricMemory {
   void** get_buffer_ptrs_dev() override;
   void** get_signal_pad_ptrs_dev() override;
   size_t get_buffer_size() override;
-  size_t get_signal_pad_size() override;
+
+  size_t get_offset() override;
 
   bool has_multicast_support() override;
   void* get_multicast_ptr() override;
