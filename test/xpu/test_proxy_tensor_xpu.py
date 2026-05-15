@@ -14,9 +14,9 @@ from torch.fx.passes.runtime_assert import insert_deferred_runtime_asserts
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_proxy_tensor import (
@@ -71,8 +71,8 @@ for _cls in (
     TestGenericProxyTensorFake,
     TestGenericProxyTensorSymbolic,
 ):
-    _cls.test_amp_cache = _amp_cache_xpu
-    _cls.test_T244632748 = _T244632748_xpu
+    register_test(_cls, _amp_cache_xpu, name="test_amp_cache")
+    register_test(_cls, _T244632748_xpu, name="test_T244632748")
 del _cls
 
 
@@ -172,15 +172,21 @@ def _unbacked_unify_guard_transitivity_xpu(self):
     str(gm.code).strip()
 
 
-TestSymbolicTracing.test_cpu_scalar_cuda = _cpu_scalar_cuda_xpu
-TestSymbolicTracing.test_view_divisibility_unbacked_relatively_prime = (
-    _view_divisibility_unbacked_relatively_prime_xpu
+register_test(TestSymbolicTracing, _cpu_scalar_cuda_xpu, name="test_cpu_scalar_cuda")
+register_test(
+    TestSymbolicTracing,
+    _view_divisibility_unbacked_relatively_prime_xpu,
+    name="test_view_divisibility_unbacked_relatively_prime",
 )
-TestSymbolicTracing.test_unbacked_unify_guard_transitivity = (
-    _unbacked_unify_guard_transitivity_xpu
+register_test(
+    TestSymbolicTracing,
+    _unbacked_unify_guard_transitivity_xpu,
+    name="test_unbacked_unify_guard_transitivity",
 )
-TestSymbolicTracing.test_unbacked_unify_dependency_violation = (
-    _unbacked_unify_dependency_violation_xpu
+register_test(
+    TestSymbolicTracing,
+    _unbacked_unify_dependency_violation_xpu,
+    name="test_unbacked_unify_dependency_violation",
 )
 
 
