@@ -569,25 +569,6 @@ comprehensive_failures = {
     xfail(
         "nn.functional.upsample_bilinear", "", dtypes=(torch.uint8,)
     ),  # off by one error
-    # MKL oneDNN FFT on XPU does not natively support float16
-    skip("fft.fft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.fft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.fftn", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.hfft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.hfft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.hfftn", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ifft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ifft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ifftn", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ihfft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ihfft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.ihfftn", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.irfft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.irfft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.irfftn", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.rfft", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.rfft2", device_type="xpu", dtypes=(torch.float16,)),
-    skip("fft.rfftn", device_type="xpu", dtypes=(torch.float16,)),
 }
 
 
