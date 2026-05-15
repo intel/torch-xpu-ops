@@ -627,7 +627,25 @@ def ModuleTest_test_xpu(self, test_case):
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
-ModuleTest.test_cuda = ModuleTest_test_xpu
+def register_test(cls, func, *, name=None):
+    if not callable(func):
+        raise TypeError(f"Expected callable test function, got {type(func)}")
+    test_name = (name or func.__name__).removeprefix("_")
+    if not test_name.startswith("test"):
+        raise ValueError(
+            f"Registered test name must start with 'test', got {test_name!r}"
+        )
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    wrapper.__name__ = test_name
+    wrapper.__qualname__ = f"{cls.__name__}.{test_name}"
+    setattr(cls, test_name, wrapper)
+
+
+register_test(ModuleTest, ModuleTest_test_xpu, name="test_cuda")
 
 
 def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
@@ -702,7 +720,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         )
 
 
-CriterionTest.test_cuda = CriterionTest_test_xpu
+register_test(CriterionTest, CriterionTest_test_xpu, name="test_cuda")
 
 from functools import partial
 
@@ -1208,24 +1226,6 @@ class XPUPatchForImport:
 # This function provides an auto mechanism by replacing manual copy-paste w/
 # automatically copying the test member functions from the base class to the dest test
 # class.
-
-
-def register_test(cls, func, *, name=None):
-    if not callable(func):
-        raise TypeError(f"Expected callable test function, got {type(func)}")
-    test_name = (name or func.__name__).removeprefix("_")
-    if not test_name.startswith("test"):
-        raise ValueError(
-            f"Registered test name must start with 'test', got {test_name!r}"
-        )
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-
-    wrapper.__name__ = test_name
-    wrapper.__qualname__ = f"{cls.__name__}.{test_name}"
-    setattr(cls, test_name, wrapper)
 
 
 def copy_tests(

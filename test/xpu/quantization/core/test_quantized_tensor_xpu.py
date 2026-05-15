@@ -173,12 +173,8 @@ with XPUPatchForImport(False):
         self._test_qtensor_masked_fill("xpu")
 
 
-TestQuantizedTensor.test_compare_per_channel_device_numerics = (
-    _test_compare_per_channel_device_numerics
-)
-TestQuantizedTensor.test_compare_per_tensor_device_numerics = (
-    _test_compare_per_tensor_device_numerics
-)
+register_test(TestQuantizedTensor, _test_compare_per_channel_device_numerics)
+register_test(TestQuantizedTensor, _test_compare_per_tensor_device_numerics)
 register_test(TestQuantizedTensor, _test_cuda_quantization_does_not_pin_memory)
 register_test(TestQuantizedTensor, _test_dequantize_fp16_cuda)
 register_test(TestQuantizedTensor, _test_per_channel_qtensor_creation_cuda)
