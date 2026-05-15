@@ -22,9 +22,9 @@ from torch._numpy.testing import assert_allclose
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImport, register_test
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImport, register_test
 
 # torch_np test lives under pytorch/test/torch_np, which is not in the default
 # XPUPatchForImport search path. Add it here so the hook-override import works.
@@ -53,7 +53,7 @@ def _test_f16_on_cuda(self):
     assert_allclose(w.corrcoef(t.xpu()), w.corrcoef(t).tensor.xpu())
 
 
-TestMisc.test_f16_on_cuda = _test_f16_on_cuda
+register_test(TestMisc, _test_f16_on_cuda)
 
 
 if __name__ == "__main__":

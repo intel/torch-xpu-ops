@@ -20,9 +20,9 @@ import torch.multiprocessing as mp
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImport, register_test
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImport, register_test
 
 with XPUPatchForImport(False):
     from test_multiprocessing import queue_get_exception, TestMultiprocessing
@@ -84,8 +84,12 @@ def _test_is_shared_xpu(self):
 
 register_test(TestMultiprocessing, _test_cuda_bad_call)
 register_test(TestMultiprocessing, _test_wrong_cuda_fork)
-TestMultiprocessing.test_empty_tensor_sharing_cuda = _test_empty_tensor_sharing_xpu
-TestMultiprocessing.test_is_shared_cuda = _test_is_shared_xpu
+register_test(
+    TestMultiprocessing,
+    _test_empty_tensor_sharing_xpu,
+    name="test_empty_tensor_sharing_cuda",
+)
+register_test(TestMultiprocessing, _test_is_shared_xpu, name="test_is_shared_cuda")
 
 
 if __name__ == "__main__":
