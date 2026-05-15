@@ -1213,7 +1213,7 @@ class XPUPatchForImport:
 def register_test(cls, func, *, name=None):
     if not callable(func):
         raise TypeError(f"Expected callable test function, got {type(func)}")
-    test_name = name if name is not None else func.__name__.removeprefix("_")
+    test_name = (name or func.__name__).removeprefix("_")
     if not test_name.startswith("test"):
         raise ValueError(
             f"Registered test name must start with 'test', got {test_name!r}"

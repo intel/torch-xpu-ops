@@ -21,9 +21,9 @@ from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 # test/fx is not in the XPUPatchForImport default search path; add it so
 # the TestCommonPass import works.

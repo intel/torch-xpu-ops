@@ -20,14 +20,14 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
     import os
     import sys
 
     script_path = os.path.split(__file__)[0]
     sys.path.insert(0, os.path.realpath(os.path.join(script_path, "../..")))
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_quantized_tensor import TestQuantizedTensor

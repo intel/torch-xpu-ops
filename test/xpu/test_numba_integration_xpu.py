@@ -18,9 +18,9 @@ import torch
 from torch.testing._internal.common_utils import run_tests, TEST_NUMPY
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 # numba.cuda may fail to import due to numpy ABI. Detect at module scope.
 try:
