@@ -179,13 +179,9 @@ TestQuantizedTensor.test_compare_per_channel_device_numerics = (
 TestQuantizedTensor.test_compare_per_tensor_device_numerics = (
     _test_compare_per_tensor_device_numerics
 )
-TestQuantizedTensor.test_cuda_quantization_does_not_pin_memory = (
-    _test_cuda_quantization_does_not_pin_memory
-)
+register_test(TestQuantizedTensor, _test_cuda_quantization_does_not_pin_memory)
 register_test(TestQuantizedTensor, _test_dequantize_fp16_cuda)
-TestQuantizedTensor.test_per_channel_qtensor_creation_cuda = (
-    _test_per_channel_qtensor_creation_cuda
-)
+register_test(TestQuantizedTensor, _test_per_channel_qtensor_creation_cuda)
 register_test(TestQuantizedTensor, _test_per_channel_to_device)
 register_test(TestQuantizedTensor, _test_per_tensor_to_device)
 register_test(TestQuantizedTensor, _test_qtensor_cuda)
