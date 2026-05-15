@@ -33,9 +33,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from ..xpu_test_utils import XPUPatchForImport, register_test
+    from ..xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_pooling import TestAvgPool, TestPoolingNN, TestPoolingNNDeviceType

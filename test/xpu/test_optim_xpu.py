@@ -13,9 +13,9 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport, register_test
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 with XPUPatchForImport(False):
     from test_optim import TestOptimRenewed
 
@@ -31,7 +31,6 @@ from torch.testing._internal.common_optimizers import (
     optims,
 )
 from torch.testing._internal.common_utils import TEST_WITH_TORCHDYNAMO
-
 
 for optim in optim_db:
     for c in [torch.optim.Adam, torch.optim.AdamW, torch.optim.SGD]:

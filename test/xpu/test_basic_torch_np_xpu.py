@@ -22,9 +22,9 @@ from torch._numpy.testing import assert_allclose
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport, register_test
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 # torch_np test lives under pytorch/test/torch_np, which is not in the default
 # XPUPatchForImport search path. Add it here so the hook-override import works.

@@ -25,9 +25,9 @@ from torch.testing._internal.common_methods_invocations import (
 from torch.testing._internal.common_utils import parametrize, run_tests, serialTest
 
 try:
-    from xpu_test_utils import XPUPatchForImport, register_test
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 
 def get_device_capability(device=None):

@@ -181,9 +181,9 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
 
 
 try:
-    from xpu_test_utils import XPUPatchForImport, register_test
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_modules import TestModule

@@ -20,9 +20,9 @@ import torch.multiprocessing as mp
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport, register_test
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport, register_test
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_multiprocessing import queue_get_exception, TestMultiprocessing
