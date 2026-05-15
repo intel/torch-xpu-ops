@@ -344,9 +344,22 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
         TileShapeOutPut,
         SubgroupLayoutQK,
         PipelineStages);
+  } else if (headdim == 256) {
+    // TODO: Optimize tile sizes for headdim=256.
+    // Reusing 192 tile shapes as a starting point.
+    using TileShapeQK = Shape<_256, _64, _32>;
+    using TileShapePV = Shape<_256, _32, _64>;
+    using TileShapeOutPut = Shape<_256, _256>;
+    using SubgroupLayoutQK = Layout<Shape<_32, _1, _1>>;
+    run_mha_fwd_specialized(
+        TileShapeQK,
+        TileShapePV,
+        TileShapeOutPut,
+        SubgroupLayoutQK,
+        PipelineStages);
   } else {
     TORCH_CHECK(
-        false, "FlashAttentionForwardXPU only support headdim 64,96,128,192");
+        false, "FlashAttentionForwardXPU only support headdim 64,96,128,192,256");
   }
 }
 
@@ -502,8 +515,8 @@ mha_fwd(
       headsize_vo == headsize_qk,
       "mha_fwd on xpu: only support headsize_qk equal to headsize_vo");
   TORCH_CHECK(
-      headsize_qk <= 192,
-      "mha_fwd on xpu: only support head dimension at most 192");
+      headsize_qk <= 256,
+      "mha_fwd on xpu: only support head dimension at most 256");
 
   const int headsize_padded = headsize_qk;
   const bool needs_headsize_pad = headsize_padded > headsize_qk;

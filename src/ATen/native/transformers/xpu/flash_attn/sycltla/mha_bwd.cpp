@@ -1323,8 +1323,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
   }
   TORCH_CHECK(batch_size > 0, "mha_bwd on xpu: batch size must be positive");
   TORCH_CHECK(
-      headsize_qk <= 192,
-      "mha_bwd on xpu: only supports head dimension at most 192");
+      headsize_qk <= 256,
+      "mha_bwd on xpu: only supports head dimension at most 256");
   TORCH_CHECK(
       numhead_qo % numhead_kv == 0,
       "mha_bwd on xpu: number of heads in key/value must divide number of heads in query");
