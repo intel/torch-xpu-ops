@@ -359,7 +359,8 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
         PipelineStages);
   } else {
     TORCH_CHECK(
-        false, "FlashAttentionForwardXPU only support headdim 64,96,128,192,256");
+        false,
+        "FlashAttentionForwardXPU only support headdim 64,96,128,192,256");
   }
 }
 
