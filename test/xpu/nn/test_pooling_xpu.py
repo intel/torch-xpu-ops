@@ -169,9 +169,7 @@ def _test_adaptive_pooling_avg_nhwc_non_contiguous(self):
         self.assertEqual(input.grad, ref_input.grad)
 
 
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_non_contiguous = (
-    _test_adaptive_pooling_avg_nhwc_non_contiguous
-)
+register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_non_contiguous)
 
 
 def _test_adaptive_avg_pooling_overflow(self):
@@ -194,9 +192,7 @@ def _test_adaptive_avg_pooling_nhwc_overflow(self):
     self.assertFalse(torch.isnan(out).any())
 
 
-TestPoolingNN.test_adaptive_avg_pooling_nhwc_overflow = (
-    _test_adaptive_avg_pooling_nhwc_overflow
-)
+register_test(TestPoolingNN, _test_adaptive_avg_pooling_nhwc_overflow)
 
 
 def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
@@ -223,9 +219,7 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
     self.assertEqual(input.grad, ref_input.grad)
 
 
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward = (
-    _test_adaptive_pooling_avg_nhwc_launch_config_backward
-)
+register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_backward)
 
 
 def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
@@ -244,9 +238,7 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
     self.assertEqual(out, ref_out)
 
 
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward = (
-    _test_adaptive_pooling_avg_nhwc_launch_config_forward
-)
+register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_forward)
 
 
 def _test_max_pool2d(self, device):
@@ -485,9 +477,7 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
     self.assertEqual(input.grad, ref_input.grad)
 
 
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward = (
-    _test_adaptive_pooling_avg_nhwc_launch_config_backward
-)
+register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_backward)
 
 
 # Upstream test_pooling.py:test_adaptive_pooling_avg_nhwc_launch_config_forward
@@ -512,9 +502,7 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
     self.assertEqual(out, ref_out)
 
 
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward = (
-    _test_adaptive_pooling_avg_nhwc_launch_config_forward
-)
+register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_forward)
 
 
 # Upstream test_pooling.py:test_pool3d_large_size_int64 uses

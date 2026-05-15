@@ -635,6 +635,11 @@ def register_test(cls, func, *, name=None):
         raise ValueError(
             f"Registered test name must start with 'test', got {test_name!r}"
         )
+    if not hasattr(cls, test_name):
+        raise AttributeError(
+            f"Cannot register {func.__name__!r} as {cls.__name__}.{test_name}: "
+            "target test does not exist"
+        )
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):

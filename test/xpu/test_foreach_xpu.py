@@ -212,9 +212,7 @@ def _test_foreach_copy_with_multi_dtypes_large_input(self):
     self.assertEqual(self_tensor, ref_out)
 
 
-TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
-    _test_foreach_copy_with_multi_dtypes_large_input
-)
+register_test(TestForeach, _test_foreach_copy_with_multi_dtypes_large_input)
 
 
 @ops(filter(lambda op: op.name == "_foreach_copy", foreach_binary_op_db))
@@ -250,9 +248,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
             self.assertEqual(output2, ref_input_cpu)
 
 
-TestForeach.test_foreach_copy_with_different_device_inputs = (
-    _test_foreach_copy_with_different_device_inputs
-)
+register_test(TestForeach, _test_foreach_copy_with_different_device_inputs)
 
 
 @ops(foreach_reduce_op_db, allowed_dtypes=floating_types())

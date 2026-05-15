@@ -21,14 +21,14 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
     import os
     import sys
 
     script_path = os.path.split(__file__)[0]
     sys.path.insert(0, os.path.realpath(os.path.join(script_path, "../..")))
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_workflow_ops import (
@@ -205,30 +205,14 @@ TestFakeQuantizeOps.test_backward_per_channel = rewrap_hypothesis_test(
     ),
 )
 
-TestFakeQuantizeOps.test_forward_per_tensor_cachemask_cuda = (
-    _test_forward_per_tensor_cachemask_cuda
-)
-TestFakeQuantizeOps.test_backward_per_tensor_cachemask_cuda = (
-    _test_backward_per_tensor_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_forward_per_tensor_cuda = (
-    _test_learnable_forward_per_tensor_cuda
-)
-TestFakeQuantizeOps.test_learnable_backward_per_tensor_cuda = (
-    _test_learnable_backward_per_tensor_cuda
-)
-TestFakeQuantizeOps.test_forward_per_channel_cachemask_cuda = (
-    _test_forward_per_channel_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_forward_per_channel_cuda = (
-    _test_learnable_forward_per_channel_cuda
-)
-TestFakeQuantizeOps.test_backward_per_channel_cachemask_cuda = (
-    _test_backward_per_channel_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_backward_per_channel_cuda = (
-    _test_learnable_backward_per_channel_cuda
-)
+register_test(TestFakeQuantizeOps, _test_forward_per_tensor_cachemask_cuda)
+register_test(TestFakeQuantizeOps, _test_backward_per_tensor_cachemask_cuda)
+register_test(TestFakeQuantizeOps, _test_learnable_forward_per_tensor_cuda)
+register_test(TestFakeQuantizeOps, _test_learnable_backward_per_tensor_cuda)
+register_test(TestFakeQuantizeOps, _test_forward_per_channel_cachemask_cuda)
+register_test(TestFakeQuantizeOps, _test_learnable_forward_per_channel_cuda)
+register_test(TestFakeQuantizeOps, _test_backward_per_channel_cachemask_cuda)
+register_test(TestFakeQuantizeOps, _test_learnable_backward_per_channel_cuda)
 TestFakeQuantizeOps.test_fixed_qparams_fq_module = rewrap_hypothesis_test(
     TestFakeQuantizeOps.test_fixed_qparams_fq_module,
     extra_given_kwargs=given_kwargs_dict1,
