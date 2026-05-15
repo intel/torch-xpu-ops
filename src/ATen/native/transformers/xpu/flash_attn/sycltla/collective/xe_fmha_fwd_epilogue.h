@@ -197,7 +197,7 @@ class FMHAFwdEpilogue {
         batch_idx * num_heads_q * seq_len_qo + // shift the batch
         q_head_idx * seq_len_qo + // shift the head
         blk_q_coord * blk_q; // shift to the particular tile
-    size_t seq_coord = blk_q_coord * blk_q + tile_row_idx;
+    int seq_coord = blk_q_coord * blk_q + tile_row_idx;
 
     // There is an implicit mapping that lane_id 0 will map to the first row
     // maxima

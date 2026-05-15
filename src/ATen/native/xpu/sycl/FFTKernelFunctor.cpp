@@ -51,7 +51,7 @@ struct HermitianSymmetryOffsetCalculator {
     }
 
     mirror_dim_ = 0;
-    for (int64_t i = 0; i < dim.size(); ++i) {
+    for (size_t i = 0; i < dim.size(); ++i) {
       mirror_dim_ |= (uint32_t{1} << dim[i]);
     }
   }
