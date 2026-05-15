@@ -53,6 +53,7 @@ def check_allgather_local_permute_fusion():
     hidden_size = HIDDEN_SIZE
     topk = TOPK
     num_tokens = num_tokens_per_rank * world_size
+    backend_stream = torch.xpu.Stream()
 
     # Each rank: unique hidden_shard
     torch.manual_seed(1234 + rank)
@@ -64,6 +65,8 @@ def check_allgather_local_permute_fusion():
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+
+    backend_stream = torch.xpu.Stream()
 
     if ENABLE_PROFILE:
         prof = torch.profiler.profile(
@@ -84,6 +87,7 @@ def check_allgather_local_permute_fusion():
                 topk_idx,
                 remap_hidden_states=remap_hidden_states,
                 group=group,
+                backend_stream=backend_stream,
             )
         torch.xpu.synchronize()
         dist.barrier()
@@ -98,13 +102,14 @@ def check_allgather_local_permute_fusion():
                 topk_idx,
                 remap_hidden_states=remap_hidden_states,
                 group=group,
+                backend_stream=backend_stream,
             )
             if i >= WARMUP:
                 end_events[i].record()
         torch.xpu.synchronize()
         dist.barrier()
 
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events) if b is not None and e is not None]
+    latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_local_permute_fusion_rank{rank}.json")
@@ -115,6 +120,7 @@ def check_allgather_local_permute_fusion():
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
     allgather_local_permute_fusion(
         hidden_shard, topk_idx, remap_hidden_states=remap_check, group=group,
+        backend_stream=backend_stream,
     )
     gathered = [torch.empty_like(hidden_shard) for _ in range(world_size)]
     dist.all_gather(gathered, hidden_shard, group=group)
@@ -213,7 +219,7 @@ def check_allgather_with_symm_mem():
         torch.xpu.synchronize()
         dist.barrier()
 
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events) if b is not None and e is not None]
+    latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_with_symm_mem_rank{rank}.json")

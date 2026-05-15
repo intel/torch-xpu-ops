@@ -39,6 +39,7 @@ def allgather_local_permute_fusion_native(
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
+    backend_stream: torch.xpu.Stream = None,
 ):
     """
     TP only: Allgather + local permute fusion using symmetric memory.
@@ -88,7 +89,8 @@ def allgather_local_permute_fusion_native(
     )
 
     # Step 2: two-stream round-robin pull; write to remap immediately per remote shard
-    backend_stream = torch.xpu.Stream()
+    if backend_stream is None:
+        backend_stream = torch.xpu.Stream()
     for step in range(world_size - 1):
         remote_rank = (rank - step - 1) % world_size
         if step % 2 == 0:
@@ -123,6 +125,7 @@ def allgather_local_permute_fusion_python(
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
+    backend_stream: torch.xpu.Stream = None,
 ):
     """
     TP only: Allgather + local permute fusion using Python copy loops.
@@ -162,7 +165,8 @@ def allgather_local_permute_fusion_python(
             dst = global_token_idx * topk + k
             remap_hidden_states[dst].copy_(hidden_shard[i])
 
-    backend_stream = torch.xpu.Stream()
+    if backend_stream is None:
+        backend_stream = torch.xpu.Stream()
     for step in range(world_size - 1):
         remote_rank = (rank - step - 1) % world_size
         if step % 2 == 0:
@@ -199,6 +203,7 @@ def allgather_local_permute_fusion(
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
+    backend_stream: torch.xpu.Stream = None,
 ):
     """Default API: uses native kernel if available, otherwise Python fallback."""
     if _HAS_LOCAL_PERMUTE_KERNEL:
@@ -208,6 +213,7 @@ def allgather_local_permute_fusion(
             remap_hidden_states=remap_hidden_states,
             group=group,
             group_name=group_name,
+            backend_stream=backend_stream,
         )
     return allgather_local_permute_fusion_python(
         hidden_shard=hidden_shard,
@@ -215,6 +221,7 @@ def allgather_local_permute_fusion(
         remap_hidden_states=remap_hidden_states,
         group=group,
         group_name=group_name,
+        backend_stream=backend_stream,
     )
 
 
