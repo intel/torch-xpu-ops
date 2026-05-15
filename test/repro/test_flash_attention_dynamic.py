@@ -28,12 +28,12 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.attention import sdpa_kernel, SDPBackend
 from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FLASH_ATTENTION
-
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 
 
-class TestFlashAttentionDynamic(unittest.TestCase):
+class TestFlashAttentionDynamic(TestCase):
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "flash attention not supported"
     )
@@ -91,4 +91,4 @@ class TestFlashAttentionDynamic(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    run_tests()
