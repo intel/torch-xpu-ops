@@ -181,6 +181,7 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3133#issuecomment-4211942967
+        # https://github.com/intel/torch-xpu-ops/issues/3482
         "test_fused_kernels_nested_broadcasting_kernel",
         # https://github.com/intel/torch-xpu-ops/issues/3133
         "test_scaled_dot_product_attention_fused_kernels_packed_type_nested_is_contiguous_False_xpu",
