@@ -1241,13 +1241,24 @@ class TestSparseCompressed(TestCase):
             )
 
         if (TEST_CUDA or TEST_XPU) and torch.device(device).type == "cpu":
+            # When TEST_XPU is True, aten::_validate_compressed_sparse_indices
+            # is not registered for the XPU backend; the op falls through to
+            # xpu_fallback_impl which calls check_device_consistency, producing
+            # a generic device-consistency error message instead of the
+            # pair-specific messages the native CPU kernel would produce.
+            if TEST_XPU:
+                dev_errmsg = (
+                    rf"Expected all tensors to be on the same device,"
+                    rf" but found at least two devices, {device_type}.* and cpu!.*"
+                )
             yield (
                 "indices and values mismatch of device",
                 torch.tensor([0, 2, 4]),
                 torch.tensor([0, 1, 0, 1]),
                 values([1, 2, 3, 4]).to(device_type),
                 shape((2, 3)),
-                rf"device of compressed_indices \(=cpu\) must match device of values \(={device_type}:0\)",
+                rf"device of compressed_indices \(=cpu\) must match device of values \(={device_type}:0\)"
+                if not TEST_XPU else dev_errmsg,
             )
             yield (
                 "compressed_indices and values mismatch of device",
@@ -1255,7 +1266,8 @@ class TestSparseCompressed(TestCase):
                 torch.tensor([0, 1, 0, 1]),
                 values([1, 2, 3, 4]),
                 shape((2, 3)),
-                rf"Expected all tensors to be on the same device, but found at least two devices, {device_type}:0 and cpu!",
+                rf"Expected all tensors to be on the same device, but found at least two devices, {device_type}:0 and cpu!"
+                if not TEST_XPU else dev_errmsg,
             )
             yield (
                 "compressed/plain_indices mismatch of device",
@@ -1263,7 +1275,8 @@ class TestSparseCompressed(TestCase):
                 torch.tensor([0, 1, 0, 1]),
                 values([1, 2, 3, 4]).to(device_type),
                 shape((2, 3)),
-                rf"Expected all tensors to be on the same device, but found at least two devices, {device_type}:0 and cpu!",
+                rf"Expected all tensors to be on the same device, but found at least two devices, {device_type}:0 and cpu!"
+                if not TEST_XPU else dev_errmsg,
             )
 
         if (
@@ -1301,7 +1314,6 @@ class TestSparseCompressed(TestCase):
             subtest("sparse_compressed_tensor_no_size"),
         ],
     )
-    @skipCPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2229")
     def test_invalid_input(self, layout, device, target):
         for (
             label,
