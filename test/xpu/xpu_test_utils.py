@@ -627,30 +627,42 @@ def ModuleTest_test_xpu(self, test_case):
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
-def register_test(cls, func, *, name=None):
-    if not callable(func):
-        raise TypeError(f"Expected callable test function, got {type(func)}")
-    test_name = (name or func.__name__).removeprefix("_")
-    if not test_name.startswith("test"):
+def register_test(cls, override_func, *, target_name=None):
+    if not callable(override_func):
+        raise TypeError(
+            f"Expected callable override test function, got {type(override_func)}"
+        )
+
+    if target_name is None:
+        target_name = override_func.__name__.removeprefix("_")
+        if not target_name.startswith("test_"):
+            raise ValueError(
+                "register_test() requires target_name when override function name "
+                f"does not map directly to a test name: {override_func.__name__!r}"
+            )
+    elif not isinstance(target_name, str):
+        raise TypeError(f"Expected target test name to be str, got {type(target_name)}")
+
+    if not target_name.startswith("test_"):
         raise ValueError(
-            f"Registered test name must start with 'test', got {test_name!r}"
+            f"Registered test name must start with 'test_', got {target_name!r}"
         )
-    if not hasattr(cls, test_name):
+    if not hasattr(cls, target_name):
         raise AttributeError(
-            f"Cannot register {func.__name__!r} as {cls.__name__}.{test_name}: "
-            "target test does not exist"
+            f"Cannot register {override_func.__name__!r} as "
+            f"{cls.__name__}.{target_name}: target test does not exist"
         )
 
-    @functools.wraps(func)
+    @functools.wraps(override_func)
     def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
+        return override_func(*args, **kwargs)
 
-    wrapper.__name__ = test_name
-    wrapper.__qualname__ = f"{cls.__name__}.{test_name}"
-    setattr(cls, test_name, wrapper)
+    wrapper.__name__ = target_name
+    wrapper.__qualname__ = f"{cls.__name__}.{target_name}"
+    setattr(cls, target_name, wrapper)
 
 
-register_test(ModuleTest, ModuleTest_test_xpu, name="test_cuda")
+register_test(ModuleTest, ModuleTest_test_xpu, target_name="test_cuda")
 
 
 def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
@@ -725,7 +737,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         )
 
 
-register_test(CriterionTest, CriterionTest_test_xpu, name="test_cuda")
+register_test(CriterionTest, CriterionTest_test_xpu, target_name="test_cuda")
 
 from functools import partial
 

@@ -78,7 +78,7 @@ with XPUPatchForImport(False):
         from .xpu_test_utils import register_test
     except Exception:
         from ..xpu_test_utils import register_test
-    register_test(PackedSequenceTest, my_test_to, name="test_to")
+    register_test(PackedSequenceTest, my_test_to, target_name="test_to")
 
 if __name__ == "__main__":
     run_tests()

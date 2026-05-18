@@ -183,11 +183,17 @@ def _test_torch_binomial_dtype_errors(self):
 
 
 register_test(TestDistributions, _test_beta_underflow_gpu)
-register_test(TestDistributions, _test_zero_excluded_binomial)
+register_test(
+    TestDistributions,
+    _test_zero_excluded_binomial,
+)
 register_test(TestDistributions, _test_gamma_gpu_sample)
 register_test(TestDistributions, _test_gamma_gpu_shape)
 register_test(TestDistributions, _test_poisson_gpu_sample)
-register_test(TestDistributions, _test_torch_binomial_dtype_errors)
+register_test(
+    TestDistributions,
+    _test_torch_binomial_dtype_errors,
+)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )

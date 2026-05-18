@@ -169,7 +169,10 @@ def _test_0dim_tensor_overload_cpu_ok(self):
     self.assertEqual(actual, [t.div(scalar_cpu_tensor) for t in tensors])
 
 
-register_test(TestForeach, _test_0dim_tensor_overload_cpu_ok)
+register_test(
+    TestForeach,
+    _test_0dim_tensor_overload_cpu_ok,
+)
 
 
 def _test_div_reciprocal(self):
@@ -197,7 +200,10 @@ def _test_0dim_tensor_overload_exception(self):
         torch._foreach_add(tensors, torch.tensor([1.0, 1.0], device="xpu"))
 
 
-register_test(TestForeach, _test_0dim_tensor_overload_exception)
+register_test(
+    TestForeach,
+    _test_0dim_tensor_overload_exception,
+)
 
 
 @serialTest()
@@ -212,7 +218,10 @@ def _test_foreach_copy_with_multi_dtypes_large_input(self):
     self.assertEqual(self_tensor, ref_out)
 
 
-register_test(TestForeach, _test_foreach_copy_with_multi_dtypes_large_input)
+register_test(
+    TestForeach,
+    _test_foreach_copy_with_multi_dtypes_large_input,
+)
 
 
 @ops(filter(lambda op: op.name == "_foreach_copy", foreach_binary_op_db))
@@ -248,7 +257,10 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
             self.assertEqual(output2, ref_input_cpu)
 
 
-register_test(TestForeach, _test_foreach_copy_with_different_device_inputs)
+register_test(
+    TestForeach,
+    _test_foreach_copy_with_different_device_inputs,
+)
 
 
 @ops(foreach_reduce_op_db, allowed_dtypes=floating_types())

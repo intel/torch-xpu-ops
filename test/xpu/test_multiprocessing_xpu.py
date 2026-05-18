@@ -87,9 +87,13 @@ register_test(TestMultiprocessing, _test_wrong_cuda_fork)
 register_test(
     TestMultiprocessing,
     _test_empty_tensor_sharing_xpu,
-    name="test_empty_tensor_sharing_cuda",
+    target_name="test_empty_tensor_sharing_cuda",
 )
-register_test(TestMultiprocessing, _test_is_shared_xpu, name="test_is_shared_cuda")
+register_test(
+    TestMultiprocessing,
+    _test_is_shared_xpu,
+    target_name="test_is_shared_cuda",
+)
 
 
 if __name__ == "__main__":

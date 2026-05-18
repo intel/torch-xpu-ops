@@ -64,12 +64,12 @@ def forward(self, x_1, w_1):
 register_test(
     TestOutDtypeOp,
     _out_dtype_inductor_decomp_trace_xpu,
-    name="test_out_dtype_inductor_decomp_trace",
+    target_name="test_out_dtype_inductor_decomp_trace",
 )
 register_test(
     TestOutDtypeOp,
     _out_dtype_int_mm_default_trace_xpu,
-    name="test_out_dtype_int_mm_default_trace",
+    target_name="test_out_dtype_int_mm_default_trace",
 )
 
 

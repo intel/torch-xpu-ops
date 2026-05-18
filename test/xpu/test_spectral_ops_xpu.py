@@ -143,7 +143,7 @@ TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 register_test(
     TestFFT,
     _test_fft_half_and_chalf_not_power_of_two,
-    name="test_fft_half_and_chalf_not_power_of_two_error",
+    target_name="test_fft_half_and_chalf_not_power_of_two_error",
 )
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
