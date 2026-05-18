@@ -75,7 +75,7 @@ struct MaxPool3dKerenlFunctor {
         wStart += dilationW_;
 
       // maxIndex remains in "channels-first"/contiguous
-      int64_t maxIndex = tStart * in_hw_stride_ + hStart * iwidth_ + wStart;
+      int64_t maxIndex = (int64_t)tStart * in_hw_stride_ + (int64_t)hStart * iwidth_ + wStart;
       int64_t ioffset;
 
       if constexpr (!channels_last_) {
@@ -90,11 +90,11 @@ struct MaxPool3dKerenlFunctor {
         for (int h = hStart; h < hEnd; h += dilationH_) {
           for (int w = wStart; w < wEnd; w += dilationW_) {
             scalar_t val;
-            int index = t * in_hw_stride_ + h * iwidth_ + w;
+            int64_t index = (int64_t)t * in_hw_stride_ + (int64_t)h * iwidth_ + w;
             if constexpr (!channels_last_) {
               val = inputData_[ioffset + index];
             } else {
-              int64_t index_channels_last = index * features_;
+              int64_t index_channels_last = index * (int64_t)features_;
               val = inputData_[ioffset + index_channels_last];
             }
 
@@ -144,17 +144,17 @@ struct MaxPool3dKerenlFunctor {
       int dilationH,
       int dilationW,
       int64_t OutputSize,
-      int out_cf_d_stride,
-      int out_cf_c_stride,
-      int in_cf_d_stride,
-      int in_cf_c_stride,
-      int out_cl_h_stride,
-      int out_cl_d_stride,
-      int in_cl_h_stride,
-      int in_cl_d_stride,
-      int in_batch_stride,
-      int out_batch_stride,
-      int in_hw_stride)
+      int64_t out_cf_d_stride,
+      int64_t out_cf_c_stride,
+      int64_t in_cf_d_stride,
+      int64_t in_cf_c_stride,
+      int64_t out_cl_h_stride,
+      int64_t out_cl_d_stride,
+      int64_t in_cl_h_stride,
+      int64_t in_cl_d_stride,
+      int64_t in_batch_stride,
+      int64_t out_batch_stride,
+      int64_t in_hw_stride)
       : inputData_(inputData),
         outputData_(outputData),
         indicesData_(indicesData),
@@ -216,17 +216,17 @@ struct MaxPool3dKerenlFunctor {
   int dilationH_;
   int dilationW_;
   int64_t OutputSize_;
-  int out_cf_d_stride_;
-  int out_cf_c_stride_;
-  int in_cf_d_stride_;
-  int in_cf_c_stride_;
-  int out_cl_h_stride_;
-  int out_cl_d_stride_;
-  int in_cl_h_stride_;
-  int in_cl_d_stride_;
-  int in_batch_stride_;
-  int out_batch_stride_;
-  int in_hw_stride_;
+  int64_t out_cf_d_stride_;
+  int64_t out_cf_c_stride_;
+  int64_t in_cf_d_stride_;
+  int64_t in_cf_c_stride_;
+  int64_t out_cl_h_stride_;
+  int64_t out_cl_d_stride_;
+  int64_t in_cl_h_stride_;
+  int64_t in_cl_d_stride_;
+  int64_t in_batch_stride_;
+  int64_t out_batch_stride_;
+  int64_t in_hw_stride_;
 };
 
 template <typename scalar_t, bool channels_last>
@@ -256,22 +256,22 @@ void max_pool3d_with_indices_out_template(
     int dilationW) {
   int64_t OutputSize = obatch * features * otime * oheight * owidth;
 
-  int out_cf_d_stride = 0, out_cf_c_stride = 0, in_cf_d_stride = 0,
+  int64_t out_cf_d_stride = 0, out_cf_c_stride = 0, in_cf_d_stride = 0,
       in_cf_c_stride = 0;
-  int out_cl_h_stride = 0, out_cl_d_stride = 0, in_cl_h_stride = 0,
+  int64_t out_cl_h_stride = 0, out_cl_d_stride = 0, in_cl_h_stride = 0,
       in_cl_d_stride = 0;
   if constexpr (!channels_last) {
-    out_cf_d_stride = owidth * oheight;
-    out_cf_c_stride = otime * out_cf_d_stride;
-    in_cf_d_stride = iwidth * iheight;
-    in_cf_c_stride = itime * in_cf_d_stride;
+    out_cf_d_stride = (int64_t)owidth * oheight;
+    out_cf_c_stride = (int64_t)otime * out_cf_d_stride;
+    in_cf_d_stride = (int64_t)iwidth * iheight;
+    in_cf_c_stride = (int64_t)itime * in_cf_d_stride;
   } else {
-    out_cl_h_stride = owidth * features;
-    out_cl_d_stride = oheight * out_cl_h_stride;
+    out_cl_h_stride = (int64_t)owidth * features;
+    out_cl_d_stride = (int64_t)oheight * out_cl_h_stride;
   }
-  auto in_batch_stride = itime * iheight * iwidth * features;
-  auto out_batch_stride = otime * oheight * owidth * features;
-  auto in_hw_stride = iwidth * iheight;
+  int64_t in_batch_stride = (int64_t)itime * iheight * iwidth * features;
+  int64_t out_batch_stride = (int64_t)otime * oheight * owidth * features;
+  int64_t in_hw_stride = (int64_t)iwidth * iheight;
   MaxPool3dKerenlFunctor<scalar_t, channels_last> kfn(
       inputData,
       outputData,
