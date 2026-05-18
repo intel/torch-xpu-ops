@@ -471,9 +471,9 @@ struct SegmentedGroupRadixSelectPairsFunctor
     // Use separate local accessors with proper address space to avoid generic
     // address space operations that cause additional control flow in IGC.
     auto keys_temp =
-        slm_keys_.template get_multi_ptr<sycl::access::decorated::no>();
+        slm_keys_.template get_multi_ptr<sycl::access::decorated::yes>();
     auto values_temp =
-        slm_values_.template get_multi_ptr<sycl::access::decorated::no>();
+        slm_values_.template get_multi_ptr<sycl::access::decorated::yes>();
 
     method.load_keys(keys_in_seg, nelements_);
     method.load_values(values_in_seg, nelements_);
