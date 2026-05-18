@@ -9,7 +9,7 @@ git ops (branch, commit, squash, push, PR creation).
 
 Supports two target repos:
   - pytorch (default): branch/push to REVIEW_REMOTE (chuanqi129/pytorch)
-  - torch-xpu-ops: branch/push to origin (intel/torch-xpu-ops)
+  - torch-xpu-ops: branch/push to origin (intel-sandbox/torch-xpu-ops-exp)
 """
 from __future__ import annotations
 
@@ -205,9 +205,9 @@ def run(issue_number: int) -> None:
     target_repo = _detect_target_repo(body)
     if target_repo == "torch-xpu-ops":
         workdir = TORCH_XPU_OPS_DIR
-        remote = "origin"       # intel/torch-xpu-ops (direct push)
+        remote = "origin"       # intel-sandbox/torch-xpu-ops-exp (direct push)
         base_ref = "main"
-        pr_repo = ISSUE_REPO    # PR goes to intel/torch-xpu-ops
+        pr_repo = ISSUE_REPO    # PR goes to intel-sandbox/torch-xpu-ops-exp
     else:
         workdir = PYTORCH_DIR
         remote = REVIEW_REMOTE  # chuanqi129/pytorch

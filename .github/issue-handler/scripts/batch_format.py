@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Batch format issues on intel/torch-xpu-ops.
+"""Batch format issues on intel-sandbox/torch-xpu-ops-exp.
 
 Usage:
   python scripts/batch_format.py 191 160 32 ...
@@ -14,10 +14,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
-# Override ISSUE_REPO to intel/torch-xpu-ops before importing
-os.environ["ISSUE_REPO"] = "intel/torch-xpu-ops"
+# ISSUE_REPO defaults to intel-sandbox/torch-xpu-ops-exp via agent_config.yml
 # Unset REVIEW_GH_TOKEN so _token_for_repo falls through to GH_TOKEN
-# (GH_TOKEN has write access to intel/torch-xpu-ops)
 os.environ.pop("REVIEW_GH_TOKEN", None)
 
 from issue_handler.format_agent import run
