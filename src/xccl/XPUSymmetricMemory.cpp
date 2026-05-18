@@ -89,10 +89,10 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx);
   c10::DeviceGuard guard(local_device);
 
-  at::xpu::getCurrentXPUStream().queue().memcpy(
-      buffers_dev_, buffers_.data(), arr_size);
-  at::xpu::getCurrentXPUStream().queue().memcpy(
-      signal_pads_dev_, signal_pads_.data(), arr_size);
+  auto& queue = at::xpu::getCurrentXPUStream().queue();
+  queue.memcpy(buffers_dev_, buffers_.data(), arr_size);
+  queue.memcpy(signal_pads_dev_, signal_pads_.data(), arr_size);
+  queue.wait();
 }
 
 std::vector<void*> XPUSymmetricMemory::get_buffer_ptrs() {
@@ -148,9 +148,10 @@ at::Tensor XPUSymmetricMemory::get_buffer(
       " bytes)");
   auto data_ptr = reinterpret_cast<uint8_t*>(buffers_[rank]) +
       storage_offset * element_size;
-  // check the device of this device buffer
-  auto ptr_to_device_id = c10::xpu::get_device_idx_from_pointer(data_ptr);
-  auto device = c10::Device(c10::DeviceType::XPU, ptr_to_device_id);
+  // Peer buffers are mapped into the local device's virtual address space via
+  // SYCL IPC, so the returned tensor always lives on the local device. This
+  // matches the contract of `CUDASymmetricMemory::get_buffer`.
+  auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
   auto options = at::TensorOptions().dtype(dtype).device(device);
 
   return at::for_blob(data_ptr, sizes)
@@ -163,11 +164,11 @@ void check_channel(int channel, int world_size) {
   TORCH_CHECK(
       channel >= 0,
       "channel for barrier(), put_signal() and wait_signal() ",
-      "must be greater than 0 (got ",
+      "must be greater than or equal to 0 (got ",
       channel,
       ")");
   const size_t num_channels =
-      get_signal_pad_size() / sizeof(uint32_t) * world_size;
+      get_signal_pad_size() / sizeof(uint32_t) / world_size;
   TORCH_CHECK(
       static_cast<size_t>(channel) < num_channels,
       "The maximum supported channel for barrier(), put_signal() and wait_signal() is ",

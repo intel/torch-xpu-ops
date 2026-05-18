@@ -121,7 +121,6 @@ class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       void* ptr,
       const std::optional<std::string>& group_name) override;
   bool has_multicast_support(int device_idx) override;
-  //  void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr);
   c10::DeviceType supported_device_type() override;
   std::string name() override;
 

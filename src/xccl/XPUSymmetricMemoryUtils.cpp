@@ -31,6 +31,13 @@ IpcChannel::IpcChannel()
       socket_ != -1, "Failed to create socket: ", c10::utils::str_error(errno));
 
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
+  TORCH_CHECK(
+      socket_name_.size() < sizeof(addr.sun_path),
+      "IpcChannel: socket path '",
+      socket_name_,
+      "' is too long for sockaddr_un::sun_path (max ",
+      sizeof(addr.sun_path) - 1,
+      " bytes). Consider setting a shorter TMPDIR.");
   std::copy(socket_name_.begin(), socket_name_.end(), addr.sun_path);
 
   TORCH_CHECK(
@@ -51,6 +58,13 @@ void IpcChannel::send_fd(int dst_pid, int fd) {
   // Define destination socket address
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
   auto socket_name = get_socket_name(dst_pid);
+  TORCH_CHECK(
+      socket_name.size() < sizeof(addr.sun_path),
+      "IpcChannel::send_fd: socket path '",
+      socket_name,
+      "' is too long for sockaddr_un::sun_path (max ",
+      sizeof(addr.sun_path) - 1,
+      " bytes). Consider setting a shorter TMPDIR.");
   std::copy(socket_name.begin(), socket_name.end(), addr.sun_path);
 
   // Prepare data to send
@@ -141,6 +155,13 @@ int IpcChannel::recv_fd() {
   // Define socket address to receive on: family AF_UNIX means unix domain
   // socket
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
+  TORCH_CHECK(
+      socket_name_.size() < sizeof(addr.sun_path),
+      "IpcChannel::recv_fd: socket path '",
+      socket_name_,
+      "' is too long for sockaddr_un::sun_path (max ",
+      sizeof(addr.sun_path) - 1,
+      " bytes). Consider setting a shorter TMPDIR.");
   std::copy(socket_name_.begin(), socket_name_.end(), addr.sun_path);
 
   // Prepare message header

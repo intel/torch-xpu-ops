@@ -11,8 +11,6 @@
 
 #include <c10/util/error.h>
 
-#include <torch/csrc/distributed/c10d/Store.hpp>
-
 namespace c10d {
 namespace symmetric_memory {
 
