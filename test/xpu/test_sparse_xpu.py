@@ -16,7 +16,6 @@
 import functools
 import itertools
 import operator
-import os
 import random
 import unittest
 from numbers import Number
@@ -29,7 +28,6 @@ try:
     import torch._opaque_base  # noqa: F401
 except ImportError:
     pass
-import torch.testing._internal.common_device_type as common_device_type_mod
 from packaging import version
 from torch.testing import make_tensor
 from torch.testing._internal.common_cuda import SM53OrLater, SM80OrLater
