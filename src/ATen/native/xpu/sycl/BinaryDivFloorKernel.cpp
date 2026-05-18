@@ -45,6 +45,7 @@ struct DivFloorWithScalarFunctor {
       : b_(b), inv_b_(inv_b) {}
 
   scalar_t operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     opmath_t a_ = static_cast<opmath_t>(a);
     auto mod = sycl::fmod(a_, b_);
     auto div = (a_ - mod) * inv_b_;
@@ -54,12 +55,12 @@ struct DivFloorWithScalarFunctor {
 
     opmath_t floordiv;
     if (div != 0) {
-      floordiv = std::floor(div);
+      floordiv = sycl::floor(div);
       if (div - floordiv > opmath_t(0.5)) {
         floordiv += opmath_t(1.0);
       }
     } else {
-      floordiv = std::copysign(opmath_t(0), a_ * inv_b_);
+      floordiv = sycl::copysign(opmath_t(0), a_ * inv_b_);
     }
     return static_cast<scalar_t>(floordiv);
   }
