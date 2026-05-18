@@ -310,6 +310,11 @@ def run(issue_number: int) -> bool:
             log("WARN", f"Verification FAILED for #{issue_number}",
                 issue=issue_number)
             new_body = set_status(body, "NEEDS_HUMAN")
+            # Mark action item as checked with failure indicator
+            new_body = new_body.replace(
+                "- [ ] ✅ Fix verified locally",
+                "- [x] ❌ Fix verified locally — FAILED",
+            )
             new_body = append_log(
                 new_body, "verification",
                 f"❌ **Verification failed**\n"

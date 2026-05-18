@@ -57,6 +57,10 @@ body: |
     <!-- agent:fix-log -->
     </details>
   - [ ] ✅ Fix verified locally
+  <details><summary>Verification log</summary>
+  
+  <!-- agent:verification-log -->
+  </details>
   - [ ] 📋 PR proposed
   - [ ] 👀 Human review
   - [ ] 🎉 PR merged
