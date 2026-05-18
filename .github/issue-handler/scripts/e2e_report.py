@@ -3,7 +3,8 @@
 and publishes a summary tracking issue.
 
 Usage:
-  python scripts/e2e_report.py --issues 191 327 258 ...
+  python scripts/e2e_report.py --issues 191 327 258 --batch "Batch run — 35 issues"
+  python scripts/e2e_report.py --issues 191 327 --dry-run
   python scripts/e2e_report.py  # reads from config/e2e_issues.txt if present
 
 Called by run_pipeline.py at the end of each cycle.
@@ -51,6 +52,9 @@ TOKEN_PATTERN = re.compile(
     r"\*\*Tokens:\*\*\s*(.+?)(?:\n|$)"
 )
 
+# Sentinel that marks each run section — used to count existing runs
+_RUN_HEADER_RE = re.compile(r"^## \[Run \d+\]", re.MULTILINE)
+
 
 def parse_issue_status(body: str) -> dict:
     """Parse an issue's Action Items to determine stage, tokens, and failure info."""
@@ -62,16 +66,14 @@ def parse_issue_status(body: str) -> dict:
         "tokens": {},
         "failure_reason": None,
         "failure_category": None,
-        "pipeline_status": _get_status(body),  # DISCOVERED/TRIAGING/IMPLEMENTING/IN_REVIEW/NEEDS_HUMAN
+        "pipeline_status": _get_status(body),
     }
 
-    # Determine completed stages from checkboxes
     for stage_name, pattern in STAGE_PATTERNS:
         if pattern.search(body):
             result["stages_done"].append(stage_name)
             result["stage"] = stage_name
 
-    # Infer stages from pipeline_status if checkboxes are missing (nonbug template gap)
     status = result["pipeline_status"]
     if status in ("IMPLEMENTING", "IN_REVIEW", "NEEDS_HUMAN") and "triaged" not in result["stages_done"]:
         result["stages_done"].append("triaged")
@@ -86,11 +88,8 @@ def parse_issue_status(body: str) -> dict:
         if result["stage"] == "unformatted":
             result["stage"] = "formatted"
 
-    # Extract token usage per agent log section
     for marker, label in [("discovery", "format"), ("triage", "triage"), ("fix", "fix")]:
         marker_tag = f"<!-- agent:{marker}-log -->"
-        # Find the <details> block containing this marker
-        # Pattern: <details><summary>...marker log</summary>...**Tokens:**...<!-- agent:marker-log -->
         pattern = re.compile(
             rf"<details><summary>{re.escape(marker)} log</summary>\s*(.*?){re.escape(marker_tag)}",
             re.DOTALL | re.IGNORECASE,
@@ -102,14 +101,6 @@ def parse_issue_status(body: str) -> dict:
             if token_matches:
                 result["tokens"][label] = token_matches[-1].strip()
 
-    # Detect failures — look for ❌ or error indicators in logs
-    failure_patterns = [
-        (r"❌.*?failed.*?:\s*(.+)", None),
-        (r"\*\*Verdict:\*\*\s*NEEDS_HUMAN", "needs_human"),
-        (r"\*\*Reason:\*\*\s*(.+)", None),
-    ]
-
-    # Check NEEDS_HUMAN verdict in triage log
     needs_human = re.search(r"\*\*Verdict:\*\*\s*NEEDS_HUMAN", body)
     if needs_human:
         reason_match = re.search(r"\*\*Reason:\*\*\s*(.+?)(?:\n|$)", body)
@@ -165,7 +156,6 @@ def _stage_emoji(stages_done: list[str], stage: str) -> str:
     """Return emoji for a stage column."""
     if stage in stages_done:
         return "✅"
-    # Check if it's the next expected stage (in progress)
     all_stages = ["formatted", "triaged", "fixed", "pr_proposed", "reviewed", "merged"]
     if not stages_done:
         return "⬜" if stage != "formatted" else "🔄"
@@ -178,54 +168,26 @@ def _stage_emoji(stages_done: list[str], stage: str) -> str:
     return "⬜"
 
 
-def _parse_existing_rows(body: str) -> dict[int, str]:
-    """Parse existing table rows from a tracking issue body.
+def build_section(results: list[dict], batch_name: str, run_number: int,
+                  issue_repo: str | None = None) -> str:
+    """Build one ## [Run N] markdown section for a batch of results.
 
-    Returns {issue_number: full_row_line} for rows that match the expected format.
-    """
-    rows: dict[int, str] = {}
-    if not body:
-        return rows
-    for line in body.splitlines():
-        # Match rows like: | [#123](url) | title | ...
-        m = re.match(r"\|\s*\[#(\d+)\]", line)
-        if m:
-            rows[int(m.group(1))] = line
-    return rows
-
-
-def build_report(results: list[dict], repo: str | None = None,
-                 existing_body: str | None = None,
-                 issue_repo: str | None = None) -> str:
-    """Build markdown report table, merging with existing rows if provided.
-
-    If existing_body is given, rows for issues NOT in the current results
-    are preserved (appended after the new/updated rows).
-
-    Args:
-        repo: Legacy param (unused for links now).
-        issue_repo: Repo for issue links (default: ISSUE_REPO).
+    Returns the section string (no leading/trailing blank lines beyond what's needed).
     """
     report_repo = issue_repo or ISSUE_REPO
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Parse existing rows to preserve
-    existing_rows = _parse_existing_rows(existing_body) if existing_body else {}
-
     lines = [
-        f"# E2E Pipeline Test Dashboard",
-        f"",
-        f"**Last updated:** {ts}",
-        f"",
-        f"## Issue Status",
+        f"## [Run {run_number}] {batch_name} — {ts[:10]}",
         f"",
         f"| # | Title | Format | Triage | Fix | PR | Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |",
         f"|---|-------|--------|--------|-----|----|--------|-------|---------------------|------|--------|----------------|",
     ]
 
-    total_pass = 0
-    total_fail = 0
+    total_triaged = 0
+    total_needs_human = 0
     total_in_progress = 0
+    total_cost = 0.0
 
     for r in results:
         num = r["number"]
@@ -235,44 +197,40 @@ def build_report(results: list[dict], repo: str | None = None,
         fmt = _stage_emoji(stages, "formatted")
         tri = _stage_emoji(stages, "triaged")
         fix = _stage_emoji(stages, "fixed")
-        pr = _stage_emoji(stages, "pr_proposed")
+        pr  = _stage_emoji(stages, "pr_proposed")
         rev = _stage_emoji(stages, "reviewed")
 
-        # Token summary + cost + model
         tokens_parts = []
-        total_cost = 0.0
+        row_cost = 0.0
         model_name = "—"
         for key in ["format", "triage", "fix"]:
             t = r["tokens"].get(key, "—")
-            # Extract just the total from the summary string
             total_match = re.search(r"tokens:\s*(\S+)", t)
             tokens_parts.append(total_match.group(1) if total_match else "—")
-            # Extract cost
             cost_match = re.search(r"cost:\s*\$(\S+)", t)
             if cost_match:
                 try:
-                    total_cost += float(cost_match.group(1))
+                    row_cost += float(cost_match.group(1))
                 except ValueError:
                     pass
-            # Extract model (take first found)
             if model_name == "—":
                 model_match = re.search(r"model:\s*(\S+)", t)
                 if model_match:
                     model_name = model_match.group(1)
+        total_cost += row_cost
         tokens_str = " / ".join(tokens_parts)
-        cost_str = f"${total_cost:.4f}" if total_cost > 0 else "—"
+        cost_str = f"${row_cost:.4f}" if row_cost > 0 else "—"
 
-        # Result — use pipeline_status as authoritative source
         failure = r.get("failure_reason", "")
         category = r.get("failure_category", "")
         pipeline_status = r.get("pipeline_status", "")
 
         if "merged" in stages or "reviewed" in stages:
             result = "✅ PASSED"
-            total_pass += 1
+            total_triaged += 1
         elif pipeline_status == "NEEDS_HUMAN":
             result = "❌ NEEDS_HUMAN"
-            total_fail += 1
+            total_needs_human += 1
             if not failure:
                 failure = "Triage timeout or too complex"
                 category = "timeout"
@@ -281,7 +239,7 @@ def build_report(results: list[dict], repo: str | None = None,
             total_in_progress += 1
         elif failure:
             result = "❌ FAILED"
-            total_fail += 1
+            total_needs_human += 1
         elif r["stage"] == "unformatted":
             result = "⬜ PENDING"
             total_in_progress += 1
@@ -297,37 +255,47 @@ def build_report(results: list[dict], repo: str | None = None,
             f"| {model_name} | {tokens_str} | {cost_str} | {result} | {failure_display} |"
         )
 
-    # Append preserved rows from previous runs (issues not in current batch)
-    current_nums = {r["number"] for r in results}
-    preserved = [row for num, row in sorted(existing_rows.items()) if num not in current_nums]
-    if preserved:
-        lines.extend(preserved)
-
-    total_rows = len(results) + len(preserved)
-
+    total = len(results)
+    cost_summary = f"${total_cost:.4f}" if total_cost > 0 else "—"
     lines.extend([
-        "",
-        "## Summary",
-        "",
-        f"- **Passed:** {total_pass}",
-        f"- **Failed:** {total_fail}",
-        f"- **In Progress:** {total_in_progress}",
-        f"- **Total:** {total_rows}",
+        f"",
+        f"**Summary:** {total} issues · {total_triaged} TRIAGED/PASSED · "
+        f"{total_needs_human} NEEDS_HUMAN · {total_in_progress} IN PROGRESS · cost {cost_summary}",
     ])
 
-    # Failure breakdown
-    if total_fail > 0:
-        lines.extend(["", "## Failure Breakdown", ""])
-        category_counts: dict[str, int] = {}
-        for r in results:
-            cat = r.get("failure_category")
-            if cat:
-                category_counts[cat] = category_counts.get(cat, 0) + 1
-        for cat, count in sorted(category_counts.items(), key=lambda x: -x[1]):
-            desc = FAILURE_CATEGORIES.get(cat, cat)
-            lines.append(f"- **{cat}** ({count}): {desc}")
-
     return "\n".join(lines)
+
+
+def build_report(results: list[dict], repo: str | None = None,
+                 existing_body: str | None = None,
+                 issue_repo: str | None = None,
+                 batch_name: str = "Run") -> str:
+    """Backward-compat wrapper: builds a full dashboard body with one new section appended.
+
+    If existing_body is provided, counts existing [Run N] sections and appends the new one.
+    Otherwise starts fresh with run_number=1.
+    """
+    run_number = (len(_RUN_HEADER_RE.findall(existing_body)) + 1) if existing_body else 1
+    section = build_section(results, batch_name, run_number, issue_repo=issue_repo or ISSUE_REPO)
+
+    if existing_body and existing_body.strip():
+        # Strip any old single-table remnants on first migration (no existing [Run N] sections)
+        if run_number == 1:
+            # First run on a fresh or legacy dashboard — replace entire body
+            header = _dashboard_header()
+            return f"{header}\n\n---\n\n{section}"
+        else:
+            # Append new section to existing body
+            body = existing_body.rstrip()
+            return f"{body}\n\n---\n\n{section}"
+    else:
+        header = _dashboard_header()
+        return f"{header}\n\n---\n\n{section}"
+
+
+def _dashboard_header() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return f"# E2E Pipeline Test Dashboard\n\n**Last updated:** {ts}"
 
 
 def find_tracking_issue(repo: str) -> int | None:
@@ -349,21 +317,24 @@ def find_tracking_issue(repo: str) -> int | None:
     return None
 
 
-def update_tracking_issue(repo: str, results: list[dict]) -> int:
-    """Create or update the tracking issue with the report.
-
-    When updating, fetches existing body and merges with new results
-    so rows from previous batches are preserved.
-    """
-    existing = find_tracking_issue(repo)
-    if existing:
-        existing_body = gh.get_issue_detail(repo, existing).get("body", "")
-        report = build_report(results, repo=repo, existing_body=existing_body,
-                              issue_repo=ISSUE_REPO)
-        gh.update_issue_body(repo, existing, report)
-        return existing
+def update_tracking_issue(repo: str, results: list[dict],
+                          batch_name: str = "Run") -> int:
+    """Create or update the tracking issue, appending a new [Run N] section."""
+    existing_num = find_tracking_issue(repo)
+    if existing_num:
+        existing_body = gh.get_issue_detail(repo, existing_num).get("body", "") or ""
+        new_body = build_report(results, repo=repo, existing_body=existing_body,
+                                issue_repo=ISSUE_REPO, batch_name=batch_name)
+        # Also update the Last updated timestamp in the header
+        new_body = re.sub(
+            r"\*\*Last updated:\*\*.*",
+            f"**Last updated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            new_body, count=1,
+        )
+        gh.update_issue_body(repo, existing_num, new_body)
+        return existing_num
     else:
-        report = build_report(results, repo=repo, issue_repo=ISSUE_REPO)
+        report = build_report(results, repo=repo, issue_repo=ISSUE_REPO, batch_name=batch_name)
         import subprocess, json as _json
         token = gh._token_for_repo(repo)
         env = {**__import__("os").environ, "GH_TOKEN": token} if token else None
@@ -373,7 +344,6 @@ def update_tracking_issue(repo: str, results: list[dict]) -> int:
              "--label", "agent:tracking"],
             env=env, text=True,
         )
-        # gh issue create prints the URL; extract number
         import re as _re
         m = _re.search(r"/issues/(\d+)", raw)
         return int(m.group(1)) if m else 0
@@ -401,6 +371,8 @@ def main() -> None:
                         help="Issue numbers to report on")
     parser.add_argument("--repo", type=str, default=ISSUE_REPO,
                         help=f"Repository (default: {ISSUE_REPO})")
+    parser.add_argument("--batch", type=str, default="Run",
+                        help="Batch label for this run section (e.g. 'Batch run — 35 issues')")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print report without updating tracking issue")
     args = parser.parse_args()
@@ -412,12 +384,13 @@ def main() -> None:
         sys.exit(1)
 
     results = collect_results(args.repo, issue_numbers)
-    report = build_report(results, repo=args.repo)
 
     if args.dry_run:
-        print(report)
+        # Simulate what the dashboard would look like
+        section = build_section(results, args.batch, run_number=1, issue_repo=args.repo)
+        print(section)
     else:
-        tracking_num = update_tracking_issue(args.repo, results)
+        tracking_num = update_tracking_issue(args.repo, results, batch_name=args.batch)
         print(f"Updated tracking issue #{tracking_num}")
 
 

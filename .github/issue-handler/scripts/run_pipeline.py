@@ -150,6 +150,10 @@ def main() -> None:
             "Without this flag, each issue advances exactly one stage."
         ),
     )
+    parser.add_argument(
+        "--batch", type=str, default="Run",
+        help="Batch label for the [Run N] section in the dashboard (e.g. 'Batch run — 35 issues')",
+    )
     args = parser.parse_args()
 
     if args.once:
@@ -162,7 +166,8 @@ def main() -> None:
             try:
                 report_results = collect_results(ISSUE_REPO, processed_issues)
                 report = build_report(report_results, repo=ISSUE_REPO)
-                tracking_num = update_tracking_issue(TRACKING_REPO, report_results)
+                tracking_num = update_tracking_issue(TRACKING_REPO, report_results,
+                                                       batch_name=args.batch)
                 _log(f"E2E report updated: #{tracking_num}")
             except Exception as e:
                 _log(f"E2E report failed: {e}")
