@@ -12,7 +12,6 @@ import os
 import platform
 import shutil
 import sys
-import subprocess
 
 
 def get_aot_platforms():
