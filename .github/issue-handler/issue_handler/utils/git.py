@@ -37,10 +37,14 @@ def git_out(*args: str, **kwargs) -> str:
 # ---------------------------------------------------------------------------
 
 def _token_for_repo(repo: str) -> str | None:
-    """Pick the right GH token based on which repo we're accessing."""
-    from .config import PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO, TRACKING_REPO
+    """Pick the right GH token based on which repo we're accessing.
+
+    REVIEW_GH_TOKEN is only for pytorch review/public repos (chuanqi129/pytorch,
+    pytorch/pytorch). All intel-sandbox/* repos use GH_TOKEN (Intel SSO).
+    """
+    from .config import PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO
     review_token = os.environ.get("REVIEW_GH_TOKEN")
-    if review_token and repo in (PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO, ISSUE_REPO, TRACKING_REPO):
+    if review_token and repo in (PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO):
         return review_token
     return os.environ.get("GH_TOKEN")
 
