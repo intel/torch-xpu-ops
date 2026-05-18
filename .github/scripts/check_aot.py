@@ -69,7 +69,10 @@ def get_cache_dir(system):
     if system == "Linux":
         return os.path.expanduser("~/.cache/neo_compiler_cache")
     elif system == "Windows":
-        return r"C:\Users\Lengda\AppData\Local\NEO\neo_compiler_cache"
+        local_app_data = os.environ.get(
+            "LOCALAPPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        )
+        return os.path.join(local_app_data, "NEO", "neo_compiler_cache")
     else:
         print(f"WARNING: Unsupported OS '{system}', using Linux path as fallback.")
         return os.path.expanduser("~/.cache/neo_compiler_cache")
