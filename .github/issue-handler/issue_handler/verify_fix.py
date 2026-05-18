@@ -248,9 +248,15 @@ def run(issue_number: int) -> bool:
             test_workdir, base_ref = _checkout_pytorch_pr(
                 branch, issue_number)
             remote = REVIEW_REMOTE
+            # Use merge-base to get only the agent's actual changes,
+            # not upstream drift between remote/main and the branch.
+            merge_base = git_out(
+                "merge-base", f"{remote}/{base_ref}", f"{remote}/{branch}",
+                workdir=test_workdir, issue=issue_number,
+            ).strip()
             diff_files = git_out(
                 "diff", "--name-only",
-                f"{remote}/{base_ref}..{remote}/{branch}",
+                f"{merge_base}..{remote}/{branch}",
                 workdir=test_workdir, issue=issue_number,
             ).strip()
 
