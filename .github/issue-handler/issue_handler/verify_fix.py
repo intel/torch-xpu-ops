@@ -56,7 +56,7 @@ def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
         "source ~/intel/oneapi/setvars.sh --force 2>/dev/null; "
         "source ~/pytorch/.venv/bin/activate; "
     )
-    cmd = env_setup + f"cd {workdir} && USE_XPU=1 python setup.py develop"
+    cmd = env_setup + f"cd {workdir} && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 python setup.py develop"
     try:
         result = subprocess.run(
             cmd,

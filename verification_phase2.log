@@ -1,0 +1,194 @@
+ 
+:: initializing oneAPI environment ...
+   verify_phase2.sh: BASH_VERSION = 5.2.21(1)-release
+   args: Using "$@" for setvars.sh arguments: 
+:: ccl -- latest
+:: compiler -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: pti -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+
+========================================
+=== C++ PR: #1951 (copilot/fix-functionality-issues-testcommon) ===
+========================================
+Previous HEAD position was d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+HEAD is now at cb676458 Fix clang-format: reformat ternary expressions in BatchNormKernels.cpp
+A	test/repro/test_as_subclass.py
+Submodule now at: cb676458 Fix clang-format: reformat ternary expressions in BatchNormKernels.cpp
+--- Rebuilding PyTorch (incremental) ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+================================================================
+=== #1951: BatchNorm test_out (copilot #3665) ===
+================================================================
+RESULT: PASS
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 4 items
+
+third_party/torch-xpu-ops/test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_triangular_solve_xpu_float32 XFAIL [ 25%]
+third_party/torch-xpu-ops/test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_cholesky_inverse_xpu_float32 XFAIL [ 50%]
+third_party/torch-xpu-ops/test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_geqrf_xpu_float32 XFAIL [ 75%]
+third_party/torch-xpu-ops/test/xpu/test_ops_xpu.py::TestCommonXPU::test_out_narrow_copy_xpu_float32 XFAIL [100%]
+
+============================= 4 xfailed in 18.36s ==============================
+RESULT: PASS
+--- Restoring submodule ---
+HEAD is now at d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+A	test/repro/test_as_subclass.py
+--- Rebuilding PyTorch with original submodule ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+========================================
+=== C++ PR: #2512 (copilot/fix-histc-error-integer-input) ===
+========================================
+Previous HEAD position was d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+HEAD is now at cd2e648c Merge branch 'main' into copilot/fix-histc-error-integer-input
+A	test/repro/test_as_subclass.py
+Submodule now at: cd2e648c Merge branch 'main' into copilot/fix-histc-error-integer-input
+--- Rebuilding PyTorch (incremental) ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+================================================================
+=== #2512: histc deterministic (copilot #3607) ===
+================================================================
+RESULT: FAIL (rc=5)
+Command: PYTORCH_TEST_WITH_SLOW=1 python -m pytest -v third_party/torch-xpu-ops/test/xpu/test_torch_xpu.py -k test_nondeterministic_alert_histc_xpu_float32
+Time: Thu May 14 10:40:36 AM PDT 2026
+---
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 986 items / 986 deselected / 0 selected
+
+=========================== 986 deselected in 3.77s ============================
+RESULT: FAIL (rc=5)
+--- Restoring submodule ---
+HEAD is now at d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+A	test/repro/test_as_subclass.py
+--- Rebuilding PyTorch with original submodule ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+========================================
+=== C++ PR: #2953 (copilot/fix-runtimeerror-huggingface-models) ===
+========================================
+Previous HEAD position was d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+HEAD is now at 0961b2da fix lint: reflow clang-format comment and add TestCase/run_tests to test file
+A	test/repro/test_as_subclass.py
+Submodule now at: 0961b2da fix lint: reflow clang-format comment and add TestCase/run_tests to test file
+--- Rebuilding PyTorch (incremental) ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+================================================================
+=== #2953: TrOCR/XGLM fill_kernel (copilot #3669) ===
+================================================================
+RESULT: PASS
+    print(f\"fill_ {dtype}: OK\")
+# Also test with large values
+t = torch.zeros(10, device=\"xpu\", dtype=torch.float16)
+t.fill_(65504.0)  # max float16
+print(f\"fill_ max float16: {t[0].item()}\")
+print(\"All fill_ tests passed\")
+"
+Time: Thu May 14 11:43:14 AM PDT 2026
+---
+fill_ torch.float16: OK
+fill_ torch.bfloat16: OK
+fill_ torch.float32: OK
+fill_ max float16: 65504.0
+All fill_ tests passed
+RESULT: PASS
+--- Restoring submodule ---
+HEAD is now at d67a8778 [SYCLTLA] Revert FlashAttention add more headdim (#3436)
+A	test/repro/test_as_subclass.py
+--- Final rebuild with original submodule ---
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchfrtrace
+      Removing file or directory /home/stonepia/pytorch/.venv/bin/torchrun
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable__.torch-2.13.0a0+git12bca9d.pth
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__editable___torch_2_13_0a0_git12bca9d_finder.py
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/__pycache__/__editable___torch_2_13_0a0_git12bca9d_finder.cpython-312.pyc
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+
+=== PHASE 2 COMPLETE ===
+#1951: RESULT: PASS
+#2015: RESULT: FAIL (rc=1)
+#2253: 
+#2359: RESULT: FAIL (rc=1)
+#2436: RESULT: PASS
+#2512: RESULT: FAIL (rc=5)
+#2518: RESULT: PASS
+#2554: RESULT: PASS
+#2609: RESULT: PASS
+#2615: RESULT: PASS
+#2693: RESULT: PASS
+#2712: RESULT: PASS
+#2953: RESULT: PASS

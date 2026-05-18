@@ -1,0 +1,32 @@
+ 
+:: initializing oneAPI environment ...
+   verify_issues.sh: BASH_VERSION = 5.2.21(1)-release
+   args: Using "$@" for setvars.sh arguments: 
+:: ccl -- latest
+:: compiler -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: pti -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+Original xpu.txt: d67a87783002c17786e9501c8c67b360479f6bb7
+
+========================================
+=== COPILOT PR VERIFICATIONS ===
+========================================
+--- Switching to copilot branch: copilot/fix-functionality-issues-testcommon for #1951 ---
+error: pathspec 'third_party/torch-xpu-ops' did not match any file(s) known to git
+xpu.txt now: cb676458d87b7f2063567389ddea8b4b9959b4d8
+C++ changes detected in copilot/fix-functionality-issues-testcommon:
+src/ATen/native/xpu/sycl/BatchNormKernels.cpp
+--- Rebuilding PyTorch ---

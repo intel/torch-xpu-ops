@@ -1,0 +1,243 @@
+ 
+:: initializing oneAPI environment ...
+   verify_phase1.sh: BASH_VERSION = 5.2.21(1)-release
+   args: Using "$@" for setvars.sh arguments: 
+:: ccl -- latest
+:: compiler -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: pti -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+=== PYTHON-ONLY COPILOT PRs ===
+--- Switch torch-xpu-ops to origin/copilot/fix-transformerencoderlayer-inf-nan (#2015) ---
+7be3a818 Fix test_transformerencoderlayer: add dtypesIfXPU and fix fast_path_device
+
+================================================================
+=== #2015: TransformerEncoderLayer (copilot #3666) ===
+================================================================
+RESULT: FAIL (rc=1)
+  File "/home/stonepia/pytorch/third_party/torch-xpu-ops/test/xpu/test_nn_xpu.py", line 17361, in _test
+    self.assertTrue(not np.isnan(result).any())
+  File "/home/stonepia/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/case.py", line 727, in assertTrue
+    raise self.failureException(msg)
+AssertionError: False is not true
+
+To execute this test, run the following from the base repo dir:
+    PYTORCH_TEST_WITH_SLOW=1 python test/xpu/test_nn_xpu.py TestNNDeviceTypeXPU.test_transformerencoderlayer_xpu_float32
+
+This message can be suppressed by setting PYTORCH_PRINT_REPRO_ON_FAILURE=0
+=========================== short test summary info ============================
+FAILED third_party/torch-xpu-ops/test/xpu/test_nn_xpu.py::TestNNDeviceTypeXPU::test_transformerencoderlayer_xpu_float16
+FAILED third_party/torch-xpu-ops/test/xpu/test_nn_xpu.py::TestNNDeviceTypeXPU::test_transformerencoderlayer_xpu_float32
+================ 2 failed, 1 passed, 3503 deselected in 11.25s =================
+RESULT: FAIL (rc=1)
+--- Switch torch-xpu-ops to origin/copilot/fix-tensor-subclass-issue (#2518) ---
+dfbdfb0e Fix lint errors: add Owner(s) header and fix import order
+
+================================================================
+=== #2518: tensor subclass (copilot #3667) ===
+================================================================
+RESULT: PASS
+Time: Thu May 14 09:03:11 AM PDT 2026
+---
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 987 items / 986 deselected / 1 selected
+
+third_party/torch-xpu-ops/test/xpu/test_torch_xpu.py::TestTorch::test_as_subclass PASSED [100%]
+
+====================== 1 passed, 986 deselected in 3.35s =======================
+RESULT: PASS
+--- Switch torch-xpu-ops to origin/copilot/fix-unsupported-dtype-half (#2615) ---
+2fe61d30 Skip XPU float16 FFT tests in test_decomp (MKL oneDNN float16 unsupported)
+
+================================================================
+=== #2615: dtype Half FFT (copilot #3668) ===
+================================================================
+RESULT: PASS
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 9146 items / 9142 deselected / 4 selected
+
+third_party/torch-xpu-ops/test/xpu/test_decomp_xpu.py::TestDecompXPU::test_comprehensive_fft_fft2_xpu_float16 SKIPPED [ 25%]
+third_party/torch-xpu-ops/test/xpu/test_decomp_xpu.py::TestDecompXPU::test_comprehensive_fft_fft_xpu_float16 SKIPPED [ 50%]
+third_party/torch-xpu-ops/test/xpu/test_decomp_xpu.py::TestDecompXPU::test_comprehensive_fft_fftn_xpu_float16 SKIPPED [ 75%]
+third_party/torch-xpu-ops/test/xpu/test_decomp_xpu.py::TestDecompXPU::test_comprehensive_fft_hfft2_xpu_float16 SKIPPED [100%]
+
+===================== 4 skipped, 9142 deselected in 4.05s ======================
+RESULT: PASS
+
+=== OPENCODE PRs (pytorch changes) ===
+From https://github.com/chuanqi129/pytorch
+ * [new branch]              chuanqiw/add-get-docker-image-job -> review/chuanqiw/add-get-docker-image-job
+   f513851aa85..0a5a2b1dce2  main       -> review/main
+Saved working directory and index state WIP on main: 12bca9da60b Run EC2 and OSDC in parallel on trunk via ciflow tag pushes (#183482)
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at 77e5553fc53 Fix for intel/torch-xpu-ops#2609 (attempt 3)
+
+================================================================
+=== #2609: CppCompileError inductor (opencode chuanqi129#16) ===
+================================================================
+RESULT: PASS
+---
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'dev' -> database=None, max_examples=10, suppress_health_check=(HealthCheck.too_slow,)
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 41 items / 40 deselected / 1 selected
+Running 1 items in this shard
+
+test/inductor/test_aot_inductor_custom_ops.py::AOTInductorTestABICompatibleGpu::test_custom_op_square_xpu PASSED [10.9336s] [100%]
+
+====================== 1 passed, 40 deselected in 26.50s =======================
+RESULT: PASS
+M	third_party/pthreadpool
+Your branch is behind 'origin/main' by 22 commits, and can be fast-forwarded.
+  (use "git pull" to update your local branch)
+Saved working directory and index state WIP on main: 12bca9da60b Run EC2 and OSDC in parallel on trunk via ciflow tag pushes (#183482)
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at 94e461a0394 Fix for intel/torch-xpu-ops#2712 (attempt 1)
+
+================================================================
+=== #2712: weakref swap (opencode chuanqi129#17) ===
+================================================================
+RESULT: PASS
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'dev' -> database=None, max_examples=10, suppress_health_check=(HealthCheck.too_slow,)
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 353 items / 351 deselected / 2 selected
+Running 2 items in this shard
+
+test/test_fake_tensor.py::FakeTensorOperatorInvariants::test_module_to SKIPPED [0.0004s] [ 50%]
+test/test_fake_tensor.py::PropagateRealTensorsFakeTensorOperatorInvariants::test_module_to_propagate_real_tensors SKIPPED [0.0001s] [100%]
+
+===================== 2 skipped, 351 deselected in 16.56s ======================
+RESULT: PASS
+M	third_party/pthreadpool
+Your branch is behind 'origin/main' by 22 commits, and can be fast-forwarded.
+  (use "git pull" to update your local branch)
+
+=== REPRODUCER-ONLY (confirm bugs still exist on main) ===
+A	test/xpu/test_utils_xpu.py
+SKIP #2253: No reproducer in issue body
+
+================================================================
+=== #2359: backward not reentrant (reproducer on main) ===
+================================================================
+RESULT: FAIL (rc=1)
+  module_test entry to have `gradcheck_nondet_tol=<tol>`
+
+
+Caused by sample input at index 6: SampleInput(input=Tensor[size=(5, 5, 5), device="xpu:0", dtype=torch.float64], args=(1,Tensor[size=(10,), device="xpu:0", dtype=torch.int64],Tensor[size=(5, 10, 5), device="xpu:0", dtype=torch.float64],'prod'), kwargs={'include_self': 'True'}, broadcasts_input=False, name='')
+
+To execute this test, run the following from the base repo dir:
+    PYTORCH_OPINFO_SAMPLE_INPUT_INDEX=6 PYTORCH_TEST_WITH_SLOW=1 python ../../test/test_ops_gradients.py TestBwdGradientsXPU.test_inplace_gradgrad_index_reduce_prod_xpu_float64
+
+This message can be suppressed by setting PYTORCH_PRINT_REPRO_ON_FAILURE=0
+=========================== short test summary info ============================
+FAILED third_party/torch-xpu-ops/test/xpu/test_ops_gradients_xpu.py::TestBwdGradientsXPU::test_fn_gradgrad_index_reduce_mean_xpu_float64
+FAILED third_party/torch-xpu-ops/test/xpu/test_ops_gradients_xpu.py::TestBwdGradientsXPU::test_inplace_gradgrad_index_reduce_mean_xpu_float64
+FAILED third_party/torch-xpu-ops/test/xpu/test_ops_gradients_xpu.py::TestBwdGradientsXPU::test_inplace_gradgrad_index_reduce_prod_xpu_float64
+====================== 3 failed, 5410 deselected in 6.26s ======================
+RESULT: FAIL (rc=1)
+
+================================================================
+=== #2436: NoneType clone (reproducer on main) ===
+================================================================
+RESULT: PASS
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... /home/stonepia/pytorch/torch/testing/_internal/common_nn.py:3361: PytestCollectionWarning: cannot collect test class 'TestBase' because it has a __init__ constructor (from: third_party/torch-xpu-ops/test/xpu/test_expanded_weights_xpu.py)
+  class TestBase:
+collected 220 items / 217 deselected / 3 selected
+
+third_party/torch-xpu-ops/test/xpu/test_expanded_weights_xpu.py::TestExpandedWeightModuleXPU::test_Conv1d_pad2_xpu_double_xpu PASSED [ 33%]
+third_party/torch-xpu-ops/test/xpu/test_expanded_weights_xpu.py::TestExpandedWeightModuleXPU::test_Conv1d_xpu_double_xpu PASSED [ 66%]
+third_party/torch-xpu-ops/test/xpu/test_expanded_weights_xpu.py::TestExpandedWeightModuleXPU::test_Conv3d_circular_stride2_pad2_xpu_double_xpu PASSED [100%]
+
+====================== 3 passed, 217 deselected in 4.51s =======================
+RESULT: PASS
+
+================================================================
+=== #2554: AssertionError not raised (reproducer on main) ===
+================================================================
+RESULT: PASS
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'dev' -> database=None, max_examples=10, suppress_health_check=(HealthCheck.too_slow,)
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 108 items / 105 deselected / 3 selected
+Running 3 items in this shard
+
+test/inductor/test_cuda_repro.py::CudaReproTests::test_emulate_precision_casts_min_pow_chain SKIPPED [0.0033s] [ 33%]
+test/inductor/test_cuda_repro.py::CudaReproTests::test_selecsls42b_misaligned_address PASSED [7.2527s] [ 66%]
+test/inductor/test_cuda_repro.py::CudaReproTests::test_truediv_base_not_bitwise_equivalent SKIPPED [0.0014s] [100%]
+
+================ 1 passed, 2 skipped, 105 deselected in 22.59s =================
+RESULT: PASS
+
+================================================================
+=== #2693: scalars not equal (reproducer on main) ===
+================================================================
+RESULT: PASS
+---
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0 -- /home/stonepia/pytorch/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'dev' -> database=None, max_examples=10, suppress_health_check=(HealthCheck.too_slow,)
+rootdir: /home/stonepia/pytorch
+configfile: pytest.ini
+plugins: anyio-4.12.1, timeout-2.4.0, hypothesis-6.151.9
+collecting ... collected 108 items / 107 deselected / 1 selected
+Running 1 items in this shard
+
+test/inductor/test_cuda_repro.py::CudaReproTests::test_flash_attention_dynamic PASSED [9.1749s] [100%]
+
+====================== 1 passed, 107 deselected in 22.37s ======================
+RESULT: PASS
+
+=== PHASE 1 COMPLETE ===
+#2015: RESULT: FAIL (rc=1)
+#2253: 
+#2359: RESULT: FAIL (rc=1)
+#2436: RESULT: PASS
+#2518: RESULT: PASS
+#2554: RESULT: PASS
+#2609: RESULT: PASS
+#2615: RESULT: PASS
+#2693: RESULT: PASS
+#2712: RESULT: PASS

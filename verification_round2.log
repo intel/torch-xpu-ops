@@ -1,0 +1,86 @@
+ 
+:: initializing oneAPI environment ...
+   verify_round2.sh: BASH_VERSION = 5.2.21(1)-release
+   args: Using "$@" for setvars.sh arguments: 
+:: ccl -- latest
+:: compiler -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: pti -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+18:46:04 ========== PHASE 1: Python-only pytorch PRs ==========
+18:46:04 --- #2795: histc integer + deterministic ---
+18:46:04   Fetching PR #8 from chuanqi129/pytorch...
+18:46:05 >>> Testing issue #2795: python /tmp/test_2795_int.py
+18:46:08   ❌ #2795 FAIL (rc=1)
+FAIL: Integer histc wrongly raises determinism error: _histc_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'. You can turn off determinism just for this operation, or you can use the 'warn_only=True' option, if that's acceptable for your application. You can also file an issue at https://github.com/pytorch/pytorch/issues to help us prioritize adding deterministic support for this operation.
+18:46:08 --- #3361: test_dropout CUDA not available ---
+18:46:08   Fetching PR #9 from chuanqi129/pytorch...
+18:46:09 >>> Testing issue #3361: python -m pytest test/dynamo/test_higher_order_ops.py -k test_dropout -x -v --timeout=120
+18:46:28   ✅ #3361 PASS (rc=0)
+18:46:28 --- #3388: Dynamo stream_index None ---
+18:46:28   Fetching PR #10 from chuanqi129/pytorch...
+18:46:29 >>> Testing issue #3388: python -m pytest third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py -k test_cuda_event_method -x -v --timeout=120
+18:46:32   ❌ #3388 FAIL (rc=2)
+_ ERROR collecting third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py _
+ImportError while importing test module '/home/stonepia/pytorch/third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py:22: in <module>
+    from . import test_functions
+E   ImportError: attempted relative import with no known parent package
+
+During handling of the above exception, another exception occurred:
+../.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py:24: in <module>
+    import test_functions
+E   ModuleNotFoundError: No module named 'test_functions'
+=========================== short test summary info ============================
+ERROR third_party/torch-xpu-ops/test/xpu/dynamo/test_ctx_manager_xpu.py
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 2.17s ===============================
+18:46:32 --- #2560: addcmul use_cpu_scalar ---
+18:46:32   Fetching PR #11 from chuanqi129/pytorch...
+18:46:32 >>> Testing issue #2560: python /tmp/test_2560.py
+18:46:34   ❌ #2560 FAIL (rc=1)
+FAIL: iter.device(arg).is_xpu() INTERNAL ASSERT FAILED at "/home/stonepia/pytorch/torch/include/ATen/native/xpu/sycl/Loops.h":637, please report a bug to PyTorch. argument 3: expected an XPU device but found cpu
+18:46:35 --- #2715: inline skipped function ---
+18:46:35   Fetching PR #12 from chuanqi129/pytorch...
+18:46:35 >>> Testing issue #2715: python -m pytest test/dynamo/test_ctx_manager.py -k test_cuda_device -x -v --timeout=120
+18:46:52   ✅ #2715 PASS (rc=0)
+18:46:52 ========== PHASE 2: C++ pytorch PR ==========
+18:46:52 --- #1969: weak reference to torch.Event (C++ rebuild needed) ---
+18:46:52   Fetching PR #13 from chuanqi129/pytorch...
+18:46:52   Building pytorch with Event.cpp change...
+      Removing file or directory /home/stonepia/pytorch/.venv/lib/python3.12/site-packages/torch-2.13.0a0+git12bca9d.dist-info/
+      Successfully uninstalled torch-2.13.0a0+git12bca9d
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+Successfully installed torch-2.13.0a0+git12bca9d
+19:18:14 >>> Testing issue #1969: python -m pytest test/dynamo/test_ctx_manager.py -k test_gpu_event_across_graph_break -x -v --timeout=120
+19:18:31   ⚠️ #1969 NO TESTS COLLECTED (rc=5)
+19:18:31   Rebuilding pytorch to revert Event.cpp...
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchfrtrace to 775
+  changing mode of /home/stonepia/pytorch/.venv/bin/torchrun to 775
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+torchvision 0.27.0 requires torch==2.12.0, but you have torch 2.13.0a0+git12bca9d which is incompatible.
+Successfully installed torch-2.13.0a0+git12bca9d
+19:49:36 ========== PHASE 3: torch-xpu-ops C++ PRs ==========
+19:49:36 Original xpu.txt SHA: d67a87783002c17786e9501c8c67b360479f6bb7
+19:49:36 --- #2512: histc deterministic (C++ rebuild) ---
+19:49:37   PR #3607 head SHA: cd2e648c782ff98cb422cbd57d24be6295804c8b
+error: pathspec 'third_party/torch-xpu-ops' did not match any file(s) known to git
