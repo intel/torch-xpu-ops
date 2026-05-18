@@ -74,7 +74,7 @@ struct MaxPool3dKerenlFunctor {
         wStart += dilationW_;
 
       // maxIndex remains in "channels-first"/contiguous
-      int64_t maxIndex;
+      int64_t maxIndex = tStart * in_hw_stride_ + hStart * iwidth_ + wStart;
       int64_t ioffset;
 
       if constexpr (!channels_last_) {
