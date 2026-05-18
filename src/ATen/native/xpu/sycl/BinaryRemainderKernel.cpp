@@ -55,7 +55,7 @@ struct FmodFloatingFunctor {
       __ubsan_ignore_float_divide_by_zero__ {
     using opmath_t = at::opmath_type<scalar_t>;
     return static_cast<scalar_t>(
-        sycl::fmod(static_cast<opmath_t>(a), static_cast<opmath_t>(b)));        
+        sycl::fmod(static_cast<opmath_t>(a), static_cast<opmath_t>(b)));
   }
 };
 
