@@ -94,6 +94,9 @@ RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/release
 
 ENV PATH=/opt/conda/bin:$PATH
 
+# Add uv tool for python management
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+
 # Create sudoers.d directory and add nopasswd rule
 RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
     chmod 0440 /etc/sudoers.d/nopasswd

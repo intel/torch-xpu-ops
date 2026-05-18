@@ -21,7 +21,7 @@ on:
       driver:
         type: choice
         required: true
-        default: 'lts2'
+        default: 'rolling-client'
         description: 'Driver version, lts, lts2 or rolling'
         options:
           - lts
@@ -36,7 +36,8 @@ on:
         options:
           - '22.04'
           - '24.04'
-          - '25.04'
+          - '25.10'
+          - '26.04'
       gcc:
         type: choice
         required: true
@@ -48,7 +49,7 @@ on:
       tag:
         type: string
         required: true
-        default: 'intelgpu/ubuntu-24.04-lts2:2523.40'
+        default: 'intelgpu/ubuntu-24.04-rolling:26.05'
         description: 'Image tag'
       push_to_hub:
         type: boolean
@@ -65,10 +66,10 @@ env:
   GH_TOKEN: ${{ github.token }}
   DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   # Set default values for PR-triggered builds
-  WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'lts2' }}
+  WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'rolling-client' }}
   WORKFLOW_UBUNTU: ${{ github.event_name == 'workflow_dispatch' && inputs.ubuntu || '24.04' }}
   WORKFLOW_GCC: ${{ github.event_name == 'workflow_dispatch' && inputs.gcc || '13' }}
-  WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+  WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/ubuntu-24.04-rolling:26.05' }}
   WORKFLOW_PUSH_TO_HUB: ${{ github.event_name == 'workflow_dispatch' && inputs.push_to_hub || false }}
 
 jobs:
@@ -110,7 +111,7 @@ jobs:
           push: ${{ env.WORKFLOW_PUSH_TO_HUB == 'true' }}
           tags: |
             ${{ env.WORKFLOW_TAG }}
-            ${{ env.WORKFLOW_TAG != 'intelgpu/ubuntu-24.04-lts2:2523.40' && format('intelgpu/ubuntu-{0}-{1}:latest', env.WORKFLOW_UBUNTU, env.WORKFLOW_DRIVER) || 'intelgpu/ubuntu-24.04-lts2:latest' }}
+            ${{ env.WORKFLOW_TAG != 'intelgpu/ubuntu-24.04-rolling:26.05' && format('intelgpu/ubuntu-{0}-{1}:latest', env.WORKFLOW_UBUNTU, env.WORKFLOW_DRIVER) || 'intelgpu/ubuntu-24.04-lts2:latest' }}
           build-args: |
             UBUNTU_VERSION=${{ env.WORKFLOW_UBUNTU }}
             GCC_VERSION=${{ env.WORKFLOW_GCC }}
