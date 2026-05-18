@@ -230,6 +230,7 @@ def run(issue_number: int) -> bool:
 
     # --- Checkout PR branch ---
     worktree_dir = None
+    _did_rebuild = False  # Track if we rebuilt so finally can restore build state
     try:
         if target_repo == "torch-xpu-ops":
             worktree_dir, base_ref = _checkout_xpu_ops_pr(
@@ -263,6 +264,7 @@ def run(issue_number: int) -> bool:
             log("INFO", "C++ files changed, rebuilding", issue=issue_number)
             build_ok, build_output = _rebuild_pytorch(
                 PYTORCH_DIR, issue_number)
+            _did_rebuild = True
             if not build_ok:
                 log("ERROR", f"Rebuild failed for #{issue_number}",
                     issue=issue_number)
@@ -333,12 +335,26 @@ def run(issue_number: int) -> bool:
         if worktree_dir and worktree_dir.exists():
             _cleanup_xpu_ops_worktree(worktree_dir, issue_number)
             _restore_submodule(issue_number)
+            # If we rebuilt with the PR's C++ changes, restore the build to
+            # main state so the next issue starts from a clean binary.
+            if _did_rebuild:
+                log("INFO",
+                    "Rebuild happened — restoring build to main state",
+                    issue=issue_number)
+                _rebuild_pytorch(PYTORCH_DIR, issue_number)
         elif target_repo == "pytorch":
             # Restore pytorch to its previous state
             try:
                 git("checkout", "-", workdir=PYTORCH_DIR, issue=issue_number)
             except subprocess.CalledProcessError:
                 pass  # Best effort
+            # If we rebuilt with the PR's C++ changes, rebuild from restored
+            # main source so the next issue starts from a clean binary.
+            if _did_rebuild:
+                log("INFO",
+                    "Rebuild happened — restoring build to main state",
+                    issue=issue_number)
+                _rebuild_pytorch(PYTORCH_DIR, issue_number)
 
 
 def main() -> None:
