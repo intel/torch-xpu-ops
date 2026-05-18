@@ -10,10 +10,10 @@
 
 #pragma once
 
+#include <sycl/sycl.hpp>
 #include <cmath>
 #include <functional>
 #include <type_traits>
-#include <sycl/sycl.hpp>
 
 namespace at::native::xpu {
 
