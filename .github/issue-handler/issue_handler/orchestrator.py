@@ -103,7 +103,13 @@ def advance(issue_number: int) -> None:
             from .fixing_steps.code_fix import run
             _run_step("code_fix", run, issue_number)
         case "TRIAGED":
-            # Advance to fix agent
+            # Advance status to IMPLEMENTING, then dispatch fix agent
+            detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+            body = detail.get("body", "") or ""
+            from .utils.body_templates import set_status as _set_status, sync_labels
+            new_body = _set_status(body, "IMPLEMENTING")
+            gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
+            sync_labels(ISSUE_REPO, issue_number, "IMPLEMENTING")
             from .fixing_steps.code_fix import run
             _run_step("code_fix", run, issue_number)
         case "IN_REVIEW":
