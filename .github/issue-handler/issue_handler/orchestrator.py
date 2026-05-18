@@ -103,8 +103,9 @@ def advance(issue_number: int) -> None:
             from .fixing_steps.code_fix import run
             _run_step("code_fix", run, issue_number)
         case "TRIAGED":
-            log("INFO", f"Issue #{issue_number} is TRIAGED — awaiting human or downstream agent assignment",
-                issue=issue_number)
+            # Advance to fix agent
+            from .fixing_steps.code_fix import run
+            _run_step("code_fix", run, issue_number)
         case "IN_REVIEW":
             from .verify_fix import run as verify_fix_run
             _run_step("verify_fix", verify_fix_run, issue_number)
