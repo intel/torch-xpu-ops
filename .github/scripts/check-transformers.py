@@ -56,8 +56,16 @@ failing_cases = {
         # https://github.com/huggingface/transformers/commit/6f5dc9c82efd347bcc1941da64739d269e741771
         'test_cache_dependant_input_preparation_exporting': {},
     },
+    'tests.models.beit.test_image_processing_beit.BeitImageProcessingTest': {
+        'test_call_segmentation_maps': { 'cuda': 'failed' },
+        'test_reduce_labels': { 'cuda': 'failed' },
+    },
     'tests.models.detr.test_image_processing_detr.DetrImageProcessingTest': {
         'test_fast_is_faster_than_slow': { 'flaky': True },
+    },
+    'tests.models.dpt.test_image_processing_dpt.DPTImageProcessingTest': {
+        'test_call_segmentation_maps': { 'cuda': 'failed' },
+        'test_reduce_labels': { 'cuda': 'failed' },
     },
     'tests.models.dpt.test_modeling_dpt_auto_backbone.DPTModelTest': {
         'test_batching_equivalence': { 'flaky': True, 'cuda': 'passed' },
@@ -96,6 +104,9 @@ failing_cases = {
     'tests.models.mllama.test_modeling_mllama.MllamaForConditionalGenerationModelTest': {
         'test_resize_embeddings_results_in_successful_loss': {},
     },
+    'tests.models.mobilevit.test_image_processing_mobilevit.MobileViTImageProcessingTest': {
+        'test_call_segmentation_maps': { 'cuda': 'failed' },
+    },
     'tests.models.pix2struct.test_modeling_pix2struct.Pix2StructModelTest': {
         'test_new_cache_format_0': { 'cuda': 'passed' },
         'test_new_cache_format_1': { 'cuda': 'passed' },
@@ -118,6 +129,10 @@ failing_cases = {
     },
     'tests.models.rt_detr.test_image_processing_rt_detr.RtDetrImageProcessingTest': {
         'test_fast_is_faster_than_slow': { 'flaky': True },
+    },
+    'tests.models.segformer.test_image_processing_segformer.SegformerImageProcessingTest': {
+        'test_call_segmentation_maps': { 'cuda': 'failed' },
+        'test_reduce_labels': { 'cuda': 'failed' },
     },
     'tests.models.speecht5.test_modeling_speecht5.SpeechT5ForTextToSpeechIntegrationTests': {
         'test_batch_generation': { 'cuda': 'passed' },
