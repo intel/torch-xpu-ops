@@ -51,13 +51,19 @@ def get_current_platform():
     print(f"Platform: {platform.platform()}")
     print(f"Machine: {platform.machine()}")
 
-    # Try to get XPU device name
+    # Try to get XPU device info
     try:
         import torch
 
         if torch.xpu.is_available():
             device_name = torch.xpu.get_device_name(0)
             print(f"XPU Device: {device_name}")
+            cap = torch.xpu.get_device_capability(0)
+            device_id = cap["device_id"]
+            ip_version = cap["version"]
+            # Reference: https://dgpu-docs.intel.com/devices/hardware-table.html#gpus-with-supported-drivers
+            print(f"Device ID: {hex(device_id)}")
+            print(f"IP Version: {ip_version}")
     except Exception as e:
         print(f"Cannot get XPU device info: {e}")
 
