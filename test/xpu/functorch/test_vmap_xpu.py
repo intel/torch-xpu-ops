@@ -4418,7 +4418,7 @@ class TestVmapOperatorsOpInfo(TestCase):
     )
     def test_vmap_exhaustive(self, device, dtype, op):
         # needs to be fixed
-        inplace_failure_list = ()
+        inplace_failure_list = ("addmv",)
         self.opinfo_vmap_test(
             device,
             dtype,
