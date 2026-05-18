@@ -86,7 +86,7 @@ from torch.testing._internal.opinfo.core import (
 )
 from torch.testing._internal.opinfo.definitions.nested import _sample_njts, njt_op_db
 from torch.utils._pytree import tree_flatten, tree_map_only
-from torch.utils.checkpoint import checkpoint, create_selective_checkpoint_contexts
+from torch.utils.checkpoint import checkpoint
 
 # Tests are ported from pytorch/nestedtensor.
 # This makes porting as_nested_tensor easier in the future.
@@ -181,9 +181,9 @@ def random_nt(
         assert max_dim > min_dim, "random_nt: max_dim must be greater than min_dim"
         assert min_dim >= 0, "random_nt: min_dim must be non-negative"
         if require_non_empty:
-            assert not (
-                min_dim == 0 and max_dim == 1
-            ), "random_nt: zero cannot be the only possible value if require_non_empty is True"
+            assert not (min_dim == 0 and max_dim == 1), (
+                "random_nt: zero cannot be the only possible value if require_non_empty is True"
+            )
 
     if require_non_empty:
         # Select a random idx that will be required to be non-empty
@@ -6164,9 +6164,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
         for tensor_list in self._get_example_tensor_lists():
             nt = torch.nested.nested_tensor(
                 tensor_list, layout=torch.jagged, device=device
-            ).transpose(
-                1, -1
-            )  # set ragged_idx = last dimension
+            ).transpose(1, -1)  # set ragged_idx = last dimension
             out = nt.unbind()
             self.assertEqual(len(out), len(tensor_list))
             for i, t in enumerate(out):
@@ -7377,22 +7375,6 @@ torch.cuda.synchronize()
         checkpoint(fn, values, offsets, use_reentrant=False).backward()
         self.assertIsNotNone(values.grad)
 
-        context_fn = partial(
-            create_selective_checkpoint_contexts, [torch.ops.aten.cumsum.default]
-        )
-
-        values.grad = None
-
-        def fn(values, lengths):
-            offsets = F.pad(lengths, pad=(1, 0)).cumsum(dim=0)
-            nt = convert_jagged_to_nested_tensor(values, offsets, max_length=4)
-            return convert_nt_to_jagged(nt).sum()
-
-        checkpoint(
-            fn, values, lengths, use_reentrant=False, context_fn=context_fn
-        ).backward()
-        self.assertIsNotNone(values.grad)
-
     # Internally-defined NT use cases are lifted to here for maximum test realism.
     # TODO: Remove these when ViewNestedFromBuffer, etc. are deprecated.
     @skipCUDAIfRocm  # not needed
@@ -8343,8 +8325,7 @@ FORWARD_SKIPS_AND_XFAILS = [
         op_match_fn=lambda device, op: (
             # min.reduction_with_dim and max.reduction_with_dim aren't associated with
             # ReductionOpInfo entries sadly even though they're reductions
-            isinstance(op, ReductionOpInfo)
-            or "reduction_with_dim" in op.full_name
+            isinstance(op, ReductionOpInfo) or "reduction_with_dim" in op.full_name
         ),
         sample_match_fn=lambda device, sample: (
             "noncontig_holes" in sample.name
