@@ -68,9 +68,28 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
-@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    pass
+    m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
+    m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublaslt")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out1 = torch.nn.functional.linear(m1, m2)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublas")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out2 = torch.nn.functional.linear(m1, m2)
+
+    # Although blas preferred flags doesn't affect CPU currently,
+    # we set this to make sure the flag can switch back to default normally.
+    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
+
+    self.assertEqual(out1, out2)
+    self.assertEqual(out_ref, out2.cpu())
 
 
 @dtypes(torch.float, torch.double)
@@ -251,9 +270,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 1024])
+@parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
@@ -564,6 +583,56 @@ def pinv_errors_and_warnings(self, device, dtype):
         RuntimeError, "rtol tensor of complex type is not supported"
     ):
         torch.linalg.pinv(a, rtol=rtol)
+
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+def _int_mm_errors(self, device):
+    def genf_int(x, y):
+        return torch.empty((x, y), dtype=torch.int8, device=device)
+
+    # XPU does not enforce CUDA-specific size constraints (size(0)>16,
+    # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
+    # are omitted here.
+
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"self.size\(1\) needs to match mat2.size\(0\) but got 8 and 7",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(7, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result dtype to be of type kInt but got float",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 32).float()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 15",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(15, 32).int()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 16",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 31).int()
+        ),
+    )
+
+
+TestLinalg.test__int_mm_errors = _int_mm_errors
 
 
 @dtypes(*floating_and_complex_types())
