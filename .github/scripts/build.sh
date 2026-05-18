@@ -46,6 +46,28 @@ cd ${WORKSPACE}/pytorch
 python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
+
+# Optional component overrides (used by the acceptance / comparison workflow).
+# Each variable, when set to a non-empty value other than "pinned",
+# replaces the default pinned version of the corresponding component.
+
+# oneDNN: ExternalProject_Add in cmake/Modules/FindMKLDNN.cmake
+if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
+    if [[ "${ONEDNN_COMMIT}" == *"@"* ]]; then
+        ONEDNN_REPO_URL="${ONEDNN_COMMIT%@*}"
+        ONEDNN_REF="${ONEDNN_COMMIT##*@}"
+    else
+        ONEDNN_REPO_URL=""
+        ONEDNN_REF="${ONEDNN_COMMIT}"
+    fi
+    FIND_MKLDNN_CMAKE="cmake/Modules/FindMKLDNN.cmake"
+    if [ -n "${ONEDNN_REPO_URL}" ]; then
+        sed -i -E "s#GIT_REPOSITORY[[:space:]]+[^[:space:]]+#GIT_REPOSITORY ${ONEDNN_REPO_URL}#" "${FIND_MKLDNN_CMAKE}"
+    fi
+    sed -i -E "s#GIT_TAG[[:space:]]+[^[:space:]]+#GIT_TAG ${ONEDNN_REF}#" "${FIND_MKLDNN_CMAKE}"
+    grep -E 'GIT_REPOSITORY|GIT_TAG' "${FIND_MKLDNN_CMAKE}"
+fi
+
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1
