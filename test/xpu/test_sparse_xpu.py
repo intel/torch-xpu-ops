@@ -16,6 +16,7 @@
 import functools
 import itertools
 import operator
+import os
 import random
 import unittest
 from numbers import Number
@@ -28,6 +29,7 @@ try:
     import torch._opaque_base  # noqa: F401
 except ImportError:
     pass
+import torch.testing._internal.common_device_type as common_device_type_mod
 from packaging import version
 from torch.testing import make_tensor
 from torch.testing._internal.common_cuda import SM53OrLater, SM80OrLater
@@ -100,6 +102,22 @@ from torch.testing._internal.opinfo.refs import (
     ElementwiseBinaryPythonRefInfo,
     ReductionPythonRefInfo,
 )
+
+if os.getenv("PYTORCH_FORCE_XPU_TEST_COLLECTION", "0") == "1":
+    common_device_type_mod.TEST_XPU = True
+
+    @classmethod
+    def _xpu_collect_only_setup_class(cls):
+        cls.primary_device = "xpu:0"
+
+    @classmethod
+    def _xpu_collect_only_get_all_devices(cls):
+        return [cls.get_primary_device()]
+
+    common_device_type_mod.XPUTestBase.setUpClass = _xpu_collect_only_setup_class
+    common_device_type_mod.XPUTestBase.get_all_devices = (
+        _xpu_collect_only_get_all_devices
+    )
 
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
