@@ -189,14 +189,30 @@ def render_initial_body(
 # ---------------------------------------------------------------------------
 
 def sync_labels(repo: str, number: int, stage: str) -> None:
-    """Ensure issue labels match the current stage."""
+    """Ensure issue labels match the current stage.
+
+    Fetches current labels first so we only call remove_label on labels
+    that are actually present — avoids swallowing real errors in the
+    except-pass block masking a failed removal.
+    """
     from . import git as gh
     from .config import STAGE_TO_LABEL, ALL_AGENT_LABELS
     target_label = STAGE_TO_LABEL.get(stage)
+
+    # Fetch current labels on the issue to avoid spurious remove failures
+    try:
+        detail = gh.get_issue_detail(repo, number)
+        current_labels = {lbl["name"] for lbl in (detail.get("labels") or [])}
+    except Exception:
+        current_labels = None  # If we can't fetch, fall back to try-remove
+
     for label in ALL_AGENT_LABELS:
         if label == target_label:
             gh.add_label(repo, number, label)
         else:
+            # Only remove if label is confirmed present (or unknown)
+            if current_labels is not None and label not in current_labels:
+                continue
             try:
                 gh.remove_label(repo, number, label)
             except Exception:
