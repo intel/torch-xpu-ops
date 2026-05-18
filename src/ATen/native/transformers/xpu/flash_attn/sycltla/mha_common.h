@@ -137,7 +137,7 @@ struct FLASH_BWD_params : public FLASH_FWD_params {
   index_t dv_row_stride;
 };
 
-inline void set_params_fprop(
+void set_params_fprop(
     FLASH_FWD_params& params,
     // sizes
     const int batch_size,
@@ -173,14 +173,14 @@ inline void set_params_fprop(
   params.k_batch_stride = k.stride(0);
   params.v_batch_stride = v.stride(0);
   params.o_batch_stride = out.stride(0);
-  params.q_head_stride = q.stride(1);
-  params.k_head_stride = k.stride(1);
-  params.v_head_stride = v.stride(1);
-  params.o_head_stride = out.stride(1);
-  params.q_row_stride = q.stride(2);
-  params.k_row_stride = k.stride(2);
-  params.v_row_stride = v.stride(2);
-  params.o_row_stride = out.stride(2);
+  params.q_head_stride = q.stride(2);
+  params.k_head_stride = k.stride(2);
+  params.v_head_stride = v.stride(2);
+  params.o_head_stride = out.stride(2);
+  params.q_row_stride = q.stride(1);
+  params.k_row_stride = k.stride(1);
+  params.v_row_stride = v.stride(1);
+  params.o_row_stride = out.stride(1);
 
   // Set the dimensions.
   params.batch_size = batch_size;
@@ -198,7 +198,7 @@ inline void set_params_fprop(
   params.scale = scale;
 }
 
-inline void set_params_dgrad(
+void set_params_dgrad(
     FLASH_BWD_params& params,
     // sizes
     const int batch_size,
@@ -260,78 +260,12 @@ inline void set_params_dgrad(
   params.dq_batch_stride = dq.stride(0);
   params.dk_batch_stride = dk.stride(0);
   params.dv_batch_stride = dv.stride(0);
-  params.do_head_stride = grad_out.stride(1);
-  params.dq_head_stride = dq.stride(1);
-  params.dk_head_stride = dk.stride(1);
-  params.dv_head_stride = dv.stride(1);
-  params.do_row_stride = grad_out.stride(2);
-  params.dq_row_stride = dq.stride(2);
-  params.dk_row_stride = dk.stride(2);
-  params.dv_row_stride = dv.stride(2);
-}
-
-// Backward kernel padding constants.
-constexpr int kBwdMPad = 128;
-constexpr int kBwdNPad = 128;
-
-// block 2D restrictions:
-//
-//   1. Base address: per-subgroup base pointer must be cache-line aligned
-//      (64 bytes).
-//   2. Memory Width: >= 64 bytes and a multiple of 4 bytes.
-//   3. Memory Height: > 0.
-//   4. Memory Pitch: >= Memory Width and a multiple of 16 bytes.
-//   5. Block Width: must be a multiple of 4 bytes.
-//   6. Coordinate X: must be a multiple of 4 bytes.
-//   7. Out-of-bounds: loads return zero for OOB elements; stores and prefetches
-//      silently ignore OOB elements.
-//
-// See: https://github.khronos.org/SPIRV-Registry/extensions/INTEL/
-//      SPV_INTEL_2d_block_io.html#_restrictions
-
-inline bool is_64_bytes_aligned(const at::Tensor& t) {
-  return reinterpret_cast<uintptr_t>(t.data_ptr()) % 64 == 0;
-}
-
-// Ensure tensor satisfies block 2D load 64-byte base address alignment
-// requirement. Tries contiguous() first (may reuse storage), falls back to
-// clone() which always allocates fresh aligned memory.
-inline at::Tensor ensure_alignment_for_sdpa(const at::Tensor& t) {
-  if (is_64_bytes_aligned(t)) {
-    return t;
-  }
-  at::Tensor out = t.contiguous();
-  if (!is_64_bytes_aligned(out)) {
-    out = out.clone();
-  }
-  return out;
-}
-
-// The kernel is dispatched by Headdim template parameter (32, 64, 96, ...),
-// and its tile sizes are chosen accordingly. Pad headsize to the matching
-// Headdim so that:
-//   1. Tensor dimensions are consistent with the kernel's tile sizes.
-//   2. Memory Width >= 64 bytes.
-//   3. Memory Pitch >= Memory Width. Without
-//      padding, a headdim smaller than the kernel's Headdim would have
-//      Pitch (= real headdim * elem_size) < Width (= Headdim * elem_size).
-inline int round_up_headdim(int d) {
-  if (d <= 32)
-    return 32;
-  if (d <= 64)
-    return 64;
-  if (d <= 96)
-    return 96;
-  if (d <= 128)
-    return 128;
-  if (d <= 192)
-    return 192;
-  if (d <= 256)
-    return 256;
-  TORCH_CHECK(
-      false,
-      "FlashAttentionXPU: head dimension ",
-      d,
-      " exceeds maximum supported (256)");
-  return -1;
+  params.do_head_stride = grad_out.stride(2);
+  params.dq_head_stride = dq.stride(2);
+  params.dk_head_stride = dk.stride(2);
+  params.dv_head_stride = dv.stride(2);
+  params.do_row_stride = grad_out.stride(1);
+  params.dq_row_stride = dq.stride(1);
+  params.dk_row_stride = dk.stride(1);
+  params.dv_row_stride = dv.stride(1);
 }
