@@ -16,7 +16,8 @@ TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
 TOPK = 8
 NUM_EXPERTS = 128
-LOOP = 10
+LOOP = 40
+WARMUP = 20
 ENABLE_PROJECTION = False
 CROSS_GPU_BW_GBPS = 30.0
 HBM_BW_GBPS = 1300.0
@@ -148,8 +149,11 @@ def check_deepep_owner_dispatch():
         dtype=torch.int64,
     )
 
+    begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+    end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+
     # Warm up
-    for _ in range(LOOP):
+    for _ in range(WARMUP):
         remap_hidden_states = torch.zeros(
             (num_tokens * topk, hidden_size),
             device=device,
@@ -165,16 +169,15 @@ def check_deepep_owner_dispatch():
     torch.xpu.synchronize()
     dist.barrier()
 
-    begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
-    end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
-
     remap_hidden_states = torch.zeros(
         (num_tokens * topk, hidden_size),
         device=device,
         dtype=hidden_shard.dtype,
     )
+    # Timed path
     for i in range(LOOP):
-        begin_events[i].record()
+        if i >= WARMUP:
+            begin_events[i].record()
         deepep_owner_dispatch(
             hidden_shard,
             topk_idx,
@@ -182,11 +185,12 @@ def check_deepep_owner_dispatch():
             num_experts=NUM_EXPERTS,
             group=group,
         )
-        end_events[i].record()
+        if i >= WARMUP:
+            end_events[i].record()
     torch.xpu.synchronize()
     dist.barrier()
 
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events)]
+    latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
     print(f"[DeePEP dispatch time in rank {rank}] {latencies} ms")
 
     gathered_hidden = [torch.empty_like(hidden_shard) for _ in range(world_size)]
