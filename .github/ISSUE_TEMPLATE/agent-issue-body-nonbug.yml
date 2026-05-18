@@ -34,6 +34,7 @@ body: |
     <details><summary>Triage log</summary>
     <!-- agent:triage-log -->
     </details>
+  - [ ] 🎯 Triage complete — routed to fix agent (agent:triaged)
   - [ ] 🔧 Fix implemented (Fix Agent)
     <details><summary>Fix log</summary>
     <!-- agent:fix-log -->
