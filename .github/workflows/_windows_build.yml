@@ -62,6 +62,26 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Snapshot open skipped issues at build start
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch known_issue_static.log issues_snapshot.log issues_snapshot_windows.log
+          bash .github/scripts/fetch_issues.sh static > known_issue_static.log
+          bash .github/scripts/fetch_issues.sh open > issues_snapshot.log
+          # Also snapshot Windows-only skipped issues
+          gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows&state=open" \
+            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues_snapshot_windows.log || true
+      - name: Upload skipped issues snapshot
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-windows-build-start
+          path: |
+            known_issue_static.log
+            issues_snapshot.log
+            issues_snapshot_windows.log
       - name: Install oneAPI
         shell: cmd
         run: |
