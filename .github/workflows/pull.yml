@@ -166,7 +166,9 @@ jobs:
 
   conditions-filter-win:
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+      ${{ github.repository_owner == 'intel'
+      && github.event.pull_request.draft == false
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -201,6 +203,7 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     needs: [linux-build, preci-lint-check]
     secrets: inherit
     permissions:
@@ -216,7 +219,7 @@ jobs:
 
   linux-ut:
     needs: [linux-build,reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
       contents: read
@@ -235,7 +238,7 @@ jobs:
 
   linux-distributed:
     needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions:
       contents: read
@@ -254,7 +257,7 @@ jobs:
 
   linux-e2e:
     name: linux-e2e
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
     needs: [linux-build, reproducer-test]
     strategy:
@@ -270,7 +273,7 @@ jobs:
   linux-e2e-summary:
     name: linux-e2e-summary
     needs: [linux-e2e]
-    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
