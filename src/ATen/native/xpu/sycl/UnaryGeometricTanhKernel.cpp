@@ -23,7 +23,11 @@ template <typename scalar_t>
 struct TanhFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return std::tanh(static_cast<opmath_t>(a));
+    if constexpr (c10::is_complex<opmath_t>::value) {
+      return std::tanh(static_cast<opmath_t>(a));
+    } else {
+      return sycl::tanh(static_cast<opmath_t>(a));
+    }
   }
 };
 
