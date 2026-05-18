@@ -32,6 +32,7 @@ label_prefixes:
 stage_labels:
   DISCOVERED: "agent:active"
   TRIAGING: "agent:active"
+  TRIAGED: "agent:triaged"
   IMPLEMENTING: "agent:active"
   IN_REVIEW: "agent:active"
   PUBLIC_PR: "agent:active"
@@ -61,6 +62,7 @@ terminal_stages:
   - DONE
   - SKIPPED
   - NEEDS_HUMAN
+  - TRIAGED
 
 # Polling interval (seconds) — temporary, removed when moving to webhooks
 poll_interval: 60

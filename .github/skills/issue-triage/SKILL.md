@@ -22,12 +22,12 @@ Analyze the structured issue and determine:
    - If it describes a "feature gap" or "blocked by missing feature" → `NEEDS_HUMAN`
    - If category is "performance" and there's no specific failing test → `NEEDS_HUMAN` with reason "Performance optimization requires human design decision"
    - If it has a clear error message/stack trace → proceed to step 3
-3. **Search the codebase** to understand the failing code path. **Limit to 3 file reads** — if you haven't found the root cause after reading 3 files, output your best analysis with what you have.
-4. **Determine root cause** — trace from error message to the actual bug.
-5. **Assess fixability**:
+3. **Identify what changed** — if the issue describes a regression (worked on version X, broke on version Y), always ask: *which component changed between those versions?* The root cause belongs to **the thing that changed**, not just where the error happens to fire. If an external library broke because PyTorch changed its behavior, the fix lives in PyTorch — not in the external library.
+4. **Search the codebase** to trace the failing code path. Use your full time budget — stop when you have enough to make a call, not after counting files.
+5. **Determine root cause** — trace from error message to the actual bug. You cannot execute code, so you must exhaust static analysis. Read the full call chain. If the root cause and a specific fix are identifiable from reading code alone, output `IMPLEMENTING` — even without running the reproducer. Only conclude "needs hardware to reproduce" if static analysis genuinely cannot determine what's wrong.
+6. **Assess fixability**:
    - If the fix is within pytorch or torch-xpu-ops source → `IMPLEMENTING`
-   - If it requires external dependency updates, hardware changes, or complex
-     architecture redesign → `NEEDS_HUMAN`
+   - If it requires hardware changes, complex architecture redesign, or the root cause is genuinely unresolvable without running code → `NEEDS_HUMAN`
 
 **TIME BUDGET: You MUST output your JSON within 5 minutes. If unsure, output IMPLEMENTING with your best guess — don't keep searching.**
 
@@ -41,7 +41,7 @@ Extract the reproducer command from the issue description. It may be:
 - A bash command
 - Or just a test name with no explicit command
 
-Use whatever the issue provides. Do NOT assume it's always pytest.
+You cannot run the reproducer (no execution environment). Use it to understand the code path, not to verify the failure.
 
 ## Output
 Return ONLY valid JSON:

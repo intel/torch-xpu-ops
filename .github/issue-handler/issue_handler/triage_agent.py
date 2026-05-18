@@ -117,7 +117,8 @@ def run(issue_number: int) -> tuple[str, str]:
     new_body = check_action_item(new_body, "Root cause identified")
 
     if verdict == "IMPLEMENTING":
-        new_body = set_status(new_body, "IMPLEMENTING")
+        # Triage complete — mark TRIAGED so a human or downstream agent can pick it up
+        new_body = set_status(new_body, "TRIAGED")
     else:
         new_body = set_status(new_body, "NEEDS_HUMAN")
         # Add visible reason why the agent can't handle this
