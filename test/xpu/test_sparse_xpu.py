@@ -103,22 +103,6 @@ from torch.testing._internal.opinfo.refs import (
     ReductionPythonRefInfo,
 )
 
-if os.getenv("PYTORCH_FORCE_XPU_TEST_COLLECTION", "0") == "1":
-    common_device_type_mod.TEST_XPU = True
-
-    @classmethod
-    def _xpu_collect_only_setup_class(cls):
-        cls.primary_device = "xpu:0"
-
-    @classmethod
-    def _xpu_collect_only_get_all_devices(cls):
-        return [cls.get_primary_device()]
-
-    common_device_type_mod.XPUTestBase.setUpClass = _xpu_collect_only_setup_class
-    common_device_type_mod.XPUTestBase.get_all_devices = (
-        _xpu_collect_only_get_all_devices
-    )
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
@@ -2242,7 +2226,7 @@ class TestSparse(TestSparseBase):
     @onlyOn("xpu")
     @coalescedonoff
     @dtypes(torch.double)
-    def test_hspmm_out_xpu(self, device, dtype, coalesced):
+    def test_hspmm_out(self, device, dtype, coalesced):
         x = self._gen_sparse(2, 20, [7, 5], dtype, device, coalesced)[0]
         y = self.randn(5, 3, dtype=dtype, device=device)
         out = torch.empty(0, dtype=dtype, device=device).to_sparse()
@@ -2255,7 +2239,7 @@ class TestSparse(TestSparseBase):
 
     @onlyOn("xpu")
     @dtypes(torch.double)
-    def test_hspmm_out_errors_xpu(self, device, dtype):
+    def test_hspmm_out_errors(self, device, dtype):
         x = self._gen_sparse(2, 10, [4, 3], dtype, device, coalesced=True)[0]
         out = torch.empty(0, dtype=dtype, device=device).to_sparse()
 
