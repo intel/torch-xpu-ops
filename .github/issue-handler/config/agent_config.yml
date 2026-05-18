@@ -62,7 +62,6 @@ terminal_stages:
   - DONE
   - SKIPPED
   - NEEDS_HUMAN
-  - TRIAGED
 
 # Polling interval (seconds) — temporary, removed when moving to webhooks
 poll_interval: 60
