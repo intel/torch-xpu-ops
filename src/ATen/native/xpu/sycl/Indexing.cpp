@@ -1318,9 +1318,10 @@ void submit_small_index_kernel(
       selfNumel,
       reduce_func,
       alpha_value);
-  size_t num_wg =
-      std::min(ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
-  size_t wg_size = std::min(sliceSize, (uint64_t)128);
+  size_t num_wg = std::min(
+      ceil_div(sliceSize, static_cast<uint64_t>(128)),
+      static_cast<uint64_t>(ssc * 8));
+  size_t wg_size = std::min(sliceSize, static_cast<uint64_t>(128));
   sycl_kernel_submit(num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
 }
 
@@ -1368,11 +1369,12 @@ void submit_large_index_kernel(
       reduce_func,
       alpha_value);
   int maxGroupThreads = syclMaxWorkGroupSize(caller);
-  size_t num_wg =
-      std::min(ceil_div(sourceTotalSize, (uint64_t)128), (uint64_t)(ssc * 8));
-  size_t wg_size = (sourceTotalSize < (uint64_t)maxGroupThreads)
+  size_t num_wg = std::min(
+      ceil_div(sourceTotalSize, static_cast<uint64_t>(128)),
+      static_cast<uint64_t>(ssc * 8));
+  size_t wg_size = (sourceTotalSize < static_cast<uint64_t>(maxGroupThreads))
       ? sourceTotalSize
-      : (uint64_t)maxGroupThreads;
+      : static_cast<uint64_t>(maxGroupThreads);
   sycl_kernel_submit(num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
 }
 
@@ -1570,9 +1572,8 @@ struct IndexReduceAddFunctor {
   void operator()(
       scalar_t* self_data_start,
       int64_t index,
-      int64_t numel,
+      [[maybe_unused]] int64_t numel,
       const scalar_t* src_data) const {
-    (void)numel; // suppress unused warning
     atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
 };
