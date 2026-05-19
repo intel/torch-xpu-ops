@@ -188,114 +188,167 @@ def _stage_emoji(stages_done: list[str], stage: str) -> str:
     return "⬜"
 
 
+def _make_row(r: dict, report_repo: str) -> tuple[str, str, float]:
+    """Build a table row for one issue result.
+
+    Returns (row_str, result_label, row_cost).
+    """
+    num = r["number"]
+    title = r["title"]
+    stages = r["stages_done"]
+
+    fmt = _stage_emoji(stages, "formatted")
+    tri = _stage_emoji(stages, "triaged")
+    fix = _stage_emoji(stages, "fixed")
+    rev = _stage_emoji(stages, "reviewed")
+
+    tokens_parts = []
+    row_cost = 0.0
+    model_name = "—"
+    for key in ["format", "triage", "fix"]:
+        t = r["tokens"].get(key, "—")
+        total_match = re.search(r"tokens:\s*(\S+)", t)
+        tokens_parts.append(total_match.group(1) if total_match else "—")
+        cost_match = re.search(r"cost:\s*\$(\S+)", t)
+        if cost_match:
+            try:
+                row_cost += float(cost_match.group(1))
+            except ValueError:
+                pass
+        if model_name == "—":
+            model_match = re.search(r"model:\s*(\S+)", t)
+            if model_match:
+                model_name = model_match.group(1)
+    tokens_str = " / ".join(tokens_parts)
+    cost_str = f"${row_cost:.4f}" if row_cost > 0 else "—"
+
+    failure = r.get("failure_reason", "")
+    category = r.get("failure_category", "")
+    pipeline_status = r.get("pipeline_status", "")
+
+    if "merged" in stages or "reviewed" in stages:
+        result = "✅ PASSED"
+    elif pipeline_status == "DONE":
+        result = "✅ DONE"
+    elif pipeline_status == "NEEDS_HUMAN":
+        result = "❌ NEEDS_HUMAN"
+        if not failure:
+            failure = "Triage timeout or too complex"
+            category = "timeout"
+    elif pipeline_status == "IN_REVIEW":
+        result = "🔄 IN REVIEW"
+    elif pipeline_status == "IMPLEMENTING":
+        result = "🏗️ IMPLEMENTING"
+    elif failure:
+        result = "❌ FAILED"
+    elif r["stage"] == "unformatted":
+        result = "⬜ PENDING"
+    else:
+        result = "🔄 IN PROGRESS"
+
+    failure_display = f"{category}: {failure}" if failure else "—"
+
+    # PR link and target repo
+    pr_url = r.get("pr_url")
+    tracking_pr = r.get("tracking_pr")
+    if pr_url and tracking_pr:
+        pr_display = f"[#{tracking_pr}]({pr_url})"
+    elif tracking_pr:
+        pr_display = f"#{tracking_pr}"
+    else:
+        pr_display = "—"
+    target_repo = r.get("target_repo", "—") or "—"
+
+    row = (
+        f"| [#{num}](https://github.com/{report_repo}/issues/{num}) "
+        f"| {pr_display} | {title} | {target_repo} | {fmt} | {tri} | {fix} | {rev} "
+        f"| {model_name} | {tokens_str} | {cost_str} | {result} | {failure_display} |"
+    )
+    return row, result, row_cost
+
+
+_TABLE_HEADER = (
+    "| # | PR | Title | torch-xpu-ops/pytorch | Format | Triage | Fix "
+    "| Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |"
+)
+_TABLE_SEP = (
+    "|---|-----|-------|----------------------|--------|--------|-----"
+    "|--------|-------|---------------------|------|--------|----------------|"
+)
+
+# Status grouping order and labels
+_STATUS_GROUPS = [
+    ("IN_REVIEW", "🔧 Status: IN_REVIEW", "Issues with fix PRs created and awaiting review."),
+    ("IMPLEMENTING", "🏗️ Status: IMPLEMENTING", "Agent produced code changes but PR creation failed."),
+    ("NEEDS_HUMAN", "🙋 Status: NEEDS_HUMAN", "Issues that require human judgment."),
+    ("IN_PROGRESS", "🔄 Status: IN PROGRESS", "Pipeline still advancing these issues."),
+    ("DONE", "✅ Non-reproducible (DONE)", "Bug no longer reproduces on the current pytorch build. Auto-closed by triage verification."),
+]
+
+
 def build_section(results: list[dict], batch_name: str, run_number: int,
                   issue_repo: str | None = None) -> str:
-    """Build one ## [Run N] markdown section for a batch of results.
+    """Build one ## [Run N] markdown section grouped by status.
 
     Returns the section string (no leading/trailing blank lines beyond what's needed).
     """
-    report_repo = issue_repo or ISSUE_REPO
+    report_repo = issue_repo or ISSUE_REPO or ""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    groups: dict[str, list[str]] = {key: [] for key, _, _ in _STATUS_GROUPS}
+    total_cost = 0.0
+    status_counts: dict[str, int] = {key: 0 for key, _, _ in _STATUS_GROUPS}
+
+    for r in sorted(results, key=lambda x: x["number"]):
+        row, result_label, row_cost = _make_row(r, report_repo)
+        total_cost += row_cost
+
+        # Classify into group
+        if "IN REVIEW" in result_label:
+            groups["IN_REVIEW"].append(row)
+            status_counts["IN_REVIEW"] += 1
+        elif "IMPLEMENTING" in result_label:
+            groups["IMPLEMENTING"].append(row)
+            status_counts["IMPLEMENTING"] += 1
+        elif "NEEDS_HUMAN" in result_label or "FAILED" in result_label:
+            groups["NEEDS_HUMAN"].append(row)
+            status_counts["NEEDS_HUMAN"] += 1
+        elif "DONE" in result_label or "PASSED" in result_label:
+            groups["DONE"].append(row)
+            status_counts["DONE"] += 1
+        else:
+            groups["IN_PROGRESS"].append(row)
+            status_counts["IN_PROGRESS"] += 1
+
+    total = len(results)
+    cost_summary = f"${total_cost:.2f}" if total_cost > 0 else "—"
 
     lines = [
         f"## [Run {run_number}] {batch_name} — {ts[:10]}",
-        f"",
-        f"| # | PR | Title | torch-xpu-ops/pytorch | Format | Triage | Fix | Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |",
-        f"|---|-----|-------|----------------------|--------|--------|-----|--------|-------|---------------------|------|--------|----------------|",
+        "",
+        f"**Total issues processed:** {total}  |  **Date:** {ts[:10]}  |  **Total cost:** {cost_summary}",
+        "",
+        "| Status | Count |",
+        "|--------|-------|",
     ]
+    for key, label, _ in _STATUS_GROUPS:
+        if status_counts[key] > 0:
+            lines.append(f"| {label} | {status_counts[key]} |")
+    lines.append("")
 
-    total_triaged = 0
-    total_needs_human = 0
-    total_in_progress = 0
-    total_cost = 0.0
-
-    for r in results:
-        num = r["number"]
-        title = r["title"]
-        stages = r["stages_done"]
-
-        fmt = _stage_emoji(stages, "formatted")
-        tri = _stage_emoji(stages, "triaged")
-        fix = _stage_emoji(stages, "fixed")
-        pr  = _stage_emoji(stages, "pr_proposed")
-        rev = _stage_emoji(stages, "reviewed")
-
-        tokens_parts = []
-        row_cost = 0.0
-        model_name = "—"
-        for key in ["format", "triage", "fix"]:
-            t = r["tokens"].get(key, "—")
-            total_match = re.search(r"tokens:\s*(\S+)", t)
-            tokens_parts.append(total_match.group(1) if total_match else "—")
-            cost_match = re.search(r"cost:\s*\$(\S+)", t)
-            if cost_match:
-                try:
-                    row_cost += float(cost_match.group(1))
-                except ValueError:
-                    pass
-            if model_name == "—":
-                model_match = re.search(r"model:\s*(\S+)", t)
-                if model_match:
-                    model_name = model_match.group(1)
-        total_cost += row_cost
-        tokens_str = " / ".join(tokens_parts)
-        cost_str = f"${row_cost:.4f}" if row_cost > 0 else "—"
-
-        failure = r.get("failure_reason", "")
-        category = r.get("failure_category", "")
-        pipeline_status = r.get("pipeline_status", "")
-
-        if "merged" in stages or "reviewed" in stages:
-            result = "✅ PASSED"
-            total_triaged += 1
-        elif pipeline_status == "DONE":
-            result = "✅ DONE"
-            total_triaged += 1
-        elif pipeline_status == "NEEDS_HUMAN":
-            result = "❌ NEEDS_HUMAN"
-            total_needs_human += 1
-            if not failure:
-                failure = "Triage timeout or too complex"
-                category = "timeout"
-        elif pipeline_status == "IN_REVIEW":
-            result = "🔄 IN REVIEW"
-            total_in_progress += 1
-        elif failure:
-            result = "❌ FAILED"
-            total_needs_human += 1
-        elif r["stage"] == "unformatted":
-            result = "⬜ PENDING"
-            total_in_progress += 1
-        else:
-            result = "🔄 IN PROGRESS"
-            total_in_progress += 1
-
-        failure_display = f"{category}: {failure}" if failure else "—"
-
-        # PR link and target repo
-        pr_url = r.get("pr_url")
-        tracking_pr = r.get("tracking_pr")
-        if pr_url and tracking_pr:
-            pr_display = f"[#{tracking_pr}]({pr_url})"
-        elif tracking_pr:
-            pr_display = f"#{tracking_pr}"
-        else:
-            pr_display = "—"
-        target_repo = r.get("target_repo", "—") or "—"
-
-        lines.append(
-            f"| [#{num}](https://github.com/{report_repo}/issues/{num}) "
-            f"| {pr_display} | {title} | {target_repo} | {fmt} | {tri} | {fix} | {rev} "
-            f"| {model_name} | {tokens_str} | {cost_str} | {result} | {failure_display} |"
-        )
-
-    total = len(results)
-    cost_summary = f"${total_cost:.4f}" if total_cost > 0 else "—"
-    lines.extend([
-        f"",
-        f"**Summary:** {total} issues · {total_triaged} TRIAGED/PASSED · "
-        f"{total_needs_human} NEEDS_HUMAN · {total_in_progress} IN PROGRESS · cost {cost_summary}",
-    ])
+    # Emit each non-empty group section
+    for key, label, description in _STATUS_GROUPS:
+        if not groups[key]:
+            continue
+        lines.extend([
+            "---",
+            f"### {label}",
+            description,
+            "",
+            _TABLE_HEADER,
+            _TABLE_SEP,
+        ])
+        lines.extend(groups[key])
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -306,23 +359,25 @@ def build_report(results: list[dict], repo: str | None = None,
                  batch_name: str = "Run") -> str:
     """Build a full dashboard body with one new section appended.
 
-    Sections from previous days are folded into <details> blocks.
-    Sections from today stay in the main body.
+    Layout:
+      # E2E Pipeline Test Dashboard
+      **Last updated:** ...
+
+      ## [Run N] <today's run>   ← current run (unfolded)
+      ## [Run N-1] <today's run> ← earlier same-day run (unfolded)
+
+      # Previous Runs
+      <details><summary>[Run M] ... — YYYY-MM-DD</summary>
+        ...
+      </details>
     """
     run_number = (len(_RUN_HEADER_RE.findall(existing_body)) + 1) if existing_body else 1
     section = build_section(results, batch_name, run_number, issue_repo=issue_repo or ISSUE_REPO)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    if existing_body and existing_body.strip():
-        if run_number == 1:
-            # First run on a fresh or legacy dashboard — replace entire body
-            header = _dashboard_header()
-            return f"{header}\n\n---\n\n{section}"
-        else:
-            # Fold previous-day sections into <details>, keep today's in main
-            body = existing_body.rstrip()
-            body = _fold_old_sections(body, today)
-            return f"{body}\n\n---\n\n{section}"
+    if existing_body and existing_body.strip() and run_number > 1:
+        body = _fold_old_sections(existing_body.rstrip(), today)
+        return f"{body}\n\n---\n\n{section}"
     else:
         header = _dashboard_header()
         return f"{header}\n\n---\n\n{section}"
@@ -336,37 +391,49 @@ _RUN_SECTION_RE = re.compile(
 
 
 def _fold_old_sections(body: str, today: str) -> str:
-    """Wrap any ## [Run N] sections from days before *today* in <details>.
+    """Wrap any ## [Run N] sections from days before *today* in <details>
+    under a '# Previous Runs' heading.
 
     Sections already inside a <details> block are left untouched.
     Same-day sections remain in the main body.
     """
-    # Split body into parts by --- separators and process each section
-    # Find all Run sections with their dates
     parts = re.split(r"\n---\n", body)
-    new_parts = []
+    today_parts = []
+    old_parts = []
+    other_parts = []  # header etc.
 
     for part in parts:
         header_match = _RUN_SECTION_RE.search(part)
         if header_match:
             section_date = header_match.group(2)
-            # Already folded?
             if "<details>" in part:
-                new_parts.append(part)
+                # Already folded — keep in old
+                old_parts.append(part.strip())
             elif section_date < today:
                 # Fold old section
-                # Extract the run header for the summary line
                 run_header = header_match.group(1).replace("## ", "")
                 folded = f"<details>\n<summary>{run_header}</summary>\n\n{part.strip()}\n\n</details>"
-                new_parts.append(folded)
+                old_parts.append(folded)
             else:
                 # Same day — keep in main
-                new_parts.append(part)
+                today_parts.append(part)
+        elif "# Previous Runs" in part:
+            # Existing Previous Runs section — extract its <details> blocks
+            # and merge them into old_parts
+            detail_blocks = re.findall(r"(<details>.*?</details>)", part, re.DOTALL)
+            old_parts.extend(detail_blocks)
         else:
-            # Header or other content — keep as-is
-            new_parts.append(part)
+            other_parts.append(part)
 
-    return "\n---\n".join(new_parts)
+    # Reassemble: header + today's sections + Previous Runs
+    result_parts = other_parts + today_parts
+    result = "\n---\n".join(result_parts)
+
+    if old_parts:
+        prev_section = "# Previous Runs\n\n" + "\n\n".join(old_parts)
+        result = f"{result.rstrip()}\n\n---\n\n{prev_section}"
+
+    return result
 
 
 def _dashboard_header() -> str:
