@@ -16,7 +16,6 @@ from typing import Any, TypeVar
 import torch._thread_safe_fork
 from typing_extensions import ParamSpec
 
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
