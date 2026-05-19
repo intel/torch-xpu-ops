@@ -397,9 +397,7 @@ def _compile_int4_mm(self, device, m, k, n):
 
         @torch.compile
         def int4_mm(a, b_tmp, b_scales_and_zeros):
-            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(
-                b_tmp, inner_k_tiles
-            )
+            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
             return torch._weight_int4pack_mm_for_cpu(
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
@@ -409,18 +407,14 @@ def _compile_int4_mm(self, device, m, k, n):
         @torch.compile
         def int4_mm(a, b_tmp, b_scales_and_zeros):
             b_int4pack = b_tmp.view(torch.int32)
-            return torch._weight_int4pack_mm(
-                a, b_int4pack, q_group, b_scales_and_zeros
-            )
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
 
     else:
 
         @torch.compile
         def int4_mm(a, b_tmp, b_scales_and_zeros):
             b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
-            return torch._weight_int4pack_mm(
-                a, b_int4pack, q_group, b_scales_and_zeros
-            )
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
 
     res = int4_mm(a, b_tmp, b_scales_and_zeros)
     ref = torch.mm(a, b)
