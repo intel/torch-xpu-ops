@@ -22,7 +22,7 @@ Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
 |--------|----------|----------|-----------------|------------|-------|
 | **EP Dispatch (ring-ordered)** | **1.012** | **1.011** | TBD | TBD | TBD |
 | Allgather+permute w/o overlap | 1.983 | 1.980 | 1.631 | — | allgather 0.940 + permute 0.691 ms |
-| Allgather+permute w/ overlap | 1.328 | 1.278 | — | — | Overlap hides allgather latency |
+| Allgather+permute w/ overlap | 1.328 | 1.278 | — | — | Overlap hides permute latency |
 | └─ Allgather only (PCIe) | — | — | 0.940 | — | 24.00 MB @ 26.8 GB/s |
 | └─ Local permute only (fused kernel) | 0.750 | — | 0.691 | 92.1% | 288.00 MB @ 437.0 GB/s |
 
@@ -30,9 +30,9 @@ Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
 
 | Method | Avg (ms) | Min (ms) | Notes |
 |--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.973** | **1.972** | Single kernel, no overlap |
-| Allgather+permute w/o overlap | 3.916 | 3.912 | backend_stream = current_stream |
-| Allgather+permute w/ overlap | 2.579 | 2.506 | Default (uses separate backend stream) |
+| **EP Dispatch (ring-ordered)** | **1.973** | **1.972** | |
+| Allgather+permute w/o overlap | 3.916 | 3.912 |  |
+| Allgather+permute w/ overlap | 2.579 | 2.506 | |
 
 ## Analysis
 
