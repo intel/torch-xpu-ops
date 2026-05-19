@@ -5136,9 +5136,9 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
                 with warnings.catch_warnings(record=True):
                     data_len = len(value)
                 if len(self._fields):
-                    assert len(self) == data_len, (  # noqa: S101
+                    assert len(self) == data_len, (
                         f"Adding a field of length {data_len} to a Instances of length {len(self)}"
-                    )
+                    )  # noqa: S101
                 self._fields[name] = value
 
             def get(self, name: str) -> Any:
