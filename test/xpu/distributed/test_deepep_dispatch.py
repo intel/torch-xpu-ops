@@ -18,19 +18,10 @@ TOPK = 8
 NUM_EXPERTS = 128
 LOOP = 40
 WARMUP = 20
-ENABLE_PROJECTION = False
+ENABLE_PROJECTION = True
 PCIE_DISCOUNT = 0.7
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
-HBM_BW_GBPS = 456.0
-
-
-def bytes_to_mb(num_bytes: float) -> float:
-    return num_bytes / (1024 * 1024)
-
-
-def project_time_ms(bytes_count: float, bw_gbps: float) -> float:
-    # GB/s is interpreted as 1e9 bytes/s for bandwidth projection.
-    return bytes_count / (bw_gbps * 1e9) * 1e3
+HBM_BW_GBPS = 437.0
 
 
 def build_dispatch_projection(
@@ -41,54 +32,41 @@ def build_dispatch_projection(
     num_experts: int,
     world_size: int,
 ):
+    """Compute two projection times per rank:
+    1. Remote fetch: PCIe read time for unique tokens from other ranks
+    2. Topk write: HBM write time for owned assignments to remap_hidden_states
+    """
     num_tokens, topk = topk_idx.shape
+    bytes_per_token = hidden_size * elem_size
 
     owner_table = torch.tensor(
         [get_expert_owner(e, num_experts, world_size) for e in range(num_experts)],
         device=topk_idx.device,
         dtype=torch.int64,
     )
-    owners = owner_table[topk_idx.reshape(-1)]
-
+    owners_2d = owner_table[topk_idx]  # (num_tokens, topk)
     token_ids = torch.arange(num_tokens, device=topk_idx.device, dtype=torch.int64)
-    src_ranks = (token_ids // num_tokens_per_rank).repeat_interleave(topk)
+    src_ranks = token_ids // num_tokens_per_rank
 
-    pair_ids = src_ranks * world_size + owners
-    pair_counts = torch.bincount(pair_ids, minlength=world_size * world_size).reshape(world_size, world_size)
+    remote_fetch_ms = []
+    topk_write_ms = []
 
-    diag = torch.diagonal(pair_counts)
-    send_counts = pair_counts.sum(dim=1) - diag
-    recv_counts = pair_counts.sum(dim=0) - diag
-    local_assign_counts = pair_counts.sum(dim=0)
+    for owner_rank in range(world_size):
+        # 1. Remote fetch: unique tokens from other ranks that have ≥1 owned expert
+        has_owned = (owners_2d == owner_rank).any(dim=1)
+        matching_src = src_ranks[has_owned]
+        remote_token_count = (matching_src != owner_rank).sum().item()
+        fetch_bytes = remote_token_count * bytes_per_token
+        fetch_ms = fetch_bytes / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
+        remote_fetch_ms.append(fetch_ms)
 
-    bytes_per_assignment = hidden_size * elem_size
+        # 2. Topk write: total owned (token, k) assignments written to remap_hidden_states
+        owned_assignments = (owners_2d == owner_rank).sum().item()
+        write_bytes = owned_assignments * bytes_per_token
+        write_ms = write_bytes / (HBM_BW_GBPS * 1e9) * 1e3
+        topk_write_ms.append(write_ms)
 
-    send_bytes = send_counts.to(torch.float64) * bytes_per_assignment
-    recv_bytes = recv_counts.to(torch.float64) * bytes_per_assignment
-    # Communication lower bound (ideal full-duplex): max(send, recv).
-    comm_bytes_lb = torch.maximum(send_bytes, recv_bytes)
-    # Communication upper bound (serialized TX+RX): send + recv.
-    comm_bytes_ub = send_bytes + recv_bytes
-
-    # One read + one write for local remap data movement.
-    local_permute_bytes = local_assign_counts.to(torch.float64) * bytes_per_assignment * 2
-
-    comm_ms_lb = comm_bytes_lb / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
-    comm_ms_ub = comm_bytes_ub / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
-    local_ms = local_permute_bytes / (HBM_BW_GBPS * 1e9) * 1e3
-
-    return {
-        "send_bytes": send_bytes,
-        "recv_bytes": recv_bytes,
-        "comm_ms_lb": comm_ms_lb,
-        "comm_ms_ub": comm_ms_ub,
-        "local_permute_bytes": local_permute_bytes,
-        "local_ms": local_ms,
-        "fused_ms_lb": comm_ms_lb + local_ms,
-        "fused_ms_ub": comm_ms_ub + local_ms,
-        "local_assign_counts": local_assign_counts,
-        "recv_counts": recv_counts,
-    }
+    return remote_fetch_ms, topk_write_ms
 
 
 def init_distributed():
@@ -216,12 +194,66 @@ def check_deepep_owner_dispatch():
         ref,
     ), f"deepep_owner_dispatch mismatch in rank {rank}"
 
+    # --- Baseline: allgather + local_permute on 1 stream (no overlap) ---
+    gathered = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+    ref_output = torch.zeros(
+        (num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype,
+    )
+    # Load local_permute_copy_ kernel
+    _lp_lib = os.path.join(
+        os.path.dirname(__file__), "..", "csrc", "liblocal_permute_copy.so"
+    )
+    if os.path.exists(_lp_lib):
+        torch.ops.load_library(_lp_lib)
+    has_lp = hasattr(torch.ops.symm_mem, "local_permute_copy_")
+
+    if has_lp:
+        # Warm up 1-stream baseline
+        for _ in range(WARMUP):
+            dist.all_gather(gathered, hidden_shard, group=group)
+            for src_rank in range(world_size):
+                torch.ops.symm_mem.local_permute_copy_(
+                    gathered[src_rank], topk_idx,
+                    src_rank * num_tokens_per_rank, ref_output,
+                )
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        # Timed 1-stream baseline
+        ref_begin = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        ref_end = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        for i in range(LOOP):
+            ref_begin[i].record()
+            dist.all_gather(gathered, hidden_shard, group=group)
+            for src_rank in range(world_size):
+                torch.ops.symm_mem.local_permute_copy_(
+                    gathered[src_rank], topk_idx,
+                    src_rank * num_tokens_per_rank, ref_output,
+                )
+            ref_end[i].record()
+        torch.xpu.synchronize()
+        dist.barrier()
+        ref_latencies = [ref_begin[i].elapsed_time(ref_end[i]) for i in range(LOOP)]
+        avg_ref = sum(ref_latencies) / len(ref_latencies)
+    else:
+        avg_ref = None
+
     if rank == 0:
         avg = sum(latencies) / len(latencies)
+        print(f"\n{'='*60}")
         print(f"[Summary] deepep_owner_dispatch avg={avg:.3f} ms")
+        if avg_ref is not None:
+            target = avg_ref / 2.0
+            print(f"[Summary] allgather+permute 1-stream avg={avg_ref:.3f} ms")
+            print(f"[Summary] target (half of 1-stream)={target:.3f} ms")
+            print(
+                f"[Summary] speedup vs 1-stream={avg_ref / avg:.2f}x "
+                f"({'✓ MEETS TARGET' if avg <= target else '✗ MISSES TARGET'})"
+            )
+        print(f"{'='*60}\n")
 
-        if ENABLE_PROJECTION:
-            projection = build_dispatch_projection(
+        if ENABLE_PROJECTION and rank == 0:
+            remote_fetch_ms, topk_write_ms = build_dispatch_projection(
                 topk_idx=topk_idx,
                 num_tokens_per_rank=num_tokens_per_rank,
                 hidden_size=hidden_size,
@@ -230,43 +262,19 @@ def check_deepep_owner_dispatch():
                 world_size=world_size,
             )
 
-            send_bytes = projection["send_bytes"].to("cpu").tolist()
-            recv_bytes = projection["recv_bytes"].to("cpu").tolist()
-            comm_ms_lb = projection["comm_ms_lb"].to("cpu").tolist()
-            comm_ms_ub = projection["comm_ms_ub"].to("cpu").tolist()
-            local_permute_bytes = projection["local_permute_bytes"].to("cpu").tolist()
-            local_ms = projection["local_ms"].to("cpu").tolist()
-            fused_ms_lb = projection["fused_ms_lb"].to("cpu").tolist()
-            fused_ms_ub = projection["fused_ms_ub"].to("cpu").tolist()
-            local_assign_counts = projection["local_assign_counts"].to("cpu").tolist()
-            recv_counts = projection["recv_counts"].to("cpu").tolist()
-
+            print(f"\n[Projection] PCIe BW={CROSS_GPU_BW_GBPS:.1f} GB/s, HBM BW={HBM_BW_GBPS:.1f} GB/s")
             for r in range(world_size):
-                print(
-                    f"[Projection][rank {r}] local_assign_counts={int(local_assign_counts[r])}, recv_counts={int(recv_counts[r])}"
-                )
+                total_ms = remote_fetch_ms[r] + topk_write_ms[r]
                 print(
                     f"[Projection][rank {r}] "
-                    f"send={bytes_to_mb(send_bytes[r]):.2f} MB, "
-                    f"recv={bytes_to_mb(recv_bytes[r]):.2f} MB, "
-                    f"comm_lb@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms_lb[r]:.3f} ms, "
-                    f"comm_ub@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms_ub[r]:.3f} ms"
+                    f"remote_fetch={remote_fetch_ms[r]:.3f} ms, "
+                    f"topk_write={topk_write_ms[r]:.3f} ms, "
+                    f"total={total_ms:.3f} ms"
                 )
-                print(
-                    f"[Projection][rank {r}] "
-                    f"local_permute={bytes_to_mb(local_permute_bytes[r]):.2f} MB, "
-                    f"hbm@{HBM_BW_GBPS:.1f}GB/s={local_ms[r]:.3f} ms, "
-                    f"fused_lb={fused_ms_lb[r]:.3f} ms, "
-                    f"fused_ub={fused_ms_ub[r]:.3f} ms"
-                )
-
-            worst_rank_lb = max(range(world_size), key=lambda r: fused_ms_lb[r])
-            worst_rank_ub = max(range(world_size), key=lambda r: fused_ms_ub[r])
+            worst = max(range(world_size), key=lambda r: remote_fetch_ms[r] + topk_write_ms[r])
             print(
-                f"[Projection][Summary] lb_worst_rank={worst_rank_lb}, "
-                f"fused_lb={fused_ms_lb[worst_rank_lb]:.3f} ms, "
-                f"ub_worst_rank={worst_rank_ub}, "
-                f"fused_ub={fused_ms_ub[worst_rank_ub]:.3f} ms"
+                f"[Projection][Summary] worst_rank={worst}, "
+                f"total={remote_fetch_ms[worst] + topk_write_ms[worst]:.3f} ms"
             )
 
     dist.destroy_process_group()

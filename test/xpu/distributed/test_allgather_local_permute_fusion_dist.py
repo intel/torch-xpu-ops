@@ -20,10 +20,10 @@ NUM_EXPERTS = 128
 LOOP = 40
 WARMUP = 20
 ENABLE_PROFILE = False
-ENABLE_PROJECTION = False
+ENABLE_PROJECTION = True
 PCIE_DISCOUNT = 0.85
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
-HBM_BW_GBPS = 378.0 #456.0
+HBM_BW_GBPS = 437.0
 
 def bytes_to_mb(num_bytes):
     return num_bytes / (1024 * 1024)
@@ -172,14 +172,131 @@ def check_allgather_local_permute_fusion():
         torch.xpu.synchronize()
         dist.barrier()
 
+        # --- Isolated local permute timing (warm cache) ---
+        # Pre-gather data so we only time the permute part
+        dist.all_gather(gathered_ref, hidden_shard, group=group)
+        all_hidden_pregathered = torch.stack(gathered_ref, dim=0)
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        perm_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        perm_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+
+        perm_output = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
+        # Warm up local permute only
+        for _ in range(WARMUP):
+            for src_rank in range(world_size):
+                token_offset = src_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    all_hidden_pregathered[src_rank],
+                    topk_idx,
+                    token_offset,
+                    perm_output,
+                )
+        torch.xpu.synchronize()
+
+        # Timed local permute only (warm cache — same input every iteration)
+        for i in range(LOOP):
+            if i >= WARMUP:
+                perm_begin_events[i].record()
+            for src_rank in range(world_size):
+                token_offset = src_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    all_hidden_pregathered[src_rank],
+                    topk_idx,
+                    token_offset,
+                    perm_output,
+                )
+            if i >= WARMUP:
+                perm_end_events[i].record()
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        # --- Isolated local permute timing (cold cache) ---
+        # Use rotating input buffers to defeat cache: total > L2 capacity
+        NUM_ROTATE_BUFS = 8  # 8 × 32 MB = 256 MB input cycling
+        rotate_inputs = []
+        for r in range(NUM_ROTATE_BUFS):
+            gathered_tmp = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+            dist.all_gather(gathered_tmp, hidden_shard, group=group)
+            rotate_inputs.append(torch.stack(gathered_tmp, dim=0))
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        cold_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        cold_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+
+        cold_output = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
+        # Warm up cold path
+        for w in range(WARMUP):
+            inp = rotate_inputs[w % NUM_ROTATE_BUFS]
+            for src_rank in range(world_size):
+                token_offset = src_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    inp[src_rank],
+                    topk_idx,
+                    token_offset,
+                    cold_output,
+                )
+        torch.xpu.synchronize()
+
+        # Timed cold-cache permute: rotate through different input buffers
+        for i in range(LOOP):
+            inp = rotate_inputs[i % NUM_ROTATE_BUFS]
+            if i >= WARMUP:
+                cold_begin_events[i].record()
+            for src_rank in range(world_size):
+                token_offset = src_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    inp[src_rank],
+                    topk_idx,
+                    token_offset,
+                    cold_output,
+                )
+            if i >= WARMUP:
+                cold_end_events[i].record()
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        # --- Fused single-launch permute timing ---
+        fused_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        fused_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        fused_output = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
+
+        has_fused = hasattr(torch.ops.symm_mem, "local_permute_copy_fused_")
+        if has_fused:
+            # Warm up fused kernel
+            for _ in range(WARMUP):
+                torch.ops.symm_mem.local_permute_copy_fused_(
+                    all_hidden_pregathered, topk_idx, fused_output)
+            torch.xpu.synchronize()
+
+            # Timed fused permute
+            for i in range(LOOP):
+                if i >= WARMUP:
+                    fused_begin_events[i].record()
+                torch.ops.symm_mem.local_permute_copy_fused_(
+                    all_hidden_pregathered, topk_idx, fused_output)
+                if i >= WARMUP:
+                    fused_end_events[i].record()
+            torch.xpu.synchronize()
+            dist.barrier()
+
     latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
     ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
+    perm_latencies = [perm_begin_events[i].elapsed_time(perm_end_events[i]) for i in range(WARMUP, LOOP)]
+    cold_latencies = [cold_begin_events[i].elapsed_time(cold_end_events[i]) for i in range(WARMUP, LOOP)]
+    fused_perm_latencies = [fused_begin_events[i].elapsed_time(fused_end_events[i]) for i in range(WARMUP, LOOP)] if has_fused else []
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_local_permute_fusion_rank{rank}.json")
 
     print(f"[Fusion time in rank {rank}] {latencies} ms")
     print(f"[Reference allgather+permute time in rank {rank}] {ref_latencies} ms")
+    print(f"[Local permute only (warm) time in rank {rank}] {perm_latencies} ms")
+    print(f"[Local permute only (cold) time in rank {rank}] {cold_latencies} ms")
+    if fused_perm_latencies:
+        print(f"[Fused permute (single launch) time in rank {rank}] {fused_perm_latencies} ms")
 
     # Accuracy check: run one fresh pass and compare against reference
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
@@ -203,10 +320,16 @@ def check_allgather_local_permute_fusion():
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
         avg_ref = sum(ref_latencies) / len(ref_latencies)
+        avg_perm = sum(perm_latencies) / len(perm_latencies)
+        avg_cold = sum(cold_latencies) / len(cold_latencies)
+        avg_fused_perm = sum(fused_perm_latencies) / len(fused_perm_latencies) if fused_perm_latencies else 0
         print(
             f"[Summary] avg_fused={avg_fused:.3f} ms, "
             f"avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_fused:.3f}x"
         )
+        print(f"[Summary] avg_local_permute_warm={avg_perm:.3f} ms, avg_local_permute_cold={avg_cold:.3f} ms")
+        if avg_fused_perm > 0:
+            print(f"[Summary] avg_fused_single_launch={avg_fused_perm:.3f} ms")
 
         if ENABLE_PROJECTION:
             elem_size = hidden_shard.element_size()
@@ -214,24 +337,49 @@ def check_allgather_local_permute_fusion():
             # Per-rank communication payload received from peers for allgather.
             allgather_bytes = (world_size - 1) * num_tokens_per_rank * hidden_size * elem_size
 
-            # Local permute is modeled as one read + one write in HBM for remapped output.
-            local_permute_elems = num_tokens * (topk + 1) * hidden_size
-            local_permute_bytes = local_permute_elems * elem_size # assume write topk, read 1 time
+            # Local permute memory traffic breakdown:
+            read_bytes = num_tokens * hidden_size * elem_size
+            write_bytes = num_tokens * topk * hidden_size * elem_size
+            total_bytes = read_bytes + write_bytes  # cold: full HBM traffic
 
             proj_allgather_ms = project_time_ms(allgather_bytes, CROSS_GPU_BW_GBPS)
-            proj_local_permute_ms = project_time_ms(local_permute_bytes, HBM_BW_GBPS)
+            proj_cold_ms = project_time_ms(total_bytes, HBM_BW_GBPS)
+            proj_write_only_ms = project_time_ms(write_bytes, HBM_BW_GBPS)
 
             print(
                 f"[Projection] allgather_bytes={bytes_to_mb(allgather_bytes):.2f} MB "
                 f"@{CROSS_GPU_BW_GBPS:.1f} GB/s -> {proj_allgather_ms:.3f} ms"
             )
             print(
-                f"[Projection] local_permute_bytes={bytes_to_mb(local_permute_bytes):.2f} MB "
-                f"@{HBM_BW_GBPS:.1f} GB/s -> {proj_local_permute_ms:.3f} ms"
+                f"[Projection] local_permute cold (read+write)={bytes_to_mb(total_bytes):.2f} MB "
+                f"@{HBM_BW_GBPS:.1f} GB/s -> {proj_cold_ms:.3f} ms"
             )
             print(
-                f"[Projection] fused_lower_bound={proj_allgather_ms + proj_local_permute_ms:.3f} ms"
+                f"[Projection] local_permute warm (write-only)={bytes_to_mb(write_bytes):.2f} MB "
+                f"@{HBM_BW_GBPS:.1f} GB/s -> {proj_write_only_ms:.3f} ms"
             )
+            print(
+                f"[Projection] fused_lower_bound={proj_allgather_ms + proj_cold_ms:.3f} ms"
+            )
+
+            best_perm = avg_fused_perm if avg_fused_perm > 0 else avg_perm
+            best_label = "fused_single_launch" if avg_fused_perm > 0 else "4-launch"
+            print(
+                f"\n[Gap Analysis - Cold] actual={avg_cold:.3f} ms vs projected={proj_cold_ms:.3f} ms, "
+                f"ratio={avg_cold / proj_cold_ms:.2f}x, "
+                f"efficiency={proj_cold_ms / avg_cold * 100:.1f}%"
+            )
+            print(
+                f"[Gap Analysis - Warm] actual={avg_perm:.3f} ms vs projected={proj_write_only_ms:.3f} ms, "
+                f"ratio={avg_perm / proj_write_only_ms:.2f}x, "
+                f"efficiency={proj_write_only_ms / avg_perm * 100:.1f}%"
+            )
+            if avg_fused_perm > 0:
+                print(
+                    f"[Gap Analysis - Fused] actual={avg_fused_perm:.3f} ms vs projected={proj_cold_ms:.3f} ms, "
+                    f"ratio={avg_fused_perm / proj_cold_ms:.2f}x, "
+                    f"efficiency={proj_cold_ms / avg_fused_perm * 100:.1f}%"
+                )
 
     dist.destroy_process_group()
 

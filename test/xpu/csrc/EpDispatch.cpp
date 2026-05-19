@@ -76,17 +76,18 @@ struct EpDispatchRingScalarKernel {
   }
 };
 
-// Vectorized ring-ordered kernel with interleaved work groups.
+// Vectorized ring-ordered kernel with ownership pre-check.
+//
+// Key optimization: before issuing the expensive cross-device read from
+// remote symmetric memory (PCIe), check if ANY of the topk experts for
+// this token are owned by the current rank. If not, skip the read entirely.
+// With uniform expert distribution (128 experts, 4 ranks, topk=8),
+// ~10% of tokens have no owned assignment, saving 10% of PCIe traffic.
 //
 // Decomposition: idx → (local_token_idx, step, vec_h)
 //   vec_h = idx % hidden_vecs           (innermost: coalesced access)
 //   step = (idx / hidden_vecs) % world_size  (interleaved: overlap reads)
 //   local_token_idx = idx / (hidden_vecs * world_size)
-//
-// Adjacent work groups (of hidden_vecs threads each) handle different steps
-// (i.e., different source ranks). The GPU scheduler can overlap cross-device
-// reads from multiple remote ranks concurrently, achieving intra-kernel
-// communication overlap without explicit multi-stream management.
 template <typename scalar_t, int VEC_SIZE>
 struct EpDispatchRingVecKernel {
   using vec_elem_t =
@@ -120,6 +121,23 @@ struct EpDispatchRingVecKernel {
     const int32_t src_rank = (rank + step + 1) % world_size;
     const int32_t global_token_idx = src_rank * num_tokens_per_rank + local_token_idx;
 
+    // Ownership pre-check: avoid expensive PCIe read if no expert is owned.
+    // topk_idx is in local HBM (fast L2-cached read), while source may be
+    // in remote symmetric memory (slow PCIe read).
+    const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+    bool has_owned = false;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      int32_t owner;
+      if (expert < boundary) {
+        owner = expert / (base_experts + 1);
+      } else {
+        owner = rem_experts + (expert - boundary) / base_experts;
+      }
+      if (owner == rank) { has_owned = true; break; }
+    }
+    if (!has_owned) return;
+
     // Coalesced vectorized read from source rank's symmetric memory
     const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
     auto src_vec = reinterpret_cast<const vec_t*>(
@@ -128,8 +146,7 @@ struct EpDispatchRingVecKernel {
 
     // Loop over topk: check ownership and write to owned positions
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(
-          topk_idx_ptr[static_cast<int64_t>(global_token_idx) * topk + k]);
+      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);

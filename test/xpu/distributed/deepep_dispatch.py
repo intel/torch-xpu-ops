@@ -73,6 +73,7 @@ def deepep_owner_dispatch(
     group: dist.ProcessGroup = None,
     group_name: str = None,
     rank_buffers_ptr: torch.Tensor = None,
+    skip_copy: bool = False,
 ):
         """
         TP+EP owner-based dispatch using symmetric memory.
@@ -85,6 +86,9 @@ def deepep_owner_dispatch(
             rank_buffers_ptr: Optional precomputed device tensor of per-rank
                 buffer pointers (int64). Pass this to avoid per-call overhead
                 when hidden_shard and workspace are stable across calls.
+            skip_copy: If True, assume hidden_shard is already written to
+                the symmetric memory workspace (e.g., by a preceding matmul).
+                NOTE: the barrier mechanism may require the copy; use with caution.
         """
         if group is None:
                 group = dist.group.WORLD
@@ -107,7 +111,8 @@ def deepep_owner_dispatch(
                 rank, (num_tokens_per_rank, hidden_size),
                 hidden_shard.dtype, storage_offset=local_offset,
         )
-        local_slot.copy_(hidden_shard)
+        if not skip_copy:
+                local_slot.copy_(hidden_shard)
         workspace.barrier()
 
         if _HAS_NATIVE_KERNEL:
