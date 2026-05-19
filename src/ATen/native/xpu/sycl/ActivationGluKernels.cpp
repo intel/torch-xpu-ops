@@ -26,7 +26,7 @@ struct GluFunctor {
     const opmath_t a = a_;
     const opmath_t b = b_;
     const opmath_t one = opmath_t(1);
-    const opmath_t sigmoid = one / (one + std::exp(-b));
+    const opmath_t sigmoid = one / (one + sycl::exp(-b));
     return a * sigmoid;
   }
 };
@@ -51,7 +51,7 @@ struct GluJvpFunctor {
     const opmath_t db = db_;
     const opmath_t one = opmath_t(1);
 
-    const opmath_t sig_b = one / (one + std::exp(-b));
+    const opmath_t sig_b = one / (one + sycl::exp(-b));
     return (da * sig_b + res * (db - sig_b * db));
   }
 };
@@ -90,7 +90,7 @@ struct GluBackwardKernelFunctor {
     const opmath_t gO_val = gO_[offsets[2]];
 
     const auto one = opmath_t(1);
-    const opmath_t sigmoid = one / (one + std::exp(-b));
+    const opmath_t sigmoid = one / (one + sycl::exp(-b));
 
     auto* gA = gI_ + offsets[0];
     *gA = sigmoid * gO_val;

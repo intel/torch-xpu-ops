@@ -59,7 +59,8 @@ jobs:
           bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_clang_errors.log
       - name: Comment on lint failure
         if: >-
-          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure') }}
+          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
+          && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
@@ -78,12 +79,15 @@ jobs:
           printf -v COMMENT_BODY '%s\n' \
             "@copilot The ${FAILED_STEPS} check failed. Please fix the lint errors in this PR." \
             "" \
+            "**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**" \
+            "" \
             "Lint job log: ${JOB_URL}" \
             "" \
             "Instructions:" \
             "1. Review the lint failure log via the link above" \
             "2. Fix all lint errors in the relevant source files" \
-            "3. Ensure both Python lint and Clang format checks pass"
+            "3. Ensure both Python lint and Clang format checks pass" \
+            "4. Use reply comments to report progress - do NOT modify the PR description plan directly"
           gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "${COMMENT_BODY}"
       - name: Fail if lint failed
         if: ${{ steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure' }}
@@ -99,7 +103,7 @@ jobs:
           fi
           exit 1
       - name: Check reproducer exists for AI-generated PR
-        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && github.event.pull_request.head.repo.full_name == github.repository }}
         id: reproducer-check
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
@@ -163,7 +167,9 @@ jobs:
 
   conditions-filter-win:
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+      ${{ github.repository_owner == 'intel'
+      && github.event.pull_request.draft == false
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -198,6 +204,7 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     needs: [linux-build, preci-lint-check]
     secrets: inherit
     permissions:
@@ -213,11 +220,12 @@ jobs:
 
   linux-ut:
     needs: [linux-build,reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -231,11 +239,12 @@ jobs:
 
   linux-distributed:
     needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -249,7 +258,7 @@ jobs:
 
   linux-e2e:
     name: linux-e2e
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
     needs: [linux-build, reproducer-test]
     strategy:
@@ -265,7 +274,7 @@ jobs:
   linux-e2e-summary:
     name: linux-e2e-summary
     needs: [linux-e2e]
-    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
