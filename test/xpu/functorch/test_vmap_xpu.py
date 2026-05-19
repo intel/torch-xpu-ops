@@ -3976,6 +3976,15 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
             fail_with_randomness = randomness == "error"
             if backend != SDPBackend.MATH:
                 fail_with_randomness |= randomness == "same"
+            # On XPU, EFFICIENT_ATTENTION currently maps/falls back to the
+            # MATH implementation, so randomness="same" is allowed here.
+            if backend == SDPBackend.EFFICIENT_ATTENTION and randomness == "same":
+                fail_with_randomness = False
+            # On XPU, FLASH_ATTENTION with dropout and randomness="different"
+            # currently has no available kernel, so this path is expected to raise.
+            if backend == SDPBackend.FLASH_ATTENTION and randomness == "different":
+                fail_with_randomness = True
+
             context = (
                 self.assertRaises(RuntimeError)
                 # We currently don't support randomness == "same", and "error" should always error with randomness
