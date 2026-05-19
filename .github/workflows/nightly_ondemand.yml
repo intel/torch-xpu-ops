@@ -56,6 +56,22 @@ permissions: read-all
 run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
 jobs:
+  runner-config:
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_build: ${{ steps.config.outputs.linux_build }}
+      linux_performance: ${{ steps.config.outputs.linux_performance }}
+      linux_others: ${{ steps.config.outputs.linux_others }}
+      windows_build: ${{ steps.config.outputs.windows_build }}
+      windows_test: ${{ steps.config.outputs.windows_test }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Load runner config
+        id: config
+        uses: ./.github/actions/runner-config
+
   Conditions-Filter:
     name: conditions-filter
     if: ${{ github.repository_owner == 'intel' }}
@@ -68,6 +84,7 @@ jobs:
       torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
       ut: ${{ steps.inputs-check.outputs.ut }}
       suite: ${{ steps.inputs-check.outputs.suite }}
+      scenario: ${{ steps.inputs-check.outputs.scenario }}
       triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
     steps:
@@ -97,6 +114,7 @@ jobs:
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
+            scenario='["accuracy","performance"]'
             triton=''
             python='3.10'
           else
@@ -113,6 +131,11 @@ jobs:
             fi
             ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            if [ -n "${{ inputs.scenario }}" ];then
+              scenario="$(echo ${{ inputs.scenario }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            else
+              scenario='["accuracy","performance"]'
+            fi
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
           fi
@@ -121,11 +144,12 @@ jobs:
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
           echo "ut=${ut}" >> ${GITHUB_OUTPUT}
           echo "suite=${suite}" >> ${GITHUB_OUTPUT}
+          echo "scenario=${scenario}" >> ${GITHUB_OUTPUT}
           echo "triton=${triton}" >> ${GITHUB_OUTPUT}
           echo "python=${python}" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
-    needs: [Conditions-Filter]
+    needs: [runner-config, Conditions-Filter]
     name: linux-build
     secrets: inherit
     strategy:
@@ -134,7 +158,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
+      build_runner: ${{ needs.runner-config.outputs.linux_build }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
@@ -143,7 +167,7 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     permissions:
       contents: read
@@ -155,7 +179,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ needs.runner-config.outputs.linux_others }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -164,22 +188,23 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
+        scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ matrix.scenario == 'performance' && needs.runner-config.outputs.linux_performance || needs.runner-config.outputs.linux_others }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
-      scenario: ${{ github.event_name == 'schedule' && '' || inputs.scenario }}
+      scenario: ${{ matrix.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e
@@ -201,7 +226,7 @@ jobs:
       actions: read
       contents: read
       issues: write
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -209,31 +234,31 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ needs.runner-config.outputs.linux_performance }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Windows-Nightly-Ondemand-Build:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows-build
-    needs: [Conditions-Filter]
+    needs: [runner-config, Conditions-Filter]
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      build_runner: Windows_CI_Build
+      build_runner: ${{ needs.runner-config.outputs.windows_build }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows-ut
-    needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
+    needs: [runner-config, Conditions-Filter, Windows-Nightly-Ondemand-Build]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: Windows_CI
+      runner: ${{ needs.runner-config.outputs.windows_test }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}

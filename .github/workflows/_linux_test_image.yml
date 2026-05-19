@@ -11,13 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        type: choice
-        default: 'ubuntu-24.04'
-        description: 'Runner label'
-        options:
-          - ubuntu-24.04
-          - ubuntu-22.04
-          - build
+        type: string
+        default: ''
+        description: 'Optional runner override. Empty uses the configured Linux build runner.'
       driver:
         type: choice
         required: true
@@ -72,8 +68,20 @@ env:
   WORKFLOW_PUSH_TO_HUB: ${{ github.event_name == 'workflow_dispatch' && inputs.push_to_hub || false }}
 
 jobs:
+  runner-config:
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_build: ${{ steps.config.outputs.linux_build }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Load runner config
+        id: config
+        uses: ./.github/actions/runner-config
+
   build-image:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'ubuntu-24.04' }}
+    needs: runner-config
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && (inputs.runner != '' && inputs.runner || needs.runner-config.outputs.linux_build) || 'ubuntu-24.04' }}
     if: ${{ github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Cleanup

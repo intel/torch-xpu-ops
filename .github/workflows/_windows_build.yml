@@ -19,9 +19,8 @@ on:
         default: '3.10'
         description: Python version
       build_runner:
-        required: false
+        required: true
         type: string
-        default: 'Windows_CI_Build'
         description: Runner label for build job
       xpu_version:
         required: false
