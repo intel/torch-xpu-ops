@@ -72,13 +72,19 @@ def deepep_owner_dispatch(
     num_experts: int,
     group: dist.ProcessGroup = None,
     group_name: str = None,
+    rank_buffers_ptr: torch.Tensor = None,
 ):
         """
         TP+EP owner-based dispatch using symmetric memory.
 
         Each rank writes its hidden_shard to symmetric memory, then a single
-        kernel checks expert ownership for every (token, k) pair and selectively
-        reads from the corresponding source rank's buffer.
+        ring-ordered kernel reads from all source ranks with coalesced access
+        and writes to owned positions in remap_hidden_states.
+
+        Args:
+            rank_buffers_ptr: Optional precomputed device tensor of per-rank
+                buffer pointers (int64). Pass this to avoid per-call overhead
+                when hidden_shard and workspace are stable across calls.
         """
         if group is None:
                 group = dist.group.WORLD
@@ -105,23 +111,24 @@ def deepep_owner_dispatch(
         workspace.barrier()
 
         if _HAS_NATIVE_KERNEL:
-                # Collect per-rank buffer pointers for the kernel
-                ptr_list = []
-                for r in range(world_size):
-                        if r == rank:
-                                ptr_list.append(hidden_shard.data_ptr())
-                        else:
-                                offset = r * num_tokens_per_rank * hidden_size
-                                buf = workspace.get_buffer(
-                                        r, (num_tokens_per_rank, hidden_size),
-                                        hidden_shard.dtype, storage_offset=offset,
-                                )
-                                ptr_list.append(buf.data_ptr())
-                # Device pointers may exceed signed int64 range; wrap to preserve bits
-                signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
-                rank_buffers_ptr = torch.tensor(
-                        signed_ptrs, dtype=torch.int64,
-                ).to(hidden_shard.device)
+                if rank_buffers_ptr is None:
+                        # Collect per-rank buffer pointers for the kernel
+                        ptr_list = []
+                        for r in range(world_size):
+                                if r == rank:
+                                        ptr_list.append(hidden_shard.data_ptr())
+                                else:
+                                        offset = r * num_tokens_per_rank * hidden_size
+                                        buf = workspace.get_buffer(
+                                                r, (num_tokens_per_rank, hidden_size),
+                                                hidden_shard.dtype, storage_offset=offset,
+                                        )
+                                        ptr_list.append(buf.data_ptr())
+                        # Device pointers may exceed signed int64 range; wrap to preserve bits
+                        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+                        rank_buffers_ptr = torch.tensor(
+                                signed_ptrs, dtype=torch.int64,
+                        ).to(hidden_shard.device)
 
                 torch.ops.symm_mem.ep_dispatch(
                         rank_buffers_ptr, topk_idx, remap_hidden_states,
@@ -151,3 +158,36 @@ def deepep_owner_dispatch(
 
         workspace.barrier()
         return remap_hidden_states
+
+
+def build_rank_buffers_ptr(
+    hidden_shard: torch.Tensor,
+    num_experts: int,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+) -> torch.Tensor:
+        """Precompute the rank_buffers_ptr tensor for repeated dispatch calls."""
+        if group is None:
+                group = dist.group.WORLD
+        if group_name is None:
+                group_name = group.group_name
+        rank = dist.get_rank(group)
+        world_size = dist.get_world_size(group)
+
+        num_tokens_per_rank, hidden_size = hidden_shard.shape
+        workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
+        workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+        ptr_list = []
+        for r in range(world_size):
+                if r == rank:
+                        ptr_list.append(hidden_shard.data_ptr())
+                else:
+                        offset = r * num_tokens_per_rank * hidden_size
+                        buf = workspace.get_buffer(
+                                r, (num_tokens_per_rank, hidden_size),
+                                hidden_shard.dtype, storage_offset=offset,
+                        )
+                        ptr_list.append(buf.data_ptr())
+        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+        return torch.tensor(signed_ptrs, dtype=torch.int64).to(hidden_shard.device)

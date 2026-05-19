@@ -66,7 +66,7 @@ def check_allgather_local_permute_fusion():
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
 
-    backend_stream = torch.xpu.Stream()
+    backend_stream = torch.xpu.current_stream() #torch.xpu.Stream()
 
     if ENABLE_PROFILE:
         prof = torch.profiler.profile(

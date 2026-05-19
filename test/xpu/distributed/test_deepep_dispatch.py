@@ -10,7 +10,7 @@ import os
 import torch
 import torch.distributed as dist
 
-from deepep_dispatch import deepep_owner_dispatch, get_expert_owner
+from deepep_dispatch import deepep_owner_dispatch, get_expert_owner, build_rank_buffers_ptr
 
 TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
@@ -169,6 +169,9 @@ def check_deepep_owner_dispatch():
     torch.xpu.synchronize()
     dist.barrier()
 
+    # Precompute rank_buffers_ptr for timed path (pointers are stable after warmup)
+    rank_buffers = build_rank_buffers_ptr(hidden_shard, NUM_EXPERTS, group=group)
+
     remap_hidden_states = torch.zeros(
         (num_tokens * topk, hidden_size),
         device=device,
@@ -184,6 +187,7 @@ def check_deepep_owner_dispatch():
             remap_hidden_states,
             num_experts=NUM_EXPERTS,
             group=group,
+            rank_buffers_ptr=rank_buffers,
         )
         if i >= WARMUP:
             end_events[i].record()
