@@ -79,8 +79,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 - `src/ATen/` only (kernel/operator code, no xccl):
   - Base: `disable_e2e`, `disable_distributed`
-  - If changes are only in `src/ATen/native/xpu/sycl/` (pure kernel logic, no new ops): add `disable_win`
-  - If changes touch `src/ATen/native/sparse/`: add `disable_win`
+  - Do NOT add `disable_win` — kernel fixes may be platform-specific (e.g. a fix specifically for Windows)
 
 - `src/xccl/` involved (distributed communication backend):
   - Base: `disable_e2e` only — do NOT add `disable_distributed` (xccl changes must run distributed tests)

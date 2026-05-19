@@ -21,7 +21,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: auto-label-${{ github.event.pull_request.number }}
+  group: auto-label-${{ github.event_name }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -66,10 +66,12 @@ jobs:
         id: determine-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          PR_FILES: ${{ steps.changed-files.outputs.files }}
+          PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           SKILL_CONTENT=$(cat .github/skills/xpu-pr-auto-labeling/SKILL.md)
-          FILES="${{ steps.changed-files.outputs.files }}"
-          IS_DRAFT="${{ github.event.pull_request.draft }}"
+          FILES="$PR_FILES"
+          IS_DRAFT="$PR_IS_DRAFT"
           API_SUCCESS=false
 
           # Build the prompt
@@ -136,16 +138,12 @@ jobs:
             HAS_YAML=false
             ONLY_SKIP_EXPECT=true
             HAS_WIN_TEST=false
-            HAS_SYCL_ONLY=true
-            HAS_SPARSE=false
 
             while IFS= read -r file; do
               [ -z "$file" ] && continue
               case "$file" in
                 src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
-                src/ATen/native/sparse/*) HAS_SRC=true; HAS_SPARSE=true ;;
-                src/ATen/native/xpu/sycl/*) HAS_SRC=true ;;
-                src/*|CMakeLists.txt) HAS_SRC=true; HAS_SYCL_ONLY=false ;;
+                src/*|CMakeLists.txt) HAS_SRC=true ;;
                 cmake/*|tools/*) HAS_CMAKE=true ;;
                 test/xpu/test_ops*.py|test/xpu/core/*|test/xpu/test_nn*.py) HAS_TEST=true; ONLY_SKIP_EXPECT=false; HAS_WIN_TEST=true ;;
                 test/*) HAS_TEST=true
@@ -177,12 +175,8 @@ jobs:
             elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_YAML" = false ]; then
               # Source changes (possibly with tests)
               if [ "$HAS_XCCL" = true ]; then
-                # xccl is distributed backend — must run distributed tests
+                # xccl is distributed backend — must run distributed tests, Linux-only
                 LABELS="disable_e2e,disable_win"
-              elif [ "$HAS_SPARSE" = true ]; then
-                LABELS="disable_e2e,disable_distributed,disable_win"
-              elif [ "$HAS_SYCL_ONLY" = true ]; then
-                LABELS="disable_e2e,disable_distributed,disable_win"
               else
                 LABELS="disable_e2e,disable_distributed"
               fi
