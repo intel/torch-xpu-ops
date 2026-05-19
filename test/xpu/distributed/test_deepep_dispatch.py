@@ -11,6 +11,7 @@ import torch
 import torch.distributed as dist
 
 from deepep_dispatch import deepep_owner_dispatch, get_expert_owner, build_rank_buffers_ptr
+from allgather_local_permute_fusion import compute_scatter_idx
 
 TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
@@ -85,6 +86,7 @@ def init_distributed():
 def build_reference(
     all_hidden: torch.Tensor,
     topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
     num_experts: int,
     rank: int,
     world_size: int,
@@ -104,7 +106,7 @@ def build_reference(
                 expert = int(topk_idx[global_token_idx, k].item())
                 owner = get_expert_owner(expert, num_experts, world_size)
                 if owner == rank:
-                    dst = global_token_idx * topk + k
+                    dst = int(scatter_idx[global_token_idx, k].item())
                     ref[dst].copy_(all_hidden[src_rank, i])
     return ref
 
@@ -136,6 +138,9 @@ def check_deepep_owner_dispatch():
         dtype=torch.int64,
     )
 
+    # Compute expert-centric scatter_idx from global topk_idx
+    scatter_idx, _ = compute_scatter_idx(topk_idx, num_experts=NUM_EXPERTS)
+
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
 
@@ -151,6 +156,7 @@ def check_deepep_owner_dispatch():
             topk_idx,
             remap_hidden_states,
             num_experts=NUM_EXPERTS,
+            scatter_idx=scatter_idx,
             group=group,
         )
     torch.xpu.synchronize()
@@ -173,6 +179,7 @@ def check_deepep_owner_dispatch():
             topk_idx,
             remap_hidden_states,
             num_experts=NUM_EXPERTS,
+            scatter_idx=scatter_idx,
             group=group,
             rank_buffers_ptr=rank_buffers,
         )
@@ -187,7 +194,7 @@ def check_deepep_owner_dispatch():
     gathered_hidden = [torch.empty_like(hidden_shard) for _ in range(world_size)]
     dist.all_gather(gathered_hidden, hidden_shard, group=group)
     all_hidden = torch.stack(gathered_hidden, dim=0)
-    ref = build_reference(all_hidden, topk_idx, NUM_EXPERTS, rank, world_size)
+    ref = build_reference(all_hidden, topk_idx, scatter_idx, NUM_EXPERTS, rank, world_size)
 
     assert torch.equal(
         remap_hidden_states,
@@ -213,7 +220,7 @@ def check_deepep_owner_dispatch():
             dist.all_gather(gathered, hidden_shard, group=group)
             for src_rank in range(world_size):
                 torch.ops.symm_mem.local_permute_copy_(
-                    gathered[src_rank], topk_idx,
+                    gathered[src_rank], scatter_idx,
                     src_rank * num_tokens_per_rank, ref_output,
                 )
         torch.xpu.synchronize()
@@ -227,7 +234,7 @@ def check_deepep_owner_dispatch():
             dist.all_gather(gathered, hidden_shard, group=group)
             for src_rank in range(world_size):
                 torch.ops.symm_mem.local_permute_copy_(
-                    gathered[src_rank], topk_idx,
+                    gathered[src_rank], scatter_idx,
                     src_rank * num_tokens_per_rank, ref_output,
                 )
             ref_end[i].record()
@@ -235,6 +242,14 @@ def check_deepep_owner_dispatch():
         dist.barrier()
         ref_latencies = [ref_begin[i].elapsed_time(ref_end[i]) for i in range(LOOP)]
         avg_ref = sum(ref_latencies) / len(ref_latencies)
+
+        # Cross-check: for owned positions, ref_output (full permute) must match
+        # remap_hidden_states (owner-filtered dispatch).
+        owned_mask = (remap_hidden_states != 0).any(dim=1)
+        assert torch.equal(
+            remap_hidden_states[owned_mask],
+            ref_output[owned_mask],
+        ), f"Baseline local_permute vs deepep_owner_dispatch mismatch at owned positions in rank {rank}"
     else:
         avg_ref = None
 

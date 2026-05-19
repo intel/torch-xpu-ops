@@ -70,6 +70,7 @@ def deepep_owner_dispatch(
     topk_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
     num_experts: int,
+    scatter_idx: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
     rank_buffers_ptr: torch.Tensor = None,
@@ -83,6 +84,8 @@ def deepep_owner_dispatch(
         and writes to owned positions in remap_hidden_states.
 
         Args:
+            scatter_idx: [num_tokens, topk] int32 - pre-computed expert-sorted
+                write positions (from compute_scatter_idx).
             rank_buffers_ptr: Optional precomputed device tensor of per-rank
                 buffer pointers (int64). Pass this to avoid per-call overhead
                 when hidden_shard and workspace are stable across calls.
@@ -136,8 +139,8 @@ def deepep_owner_dispatch(
                         ).to(hidden_shard.device)
 
                 torch.ops.symm_mem.ep_dispatch(
-                        rank_buffers_ptr, topk_idx, remap_hidden_states,
-                        num_experts, rank, world_size,
+                        rank_buffers_ptr, topk_idx, scatter_idx,
+                        remap_hidden_states, num_experts, rank, world_size,
                 )
         else:
                 # Python fallback
@@ -158,7 +161,7 @@ def deepep_owner_dispatch(
                                         expert = int(topk_idx[global_token_idx, k].item())
                                         owner = get_expert_owner(expert, num_experts, world_size)
                                         if owner == rank:
-                                                dst = global_token_idx * topk + k
+                                                dst = int(scatter_idx[global_token_idx, k].item())
                                                 remap_hidden_states[dst].copy_(src_buffer[i])
 
         workspace.barrier()

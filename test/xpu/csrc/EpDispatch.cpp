@@ -30,6 +30,7 @@ template <typename T>
 struct EpDispatchRingScalarKernel {
   const int64_t* rank_ptrs;
   const int64_t* topk_idx_ptr;
+  const int32_t* scatter_idx_ptr;
   T* remap_ptr;
   int64_t num_tokens_per_rank;
   int64_t hidden_size;
@@ -69,7 +70,8 @@ struct EpDispatchRingScalarKernel {
         owner = rem_experts + (expert - boundary) / base_experts;
       }
       if (owner == static_cast<int32_t>(rank)) {
-        const int64_t dst_row = global_token_idx * topk + k;
+        const int64_t dst_row = static_cast<int64_t>(
+            scatter_idx_ptr[global_token_idx * topk + k]);
         remap_ptr[dst_row * hidden_size + h] = val;
       }
     }
@@ -96,6 +98,7 @@ struct EpDispatchRingVecKernel {
 
   const int64_t* rank_ptrs;
   const int64_t* topk_idx_ptr;
+  const int32_t* scatter_idx_ptr;
   scalar_t* remap_ptr;
   int32_t num_tokens_per_rank;
   int32_t hidden_size;
@@ -154,7 +157,8 @@ struct EpDispatchRingVecKernel {
         owner = rem_experts + (expert - boundary) / base_experts;
       }
       if (owner == rank) {
-        const int32_t dst_row = global_token_idx * topk + k;
+        const int32_t dst_row = scatter_idx_ptr[
+            static_cast<int64_t>(global_token_idx) * topk + k];
         auto dst_vec = reinterpret_cast<vec_t*>(
             remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
         dst_vec[vec_h] = v;
@@ -166,6 +170,7 @@ struct EpDispatchRingVecKernel {
 at::Tensor ep_dispatch(
     const at::Tensor& rank_buffers_ptr,
     const at::Tensor& topk_idx,
+    const at::Tensor& scatter_idx,
     at::Tensor remap_hidden_states,
     int64_t num_experts,
     int64_t rank,
@@ -177,6 +182,13 @@ at::Tensor ep_dispatch(
       rank_buffers_ptr.scalar_type() == at::kLong,
       "ep_dispatch: rank_buffers_ptr must be int64");
   TORCH_CHECK(topk_idx.dim() == 2, "ep_dispatch: topk_idx must be 2D");
+  TORCH_CHECK(
+      scatter_idx.dim() == 2 && scatter_idx.size(0) == topk_idx.size(0) &&
+          scatter_idx.size(1) == topk_idx.size(1),
+      "ep_dispatch: scatter_idx must be 2D with same shape as topk_idx");
+  TORCH_CHECK(
+      scatter_idx.scalar_type() == at::kInt,
+      "ep_dispatch: scatter_idx must be int32");
   TORCH_CHECK(
       remap_hidden_states.dim() == 2,
       "ep_dispatch: remap_hidden_states must be 2D");
@@ -224,6 +236,7 @@ at::Tensor ep_dispatch(
           auto kfn = EpDispatchRingVecKernel<scalar_t, VEC_SIZE>{
               rank_buffers_ptr.data_ptr<int64_t>(),
               topk_idx.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
               remap_hidden_states.data_ptr<scalar_t>(),
               static_cast<int32_t>(num_tokens_per_rank),
               static_cast<int32_t>(hidden_size),
@@ -245,6 +258,7 @@ at::Tensor ep_dispatch(
           auto kfn = EpDispatchRingScalarKernel<scalar_t>{
               rank_buffers_ptr.data_ptr<int64_t>(),
               topk_idx.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
               remap_hidden_states.data_ptr<scalar_t>(),
               num_tokens_per_rank,
               hidden_size,
@@ -268,6 +282,7 @@ at::Tensor ep_dispatch(
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ep_dispatch(Tensor rank_buffers_ptr, Tensor topk_idx, "
+      "Tensor scatter_idx, "
       "Tensor(a!) remap_hidden_states, int num_experts, "
       "int rank, int world_size) -> Tensor(a!)");
 }
