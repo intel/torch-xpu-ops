@@ -12,9 +12,6 @@
 | warmup | 20 iterations |
 | timed loops | 20 iterations |
 
-**Environment variable**: `SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=0`
-(disables D2D copy engine overlap, ensures apple-to-apple single-stream comparison)
-
 ## Results
 
 ### tokens_per_rank = 2048
@@ -23,7 +20,7 @@ Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
 
 | Method | Avg (ms) | Min (ms) | Projection (ms) | Efficiency | Notes |
 |--------|----------|----------|-----------------|------------|-------|
-| **EP Dispatch (ring-ordered)** | **1.012** | **1.011** | 0.999 | 98.8% | PCIe serial 0.846 + HBM 0.154 ms |
+| **EP Dispatch (ring-ordered)** | **1.012** | **1.011** | TBD | TBD | TBD |
 | Allgather+permute single-stream | 1.983 | 1.980 | 1.631 | — | allgather 0.940 + permute 0.691 ms |
 | Allgather+permute two-stream (fused) | 1.328 | 1.278 | — | — | Overlap hides allgather latency |
 | └─ Allgather only (PCIe) | — | — | 0.940 | — | 24.00 MB @ 26.8 GB/s |
