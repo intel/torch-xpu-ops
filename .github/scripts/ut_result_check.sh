@@ -158,6 +158,154 @@ clean_file() {
     awk '{for(i=1;i<=NF;i++) if($i ~ /::.*::/) print $i}' "$file" | sort -u > "${file}.tmp"
     mv "${file}.tmp" "$file"
 }
+
+# Build case->issue mapping from known issues file.
+# Expected format example:
+#   Issue #123
+#   Cases:
+#   test_name
+build_known_issue_case_map() {
+    local known_file="$1"
+    local map_name="$2"
+    local -n case_map_ref="$map_name"
+
+    if [[ ! -f "$known_file" ]]; then
+        return 0
+    fi
+
+    local issue_id=""
+    local in_cases_section=0
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [[ -z "$line" ]] && { in_cases_section=0; continue; }
+
+        if [[ "$line" == "Cases:"* ]]; then
+            in_cases_section=1
+            continue
+        fi
+
+        if [[ "$line" =~ Issue\ #([0-9]+) ]]; then
+            issue_id="${BASH_REMATCH[1]}"
+            in_cases_section=0
+            continue
+        fi
+
+        if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then
+            case_map_ref["$line"]="$issue_id"
+        fi
+    done < "$known_file"
+}
+
+# Filter flaky known issues from passed list when they also failed in this run
+# Args: passed_tests_file, removed_known_failures_file, known_issues_file
+check_random_known_issues() {
+    local passed_file="$1"
+    local removed_file="$2"
+    local known_file="$3"
+    local random_issues=""
+    if [[ $# -lt 3 ]]; then
+        echo "❌ Need 3 files to compare" >&2
+        return 1
+    fi
+    if [[ ! -f "$passed_file" ]] || [[ ! -f "$removed_file" ]] || [[ ! -f "$known_file" ]]; then
+        echo "ℹ️  Skip random known issues check (missing input files)"
+        return 0
+    fi
+
+    # Restrict results to random flaky issues when GitHub metadata is available.
+    if command -v gh &>/dev/null; then
+        random_issues="$(gh issue list --repo "https://github.com/intel/torch-xpu-ops" --label 'skipped,random' --json number --jq '.[].number' 2>/dev/null || true)"
+        if [[ -z "$random_issues" ]]; then
+            echo "ℹ️  Could not fetch skipped/random issue list; fallback to all known issues"
+        fi
+    else
+        echo "ℹ️  gh not found; fallback to all known issues"
+    fi
+
+    # Handle Windows line endings
+    if grep -q $'\r' "$passed_file"; then
+        sed -i 's/\r$//' "$passed_file"
+    fi
+    if grep -q $'\r' "$removed_file"; then
+        sed -i 's/\r$//' "$removed_file"
+    fi
+    if grep -q $'\r' "$known_file"; then
+        sed -i 's/\r$//' "$known_file"
+    fi
+
+    declare -A case_issue_map
+    declare -A passed_case_seen
+    declare -A removed_case_seen
+    declare -A passed_issue_cases
+    declare -A removed_issue_cases
+
+    build_known_issue_case_map "$known_file" case_issue_map
+
+    local test_case issue_id
+    while IFS= read -r test_case; do
+        [[ -z "$test_case" ]] && continue
+        issue_id="${case_issue_map[$test_case]:-}"
+        if [[ -n "$issue_id" ]]; then
+            if [[ -z "$random_issues" ]] || [[ $(echo "${random_issues}" | grep -w "${issue_id}" -c) -gt 0 ]]; then
+                passed_case_seen["$test_case"]="$issue_id"
+            fi
+        fi
+    done < "$passed_file"
+
+    while IFS= read -r test_case; do
+        [[ -z "$test_case" ]] && continue
+        if [[ "$test_case" =~ ^[0-9]+:(.*)$ ]]; then
+            test_case="${BASH_REMATCH[1]}"
+        fi
+        issue_id="${case_issue_map[$test_case]:-}"
+        if [[ -n "$issue_id" ]]; then
+            if [[ -z "$random_issues" ]] || [[ $(echo "${random_issues}" | grep -w "${issue_id}" -c) -gt 0 ]]; then
+                removed_case_seen["$test_case"]="$issue_id"
+            fi
+        fi
+    done < "$removed_file"
+
+    local found=0
+    for test_case in "${!passed_case_seen[@]}"; do
+        issue_id="${passed_case_seen[$test_case]}"
+        if [[ -n "${passed_issue_cases[$issue_id]:-}" ]]; then
+            passed_issue_cases["$issue_id"]+="|$test_case"
+        else
+            passed_issue_cases["$issue_id"]="$test_case"
+        fi
+    done
+    for issue_id in "${!passed_issue_cases[@]}"; do
+        # Add comment
+        if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ Random ${passed_issue_cases[$issue_id]//|/, } Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+        else
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ Random ${passed_issue_cases[$issue_id]//|/, } Passed in nightly testing"
+        fi
+        found=1
+    done
+
+    for test_case in "${!removed_case_seen[@]}"; do
+        issue_id="${removed_case_seen[$test_case]}"
+        if [[ -n "${removed_issue_cases[$issue_id]:-}" ]]; then
+            removed_issue_cases["$issue_id"]+="|$test_case"
+        else
+            removed_issue_cases["$issue_id"]="$test_case"
+        fi
+    done
+    for issue_id in "${!removed_issue_cases[@]}"; do
+        # Add comment
+        if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+            gh --repo "$REPO" issue comment "${issue_id}" --body "❌ Random ${removed_issue_cases[$issue_id]//|/, } Failed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+        else
+            gh --repo "$REPO" issue comment "${issue_id}" --body "❌ Random ${removed_issue_cases[$issue_id]//|/, } Failed in nightly testing"
+        fi
+        found=1
+    done
+    if [[ "$found" -eq 0 ]]; then
+        echo "ℹ️  No random known issue status found"
+    fi
+}
+
 # Special check for skipped UT suite - detect newly passing tests that were previously skipped
 check_skipped_ut() {
     echo "🔍 Checking for newly passed tests in skipped UT..."
@@ -234,6 +382,7 @@ run_main_tests() {
     fi
     # Check for known issues that are now passing (regression fixes)
     echo -e "\\n✅ Passing Known Issues:"
+    check_random_known_issues "passed_${suite}.log" "failures_${suite}_removed.log" "issues.log"
     check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
     # Check for new failures not in known issues
     echo -e "\\nChecking New Failures:"
