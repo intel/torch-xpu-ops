@@ -266,9 +266,13 @@ def get_model_list(suite: str, mode: str, model_only: str | None) -> list[str]:
 
 @lru_cache(maxsize=1)
 def _get_torch_version() -> str:
-    pip_cmd = "pip.exe" if IS_WINDOWS else "pip"
     try:
-        result = subprocess.run([pip_cmd, "list", "--format=freeze"], capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "list", "--format=freeze"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
         torch_line = next((l for l in result.stdout.splitlines() if l.startswith("torch==")), None)
         return torch_line.split("==")[1].split("+")[0] if torch_line else "0.0.0"
     except Exception:
@@ -276,8 +280,8 @@ def _get_torch_version() -> str:
 
 
 # Benchmark execution (merged from inductor_xpu_test.sh)
-def _build_benchmark_cmd(task: TestTask, device: str, shape: str, output_csv: str) -> str:
-    """Build the benchmark command string for a single model run."""
+def _build_benchmark_cmd(task: TestTask, device: str, shape: str, output_csv: str) -> list[str]:
+    """Build the benchmark argv list for a single model run."""
     torch_ver = _get_torch_version()
 
     # Determine mode flag
@@ -289,29 +293,35 @@ def _build_benchmark_cmd(task: TestTask, device: str, shape: str, output_csv: st
         mode_flag = ""
 
     # Resolve dtype: amp_bf16/amp_fp16 → --amp --amp-dtype ...
-    dt_map = {"amp_bf16": ("amp", "--amp-dtype bfloat16"),
-              "amp_fp16": ("amp", "--amp-dtype float16")}
-    real_dt, dt_extra = dt_map.get(task.dt, (task.dt, ""))
-
-    shape_flags = "--dynamic-shapes --dynamic-batch-only" if shape == "dynamic" else ""
+    dt_map = {
+        "amp_bf16": ["--amp", "--amp-dtype", "bfloat16"],
+        "amp_fp16": ["--amp", "--amp-dtype", "float16"],
+    }
+    dtype_flags = dt_map.get(task.dt, [f"--{task.dt}"])
 
     parts = [
-        f"python benchmarks/dynamo/{task.suite}.py",
-        f"-d {device}",
+        sys.executable,
+        f"benchmarks/dynamo/{task.suite}.py",
+        "-d",
+        device,
         f"--{task.scenario}",
-        f"--{real_dt}",
-        dt_extra,
-        mode_flag,
-        shape_flags,
-        f"--only {task.model}" if task.model else "",
+        *dtype_flags,
+    ]
+    if mode_flag:
+        parts.append(mode_flag)
+    if shape == "dynamic":
+        parts.extend(["--dynamic-shapes", "--dynamic-batch-only"])
+    if task.model:
+        parts.extend(["--only", task.model])
+    parts.extend([
         "--backend=inductor",
         "--cold-start-latency",
         "-n10",
         "--timeout=10800",
         "--disable-cudagraphs",
         f"--output={output_csv}",
-    ]
-    return " ".join(p for p in parts if p)
+    ])
+    return parts
 
 
 def _check_success_from_log(log_path: Path) -> tuple[str, bool]:
@@ -335,15 +345,14 @@ def _check_success_from_log(log_path: Path) -> tuple[str, bool]:
     return test_result, success
 
 
-def _build_cmd_list(cmd: str, cmd_prefix: str) -> tuple[list[str], str]:
-    """Split command (with optional prefix) into an argv list and display string."""
+def _build_cmd_list(cmd: list[str], cmd_prefix: str) -> tuple[list[str], str]:
+    """Combine benchmark argv (with optional prefix) into an argv list and display string."""
     _posix = not IS_WINDOWS
     if cmd_prefix:
-        cmd_list = shlex.split(cmd_prefix, posix=_posix) + shlex.split(cmd, posix=_posix)
-        cmd_str = f"{cmd_prefix} {cmd}"
+        cmd_list = shlex.split(cmd_prefix, posix=_posix) + cmd
     else:
-        cmd_list = shlex.split(cmd, posix=_posix)
-        cmd_str = cmd
+        cmd_list = cmd
+    cmd_str = subprocess.list2cmdline(cmd_list) if IS_WINDOWS else shlex.join(cmd_list)
     return cmd_list, cmd_str
 
 
