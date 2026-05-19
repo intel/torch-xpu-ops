@@ -1,0 +1,229 @@
+name: auto-label
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+      - release/*
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: auto-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-label:
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      labels_changed: ${{ steps.apply-labels.outputs.labels_changed }}
+    steps:
+      - name: Check for existing manual labels
+        id: check-manual
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # If PR already has disable_* labels, skip auto-labeling (human override)
+          EXISTING=$(gh pr view ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --json labels --jq '[.labels[].name | select(test("^disable_"))] | join(",")')
+          if [ -n "$EXISTING" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "PR already has manual labels: $EXISTING"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repo (for skill file)
+        if: steps.check-manual.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/skills/xpu-pr-auto-labeling
+          sparse-checkout-cone-mode: false
+
+      - name: Get changed files
+        if: steps.check-manual.outputs.skip == 'false'
+        id: changed-files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILES=$(gh pr diff ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} --name-only)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"
+          echo "$FILES"
+
+      - name: Determine labels via GitHub Models
+        if: steps.check-manual.outputs.skip == 'false'
+        id: determine-labels
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          SKILL_CONTENT=$(cat .github/skills/xpu-pr-auto-labeling/SKILL.md)
+          FILES="${{ steps.changed-files.outputs.files }}"
+          IS_DRAFT="${{ github.event.pull_request.draft }}"
+
+          # Build the prompt
+          PROMPT="You are a CI label bot. Based on the labeling rules below, determine which disable_* labels should be applied to this PR.
+
+          PR is draft: ${IS_DRAFT}
+
+          Files changed:
+          ${FILES}
+
+          Rules:
+          ${SKILL_CONTENT}
+
+          Respond with ONLY a comma-separated list of labels (e.g. 'disable_e2e,disable_distributed') or 'none' if no labels should be applied. No explanation."
+
+          # Call GitHub Models API
+          RESPONSE=$(gh api /models/chat/completions \
+            --method POST \
+            -f model="openai/gpt-4o-mini" \
+            -f "messages[][role]=user" \
+            -f "messages[][content]=${PROMPT}" \
+            --jq '.choices[0].message.content' 2>&1) || {
+            echo "GitHub Models API failed, falling back to rule-based logic"
+            RESPONSE=""
+          }
+
+          # Sanitize response - extract only valid label names
+          if [ -n "$RESPONSE" ] && [ "$RESPONSE" != "none" ]; then
+            LABELS=$(echo "$RESPONSE" | tr -d ' \n' | grep -oE '(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|disable_accelerate|disable_transformers|windows_ci)(,(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|disable_accelerate|disable_transformers|windows_ci))*' || echo "")
+          else
+            LABELS=""
+          fi
+
+          # Fallback: rule-based deterministic logic if API fails or returns empty
+          if [ -z "$LABELS" ]; then
+            echo "Using fallback rule-based logic..."
+            
+            # Check if draft
+            if [ "$IS_DRAFT" = "true" ]; then
+              LABELS="disable_all"
+            else
+              HAS_SRC=false
+              HAS_CMAKE=false
+              HAS_TEST=false
+              HAS_WORKFLOW=false
+              HAS_GITHUB_META=false
+              HAS_YAML=false
+              ONLY_SKIP_EXPECT=true
+              
+              while IFS= read -r file; do
+                [ -z "$file" ] && continue
+                case "$file" in
+                  src/*|CMakeLists.txt) HAS_SRC=true ;;
+                  cmake/*|tools/*) HAS_CMAKE=true ;;
+                  test/*) HAS_TEST=true
+                    case "$file" in
+                      test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py) ;;
+                      *) ONLY_SKIP_EXPECT=false ;;
+                    esac ;;
+                  .github/workflows/*) HAS_WORKFLOW=true ;;
+                  .github/*) HAS_GITHUB_META=true ;;
+                  yaml/*) HAS_YAML=true ;;
+                esac
+              done <<< "$FILES"
+              
+              if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
+                if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_GITHUB_META" = true ]; then
+                  LABELS="disable_all"
+                fi
+              elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_TEST" = true ]; then
+                if [ "$ONLY_SKIP_EXPECT" = true ]; then
+                  LABELS="disable_all"
+                else
+                  LABELS="disable_e2e,disable_distributed,disable_build"
+                fi
+              elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ]; then
+                LABELS="disable_e2e,disable_distributed"
+              fi
+            fi
+          fi
+
+          echo "labels=${LABELS}" >> "$GITHUB_OUTPUT"
+          echo "Determined labels: ${LABELS:-none}"
+
+      - name: Apply labels
+        if: steps.check-manual.outputs.skip == 'false' && steps.determine-labels.outputs.labels != ''
+        id: apply-labels
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          LABELS="${{ steps.determine-labels.outputs.labels }}"
+          if [ -n "$LABELS" ] && [ "$LABELS" != "none" ]; then
+            # Convert comma-separated to --add-label flags
+            LABEL_ARGS=$(echo "$LABELS" | tr ',' '\n' | sed 's/^/--add-label /' | tr '\n' ' ')
+            eval gh pr edit ${{ github.event.pull_request.number }} \
+              --repo ${{ github.repository }} $LABEL_ARGS
+            echo "labels_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Applied labels: $LABELS"
+          else
+            echo "labels_changed=false" >> "$GITHUB_OUTPUT"
+            echo "No labels to apply"
+          fi
+
+  cancel-and-rerun:
+    needs: [auto-label]
+    if: needs.auto-label.outputs.labels_changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel current PR workflow run and re-trigger
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+
+          echo "Looking for 'pull' workflow runs to cancel..."
+
+          # Find the in-progress 'pull' workflow run for this PR
+          RUNS=$(gh api "repos/${REPO}/actions/workflows/pull.yml/runs?head_sha=${HEAD_SHA}&status=in_progress" \
+            --jq '.workflow_runs[].id' 2>/dev/null || true)
+          
+          # Also check queued runs
+          QUEUED=$(gh api "repos/${REPO}/actions/workflows/pull.yml/runs?head_sha=${HEAD_SHA}&status=queued" \
+            --jq '.workflow_runs[].id' 2>/dev/null || true)
+          
+          ALL_RUNS=$(echo -e "${RUNS}\n${QUEUED}" | sort -u | grep -v '^$' || true)
+
+          if [ -z "$ALL_RUNS" ]; then
+            echo "No running 'pull' workflow found to cancel"
+          else
+            for RUN_ID in $ALL_RUNS; do
+              echo "Cancelling workflow run: $RUN_ID"
+              gh api "repos/${REPO}/actions/runs/${RUN_ID}/cancel" --method POST 2>/dev/null || true
+            done
+
+            # Wait for cancellation to complete
+            echo "Waiting for cancellation to complete..."
+            sleep 10
+          fi
+
+          # Re-trigger the pull workflow by re-requesting the check suite
+          # This is done by posting a workflow_dispatch or by closing/reopening
+          # The most reliable way: use the rerequested action via check suite
+          echo "Re-running pull workflow..."
+          
+          # Find the latest cancelled/completed run and rerun it
+          LATEST_RUN=$(gh api "repos/${REPO}/actions/workflows/pull.yml/runs?head_sha=${HEAD_SHA}" \
+            --jq '.workflow_runs[0].id' 2>/dev/null || true)
+          
+          if [ -n "$LATEST_RUN" ]; then
+            echo "Re-running workflow run: $LATEST_RUN"
+            gh api "repos/${REPO}/actions/runs/${LATEST_RUN}/rerun" --method POST 2>/dev/null || {
+              echo "Rerun failed, the workflow will be triggered on next push or can be manually rerun"
+            }
+          else
+            echo "No workflow run found to rerun. Labels will take effect on next trigger."
+          fi
