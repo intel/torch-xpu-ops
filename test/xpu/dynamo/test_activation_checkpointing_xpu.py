@@ -32,7 +32,6 @@ from torch.testing._internal.common_utils import (
     IS_WINDOWS,
     parametrize,
     skipIfHpu,
-    skipIfXpu,
     TEST_CUDA,
 )
 from torch.testing._internal.inductor_utils import HAS_GPU_AND_TRITON
