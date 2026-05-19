@@ -58,7 +58,7 @@ _RUN_HEADER_RE = re.compile(r"^## \[Run \d+\]", re.MULTILINE)
 
 def parse_issue_status(body: str) -> dict:
     """Parse an issue's Action Items to determine stage, tokens, and failure info."""
-    from issue_handler.utils.body_templates import get_status as _get_status
+    from issue_handler.utils.body_templates import get_status as _get_status, get_metadata
 
     result = {
         "stage": "unformatted",
@@ -67,7 +67,22 @@ def parse_issue_status(body: str) -> dict:
         "failure_reason": None,
         "failure_category": None,
         "pipeline_status": _get_status(body),
+        "tracking_pr": None,
+        "pr_url": None,
+        "target_repo": None,
     }
+
+    # Extract PR number, PR URL, and target repo from metadata
+    tracking_pr = get_metadata(body, "tracking_pr")
+    if tracking_pr:
+        result["tracking_pr"] = tracking_pr.strip().lstrip("#")
+    target_repo = get_metadata(body, "target_repo")
+    if target_repo:
+        result["target_repo"] = target_repo.strip()
+    # Also try to extract PR URL from fix log
+    pr_url_match = re.search(r"PR:\s*(https://github\.com/\S+/pull/\d+)", body)
+    if pr_url_match:
+        result["pr_url"] = pr_url_match.group(1)
 
     for stage_name, pattern in STAGE_PATTERNS:
         if pattern.search(body):
@@ -76,6 +91,11 @@ def parse_issue_status(body: str) -> dict:
 
     status = result["pipeline_status"]
     if status in ("IMPLEMENTING", "IN_REVIEW", "NEEDS_HUMAN") and "triaged" not in result["stages_done"]:
+        result["stages_done"].append("triaged")
+        if result["stage"] in ("unformatted", "formatted"):
+            result["stage"] = "triaged"
+    if status == "DONE" and "triaged" not in result["stages_done"]:
+        # Auto-closed by triage verification — both format and triage completed
         result["stages_done"].append("triaged")
         if result["stage"] in ("unformatted", "formatted"):
             result["stage"] = "triaged"
@@ -180,8 +200,8 @@ def build_section(results: list[dict], batch_name: str, run_number: int,
     lines = [
         f"## [Run {run_number}] {batch_name} — {ts[:10]}",
         f"",
-        f"| # | Title | Format | Triage | Fix | PR | Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |",
-        f"|---|-------|--------|--------|-----|----|--------|-------|---------------------|------|--------|----------------|",
+        f"| # | PR | Title | torch-xpu-ops/pytorch | Format | Triage | Fix | Review | Model | Tokens (fmt/tri/fix) | Cost | Result | Failure Reason |",
+        f"|---|-----|-------|----------------------|--------|--------|-----|--------|-------|---------------------|------|--------|----------------|",
     ]
 
     total_triaged = 0
@@ -228,6 +248,9 @@ def build_section(results: list[dict], batch_name: str, run_number: int,
         if "merged" in stages or "reviewed" in stages:
             result = "✅ PASSED"
             total_triaged += 1
+        elif pipeline_status == "DONE":
+            result = "✅ DONE"
+            total_triaged += 1
         elif pipeline_status == "NEEDS_HUMAN":
             result = "❌ NEEDS_HUMAN"
             total_needs_human += 1
@@ -249,9 +272,20 @@ def build_section(results: list[dict], batch_name: str, run_number: int,
 
         failure_display = f"{category}: {failure}" if failure else "—"
 
+        # PR link and target repo
+        pr_url = r.get("pr_url")
+        tracking_pr = r.get("tracking_pr")
+        if pr_url and tracking_pr:
+            pr_display = f"[#{tracking_pr}]({pr_url})"
+        elif tracking_pr:
+            pr_display = f"#{tracking_pr}"
+        else:
+            pr_display = "—"
+        target_repo = r.get("target_repo", "—") or "—"
+
         lines.append(
             f"| [#{num}](https://github.com/{report_repo}/issues/{num}) "
-            f"| {title} | {fmt} | {tri} | {fix} | {pr} | {rev} "
+            f"| {pr_display} | {title} | {target_repo} | {fmt} | {tri} | {fix} | {rev} "
             f"| {model_name} | {tokens_str} | {cost_str} | {result} | {failure_display} |"
         )
 
@@ -270,27 +304,69 @@ def build_report(results: list[dict], repo: str | None = None,
                  existing_body: str | None = None,
                  issue_repo: str | None = None,
                  batch_name: str = "Run") -> str:
-    """Backward-compat wrapper: builds a full dashboard body with one new section appended.
+    """Build a full dashboard body with one new section appended.
 
-    If existing_body is provided, counts existing [Run N] sections and appends the new one.
-    Otherwise starts fresh with run_number=1.
+    Sections from previous days are folded into <details> blocks.
+    Sections from today stay in the main body.
     """
     run_number = (len(_RUN_HEADER_RE.findall(existing_body)) + 1) if existing_body else 1
     section = build_section(results, batch_name, run_number, issue_repo=issue_repo or ISSUE_REPO)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if existing_body and existing_body.strip():
-        # Strip any old single-table remnants on first migration (no existing [Run N] sections)
         if run_number == 1:
             # First run on a fresh or legacy dashboard — replace entire body
             header = _dashboard_header()
             return f"{header}\n\n---\n\n{section}"
         else:
-            # Append new section to existing body
+            # Fold previous-day sections into <details>, keep today's in main
             body = existing_body.rstrip()
+            body = _fold_old_sections(body, today)
             return f"{body}\n\n---\n\n{section}"
     else:
         header = _dashboard_header()
         return f"{header}\n\n---\n\n{section}"
+
+
+# Pattern to match ## [Run N] ... — YYYY-MM-DD  (captures run header + date)
+_RUN_SECTION_RE = re.compile(
+    r"(## \[Run \d+\].*?— (\d{4}-\d{2}-\d{2}))",
+    re.MULTILINE,
+)
+
+
+def _fold_old_sections(body: str, today: str) -> str:
+    """Wrap any ## [Run N] sections from days before *today* in <details>.
+
+    Sections already inside a <details> block are left untouched.
+    Same-day sections remain in the main body.
+    """
+    # Split body into parts by --- separators and process each section
+    # Find all Run sections with their dates
+    parts = re.split(r"\n---\n", body)
+    new_parts = []
+
+    for part in parts:
+        header_match = _RUN_SECTION_RE.search(part)
+        if header_match:
+            section_date = header_match.group(2)
+            # Already folded?
+            if "<details>" in part:
+                new_parts.append(part)
+            elif section_date < today:
+                # Fold old section
+                # Extract the run header for the summary line
+                run_header = header_match.group(1).replace("## ", "")
+                folded = f"<details>\n<summary>{run_header}</summary>\n\n{part.strip()}\n\n</details>"
+                new_parts.append(folded)
+            else:
+                # Same day — keep in main
+                new_parts.append(part)
+        else:
+            # Header or other content — keep as-is
+            new_parts.append(part)
+
+    return "\n---\n".join(new_parts)
 
 
 def _dashboard_header() -> str:
