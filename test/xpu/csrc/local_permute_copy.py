@@ -5,10 +5,10 @@ Usage:
     from local_permute_copy import local_permute_copy
 
     # src_hidden:          [num_tokens_per_rank, hidden_size], XPU tensor
-    # topk_idx:            [num_tokens, topk],                 XPU tensor
+    # scatter_idx:         [num_tokens, topk], int32 XPU tensor (expert-sorted positions)
     # remote_token_offset: int
-    # remap_hidden_states: [num_tokens * topk, hidden_size],   XPU tensor (output, modified in-place)
-    result = local_permute_copy(src_hidden, topk_idx, remote_token_offset, remap_hidden_states)
+    # remap_hidden_states: [total_expert_tokens, hidden_size], XPU tensor (output, modified in-place)
+    result = local_permute_copy(src_hidden, scatter_idx, remote_token_offset, remap_hidden_states)
 """
 
 import os
@@ -28,23 +28,23 @@ torch.ops.load_library(_LIB_PATH)
 
 def local_permute_copy(
     src_hidden: torch.Tensor,
-    topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
     remote_token_offset: int,
     remap_hidden_states: torch.Tensor,
 ) -> torch.Tensor:
     """
     Fused local permute copy: remap tokens from [tokens_per_rank, hidden]
-    into remap_hidden_states at positions determined by topk_idx.
+    into remap_hidden_states at expert-sorted positions given by scatter_idx.
 
     Args:
         src_hidden:          [num_tokens_per_rank, hidden_size] - contiguous XPU tensor (float32 or bfloat16)
-        topk_idx:            [num_tokens, topk] - global token-to-expert mapping
+        scatter_idx:         [num_tokens, topk] - int32 tensor with output positions for each (token, k)
         remote_token_offset: starting token index for this rank's shard
-        remap_hidden_states: [num_tokens * topk, hidden_size] - output tensor (modified in-place)
+        remap_hidden_states: [total_expert_tokens, hidden_size] - output tensor (modified in-place)
 
     Returns:
         remap_hidden_states (same tensor, modified in-place)
     """
     return torch.ops.symm_mem.local_permute_copy_(
-        src_hidden, topk_idx, remote_token_offset, remap_hidden_states
+        src_hidden, scatter_idx, remote_token_offset, remap_hidden_states
     )

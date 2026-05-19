@@ -7,12 +7,17 @@ Implements the algorithm described in docs/allgather+local permute fusion.md (TP
 - Allgather is performed directly into the correct positions in remap_hidden_states (symmetric memory)
 - No redundant permute after allgather
 
+The output remap_hidden_states is organized in expert-centric layout: all tokens assigned
+to expert 0 come first, then expert 1, etc. This allows expert computation to directly
+consume contiguous token blocks.
+
 Inputs:
     hidden_shard: [num_tokens_per_rank, hidden_size] (local input)
     topk_idx: [num_tokens, topk] (global, all ranks have the same)
+    scatter_idx: [num_tokens, topk] int32 - pre-computed output positions (expert-sorted)
     world_size: TP group size
     rank: TP rank
-    remap_hidden_states: [num_tokens * topk, hidden_size] (output, symmetric memory)
+    remap_hidden_states: [num_tokens * topk, hidden_size] (output)
 
 """
 
@@ -33,9 +38,50 @@ if os.path.exists(_LIB_PATH):
         pass
 
 
+def compute_scatter_idx(topk_idx: torch.Tensor, num_experts: int = None):
+    """
+    Compute expert-centric scatter indices from global topk routing.
+
+    The output layout groups tokens by expert: all tokens routed to expert 0
+    are placed first, then expert 1, etc. Within each expert's block, tokens
+    appear in the order determined by stable sort of (expert_id, original_position).
+
+    Args:
+        topk_idx: [num_tokens, topk] int64 - expert assignment for each (token, k)
+        num_experts: total number of experts (optional, inferred from topk_idx if None)
+
+    Returns:
+        scatter_idx: [num_tokens, topk] int32 - output position for each (token, k)
+        expert_offsets: [num_experts + 1] int64 - start offset of each expert in output
+    """
+    num_tokens, topk = topk_idx.shape
+    topk_flat = topk_idx.reshape(-1)  # [num_tokens * topk]
+
+    if num_experts is None:
+        num_experts = int(topk_flat.max().item()) + 1
+
+    # Sort by expert (stable: preserves token order within each expert)
+    _, sort_indices = topk_flat.sort(stable=True)
+
+    # Compute inverse permutation: scatter_idx[original_pos] = sorted_pos
+    scatter_idx = torch.empty_like(sort_indices, dtype=torch.int32)
+    scatter_idx[sort_indices] = torch.arange(
+        len(topk_flat), device=topk_idx.device, dtype=torch.int32
+    )
+
+    # Expert offsets via bincount + cumsum
+    expert_counts = torch.bincount(topk_flat.to(torch.int64), minlength=num_experts)
+    expert_offsets = torch.zeros(num_experts + 1, dtype=torch.int64, device=topk_idx.device)
+    expert_offsets[1:] = expert_counts.cumsum(0)
+
+    scatter_idx = scatter_idx.reshape(num_tokens, topk)
+    return scatter_idx, expert_offsets
+
+
 def allgather_local_permute_fusion_native(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
@@ -47,11 +93,12 @@ def allgather_local_permute_fusion_native(
     Args:
         hidden_shard: [num_tokens_per_rank, hidden_size] (local input)
         topk_idx: [num_tokens, topk] (global, all ranks have the same)
+        scatter_idx: [num_tokens, topk] int32 - pre-computed expert-sorted positions
         group: TP process group
-        remap_hidden_states: [num_tokens * topk, hidden_size] (output, symmetric memory)
+        remap_hidden_states: [num_tokens * topk, hidden_size] (output)
         group_name: Optional, for symmetric memory workspace
     Returns:
-        remap_hidden_states: [num_tokens * topk, hidden_size] (filled)
+        remap_hidden_states: [num_tokens * topk, hidden_size] (filled, expert-centric layout)
     """
     if group is None:
         group = dist.group.WORLD
@@ -83,7 +130,7 @@ def allgather_local_permute_fusion_native(
     local_token_offset = rank * num_tokens_per_rank
     torch.ops.symm_mem.local_permute_copy_(
         hidden_shard,
-        topk_idx,
+        scatter_idx,
         local_token_offset,
         remap_hidden_states,
     )
@@ -110,7 +157,7 @@ def allgather_local_permute_fusion_native(
             remote_token_offset = remote_rank * num_tokens_per_rank
             torch.ops.symm_mem.local_permute_copy_(
                 symm_buffer[remote_rank],
-                topk_idx,
+                scatter_idx,
                 remote_token_offset,
                 remap_hidden_states,
             )
@@ -122,6 +169,7 @@ def allgather_local_permute_fusion_native(
 def allgather_local_permute_fusion_python(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
@@ -161,8 +209,7 @@ def allgather_local_permute_fusion_python(
     for i in range(num_tokens_per_rank):
         global_token_idx = local_token_offset + i
         for k in range(topk):
-            _ = topk_idx[global_token_idx, k]
-            dst = global_token_idx * topk + k
+            dst = scatter_idx[global_token_idx, k].item()
             remap_hidden_states[dst].copy_(hidden_shard[i])
 
     if backend_stream is None:
@@ -188,8 +235,7 @@ def allgather_local_permute_fusion_python(
                 global_token_idx = remote_token_offset + i
                 hidden_vec = symm_buffer[remote_rank, i]
                 for k in range(topk):
-                    _ = topk_idx[global_token_idx, k]
-                    dst = global_token_idx * topk + k
+                    dst = scatter_idx[global_token_idx, k].item()
                     remap_hidden_states[dst].copy_(hidden_vec)
 
     torch.xpu.current_stream().wait_stream(backend_stream)
@@ -200,16 +246,33 @@ def allgather_local_permute_fusion_python(
 def allgather_local_permute_fusion(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
     backend_stream: torch.xpu.Stream = None,
 ):
-    """Default API: uses native kernel if available, otherwise Python fallback."""
+    """
+    Default API: uses native kernel if available, otherwise Python fallback.
+
+    Args:
+        hidden_shard: [num_tokens_per_rank, hidden_size] local input
+        topk_idx: [num_tokens, topk] global expert assignments
+        scatter_idx: [num_tokens, topk] int32 - pre-computed output positions
+                     (from compute_scatter_idx)
+        remap_hidden_states: [num_tokens * topk, hidden_size] output buffer
+        group: process group
+        group_name: optional group name for symmetric memory
+        backend_stream: optional stream for overlapping
+
+    Returns:
+        remap_hidden_states filled with expert-centric layout
+    """
     if _HAS_LOCAL_PERMUTE_KERNEL:
         return allgather_local_permute_fusion_native(
             hidden_shard=hidden_shard,
             topk_idx=topk_idx,
+            scatter_idx=scatter_idx,
             remap_hidden_states=remap_hidden_states,
             group=group,
             group_name=group_name,
@@ -218,6 +281,7 @@ def allgather_local_permute_fusion(
     return allgather_local_permute_fusion_python(
         hidden_shard=hidden_shard,
         topk_idx=topk_idx,
+        scatter_idx=scatter_idx,
         remap_hidden_states=remap_hidden_states,
         group=group,
         group_name=group_name,

@@ -10,7 +10,7 @@ from contextlib import nullcontext
 import torch
 import torch.distributed as dist
 
-from allgather_local_permute_fusion import allgather_local_permute_fusion, allgather_with_symm_mem
+from allgather_local_permute_fusion import allgather_local_permute_fusion, allgather_with_symm_mem, compute_scatter_idx
 
 
 TOKENS_PER_RANK = 2048
@@ -37,7 +37,7 @@ def project_time_ms(bytes_count, bw_gbps):
 def run_reference_allgather_local_permute(
     hidden_shard,
     output_tensor,
-    topk_idx,
+    scatter_idx,
     group,
     world_size,
     num_tokens_per_rank,
@@ -50,7 +50,7 @@ def run_reference_allgather_local_permute(
         token_offset = src_rank * num_tokens_per_rank
         torch.ops.symm_mem.local_permute_copy_(
             all_hidden_ref[src_rank],
-            topk_idx,
+            scatter_idx,
             token_offset,
             output_tensor,
         )
@@ -85,6 +85,7 @@ def check_allgather_local_permute_fusion():
     # All ranks: same topk_idx
     torch.manual_seed(42)
     topk_idx = torch.randint(0, world_size, (num_tokens, topk), device=device, dtype=torch.int64)
+    scatter_idx, _ = compute_scatter_idx(topk_idx)
 
     # Reference path uses only current stream: allgather first, then local permute.
     gathered_ref = [torch.empty_like(hidden_shard) for _ in range(world_size)]
@@ -113,6 +114,7 @@ def check_allgather_local_permute_fusion():
             output_fused = allgather_local_permute_fusion(
                 hidden_shard,
                 topk_idx,
+                scatter_idx,
                 remap_hidden_states=remap_hidden_states,
                 group=group,
                 backend_stream=backend_stream,
@@ -128,6 +130,7 @@ def check_allgather_local_permute_fusion():
             output_fused = allgather_local_permute_fusion(
                 hidden_shard,
                 topk_idx,
+                scatter_idx,
                 remap_hidden_states=remap_hidden_states,
                 group=group,
                 backend_stream=backend_stream,
@@ -143,7 +146,7 @@ def check_allgather_local_permute_fusion():
             run_reference_allgather_local_permute(
                 hidden_shard,
                 ref_output,
-                topk_idx,
+                scatter_idx,
                 group,
                 world_size,
                 num_tokens_per_rank,
@@ -160,7 +163,7 @@ def check_allgather_local_permute_fusion():
             run_reference_allgather_local_permute(
                 hidden_shard,
                 ref_output,
-                topk_idx,
+                scatter_idx,
                 group,
                 world_size,
                 num_tokens_per_rank,
@@ -189,7 +192,7 @@ def check_allgather_local_permute_fusion():
                 token_offset = src_rank * num_tokens_per_rank
                 torch.ops.symm_mem.local_permute_copy_(
                     all_hidden_pregathered[src_rank],
-                    topk_idx,
+                    scatter_idx,
                     token_offset,
                     perm_output,
                 )
@@ -203,7 +206,7 @@ def check_allgather_local_permute_fusion():
                 token_offset = src_rank * num_tokens_per_rank
                 torch.ops.symm_mem.local_permute_copy_(
                     all_hidden_pregathered[src_rank],
-                    topk_idx,
+                    scatter_idx,
                     token_offset,
                     perm_output,
                 )
@@ -234,7 +237,7 @@ def check_allgather_local_permute_fusion():
                 token_offset = src_rank * num_tokens_per_rank
                 torch.ops.symm_mem.local_permute_copy_(
                     inp[src_rank],
-                    topk_idx,
+                    scatter_idx,
                     token_offset,
                     cold_output,
                 )
@@ -249,7 +252,7 @@ def check_allgather_local_permute_fusion():
                 token_offset = src_rank * num_tokens_per_rank
                 torch.ops.symm_mem.local_permute_copy_(
                     inp[src_rank],
-                    topk_idx,
+                    scatter_idx,
                     token_offset,
                     cold_output,
                 )
@@ -268,7 +271,7 @@ def check_allgather_local_permute_fusion():
             # Warm up fused kernel
             for _ in range(WARMUP):
                 torch.ops.symm_mem.local_permute_copy_fused_(
-                    all_hidden_pregathered, topk_idx, fused_output)
+                    all_hidden_pregathered, scatter_idx, fused_output)
             torch.xpu.synchronize()
 
             # Timed fused permute
@@ -276,7 +279,7 @@ def check_allgather_local_permute_fusion():
                 if i >= WARMUP:
                     fused_begin_events[i].record()
                 torch.ops.symm_mem.local_permute_copy_fused_(
-                    all_hidden_pregathered, topk_idx, fused_output)
+                    all_hidden_pregathered, scatter_idx, fused_output)
                 if i >= WARMUP:
                     fused_end_events[i].record()
             torch.xpu.synchronize()
@@ -301,14 +304,14 @@ def check_allgather_local_permute_fusion():
     # Accuracy check: run one fresh pass and compare against reference
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
     allgather_local_permute_fusion(
-        hidden_shard, topk_idx, remap_hidden_states=remap_check, group=group,
+        hidden_shard, topk_idx, scatter_idx, remap_hidden_states=remap_check, group=group,
         backend_stream=backend_stream,
     )
     ref = torch.zeros_like(remap_check)
     run_reference_allgather_local_permute(
         hidden_shard,
         ref,
-        topk_idx,
+        scatter_idx,
         group,
         world_size,
         num_tokens_per_rank,
