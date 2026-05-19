@@ -217,9 +217,8 @@ void multi_tensor_apply(
   // this loop record the correspond tensor and chunk info for each work group.
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
-    auto chunkForWG =
-        static_cast<size_t>((numel + kChunkSize - 1) / kChunkSize);
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }
@@ -297,9 +296,8 @@ void multi_tensor_apply(
   // this loop record the correspond tensor and chunk info for each work group.
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
-    size_t chunkForWG =
-        static_cast<size_t>((numel + kChunkSize - 1) / kChunkSize);
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }
@@ -378,9 +376,8 @@ void multi_tensor_apply_for_fused_optimizer(
   // this loop record the correspond tensor and chunk info for each work group.
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
-    size_t chunkForWG =
-        static_cast<size_t>((numel + kChunkSize - 1) / kChunkSize);
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }
