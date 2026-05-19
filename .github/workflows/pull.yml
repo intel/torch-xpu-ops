@@ -18,8 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Gating job for all Intel-only, non-draft CI
   runner-config:
-    if: ${{ github.repository_owner == 'intel' }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     outputs:
       linux_build: ${{ steps.config.outputs.linux_build }}
@@ -183,10 +184,8 @@ jobs:
           fi
 
   conditions-filter-win:
-    if: >-
-      ${{ github.repository_owner == 'intel'
-      && github.event.pull_request.draft == false
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: runner-config
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -208,8 +207,8 @@ jobs:
               - '.github/workflows/_windows_ut.yml'
 
   linux-build:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     needs: [runner-config, preci-lint-check]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -221,8 +220,8 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     needs: [runner-config, linux-build, preci-lint-check]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     permissions:
       contents: read
@@ -275,9 +274,9 @@ jobs:
 
   linux-e2e:
     name: linux-e2e
+    needs: [runner-config, linux-build, reproducer-test]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
-    needs: [runner-config, linux-build, reproducer-test]
     strategy:
       fail-fast: false
       matrix:
@@ -293,7 +292,7 @@ jobs:
   linux-e2e-summary:
     name: linux-e2e-summary
     needs: [linux-e2e]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
+    if: ${{ !cancelled() && !contains(github.event.pull_request.labels.*.name, 'disable_all') && !endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
