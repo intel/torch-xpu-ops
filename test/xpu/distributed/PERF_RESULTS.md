@@ -21,8 +21,8 @@ Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
 | Method | Avg (ms) | Min (ms) | Projection (ms) | Efficiency | Notes |
 |--------|----------|----------|-----------------|------------|-------|
 | **EP Dispatch (ring-ordered)** | **1.012** | **1.011** | TBD | TBD | TBD |
-| Allgather+permute single-stream | 1.983 | 1.980 | 1.631 | — | allgather 0.940 + permute 0.691 ms |
-| Allgather+permute two-stream (fused) | 1.328 | 1.278 | — | — | Overlap hides allgather latency |
+| Allgather+permute w/o overlap | 1.983 | 1.980 | 1.631 | — | allgather 0.940 + permute 0.691 ms |
+| Allgather+permute w/ overlap | 1.328 | 1.278 | — | — | Overlap hides allgather latency |
 | └─ Allgather only (PCIe) | — | — | 0.940 | — | 24.00 MB @ 26.8 GB/s |
 | └─ Local permute only (fused kernel) | 0.750 | — | 0.691 | 92.1% | 288.00 MB @ 437.0 GB/s |
 
@@ -31,13 +31,13 @@ Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
 | Method | Avg (ms) | Min (ms) | Notes |
 |--------|----------|----------|-------|
 | **EP Dispatch (ring-ordered)** | **1.973** | **1.972** | Single kernel, no overlap |
-| Allgather+permute single-stream | 3.916 | 3.912 | backend_stream = current_stream |
-| Allgather+permute two-stream (fused) | 2.579 | 2.506 | Default (uses separate backend stream) |
+| Allgather+permute w/o overlap | 3.916 | 3.912 | backend_stream = current_stream |
+| Allgather+permute w/ overlap | 2.579 | 2.506 | Default (uses separate backend stream) |
 
 ## Analysis
 
-- **EP Dispatch is 49% faster** than allgather single-stream (fair single-kernel comparison)
-- **EP Dispatch is 22% faster** than allgather two-stream (even though allgather uses stream overlap)
+- **EP Dispatch is 49% faster** than allgather+permute w/o overlap
+- **EP Dispatch is 22% faster** than allgather+permute w/ overlap
 - Performance scales linearly with token count (2x tokens → ~2x latency)
 
 ## Data Transfer Analysis
