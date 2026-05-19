@@ -260,7 +260,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           overwrite: true
       - name: Comment on PR for new failures
-        if: ${{ ! cancelled() && github.event_name == 'pull_request' && steps.new-failures.outputs.has_new_failures == 'true' }}
+        if: ${{ ! cancelled() && github.event_name == 'pull_request' && steps.new-failures.outputs.has_new_failures == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
