@@ -1131,8 +1131,6 @@ void max_pool2d_with_indices_kernel(
     bool ceil_mode,
     const Tensor& output,
     const Tensor& indices) {
-  NoNamesGuard guard;
-
   TensorArg output_arg{output, "output", 1};
   TensorArg indices_arg{indices, "indices", 2};
   TensorArg input_arg{input_, "input_", 3};
@@ -1300,7 +1298,6 @@ void max_pool2d_with_indices_backward_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode) {
-  NoNamesGuard guard;
   TensorArg gradInput_arg{gradInput, "gradInput", 1};
   TensorArg gradOutput_arg{gradOutput_, "gradOutput", 2};
   TensorArg input_arg{input_, "input", 3};
