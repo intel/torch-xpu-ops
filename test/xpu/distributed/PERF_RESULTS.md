@@ -87,28 +87,24 @@ def deepep_owner_dispatch(
 
 ### tokens_per_rank = 2048
 
-Projection: `PCIe BW = 26.8 GB/s (31.5 × 0.85), HBM BW = 437.0 GB/s`
-
-| Method | Avg (ms) | Min (ms) | Projection (ms) | Efficiency | Notes |
-|--------|----------|----------|-----------------|------------|-------|
-| **EP Dispatch (ring-ordered)** | **1.012** | **1.011** | TBD | TBD | TBD |
-| Allgather+permute w/o overlap | 1.983 | 1.980 | 1.631 | — | allgather 0.940 + permute 0.691 ms |
-| Allgather+permute w/ overlap | 1.328 | 1.278 | — | — | Overlap hides permute latency |
-| └─ Allgather only (PCIe) | — | — | 0.940 | — | 24.00 MB @ 26.8 GB/s |
-| └─ Local permute only (fused kernel) | 0.750 | — | 0.691 | 92.1% | 288.00 MB @ 437.0 GB/s |
+| Method | Avg (ms) | Min (ms) | Notes |
+|--------|----------|----------|-------|
+| **EP Dispatch (ring-ordered)** | **1.014** | **1.013** | |
+| Allgather+permute w/o overlap | 1.869 | 1.861 | single-stream, no overlap |
+| Allgather+permute w/ overlap | 1.365 | 1.322 | two-stream, overlap hides permute latency |
 
 ### tokens_per_rank = 4096
 
 | Method | Avg (ms) | Min (ms) | Notes |
 |--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.973** | **1.972** | |
-| Allgather+permute w/o overlap | 3.916 | 3.912 |  |
-| Allgather+permute w/ overlap | 2.579 | 2.506 | |
+| **EP Dispatch (ring-ordered)** | **1.973** | **1.971** | |
+| Allgather+permute w/o overlap | 3.673 | 3.668 | |
+| Allgather+permute w/ overlap | 2.820 | 2.627 | |
 
 ## Analysis
 
-- **EP Dispatch is 49% faster** than allgather+permute w/o overlap
-- **EP Dispatch is 22% faster** than allgather+permute w/ overlap
+- **EP Dispatch is 46% faster** than allgather+permute w/o overlap (2048 tokens/rank)
+- **EP Dispatch is 26% faster** than allgather+permute w/ overlap (2048 tokens/rank)
 - Performance scales linearly with token count (2x tokens → ~2x latency)
 
 ## Data Transfer Analysis
