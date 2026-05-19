@@ -60,7 +60,7 @@ jobs:
       - name: Comment on lint failure
         if: >-
           ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
-          && secrets.MERGE_TOKEN != '' }}
+          && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
@@ -103,7 +103,7 @@ jobs:
           fi
           exit 1
       - name: Check reproducer exists for AI-generated PR
-        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && secrets.MERGE_TOKEN != '' }}
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && github.event.pull_request.head.repo.full_name == github.repository }}
         id: reproducer-check
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
