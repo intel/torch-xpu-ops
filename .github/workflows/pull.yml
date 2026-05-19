@@ -59,7 +59,8 @@ jobs:
           bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_clang_errors.log
       - name: Comment on lint failure
         if: >-
-          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure') }}
+          ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
+          && secrets.MERGE_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
@@ -102,7 +103,7 @@ jobs:
           fi
           exit 1
       - name: Check reproducer exists for AI-generated PR
-        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && secrets.MERGE_TOKEN != '' }}
         id: reproducer-check
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
