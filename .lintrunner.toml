@@ -15,6 +15,7 @@ exclude_patterns = [
     '.github/scripts/*.py',
     'test/xpu/test_*.py',
     'test/xpu/**/test_*.py',
+    'test/xpu/dynamo/test_*.py',
 ]
 command = [
     'uv',
