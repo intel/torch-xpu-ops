@@ -24,9 +24,9 @@ on:
         default: '3.10'
         description: Python version
       runner:
-        required: true
+        required: false
         type: string
-        default: 'pvc_rolling'
+        default: ''
         description: Runner label
       accelerate:
         required: false
@@ -53,8 +53,20 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
+  runner-config:
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_others: ${{ steps.config.outputs.linux_others }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Load runner config
+        id: config
+        uses: ./.github/actions/runner-config
+
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    needs: runner-config
+    runs-on: ${{ inputs.runner != '' && inputs.runner || needs.runner-config.outputs.linux_others }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')

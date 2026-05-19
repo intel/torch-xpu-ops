@@ -16,10 +16,6 @@ name: OnDemand Acceptance Comparison
 on:
   workflow_dispatch:
     inputs:
-      runner:
-        type: choice
-        options: [acceptance]
-        description: 'Runner label for the test pool (UT + E2E).'
       python:
         type: string
         required: true
@@ -57,32 +53,28 @@ run-name: >-
   Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
 
 jobs:
-  # ==================================================================
-  # Pick ONE runner and reuse for every test job (target & baseline,
-  # UT & E2E) so they all execute on the same physical machine.
-  # ==================================================================
-  pick-runner:
-    name: pick-runner
-    runs-on: ${{ inputs.runner }}
+  runner-config:
+    runs-on: ubuntu-24.04
     outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      linux_build: ${{ steps.config.outputs.linux_build }}
+      linux_acceptance: ${{ steps.config.outputs.linux_acceptance }}
     steps:
-      - name: Derive runner id
-        id: runner-info
-        shell: bash -xe {0}
-        run: |
-          runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
-          echo "runner_id=${runner_id}" | tee -a "${GITHUB_OUTPUT}"
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Load runner config
+        id: config
+        uses: ./.github/actions/runner-config
 
   # ==================================================================
   # TARGET pipeline
   # ==================================================================
   target-build:
     name: target / build
+    needs: runner-config
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: build
+      build_runner: ${{ needs.runner-config.outputs.linux_build }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
@@ -92,7 +84,7 @@ jobs:
 
   target-ut:
     name: target / ut
-    needs: [pick-runner, target-build]
+    needs: [runner-config, target-build]
     secrets: inherit
     permissions:
       contents: read
@@ -100,7 +92,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: ${{ needs.runner-config.outputs.linux_acceptance }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -110,7 +102,7 @@ jobs:
 
   target-e2e:
     name: target / e2e
-    needs: [pick-runner, target-build]
+    needs: [runner-config, target-build]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -118,11 +110,12 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: ${{ needs.runner-config.outputs.linux_acceptance }}
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
+      scenario: accuracy,performance
       category: target
 
   # ==================================================================
@@ -130,10 +123,11 @@ jobs:
   # ==================================================================
   baseline-build:
     name: baseline / build
+    needs: runner-config
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: build
+      build_runner: ${{ needs.runner-config.outputs.linux_build }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
@@ -143,7 +137,7 @@ jobs:
 
   baseline-ut:
     name: baseline / ut
-    needs: [pick-runner, baseline-build]
+    needs: [runner-config, baseline-build]
     secrets: inherit
     permissions:
       contents: read
@@ -151,7 +145,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: ${{ needs.runner-config.outputs.linux_acceptance }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -161,7 +155,7 @@ jobs:
 
   baseline-e2e:
     name: baseline / e2e
-    needs: [pick-runner, baseline-build]
+    needs: [runner-config, baseline-build]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -169,11 +163,12 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: ${{ needs.runner-config.outputs.linux_acceptance }}
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
+      scenario: accuracy,performance
       category: baseline
 
   # ==================================================================
