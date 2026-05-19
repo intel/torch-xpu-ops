@@ -104,7 +104,7 @@ jobs:
 
           # Sanitize response - extract only valid label names
           if [ -n "$RESPONSE" ] && [ "$RESPONSE" != "none" ]; then
-            LABELS=$(echo "$RESPONSE" | tr -d ' \n' | grep -oE '(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|disable_accelerate|disable_transformers|windows_ci)(,(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|disable_accelerate|disable_transformers|windows_ci))*' || echo "")
+            LABELS=$(echo "$RESPONSE" | tr -d ' \n' | grep -oE '(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|windows_ci)(,(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build|windows_ci))*' || echo "")
           else
             LABELS=""
           fi
@@ -118,6 +118,7 @@ jobs:
               LABELS="disable_all"
             else
               HAS_SRC=false
+              HAS_XCCL=false
               HAS_CMAKE=false
               HAS_TEST=false
               HAS_WORKFLOW=false
@@ -128,6 +129,7 @@ jobs:
               while IFS= read -r file; do
                 [ -z "$file" ] && continue
                 case "$file" in
+                  src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
                   src/*|CMakeLists.txt) HAS_SRC=true ;;
                   cmake/*|tools/*) HAS_CMAKE=true ;;
                   test/*) HAS_TEST=true
@@ -152,7 +154,12 @@ jobs:
                   LABELS="disable_e2e,disable_distributed,disable_build"
                 fi
               elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ]; then
-                LABELS="disable_e2e,disable_distributed"
+                if [ "$HAS_XCCL" = true ]; then
+                  # src/xccl/ is the distributed backend — must run distributed tests
+                  LABELS="disable_e2e"
+                else
+                  LABELS="disable_e2e,disable_distributed"
+                fi
               fi
             fi
           fi
