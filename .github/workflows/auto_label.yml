@@ -6,6 +6,14 @@ on:
     branches:
       - main
       - release/*
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - release/*
+    paths:
+      - '.github/workflows/auto_label.yml'
+      - '.github/skills/xpu-pr-auto-labeling/**'
 
 permissions:
   contents: read
@@ -153,7 +161,10 @@ jobs:
           echo "Determined labels: ${LABELS:-none}"
 
       - name: Apply labels
-        if: steps.check-manual.outputs.skip == 'false' && steps.determine-labels.outputs.labels != ''
+        if: >-
+          ${{ github.event_name == 'pull_request_target'
+          && steps.check-manual.outputs.skip == 'false'
+          && steps.determine-labels.outputs.labels != '' }}
         id: apply-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
@@ -171,9 +182,14 @@ jobs:
             echo "No labels to apply"
           fi
 
+      - name: Dry-run output (pull_request trigger)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "::notice::DRY-RUN: Would apply labels: ${{ steps.determine-labels.outputs.labels }}"
+
   cancel-and-rerun:
     needs: [auto-label]
-    if: needs.auto-label.outputs.labels_changed == 'true'
+    if: ${{ github.event_name == 'pull_request_target' && needs.auto-label.outputs.labels_changed == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
