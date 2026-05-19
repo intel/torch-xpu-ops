@@ -34,6 +34,7 @@ from torch.testing._internal.common_device_type import (
 from torch.testing._internal.common_utils import (
     munge_exc,
     parametrize,
+    skipIfXpu,
     TEST_WITH_TORCHDYNAMO,
     xfailIfTorchDynamo,
 )
@@ -7228,7 +7229,6 @@ xfail_hops_compile = {
     # inductor
     "while_loop",  # LoweringException: AssertionError
     "flex_attention",  # LoweringException: AssertionError
-    "flex_attention_backward",  # AssertionError: Input shapes should have M >= 16, N >= 16 and K >= 16
 }
 
 
