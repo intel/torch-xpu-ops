@@ -26,7 +26,6 @@ from torch.testing._internal.common_utils import find_free_port
 from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
-
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 
 
