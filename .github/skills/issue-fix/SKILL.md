@@ -26,7 +26,7 @@ Run it exactly as specified. If the issue has no reproducer, construct one
 from the failed test name and error context.
 
 If you modified C++/CUDA/SYCL code (not just Python), rebuild first:
-- **pytorch repo**: `python setup.py develop 2>&1 | tail -20`
+- **pytorch repo**: `source ~/intel/oneapi/setvars.sh --force 2>/dev/null && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 python setup.py develop 2>&1 | tail -20`
 - **torch-xpu-ops repo**: No separate build step needed (built as part of pytorch)
 
 ### torch-xpu-ops submodule pin (xpu.txt)

@@ -65,9 +65,8 @@ def _get_test_command(body: str) -> str | None:
                 # (the cwd is already set to the correct workdir)
                 cmd = re.sub(
                     r'^cd\s+(?:<[^>]+>|/\S+)\s*&&\s*', '', cmd).strip()
-                # Fix bare test file paths in pytest commands
-                from ..verify_existence import _fix_pytest_paths
-                cmd = _fix_pytest_paths(cmd)
+                # Path resolution is now handled by the verification agent.
+                # The Reproducer section will contain the refined command.
                 return cmd
         # If no code block but non-empty text that looks like a command
         if reproducer and not reproducer.startswith("_Pending"):
@@ -88,9 +87,7 @@ def _get_test_command(body: str) -> str | None:
             tests = re.findall(
                 r"[-*]\s+`?(\S+::\S+)`?", failed_tests)
         if tests:
-            from ..verify_existence import _fix_test_path
-            fixed = [_fix_test_path(t) for t in tests]
-            test_args = " ".join(f'"{t}"' for t in fixed)
+            test_args = " ".join(f'"{t}"' for t in tests)
             return f"pytest -v {test_args}"
 
     return None
@@ -123,12 +120,16 @@ def _run_build(workdir: Path, target_repo: str, remote: str,
     log("INFO", "C++/SYCL files modified, running incremental build",
         issue=issue)
 
+    from ..utils.xpu_env import ENV_SETUP, XPU_BUILD_FLAGS
+    env_setup = ENV_SETUP
+    build_cmd = f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py develop"
+
     # Incremental build
     try:
         result = subprocess.run(
-            ["python", "setup.py", "develop"],
+            env_setup + build_cmd,
             cwd=str(workdir), capture_output=True, text=True,
-            timeout=1800,
+            timeout=1800, shell=True, executable="/bin/bash",
         )
         if result.returncode == 0:
             return True, result.stdout[-2000:]
@@ -141,10 +142,11 @@ def _run_build(workdir: Path, target_repo: str, remote: str,
     # Clean build fallback
     log("INFO", "Incremental build failed, trying clean build", issue=issue)
     try:
+        clean_cmd = f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py clean && {XPU_BUILD_FLAGS} python setup.py develop"
         result = subprocess.run(
-            "python setup.py clean && python setup.py develop",
+            env_setup + clean_cmd,
             cwd=str(workdir), capture_output=True, text=True,
-            timeout=2400, shell=True,
+            timeout=2400, shell=True, executable="/bin/bash",
         )
         if result.returncode == 0:
             return True, result.stdout[-2000:]

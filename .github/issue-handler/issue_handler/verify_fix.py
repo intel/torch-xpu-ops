@@ -29,6 +29,7 @@ from .utils.body_templates import (
 )
 from .utils.git import git, git_out
 from .utils.logger import log
+from .utils.xpu_env import ENV_SETUP, XPU_BUILD_FLAGS, ensure_xpu_ready
 from .verify_existence import _get_test_command, _run_test
 
 
@@ -52,11 +53,7 @@ def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
     This handles CMake reconfiguration and incremental builds correctly.
     """
     log("INFO", "Running incremental pytorch rebuild", issue=issue)
-    env_setup = (
-        "source ~/intel/oneapi/setvars.sh --force 2>/dev/null; "
-        "source ~/pytorch/.venv/bin/activate; "
-    )
-    cmd = env_setup + f"cd {workdir} && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 python setup.py develop"
+    cmd = ENV_SETUP + f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py develop"
     try:
         result = subprocess.run(
             cmd,

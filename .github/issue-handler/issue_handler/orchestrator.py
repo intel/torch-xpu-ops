@@ -13,7 +13,7 @@ import traceback
 
 from .utils import git as gh
 from .utils.config import ISSUE_REPO
-from .utils.body_templates import get_status, sync_labels
+from .utils.body_templates import get_status, get_metadata, sync_labels
 from .utils.logger import log
 
 
@@ -99,19 +99,27 @@ def advance(issue_number: int) -> None:
             from .triage_agent import run
             _run_step("triage", run, issue_number)
         case "IMPLEMENTING":
-            # All targets go through local code_fix agent
-            from .fixing_steps.code_fix import run
-            _run_step("code_fix", run, issue_number)
+            # Route based on target_repo: torch-xpu-ops → Copilot, pytorch → code_fix
+            target_repo = get_metadata(body, "target_repo") or "pytorch"
+            if target_repo == "torch-xpu-ops":
+                _assign_copilot(issue_number)
+            else:
+                from .fixing_steps.code_fix import run
+                _run_step("code_fix", run, issue_number)
         case "TRIAGED":
-            # Advance status to IMPLEMENTING, then dispatch fix agent
+            # Advance status to IMPLEMENTING, then route by target_repo
             detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
             body = detail.get("body", "") or ""
-            from .utils.body_templates import set_status as _set_status, sync_labels
+            from .utils.body_templates import set_status as _set_status
             new_body = _set_status(body, "IMPLEMENTING")
             gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
             sync_labels(ISSUE_REPO, issue_number, "IMPLEMENTING")
-            from .fixing_steps.code_fix import run
-            _run_step("code_fix", run, issue_number)
+            target_repo = get_metadata(body, "target_repo") or "pytorch"
+            if target_repo == "torch-xpu-ops":
+                _assign_copilot(issue_number)
+            else:
+                from .fixing_steps.code_fix import run
+                _run_step("code_fix", run, issue_number)
         case "IN_REVIEW":
             from .verify_fix import run as verify_fix_run
             _run_step("verify_fix", verify_fix_run, issue_number)
