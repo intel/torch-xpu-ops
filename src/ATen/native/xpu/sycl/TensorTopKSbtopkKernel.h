@@ -17,10 +17,10 @@ namespace native {
 namespace xpu {
 
 // Result of sbtopk_try_launch.
-//   FAILED   - did not run; caller should fall back to original kernel.
-//   UNSORTED - ran; output contains top-k values but is not sorted.
+//   FAILED   - sbtopk did not run; caller should fall back to original.
+//   UNSORTED - sbtopk ran; output contains top-k values but is not sorted.
 //              Caller must sort if sorted output is requested.
-//   SORTED   - ran; output is already sorted (descending for largest,
+//   SORTED   - sbtopk ran; output is already sorted (descending for largest,
 //              ascending for smallest). Caller can skip sort.
 enum class SbtopkResult : int {
   FAILED = 0,
@@ -28,6 +28,11 @@ enum class SbtopkResult : int {
   SORTED = 2,
 };
 
+// Try to run topk using an optimized kernel path.
+//
+// Dispatches between the subgroup topk kernel (sub-group bitonic merge,
+// output SORTED) and the single workgroup topk kernel (radix select,
+// output UNSORTED) based on (nsegments, nelements, k).
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
