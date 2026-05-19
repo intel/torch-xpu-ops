@@ -5059,9 +5059,7 @@ class ReproTests(torch._dynamo.test_case.TestCase):
             assert x.shape[0] > 3  # noqa: S101
             assert x[0].sum() > 0  # noqa: S101
             assert 1 % (x.shape[0] // 2) != 0  # noqa: S101
-            assert (
-                32 * (x.shape[0] // 2) ** 2 - 16 * (x.shape[0] // 2) != 0
-            )  # noqa: S101
+            assert 32 * (x.shape[0] // 2) ** 2 - 16 * (x.shape[0] // 2) != 0  # noqa: S101
             return x.cos()
 
         f(torch.ones(6, 4))
@@ -5147,9 +5145,7 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
 
             @staticmethod
             def cat(instance_lists: list["Instances"]) -> "Instances":
-                assert all(
-                    isinstance(i, Instances) for i in instance_lists
-                )  # noqa: S101
+                assert all(isinstance(i, Instances) for i in instance_lists)  # noqa: S101
                 assert len(instance_lists) > 0  # noqa: S101
                 if len(instance_lists) == 1:
                     return instance_lists[0]
