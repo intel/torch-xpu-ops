@@ -40,7 +40,6 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
     precisionOverride,
-    skipCPUIf,
     skipCPUIfNoMklSparse,
     skipCUDAIf,
     skipCUDAIfNoSparseGeneric,
