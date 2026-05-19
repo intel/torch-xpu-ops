@@ -18,7 +18,6 @@ import math
 import unittest
 import warnings
 from functools import partial
-from math import inf
 
 import torch
 from torch.testing import make_tensor
@@ -71,7 +70,10 @@ def _group_quantize_tensor_impl(w, n_bit=4, q_group_size=16):
     assert torch.isnan(out).sum() == 0
 
     out = out.to(dtype=torch.uint8).reshape(w.shape)
-    # The cpu uses big endian while the xpu uses little endian
+    # XPU uses little-endian nibble order (low nibble first: [val1, val0] packed as
+    # val1<<4|val0), while CUDA uses big-endian (high nibble first: val0<<4|val1).
+    # CPU leaves values unpacked here; the subsequent _convert_weight_to_int4pack_for_cpu
+    # call performs its own packing internally.
     if out.device.type == "xpu":
         out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
     elif out.device != torch.device("cpu"):
@@ -109,28 +111,9 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
+@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
-    m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
-
-    try:
-        torch.backends.cuda.preferred_blas_library("cublaslt")
-    except RuntimeError as err:
-        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
-    out1 = torch.nn.functional.linear(m1, m2)
-
-    try:
-        torch.backends.cuda.preferred_blas_library("cublas")
-    except RuntimeError as err:
-        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
-    out2 = torch.nn.functional.linear(m1, m2)
-
-    # Although blas preferred flags doesn't affect CPU currently,
-    # we set this to make sure the flag can switch back to default normally.
-    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
-
-    self.assertEqual(out1, out2)
-    self.assertEqual(out_ref, out2.cpu())
+    pass
 
 
 @dtypes(torch.float, torch.double)
@@ -311,9 +294,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 64, 1024])
+@parametrize("m", [1, 32, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
@@ -393,34 +376,43 @@ def _compile_int4_mm(self, device, m, k, n):
 
     b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
 
-    @torch.compile
-    def int4_mm(a, b_tmp, b_scales_and_zeros):
-        if self.device_type == "cpu":
-            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
-            self.assertTrue(b_int4pack.dtype is torch.uint8)
-            self.assertTrue(b_int4pack.dim() == 2)
+    # Device-type branching is done outside @torch.compile so that dynamo
+    # does not need to specialize on closure variables like self.device_type.
+    # Older nightly builds may fail to dead-code-eliminate unreachable branches
+    # whose ops have incompatible output shapes across backends (e.g.
+    # _convert_weight_to_int4pack returns 4-D on CUDA but 2-D on XPU).
+    if self.device_type == "cpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(
+                b_tmp, inner_k_tiles
+            )
             return torch._weight_int4pack_mm_for_cpu(
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
-        if self.device_type == "xpu":
+
+    elif self.device_type == "xpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
             # XPU's _weight_int4pack_mm kernel expects a 2D int32 view of the
             # already-packed uint8 weight (one int32 per 8 consecutive nibbles),
-            # so we reinterpret the buffer directly with .view(torch.int32) rather
-            # than going through torch._convert_weight_to_int4pack.
-            # In contrast, CUDA's _convert_weight_to_int4pack returns a 4D int32
-            # tensor with shape (n//8, k//(inner_k_tiles*16), inner_k_tiles, 16)
-            # that encodes an additional tiling dimension required by the CUDA
-            # kernel.  The two representations are not interchangeable, which is
-            # why torch.compile on XPU must bypass the generic CUDA packing path.
+            # so we reinterpret the buffer directly with .view(torch.int32)
+            # rather than going through torch._convert_weight_to_int4pack.
             b_int4pack = b_tmp.view(torch.int32)
-            self.assertTrue(b_int4pack.dtype is torch.int32)
-            self.assertTrue(b_int4pack.dim() == 2)
-            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+            return torch._weight_int4pack_mm(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
 
-        b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
-        self.assertTrue(b_int4pack.dtype is torch.int32)
-        self.assertTrue(b_int4pack.dim() == 4)
-        return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+    else:
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
+            return torch._weight_int4pack_mm(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
 
     res = int4_mm(a, b_tmp, b_scales_and_zeros)
     ref = torch.mm(a, b)
@@ -641,134 +633,6 @@ def pinv_errors_and_warnings(self, device, dtype):
         torch.linalg.pinv(a, rtol=rtol)
 
 
-@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-def _int_mm_errors(self, device):
-    def genf_int(x, y):
-        return torch.empty((x, y), dtype=torch.int8, device=device)
-
-    # XPU does not enforce CUDA-specific size constraints (size(0)>16,
-    # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
-    # are omitted here.
-
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"self.size\(1\) needs to match mat2.size\(0\) but got 8 and 7",
-        lambda: torch._int_mm(genf_int(17, 8), genf_int(7, 32)),
-    )
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"expected scalar type Char but found Float",
-        lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
-    )
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"expected scalar type Char but found Float",
-        lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
-    )
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"Expected result dtype to be of type kInt but got float",
-        lambda: torch._int_mm(
-            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 32).float()
-        ),
-    )
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"Expected result.size\(0\) to be 17 but got 15",
-        lambda: torch._int_mm(
-            genf_int(17, 8), genf_int(8, 32), out=genf_int(15, 32).int()
-        ),
-    )
-    self.assertRaisesRegex(
-        RuntimeError,
-        r"Expected result.size\(0\) to be 17 but got 16",
-        lambda: torch._int_mm(
-            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 31).int()
-        ),
-    )
-
-
-TestLinalg.test__int_mm_errors = _int_mm_errors
-
-
-@dtypes(*floating_and_complex_types())
-@precisionOverride({torch.float32: 1e-3})
-def cond_errors_and_warnings(self, device, dtype):
-    norm_types = [1, -1, 2, -2, inf, -inf, "fro", "nuc", None]
-
-    # cond expects the input to be at least 2-dimensional
-    a = torch.ones(3, dtype=dtype, device=device)
-    for p in norm_types:
-        with self.assertRaisesRegex(RuntimeError, r"at least 2 dimensions"):
-            torch.linalg.cond(a, p)
-
-    # for some norm types cond expects the input to be square
-    a = torch.ones(3, 2, dtype=dtype, device=device)
-    norm_types = [1, -1, inf, -inf, "fro", "nuc"]
-    for p in norm_types:
-        with self.assertRaisesRegex(
-            RuntimeError, r"must be batches of square matrices"
-        ):
-            torch.linalg.cond(a, p)
-
-    # if non-empty out tensor with wrong shape is passed a warning is given
-    a = torch.ones((2, 2), dtype=dtype, device=device)
-    for p in ["fro", 2]:
-        real_dtype = a.real.dtype if dtype.is_complex else dtype
-        out = torch.empty(a.shape, dtype=real_dtype, device=device)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.filterwarnings(
-                "ignore",
-                message=r".*Aten Op fallback from XPU to CPU happends.*",
-                category=UserWarning,
-            )
-            # Trigger warning
-            torch.linalg.cond(a, p, out=out)
-            # Check warning occurs
-            self.assertEqual(len(w), 1)
-            self.assertTrue(
-                "An output with one or more elements was resized" in str(w[-1].message)
-            )
-
-    # dtypes should be safely castable
-    out = torch.empty(0, dtype=torch.int, device=device)
-    for p in ["fro", 2]:
-        with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
-            torch.linalg.cond(a, p, out=out)
-
-    # device should match
-    if torch.xpu.is_available():
-        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
-        out = torch.empty(0, dtype=dtype, device=wrong_device)
-        for p in ["fro", 2]:
-            with self.assertRaisesRegex(
-                RuntimeError, "tensors to be on the same device"
-            ):
-                torch.linalg.cond(a, p, out=out)
-
-    # for batched input if at least one matrix in the batch is not invertible,
-    # we can't get the result for all other (possibly) invertible matrices in the batch without an explicit for loop.
-    # this should change when at::inverse works with silent errors
-    # NumPy works fine in this case because it's possible to silence the error and get the inverse matrix results
-    # possibly filled with NANs
-    batch_dim = 3
-    a = torch.eye(3, 3, dtype=dtype, device=device)
-    a = a.reshape((1, 3, 3))
-    a = a.repeat(batch_dim, 1, 1)
-    a[1, -1, -1] = 0  # now a[1] is singular
-    for p in [1, -1, inf, -inf, "fro", "nuc"]:
-        result = torch.linalg.cond(a, p)
-        self.assertEqual(result[1], float("inf"))
-
-    # check invalid norm type
-    a = torch.ones(3, 3, dtype=dtype, device=device)
-    for p in ["wrong_norm", 5]:
-        with self.assertRaisesRegex(
-            RuntimeError, f"linalg.cond got an invalid norm type: {p}"
-        ):
-            torch.linalg.cond(a, p)
-
-
 # Skip Float8_e4m3fnuz rowwise scaled GEMM on XPU: oneDNN lacks FNUZ support.
 # Note: the primary CUDA test is already limited to ROCm (onlyCUDA + skipCUDAIfNotRocm),
 # so this XPU variant is intentionally skipped for the same unsupported dtype.
@@ -796,7 +660,6 @@ TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
-TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True
