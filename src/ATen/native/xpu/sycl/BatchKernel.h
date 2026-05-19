@@ -150,7 +150,7 @@ class BatchKernelConfig {
       int64_t stride,
       bool problem_along_x,
       bool bypass_adaptive_policy = true) {
-    auto target_wi_num = static_cast<size_t>(syclMaxWorkItemsPerTile());
+    auto target_wi_num = syclMaxWorkItemsPerTile();
 
     if (!bypass_adaptive_policy && batch * problem * stride >= target_wi_num) {
       return Policy::pAdaptive;
@@ -168,7 +168,7 @@ class BatchKernelConfig {
     size_t wg_num = (cfg_.glb_range_x_ / cfg_.wg_range_x_) *
         (cfg_.glb_range_y_ / cfg_.wg_range_y_);
     size_t wg_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
-    if (wg_size * (wg_num + 1) > target_wi_num) {
+    if (wg_size * (wg_num + 1) > static_cast<size_t>(target_wi_num)) {
       return Policy::pLoop;
     }
 
