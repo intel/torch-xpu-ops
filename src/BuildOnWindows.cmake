@@ -19,7 +19,6 @@ macro(setup_common_libraries)
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS})
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
   target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
   target_link_libraries(torch_xpu_ops PUBLIC c10)
 endmacro()
