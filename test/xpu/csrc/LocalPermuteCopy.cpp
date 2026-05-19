@@ -380,14 +380,214 @@ at::Tensor local_permute_copy_fused_(
   return remap_hidden_states;
 }
 
+// ---------------------------------------------------------------------------
+// Fused allgather+permute kernel: single kernel reads from all ranks'
+// symmetric memory via rank_buffers_ptr and writes ALL (token, k) positions.
+//
+// Same ring-ordered decomposition as EpDispatch, but without ownership
+// filtering — every token contributes to all topk destinations.
+//
+// Decomposition: idx → (local_token_idx, step, vec_h)
+//   vec_h = idx % hidden_vecs           (innermost: coalesced access)
+//   step = (idx / hidden_vecs) % world_size  (interleaved: overlap reads)
+//   local_token_idx = idx / (hidden_vecs * world_size)
+//   src_rank = (rank + step + 1) % world_size
+// ---------------------------------------------------------------------------
+
+// Scalar fallback for non-aligned hidden_size.
+template <typename T>
+struct AllgatherPermuteRingScalarKernel {
+  const int64_t* rank_ptrs;
+  const int32_t* scatter_idx_ptr;
+  T* remap_ptr;
+  int64_t num_tokens_per_rank;
+  int64_t hidden_size;
+  int64_t topk;
+  int64_t rank;
+  int64_t world_size;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
+    const int64_t total = world_size * num_tokens_per_rank * hidden_size;
+    if (idx >= total) return;
+
+    const int64_t h = idx % hidden_size;
+    const int64_t pair_idx = idx / hidden_size;
+    const int64_t step = pair_idx % world_size;
+    const int64_t local_token_idx = pair_idx / world_size;
+
+    const int64_t src_rank = (rank + step + 1) % world_size;
+    const int64_t global_token_idx = src_rank * num_tokens_per_rank + local_token_idx;
+
+    const T* src = reinterpret_cast<const T*>(rank_ptrs[src_rank]);
+    const T val = src[local_token_idx * hidden_size + h];
+
+    for (int64_t k = 0; k < topk; ++k) {
+      const int32_t dst_row = scatter_idx_ptr[global_token_idx * topk + k];
+      remap_ptr[static_cast<int64_t>(dst_row) * hidden_size + h] = val;
+    }
+  }
+};
+
+// Vectorized ring-ordered kernel.
+template <typename scalar_t, int VEC_SIZE>
+struct AllgatherPermuteRingVecKernel {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const int64_t* rank_ptrs;
+  const int32_t* scatter_idx_ptr;
+  scalar_t* remap_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;  // hidden_size / VEC_SIZE
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    const int32_t total = num_tokens_per_rank * world_size * hidden_vecs;
+    if (idx >= total) return;
+
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t pair_idx = idx / hidden_vecs;
+    const int32_t step = pair_idx % world_size;
+    const int32_t local_token_idx = pair_idx / world_size;
+
+    const int32_t src_rank = (rank + step + 1) % world_size;
+    const int32_t global_token_idx = src_rank * num_tokens_per_rank + local_token_idx;
+
+    // Coalesced vectorized read from source rank's memory
+    const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
+    auto src_vec = reinterpret_cast<const vec_t*>(
+        src + static_cast<int64_t>(local_token_idx) * hidden_size);
+    vec_t v = src_vec[vec_h];
+
+    // Write to ALL topk destinations
+    const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+      auto dst_vec = reinterpret_cast<vec_t*>(
+          remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
+      dst_vec[vec_h] = v;
+    }
+  }
+};
+
+at::Tensor allgather_permute(
+    const at::Tensor& rank_buffers_ptr,
+    const at::Tensor& scatter_idx,
+    at::Tensor remap_hidden_states,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      rank_buffers_ptr.dim() == 1 && rank_buffers_ptr.size(0) == world_size,
+      "allgather_permute: rank_buffers_ptr must be 1D with size == world_size");
+  TORCH_CHECK(
+      rank_buffers_ptr.scalar_type() == at::kLong,
+      "allgather_permute: rank_buffers_ptr must be int64");
+  TORCH_CHECK(
+      scatter_idx.dim() == 2,
+      "allgather_permute: scatter_idx must be 2D [num_tokens, topk]");
+  TORCH_CHECK(
+      scatter_idx.scalar_type() == at::kInt,
+      "allgather_permute: scatter_idx must be int32");
+  TORCH_CHECK(
+      scatter_idx.is_contiguous(),
+      "allgather_permute: scatter_idx must be contiguous");
+  TORCH_CHECK(
+      remap_hidden_states.dim() == 2,
+      "allgather_permute: remap_hidden_states must be 2D");
+  TORCH_CHECK(
+      remap_hidden_states.is_contiguous(),
+      "allgather_permute: remap_hidden_states must be contiguous");
+  TORCH_CHECK(
+      rank >= 0 && rank < world_size,
+      "allgather_permute: rank must be in [0, world_size)");
+
+  const int64_t num_tokens = scatter_idx.size(0);
+  const int64_t topk = scatter_idx.size(1);
+  const int64_t hidden_size = remap_hidden_states.size(1);
+
+  TORCH_CHECK(
+      num_tokens % world_size == 0,
+      "allgather_permute: num_tokens must be divisible by world_size");
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
+
+  TORCH_CHECK(
+      remap_hidden_states.size(0) == num_tokens * topk,
+      "allgather_permute: remap_hidden_states first dim must be num_tokens * topk");
+
+  if (num_tokens == 0 || topk == 0 || hidden_size == 0) {
+    return remap_hidden_states;
+  }
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  c10::Device device(c10::DeviceType::XPU, remap_hidden_states.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      remap_hidden_states.scalar_type(), "allgather_permute", [&]() {
+        if (hidden_size % VEC_SIZE == 0) {
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = AllgatherPermuteRingVecKernel<scalar_t, VEC_SIZE>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs)};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        } else {
+          const int64_t total = world_size * num_tokens_per_rank * hidden_size;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = AllgatherPermuteRingScalarKernel<scalar_t>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              num_tokens_per_rank,
+              hidden_size,
+              topk,
+              rank,
+              world_size};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        }
+      });
+
+  return remap_hidden_states;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "local_permute_copy_(Tensor src_hidden, Tensor scatter_idx, int remote_token_offset, Tensor(a!) remap_hidden_states) -> Tensor(a!)");
   m.def(
       "local_permute_copy_fused_(Tensor src_all, Tensor scatter_idx, Tensor(a!) remap_hidden_states) -> Tensor(a!)");
+  m.def(
+      "allgather_permute(Tensor rank_buffers_ptr, Tensor scatter_idx, "
+      "Tensor(a!) remap_hidden_states, int rank, int world_size) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("local_permute_copy_", local_permute_copy_);
   m.impl("local_permute_copy_fused_", local_permute_copy_fused_);
+  m.impl("allgather_permute", allgather_permute);
 }

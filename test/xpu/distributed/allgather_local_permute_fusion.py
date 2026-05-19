@@ -23,6 +23,8 @@ Inputs:
 
 import os
 
+import ctypes
+
 import torch
 import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
@@ -30,10 +32,12 @@ import torch.distributed._symmetric_memory as symm_mem
 # Try to load the native local_permute_copy kernel
 _LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "liblocal_permute_copy.so")
 _HAS_LOCAL_PERMUTE_KERNEL = False
+_HAS_ALLGATHER_PERMUTE_KERNEL = False
 if os.path.exists(_LIB_PATH):
     try:
         torch.ops.load_library(_LIB_PATH)
         _HAS_LOCAL_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_permute_copy_")
+        _HAS_ALLGATHER_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "allgather_permute")
     except Exception:
         pass
 
@@ -86,17 +90,28 @@ def allgather_local_permute_fusion_native(
     group: dist.ProcessGroup = None,
     group_name: str = None,
     backend_stream: torch.xpu.Stream = None,
+    rank_buffers_ptr: torch.Tensor = None,
 ):
     """
     TP only: Allgather + local permute fusion using symmetric memory.
+
+    When the fused allgather_permute kernel is available, this uses a single
+    kernel launch that reads directly from all ranks' symmetric memory buffers
+    (ring-ordered, like EP dispatch) and writes all (token, k) positions.
+
+    Falls back to multi-kernel path (per-rank copy + local_permute_copy_)
+    when the fused kernel is not built.
 
     Args:
         hidden_shard: [num_tokens_per_rank, hidden_size] (local input)
         topk_idx: [num_tokens, topk] (global, all ranks have the same)
         scatter_idx: [num_tokens, topk] int32 - pre-computed expert-sorted positions
-        group: TP process group
         remap_hidden_states: [num_tokens * topk, hidden_size] (output)
+        group: TP process group
         group_name: Optional, for symmetric memory workspace
+        backend_stream: Optional, only used in multi-kernel fallback path
+        rank_buffers_ptr: Optional precomputed device tensor of per-rank
+            buffer pointers (int64). Pass to avoid per-call overhead.
     Returns:
         remap_hidden_states: [num_tokens * topk, hidden_size] (filled, expert-centric layout)
     """
@@ -115,53 +130,68 @@ def allgather_local_permute_fusion_native(
     # Get symmetric memory workspace
     workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
-    symm_buffer = workspace.get_buffer(
-        rank,
-        (world_size, num_tokens_per_rank, hidden_size),
-        hidden_shard.dtype,
-        storage_offset=0,
-    )
 
-    # Step 1: copy local hidden_shard into symmetric memory slot
-    symm_buffer[rank].copy_(hidden_shard)
+    # Write local hidden_shard at rank-specific offset
+    local_offset = rank * num_tokens_per_rank * hidden_size
+    local_slot = workspace.get_buffer(
+        rank, (num_tokens_per_rank, hidden_size),
+        hidden_shard.dtype, storage_offset=local_offset,
+    )
+    local_slot.copy_(hidden_shard)
     workspace.barrier()
 
-    # Before pull loop: one fused kernel for local shard remap
-    local_token_offset = rank * num_tokens_per_rank
-    torch.ops.symm_mem.local_permute_copy_(
-        hidden_shard,
-        scatter_idx,
-        local_token_offset,
-        remap_hidden_states,
-    )
+    if _HAS_ALLGATHER_PERMUTE_KERNEL:
+        assert rank_buffers_ptr is not None, (
+            "rank_buffers_ptr is required; use build_allgather_rank_buffers_ptr() to create it"
+        )
+        torch.ops.symm_mem.allgather_permute(
+            rank_buffers_ptr, scatter_idx, remap_hidden_states,
+            rank, world_size,
+        )
+    else:
+        # Multi-kernel fallback: per-rank copy + local_permute_copy_
+        symm_buffer = workspace.get_buffer(
+            rank,
+            (world_size, num_tokens_per_rank, hidden_size),
+            hidden_shard.dtype,
+            storage_offset=0,
+        )
 
-    # Step 2: two-stream round-robin pull; write to remap immediately per remote shard
-    if backend_stream is None:
-        backend_stream = torch.xpu.Stream()
-    for step in range(world_size - 1):
-        remote_rank = (rank - step - 1) % world_size
-        if step % 2 == 0:
-            stream = backend_stream
-        else:
-            stream = torch.xpu.current_stream()
-        with torch.xpu.stream(stream):
-            remote_offset = remote_rank * num_tokens_per_rank * hidden_size
-            remote_buffer = workspace.get_buffer(
-                remote_rank,
-                (num_tokens_per_rank, hidden_size),
-                hidden_shard.dtype,
-                storage_offset=remote_offset,
-            )
-            symm_buffer[remote_rank].copy_(remote_buffer)
+        local_token_offset = rank * num_tokens_per_rank
+        torch.ops.symm_mem.local_permute_copy_(
+            hidden_shard,
+            scatter_idx,
+            local_token_offset,
+            remap_hidden_states,
+        )
 
-            remote_token_offset = remote_rank * num_tokens_per_rank
-            torch.ops.symm_mem.local_permute_copy_(
-                symm_buffer[remote_rank],
-                scatter_idx,
-                remote_token_offset,
-                remap_hidden_states,
-            )
-    torch.xpu.current_stream().wait_stream(backend_stream)
+        if backend_stream is None:
+            backend_stream = torch.xpu.Stream()
+        for step in range(world_size - 1):
+            remote_rank = (rank - step - 1) % world_size
+            if step % 2 == 0:
+                stream = backend_stream
+            else:
+                stream = torch.xpu.current_stream()
+            with torch.xpu.stream(stream):
+                remote_offset = remote_rank * num_tokens_per_rank * hidden_size
+                remote_buffer = workspace.get_buffer(
+                    remote_rank,
+                    (num_tokens_per_rank, hidden_size),
+                    hidden_shard.dtype,
+                    storage_offset=remote_offset,
+                )
+                symm_buffer[remote_rank].copy_(remote_buffer)
+
+                remote_token_offset = remote_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    symm_buffer[remote_rank],
+                    scatter_idx,
+                    remote_token_offset,
+                    remap_hidden_states,
+                )
+        torch.xpu.current_stream().wait_stream(backend_stream)
+
     workspace.barrier()
     return remap_hidden_states
 
@@ -243,6 +273,38 @@ def allgather_local_permute_fusion_python(
     return remap_hidden_states
 
 
+def build_allgather_rank_buffers_ptr(
+    hidden_shard: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+) -> torch.Tensor:
+    """Precompute rank_buffers_ptr tensor for repeated allgather_permute calls."""
+    if group is None:
+        group = dist.group.WORLD
+    if group_name is None:
+        group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    num_tokens_per_rank, hidden_size = hidden_shard.shape
+    workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    ptr_list = []
+    for r in range(world_size):
+        if r == rank:
+            ptr_list.append(hidden_shard.data_ptr())
+        else:
+            offset = r * num_tokens_per_rank * hidden_size
+            buf = workspace.get_buffer(
+                r, (num_tokens_per_rank, hidden_size),
+                hidden_shard.dtype, storage_offset=offset,
+            )
+            ptr_list.append(buf.data_ptr())
+    signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+    return torch.tensor(signed_ptrs, dtype=torch.int64).to(hidden_shard.device)
+
+
 def allgather_local_permute_fusion(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
@@ -251,6 +313,7 @@ def allgather_local_permute_fusion(
     group: dist.ProcessGroup = None,
     group_name: str = None,
     backend_stream: torch.xpu.Stream = None,
+    rank_buffers_ptr: torch.Tensor = None,
 ):
     """
     Default API: uses native kernel if available, otherwise Python fallback.
@@ -263,7 +326,8 @@ def allgather_local_permute_fusion(
         remap_hidden_states: [num_tokens * topk, hidden_size] output buffer
         group: process group
         group_name: optional group name for symmetric memory
-        backend_stream: optional stream for overlapping
+        backend_stream: optional stream for overlapping (multi-kernel fallback only)
+        rank_buffers_ptr: optional precomputed buffer pointers (fused kernel only)
 
     Returns:
         remap_hidden_states filled with expert-centric layout
@@ -277,6 +341,7 @@ def allgather_local_permute_fusion(
             group=group,
             group_name=group_name,
             backend_stream=backend_stream,
+            rank_buffers_ptr=rank_buffers_ptr,
         )
     return allgather_local_permute_fusion_python(
         hidden_shard=hidden_shard,

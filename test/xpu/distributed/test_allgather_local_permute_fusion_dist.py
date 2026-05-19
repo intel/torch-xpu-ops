@@ -10,7 +10,12 @@ from contextlib import nullcontext
 import torch
 import torch.distributed as dist
 
-from allgather_local_permute_fusion import allgather_local_permute_fusion, allgather_with_symm_mem, compute_scatter_idx
+from allgather_local_permute_fusion import (
+    allgather_local_permute_fusion,
+    allgather_with_symm_mem,
+    build_allgather_rank_buffers_ptr,
+    compute_scatter_idx,
+)
 
 
 TOKENS_PER_RANK = 2048
@@ -87,6 +92,9 @@ def check_allgather_local_permute_fusion():
     topk_idx = torch.randint(0, world_size, (num_tokens, topk), device=device, dtype=torch.int64)
     scatter_idx, _ = compute_scatter_idx(topk_idx)
 
+    # Precompute rank_buffers_ptr (also allocates workspace)
+    rank_buffers = build_allgather_rank_buffers_ptr(hidden_shard, group=group)
+
     # Reference path uses only current stream: allgather first, then local permute.
     gathered_ref = [torch.empty_like(hidden_shard) for _ in range(world_size)]
 
@@ -118,6 +126,7 @@ def check_allgather_local_permute_fusion():
                 remap_hidden_states=remap_hidden_states,
                 group=group,
                 backend_stream=backend_stream,
+                rank_buffers_ptr=rank_buffers,
             )
         torch.xpu.synchronize()
         dist.barrier()
@@ -134,6 +143,7 @@ def check_allgather_local_permute_fusion():
                 remap_hidden_states=remap_hidden_states,
                 group=group,
                 backend_stream=backend_stream,
+                rank_buffers_ptr=rank_buffers,
             )
             if i >= WARMUP:
                 end_events[i].record()
@@ -305,7 +315,7 @@ def check_allgather_local_permute_fusion():
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
     allgather_local_permute_fusion(
         hidden_shard, topk_idx, scatter_idx, remap_hidden_states=remap_check, group=group,
-        backend_stream=backend_stream,
+        backend_stream=backend_stream, rank_buffers_ptr=rank_buffers,
     )
     ref = torch.zeros_like(remap_check)
     run_reference_allgather_local_permute(

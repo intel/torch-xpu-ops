@@ -15,32 +15,75 @@
 
 ## API definition
 
+### compute_scatter_idx
+
+```python
+def compute_scatter_idx(
+    topk_idx: torch.Tensor,            # [num_tokens, topk], int64, 全局 topk expert 索引
+    num_experts: int = None,           # expert 总数（可选，默认从 topk_idx 推断）
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    # 返回 (scatter_idx, expert_offsets)
+```
+
+- **input arguments:**
+  - `topk_idx`: `[num_tokens, topk]` int64 — 全局 token→expert 映射
+  - `num_experts`: 整数，expert 总数。若为 `None`，从 `topk_idx.max() + 1` 推断
+
+- **output:**
+  - `scatter_idx`: `[num_tokens, topk]` int32 — 每个 `(token, k)` 在输出 buffer 中的写入位置。输出按 expert 分组：expert 0 的所有 token 在前，接着 expert 1，依此类推。同一 expert 内 token 按原始顺序排列（stable sort）
+  - `expert_offsets`: `[num_experts + 1]` int64 — 每个 expert 在输出中的起始偏移（前缀和）。expert `e` 的 token 占据 `remap_hidden_states[expert_offsets[e] : expert_offsets[e+1]]`
+
+- **算法:**
+  1. 将 `topk_idx` flatten 为 `[num_tokens * topk]`
+  2. 按 expert ID stable sort → `sort_indices`
+  3. 计算逆置换：`scatter_idx[sort_indices[i]] = i`
+  4. `expert_offsets` = `bincount(topk_flat).cumsum()` 前缀补零
+
+- **`topk_idx` vs `scatter_idx` 的区别:**
+
+  两者 shape 相同 `[num_tokens, topk]`，但语义完全不同：
+
+  | | `topk_idx[i, k]` | `scatter_idx[i, k]` |
+  |---|---|---|
+  | **语义** | token `i` 的第 `k` 个 topk 选中了**哪个 expert** | token `i` 的第 `k` 份 hidden 应该**写到 output 的哪一行** |
+  | **值域** | `[0, num_experts)` (expert ID) | `[0, num_tokens * topk)` (output row index) |
+  | **用途** | 路由信息：告诉你"这个 token 去哪个 expert" | 内存布局：告诉 kernel "往 remap_hidden_states 的哪个位置写" |
+
+  具体例子（4 tokens, topk=2, 3 experts）：
+  ```
+  topk_idx = [[0, 1],    # token 0 → expert 0, expert 1
+              [2, 0],    # token 1 → expert 2, expert 0
+              [1, 2],    # token 2 → expert 1, expert 2
+              [0, 1]]    # token 3 → expert 0, expert 1
+
+  # 按 expert 排序后的输出布局:
+  #   expert 0 的 token: (0,0), (1,1), (3,0)  → 占 row 0,1,2
+  #   expert 1 的 token: (0,1), (2,0), (3,1)  → 占 row 3,4,5
+  #   expert 2 的 token: (1,0), (2,1)         → 占 row 6,7
+
+  scatter_idx = [[0, 3],   # token 0 写到 row 0 (expert0第1个), row 3 (expert1第1个)
+                [6, 1],    # token 1 写到 row 6 (expert2第1个), row 1 (expert0第2个)
+                [4, 7],    # token 2 写到 row 4 (expert1第2个), row 7 (expert2第2个)
+                [2, 5]]    # token 3 写到 row 2 (expert0第3个), row 5 (expert1第3个)
+
+  expert_offsets = [0, 3, 6, 8]
+  ```
+
+  **本质：** `scatter_idx` 编码了"当前 token 是该 expert 的第几个"这个信息。没有它，kernel 不知道往 expert 块内的哪个偏移写。
+
 ### allgather_local_permute_fusion
 
 ```python
 def allgather_local_permute_fusion(
     hidden_shard: torch.Tensor,       # [num_tokens_per_rank, hidden_size], bfloat16, 本 rank 的输入 hidden states
     topk_idx: torch.Tensor,           # [num_tokens, topk], int64, 全局 topk expert 索引（所有 rank 相同）
-    remap_hidden_states: torch.Tensor, # [num_tokens * topk, hidden_size], bfloat16, 输出（symmetric memory）
+    scatter_idx: torch.Tensor,        # [num_tokens, topk], int32, 预计算的 expert-sorted 写入位置（来自 compute_scatter_idx）
+    remap_hidden_states: torch.Tensor, # [num_tokens * topk, hidden_size], bfloat16, 输出（expert-centric 布局）
     group: dist.ProcessGroup = None,   # TP process group（默认 WORLD）
     group_name: str = None,            # symmetric memory workspace 名称
-    backend_stream: torch.xpu.Stream = None,  # 用于 overlap allgather 和 permute 的第二 stream
+    backend_stream: torch.xpu.Stream = None,  # overlap stream
 ) -> torch.Tensor:                     # 返回 remap_hidden_states [num_tokens * topk, hidden_size]
 ```
-
-- **input arguments:**
-  - `hidden_shard`: `[num_tokens_per_rank, hidden_size]` — 本 rank 拥有的 token 的 hidden states，其中 `num_tokens_per_rank = num_tokens // world_size`
-  - `topk_idx`: `[num_tokens, topk]` — 全局 token→expert 映射，所有 rank 持有相同数据
-  - `remap_hidden_states`: `[num_tokens * topk, hidden_size]` — 预分配的输出 buffer，需使用 symmetric memory 分配
-  - `backend_stream`: 可选。若提供，allgather 与 local permute 在双 stream 上 overlap 执行；若为 `None`，内部自动创建
-
-- **output arguments:**
-  - `remap_hidden_states`: `[num_tokens * topk, hidden_size]` — 按 `(token_idx * topk + k)` 排列的 hidden states，每个 token 的每个 topk slot 对应一行
-
-- **benchmark 示例 shape** (`tokens_per_rank=2048, hidden_size=2048, topk=8, world_size=4`):
-  - `hidden_shard`: `[2048, 2048]` = 8 MB
-  - `topk_idx`: `[8192, 8]`
-  - `remap_hidden_states`: `[65536, 2048]` = 256 MB
 
 ### deepep_owner_dispatch
 
@@ -52,36 +95,9 @@ def deepep_owner_dispatch(
     num_experts: int,                  # expert 总数（用于计算 ownership）
     group: dist.ProcessGroup = None,   # TP process group（默认 WORLD）
     group_name: str = None,            # symmetric memory workspace 名称
-    rank_buffers_ptr: torch.Tensor = None,  # [world_size], int64, 预计算的各 rank buffer 指针（可选，避免每次重建）
     skip_copy: bool = False,           # 若 True，跳过 hidden_shard→symmetric memory 的 copy（需确保数据已就位）
 ) -> torch.Tensor:                     # 返回 remap_hidden_states [num_tokens * topk, hidden_size]
 ```
-
-- **input arguments:**
-  - `hidden_shard`: `[num_tokens_per_rank, hidden_size]` — 本 rank 拥有的 token 的 hidden states
-  - `topk_idx`: `[num_tokens, topk]` — 全局 token→expert 映射
-  - `remap_hidden_states`: `[num_tokens * topk, hidden_size]` — 预分配的输出 buffer
-  - `num_experts`: 整数，expert 总数。每个 rank 拥有 `num_experts // world_size` 个连续 expert
-  - `rank_buffers_ptr`: `[world_size]`, int64 — 各 rank 的 symmetric memory buffer 的设备指针。可通过 `build_rank_buffers_ptr()` 预计算，避免每次 dispatch 时重建（节省 ~0.5ms）
-  - `skip_copy`: 若上游 matmul 已将结果写入 symmetric memory，可跳过 copy 步骤
-
-- **output arguments:**
-  - `remap_hidden_states`: `[num_tokens * topk, hidden_size]` — **仅**填充本 rank 拥有的 expert 对应的 `(token, k)` 位置；其余位置保持零值
-
-- **benchmark 示例 shape** (`tokens_per_rank=2048, hidden_size=2048, topk=8, num_experts=128, world_size=4`):
-  - `hidden_shard`: `[2048, 2048]` = 8 MB
-  - `topk_idx`: `[8192, 8]`
-  - `remap_hidden_states`: `[65536, 2048]` = 256 MB（每 rank 仅写入约 90% 的有效位置）
-
-### 关键区别
-
-| | allgather_local_permute_fusion | deepep_owner_dispatch |
-|---|---|---|
-| **通信模式** | 先 allgather 全部数据，再 local permute | 按需 selective read，仅拉取拥有的 expert 对应 token |
-| **输出内容** | 所有 `(token, k)` 位置均被填充 | 仅本 rank 拥有的 expert 对应位置被填充 |
-| **额外参数** | `backend_stream`（双 stream overlap） | `num_experts`, `rank_buffers_ptr`（ownership 计算） |
-| **PCIe 传输量** | 固定 = `(W-1) × tokens_per_rank × hidden_size × dtype_size` | 按 ownership 过滤，随 world_size 增大节省显著 |
-
 
 ## Results
 
@@ -89,23 +105,20 @@ def deepep_owner_dispatch(
 
 | Method | Avg (ms) | Min (ms) | Notes |
 |--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.014** | **1.013** | |
-| Allgather+permute w/o overlap | 1.869 | 1.861 | single-stream, no overlap |
-| Allgather+permute w/ overlap | 1.365 | 1.322 | two-stream, overlap hides permute latency |
+| **EP Dispatch (ring-ordered)** | **1.013** | **1.009** | ownership pre-check skips ~10% PCIe reads |
+| **Allgather+permute (fused)** | **1.118** | **1.115** | single kernel, single stream, ring-ordered |
+| Allgather+permute w/o overlap | 1.869 | 1.861 | no overlap |
+| Allgather+permute w/ overlap | 1.365 | 1.322 | overlap(legacy) |
 
 ### tokens_per_rank = 4096
 
 | Method | Avg (ms) | Min (ms) | Notes |
 |--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.973** | **1.971** | |
-| Allgather+permute w/o overlap | 3.673 | 3.668 | |
-| Allgather+permute w/ overlap | 2.820 | 2.627 | |
+| **EP Dispatch (ring-ordered)** | **1.969** | **1.967** | |
+| **Allgather+permute (fused)** | **2.166** | **2.165** | |
+| Allgather+permute w/o overlap | 3.673 | 3.668 | (legacy) |
+| Allgather+permute w/ overlap | 2.820 | 2.627 | (legacy) |
 
-## Analysis
-
-- **EP Dispatch is 46% faster** than allgather+permute w/o overlap (2048 tokens/rank)
-- **EP Dispatch is 26% faster** than allgather+permute w/ overlap (2048 tokens/rank)
-- Performance scales linearly with token count (2x tokens → ~2x latency)
 
 ## Data Transfer Analysis
 
@@ -150,66 +163,17 @@ General formula: `P(token unneeded) = ((W-1)/W)^topk`，其中 W = world_size
 
 **Takeaway**: Device 越多 → 每个 device 拥有的 expert 比例越小 (1/W) → ownership pre-check 跳过的无效读取越多 → EP Dispatch 相对 allgather 的传输量优势从 ~0% (2 devices) 增大到 ~88% (64 devices)。在大规模部署（≥16 devices）下，EP Dispatch 的选择性读取带来的传输量优势非常显著。
 
-## Bandwidth Projection (理论下界分析)
-
-Hardware assumptions: `PCIe BW = 26.8 GB/s (31.5 × 0.85 discount), HBM BW = 437.0 GB/s`
-
-Configuration: `4 devices × 2048 tokens_per_rank, hidden=2048, topk=8, 128 experts, bf16`
-
-### Allgather + Local Permute Fusion
-
-| Component | Data Volume | Projected Time | Actual Time | Efficiency |
-|-----------|------------|----------------|-------------|------------|
-| Allgather (PCIe) | 24.00 MB | 0.940 ms | — | — |
-| Local permute cold (read+write) | 288.00 MB | 0.691 ms | 0.754 ms | 91.7% |
-| Local permute warm (write-only) | 256.00 MB | 0.614 ms | 0.753 ms | 81.5% |
-| Fused single-launch permute | 288.00 MB | 0.691 ms | 0.751 ms | 92.1% |
-| **Fused lower bound (allgather + permute)** | — | **1.631 ms** | **1.330 ms** | — |
-
-> Fused 实测 1.330 ms < 理论下界 1.631 ms，因为 allgather 与 local permute 在双 stream 上 overlap 执行。
-
-### EP Dispatch (ring-ordered kernel)
-
-| Component | Data Volume | Projected Time | Notes |
-|-----------|------------|----------------|-------|
-| PCIe remote read (filtered) | 21.60 MB | 0.846 ms (serial) | P(skip)=10%, effective 1843/2048 tokens per src |
-| PCIe ideal overlap | — | 0.282 ms | 3 links fully overlapped |
-| HBM local read | 7.20 MB | 0.017 ms | — |
-| HBM write (avg) | 64.00 MB | 0.154 ms | — |
-| **Lower bound (PCIe serial + HBM)** | — | **0.999 ms** | — |
-| **Actual** | — | **1.012 ms** | **efficiency = 98.8%** |
-
-> EP Dispatch 几乎达到 PCIe 带宽理论下界 (98.8% efficiency)，ring-ordered 交错访问充分利用了互联带宽。
-
-### Per-Rank Assignment Statistics
-
-| Rank | Local Assignments | Remote Recv | Send (MB) | Recv (MB) | Comm LB (ms) | Comm UB (ms) |
-|:----:|:-----------------:|:-----------:|:---------:|:---------:|:------------:|:------------:|
-| 0 | 16347 | 12282 | 48.12 | 47.98 | 1.885 | 3.763 |
-| 1 | 16671 | 12483 | 47.64 | 48.76 | 1.910 | 3.775 |
-| 2 | 16277 | 12179 | 47.99 | 47.57 | 1.879 | 3.743 |
-| 3 | 16241 | 12183 | 48.15 | 47.59 | 1.886 | 3.749 |
-
-> Worst-case rank: fused_lb=2.222 ms, fused_ub=4.088 ms (allgather + permute 理论范围)
-
-## Key Optimizations
-
-1. **Ring-ordered work decomposition**: `src_rank = (rank + step + 1) % world_size` ensures no two ranks read from the same source simultaneously, avoiding interconnect congestion
-2. **Interleaved work groups**: Adjacent work groups target different source ranks, enabling GPU to overlap cross-device memory access latency
-3. **Ownership pre-check**: Before issuing expensive PCIe reads, check if ANY topk expert is owned by the current rank; skip the read entirely if not (~10% PCIe traffic savings with uniform expert distribution)
-4. **Vectorized reads (VEC_SIZE=8)**: Each work item handles 8 bf16 values (16 bytes), achieving coalesced memory access
-5. **Precomputed rank_buffers_ptr**: Device tensor with symmetric memory pointers built once, eliminating per-call host→device copy overhead (~0.5ms savings)
-
 ## How to Reproduce
 
 ```bash
 # Build the kernel
 cd test/xpu/csrc && python build.py
 
-# Run the benchmark (all 3 methods, 2048 and 4096 tokens)
+# Run the allgather + local permute fusion
 cd test/xpu/distributed
-SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=0 mpirun -np 4 python bench_compare.py
+SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=1 mpirun -np 4 python test_allgather_local_permute_fusion.py
 
 # Run the standalone correctness + performance test
-SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=0 mpirun -np 4 python test_deepep_dispatch.py
+SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=1 mpirun -np 4 python test_deepep_dispatch.py
 ```
+
