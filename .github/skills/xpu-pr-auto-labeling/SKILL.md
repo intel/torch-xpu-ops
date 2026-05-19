@@ -22,8 +22,8 @@ These labels control which CI jobs run, reducing unnecessary CI load.
 | `disable_distributed` | Skip distributed UT jobs |
 | `disable_win` | Skip Windows CI jobs |
 | `disable_build` | Skip source build, use nightly wheel |
-| `disable_accelerate` | Skip accelerate test job |
-| `disable_transformers` | Skip transformers UT job |
+
+Note: Only labels consumed by `pull.yml` are in scope. Other labels (`disable_accelerate`, `disable_transformers`) are used by separate workflows and not managed here.
 
 ## Decision Rules
 
@@ -48,8 +48,6 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 - If modifying `_linux_ut.yml` → keep linux-ut running
 - If modifying `_linux_e2e.yml` → keep linux-e2e running
 - If modifying `_windows_*.yml` → keep windows jobs running, add `windows_ci` to force trigger
-- If modifying `_linux_transformers.yml` → keep transformers running
-- If modifying `_linux_accelerate.yml` → keep accelerate running
 
 **Additional:** If no `src/`, `cmake/`, `CMakeLists.txt` files changed, add `disable_build`.
 
@@ -69,20 +67,24 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **Additional modifiers:**
 - If files are ONLY under `test/xpu/functorch/` or `test/xpu/dynamo/` or `test/xpu/higher_order_ops/`: add `disable_win`
-- If files are ONLY under `test/xpu/profiler/`: add `disable_win`, `disable_transformers`
 - If NO files under paths covered by Windows UT (`test/xpu/test_ops*.py`, `test/xpu/core/`, `test/xpu/test_nn*.py`): add `disable_win`
 
 **Additional:** Always add `disable_build` (test-only changes don't need source build).
 
 ### Rule 5: Kernel/operator source changes (src/)
 
-**Condition:** Changed files include `src/ATen/` or `src/xccl/` (kernel implementations).
+**Condition:** Changed files include `src/ATen/` or `src/xccl/`.
 
-**Labels (base):** `disable_e2e`, `disable_distributed`
+**Labels:** Depends on which subdirectory:
 
-**Additional modifiers:**
-- If changes are only in `src/ATen/native/xpu/sycl/` (pure kernel logic, no new ops): add `disable_win`
-- If changes touch `src/ATen/native/sparse/`: add `disable_win`, `disable_accelerate`, `disable_transformers`
+- `src/ATen/` only (kernel/operator code, no xccl):
+  - Base: `disable_e2e`, `disable_distributed`
+  - If changes are only in `src/ATen/native/xpu/sycl/` (pure kernel logic, no new ops): add `disable_win`
+  - If changes touch `src/ATen/native/sparse/`: add `disable_win`
+
+- `src/xccl/` involved (distributed communication backend):
+  - Base: `disable_e2e` only — do NOT add `disable_distributed` (xccl changes must run distributed tests)
+  - Add `disable_win` (xccl is Linux-only)
 
 **Note:** Do NOT add `disable_build` — source changes require compilation.
 
@@ -92,7 +94,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **Labels:** None (or minimal). Build system changes need full CI validation.
 
-**If ONLY build system files changed** (no test, no kernel): `disable_e2e`, `disable_distributed`, `disable_accelerate`, `disable_transformers`
+**If ONLY build system files changed** (no test, no kernel): `disable_e2e`, `disable_distributed`
 
 ### Rule 7: yaml/ definition changes
 
@@ -100,7 +102,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **Labels:** Minimal — operator definition changes can affect many things. Run full CI.
 
-Only apply: `disable_accelerate`, `disable_transformers` (if the yaml change is clearly unrelated to model-level ops).
+Apply: `none` (run full CI by default).
 
 ### Rule 8: Mixed changes (fallback)
 
