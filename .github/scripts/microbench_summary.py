@@ -13,6 +13,7 @@ import glob
 import os
 import argparse
 import bisect
+import ast
 from pathlib import Path
 
 def main():
@@ -57,7 +58,14 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
             op_name, time_pattern = get_op_pattern(base_op_name, get_backward)
 
             # First find all shape lines and their positions
-            shape_matches = list(re.finditer(r"(shape\s*[:=].*?)(?=\n\S|$)", content))
+            # shape_matches = list(re.finditer(r"(shape\s*[:=].*?)(?=\n\S|$)", content))
+            shape_matches = list(re.finditer(
+                r'(?:shape\s*[:=]\s*[^\n;]+)|'
+                r'(config\s*[:=]\s*\{[^}]*\})',
+                content,
+                re.IGNORECASE
+            ))
+            print(f"[DEBUG] {log_file}: Found {len(shape_matches)} shape/config lines")
             shape_lines = [match.group(0) for match in shape_matches]
             shape_positions = [match.start() for match in shape_matches]
             # Parse all E2E forward time in the log
@@ -132,7 +140,14 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
                 if get_backward and params.get("backward", "False") == "False":
                     continue
 
-                record = create_record(params, case_name, op_name, str(get_backward), time_us)
+                # record = create_record(params, case_name, op_name, str(get_backward), time_us)
+                record_backward = params.pop("backward", None)  # pop to avoid duplication
+                if record_backward is None:
+                    record_backward = str(get_backward)
+                else:
+                    record_backward = str(record_backward).strip()
+
+                record = create_record(params, case_name, op_name, record_backward, time_us)
 
                 # Add E2E times if available for this specific shape
                 if has_e2e_forward:
@@ -255,7 +270,10 @@ def process_l1_loss(content: str, case_name: str, data: list, columns: list):
             break
         time_us = convert_to_us(float(time), unit)
         params = extract_params(shape_lines[i])
-        record = create_record(params, case_name, "AbsBackward0", "True", time_us)
+        # record = create_record(params, case_name, "AbsBackward0", "True", time_us)
+        record_backward = params.pop("backward", "True")  # default to "True" for l1_loss backward parts
+        record_backward = str(record_backward).strip()
+        record = create_record(params, case_name, "AbsBackward0", record_backward, time_us)
 
         # Add E2E times if available
         if has_e2e_forward:
@@ -270,7 +288,10 @@ def process_l1_loss(content: str, case_name: str, data: list, columns: list):
             break
         time_us = convert_to_us(float(time), unit)
         params = extract_params(shape_lines[i + 6])
-        record = create_record(params, case_name, "MeanBackward0", "True", time_us)
+        # record = create_record(params, case_name, "MeanBackward0", "True", time_us)
+        record_backward = params.pop("backward", "True")
+        record_backward = str(record_backward).strip()
+        record = create_record(params, case_name, "MeanBackward0", record_backward, time_us)
 
         # Add E2E times if available
         if has_e2e_forward:
@@ -299,12 +320,12 @@ def extract_times(content: str, pattern: str, get_backward: bool) -> list:
 def create_record(params: dict, case_name: str, op_name: str,
                  backward: str, time_us: float) -> dict:
     return {
-        "P": params.get("p", ""),
-        **params,
         "case_name": case_name,
         "op_name": op_name,
         "backward": backward,
-        "time(us)": time_us
+        "time(us)": time_us,
+        "P": params.get("p", ""),
+        **params,
     }
 
 def convert_to_us(value: float, unit: str) -> float:
@@ -317,6 +338,35 @@ def convert_to_us(value: float, unit: str) -> float:
 
 def extract_params(text: str) -> dict:
     params = {}
+
+    config_match = re.search(r"config\s*[:=]\s*(\{.*?\})", text, re.DOTALL)
+    if config_match:
+        raw_dict_str = config_match.group(1).strip()
+        try:
+            safe_dict_str = re.sub(r"torch\.(\w+)", r"'\1'", raw_dict_str)
+            d = ast.literal_eval(safe_dict_str)
+
+            for key, val in d.items():
+                key = key.strip().lower()
+                if key == 'dtype':
+                    val = str(val)
+                    if not val.startswith("torch."):
+                        val = f"torch.{val}"
+                elif isinstance(val, bool):
+                    val = str(val)
+                elif isinstance(val, (list, tuple)):
+                    val = str(list(val))
+                else:
+                    val = str(val)
+                params[key] = val
+
+            if 'dtype' in params:
+                params['datatype'] = params['dtype']
+            if 'out' in params:
+                params['output_size'] = params['out']
+            return params
+        except Exception as e:
+            print(f"Warning: Failed to parse config dict in '{text[:100]}...': {e}")
     pairs = re.split(r'[;]', text.strip())
 
     for pair in pairs:
