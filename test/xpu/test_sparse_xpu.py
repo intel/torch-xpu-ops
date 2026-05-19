@@ -22,12 +22,6 @@ from numbers import Number
 from typing import Any
 
 import torch
-
-# Some editable/source-tree setups may import distributed helpers before torch exposes _opaque_base.
-try:
-    import torch._opaque_base  # noqa: F401
-except ImportError:
-    pass
 from packaging import version
 from torch.testing import make_tensor
 from torch.testing._internal.common_cuda import SM53OrLater, SM80OrLater
