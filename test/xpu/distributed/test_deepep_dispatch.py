@@ -19,8 +19,9 @@ NUM_EXPERTS = 128
 LOOP = 40
 WARMUP = 20
 ENABLE_PROJECTION = False
-CROSS_GPU_BW_GBPS = 30.0
-HBM_BW_GBPS = 1300.0
+PCIE_DISCOUNT = 0.7
+CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
+HBM_BW_GBPS = 456.0
 
 
 def bytes_to_mb(num_bytes: float) -> float:
@@ -64,21 +65,29 @@ def build_dispatch_projection(
 
     send_bytes = send_counts.to(torch.float64) * bytes_per_assignment
     recv_bytes = recv_counts.to(torch.float64) * bytes_per_assignment
-    comm_bytes = torch.maximum(send_bytes, recv_bytes)
+    # Communication lower bound (ideal full-duplex): max(send, recv).
+    comm_bytes_lb = torch.maximum(send_bytes, recv_bytes)
+    # Communication upper bound (serialized TX+RX): send + recv.
+    comm_bytes_ub = send_bytes + recv_bytes
 
     # One read + one write for local remap data movement.
     local_permute_bytes = local_assign_counts.to(torch.float64) * bytes_per_assignment * 2
 
-    comm_ms = comm_bytes / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
+    comm_ms_lb = comm_bytes_lb / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
+    comm_ms_ub = comm_bytes_ub / (CROSS_GPU_BW_GBPS * 1e9) * 1e3
     local_ms = local_permute_bytes / (HBM_BW_GBPS * 1e9) * 1e3
 
     return {
         "send_bytes": send_bytes,
         "recv_bytes": recv_bytes,
-        "comm_ms": comm_ms,
+        "comm_ms_lb": comm_ms_lb,
+        "comm_ms_ub": comm_ms_ub,
         "local_permute_bytes": local_permute_bytes,
         "local_ms": local_ms,
-        "fused_ms": comm_ms + local_ms,
+        "fused_ms_lb": comm_ms_lb + local_ms,
+        "fused_ms_ub": comm_ms_ub + local_ms,
+        "local_assign_counts": local_assign_counts,
+        "recv_counts": recv_counts,
     }
 
 
@@ -223,29 +232,41 @@ def check_deepep_owner_dispatch():
 
             send_bytes = projection["send_bytes"].to("cpu").tolist()
             recv_bytes = projection["recv_bytes"].to("cpu").tolist()
-            comm_ms = projection["comm_ms"].to("cpu").tolist()
+            comm_ms_lb = projection["comm_ms_lb"].to("cpu").tolist()
+            comm_ms_ub = projection["comm_ms_ub"].to("cpu").tolist()
             local_permute_bytes = projection["local_permute_bytes"].to("cpu").tolist()
             local_ms = projection["local_ms"].to("cpu").tolist()
-            fused_ms = projection["fused_ms"].to("cpu").tolist()
+            fused_ms_lb = projection["fused_ms_lb"].to("cpu").tolist()
+            fused_ms_ub = projection["fused_ms_ub"].to("cpu").tolist()
+            local_assign_counts = projection["local_assign_counts"].to("cpu").tolist()
+            recv_counts = projection["recv_counts"].to("cpu").tolist()
 
             for r in range(world_size):
+                print(
+                    f"[Projection][rank {r}] local_assign_counts={int(local_assign_counts[r])}, recv_counts={int(recv_counts[r])}"
+                )
                 print(
                     f"[Projection][rank {r}] "
                     f"send={bytes_to_mb(send_bytes[r]):.2f} MB, "
                     f"recv={bytes_to_mb(recv_bytes[r]):.2f} MB, "
-                    f"comm@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms[r]:.3f} ms"
+                    f"comm_lb@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms_lb[r]:.3f} ms, "
+                    f"comm_ub@{CROSS_GPU_BW_GBPS:.1f}GB/s={comm_ms_ub[r]:.3f} ms"
                 )
                 print(
                     f"[Projection][rank {r}] "
                     f"local_permute={bytes_to_mb(local_permute_bytes[r]):.2f} MB, "
                     f"hbm@{HBM_BW_GBPS:.1f}GB/s={local_ms[r]:.3f} ms, "
-                    f"fused_lower_bound={fused_ms[r]:.3f} ms"
+                    f"fused_lb={fused_ms_lb[r]:.3f} ms, "
+                    f"fused_ub={fused_ms_ub[r]:.3f} ms"
                 )
 
-            worst_rank = max(range(world_size), key=lambda r: fused_ms[r])
+            worst_rank_lb = max(range(world_size), key=lambda r: fused_ms_lb[r])
+            worst_rank_ub = max(range(world_size), key=lambda r: fused_ms_ub[r])
             print(
-                f"[Projection][Summary] worst_rank={worst_rank}, "
-                f"fused_lower_bound={fused_ms[worst_rank]:.3f} ms"
+                f"[Projection][Summary] lb_worst_rank={worst_rank_lb}, "
+                f"fused_lb={fused_ms_lb[worst_rank_lb]:.3f} ms, "
+                f"ub_worst_rank={worst_rank_ub}, "
+                f"fused_ub={fused_ms_ub[worst_rank_ub]:.3f} ms"
             )
 
     dist.destroy_process_group()

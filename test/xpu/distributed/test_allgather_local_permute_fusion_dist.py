@@ -21,8 +21,9 @@ LOOP = 40
 WARMUP = 20
 ENABLE_PROFILE = False
 ENABLE_PROJECTION = False
-CROSS_GPU_BW_GBPS = 30.0
-HBM_BW_GBPS = 1300.0
+PCIE_DISCOUNT = 0.85
+CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
+HBM_BW_GBPS = 378.0 #456.0
 
 def bytes_to_mb(num_bytes):
     return num_bytes / (1024 * 1024)
@@ -31,6 +32,28 @@ def bytes_to_mb(num_bytes):
 def project_time_ms(bytes_count, bw_gbps):
     # GB/s is interpreted as 1e9 bytes/s for bandwidth projection.
     return bytes_count / (bw_gbps * 1e9) * 1e3
+
+
+def run_reference_allgather_local_permute(
+    hidden_shard,
+    output_tensor,
+    topk_idx,
+    group,
+    world_size,
+    num_tokens_per_rank,
+    topk,
+    gathered_ref,
+):
+    dist.all_gather(gathered_ref, hidden_shard, group=group)
+    all_hidden_ref = torch.stack(gathered_ref, dim=0)  # [world_size, tokens_per_rank, hidden_size]
+    for src_rank in range(world_size):
+        token_offset = src_rank * num_tokens_per_rank
+        torch.ops.symm_mem.local_permute_copy_(
+            all_hidden_ref[src_rank],
+            topk_idx,
+            token_offset,
+            output_tensor,
+        )
 
 def init_distributed():
     os.environ['RANK'] = str(os.environ.get('PMI_RANK', 0))
@@ -63,10 +86,15 @@ def check_allgather_local_permute_fusion():
     torch.manual_seed(42)
     topk_idx = torch.randint(0, world_size, (num_tokens, topk), device=device, dtype=torch.int64)
 
+    # Reference path uses only current stream: allgather first, then local permute.
+    gathered_ref = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+    ref_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+    ref_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
 
-    backend_stream = torch.xpu.current_stream() #torch.xpu.Stream()
+    backend_stream = torch.xpu.Stream()
 
     if ENABLE_PROFILE:
         prof = torch.profiler.profile(
@@ -109,12 +137,49 @@ def check_allgather_local_permute_fusion():
         torch.xpu.synchronize()
         dist.barrier()
 
+        # Warm up reference path: allgather + local permute (current stream only)
+        ref_output = torch.empty((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
+        for _ in range(WARMUP):
+            run_reference_allgather_local_permute(
+                hidden_shard,
+                ref_output,
+                topk_idx,
+                group,
+                world_size,
+                num_tokens_per_rank,
+                topk,
+                gathered_ref,
+            )
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        # Timed reference path
+        for i in range(LOOP):
+            if i >= WARMUP:
+                ref_begin_events[i].record()
+            run_reference_allgather_local_permute(
+                hidden_shard,
+                ref_output,
+                topk_idx,
+                group,
+                world_size,
+                num_tokens_per_rank,
+                topk,
+                gathered_ref,
+            )
+            if i >= WARMUP:
+                ref_end_events[i].record()
+        torch.xpu.synchronize()
+        dist.barrier()
+
     latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
+    ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_allgather_local_permute_fusion_rank{rank}.json")
 
     print(f"[Fusion time in rank {rank}] {latencies} ms")
+    print(f"[Reference allgather+permute time in rank {rank}] {ref_latencies} ms")
 
     # Accuracy check: run one fresh pass and compare against reference
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
@@ -122,21 +187,26 @@ def check_allgather_local_permute_fusion():
         hidden_shard, topk_idx, remap_hidden_states=remap_check, group=group,
         backend_stream=backend_stream,
     )
-    gathered = [torch.empty_like(hidden_shard) for _ in range(world_size)]
-    dist.all_gather(gathered, hidden_shard, group=group)
-    all_hidden = torch.stack(gathered, dim=0)  # [world_size, tokens_per_rank, hidden_size]
     ref = torch.zeros_like(remap_check)
-    for src_rank in range(world_size):
-        for i in range(num_tokens_per_rank):
-            global_idx = src_rank * num_tokens_per_rank + i
-            for k in range(topk):
-                dst = global_idx * topk + k
-                ref[dst].copy_(all_hidden[src_rank, i])
+    run_reference_allgather_local_permute(
+        hidden_shard,
+        ref,
+        topk_idx,
+        group,
+        world_size,
+        num_tokens_per_rank,
+        topk,
+        gathered_ref,
+    )
     assert torch.equal(remap_check, ref), f"allgather_local_permute_fusion mismatch in rank {rank}"
 
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
-        print(f"[Summary] avg_fused={avg_fused:.3f} ms")
+        avg_ref = sum(ref_latencies) / len(ref_latencies)
+        print(
+            f"[Summary] avg_fused={avg_fused:.3f} ms, "
+            f"avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_fused:.3f}x"
+        )
 
         if ENABLE_PROJECTION:
             elem_size = hidden_shard.element_size()
@@ -145,8 +215,8 @@ def check_allgather_local_permute_fusion():
             allgather_bytes = (world_size - 1) * num_tokens_per_rank * hidden_size * elem_size
 
             # Local permute is modeled as one read + one write in HBM for remapped output.
-            local_permute_elems = num_tokens * topk * hidden_size
-            local_permute_bytes = local_permute_elems * elem_size * 2
+            local_permute_elems = num_tokens * (topk + 1) * hidden_size
+            local_permute_bytes = local_permute_elems * elem_size # assume write topk, read 1 time
 
             proj_allgather_ms = project_time_ms(allgather_bytes, CROSS_GPU_BW_GBPS)
             proj_local_permute_ms = project_time_ms(local_permute_bytes, HBM_BW_GBPS)
