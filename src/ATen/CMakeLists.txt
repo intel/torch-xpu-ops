@@ -18,6 +18,10 @@ if(USE_ONEMKL_XPU)
 endif()
 list(APPEND ATen_XPU_NATIVE_CPP_SRCS ${xpu_native_cpp})
 list(APPEND ATen_XPU_SYCL_SRCS ${xpu_sycl})
+
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/xpu/sycl/Sleep.cpp"
+    PROPERTIES SYCL_NO_AOT TRUE)
 list(APPEND ATen_XPU_SYCLTLA_SRCS ${xpu_sycltla})
 
 set(ATen_XPU_MKL_SRCS ${ATen_XPU_MKL_SRCS} PARENT_SCOPE)
