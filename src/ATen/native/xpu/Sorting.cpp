@@ -195,8 +195,8 @@ std::tuple<Tensor&, Tensor&> kthvalue_out_xpu(
   // choosing which of the duplicates to use for the indices output is
   // nondeterministic.
   at::globalContext().alertNotDeterministic("kthvalue XPU");
-  auto result = kthvalue_out_impl(
-      values, indices, self.contiguous(), k, dim, keepdim);
+  auto result =
+      kthvalue_out_impl(values, indices, self.contiguous(), k, dim, keepdim);
   return result;
 }
 
