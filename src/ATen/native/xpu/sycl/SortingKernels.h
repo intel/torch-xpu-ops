@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SortingCommon.h>
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
@@ -110,9 +111,8 @@ struct SegmentedRadixSortPairsUpsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int64_t num_tiles_64 = (static_cast<int64_t>(num_elements_) +
-                            method_t::PROCESSING_LENGTH - 1) /
-        method_t::PROCESSING_LENGTH;
+    int64_t num_tiles_64 =
+        ceil_div<int64_t>(num_elements_, method_t::PROCESSING_LENGTH);
     int num_tiles = static_cast<int>(num_tiles_64);
     int seg_idx = item.get_group(0) / num_tiles;
     int tile_idx = item.get_group(0) % num_tiles;
@@ -178,8 +178,7 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       IS_DESCENDING,
       value_t>;
   int64_t num_tiles_64 =
-      (static_cast<int64_t>(num_elements) + method_t::PROCESSING_LENGTH - 1) /
-      method_t::PROCESSING_LENGTH;
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
   TORCH_CHECK(
       num_tiles_64 <= std::numeric_limits<int>::max(),
       "num_tiles overflow: ",
@@ -240,9 +239,8 @@ struct SegmentedRadixSortPairsDownsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int64_t num_tiles_64 = (static_cast<int64_t>(num_elements_) +
-                            method_t::PROCESSING_LENGTH - 1) /
-        method_t::PROCESSING_LENGTH;
+    int64_t num_tiles_64 =
+        ceil_div<int64_t>(num_elements_, method_t::PROCESSING_LENGTH);
     int num_tiles = static_cast<int>(num_tiles_64);
     int seg_idx = item.get_group(0) / num_tiles;
     int tile_idx = item.get_group(0) % num_tiles;
@@ -318,8 +316,7 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       IS_DESCENDING,
       value_t>;
   int64_t num_tiles_64 =
-      (static_cast<int64_t>(num_elements) + method_t::PROCESSING_LENGTH - 1) /
-      method_t::PROCESSING_LENGTH;
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
   TORCH_CHECK(
       num_tiles_64 <= std::numeric_limits<int>::max(),
       "num_tiles overflow: ",
@@ -367,8 +364,7 @@ void segmented_radix_sort_pairs_kernel(
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
   int64_t num_tiles_64 =
-      (static_cast<int64_t>(num_elements) + TILE_PROCESSING_LENGTH - 1) /
-      TILE_PROCESSING_LENGTH;
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
   TORCH_CHECK(
       num_tiles_64 <= std::numeric_limits<int>::max(),
       "num_tiles overflow: ",
