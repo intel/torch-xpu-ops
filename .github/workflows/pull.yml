@@ -13,29 +13,21 @@ on:
 
 permissions: read-all
 
+env:
+  LINUX_DEFAULT: Linux
+  LINUX_BUILD: build
+  LINUX_UT: pvc-1100
+  LINUX_ACCURACY: pvc-1100
+  LINUX_PERFORMANCE: pvc-1550
+  LINUX_DISTRIBUTED: distributed
+  WINDOWS_BUILD: windows-build
+  WINDOWS_TEST: windows-test
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  # Gating job for all Intel-only, non-draft CI
-  runner-config:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
-    runs-on: ubuntu-24.04
-    outputs:
-      linux_build: ${{ steps.config.outputs.linux_build }}
-      linux_performance: ${{ steps.config.outputs.linux_performance }}
-      linux_others: ${{ steps.config.outputs.linux_others }}
-      linux_distributed: ${{ steps.config.outputs.linux_distributed }}
-      windows_build: ${{ steps.config.outputs.windows_build }}
-      windows_test: ${{ steps.config.outputs.windows_test }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Load runner config
-        id: config
-        uses: ./.github/actions/runner-config
-
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
@@ -184,8 +176,7 @@ jobs:
           fi
 
   conditions-filter-win:
-    needs: runner-config
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -207,8 +198,8 @@ jobs:
               - '.github/workflows/_windows_ut.yml'
 
   linux-build:
-    needs: [runner-config, preci-lint-check]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: preci-lint-check
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -216,11 +207,11 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ needs.runner-config.outputs.linux_build }}
+      build_runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
-    needs: [runner-config, linux-build, preci-lint-check]
+    needs: [linux-build, preci-lint-check]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     permissions:
@@ -229,13 +220,13 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
-      runner: ${{ needs.runner-config.outputs.linux_others }}
+      runner: ${{ env.LINUX_DEFAULT }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   linux-ut:
-    needs: [runner-config, linux-build, reproducer-test]
+    needs: [linux-build, reproducer-test]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
@@ -248,13 +239,13 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.runner-config.outputs.linux_others }}
+      runner: ${{ env.LINUX_UT }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [runner-config, linux-build, reproducer-test]
+    needs: [linux-build, reproducer-test]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions:
@@ -267,14 +258,14 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.runner-config.outputs.linux_distributed }}
+      runner: ${{ env.LINUX_DISTRIBUTED }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     name: linux-e2e
-    needs: [runner-config, linux-build, reproducer-test]
+    needs: [linux-build, reproducer-test]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
     strategy:
@@ -284,7 +275,7 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && needs.runner-config.outputs.linux_performance || needs.runner-config.outputs.linux_others }}
+      runner: ${{ matrix.scenario == 'performance' && env.LINUX_PERFORMANCE || env.LINUX_ACCURACY }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
@@ -304,19 +295,20 @@ jobs:
 
   windows-build:
     name: windows-build
-    needs: [runner-config, preci-lint-check]
+    needs: preci-lint-check
     if: >-
-      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all')
       && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
-      build_runner: ${{ needs.runner-config.outputs.windows_build }}
+      build_runner: ${{ env.WINDOWS_BUILD }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   windows-ut:
     name: windows-ut
-    needs: [runner-config, windows-build, conditions-filter-win]
+    needs: [windows-build, conditions-filter-win]
     if: >-
       ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
       && !contains(github.event.pull_request.labels.*.name, 'disable_win')
@@ -327,5 +319,5 @@ jobs:
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: op_extended,test_xpu
-      runner: ${{ needs.runner-config.outputs.windows_test }}
+      runner: ${{ env.WINDOWS_TEST }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        required: false
+        required: true
         type: string
-        default: ''
+        default: 'pvc-1100'
         description: Test node
       search_commits:
         required: true
@@ -47,21 +47,8 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  runner-config:
-    runs-on: ubuntu-24.04
-    outputs:
-      linux_performance: ${{ steps.config.outputs.linux_performance }}
-      linux_others: ${{ steps.config.outputs.linux_others }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Load runner config
-        id: config
-        uses: ./.github/actions/runner-config
-
   get_runner:
-    needs: runner-config
-    runs-on: ${{ inputs.runner != '' && inputs.runner || (contains(inputs.search_check, 'performance') && needs.runner-config.outputs.linux_performance || needs.runner-config.outputs.linux_others) }}
+    runs-on: ${{ inputs.runner }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}

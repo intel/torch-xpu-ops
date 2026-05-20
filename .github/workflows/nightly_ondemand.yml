@@ -53,30 +53,22 @@ on:
 
 permissions: read-all
 
+env:
+  LINUX_BUILD: build
+  LINUX_PERFORMANCE: pvc-1550
+  LINUX_DEFAULT: Linux
+  LINUX_UT: pvc-1100
+  LINUX_ACCURACY: pvc-1100
+  LINUX_MICROBENCH: pvc-1550
+  WINDOWS_BUILD: windows-build
+  WINDOWS_TEST: windows-test
+
 run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
 jobs:
-  # Gating job: intel-only. Downstream jobs inherit this via `needs: runner-config`
-  # and are skipped automatically on forks (including scheduled runs).
-  runner-config:
-    if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
-    runs-on: ubuntu-24.04
-    outputs:
-      linux_build: ${{ steps.config.outputs.linux_build }}
-      linux_performance: ${{ steps.config.outputs.linux_performance }}
-      linux_others: ${{ steps.config.outputs.linux_others }}
-      windows_build: ${{ steps.config.outputs.windows_build }}
-      windows_test: ${{ steps.config.outputs.windows_test }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Load runner config
-        id: config
-        uses: ./.github/actions/runner-config
-
   Conditions-Filter:
     name: conditions-filter
-    needs: runner-config
+    if: ${{ github.repository_owner == 'intel' || github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
@@ -151,7 +143,7 @@ jobs:
           echo "python=${python}" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
-    needs: [runner-config, Conditions-Filter]
+    needs: [Conditions-Filter]
     name: linux-build
     secrets: inherit
     strategy:
@@ -160,7 +152,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ needs.runner-config.outputs.linux_build }}
+      build_runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
@@ -168,7 +160,7 @@ jobs:
 
   Linux-Nightly-Ondemand-UT-Tests:
     name: linux-ut
-    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     secrets: inherit
     permissions:
@@ -181,7 +173,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.runner-config.outputs.linux_others }}
+      runner: ${{ env.LINUX_UT }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -189,7 +181,7 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-Tests:
     name: linux-e2e
-    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     secrets: inherit
     strategy:
@@ -199,7 +191,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && needs.runner-config.outputs.linux_performance || needs.runner-config.outputs.linux_others }}
+      runner: ${{ matrix.scenario == 'performance' && env.LINUX_PERFORMANCE || env.LINUX_ACCURACY }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -223,7 +215,7 @@ jobs:
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     name: linux-microbench
-    needs: [runner-config, Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     permissions:
       actions: read
@@ -236,31 +228,31 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: ${{ needs.runner-config.outputs.linux_performance }}
+      runner: ${{ env.LINUX_MICROBENCH }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Windows-Nightly-Ondemand-Build:
     name: windows-build
-    needs: [runner-config, Conditions-Filter]
+    needs: [Conditions-Filter]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      build_runner: ${{ needs.runner-config.outputs.windows_build }}
+      build_runner: ${{ env.WINDOWS_BUILD }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     name: windows-ut
-    needs: [runner-config, Conditions-Filter, Windows-Nightly-Ondemand-Build]
+    needs: [Conditions-Filter, Windows-Nightly-Ondemand-Build]
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      runner: ${{ needs.runner-config.outputs.windows_test }}
+      runner: ${{ env.WINDOWS_TEST }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
