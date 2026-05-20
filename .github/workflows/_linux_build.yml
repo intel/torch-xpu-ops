@@ -3,7 +3,7 @@ name: Linux PyTorch XPU Build
 on:
   workflow_call:
     inputs:
-      build_runner:
+      runner:
         required: true
         type: string
         description: Runner label for build job
@@ -46,7 +46,7 @@ jobs:
   build:
     name: ${{ inputs.pytorch }}
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ${{ inputs.runner }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:

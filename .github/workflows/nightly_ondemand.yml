@@ -55,11 +55,10 @@ permissions: read-all
 
 env:
   LINUX_BUILD: build
-  LINUX_PERFORMANCE: pvc-1550
-  LINUX_DEFAULT: Linux
   LINUX_UT: pvc-1100
   LINUX_ACCURACY: pvc-1100
-  LINUX_MICROBENCH: pvc-1550
+  LINUX_PERFORMANCE: pvc-1550
+  LINUX_MICROBENCH: pvc-1100
   WINDOWS_BUILD: windows-build
   WINDOWS_TEST: windows-test
 
@@ -152,7 +151,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ env.LINUX_BUILD }}
+      runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
@@ -240,7 +239,7 @@ jobs:
     uses: ./.github/workflows/_windows_build.yml
     with:
       python: ${{ needs.Conditions-Filter.outputs.python }}
-      build_runner: ${{ env.WINDOWS_BUILD }}
+      runner: ${{ env.WINDOWS_BUILD }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
 
