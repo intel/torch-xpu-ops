@@ -192,7 +192,7 @@ jobs:
           && steps.determine-labels.outputs.labels != '' }}
         id: apply-labels
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NEW_LABELS="${{ steps.determine-labels.outputs.labels }}"
           EXISTING="${{ steps.existing-labels.outputs.labels }}"
@@ -254,6 +254,7 @@ jobs:
     steps:
       - name: Cancel in-flight pull workflow and retrigger via draft toggle
         env:
+          # MERGE_TOKEN (PAT) required: GITHUB_TOKEN events don't trigger other workflows
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
