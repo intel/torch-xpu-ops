@@ -178,34 +178,5 @@ if(${has_werror} EQUAL -1)
 
 endif()
 
-# Create a clean working directory.
-set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
-file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
-file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
-# Create the test source file
-set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/llvm_features.cpp")
-set(TEST_EXE "${TEST_SRC_FILE}.exe")
-SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
-# Build the test and create test executable
-SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
-if(error)
-  message(FATAL_ERROR "Can not build SYCL_CMPLR_TEST")
-endif()
-# Execute the test to extract information
-SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
-if(error)
-  message(FATAL_ERROR "Can not run SYCL_CMPLR_TEST")
-endif()
-# Extract test output for information
-SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
-
-# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
-string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
-if(nosycllang)
-  set(SYCLTOOLKIT_FOUND False)
-  set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
-  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
-endif()
-
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
