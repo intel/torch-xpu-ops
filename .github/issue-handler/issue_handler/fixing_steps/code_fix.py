@@ -515,9 +515,16 @@ def run(issue_number: int) -> None:
             f"Fixes {ISSUE_REPO}#{issue_number}",
             workdir=workdir, issue=issue_number)
 
-    # --- Push (never force-push — keeps commit history trackable) ---
-    git("push", "--set-upstream", remote, branch,
-        workdir=workdir, issue=issue_number)
+    # --- Push (force-with-lease for agent branches — prior retry attempts
+    # may have pushed commits that were then reset, causing divergence) ---
+    try:
+        git("push", "--set-upstream", remote, branch,
+            workdir=workdir, issue=issue_number)
+    except CalledProcessError:
+        log("WARN", f"Normal push failed, using --force-with-lease for "
+            f"agent branch {branch}", issue=issue_number)
+        git("push", "--force-with-lease", "--set-upstream", remote, branch,
+            workdir=workdir, issue=issue_number)
 
     sha = git_out("rev-parse", "HEAD", workdir=workdir,
                   issue=issue_number).strip()
