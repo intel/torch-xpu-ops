@@ -100,29 +100,62 @@ def _get_test_command(body: str) -> str | None:
     return None
 
 
+def _torch_importable(workdir: Path, issue: int | None = None) -> bool:
+    """Check if torch is importable in the pytorch workdir.
+
+    A failed clean build can destroy .so artifacts, leaving torch
+    un-importable even after git reset.  This guard catches that.
+    """
+    from ..utils.xpu_env import ENV_SETUP
+    cmd = ENV_SETUP + "python -c 'import torch; print(torch.__version__)'"
+    try:
+        result = subprocess.run(
+            cmd, cwd=str(workdir), capture_output=True, text=True,
+            timeout=60, shell=True, executable="/bin/bash",
+        )
+        if result.returncode == 0:
+            return True
+        log("WARN", "torch is not importable — build artifacts may be missing",
+            issue=issue)
+        return False
+    except subprocess.TimeoutExpired:
+        log("WARN", "torch import check timed out", issue=issue)
+        return False
+
+
 def _run_build(workdir: Path, target_repo: str, remote: str,
                base_ref: str, issue: int) -> tuple[bool, str]:
     """Run incremental build if C++/SYCL files were modified.
+
+    Also triggers a rebuild if torch is not importable (e.g. a prior
+    failed clean build wiped the .so artifacts).
 
     Returns (success, output). For torch-xpu-ops, no build needed.
     """
     if target_repo == "torch-xpu-ops":
         return True, ""
 
+    # Guard: if torch isn't importable, force rebuild regardless of diff
+    force_rebuild = not _torch_importable(workdir, issue)
+
     # Check if any C++/SYCL files were modified
     diff_files = git_out("diff", "--name-only", f"{remote}/{base_ref}..HEAD",
                          workdir=workdir, issue=issue).strip()
-    if not diff_files:
+    if not diff_files and not force_rebuild:
         return True, ""
 
     cpp_extensions = {'.cpp', '.h', '.cu', '.cuh', '.hpp', '.sycl'}
     needs_build = any(
         Path(f).suffix in cpp_extensions
         for f in diff_files.splitlines()
-    )
+    ) if diff_files else False
 
-    if not needs_build:
+    if not needs_build and not force_rebuild:
         return True, ""  # Python-only change, no build needed
+
+    if force_rebuild:
+        log("WARN", "Forcing rebuild — torch not importable", issue=issue)
+    
 
     log("INFO", "C++/SYCL files modified, running incremental build",
         issue=issue)
