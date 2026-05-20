@@ -257,8 +257,20 @@ def run(issue_number: int) -> None:
         workdir = worktree_dir
     else:
         # For pytorch: existing flow (fetch upstream + review remote)
-        git("fetch", "upstream", workdir=workdir, issue=issue_number)
-        git("fetch", remote, workdir=workdir, issue=issue_number)
+        # Upstream fetch can be very slow for large repos — use timeout
+        try:
+            subprocess.run(
+                ["git", "fetch", "upstream", "--depth=1"],
+                cwd=str(workdir), capture_output=True, text=True,
+                check=True, timeout=60,
+            )
+        except (CalledProcessError, subprocess.TimeoutExpired):
+            log("WARN", "git fetch upstream timed out or failed, using existing refs",
+                issue=issue_number)
+        try:
+            git("fetch", remote, workdir=workdir, issue=issue_number)
+        except CalledProcessError:
+            log("WARN", "git fetch review remote failed", issue=issue_number)
         try:
             git("push", remote, "upstream/main:main",
                 workdir=workdir, issue=issue_number)
