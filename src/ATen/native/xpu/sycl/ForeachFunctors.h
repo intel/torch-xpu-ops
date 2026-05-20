@@ -102,7 +102,12 @@ inline typename std::enable_if<!std::is_integral<T>::value, bool>::type isnan_(
 #else
 template <typename T>
 inline bool isnan_(T x) {
-  return std::isnan(x);
+  if constexpr (c10::is_complex<T>::value) {
+    return std::isnan(x);
+  } else {
+    using opmath_t = at::opmath_type<T>;
+    return sycl::isnan(static_cast<opmath_t>(x));
+  }
 }
 #endif
 } // namespace

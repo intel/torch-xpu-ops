@@ -117,7 +117,7 @@ struct LogAddExpFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
-    if (std::isinf(a) && a == b) {
+    if (sycl::isinf(a) && a == b) {
       return a;
     } else {
       const auto m = std::max(a, b);
@@ -154,7 +154,7 @@ struct LogAddExp2Functor {
     const auto inv_log_2 = static_cast<opmath_t>(1.0 / c10::ln_2<double>);
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
-    if (std::isinf(a) && a == b) {
+    if (sycl::isinf(a) && a == b) {
       return a;
     } else {
       const auto m = std::max(a, b);

@@ -50,7 +50,7 @@ scalar_t _log_add_exp_helper(const scalar_t& x, const scalar_t& y) {
   auto isnan_y = at::_isnan(y);
   scalar_t min = isnan_y ? y : (isnan_x ? x : std::min(x, y));
   scalar_t max = isnan_y ? y : (isnan_x ? x : std::max(x, y));
-  if (min != max || std::isfinite(min)) {
+  if (min != max || sycl::isfinite(min)) {
     // nan will be propagated here
     return ::log1p(sycl::exp(min - max)) + max;
   } else {

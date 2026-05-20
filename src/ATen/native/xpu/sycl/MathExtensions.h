@@ -734,8 +734,8 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
   static const accscalar_t SMALLRATIO = 0.3;
   static const accscalar_t LARGERATIO = 4.5;
 
-  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
-  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
+  bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
 
   if ((x < 0) || (a < 0)) {
     // out of defined-region of the function
@@ -805,8 +805,8 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   static const accscalar_t SMALLRATIO = 0.3;
   static const accscalar_t LARGERATIO = 4.5;
 
-  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
-  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
+  bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
 
   // boundary values following SciPy
   // note that in SciPy, a and x are non-negative, with exclusive 0s (i.e.,
@@ -1412,7 +1412,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
 
   T ai;
 
-  if (std::isinf(x)) {
+  if (sycl::isinf(x)) {
     return std::numeric_limits<T>::quiet_NaN();
   }
 
