@@ -52,7 +52,7 @@ scalar_t _log_add_exp_helper(const scalar_t& x, const scalar_t& y) {
   scalar_t max = isnan_y ? y : (isnan_x ? x : std::max(x, y));
   if (min != max || std::isfinite(min)) {
     // nan will be propagated here
-    return ::log1p(sycl::exp(min - max)) + max;
+    return sycl::log1p(sycl::exp(min - max)) + max;
   } else {
     // special case to correctly handle infinite cases
     return x;
@@ -116,13 +116,13 @@ c10::complex<scalar_t> _log_add_exp_helper(
       // real(min) == +inf
       auto exp_min = _fast_build_exp_inf(min);
       auto exp_max = _fast_build_exp_inf(max);
-      return ::log1p(
+      return std::log1p(
           exp_min + exp_max - 1); // log1p(x - 1) builds faster than log
     }
   } else {
     auto minmax = min - max;
     auto exp_minmax = _fast_build_exp(minmax);
-    return ::log1p(exp_minmax) + max;
+    return std::log1p(exp_minmax) + max;
   }
 }
 

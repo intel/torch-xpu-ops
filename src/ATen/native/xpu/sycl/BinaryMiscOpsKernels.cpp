@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
@@ -135,7 +136,8 @@ struct Xlog1pyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log1p(y);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return x * sycl::log1p(static_cast<opmath_t>(y));
   }
 };
 

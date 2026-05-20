@@ -15,6 +15,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
 
+#include <c10/util/complex.h>
+
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
@@ -51,7 +53,12 @@ void log_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Log10Functor {
   scalar_t operator()(scalar_t x) const {
-    return std::log10(x);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::log10(x);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::log10(static_cast<opmath_t>(x));
+    }
   }
 };
 
@@ -67,7 +74,12 @@ void log10_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Log1pFunctor {
   scalar_t operator()(scalar_t x) const {
-    return std::log1p(x);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::log1p(x);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::log1p(static_cast<opmath_t>(x));
+    }
   }
 };
 
@@ -83,7 +95,12 @@ void log1p_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Log2Functor {
   scalar_t operator()(scalar_t x) const {
-    return std::log2(x);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::log2(x);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::log2(static_cast<opmath_t>(x));
+    }
   }
 };
 

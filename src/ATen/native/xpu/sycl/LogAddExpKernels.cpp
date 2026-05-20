@@ -121,7 +121,7 @@ struct LogAddExpFunctor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + std::log1p(sycl::exp(-std::abs(a - b)));
+      return m + sycl::log1p(sycl::exp(-std::abs(a - b)));
     }
   }
 };
@@ -158,7 +158,7 @@ struct LogAddExp2Functor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + std::log1p(std::exp2(-std::abs(a - b))) * inv_log_2;
+      return m + sycl::log1p(std::exp2(-std::abs(a - b))) * inv_log_2;
     }
   }
 };
