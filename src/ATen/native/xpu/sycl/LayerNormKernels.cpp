@@ -431,35 +431,41 @@ WelfordDataLN compute_stats(
   // threadIdx.x == 0 has correct values for each warp
   // inter-warp reductions
   if (item_id.get_local_range(0) > 1) {
-    auto addr_offset = item_id.get_local_range(0);
-    for (int offset = item_id.get_local_range(0) / 2; offset > 0; offset /= 2) {
-      // upper half of warps write to shared
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) >= offset &&
-          item_id.get_local_id(0) < 2 * offset) {
-        const int wrt_y = item_id.get_local_id(0) - offset;
-        buf[2 * wrt_y] = wd.mean;
-        buf[2 * wrt_y + 1] = wd.sigma2;
-        buf[wrt_y + addr_offset] = wd.count;
-      }
-      sycl::group_barrier(item_id.get_group());
+    const int n_sg = item_id.get_local_range(0);
+    const int sg_id = item_id.get_local_id(0);
+    const int lane = item_id.get_local_id(1);
 
-      // lower half merges
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
-        const int rd_y = item_id.get_local_id(0);
-        WelfordDataLN wdB{
-            static_cast<float>(buf[2 * rd_y]),
-            static_cast<float>(buf[2 * rd_y + 1]),
-            static_cast<float>(buf[rd_y + addr_offset])};
-        wd = WelfordCombine<rms_norm>(wd, wdB);
-      }
-      sycl::group_barrier(item_id.get_group());
-    }
-
-    if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
-      buf[0] = wd.mean;
-      buf[1] = wd.sigma2 / float(N);
+    // All subgroup leaders scatter their partial results to SLM
+    if (lane == 0) {
+      buf[3 * sg_id] = wd.mean;
+      buf[3 * sg_id + 1] = wd.sigma2;
+      buf[3 * sg_id + 2] = wd.count;
     }
     sycl::group_barrier(item_id.get_group());
+
+    // Subgroup 0 gathers all partials and reduces via shuffle
+    if (sg_id == 0) {
+      WelfordDataLN gathered(0.f, 0.f, 0.f);
+      if (lane < n_sg) {
+        gathered = {
+            static_cast<float>(buf[3 * lane]),
+            static_cast<float>(buf[3 * lane + 1]),
+            static_cast<float>(buf[3 * lane + 2])};
+      }
+      for (int offset = (n_sg >> 1); offset > 0; offset >>= 1) {
+        WelfordDataLN wdB{
+            sycl::shift_group_left(sg, gathered.mean, offset),
+            sycl::shift_group_left(sg, gathered.sigma2, offset),
+            sycl::shift_group_left(sg, gathered.count, offset)};
+        gathered = WelfordCombine<rms_norm>(gathered, wdB);
+      }
+      if (lane == 0) {
+        buf[0] = gathered.mean;
+        buf[1] = gathered.sigma2 / float(N);
+      }
+    }
+    sycl::group_barrier(item_id.get_group());
+
     return WelfordDataLN{
         static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
   } else {
@@ -553,7 +559,7 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 2, cgh);
+    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 3, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
