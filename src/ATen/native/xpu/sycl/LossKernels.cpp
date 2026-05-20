@@ -29,8 +29,8 @@ struct BinaryCrossEntropyFunctor {
     SYCL_KERNEL_ASSERT(input_val >= zero && input_val <= one);
     SYCL_KERNEL_ASSERT(target_val >= zero && target_val <= one);
 
-    scalar_t log_input_val = std::log(input_val);
     using opmath_t = at::opmath_type<scalar_t>;
+    scalar_t log_input_val = sycl::log(static_cast<opmath_t>(input_val));
     scalar_t log_1_minus_input_val =
         sycl::log1p(static_cast<opmath_t>(-input_val));
 

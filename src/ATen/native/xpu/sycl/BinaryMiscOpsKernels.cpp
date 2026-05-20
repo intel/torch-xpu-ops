@@ -114,7 +114,9 @@ struct XlogyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log(y);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(
+        static_cast<opmath_t>(x) * sycl::log(static_cast<opmath_t>(y)));
   }
 };
 
@@ -137,7 +139,8 @@ struct Xlog1pyFunctor {
       return 0;
     }
     using opmath_t = at::opmath_type<scalar_t>;
-    return x * sycl::log1p(static_cast<opmath_t>(y));
+    return static_cast<scalar_t>(
+        static_cast<opmath_t>(x) * sycl::log1p(static_cast<opmath_t>(y)));
   }
 };
 

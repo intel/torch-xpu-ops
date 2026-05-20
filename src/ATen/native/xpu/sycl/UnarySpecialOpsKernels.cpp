@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
@@ -148,7 +149,7 @@ struct Logit0Functor {
   scalar_t operator()(scalar_t x) const {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(x_acc / (T_ACC(1) - x_acc));
+    volatile T_ACC res = sycl::log(x_acc / (T_ACC(1) - x_acc));
     return res;
   }
 };
@@ -160,7 +161,7 @@ struct Logit1Functor {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    volatile T_ACC res = sycl::log(z / (T_ACC(1) - z));
     return res;
   }
   Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
@@ -289,7 +290,8 @@ struct EntrFunctor {
     if (at::_isnan(x)) {
       return x;
     } else if (x > 0) {
-      return -x * std::log(x);
+      using opmath_t = at::opmath_type<scalar_t>;
+      return static_cast<scalar_t>(static_cast<opmath_t>(-x) * sycl::log(static_cast<opmath_t>(x)));
     } else if (x == 0) {
       return 0;
     }
