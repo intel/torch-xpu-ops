@@ -12,8 +12,12 @@
 
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+import torch
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_utils import make_tensor, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -21,7 +25,23 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_binary_ufuncs import TestBinaryUfuncs
+    from test_binary_ufuncs import integral_types, TestBinaryUfuncs
+
+
+@dtypes(*integral_types())
+def _test_fmod_remainder_by_zero_integral(self, device, dtype):
+    fn_list = (torch.fmod, torch.remainder)
+    for fn in fn_list:
+        x = make_tensor((10, 10), device=device, dtype=dtype, low=-9, high=9)
+        zero = torch.zeros_like(x)
+        value = 255 if dtype == torch.uint8 else -1
+        self.assertTrue(torch.all(fn(x, zero) == value))
+
+
+TestBinaryUfuncs.test_fmod_remainder_by_zero_integral = (
+    _test_fmod_remainder_by_zero_integral
+)
+
 
 instantiate_device_type_tests(
     TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True
