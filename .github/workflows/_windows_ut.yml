@@ -28,35 +28,8 @@ on:
         type: string
         default: 'Windows_CI'
         description: Runner label
-      xpu_version:
-        required: false
-        type: string
-        default: '2025.3'
-        description: XPU version
 
 permissions: read-all
-
-env: 
-    USE_XPU: 1
-    PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.3.2 | 
-      intel-cmplr-lib-ur==2025.3.2 | 
-      intel-cmplr-lic-rt==2025.3.2 | 
-      intel-sycl-rt==2025.3.2 | 
-      onemkl-license==2025.3.1 | 
-      onemkl-sycl-blas==2025.3.1 | 
-      onemkl-sycl-dft==2025.3.1 | 
-      onemkl-sycl-lapack==2025.3.1 | 
-      onemkl-sycl-rng==2025.3.1 | 
-      onemkl-sycl-sparse==2025.3.1 | 
-      dpcpp-cpp-rt==2025.3.2 | 
-      intel-opencl-rt==2025.3.2 | 
-      mkl==2025.3.1 | 
-      intel-openmp==2025.3.2 | 
-      tbb==2022.3.1 | 
-      tcmlib==1.4.1 | 
-      umf==1.0.3 | 
-      intel-pti==0.16.0
 
 jobs:
   ut_test:
@@ -74,12 +47,6 @@ jobs:
         with:
           pattern: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/wheel_artifact
-      - name: Install oneAPI (for UT runtime)
-        shell: cmd
-        run: |
-          set XPU_VERSION=${{ inputs.xpu_version }}
-          call .github\scripts\install_xpu.bat
-          if errorlevel 1 exit /b 1
       - name: Setup Python Environment
         shell: cmd
         run: |
