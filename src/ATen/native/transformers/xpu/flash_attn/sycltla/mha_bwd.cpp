@@ -382,9 +382,22 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     }
   }
 
-  if (needs_headsize_pad) {
+  // For non-GQA, dk_expanded/dv_expanded are the tensors written by the kernel;
+  // sync dk_padded/dv_padded if alignment created new buffers for them.
+  if (!is_gqa && !dk_expanded.is_same(dk_padded)) {
+    dk_padded = dk_expanded;
+  }
+  if (!is_gqa && !dv_expanded.is_same(dv_padded)) {
+    dv_padded = dv_expanded;
+  }
+
+  if (!dq_padded.is_same(dq)) {
     dq.copy_(dq_padded.slice(/*dim=*/3, /*start=*/0, /*end=*/headsize_qk));
+  }
+  if (!dk_padded.is_same(dk)) {
     dk.copy_(dk_padded.slice(/*dim=*/3, /*start=*/0, /*end=*/headsize_qk));
+  }
+  if (!dv_padded.is_same(dv)) {
     dv.copy_(dv_padded.slice(/*dim=*/3, /*start=*/0, /*end=*/headsize_vo));
   }
 

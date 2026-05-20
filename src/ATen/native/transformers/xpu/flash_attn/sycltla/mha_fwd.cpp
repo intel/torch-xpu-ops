@@ -310,7 +310,7 @@ mha_fwd(
     logsumexp.fill_(-std::numeric_limits<float>::infinity());
   }
 
-  if (needs_headsize_pad) {
+  if (!out_padded.is_same(out)) {
     out.copy_(out_padded.slice(/*dim=*/3, /*start=*/0, /*end=*/headsize_qk));
   }
 
