@@ -26,29 +26,16 @@ concurrency:
 
 jobs:
   auto-label:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >-
+      ${{ github.repository_owner == 'intel'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && !contains(github.event.pull_request.labels.*.name, 'disable_auto') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       labels_changed: ${{ steps.apply-labels.outputs.labels_changed || 'false' }}
     steps:
-      - name: Check for disable_auto label
-        id: check-skip
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          HAS_DISABLE_AUTO=$(gh pr view ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
-            --json labels --jq '[.labels[].name] | any(. == "disable_auto")')
-          if [ "$HAS_DISABLE_AUTO" = "true" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "PR has disable_auto label — skipping auto-labeling"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Get existing labels
-        if: steps.check-skip.outputs.skip == 'false'
         id: existing-labels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,14 +47,12 @@ jobs:
           echo "Existing disable labels: ${EXISTING:-none}"
 
       - name: Checkout repo (for skill file)
-        if: steps.check-skip.outputs.skip == 'false'
         uses: actions/checkout@v4
         with:
           sparse-checkout: .github/skills/xpu-pr-auto-labeling
           sparse-checkout-cone-mode: false
 
       - name: Get changed files
-        if: steps.check-skip.outputs.skip == 'false'
         id: changed-files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,7 +66,6 @@ jobs:
           echo "$FILES"
 
       - name: Determine labels via GitHub Models
-        if: steps.check-skip.outputs.skip == 'false'
         id: determine-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
