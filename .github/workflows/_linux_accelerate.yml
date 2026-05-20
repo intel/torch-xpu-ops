@@ -54,7 +54,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc-1100' }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
