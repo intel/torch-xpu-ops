@@ -321,6 +321,8 @@ def run(issue_number: int) -> None:
             git("checkout", branch, workdir=workdir, issue=issue_number)
 
     # --- Check for prior changes ---
+    verified = False
+    verification_error = ""
     existing_diff = git_out("diff", "--stat", f"{remote}/{base_ref}..HEAD",
                             workdir=workdir, issue=issue_number).strip()
     if existing_diff:
@@ -347,6 +349,7 @@ def run(issue_number: int) -> None:
                     log("WARN", "Existing fix verification FAILED — resetting "
                         "branch and re-running agent",
                         issue=issue_number)
+                    verification_error = verify_output
                     git("reset", "--hard", f"{remote}/{base_ref}",
                         workdir=workdir, issue=issue_number)
                     # Fall through to the fix loop below
@@ -572,14 +575,23 @@ def run(issue_number: int) -> None:
     if verified:
         new_body = check_action_item(new_body, "Fix verified locally")
     new_body = check_action_item(new_body, "PR proposed")
-    new_body = set_status(new_body, "IN_REVIEW")
+    if verified:
+        new_body = set_status(new_body, "IN_REVIEW")
+    else:
+        new_body = set_status(new_body, "NEEDS_HUMAN")
 
     verify_note = "✅ Verified" if verified else "⚠️ Not verified (no test cmd or all attempts failed)"
+    # Include last verification error in the log so it's visible in the issue
+    verify_detail = ""
+    if not verified and verification_error:
+        truncated = verification_error[-3000:]
+        verify_detail = f"\n<details><summary>Last verification output</summary>\n\n```\n{truncated}\n```\n</details>\n"
     new_body = append_log(
         new_body, "fix",
         f"Target: `{target_repo}`\nBranch: `{branch}`\nSHA: `{sha}`\n"
         f"PR: {pr.get('html_url', pr.get('url', 'N/A'))}\n"
         f"Verification: {verify_note}\n"
+        f"{verify_detail}"
         f"**Tokens:** {token_usage.summary()}",
     )
     gh.update_issue_body(ISSUE_REPO, issue_number, new_body)
