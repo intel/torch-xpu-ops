@@ -41,6 +41,19 @@ if os.path.exists(_LIB_PATH):
     except Exception:
         pass
 
+_ALLGATHER_LIB_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "csrc", "liballgather_with_symm_mem.so"
+)
+_HAS_ALLGATHER_WITH_SYMM_MEM_KERNEL = False
+if os.path.exists(_ALLGATHER_LIB_PATH):
+    try:
+        torch.ops.load_library(_ALLGATHER_LIB_PATH)
+        _HAS_ALLGATHER_WITH_SYMM_MEM_KERNEL = hasattr(
+            torch.ops.symm_mem, "allgather_with_symm_mem"
+        )
+    except Exception:
+        pass
+
 
 def compute_scatter_idx(topk_idx: torch.Tensor, num_experts: int = None):
     """
@@ -305,6 +318,43 @@ def build_allgather_rank_buffers_ptr(
     return torch.tensor(signed_ptrs, dtype=torch.int64).to(hidden_shard.device)
 
 
+def build_allgather_with_symm_mem_rank_buffers_ptr(
+    input_shard: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+) -> torch.Tensor:
+    """Precompute rank_buffers_ptr tensor for allgather_with_symm_mem kernel.
+
+    rank_buffers_ptr[rank] is unused by the kernel (it reads input_shard directly).
+    rank_buffers_ptr[r != rank] points to rank r's symm_mem slot.
+    """
+    if group is None:
+        group = dist.group.WORLD
+    if group_name is None:
+        group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    input_flat = input_shard.contiguous().view(-1)
+    numel_per_rank = input_flat.numel()
+
+    workspace_size_bytes = numel_per_rank * world_size * input_flat.element_size()
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    ptr_list = []
+    for r in range(world_size):
+        if r == rank:
+            ptr_list.append(input_shard.data_ptr())
+        else:
+            buf = workspace.get_buffer(
+                r, (numel_per_rank,),
+                input_flat.dtype, storage_offset=r * numel_per_rank,
+            )
+            ptr_list.append(buf.data_ptr())
+    signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+    return torch.tensor(signed_ptrs, dtype=torch.int64).to(input_shard.device)
+
+
 def allgather_local_permute_fusion(
     hidden_shard: torch.Tensor,
     topk_idx: torch.Tensor,
@@ -359,15 +409,21 @@ def allgather_with_symm_mem(
     output_tensor: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
+    rank_buffers_ptr: torch.Tensor = None,
 ):
     """
     Pure allgather using symmetric memory (no reduction).
     Each rank contributes input_shard, all ranks gather into output_tensor.
+
+    Uses native SYCL kernel when available, otherwise falls back to Python.
+
     Args:
         input_shard: [numel_per_rank, ...] (local input)
-        output_tensor: [numel_per_rank * world_size, ...] (output, symmetric memory)
+        output_tensor: [numel_per_rank * world_size, ...] (output)
         group: process group
         group_name: Optional, for symmetric memory workspace
+        rank_buffers_ptr: Optional precomputed device tensor of per-rank
+            buffer pointers (int64). Pass to avoid per-call overhead.
     Returns:
         output_tensor: filled with allgathered data
     """
@@ -383,30 +439,43 @@ def allgather_with_symm_mem(
     numel_per_rank = input_flat.numel()
     assert output_flat.numel() == numel_per_rank * world_size
 
-    import torch.distributed._symmetric_memory as symm_mem
+    import torch.distributed._symmetric_memory as symm_mem_mod
     workspace_size_bytes = numel_per_rank * world_size * input_flat.element_size()
-    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+    workspace = symm_mem_mod.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
     # Barrier to ensure previous allgather is complete before writing
     workspace.barrier()
 
     # Step 1: Each rank writes its shard to its slot in symm buffer
-    my_slot = workspace.get_buffer(rank, (numel_per_rank,), input_flat.dtype, storage_offset=rank * numel_per_rank)
+    my_slot = workspace.get_buffer(
+        rank, (numel_per_rank,), input_flat.dtype,
+        storage_offset=rank * numel_per_rank,
+    )
     my_slot.copy_(input_flat)
 
     workspace.barrier()
 
-    # Step 2: Ring allgather (pull-based, like allreduce_with_pull)
-    # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
-    output_flat[rank * numel_per_rank:(rank + 1) * numel_per_rank].copy_(my_slot)
-    for step in range(world_size - 1):
-        remote_rank = (rank - step - 1) % world_size
-        remote_buffer = workspace.get_buffer(
-            remote_rank,
-            (numel_per_rank,),
-            input_flat.dtype,
-            storage_offset=remote_rank * numel_per_rank
+    # Step 2: Ring allgather
+    if _HAS_ALLGATHER_WITH_SYMM_MEM_KERNEL:
+        if rank_buffers_ptr is None:
+            rank_buffers_ptr = build_allgather_with_symm_mem_rank_buffers_ptr(
+                input_shard, group, group_name,
+            )
+        torch.ops.symm_mem.allgather_with_symm_mem(
+            input_flat, rank_buffers_ptr, output_flat, rank, world_size,
         )
-        output_flat[remote_rank * numel_per_rank:(remote_rank + 1) * numel_per_rank].copy_(remote_buffer)
+    else:
+        # Python fallback: pull-based ring allgather
+        output_flat[rank * numel_per_rank:(rank + 1) * numel_per_rank].copy_(my_slot)
+        for step in range(world_size - 1):
+            remote_rank = (rank - step - 1) % world_size
+            remote_buffer = workspace.get_buffer(
+                remote_rank,
+                (numel_per_rank,),
+                input_flat.dtype,
+                storage_offset=remote_rank * numel_per_rank
+            )
+            output_flat[remote_rank * numel_per_rank:(remote_rank + 1) * numel_per_rank].copy_(remote_buffer)
+
     workspace.barrier()
     return output_tensor

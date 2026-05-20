@@ -14,6 +14,7 @@ from allgather_local_permute_fusion import (
     allgather_local_permute_fusion,
     allgather_with_symm_mem,
     build_allgather_rank_buffers_ptr,
+    build_allgather_with_symm_mem_rank_buffers_ptr,
     compute_scatter_idx,
 )
 
@@ -423,6 +424,9 @@ def check_allgather_with_symm_mem():
     else:
         prof = nullcontext()
 
+    # Precompute rank_buffers_ptr (also allocates workspace)
+    rank_buffers = build_allgather_with_symm_mem_rank_buffers_ptr(input_shard, group=group)
+
     with prof:
         # Warm up
         for _ in range(WARMUP):
@@ -431,6 +435,7 @@ def check_allgather_with_symm_mem():
                 input_shard,
                 output_tensor=output,
                 group=group,
+                rank_buffers_ptr=rank_buffers,
             )
         torch.xpu.synchronize()
         dist.barrier()
@@ -444,6 +449,7 @@ def check_allgather_with_symm_mem():
                 input_shard,
                 output_tensor=output,
                 group=group,
+                rank_buffers_ptr=rank_buffers,
             )
             if i >= WARMUP:
                 end_events[i].record()

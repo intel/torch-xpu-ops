@@ -80,6 +80,14 @@ def build():
         build_one(cfg, "LocalPermuteCopy.cpp", "liblocal_permute_copy.so", "LocalPermuteCopy")
     )
     outputs.append(build_one(cfg, "EpDispatch.cpp", "libep_dispatch.so", "EpDispatch"))
+    outputs.append(
+        build_one(
+            cfg,
+            "AllgatherWithSymmMem.cpp",
+            "liballgather_with_symm_mem.so",
+            "AllgatherWithSymmMem",
+        )
+    )
     return outputs
 
 
@@ -88,6 +96,7 @@ def clean():
     outputs = [
         os.path.join(base_dir, "liblocal_permute_copy.so"),
         os.path.join(base_dir, "libep_dispatch.so"),
+        os.path.join(base_dir, "liballgather_with_symm_mem.so"),
     ]
 
     removed = False

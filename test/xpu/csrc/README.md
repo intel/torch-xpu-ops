@@ -160,3 +160,54 @@ result = torch.ops.symm_mem.ep_dispatch(
 | `CMakeLists.txt` | CMake 集成（项目内构建） |
 | `ep_dispatch.py` | Python 封装接口 |
 | `test_ep_dispatch.py` | 单元测试 |
+
+# AllgatherWithSymmMem XPU Kernel
+
+Pure allgather SYCL kernel via symmetric memory: ring-ordered pull from all ranks' symmetric memory buffers, no permutation.
+
+注册为 `torch.ops.symm_mem.allgather_with_symm_mem`。
+
+## 前置条件
+
+- Intel oneAPI 工具链（`icpx` 编译器）
+- PyTorch（已安装且支持 XPU）
+- XPU 设备可用
+
+## 构建
+
+```bash
+cd test/xpu/csrc
+python build.py
+```
+
+构建过程会生成 `liballgather_with_symm_mem.so` 到当前目录。
+
+## 运行分布式测试
+
+```bash
+cd test/xpu/distributed
+source env.sh
+mpirun -n 2 python test_allgather_local_permute_fusion_dist.py
+```
+
+在 `test_allgather_local_permute_fusion_dist.py` 的 `main` 中启用 `check_allgather_with_symm_mem()` 即可测试。
+
+## 在 Python 中使用
+
+```python
+from allgather_local_permute_fusion import allgather_with_symm_mem
+
+# input_shard: [numel_per_rank] XPU tensor
+# output:      [numel_per_rank * world_size] XPU tensor
+allgather_with_symm_mem(input_shard, output_tensor=output, group=group)
+```
+
+自动检测 `liballgather_with_symm_mem.so`，若不存在则使用 Python fallback。
+
+## 文件说明
+
+| 文件 | 说明 |
+|------|------|
+| `AllgatherWithSymmMem.cpp` | SYCL kernel 实现 + op 注册 |
+| `build.py` | 编译脚本（icpx） |
+| `allgather_local_permute_fusion.py` | Python 封装（kernel + fallback） |

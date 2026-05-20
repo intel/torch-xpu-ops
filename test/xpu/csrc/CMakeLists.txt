@@ -1,5 +1,7 @@
 set(TEST_XPU_CSRC_ROOT ${TORCH_XPU_OPS_ROOT}/test/xpu/csrc)
-set(TEST_XPU_CSRC_SRCS ${TEST_XPU_CSRC_ROOT}/LocalPermuteCopy.cpp)
+set(TEST_XPU_CSRC_SRCS
+  ${TEST_XPU_CSRC_ROOT}/LocalPermuteCopy.cpp
+  ${TEST_XPU_CSRC_ROOT}/AllgatherWithSymmMem.cpp)
 
 sycl_add_library(
   local_permute_copy_test
