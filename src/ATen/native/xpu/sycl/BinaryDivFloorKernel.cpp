@@ -53,7 +53,7 @@ struct DivFloorWithScalarFunctor {
 
     scalar_t floordiv;
     if (div != 0) {
-      floordiv = std::floor(div);
+      floordiv = sycl::floor(div);
       if (div - floordiv > scalar_t(0.5)) {
         floordiv += scalar_t(1.0);
       }

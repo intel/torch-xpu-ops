@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
 
@@ -172,7 +173,8 @@ void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
 template <typename scalar_t>
 struct FloorFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::floor(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::floor(static_cast<opmath_t>(a));
   }
 };
 

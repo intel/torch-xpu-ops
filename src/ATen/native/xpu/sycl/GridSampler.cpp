@@ -56,8 +56,8 @@ struct GridSampler2dKernelFunctor {
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
-      index_t ix_nw = static_cast<index_t>(std::floor(ix));
-      index_t iy_nw = static_cast<index_t>(std::floor(iy));
+      index_t ix_nw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_nw = static_cast<index_t>(sycl::floor(iy));
       index_t ix_ne = ix_nw + 1;
       index_t iy_ne = iy_nw;
       index_t ix_sw = ix_nw;
@@ -113,8 +113,8 @@ struct GridSampler2dKernelFunctor {
       ix = grid_sampler_unnormalize(x, inp_W_, align_corners_);
       iy = grid_sampler_unnormalize(y, inp_H_, align_corners_);
 
-      opmath_t ix_nw = std::floor(ix);
-      opmath_t iy_nw = std::floor(iy);
+      opmath_t ix_nw = sycl::floor(ix);
+      opmath_t iy_nw = sycl::floor(iy);
 
       const opmath_t tx = ix - ix_nw;
       const opmath_t ty = iy - iy_nw;
@@ -370,6 +370,7 @@ Tensor grid_sampler_2d_kernel(
 
 template <typename scalar_t, typename index_t>
 struct GridSampler2dBackwardKernelFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
   void operator()(sycl::nd_item<1> item) const {
     auto index = item.get_global_linear_id();
     if (index >= nthreads_)
@@ -392,8 +393,8 @@ struct GridSampler2dBackwardKernelFunctor {
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
-      index_t ix_nw = static_cast<index_t>(std::floor(ix));
-      index_t iy_nw = static_cast<index_t>(std::floor(iy));
+      index_t ix_nw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      index_t iy_nw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
       index_t ix_ne = ix_nw + 1;
       index_t iy_ne = iy_nw;
       index_t ix_sw = ix_nw;
@@ -530,8 +531,8 @@ struct GridSampler2dBackwardKernelFunctor {
       iy = grid_sampler_unnormalize_set_grad(
           y, inp_H_, align_corners_, &giy_mult);
 
-      scalar_t ix_nw = std::floor(ix);
-      scalar_t iy_nw = std::floor(iy);
+      scalar_t ix_nw = static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      scalar_t iy_nw = static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(iy)));
 
       const scalar_t tx = ix - ix_nw;
       const scalar_t ty = iy - iy_nw;
@@ -882,9 +883,9 @@ struct GridSampler3dKernelFunctor {
       // get corner pixel values from (x, y, z)
       // for 4d, we used north-east-south-west
       // for 5d, we add top-bottom
-      index_t ix_tnw = static_cast<index_t>(std::floor(ix));
-      index_t iy_tnw = static_cast<index_t>(std::floor(iy));
-      index_t iz_tnw = static_cast<index_t>(std::floor(iz));
+      index_t ix_tnw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_tnw = static_cast<index_t>(sycl::floor(iy));
+      index_t iz_tnw = static_cast<index_t>(sycl::floor(iz));
 
       index_t ix_tne = ix_tnw + 1;
       index_t iy_tne = iy_tnw;
@@ -1227,6 +1228,7 @@ Tensor grid_sampler_3d_kernel(
 
 template <typename scalar_t, typename index_t>
 struct GridSampler3dBackwardKernelFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
   void operator()(sycl::nd_item<1> item) const {
     auto index = item.get_global_linear_id();
     if (index >= nthreads_)
@@ -1257,9 +1259,9 @@ struct GridSampler3dBackwardKernelFunctor {
       // get corner pixel values from (x, y, z)
       // for 4d, we used north-east-south-west
       // for 5d, we add top-bottom
-      index_t ix_tnw = static_cast<index_t>(std::floor(ix));
-      index_t iy_tnw = static_cast<index_t>(std::floor(iy));
-      index_t iz_tnw = static_cast<index_t>(std::floor(iz));
+      index_t ix_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      index_t iy_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
+      index_t iz_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iz)));
 
       index_t ix_tne = ix_tnw + 1;
       index_t iy_tne = iy_tnw;
