@@ -90,7 +90,6 @@ jobs:
           bash oneapi.sh -a -s --eula accept --action remove || true
           rm -rf /opt/intel/oneapi
           bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
-          echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
           rm -f oneapi.sh
           source /opt/intel/oneapi/setvars.sh --force
           # verify oneAPI installation
