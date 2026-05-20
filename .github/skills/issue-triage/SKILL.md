@@ -25,7 +25,10 @@ Analyze the structured issue and determine:
 3. **Identify what changed** — if the issue describes a regression (worked on version X, broke on version Y), always ask: *which component changed between those versions?* The root cause belongs to **the thing that changed**, not just where the error happens to fire. If an external library broke because PyTorch changed its behavior, the fix lives in PyTorch — not in the external library.
 4. **Search the codebase** to trace the failing code path. Use your full time budget — stop when you have enough to make a call, not after counting files.
 5. **Determine root cause** — trace from error message to the actual bug. You cannot execute code, so you must exhaust static analysis. Read the full call chain. If the root cause and a specific fix are identifiable from reading code alone, output `IMPLEMENTING` — even without running the reproducer. Only conclude "needs hardware to reproduce" if static analysis genuinely cannot determine what's wrong.
-6. **Assess fixability**:
+6. **Skip/xfail decorators are NOT fixes:**
+   - If the issue describes tests with `@skipIfXpu`, `@xfailIfXpu`, or similar skip decorators, and the issue wants to remove them and make the tests actually pass on XPU — the presence of those decorators in the codebase **confirms the issue EXISTS**. The decorator IS the problem, not a fix.
+   - Do NOT conclude "already fixed" just because skip decorators exist. The goal is to remove the skip and fix the underlying failure.
+7. **Assess fixability**:
    - If the fix is within pytorch or torch-xpu-ops source → `IMPLEMENTING`
    - If it requires hardware changes, complex architecture redesign, or the root cause is genuinely unresolvable without running code → `NEEDS_HUMAN`
 

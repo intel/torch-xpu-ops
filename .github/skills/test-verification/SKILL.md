@@ -120,6 +120,8 @@ Execute the resolved command. Timeout: 10 minutes.
 - All tests xfailed (expected failure = bug still present, report as FAILED)
 - Timeout
 
+**Important: @skipIfXpu / @xfailIfXpu decorators.** If ALL tests are skipped because of `@skipIfXpu` or similar decorators, first **remove the skip decorator** from the test, then re-run. The skip decorator is often the bug itself — the issue wants to make the test pass on XPU, not keep it skipped. After removing the skip, report the actual test result (PASSED or FAILED). Only report CANNOT_VERIFY if you cannot run the test for other reasons (file not found, 0 collected, timeout).
+
 ## Output
 
 You MUST output EXACTLY this JSON block as the LAST thing in your response.
@@ -136,10 +138,10 @@ No text after the JSON block.
 ```
 
 ## HARD RULES
-- NEVER modify any files. This is a read-only verification task.
 - NEVER commit or push anything.
 - NEVER skip the file existence check.
 - If you cannot resolve the path, report CANNOT_VERIFY. Do NOT guess.
 - If 0 tests are collected, report CANNOT_VERIFY, NEVER report PASSED.
 - If all tests are xfailed, report FAILED (xfail = bug still exists).
+- If all tests are skipped by `@skipIfXpu`, remove the decorator and re-run. You MAY modify test files ONLY to remove skip/xfail decorators — revert after running.
 - TIME BUDGET: Complete within 3 minutes. If stuck, report CANNOT_VERIFY.

@@ -53,3 +53,20 @@ class TestGetTestCommand:
         )
         cmd = _get_test_command(body)
         assert cmd == "pytest -v test_ops.py -k <case>"
+
+    def test_multiline_reproducer_strips_cd_all_lines(self):
+        body = (
+            "## Reproducer\n"
+            "```bash\n"
+            "cd <pytorch> && pytest -v test/a.py -k test1\n"
+            "cd <pytorch> && pytest -v test/b.py -k test2\n"
+            "cd /home/user/pytorch && pytest -v test/c.py -k test3\n"
+            "```\n"
+        )
+        cmd = _get_test_command(body)
+        assert cmd is not None
+        lines = cmd.splitlines()
+        assert len(lines) == 3
+        assert lines[0] == "pytest -v test/a.py -k test1"
+        assert lines[1] == "pytest -v test/b.py -k test2"
+        assert lines[2] == "pytest -v test/c.py -k test3"

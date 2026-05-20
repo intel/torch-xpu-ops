@@ -30,6 +30,7 @@ from ..utils.body_templates import (
 )
 from ..utils.agent_backend import get_backend, TokenUsage
 from ..utils.git import git, git_out, add_and_commit
+from ..utils.xpu_env import ENV_SETUP, XPU_BUILD_FLAGS
 from ..utils.logger import log
 from ..utils.notify import post_agent_completed, post_session_started
 
@@ -62,9 +63,15 @@ def _get_test_command(body: str) -> str | None:
             cmd = cmd.strip()
             if cmd:
                 # Strip 'cd <pytorch> &&' or 'cd /path/to/pytorch &&' prefix
-                # (the cwd is already set to the correct workdir)
-                cmd = re.sub(
-                    r'^cd\s+(?:<[^>]+>|/\S+)\s*&&\s*', '', cmd).strip()
+                # from ALL lines (multi-line reproducers have it on each line)
+                lines = cmd.splitlines()
+                cleaned = []
+                for line in lines:
+                    line = re.sub(
+                        r'^cd\s+(?:<[^>]+>|/\S+)\s*&&\s*', '', line).strip()
+                    if line:
+                        cleaned.append(line)
+                cmd = "\n".join(cleaned)
                 # Path resolution is now handled by the verification agent.
                 # The Reproducer section will contain the refined command.
                 return cmd
@@ -159,11 +166,18 @@ def _run_verification(workdir: Path, test_cmd: str,
                       issue: int) -> tuple[bool, str]:
     """Run verification test command. Returns (success, output)."""
     log("INFO", f"Running verification: {test_cmd[:200]}", issue=issue)
+    # For multi-line reproducers, join with && so each line runs in sequence
+    if "\n" in test_cmd:
+        cmd = " && ".join(line.strip() for line in test_cmd.splitlines() if line.strip())
+    else:
+        cmd = test_cmd
+    # Prepend XPU environment setup
+    full_cmd = ENV_SETUP + cmd
     try:
         result = subprocess.run(
-            test_cmd, cwd=str(workdir),
+            full_cmd, cwd=str(workdir),
             capture_output=True, text=True,
-            timeout=600, shell=True,
+            timeout=600, shell=True, executable="/bin/bash",
         )
         output = (result.stdout + result.stderr)[-5000:]
         if result.returncode == 0:
