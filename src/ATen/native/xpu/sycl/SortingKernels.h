@@ -23,6 +23,11 @@ namespace at {
 namespace native {
 namespace xpu {
 
+inline int checked_num_tiles(int64_t n) {
+  TORCH_CHECK(n <= std::numeric_limits<int>::max(), "num_tiles overflow: ", n);
+  return static_cast<int>(n);
+}
+
 // ======================= group sort =======================
 
 template <typename method_t, typename key_t, typename value_t>
@@ -179,11 +184,7 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       value_t>;
   int64_t num_tiles_64 =
       ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
-  TORCH_CHECK(
-      num_tiles_64 <= std::numeric_limits<int>::max(),
-      "num_tiles overflow: ",
-      num_tiles_64);
-  int num_tiles = static_cast<int>(num_tiles_64);
+  int num_tiles = checked_num_tiles(num_tiles_64);
   auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
       keys_in, counts, num_elements, num_tiles, begin_bit, end_bit);
   sycl_kernel_submit(
@@ -317,11 +318,7 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       value_t>;
   int64_t num_tiles_64 =
       ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
-  TORCH_CHECK(
-      num_tiles_64 <= std::numeric_limits<int>::max(),
-      "num_tiles overflow: ",
-      num_tiles_64);
-  int num_tiles = static_cast<int>(num_tiles_64);
+  int num_tiles = checked_num_tiles(num_tiles_64);
   auto caller =
       SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
           keys_in,
@@ -366,11 +363,7 @@ void segmented_radix_sort_pairs_kernel(
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
   int64_t num_tiles_64 =
       ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
-  TORCH_CHECK(
-      num_tiles_64 <= std::numeric_limits<int>::max(),
-      "num_tiles overflow: ",
-      num_tiles_64);
-  int num_tiles = static_cast<int>(num_tiles_64);
+  int num_tiles = checked_num_tiles(num_tiles_64);
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
