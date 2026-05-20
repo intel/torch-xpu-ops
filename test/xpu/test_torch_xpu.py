@@ -2101,7 +2101,6 @@ class TestTorchDeviceType(TestCase):
             device_secific_alerts[torch.device(device).type],
             torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
         )
-        
 
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
     def test_nondeterministic_alert_EmbeddingBag_max(self, device):
