@@ -254,12 +254,24 @@ jobs:
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}
+        id: archive
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+          artifact_name="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data"
+          artifact_name+="-${{ github.event.pull_request.number || github.sha }}"
+          artifact_name+="-${{ inputs.suite }}"
+          if [[ "${{ inputs.scenario }}" != *,* ]]; then
+            artifact_name+="-${{ inputs.scenario }}"
+          fi
+          artifact_name+="-${{ github.run_id }}-${{ github.run_attempt }}"
+          if [[ -n "${{ inputs.category }}" ]]; then
+            artifact_name+="-${{ inputs.category }}"
+          fi
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ inputs.scenario }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: ${{ steps.archive.outputs.name }}
           path: ${{ github.workspace }}/upload_files
