@@ -2072,9 +2072,13 @@ class TestTorchDeviceType(TestCase):
         input = torch.randn(2, 3, 5, 5, device=device)
         target = torch.rand(2, 5, 5, device=device).mul(3).floor().long()
 
+        device_secific_alerts = {
+            "cuda": "nll_loss2d_forward_out_cuda_template",
+            "xpu": "nll_loss2d_forward_xpu",
+        }
         self.check_nondeterministic_alert(
             lambda: module(input, target),
-            "nll_loss2d_forward_out_" + torch.device(device).type + "_template",
+            device_secific_alerts[torch.device(device).type],
             torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
         )
 
@@ -2088,11 +2092,16 @@ class TestTorchDeviceType(TestCase):
         res = module(input, target, input_lengths, target_lengths)
         grad = torch.ones_like(res)
 
+        device_secific_alerts = {
+            "cuda": "ctc_loss_backward_gpu",
+            "xpu": "ctc_loss_backward_xpu",
+        }
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
-            "ctc_loss_backward_gpu",
+            device_secific_alerts[torch.device(device).type],
             torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
         )
+        
 
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
     def test_nondeterministic_alert_EmbeddingBag_max(self, device):
@@ -2392,7 +2401,7 @@ class TestTorchDeviceType(TestCase):
         def test_func_expect_error(call_type, should_error):
             self.check_nondeterministic_alert(
                 lambda: test_func(call_type),
-                "median GPU with indices output",
+                f"median {torch.device(device).type.upper()} with indices output",
                 should_error,
             )
 
