@@ -261,5 +261,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ inputs.scenario }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/upload_files
