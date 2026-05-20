@@ -49,10 +49,6 @@ on:
 
 permissions: read-all
 
-env:
-  LINUX_BUILD: build
-  LINUX_ACCEPTANCE: acceptance
-
 run-name: >-
   Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
 
@@ -65,7 +61,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: ${{ env.LINUX_BUILD }}
+      runner: build
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
@@ -83,7 +79,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ env.LINUX_ACCEPTANCE }}
+      runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -101,7 +97,7 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ env.LINUX_ACCEPTANCE }}
+      runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
@@ -117,7 +113,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: ${{ env.LINUX_BUILD }}
+      runner: build
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
@@ -135,7 +131,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ env.LINUX_ACCEPTANCE }}
+      runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -153,7 +149,7 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ env.LINUX_ACCEPTANCE }}
+      runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
