@@ -18,6 +18,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
   actions: write
 
 concurrency:
@@ -286,14 +287,12 @@ jobs:
           IS_DRAFT=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json isDraft --jq '.isDraft')
 
           if [ "$IS_DRAFT" = "true" ]; then
-            echo "PR is already a draft — marking as ready to trigger fresh run"
-            gh pr ready "$PR_NUMBER" --repo "$REPO"
+            echo "PR is a draft — skipping retrigger (labels will take effect when PR is marked ready)"
           else
             echo "Converting PR to draft..."
             gh pr ready "$PR_NUMBER" --repo "$REPO" --undo
             sleep 2
             echo "Converting PR back to ready..."
             gh pr ready "$PR_NUMBER" --repo "$REPO"
+            echo "Done — pull workflow will be re-triggered with updated labels"
           fi
-
-          echo "Done — pull workflow will be re-triggered with updated labels"
