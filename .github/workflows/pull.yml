@@ -14,7 +14,6 @@ on:
 permissions: read-all
 
 env:
-  LINUX_DEFAULT: Linux
   LINUX_BUILD: build
   LINUX_UT: pvc-1100
   LINUX_ACCURACY: pvc-1100
@@ -207,7 +206,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ env.LINUX_BUILD }}
+      runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
@@ -220,7 +219,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
-      runner: ${{ env.LINUX_DEFAULT }}
+      runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
@@ -303,7 +302,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
-      build_runner: ${{ env.WINDOWS_BUILD }}
+      runner: ${{ env.WINDOWS_BUILD }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   windows-ut:

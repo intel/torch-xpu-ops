@@ -65,7 +65,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ env.LINUX_BUILD }}
+      runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
@@ -117,7 +117,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      build_runner: ${{ env.LINUX_BUILD }}
+      runner: ${{ env.LINUX_BUILD }}
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
