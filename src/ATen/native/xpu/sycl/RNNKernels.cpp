@@ -101,7 +101,7 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
 template <typename T>
 inline T sigmoid(T in) {
   T one = static_cast<T>(1.0);
-  return one / (one + std::exp(-in));
+  return one / (one + sycl::exp(-in));
 }
 
 template <

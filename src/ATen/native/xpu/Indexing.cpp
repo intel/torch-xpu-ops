@@ -14,7 +14,6 @@
 
 #include <ATen/ExpandUtils.h>
 #include <ATen/MemoryOverlap.h>
-#include <ATen/NamedTensorUtils.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/op_registration/adaption.h>
 
@@ -94,8 +93,6 @@ static Tensor& masked_select_out_impl(
     Tensor& result,
     const Tensor& self,
     const Tensor& mask) {
-  NoNamesGuard guard;
-
   TORCH_CHECK(
       mask.scalar_type() == ScalarType::Bool,
       "masked_select: expected BoolTensor for mask");
@@ -124,7 +121,6 @@ static Tensor& masked_select_out_impl(
 }
 
 Tensor masked_select_xpu(const Tensor& self, const Tensor& mask) {
-  namedinference::compute_broadcast_outnames(self, mask);
   Tensor result = at::empty({0}, self.options());
   return masked_select_out_impl(result, self, mask);
 }
@@ -133,7 +129,6 @@ Tensor& masked_select_out_xpu(
     const Tensor& self,
     const Tensor& mask,
     Tensor& result) {
-  namedinference::compute_broadcast_outnames(self, mask);
   return masked_select_out_impl(result, self, mask);
 }
 

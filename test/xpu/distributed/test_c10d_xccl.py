@@ -399,6 +399,64 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    @parametrize(
+        "type",
+        [
+            torch.uint8,
+            torch.int8,
+            torch.int32,
+            torch.int64,
+            torch.bool,
+        ],
+    )
+    def test_nan_check_non_float(self, type):
+        # Regression test: NaN checker should be a no-op for non-floating-point
+        # tensors, instead of raising
+        # "NotImplementedError: 'checkForNaN_XPU' not implemented for 'Byte'".
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        device = torch.device(f"xpu:{self.rank:d}")
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            backend="xccl", store=store, rank=self.rank, world_size=self.world_size
+        )
+        if type == torch.bool:
+            t = torch.ones(3, 4, dtype=type, device=device)
+        else:
+            t = torch.ones(3, 4, dtype=type, device=device) * self.rank
+        # Should not raise for non-float dtypes (collective and P2P)
+        c10d.broadcast(t, 0)
+        c10d.all_gather_into_tensor(
+            torch.empty(self.world_size, *t.shape, dtype=type, device=device),
+            t,
+        )
+        if self.rank == 0:
+            c10d.send(t, 1)
+        elif self.rank == 1:
+            c10d.recv(t, 0)
+        c10d.barrier()
+        c10d.destroy_process_group()
+        # reset env
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_nan_check_empty_tensor(self):
+        # Regression test: NaN checker should not crash on empty tensors.
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        device = torch.device(f"xpu:{self.rank:d}")
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            backend="xccl", store=store, rank=self.rank, world_size=self.world_size
+        )
+        t = torch.empty((0,), dtype=torch.float32, device=device)
+        c10d.broadcast(t, 0)
+        c10d.barrier()
+        c10d.destroy_process_group()
+        # reset env
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_oom(self):
         pg = self._create_process_group_xccl()
         dp_ranks = range(0, self.world_size)
