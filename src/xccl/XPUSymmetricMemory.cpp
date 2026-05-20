@@ -127,39 +127,6 @@ void* XPUSymmetricMemory::get_multicast_ptr() {
   return nullptr;
 }
 
-at::Tensor XPUSymmetricMemory::get_buffer(
-    int rank,
-    c10::IntArrayRef sizes,
-    c10::ScalarType dtype,
-    int64_t storage_offset) {
-  const size_t numel = std::accumulate(
-      sizes.begin(),
-      sizes.end(),
-      static_cast<size_t>(1),
-      std::multiplies<size_t>());
-  const auto element_size = c10::elementSize(dtype);
-  const auto req_size = (numel + storage_offset) * element_size;
-  TORCH_CHECK(
-      req_size <= buffer_size_,
-      "XPUSymmetricMemory::get_buffer: the requested size (",
-      req_size,
-      " bytes) exceeds the allocated size (",
-      buffer_size_,
-      " bytes)");
-  auto data_ptr = reinterpret_cast<uint8_t*>(buffers_[rank]) +
-      storage_offset * element_size;
-  // Peer buffers are mapped into the local device's virtual address space via
-  // SYCL IPC, so the returned tensor always lives on the local device. This
-  // matches the contract of `CUDASymmetricMemory::get_buffer`.
-  auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
-  auto options = at::TensorOptions().dtype(dtype).device(device);
-
-  return at::for_blob(data_ptr, sizes)
-      .options(options)
-      .target_device(device)
-      .make_tensor();
-}
-
 void check_channel(int channel, int world_size) {
   TORCH_CHECK(
       channel >= 0,

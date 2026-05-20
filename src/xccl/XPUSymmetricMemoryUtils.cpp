@@ -238,7 +238,22 @@ std::string IpcChannel::get_socket_name(int pid) {
   }
   std::ostringstream oss;
   oss << tmp_dir << "/symm_mem-" << pid;
-  return oss.str();
+  std::string socket_name = oss.str();
+
+  // sockaddr_un::sun_path is a fixed-size buffer (108 bytes on Linux).
+  // Silent truncation here would produce a corrupted path and a confusing
+  // bind()/sendmsg() failure later, so reject up front.
+  constexpr size_t kMaxSunPath = sizeof(sockaddr_un{}.sun_path);
+  TORCH_CHECK(
+      socket_name.size() < kMaxSunPath,
+      "IpcChannel: socket path '",
+      socket_name,
+      "' (",
+      socket_name.size(),
+      " bytes) is too long for sockaddr_un::sun_path (max ",
+      kMaxSunPath - 1,
+      " bytes). Please set TMPDIR/TMP/TEMP/TEMPDIR to a shorter directory.");
+  return socket_name;
 }
 
 } // namespace c10d::symmetric_memory

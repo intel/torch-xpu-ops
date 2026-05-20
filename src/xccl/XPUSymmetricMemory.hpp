@@ -57,12 +57,6 @@ class XPUSymmetricMemory : public SymmetricMemory {
   bool has_multicast_support() override;
   void* get_multicast_ptr() override;
 
-  at::Tensor get_buffer(
-      int rank,
-      c10::IntArrayRef sizes,
-      c10::ScalarType dtype,
-      int64_t storage_offset);
-
   void barrier(int channel, size_t timeout_ms) override;
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override;
   void wait_signal(int src_rank, int channel, size_t timeout_ms) override;
