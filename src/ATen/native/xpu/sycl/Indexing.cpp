@@ -984,7 +984,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       smem_values[i] = identity;
     }
 
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     for (IndexType linearIndex =
              item.get_group(0) * local_range + item.get_local_id(0);
@@ -1035,7 +1035,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     for (int i = item.get_local_id(0); i < SMEM_SIZE;
          i += item.get_local_range(0)) {
@@ -1190,10 +1190,8 @@ void index_reduce_add_xpu_template(
   }
 
   auto numel = index.numel();
-  if (result.dim() > 1) {
-    if (numel == 0 || self.numel() == 0) {
-      return;
-    }
+  if (numel == 0 || self.numel() == 0) {
+    return;
   }
 
   // Scalars are treated as 1-d tensor
@@ -1263,7 +1261,7 @@ void index_reduce_add_xpu_template(
       sliceSize,                                                            \
       selfAddDimSize,                                                       \
       selfNumel,                                                            \
-      reduce_add,                                                           \
+      func,                                                                 \
       alpha_value);
 
 #define LARGE_INDEX(                         \
@@ -1293,7 +1291,7 @@ void index_reduce_add_xpu_template(
       (IDX_IS_MAJOR) ? sliceSize : numIndex, \
       selfAddDimSize,                        \
       selfNumel,                             \
-      reduce_add,                            \
+      func,                                  \
       alpha_value);
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
