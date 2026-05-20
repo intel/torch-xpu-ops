@@ -174,8 +174,9 @@ def _parse_agent_result(output: str) -> dict | None:
     if json_blocks:
         raw = json_blocks[-1].strip()
     else:
-        # Try to find bare JSON object
-        matches = re.findall(r'\{[^{}]*"status"[^{}]*\}', output, re.DOTALL)
+        # Try to find bare JSON object with "status" key — allow nested braces
+        # by matching from { to the last } in the output
+        matches = re.findall(r'\{[^{}]*"status"\s*:.*\}', output, re.DOTALL)
         if matches:
             raw = matches[-1]
         else:
@@ -186,7 +187,15 @@ def _parse_agent_result(output: str) -> dict | None:
         if "status" in result:
             return result
     except json.JSONDecodeError:
-        pass
+        # Try to fix truncated JSON — find the last complete field
+        # by adding closing brace
+        for suffix in ['"}', '"\n}', '" }']:
+            try:
+                result = json.loads(raw + suffix)
+                if "status" in result:
+                    return result
+            except json.JSONDecodeError:
+                continue
     return None
 
 
