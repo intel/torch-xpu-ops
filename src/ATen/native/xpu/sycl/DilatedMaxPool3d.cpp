@@ -20,6 +20,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/ceil_div.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 
@@ -74,7 +75,7 @@ struct MaxPool3dKerenlFunctor {
         wStart += dilationW_;
 
       // maxIndex remains in "channels-first"/contiguous
-      int64_t maxIndex;
+      int64_t maxIndex = tStart * in_hw_stride_ + hStart * iwidth_ + wStart;
       int64_t ioffset;
 
       if constexpr (!channels_last_) {
@@ -316,24 +317,24 @@ void max_pool3d_with_indices_out_template(
   sycl_kernel_submit(global_range, work_group_size, queue, kfn);
 }
 
-template <typename scalar_t, bool channels_last>
+template <typename scalar_t, bool channels_last, typename index_t>
 struct MaxPool3dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto outputIndex = item.get_global_id(0);
+    index_t outputIndex = item.get_global_id(0);
     if (outputIndex < gradOutputSize_) {
-      int batch = outputIndex / out_nbatch_stride_;
+      index_t batch = outputIndex / out_nbatch_stride_;
       if constexpr (channels_last) {
-        int channel = outputIndex % features_;
+        index_t channel = outputIndex % features_;
         int64_t index = indicesData_[outputIndex];
-        int64_t gradIn_offset =
+        index_t gradIn_offset =
             batch * in_nbatch_stride_ + channel + index * features_;
         atomicAdd(
             (sycl_global_ptr<scalar_t>)&gradInputData_[gradIn_offset],
             gradOutputData_[outputIndex]);
       } else {
-        int channel = outputIndex / out_cf_channel_stride_ % features_;
+        index_t channel = outputIndex / out_cf_channel_stride_ % features_;
         int64_t index = indicesData_[outputIndex];
-        int64_t gradIn_offset =
+        index_t gradIn_offset =
             batch * in_nbatch_stride_ + channel * in_cf_channel_stride_ + index;
         atomicAdd(
             (sycl_global_ptr<scalar_t>)&gradInputData_[gradIn_offset],
@@ -345,12 +346,12 @@ struct MaxPool3dBackwardKernelFunctor {
       scalar_t* gradInputData,
       const scalar_t* gradOutputData,
       const int64_t* indicesData,
-      int features,
-      int64_t gradOutputSize,
-      int out_cf_channel_stride,
-      int in_cf_channel_stride,
-      int out_nbatch_stride,
-      int in_nbatch_stride)
+      index_t features,
+      index_t gradOutputSize,
+      index_t out_cf_channel_stride,
+      index_t in_cf_channel_stride,
+      index_t out_nbatch_stride,
+      index_t in_nbatch_stride)
       : gradInputData_(gradInputData),
         gradOutputData_(gradOutputData),
         indicesData_(indicesData),
@@ -365,38 +366,38 @@ struct MaxPool3dBackwardKernelFunctor {
   scalar_t* gradInputData_;
   const scalar_t* gradOutputData_;
   const int64_t* indicesData_;
-  int features_;
-  int64_t gradOutputSize_;
-  int out_cf_channel_stride_;
-  int in_cf_channel_stride_;
-  int out_nbatch_stride_;
-  int in_nbatch_stride_;
+  index_t features_;
+  index_t gradOutputSize_;
+  index_t out_cf_channel_stride_;
+  index_t in_cf_channel_stride_;
+  index_t out_nbatch_stride_;
+  index_t in_nbatch_stride_;
 };
 
-template <typename scalar_t, bool channels_last>
+template <typename scalar_t, bool channels_last, typename index_t>
 void max_pool3d_with_indices_backward_template(
     scalar_t* gradInputData,
     const scalar_t* gradOutputData,
     const int64_t* indicesData,
-    int features,
-    int itime,
-    int iheight,
-    int iwidth,
-    int obatch,
-    int otime,
-    int oheight,
-    int owidth) {
-  int64_t gradOutputSize = obatch * features * otime * oheight * owidth;
+    int64_t features,
+    int64_t itime,
+    int64_t iheight,
+    int64_t iwidth,
+    int64_t obatch,
+    int64_t otime,
+    int64_t oheight,
+    int64_t owidth) {
+  index_t gradOutputSize = obatch * features * otime * oheight * owidth;
 
-  auto out_cf_channel_stride = otime * oheight * owidth;
-  auto in_cf_channel_stride = itime * iheight * iwidth;
-  auto out_nbatch_stride = features * out_cf_channel_stride;
-  auto in_nbatch_stride = features * in_cf_channel_stride;
-  MaxPool3dBackwardKernelFunctor<scalar_t, channels_last> kfn(
+  index_t out_cf_channel_stride = otime * oheight * owidth;
+  index_t in_cf_channel_stride = itime * iheight * iwidth;
+  index_t out_nbatch_stride = features * out_cf_channel_stride;
+  index_t in_nbatch_stride = features * in_cf_channel_stride;
+  MaxPool3dBackwardKernelFunctor<scalar_t, channels_last, index_t> kfn(
       gradInputData,
       gradOutputData,
       indicesData,
-      features,
+      static_cast<index_t>(features),
       gradOutputSize,
       out_cf_channel_stride,
       in_cf_channel_stride,
@@ -422,8 +423,6 @@ void max_pool3d_with_indices_kernel(
     bool ceil_mode,
     Tensor& output,
     Tensor& indices) {
-  NoNamesGuard guard;
-
   TensorArg output_arg{output, "output", 1};
   TensorArg indices_arg{indices, "indices", 2};
   TensorArg input_arg{input, "input", 3};
@@ -769,33 +768,45 @@ void max_pool3d_with_indices_backward_kernel(
       [&] {
         scalar_t* grad_input_data =
             work_grad_input.mutable_data_ptr<scalar_t>();
-        if (!channels_last) {
-          max_pool3d_with_indices_backward_template<scalar_t, false>(
-              grad_input_data,
-              work_grad_output.const_data_ptr<scalar_t>(),
-              work_indices.const_data_ptr<int64_t>(),
-              nslices,
-              itime,
-              iheight,
-              iwidth,
-              nbatch,
-              otime,
-              oheight,
-              owidth);
-        } else {
-          max_pool3d_with_indices_backward_template<scalar_t, true>(
-              grad_input_data,
-              work_grad_output.const_data_ptr<scalar_t>(),
-              work_indices.const_data_ptr<int64_t>(),
-              nslices,
-              itime,
-              iheight,
-              iwidth,
-              nbatch,
-              otime,
-              oheight,
-              owidth);
-        }
+        AT_DISPATCH_INDEX_TYPES(
+            at::native::canUse32BitIndexMath(input, INT_MAX) ? ScalarType::Int
+                                                             : ScalarType::Long,
+            "max_pool3d_with_indices_backward_out_xpu",
+            [&] {
+              if (!channels_last) {
+                max_pool3d_with_indices_backward_template<
+                    scalar_t,
+                    false,
+                    index_t>(
+                    grad_input_data,
+                    work_grad_output.const_data_ptr<scalar_t>(),
+                    work_indices.const_data_ptr<int64_t>(),
+                    nslices,
+                    itime,
+                    iheight,
+                    iwidth,
+                    nbatch,
+                    otime,
+                    oheight,
+                    owidth);
+              } else {
+                max_pool3d_with_indices_backward_template<
+                    scalar_t,
+                    true,
+                    index_t>(
+                    grad_input_data,
+                    work_grad_output.const_data_ptr<scalar_t>(),
+                    work_indices.const_data_ptr<int64_t>(),
+                    nslices,
+                    itime,
+                    iheight,
+                    iwidth,
+                    nbatch,
+                    otime,
+                    oheight,
+                    owidth);
+              }
+            });
       });
 }
 
