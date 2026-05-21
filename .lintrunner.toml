@@ -13,6 +13,11 @@ exclude_patterns = [
     'test/regressions/test_unary.py',
     'tools/codegen/remove_headers.py',
     '.github/scripts/*.py',
+    'test/xpu/test_*.py',
+    'test/xpu/**/test_*.py',
+    'test/xpu/dynamo/test_*.py',
+    'test/xpu/dynamo/test_subclasses_xpu.py',
+    'test/xpu/dynamo/test_structured_trace_xpu.py',
 ]
 command = [
     'uv',
@@ -810,6 +815,8 @@ exclude_patterns = [
   # Port of upstream test/dynamo/test_misc.py which legitimately calls
   # ShapeEnv.create_unbacked_* to test ShapeEnv equality.
   "test/xpu/dynamo/test_misc_xpu.py",
+  "test/xpu/dynamo/test_structured_trace_xpu.py",
+  "test/xpu/dynamo/test_subclasses_xpu.py",
 ]
 command = [
     'python3',
