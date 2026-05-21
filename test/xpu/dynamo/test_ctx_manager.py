@@ -439,9 +439,6 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(cnts.op_count, 3)
 
     @unittest.skipIf(not HAS_GPU, "requires GPU")
-    @unittest.skip(
-        "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
-    )
     def test_gpu_event_across_graph_break(self):
         def fn(x):
             e = torch.Event()
