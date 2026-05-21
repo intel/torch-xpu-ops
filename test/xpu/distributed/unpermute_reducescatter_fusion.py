@@ -91,7 +91,7 @@ def unpermute_allreduce_simple(
         for k in range(topk):
             src_row = scatter_idx[i, k].item()
             full_result[i] += topk_weights[i, k] * expert_output[src_row]
-
+    
     # Step 2: Allreduce across TP group
     dist.all_reduce(full_result, group=group)
 
