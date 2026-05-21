@@ -29,7 +29,11 @@ struct SigmoidFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const auto one = opmath_t{1.0};
-    return one / (one + std::exp(-static_cast<opmath_t>(a)));
+    if constexpr (c10::is_complex<opmath_t>::value) {
+      return one / (one + std::exp(-static_cast<opmath_t>(a)));
+    } else {
+      return one / (one + sycl::exp(-static_cast<opmath_t>(a)));
+    }
   }
 };
 

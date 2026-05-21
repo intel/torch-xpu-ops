@@ -986,11 +986,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
     flex_attention = torch.ops.higher_order.flex_attention(primals_0, primals_0, primals_0, sdpa_score0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, 128, 128, sdpa_mask0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  sdpa_score0 = sdpa_mask0 = None
     getitem = flex_attention[0]
     getitem_1 = flex_attention[1];  flex_attention = None
-    alias = torch.ops.aten.alias.default(getitem)
-    alias_1 = torch.ops.aten.alias.default(getitem_1);  getitem_1 = None
-    alias_2 = torch.ops.aten.alias.default(alias);  alias = None
-    alias_3 = torch.ops.aten.alias.default(alias_1);  alias_1 = None
-    return (getitem, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, alias_2, alias_3)""",  # noqa: B950
+    return (getitem, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, getitem, getitem_1)""",  # noqa: B950
                 ignore_comments=True,
                 ignore_empty_lines=True,
             )
@@ -998,11 +994,11 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
             self.assertExpectedInline(
                 captured_gms[1].code.strip(),
                 """\
-def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, alias_2, alias_3, tangents_0):
+def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, getitem, getitem_1, tangents_0):
     fw_graph0 = self.fw_graph0
     joint_graph0 = self.joint_graph0
     mask_graph0 = self.mask_graph0
-    flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_0, primals_0, primals_0, alias_2, alias_3, tangents_0, None, fw_graph0, joint_graph0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, 128, 128, mask_graph0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  primals_0 = alias_2 = alias_3 = tangents_0 = fw_graph0 = joint_graph0 = primals_1 = primals_2 = primals_3 = primals_4 = primals_5 = primals_6 = primals_7 = primals_8 = mask_graph0 = None
+    flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_0, primals_0, primals_0, getitem, getitem_1, tangents_0, None, fw_graph0, joint_graph0, (768, 768, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, 128, 128, mask_graph0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': True, 'OUTPUT_MAX': False}, (), ());  primals_0 = getitem = getitem_1 = tangents_0 = fw_graph0 = joint_graph0 = primals_1 = primals_2 = primals_3 = primals_4 = primals_5 = primals_6 = primals_7 = primals_8 = mask_graph0 = None
     getitem_3 = flex_attention_backward[0]
     getitem_4 = flex_attention_backward[1]
     getitem_5 = flex_attention_backward[2];  flex_attention_backward = None
