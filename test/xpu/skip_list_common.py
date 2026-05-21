@@ -113,7 +113,6 @@ skip_dict = {
         "_jiterator_",
     ),
     "test_modules_xpu.py": None,
-    "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,
     "test_native_mha_xpu.py": None,
     "test_nn_xpu.py": None,
