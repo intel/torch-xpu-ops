@@ -60,7 +60,9 @@ jobs:
       - name: Comment on lint failure
         if: >-
           ${{ (steps.lint-python.outcome == 'failure' || steps.lint-clang.outcome == 'failure')
-          && github.event.pull_request.head.repo.full_name == github.repository }}
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+              || github.event.pull_request.user.login == 'copilot[bot]') }}
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
