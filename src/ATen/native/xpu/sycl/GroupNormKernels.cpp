@@ -46,60 +46,57 @@ template <
     typename acc_scalar_t,
     typename index_t,
     typename res_t>
-struct WelfordOpsXPU
-    : public WelfordOps<scalar_t, acc_scalar_t, index_t, res_t> {
+struct SumVarOpsXPU : public SumVarOps<scalar_t, acc_scalar_t, index_t, res_t> {
   sycl::nd_item<1>& item;
 
  public:
   using acc_t =
-      typename WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>::acc_t;
+      typename SumVarOps<scalar_t, acc_scalar_t, index_t, res_t>::acc_t;
   inline acc_t shfl_down(acc_t acc, int offset) const {
     auto sg = item.get_sub_group();
     return {
-        sycl::shift_group_left(sg, acc.mean, offset),
-        sycl::shift_group_left(sg, acc.m2, offset),
+        acc.first_elem, // same across all work-items, no shuffle needed
+        sycl::shift_group_left(sg, acc.sum, offset),
+        sycl::shift_group_left(sg, acc.sum_of_squares, offset),
         sycl::shift_group_left(sg, acc.n, offset),
         sycl::shift_group_left(sg, acc.nf, offset)};
   }
 
-  WelfordOpsXPU(acc_scalar_t correction, bool take_sqrt, sycl::nd_item<1>& item)
-      : WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>(
-            correction,
-            take_sqrt),
+  SumVarOpsXPU(bool take_sqrt, sycl::nd_item<1>& item)
+      : SumVarOps<scalar_t, acc_scalar_t, index_t, res_t>(take_sqrt),
         item(item) {}
 };
 
 template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
-  using WelfordType = WelfordData<T_ACC, int64_t>;
-  using WelfordOp =
-      WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using SumVarType = SumVarData<T_ACC, int64_t>;
+  using SumVarOp = SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    WelfordType val(0, 0, 0, 0);
+    SumVarOp sumvar_op = {/*take_sqrt=*/false, item};
+    SumVarType val(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
     for (int64_t j = item.get_local_id(0); j < N_;
          j += item.get_local_range(0)) {
       const int64_t index = i * N_ + j;
-      val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
+      val = sumvar_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
     }
 
-    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item, val, welford_op, shared_);
+    val = GroupReduceWithoutBroadcast<SumVarType, SumVarOp, SIMD>(
+        item, val, sumvar_op, shared_);
 
     if (item.get_local_id(0) == 0) {
       T_ACC m1;
       T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      std::tie(m2, m1) = sumvar_op.project(val);
       mean_[i] = m1;
       rstd_[i] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+    shared_ = sycl_local_acc_t<SumVarType>(SIMD, cgh);
   }
 
   GNRowwiseMomentsFunctor(int64_t N, T eps, const T* X, T* mean, T* rstd)
@@ -111,26 +108,26 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const T* X_;
   T* mean_;
   T* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
+  sycl_local_acc_t<SumVarType> shared_;
 };
 
 template <typename T, int SIMD, int VEC_SIZE>
 struct GNRowwiseMomentsVectorizedFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
-  using WelfordType = WelfordData<T_ACC, int64_t>;
-  using WelfordOp =
-      WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using SumVarType = SumVarData<T_ACC, int64_t>;
+  using SumVarOp = SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
-    WelfordType val[VEC_SIZE];
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+    SumVarType val[VEC_SIZE];
+    SumVarOp sumvar_op = {/*take_sqrt=*/false, item};
     auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
       const int64_t i = group_start + v;
+      val[v] = SumVarType(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
       for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
            j += item.get_local_range(0) * VEC_SIZE) {
         const int64_t vec_index = i * N_ + j;
@@ -138,7 +135,7 @@ struct GNRowwiseMomentsVectorizedFunctor
             *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
 #pragma unroll
         for (int iv = 0; iv < VEC_SIZE; ++iv) {
-          val[v] = welford_op.reduce(
+          val[v] = sumvar_op.reduce(
               val[v], static_cast<T_ACC>(vec_in[iv]), vec_index + iv);
         }
       }
@@ -146,8 +143,8 @@ struct GNRowwiseMomentsVectorizedFunctor
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      val[v] = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-          item, val[v], welford_op, shared_);
+      val[v] = GroupReduceWithoutBroadcast<SumVarType, SumVarOp, SIMD>(
+          item, val[v], sumvar_op, shared_);
     }
 
     if (item.get_local_id(0) == 0) {
@@ -157,7 +154,7 @@ struct GNRowwiseMomentsVectorizedFunctor
       for (int v = 0; v < VEC_SIZE; ++v) {
         T_ACC m1;
         T_ACC m2;
-        std::tie(m2, m1) = welford_op.project(val[v]);
+        std::tie(m2, m1) = sumvar_op.project(val[v]);
         mean_vec[v] = m1;
         rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       }
@@ -167,7 +164,7 @@ struct GNRowwiseMomentsVectorizedFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+    shared_ = sycl_local_acc_t<SumVarType>(SIMD, cgh);
   }
 
   GNRowwiseMomentsVectorizedFunctor(
@@ -184,7 +181,7 @@ struct GNRowwiseMomentsVectorizedFunctor
   const T* X_;
   T* mean_;
   T* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
+  sycl_local_acc_t<SumVarType> shared_;
 };
 
 template <typename T, typename T_ACC>
