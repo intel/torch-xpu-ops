@@ -317,7 +317,7 @@ Tensor expand_batch_if_necessary(const Tensor& mat) {
       sparse_csr::getCompressedPlainIndices(mat);
   auto values = mat.values();
   auto batch_diff_size = mat.sizes().vec();
-  auto real_batch_ndim = mat.sizes().size() - 2;
+  auto real_batch_ndim = static_cast<int64_t>(mat.sizes().size() - 2);
   if (indice_batch_ndim < real_batch_ndim) {
     batch_diff_size.erase(
         batch_diff_size.begin() + (real_batch_ndim - indice_batch_ndim),

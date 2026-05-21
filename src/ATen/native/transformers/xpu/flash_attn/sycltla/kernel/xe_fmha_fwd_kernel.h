@@ -251,7 +251,7 @@ class XeFMHAFwdKernel {
       int head = head_q / head_group_q;
 
       auto [seq_len_qo, seq_len_kv] = get_sequence_length_shape(s, idx_b);
-      if (blk_q * get<0>(TileShapeQK{}) >= seq_len_qo)
+      if (static_cast<int>(blk_q * get<0>(TileShapeQK{})) >= seq_len_qo)
         continue;
 
       int seq_coord =

@@ -168,7 +168,7 @@ class BatchKernelConfig {
     size_t wg_num = (cfg_.glb_range_x_ / cfg_.wg_range_x_) *
         (cfg_.glb_range_y_ / cfg_.wg_range_y_);
     size_t wg_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
-    if (wg_size * (wg_num + 1) > target_wi_num) {
+    if (wg_size * (wg_num + 1) > static_cast<size_t>(target_wi_num)) {
       return Policy::pLoop;
     }
 
@@ -206,7 +206,7 @@ class BatchKernelConfig {
     size_t sg_size = syclMaxSubGroupSize();
     // Caller takes responsibility of if work group size is valid or compatible.
     if (prefer_wg_size_ != 0 && prefer_wg_size_ % sg_size == 0 &&
-        prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
+        prefer_wg_size_ <= static_cast<size_t>(syclDeviceMaxWorkGroupSize())) {
       wg_size = prefer_wg_size_;
     } else {
       wg_size = syclMaxWorkGroupSize<KernelClass>();
@@ -222,8 +222,10 @@ class BatchKernelConfig {
 
     // ensure assigning successive work items along contiguous (small stride)
     // dimension
-    auto range_bound_x = problem_along_x_ ? problem_ : problem_batch_;
-    auto range_bound_y = problem_along_x_ ? problem_batch_ : problem_;
+    size_t range_bound_x =
+        static_cast<size_t>(problem_along_x_ ? problem_ : problem_batch_);
+    size_t range_bound_y =
+        static_cast<size_t>(problem_along_x_ ? problem_batch_ : problem_);
 
     // Implications,
     // 1. assign proper x/y to accommodate workload exactly.

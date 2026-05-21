@@ -218,7 +218,7 @@ void multi_tensor_apply(
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
     auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }
@@ -297,7 +297,7 @@ void multi_tensor_apply(
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
     auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }
@@ -377,7 +377,7 @@ void multi_tensor_apply_for_fused_optimizer(
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
     auto chunkForWG = (numel + kChunkSize - 1) / kChunkSize;
-    for (size_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
+    for (int64_t chunkId = 0; chunkId < chunkForWG; ++chunkId, ++posWG) {
       tlWGMeta[posWG].wg_to_tensor = t;
       tlWGMeta[posWG].wg_to_chunk = chunkId;
     }

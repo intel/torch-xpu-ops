@@ -124,7 +124,7 @@ void compute_o_dot_do(
     }
   } else {
     for (int mi = 0; mi < size<0>(rdO_2d); ++mi) {
-      if (get<0>(tcO_row(mi)) < param.tail_m) {
+      if (static_cast<int>(get<0>(tcO_row(mi))) < param.tail_m) {
         copy(tileload_odo, thr_tile_do_S(_, mi, _), rdO(_, mi, _));
         copy(tileload_odo, thr_tile_o_S(_, mi, _), rO(_, mi, _));
       }
@@ -156,7 +156,7 @@ void compute_o_dot_do(
       if constexpr (Is_even_M) {
         mdPsum(get<0>(tcO_row(mi))) = accum;
       } else {
-        if (get<0>(tcO_row(mi)) < param.tail_m) {
+        if (static_cast<int>(get<0>(tcO_row(mi))) < param.tail_m) {
           mdPsum(get<0>(tcO_row(mi))) = accum;
         }
       }

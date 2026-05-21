@@ -705,7 +705,7 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
               simd);
         }
 
-        for (int i = 0; i < ntensors; i++) {
+        for (size_t i = 0; i < ntensors; i++) {
           tensor_list_addresses[i] = vec_res[i].mutable_data_ptr<scalar_t>();
         }
         q.memcpy(

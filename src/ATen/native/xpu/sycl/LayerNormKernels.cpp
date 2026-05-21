@@ -1206,7 +1206,7 @@ void layer_norm_backward_kernel_impl(
       // occupancy <= 50%
       if (num_tile_m * num_tile_n * local_size_x * SIMD /
               syclMaxSubGroupSize() * 2 <=
-          thread_slots) {
+          static_cast<size_t>(thread_slots)) {
         if (adjust_m) {
           tile_size_m /= 2;
           num_tile_m = (M + tile_size_m - 1) / tile_size_m;
@@ -1282,10 +1282,12 @@ void layer_norm_backward_kernel_impl(
           3>(
           {num_workgroup,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           {1,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
@@ -1326,10 +1328,12 @@ void layer_norm_backward_kernel_impl(
           3>(
           {num_workgroup,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           {1,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
@@ -1369,10 +1373,12 @@ void layer_norm_backward_kernel_impl(
           3>(
           {num_workgroup,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           {1,
            local_size_x,
-           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+           static_cast<size_t>(
+               static_cast<size_t>(tile_size_n) < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
       *dbeta = dbeta_blocks.sum(0);

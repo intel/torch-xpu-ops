@@ -742,7 +742,7 @@ void _index_kernel(
   bool small_index = non_index_size.size() != 0 && iter.tensor(1).dim() == 3 &&
       non_index_size.size() + index_size.size() == 3;
   auto indices_sizes = iter.tensor(2).sizes();
-  for (size_t i = 1; i < iter.tensor(2).dim(); ++i) {
+  for (int64_t i = 1; i < iter.tensor(2).dim(); ++i) {
     if (indices_sizes[i - 1] > indices_sizes[i]) {
       small_index = false;
       break;

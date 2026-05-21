@@ -1629,7 +1629,9 @@ void index_reduce_func_xpu_template(
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(ssc * 8));
-                    size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
+                    size_t wg_size =
+                        (sourceTotalSize <
+                         static_cast<uint64_t>(defaultMaxGroupThreads))
                         ? sourceTotalSize
                         : defaultMaxGroupThreads;
                     sycl_kernel_submit(
@@ -1654,7 +1656,8 @@ void index_reduce_func_xpu_template(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
                       size_t wg_size =
-                          (sourceTotalSize < defaultMaxGroupThreads)
+                          (sourceTotalSize <
+                           static_cast<uint64_t>(defaultMaxGroupThreads))
                           ? sourceTotalSize
                           : defaultMaxGroupThreads;
                       sycl_kernel_submit(
@@ -1677,7 +1680,8 @@ void index_reduce_func_xpu_template(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
                       size_t wg_size =
-                          (sourceTotalSize < defaultMaxGroupThreads)
+                          (sourceTotalSize <
+                           static_cast<uint64_t>(defaultMaxGroupThreads))
                           ? sourceTotalSize
                           : defaultMaxGroupThreads;
                       sycl_kernel_submit(
@@ -1703,7 +1707,8 @@ void index_reduce_func_xpu_template(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
                       size_t wg_size =
-                          (sourceTotalSize < defaultMaxGroupThreads)
+                          (sourceTotalSize <
+                           static_cast<uint64_t>(defaultMaxGroupThreads))
                           ? sourceTotalSize
                           : defaultMaxGroupThreads;
                       sycl_kernel_submit(
@@ -1726,7 +1731,8 @@ void index_reduce_func_xpu_template(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
                       size_t wg_size =
-                          (sourceTotalSize < defaultMaxGroupThreads)
+                          (sourceTotalSize <
+                           static_cast<uint64_t>(defaultMaxGroupThreads))
                           ? sourceTotalSize
                           : defaultMaxGroupThreads;
                       sycl_kernel_submit(
@@ -1749,7 +1755,9 @@ void index_reduce_func_xpu_template(
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(ssc * 8));
-                    size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
+                    size_t wg_size =
+                        (sourceTotalSize <
+                         static_cast<uint64_t>(defaultMaxGroupThreads))
                         ? sourceTotalSize
                         : defaultMaxGroupThreads;
                     sycl_kernel_submit(
@@ -1790,7 +1798,8 @@ void index_reduce_func_xpu_template(
                 size_t num_wg = std::min(
                     ceil_div(sourceTotalSize, (uint64_t)128),
                     (uint64_t)(ssc * 8));
-                size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
+                size_t wg_size = (sourceTotalSize <
+                                  static_cast<uint64_t>(defaultMaxGroupThreads))
                     ? sourceTotalSize
                     : defaultMaxGroupThreads;
                 sycl_kernel_submit(
