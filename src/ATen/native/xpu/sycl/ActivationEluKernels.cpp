@@ -63,7 +63,7 @@ struct EluBackwardOutFunctor {
       return bop <= 0 ? aop * negiptcoef_ * (bop + negcoef_) : aop * poscoef_;
     } else {
       return bop <= 0
-          ? aop * negiptcoef_ * negcoef_ * std::exp(bop * negiptcoef_)
+          ? aop * negiptcoef_ * negcoef_ * sycl::exp(bop * negiptcoef_)
           : aop * poscoef_;
     }
   }

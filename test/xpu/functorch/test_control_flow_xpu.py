@@ -444,7 +444,9 @@ class ReduceMod(torch.nn.Module):
         return self._reduce(*operands)
 
 
-DEVICE_TYPE = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
+DEVICE_TYPE = (
+    acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
+)
 
 
 @unittest.skipIf(IS_WINDOWS, "Windows not supported for this test")
@@ -951,7 +953,7 @@ def forward(self, pred_1):
         for pred in [torch.tensor(False), torch.tensor(True)]:
             with self.assertRaisesRegex(
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile",
+                r"Higher Order Operator: torch\.cond",
             ):
                 cond(pred, true_fn, false_fn, ({"t": [a, {"b": b}, (c,)]},))
 
@@ -1305,7 +1307,10 @@ def forward(self, pred_1, x_1):
         return cond_outputs, cond_inputs
 
     @skipIfTorchDynamo("don't test compile on compile")
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["compile_dynamic_shape"])
     @parametrize("scalar", [False])
@@ -1420,7 +1425,7 @@ def forward(self, pred_1, x_1):
         x = torch.ones([3])
         y = torch.ones([1, 2, 3])
         with self.assertRaisesRegex(
-            RuntimeError, "map doesn't work unless it is captured completely"
+            RuntimeError, r"Higher Order Operator: torch\.ops\.higher_order\.map_impl"
         ):
             control_flow.map(f, x, y)
 
@@ -1429,7 +1434,7 @@ def forward(self, pred_1, x_1):
             # torch._dynamo.exc.UncapturedHigherOrderOpError,
             # "Expected all leaves to be of torch.Tensor type.*",
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "map doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.map_impl",
         ):
             control_flow.map(f1, x, y)
 
@@ -1762,7 +1767,10 @@ def forward(self, pred_1, x_1):
             ],
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -1806,7 +1814,10 @@ def forward(self, pred_1, x_1):
                 if autograd:
                     self.check_autograd(result, result_exp, (init, x))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -1868,7 +1879,10 @@ def forward(self, pred_1, x_1):
             )
             self.assertEqual(grads, expected_grads)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -1968,7 +1982,7 @@ def forward(self, pred_1, x_1):
             # torch._dynamo.exc.Unsupported,
             # "HigherOrderOperator body's output must consist of tensors or ints only"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_float_output, init, x, dim=0)
 
@@ -2012,7 +2026,10 @@ def forward(self, pred_1, x_1):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # The paT206899919 rameterization is commented out for the moment and the test is marked with expected fail
     # Fails with: AssertionError: scan is not an OpOverload
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_scan_associative_scan(self):
         combine_mode = "generic"
@@ -2146,7 +2163,10 @@ def forward(self, pred_1, x_1):
         if autograd:
             self.check_autograd(result, expected_result, (init, init2, inp))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -2425,7 +2445,7 @@ def forward(self, pred_1, x_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan_fct(wrong_carry_shape, init, x, dim=dim)
 
@@ -2448,7 +2468,7 @@ def forward(self, pred_1, x_1):
             # torch._dynamo.exc.Unsupported,
             # combine_fn needs to produce two pytrees, one for the carries and one for the outputs.
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan_fct(no_carry, init, x, dim=dim)
 
@@ -2599,7 +2619,10 @@ def forward(self, pred_1, x_1):
                 reverse=reverse,
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -2765,13 +2788,11 @@ class GraphModule(torch.nn.Module):
         l_xs_ = L_xs_
 
         flip: "f32[3, 10, 2]" = torch.flip(l_xs_, [0]);  l_xs_ = None
-
         scan_combine_fn_0 = self.scan_combine_fn_0
         scan = torch.ops.higher_order.scan(scan_combine_fn_0, [l_init_0_, l_init_1_], [flip], []);  scan_combine_fn_0 = l_init_0_ = l_init_1_ = flip = None
         getitem: "f32[1, 10, 2]" = scan[0]
         getitem_1: "f32[1, 10, 2]" = scan[1]
         out: "f32[3, 1, 10, 2]" = scan[2];  scan = None
-
         out_1: "f32[3, 1, 10, 2]" = out.flip([0]);  out = None
         return (getitem, getitem_1, out_1)
 
@@ -2786,7 +2807,10 @@ class GraphModule(torch.nn.Module):
         )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -2861,7 +2885,10 @@ class GraphModule(torch.nn.Module):
             self.assertEqual(grads, expected_grads)
             self.assertEqual(add_input_grads, expected_add_input_grads)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -2948,7 +2975,10 @@ class GraphModule(torch.nn.Module):
 
     @requires_accelerator
     @skipIfTorchDynamo("not a dynamo test")
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @parametrize("layers", [1, 2, 3])
     @parametrize("device", ["cpu", "cuda", "xpu"])
     @torch._dynamo.config.patch(capture_scalar_outputs=True)
@@ -3103,7 +3133,10 @@ class GraphModule(torch.nn.Module):
                 compiled_loss,
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3143,7 +3176,10 @@ class GraphModule(torch.nn.Module):
             res_exp_req_grad_flat = pytree.tree_leaves(result_exp)[1:]
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3183,7 +3219,10 @@ class GraphModule(torch.nn.Module):
             res_exp_req_grad_flat = pytree.tree_leaves(result_exp)[1:]
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3212,7 +3251,10 @@ class GraphModule(torch.nn.Module):
         if autograd:
             self.check_autograd(result[0], result_exp[0], (x, h1, h2))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3247,7 +3289,10 @@ class GraphModule(torch.nn.Module):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x, W_ih, b_ih))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3284,7 +3329,10 @@ class GraphModule(torch.nn.Module):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3321,7 +3369,10 @@ class GraphModule(torch.nn.Module):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x))
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
@@ -3503,7 +3554,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_input_mutation, init, x, dim=0)
 
@@ -3524,7 +3575,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_input_output_alias, init, inp, dim=0)
 
@@ -3545,11 +3596,14 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_input_output_alias, init, inp, dim=0)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_scan_carry_carry_alias(self):
         device = torch.device(DEVICE_TYPE)
@@ -3568,11 +3622,14 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_carry_carry_alias, init, inp, dim=0)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_scan_carry_output_alias(self):
         device = torch.device(DEVICE_TYPE)
@@ -3591,7 +3648,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.scan",
         ):
             scan(fct_carry_output_alias, init, inp, dim=0)
 
@@ -3756,7 +3813,10 @@ class AssociativeScanTests(TestCase):
         kwargs_fake["compile_mode"] = "fake"
         return kwargs_fake
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -3839,7 +3899,10 @@ class AssociativeScanTests(TestCase):
 
         self.assertEqual(result, results_torch)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -3895,7 +3958,10 @@ class AssociativeScanTests(TestCase):
                     results_torch.append(op_pt(x, 0))
                 self.assertEqual(results, results_torch)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @unittest.expectedFailure
     def test_associative_scan_dim_shape_failure(self, compile_mode, combine_mode):
@@ -3918,7 +3984,10 @@ class AssociativeScanTests(TestCase):
                 inputs=x,
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -3961,7 +4030,10 @@ class AssociativeScanTests(TestCase):
             autograd_param=None if not autograd else inp,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -3990,7 +4062,10 @@ class AssociativeScanTests(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -4021,7 +4096,10 @@ class AssociativeScanTests(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -4103,15 +4181,12 @@ class GraphModule(torch.nn.Module):
         elem: "f32[3, 10, 2]" = torch.movedim(l_xs_0_0_, 0, 0);  l_xs_0_0_ = None
         elem_1: "f32[3, 10, 2]" = torch.movedim(l_xs_0_1_0_, 0, 0);  l_xs_0_1_0_ = None
         elem_2: "f32[3, 10, 2]" = torch.movedim(l_xs_1_, 0, 0);  l_xs_1_ = None
-
         elem_3: "f32[3, 10, 2]" = torch.flip(elem, [0]);  elem = None
         elem_4: "f32[3, 10, 2]" = torch.flip(elem_1, [0]);  elem_1 = None
         elem_5: "f32[3, 10, 2]" = torch.flip(elem_2, [0]);  elem_2 = None
-
         child: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_3, 0, 0, -1, 2)
         child_1: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_4, 0, 0, -1, 2)
         child_2: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_5, 0, 0, -1, 2)
-
         child_3: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_3, 0, 1, None, 2)
         child_4: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_4, 0, 1, None, 2)
         child_5: "f32[1, 10, 2]" = torch.ops.aten.slice(elem_5, 0, 1, None, 2)
@@ -4174,31 +4249,23 @@ class GraphModule(torch.nn.Module):
         b_2: "f32[2, 10, 2]" = torch._C._nn.pad(child_7, [0, 0, 0, 0, 0, 1], 'constant', None);  child_7 = None
 
         stacked: "f32[2, 2, 10, 2]" = torch.stack([cat, b_2], dim = 1);  cat = b_2 = None
-
         interleaved: "f32[4, 10, 2]" = torch.flatten(stacked, start_dim = 0, end_dim = 1);  stacked = None
-
         interleaved_1: "f32[3, 10, 2]" = torch.ops.aten.slice(interleaved, 0, 0, 3);  interleaved = None
 
         b_3: "f32[2, 10, 2]" = torch._C._nn.pad(child_8, [0, 0, 0, 0, 0, 1], 'constant', None);  child_8 = None
 
         stacked_1: "f32[2, 2, 10, 2]" = torch.stack([cat_1, b_3], dim = 1);  cat_1 = b_3 = None
-
         interleaved_2: "f32[4, 10, 2]" = torch.flatten(stacked_1, start_dim = 0, end_dim = 1);  stacked_1 = None
-
         interleaved_3: "f32[3, 10, 2]" = torch.ops.aten.slice(interleaved_2, 0, 0, 3);  interleaved_2 = None
 
         b_4: "f32[2, 10, 2]" = torch._C._nn.pad(child_9, [0, 0, 0, 0, 0, 1], 'constant', None);  child_9 = None
 
         stacked_2: "f32[2, 2, 10, 2]" = torch.stack([cat_2, b_4], dim = 1);  cat_2 = b_4 = None
-
         interleaved_4: "f32[4, 10, 2]" = torch.flatten(stacked_2, start_dim = 0, end_dim = 1);  stacked_2 = None
-
         interleaved_5: "f32[3, 10, 2]" = torch.ops.aten.slice(interleaved_4, 0, 0, 3);  interleaved_4 = None
-
         flip_3: "f32[3, 10, 2]" = interleaved_1.flip([0]);  interleaved_1 = None
         flip_4: "f32[3, 10, 2]" = interleaved_3.flip([0]);  interleaved_3 = None
         flip_5: "f32[3, 10, 2]" = interleaved_5.flip([0]);  interleaved_5 = None
-
         movedim_3: "f32[3, 10, 2]" = torch.movedim(flip_3, 0, 0);  flip_3 = None
         movedim_4: "f32[3, 10, 2]" = torch.movedim(flip_4, 0, 0);  flip_4 = None
         movedim_5: "f32[3, 10, 2]" = torch.movedim(flip_5, 0, 0);  flip_5 = None
@@ -4206,7 +4273,10 @@ class GraphModule(torch.nn.Module):
 """,  # noqa: B950
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -4254,7 +4324,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -4303,7 +4376,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -4369,7 +4445,10 @@ class GraphModule(torch.nn.Module):
 
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @unittest.expectedFailure
     def test_associative_scan_nested(self):
@@ -4417,7 +4496,10 @@ class GraphModule(torch.nn.Module):
             inputs=inp,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("loop_type", ["for"])
@@ -4469,7 +4551,10 @@ class GraphModule(torch.nn.Module):
 
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @unittest.expectedFailure
     def test_associative_scan_loop_in_combine_fn_failure(self):
@@ -4504,7 +4589,10 @@ class GraphModule(torch.nn.Module):
             inputs=inp,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -4545,7 +4633,10 @@ class GraphModule(torch.nn.Module):
 
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @unittest.expectedFailure
     def test_associative_scan_map_in_combine_fn(self):
@@ -4577,7 +4668,10 @@ class GraphModule(torch.nn.Module):
             inputs=inp,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -4611,7 +4705,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -4643,7 +4740,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (x,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -4690,7 +4790,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else elements,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -4728,7 +4831,10 @@ class GraphModule(torch.nn.Module):
             inputs=elements,
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_associative_scan_different_input_size_wrong_dim(self):
         batch = 5
@@ -4762,7 +4868,10 @@ class GraphModule(torch.nn.Module):
                 combine_mode="pointwise",
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -4815,7 +4924,10 @@ class GraphModule(torch.nn.Module):
                 autograd_param=None if not autograd else (inp, *param),
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -4892,7 +5004,10 @@ class GraphModule(torch.nn.Module):
                 autograd_param=None if not autograd else (inp, *param),
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -4933,7 +5048,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -4973,7 +5091,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -5012,7 +5133,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -5068,7 +5192,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=None if not autograd else (*pytree.tree_leaves(inp),),
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -5128,7 +5255,10 @@ class GraphModule(torch.nn.Module):
                 autograd_param=inp,
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
@@ -5177,7 +5307,10 @@ class GraphModule(torch.nn.Module):
             autograd_param=inp[0:1],
         )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     def test_associative_scan_sparse_tensor(self):
         x = torch.tensor(
             [[[0.0, 0], [1.0, 2.0]], [[0.0, 0], [3.0, 4.0]], [[0.0, 0], [5.0, 6.0]]]
@@ -5191,7 +5324,10 @@ class GraphModule(torch.nn.Module):
                 get_scan_combine_fn("add", True), x, 0, combine_mode="generic"
             )
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_associative_scan_combine_fn_wrong_meta_in_combine_fn(self):
         device = torch.device(DEVICE_TYPE)
@@ -5218,7 +5354,10 @@ class GraphModule(torch.nn.Module):
             ):
                 associative_scan(fct, x, 0)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     def test_associative_scan_wrong_pytree(self):
         def fct_wrong_pytree(x, y):
             return {
@@ -5238,7 +5377,10 @@ class GraphModule(torch.nn.Module):
         ):
             associative_scan(fct_wrong_pytree, inp, 0, combine_mode="generic")
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_associative_scan_non_pointwise(self):
         device = torch.device(DEVICE_TYPE)
@@ -5270,7 +5412,7 @@ class GraphModule(torch.nn.Module):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "associative_scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.associative_scan",
         ):
             associative_scan(fct_input_mutation, x, 0)
 
@@ -5290,11 +5432,14 @@ class GraphModule(torch.nn.Module):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "associative_scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.associative_scan",
         ):
             associative_scan(fct_input_output_alias, inp, 0)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        DEVICE_TYPE == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     @requires_accelerator
     def test_associative_scan_output_output_alias(self):
         device = torch.device(DEVICE_TYPE)
@@ -5312,7 +5457,7 @@ class GraphModule(torch.nn.Module):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "associative_scan must be captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.associative_scan",
         ):
             associative_scan(fct_output_output_alias, inp, 0)
 
@@ -6190,7 +6335,7 @@ def forward(self, x_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.cond",
         ):
             make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
                 *example_inputs
@@ -6254,7 +6399,7 @@ def forward(self, x_1):
                 # torch._dynamo.exc.Unsupported,
                 # "Encountered aliasing during higher order op tracing for HOP.*"
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
+                r"Higher Order Operator: torch\.cond",
             ):
                 make_fx(f, tracing_mode="symbolic")(example_input_func)
         finally:
@@ -6276,7 +6421,7 @@ def forward(self, x_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.cond",
         ):
             make_fx(f_wrapper(f), tracing_mode="symbolic")(example_input_func)
 
@@ -6301,7 +6446,7 @@ def forward(self, x_1):
                 # torch._dynamo.exc.Unsupported,
                 # "Encountered aliasing during higher order op tracing for HOP.*"
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
+                r"Higher Order Operator: torch\.cond",
             ):
                 f(example_input_func)
         finally:
@@ -6335,7 +6480,7 @@ def forward(self, x_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.cond",
         ):
             make_fx(f_wrapper(f), tracing_mode="symbolic")(example_input)
 
@@ -6474,7 +6619,7 @@ def forward(self, arg0_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.cond",
         ):
             make_fx(f)(x, torch.tensor(False))
 
@@ -6650,7 +6795,7 @@ def forward(self, arg0_1):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing for HOP.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.cond",
         ):
             make_fx(f, tracing_mode="fake")(x, torch.tensor(False))
 
@@ -7091,7 +7236,7 @@ class GraphModule(torch.nn.Module):
             # torch._dynamo.exc.Unsupported,
             # "Encountered aliasing during higher order op tracing.*"
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "map doesn't work unless it is captured completely with torch.compile.*",
+            r"Higher Order Operator: torch\.ops\.higher_order\.map_impl",
         ):
             functional_f(*example_inputs)
 
@@ -7818,7 +7963,7 @@ def forward(self, arg0_1, arg1_1, arg2_1):
         # due to set_
         with self.assertRaisesRegex(
             torch._dynamo.exc.UncapturedHigherOrderOpError,
-            "Cond doesn't work unless it is captured completely with torch.compile",
+            r"Higher Order Operator: torch\.cond",
         ):
             torch.cond(inp.sum() > 0, f, f, (inp, tmp))
 
@@ -8029,7 +8174,7 @@ def forward(self, s97 : torch.SymInt, L_a_ : torch.Tensor, L_b_ : torch.Tensor):
             # "Encountered aliasing during higher order op tracing for HOP.*"
             # This is the Exception with PYTORCH_TEST_WITH_DYNAMO=1
             # torch._dynamo.exc.UncapturedHigherOrderOpError,
-            # "scan must be captured completely with torch.compile.*",
+            # r"Higher Order Operator: torch\.ops\.higher_order\.scan",
             Exception,
             ".*",
         ):
@@ -8948,7 +9093,7 @@ class GraphModule(torch.nn.Module):
                 # torch._dynamo.exc.Unsupported,
                 # "Encountered aliasing during higher order op tracing for HOP.*"
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
+                r"Higher Order Operator: torch\.cond",
             ):
                 torch.compile(fn)(f, x)
 
@@ -8968,7 +9113,7 @@ class GraphModule(torch.nn.Module):
                 # torch._dynamo.exc.Unsupported,
                 # "Encountered aliasing during higher order op tracing for HOP.*"
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
+                r"Higher Order Operator: torch\.cond",
             ):
                 torch.compile(fn)(view_f, x)
 
@@ -8989,18 +9134,21 @@ class GraphModule(torch.nn.Module):
                 # torch._dynamo.exc.Unsupported,
                 # "Encountered aliasing during higher order op tracing for HOP.*"
                 torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
+                r"Higher Order Operator: torch\.cond",
             ):
                 torch.compile(fn)(f, x)
 
-            with self.assertRaisesRegex(
-                # Should be
-                # torch._dynamo.exc.Unsupported,
-                # "Encountered aliasing during higher order op tracing for HOP.*"
-                torch._dynamo.exc.UncapturedHigherOrderOpError,
-                "Cond doesn't work unless it is captured completely with torch.compile.*",
-            ):
-                with torch.inference_mode(inference_mode):
+            with torch.inference_mode(inference_mode):
+                if not inference_mode:
+                    with self.assertRaisesRegex(
+                        # Should be
+                        # torch._dynamo.exc.Unsupported,
+                        # "Encountered aliasing during higher order op tracing for HOP.*"
+                        torch._dynamo.exc.UncapturedHigherOrderOpError,
+                        r"Higher Order Operator: torch\.cond",
+                    ):
+                        torch.compile(fn)(f, x)
+                else:
                     torch.compile(fn)(f, x)
 
     @skipIfTorchDynamo("Graph is not captured correctly when test with dynamo")
@@ -9332,7 +9480,6 @@ class GraphModule(torch.nn.Module):
 
         sum_1: "f32[]" = l_x_.sum()
         gt: "b8[]" = sum_1 > 0;  sum_1 = None
-
         cond_true_0 = self.cond_true_0
         cond_false_0 = self.cond_false_0
         cond = torch.ops.higher_order.cond(gt, cond_true_0, cond_false_0, (l_x_, s94, s17, s17, l_z_));  gt = cond_true_0 = cond_false_0 = l_x_ = s94 = s17 = l_z_ = None
@@ -9726,6 +9873,7 @@ class TestHopSchema(TestCase):
             body_fn,
             (torch.randn(3, 3), torch.randn(3, 3), torch.randn(3, 3)),
             (c,),
+            "0,1,2,3",
         )
         self.assertExpectedInline(
             str(schema),

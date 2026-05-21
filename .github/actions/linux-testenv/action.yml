@@ -17,6 +17,10 @@ inputs:
     type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+  category:
+    type: string
+    default: ''
+    description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
 
 runs:
   using: composite
@@ -54,7 +58,7 @@ runs:
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
-        pattern: Torch-XPU-Wheel-*
+        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
