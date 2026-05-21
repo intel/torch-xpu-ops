@@ -23,8 +23,8 @@ from unpermute_reducescatter_fusion import (
 
 TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
-TOPK = 2
-NUM_EXPERTS = 8
+TOPK = 8
+NUM_EXPERTS = 128
 LOOP = 40
 WARMUP = 20
 ENABLE_PROFILE = False
