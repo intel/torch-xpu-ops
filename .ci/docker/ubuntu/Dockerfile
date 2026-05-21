@@ -1,4 +1,4 @@
-FROM manylinux2_28-builder:xpu_2619
+FROM fc343db6556e
 
 # Default command
 CMD ["bash"]

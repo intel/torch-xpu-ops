@@ -38,10 +38,6 @@ jobs:
         run: |
           # More robust Docker cleanup
           echo "Cleaning up Docker resources..."
-          docker container prune -f || true
-          docker image prune -f || true
-          docker system df
-          docker load -i /home/jenkins/manylinux2_28-builder_xpu_2619.img
 
       - name: Checkout repository
         uses: actions/checkout@v4
