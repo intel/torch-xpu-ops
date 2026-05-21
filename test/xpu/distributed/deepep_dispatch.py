@@ -33,6 +33,15 @@ if os.path.exists(_LIB_PATH):
         except Exception:
                 pass
 
+_COMBINE_LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "libep_combine.so")
+_HAS_EP_COMBINE_KERNEL = False
+if os.path.exists(_COMBINE_LIB_PATH):
+        try:
+                torch.ops.load_library(_COMBINE_LIB_PATH)
+                _HAS_EP_COMBINE_KERNEL = hasattr(torch.ops.symm_mem, "ep_combine")
+        except Exception:
+                pass
+
 
 def get_owner_expert_ranges(num_experts: int, tp_world_size: int) -> List[Tuple[int, int]]:
         """Return contiguous expert ranges [start, end) owned by each TP rank."""
@@ -166,6 +175,205 @@ def deepep_owner_dispatch(
 
         workspace.barrier()
         return remap_hidden_states
+
+
+def deepep_owner_combine(
+    expert_output: torch.Tensor,
+    topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
+    topk_weights: torch.Tensor,
+    output: torch.Tensor,
+    num_experts: int,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+    backend_stream: torch.xpu.Stream = None,
+        rank_output_ptrs: torch.Tensor = None,
+):
+        """
+        TP+EP owner-based combine (DeepEP style) using symmetric memory.
+
+        This is the reverse path of owner-based dispatch:
+        1. Each rank starts from expert_output rows that belong to experts owned by this rank.
+        2. For each token shard target rank, accumulate weighted contributions for that shard:
+             partial[token] += topk_weights[token, k] * expert_output[scatter_idx[token, k]]
+           but only for (token, k) whose expert owner is this rank.
+        3. Push per-target partial sums to target rank via symmetric memory.
+        4. Each rank sums contributions from all ranks to produce local output shard.
+
+        Args:
+            expert_output: [num_tokens * topk, hidden] expert-centric output.
+                On each rank, rows for non-owned experts may be zeros/invalid and are ignored.
+            topk_idx: [num_tokens, topk] int64 - expert assignment per (token, k).
+            scatter_idx: [num_tokens, topk] int32 - maps (token, k) to expert_output row.
+            topk_weights: [num_tokens, topk] float32/float16/bfloat16 routing weights.
+            output: [num_tokens_per_rank, hidden] output shard for this rank.
+            num_experts: total number of experts.
+            group: TP process group.
+            group_name: optional symmetric memory group name.
+                        backend_stream: optional second stream for pipelining.
+                        rank_output_ptrs: optional precomputed int64 pointers to each rank's
+                                combine receive buffer. Used by fused ep_combine kernel.
+        """
+        if group is None:
+                group = dist.group.WORLD
+        if group_name is None:
+                group_name = group.group_name
+        rank = dist.get_rank(group)
+        world_size = dist.get_world_size(group)
+
+        num_tokens, topk = topk_idx.shape
+        hidden = expert_output.shape[1]
+        num_tokens_per_rank = num_tokens // world_size
+        assert output.shape[0] == num_tokens_per_rank
+        assert output.shape[1] == hidden
+
+        recv_workspace_size = (
+                world_size * num_tokens_per_rank * hidden * expert_output.element_size()
+        )
+        recv_workspace = symm_mem.get_symm_mem_workspace(
+                group_name + "_combine_recv", min_size=recv_workspace_size
+        )
+
+        # Zero local receive workspace before fused push: kernel may skip writes
+        # for tokens without owned experts, and those slots must stay zero.
+        my_recv_buf = recv_workspace.get_buffer(
+                rank,
+                (world_size, num_tokens_per_rank, hidden),
+                expert_output.dtype,
+                storage_offset=0,
+        )
+        my_recv_buf.zero_()
+        recv_workspace.barrier()
+
+        if _HAS_EP_COMBINE_KERNEL:
+                if rank_output_ptrs is None:
+                        ptr_list = []
+                        for r in range(world_size):
+                                buf = recv_workspace.get_buffer(
+                                        r,
+                                        (world_size, num_tokens_per_rank, hidden),
+                                        expert_output.dtype,
+                                        storage_offset=0,
+                                )
+                                ptr_list.append(buf.data_ptr())
+                        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+                        rank_output_ptrs = torch.tensor(
+                                signed_ptrs,
+                                dtype=torch.int64,
+                                device=expert_output.device,
+                        )
+
+                # Single-kernel path: local weighted combine + remote push in one launch.
+                torch.ops.symm_mem.ep_combine(
+                        expert_output,
+                        rank_output_ptrs,
+                        topk_idx,
+                        scatter_idx,
+                        topk_weights.float(),
+                        output,
+                        num_experts,
+                        rank,
+                        world_size,
+                )
+                recv_workspace.barrier()
+        else:
+                if backend_stream is None:
+                        backend_stream = torch.xpu.Stream()
+
+                local_bufs = [
+                        torch.zeros(
+                                num_tokens_per_rank,
+                                hidden,
+                                device=expert_output.device,
+                                dtype=expert_output.dtype,
+                        ),
+                        torch.zeros(
+                                num_tokens_per_rank,
+                                hidden,
+                                device=expert_output.device,
+                                dtype=expert_output.dtype,
+                        ),
+                ]
+
+                # Python fallback: two-stage compute then push per target rank.
+                for step in range(world_size):
+                        target_rank = (rank - step) % world_size
+                        buf_idx = step % 2
+                        if step % 2 == 0:
+                                stream = backend_stream
+                        else:
+                                stream = torch.xpu.current_stream()
+
+                        with torch.xpu.stream(stream):
+                                target_chunk_start = target_rank * num_tokens_per_rank
+                                buf = local_bufs[buf_idx]
+                                buf.zero_()
+
+                                for i in range(num_tokens_per_rank):
+                                        global_i = target_chunk_start + i
+                                        for k in range(topk):
+                                                expert = int(topk_idx[global_i, k].item())
+                                                owner = get_expert_owner(expert, num_experts, world_size)
+                                                if owner == rank:
+                                                        src_row = int(scatter_idx[global_i, k].item())
+                                                        buf[i] += topk_weights[global_i, k] * expert_output[src_row]
+
+                                target_recv_buf = recv_workspace.get_buffer(
+                                        target_rank,
+                                        (world_size, num_tokens_per_rank, hidden),
+                                        expert_output.dtype,
+                                        storage_offset=0,
+                                )
+                                target_recv_buf[rank].copy_(buf)
+
+                torch.xpu.current_stream().wait_stream(backend_stream)
+                recv_workspace.barrier()
+
+        # Reduce contributions from all ranks for my token shard.
+        output.zero_()
+        for src_rank in range(world_size):
+                output.add_(my_recv_buf[src_rank])
+
+        recv_workspace.barrier()
+        return output
+
+
+def build_combine_rank_output_ptrs(
+    expert_output: torch.Tensor,
+    topk_idx: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+) -> torch.Tensor:
+        """Precompute rank_output_ptrs tensor for fused deepep_owner_combine."""
+        if group is None:
+                group = dist.group.WORLD
+        if group_name is None:
+                group_name = group.group_name
+        world_size = dist.get_world_size(group)
+
+        num_tokens = topk_idx.shape[0]
+        num_tokens_per_rank = num_tokens // world_size
+        hidden = expert_output.shape[1]
+
+        recv_workspace_size = (
+                world_size * num_tokens_per_rank * hidden * expert_output.element_size()
+        )
+        recv_workspace = symm_mem.get_symm_mem_workspace(
+                group_name + "_combine_recv", min_size=recv_workspace_size
+        )
+
+        ptr_list = []
+        for r in range(world_size):
+                buf = recv_workspace.get_buffer(
+                        r,
+                        (world_size, num_tokens_per_rank, hidden),
+                        expert_output.dtype,
+                        storage_offset=0,
+                )
+                ptr_list.append(buf.data_ptr())
+
+        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+        return torch.tensor(signed_ptrs, dtype=torch.int64).to(expert_output.device)
 
 
 def build_rank_buffers_ptr(
