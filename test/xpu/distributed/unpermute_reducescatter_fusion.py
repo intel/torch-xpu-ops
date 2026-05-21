@@ -39,11 +39,13 @@ import torch.distributed._symmetric_memory as symm_mem
 _LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "libunpermute_reduce_scatter.so")
 _HAS_LOCAL_UNPERMUTE_KERNEL = False
 _HAS_UNPERMUTE_RS_KERNEL = False
+_HAS_REDUCE_SCATTER_SUM = False
 if os.path.exists(_LIB_PATH):
     try:
         torch.ops.load_library(_LIB_PATH)
         _HAS_LOCAL_UNPERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_unpermute_copy_")
         _HAS_UNPERMUTE_RS_KERNEL = hasattr(torch.ops.symm_mem, "unpermute_reduce_scatter")
+        _HAS_REDUCE_SCATTER_SUM = hasattr(torch.ops.symm_mem, "reduce_scatter_sum")
     except Exception:
         pass
 
@@ -234,26 +236,31 @@ def unpermute_reducescatter_fusion_native(
     rank_buffers_ptr: torch.Tensor = None,
 ):
     """
-        Three-phase unpermute + reduce-scatter using symmetric memory.
+    Pipelined unpermute + reduce-scatter using symmetric memory and native kernels.
 
-        This implementation follows the requested ordering strictly:
-            1) Local reduction first (weighted unpermute on local expert_output)
-            2) Write local reduced result to symmetric memory + barrier
-            3) Read remote symmetric-memory reduced results for this rank's token shard,
-                 then add with local shard result
+    Pipeline (mirrors allgather_local_permute_fusion):
+      1. Compute own chunk with local_unpermute_copy_ → write to output directly
+      2. For each remote rank (two-stream round-robin):
+         - Compute that rank's chunk with local_unpermute_copy_
+         - Push result to that rank's symmetric memory receive slot
+      3. Barrier (ensure all pushes visible)
+      4. Sum received contributions from all ranks into output
+
+    Workspace layout per rank: [world_size, num_tokens_per_rank, hidden]
+      slot[i] = contribution received FROM rank i for this rank's token chunk
 
     Args:
         expert_output: [num_tokens * topk, hidden] expert-centric layout
-        scatter_idx: [num_tokens, topk] int32 - source row for each (token, k)
-        topk_weights: [num_tokens, topk] float32 - routing weights
+        scatter_idx: [num_tokens, topk] int32
+        topk_weights: [num_tokens, topk] float32
         output: [num_tokens_per_rank, hidden] pre-allocated output buffer
         group: TP process group
         group_name: optional group name for symmetric memory workspace
-        backend_stream: unused in this implementation (kept for API compatibility)
-        rank_buffers_ptr: unused in this implementation (kept for API compatibility)
+        backend_stream: optional second stream for pipelining
+        rank_buffers_ptr: unused (kept for API compatibility)
 
     Returns:
-        output: [num_tokens_per_rank, hidden] reduced result for this rank's shard
+        output: [num_tokens_per_rank, hidden] reduced result
     """
     if group is None:
         group = dist.group.WORLD
@@ -266,23 +273,11 @@ def unpermute_reducescatter_fusion_native(
     hidden = expert_output.shape[1]
     num_tokens_per_rank = num_tokens // world_size
 
-    # Phase 1: local reduction for all tokens (weighted unpermute on local expert_output)
-    local_reduced = torch.empty(
-        num_tokens,
-        hidden,
-        device=expert_output.device,
-        dtype=expert_output.dtype,
+    # Workspace: each rank has [world_size, num_tokens_per_rank, hidden] receive slots
+    workspace_size_bytes = (
+        world_size * num_tokens_per_rank * hidden * expert_output.element_size()
     )
-    for chunk_rank in range(world_size):
-        chunk_start = chunk_rank * num_tokens_per_rank
-        torch.ops.symm_mem.local_unpermute_copy_(
-            expert_output,
-            scatter_idx,
-            topk_weights,
-            chunk_start,
-            num_tokens_per_rank,
-            local_reduced[chunk_start : chunk_start + num_tokens_per_rank],
-        )
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
     # Phase 2: write local reduced result to symmetric memory and synchronize
     reduced_workspace_size_bytes = local_reduced.numel() * local_reduced.element_size()
@@ -290,38 +285,69 @@ def unpermute_reducescatter_fusion_native(
         group_name + "_local_reduced",
         min_size=reduced_workspace_size_bytes,
     )
-    local_slot = reduced_workspace.get_buffer(
+
+    # Phase 2: Compute + push for each remote rank (two-stream round-robin)
+    if backend_stream is None:
+        backend_stream = torch.xpu.Stream()
+
+    local_bufs = [
+        torch.empty(num_tokens_per_rank, hidden, device=expert_output.device, dtype=expert_output.dtype),
+        torch.empty(num_tokens_per_rank, hidden, device=expert_output.device, dtype=expert_output.dtype),
+    ]
+
+    for step in range(world_size - 1):
+        target_rank = (rank - step - 1) % world_size
+        buf_idx = step % 2
+        if step % 2 == 0:
+            stream = backend_stream
+        else:
+            stream = torch.xpu.current_stream()
+        with torch.xpu.stream(stream):
+            # Compute unpermute for target_rank's token chunk
+            target_chunk_start = target_rank * num_tokens_per_rank
+            torch.ops.symm_mem.local_unpermute_copy_(
+                expert_output, scatter_idx, topk_weights,
+                target_chunk_start, num_tokens_per_rank, local_bufs[buf_idx],
+            )
+
+            # Push to target_rank's receive buffer at our slot
+            target_recv_buf = workspace.get_buffer(
+                target_rank,
+                (world_size, num_tokens_per_rank, hidden),
+                expert_output.dtype,
+                storage_offset=0,
+            )
+            target_recv_buf[rank].copy_(local_bufs[buf_idx])
+
+    torch.xpu.current_stream().wait_stream(backend_stream)
+    workspace.barrier()
+
+    # Phase 3: Sum all received contributions for our chunk
+    my_recv_buf = workspace.get_buffer(
         rank,
-        local_reduced.shape,
-        local_reduced.dtype,
+        (world_size, num_tokens_per_rank, hidden),
+        expert_output.dtype,
         storage_offset=0,
     )
-    local_slot.copy_(local_reduced)
-    reduced_workspace.barrier()
+    for i in range(world_size):
+        if i != rank:
+            output.add_(my_recv_buf[i])
 
-    # Phase 3: read remote reduced results for this rank's token shard and accumulate
-    my_start = rank * num_tokens_per_rank
-    output.copy_(local_reduced[my_start : my_start + num_tokens_per_rank])
-    for step in range(world_size - 1):
-        remote_rank = (rank - step - 1) % world_size
-        remote_reduced = reduced_workspace.get_buffer(
-            remote_rank,
-            local_reduced.shape,
-            local_reduced.dtype,
-            storage_offset=0,
-        )
-        output.add_(remote_reduced[my_start : my_start + num_tokens_per_rank])
-
-    reduced_workspace.barrier()
+    workspace.barrier()
     return output
 
 
 def build_unpermute_rank_buffers_ptr(
     expert_output: torch.Tensor,
+    scatter_idx: torch.Tensor,
     group: dist.ProcessGroup = None,
     group_name: str = None,
 ) -> torch.Tensor:
-    """Precompute rank_buffers_ptr tensor for repeated unpermute_reduce_scatter calls."""
+    """Precompute rank_buffers_ptr for reduce_scatter_sum kernel.
+
+    Points to each rank's local_reduced [num_tokens, hidden] slot in
+    symmetric memory.
+    """
     if group is None:
         group = dist.group.WORLD
     if group_name is None:
@@ -329,19 +355,19 @@ def build_unpermute_rank_buffers_ptr(
     rank = dist.get_rank(group)
     world_size = dist.get_world_size(group)
 
-    workspace_size_bytes = expert_output.numel() * expert_output.element_size()
+    num_tokens = scatter_idx.size(0)
+    hidden = expert_output.size(1)
+    dtype = expert_output.dtype
+
+    workspace_size_bytes = num_tokens * hidden * expert_output.element_size()
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
     ptr_list = []
     for r in range(world_size):
-        if r == rank:
-            ptr_list.append(expert_output.data_ptr())
-        else:
-            buf = workspace.get_buffer(
-                r, expert_output.shape,
-                expert_output.dtype, storage_offset=0,
-            )
-            ptr_list.append(buf.data_ptr())
+        buf = workspace.get_buffer(
+            r, (num_tokens, hidden), dtype, storage_offset=0,
+        )
+        ptr_list.append(buf.data_ptr())
     signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
     return torch.tensor(signed_ptrs, dtype=torch.int64).to(expert_output.device)
 
@@ -372,9 +398,8 @@ def unpermute_reducescatter(
     Returns:
         output: [num_tokens_per_rank, hidden] reduced result for this rank's shard
     """
-    # Prefer single-kernel fused path when available.
-    # local_unpermute_copy_ alone implies a multi-kernel fallback only.
-    if _HAS_UNPERMUTE_RS_KERNEL:
+    # Prefer native pipeline path: local_unpermute + push + sum.
+    if _HAS_LOCAL_UNPERMUTE_KERNEL:
         return unpermute_reducescatter_fusion_native(
             expert_output=expert_output,
             scatter_idx=scatter_idx,

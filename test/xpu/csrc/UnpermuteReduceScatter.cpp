@@ -404,6 +404,167 @@ at::Tensor unpermute_reduce_scatter(
   return output;
 }
 
+// ---------------------------------------------------------------------------
+// Reduce-scatter sum kernel: reads all ranks' local_reduced from symmetric
+// memory and sums them for this rank's token shard.
+//
+// rank_buffers_ptr[r] -> base of rank r's local_reduced [num_tokens, hidden]
+//
+// For each (local_token_idx, h):
+//   global_token_idx = rank * num_tokens_per_rank + local_token_idx
+//   output[local_token_idx, h] = sum_r(
+//       rank_buffers_ptr[r][global_token_idx, h]
+//   )
+//
+// Access pattern: SEQUENTIAL row reads from each rank's buffer.
+// Ring ordering distributes PCIe traffic across links.
+// ---------------------------------------------------------------------------
+
+// Scalar fallback for non-aligned hidden_size.
+template <typename T>
+struct ReduceScatterSumScalarKernel {
+  const int64_t* rank_ptrs;
+  T* output_ptr;
+  int64_t num_tokens_per_rank;
+  int64_t hidden_size;
+  int64_t rank;
+  int64_t world_size;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
+    const int64_t total = num_tokens_per_rank * hidden_size;
+    if (idx >= total) return;
+
+    const int64_t h = idx % hidden_size;
+    const int64_t local_token_idx = idx / hidden_size;
+    const int64_t global_token_idx = rank * num_tokens_per_rank + local_token_idx;
+
+    float acc = 0.0f;
+    for (int64_t step = 0; step < world_size; ++step) {
+      const int64_t src_rank = (rank + step + 1) % world_size;
+      const T* src = reinterpret_cast<const T*>(rank_ptrs[src_rank]);
+      acc += static_cast<float>(
+          src[global_token_idx * hidden_size + h]);
+    }
+    output_ptr[local_token_idx * hidden_size + h] = static_cast<T>(acc);
+  }
+};
+
+// Vectorized reduce-scatter sum kernel.
+template <typename scalar_t, int VEC_SIZE>
+struct ReduceScatterSumVecKernel {
+  const int64_t* rank_ptrs;
+  scalar_t* output_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    const int32_t total = num_tokens_per_rank * hidden_vecs;
+    if (idx >= total) return;
+
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t local_token_idx = idx / hidden_vecs;
+    const int32_t global_token_idx = rank * num_tokens_per_rank + local_token_idx;
+    const int32_t h_start = vec_h * VEC_SIZE;
+
+    float acc[VEC_SIZE] = {};
+
+    // Ring-ordered to distribute PCIe traffic across links
+    for (int32_t step = 0; step < world_size; ++step) {
+      const int32_t src_rank = (rank + step + 1) % world_size;
+      const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
+      const scalar_t* row = src +
+          static_cast<int64_t>(global_token_idx) * hidden_size + h_start;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        acc[i] += static_cast<float>(row[i]);
+      }
+    }
+
+    scalar_t* dst = output_ptr +
+        static_cast<int64_t>(local_token_idx) * hidden_size + h_start;
+    #pragma unroll
+    for (int i = 0; i < VEC_SIZE; ++i) {
+      dst[i] = static_cast<scalar_t>(acc[i]);
+    }
+  }
+};
+
+// Host function: reduce-scatter sum.
+// Reads from all ranks' local_reduced via symmetric memory pointers,
+// sums contributions for this rank's token shard.
+at::Tensor reduce_scatter_sum(
+    const at::Tensor& rank_buffers_ptr,
+    at::Tensor output,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      rank_buffers_ptr.dim() == 1 && rank_buffers_ptr.size(0) == world_size,
+      "reduce_scatter_sum: rank_buffers_ptr must be 1D with size == world_size");
+  TORCH_CHECK(
+      rank_buffers_ptr.scalar_type() == at::kLong,
+      "reduce_scatter_sum: rank_buffers_ptr must be int64");
+  TORCH_CHECK(output.dim() == 2, "reduce_scatter_sum: output must be 2D");
+  TORCH_CHECK(output.is_contiguous());
+  TORCH_CHECK(rank >= 0 && rank < world_size);
+
+  const int64_t num_tokens_per_rank = output.size(0);
+  const int64_t hidden_size = output.size(1);
+
+  if (num_tokens_per_rank == 0 || hidden_size == 0) {
+    return output;
+  }
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "reduce_scatter_sum", [&]() {
+        if (hidden_size % VEC_SIZE == 0) {
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          const int64_t total = num_tokens_per_rank * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = ReduceScatterSumVecKernel<scalar_t, VEC_SIZE>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              output.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs)};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue, kfn);
+        } else {
+          const int64_t total = num_tokens_per_rank * hidden_size;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = ReduceScatterSumScalarKernel<scalar_t>{
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              output.data_ptr<scalar_t>(),
+              num_tokens_per_rank,
+              hidden_size,
+              rank,
+              world_size};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue, kfn);
+        }
+      });
+
+  return output;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "local_unpermute_copy_(Tensor expert_output, Tensor scatter_idx, "
@@ -412,9 +573,13 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "unpermute_reduce_scatter(Tensor rank_buffers_ptr, Tensor scatter_idx, "
       "Tensor topk_weights, Tensor(a!) output, int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "reduce_scatter_sum(Tensor rank_buffers_ptr, Tensor(a!) output, "
+      "int rank, int world_size) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("local_unpermute_copy_", local_unpermute_copy_);
   m.impl("unpermute_reduce_scatter", unpermute_reduce_scatter);
+  m.impl("reduce_scatter_sum", reduce_scatter_sum);
 }

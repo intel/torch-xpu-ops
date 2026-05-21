@@ -18,6 +18,7 @@ from unpermute_reducescatter_fusion import (
     build_unpermute_rank_buffers_ptr,
     _HAS_LOCAL_UNPERMUTE_KERNEL,
     _HAS_UNPERMUTE_RS_KERNEL,
+    _HAS_REDUCE_SCATTER_SUM,
 )
 
 
@@ -29,6 +30,7 @@ LOOP = 40
 WARMUP = 20
 ENABLE_PROFILE = False
 ENABLE_PROJECTION = True
+RUN_REFERENCE = False
 PCIE_DISCOUNT = 0.85
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
 HBM_BW_GBPS = 437.0
@@ -102,8 +104,10 @@ def check_unpermute_reducescatter_fusion():
 
     # Precompute rank_buffers_ptr when the native kernel is available
     rank_buffers_ptr = None
-    if _HAS_UNPERMUTE_RS_KERNEL:
-        rank_buffers_ptr = build_unpermute_rank_buffers_ptr(expert_output, group=group)
+    if _HAS_LOCAL_UNPERMUTE_KERNEL and _HAS_REDUCE_SCATTER_SUM:
+        rank_buffers_ptr = build_unpermute_rank_buffers_ptr(
+            expert_output, scatter_idx, group=group,
+        )
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
@@ -156,45 +160,48 @@ def check_unpermute_reducescatter_fusion():
         dist.barrier()
         output_fused.copy_(out)
 
-        # ---------- Warm up reference path ----------
-        for _ in range(WARMUP):
-            ref = torch.zeros_like(output_ref)
-            unpermute_allreduce_simple(
-                expert_output=expert_output,
-                scatter_idx=scatter_idx,
-                topk_weights=topk_weights,
-                output=ref,
-                group=group,
-            )
-        torch.xpu.synchronize()
-        dist.barrier()
+        if RUN_REFERENCE:
+            # ---------- Warm up reference path ----------
+            for _ in range(WARMUP):
+                ref = torch.zeros_like(output_ref)
+                unpermute_allreduce_simple(
+                    expert_output=expert_output,
+                    scatter_idx=scatter_idx,
+                    topk_weights=topk_weights,
+                    output=ref,
+                    group=group,
+                )
+            torch.xpu.synchronize()
+            dist.barrier()
 
-        # ---------- Timed reference path ----------
-        for i in range(LOOP):
-            if i >= WARMUP:
-                ref_begin_events[i].record()
-            ref = torch.zeros_like(output_ref)
-            unpermute_allreduce_simple(
-                expert_output=expert_output,
-                scatter_idx=scatter_idx,
-                topk_weights=topk_weights,
-                output=ref,
-                group=group,
-            )
-            if i >= WARMUP:
-                ref_end_events[i].record()
-        torch.xpu.synchronize()
-        dist.barrier()
-        output_ref.copy_(ref)
+            # ---------- Timed reference path ----------
+            for i in range(LOOP):
+                if i >= WARMUP:
+                    ref_begin_events[i].record()
+                ref = torch.zeros_like(output_ref)
+                unpermute_allreduce_simple(
+                    expert_output=expert_output,
+                    scatter_idx=scatter_idx,
+                    topk_weights=topk_weights,
+                    output=ref,
+                    group=group,
+                )
+                if i >= WARMUP:
+                    ref_end_events[i].record()
+            torch.xpu.synchronize()
+            dist.barrier()
+            output_ref.copy_(ref)
 
     latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
-    ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
+    if RUN_REFERENCE:
+        ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_unpermute_reducescatter_fusion_rank{rank}.json")
 
     print(f"[Fusion time in rank {rank}] {latencies} ms")
-    print(f"[Reference unpermute+allreduce time in rank {rank}] {ref_latencies} ms")
+    if RUN_REFERENCE:
+        print(f"[Reference unpermute+allreduce time in rank {rank}] {ref_latencies} ms")
 
     # ---------- Accuracy check ----------
     # Run one final fresh pass and compare fused vs reference
@@ -229,13 +236,14 @@ def check_unpermute_reducescatter_fusion():
 
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
-        avg_ref = sum(ref_latencies) / len(ref_latencies)
+        print(f"[Summary] avg_fused={avg_fused:.3f} ms")
+        if RUN_REFERENCE:
+            avg_ref = sum(ref_latencies) / len(ref_latencies)
+            print(
+                f"[Summary] avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_fused:.3f}x"
+            )
         print(
-            f"[Summary] avg_fused={avg_fused:.3f} ms, "
-            f"avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_fused:.3f}x"
-        )
-        print(
-            f"[Summary] native_kernel={'yes (_HAS_UNPERMUTE_RS_KERNEL)' if _HAS_UNPERMUTE_RS_KERNEL else 'no (Python fallback)'}"
+            f"[Summary] native_kernel={'yes (local_unpermute + reduce_scatter_sum)' if (_HAS_LOCAL_UNPERMUTE_KERNEL and _HAS_REDUCE_SCATTER_SUM) else 'no (Python fallback)'}"
         )
 
         if ENABLE_PROJECTION:

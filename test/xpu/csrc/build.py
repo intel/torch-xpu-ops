@@ -90,6 +90,14 @@ def build():
             "AllgatherWithSymmMem",
         )
     )
+    outputs.append(
+        build_one(
+            cfg,
+            "UnpermuteReduceScatter.cpp",
+            "libunpermute_reduce_scatter.so",
+            "UnpermuteReduceScatter",
+        )
+    )
     return outputs
 
 
@@ -101,6 +109,7 @@ def clean():
         os.path.join(base_dir, "libnotify_dispatch.so"),
         os.path.join(base_dir, "libep_combine.so"),
         os.path.join(base_dir, "liballgather_with_symm_mem.so"),
+        os.path.join(base_dir, "libunpermute_reduce_scatter.so"),
     ]
 
     removed = False

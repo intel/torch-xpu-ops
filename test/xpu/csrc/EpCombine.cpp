@@ -338,14 +338,170 @@ at::Tensor ep_combine(
   return output;
 }
 
+// Ownership-filtered local unpermute kernel.
+// Like local_unpermute_copy_ but only reads rows for experts owned by this rank.
+// Saves ~75% HBM bandwidth compared to reading all topk rows.
+// Output must be pre-zeroed by caller (skipped tokens remain zero).
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombineLocalVecKernel {
+  const scalar_t* expert_output_ptr;
+  const int64_t* topk_idx_ptr;
+  const int32_t* scatter_idx_ptr;
+  const float* topk_weights_ptr;
+  scalar_t* output_ptr;
+  int32_t chunk_start;
+  int32_t num_tokens_per_chunk;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t hidden_vecs;
+  int32_t rank;
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    const int32_t total = num_tokens_per_chunk * hidden_vecs;
+    if (idx >= total) return;
+
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t local_token_idx = idx / hidden_vecs;
+    const int32_t global_token_idx = chunk_start + local_token_idx;
+    const int32_t h_start = vec_h * VEC_SIZE;
+
+    // Ownership pre-check: skip if no owned experts for this token
+    const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+    bool has_owned = false;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      int32_t owner;
+      if (expert < boundary) {
+        owner = expert / (base_experts + 1);
+      } else {
+        owner = rem_experts + (expert - boundary) / base_experts;
+      }
+      if (owner == rank) { has_owned = true; break; }
+    }
+    if (!has_owned) return;  // output pre-zeroed by caller
+
+    // Accumulate only from owned experts
+    float acc[VEC_SIZE] = {};
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      int32_t owner;
+      if (expert < boundary) {
+        owner = expert / (base_experts + 1);
+      } else {
+        owner = rem_experts + (expert - boundary) / base_experts;
+      }
+      if (owner == rank) {
+        const float weight = topk_weights_ptr[topk_base + k];
+        const int32_t src_row = scatter_idx_ptr[topk_base + k];
+        const scalar_t* src = expert_output_ptr +
+            static_cast<int64_t>(src_row) * hidden_size + h_start;
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          acc[i] += weight * static_cast<float>(src[i]);
+        }
+      }
+    }
+
+    scalar_t* dst = output_ptr +
+        static_cast<int64_t>(local_token_idx) * hidden_size + h_start;
+    #pragma unroll
+    for (int i = 0; i < VEC_SIZE; ++i) {
+      dst[i] = static_cast<scalar_t>(acc[i]);
+    }
+  }
+};
+
+at::Tensor ep_combine_local_(
+    const at::Tensor& expert_output,
+    const at::Tensor& topk_idx,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_weights,
+    at::Tensor output,
+    int64_t num_experts,
+    int64_t chunk_start,
+    int64_t num_tokens_per_chunk,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(expert_output.dim() == 2);
+  TORCH_CHECK(expert_output.is_contiguous());
+  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.scalar_type() == at::kLong);
+  TORCH_CHECK(topk_idx.is_contiguous());
+  TORCH_CHECK(scatter_idx.dim() == 2 && scatter_idx.scalar_type() == at::kInt);
+  TORCH_CHECK(scatter_idx.is_contiguous());
+  TORCH_CHECK(topk_weights.dim() == 2 && topk_weights.scalar_type() == at::kFloat);
+  TORCH_CHECK(topk_weights.is_contiguous());
+  TORCH_CHECK(output.dim() == 2 && output.is_contiguous());
+  TORCH_CHECK(output.size(0) == num_tokens_per_chunk);
+  TORCH_CHECK(output.size(1) == expert_output.size(1));
+
+  const int64_t hidden_size = expert_output.size(1);
+  const int64_t topk = topk_idx.size(1);
+
+  if (num_tokens_per_chunk == 0) return output;
+
+  const int32_t base_experts_val = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts_val = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary_val = rem_experts_val * (base_experts_val + 1);
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      expert_output.scalar_type(), "ep_combine_local_", [&]() {
+        if (hidden_size % VEC_SIZE == 0) {
+          const int32_t hidden_vecs = static_cast<int32_t>(hidden_size / VEC_SIZE);
+          const int64_t total = num_tokens_per_chunk * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = EpCombineLocalVecKernel<scalar_t, VEC_SIZE>{
+              expert_output.data_ptr<scalar_t>(),
+              topk_idx.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              output.data_ptr<scalar_t>(),
+              static_cast<int32_t>(chunk_start),
+              static_cast<int32_t>(num_tokens_per_chunk),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              hidden_vecs,
+              static_cast<int32_t>(rank),
+              base_experts_val,
+              rem_experts_val,
+              boundary_val};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        }
+      });
+
+  return output;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ep_combine(Tensor expert_output, Tensor rank_output_ptrs, "
       "Tensor topk_idx, Tensor scatter_idx, Tensor topk_weights, "
       "Tensor(a!) output, int num_experts, "
       "int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "ep_combine_local_(Tensor expert_output, Tensor topk_idx, "
+      "Tensor scatter_idx, Tensor topk_weights, "
+      "Tensor(a!) output, int num_experts, "
+      "int chunk_start, int num_tokens_per_chunk, "
+      "int rank, int world_size) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ep_combine", ep_combine);
+  m.impl("ep_combine_local_", ep_combine_local_);
 }
