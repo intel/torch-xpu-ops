@@ -181,7 +181,7 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
 
 template <typename index_t>
 struct ReduceCrowIndicesDim1KernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     int64_t nnz = 0;
     new_crow_indices[0] = 0;
     for (int64_t i = 0; i < nrows; i++) {
@@ -291,8 +291,7 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
         index_t* row_map_ptr = row_map.data_ptr<index_t>();
         ReduceCrowIndicesDim1KernelFunctor<index_t> kfn_crow(
             new_crow_indices_ptr, row_map_ptr, crow_indices_ptr, nrows);
-        sycl_kernel_submit(
-            sycl::range<1>(1), sycl::range<1>(1), queue, kfn_crow);
+        sycl_kernel_submit(sycl_single_task, queue, kfn_crow);
 
         index_t new_nnz = new_crow_indices[-1].item<index_t>();
         new_col_indices.resize_(new_nnz);

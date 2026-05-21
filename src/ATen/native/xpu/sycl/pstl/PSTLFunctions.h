@@ -79,9 +79,9 @@ struct LSFunctor {
 };
 
 template <class T, class InputIt>
-struct GetItemFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::item<1> item_id) const {
-    d_first_[item_id] = first_[item_id];
+struct GetItemFunctor {
+  void operator()() const {
+    d_first_[0] = first_[index_];
   }
   GetItemFunctor(InputIt first, T index, InputIt d_first)
       : first_(first), index_(index), d_first_(d_first) {}
@@ -96,19 +96,18 @@ template <class T, class InputIt>
 static inline T get_item(InputIt first, InputIt last, T index) {
   RECORD_FUNCTION("get_item_xpu", {});
   const auto N = std::distance(first, last);
-  auto& q = getCurrentSYCLQueue();
 
   T res = -1;
   if (index >= N)
     return res;
 
   auto options = map_options<T>();
-  Tensor d_tensor = at::empty({N}, options);
+  Tensor d_tensor = at::empty({1}, options);
   T* d_tensor_ptr = d_tensor.data_ptr<T>();
 
   GetItemFunctor<T, InputIt> kfn1(first, index, d_tensor_ptr);
-  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
-  res = d_tensor[index].template item<T>();
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), kfn1);
+  res = d_tensor[0].template item<T>();
 
   return res;
 }
