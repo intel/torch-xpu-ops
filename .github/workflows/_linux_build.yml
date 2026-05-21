@@ -42,7 +42,6 @@ defaults:
     shell: bash -xe {0}
 env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-  ONEAPI_DLE_INSTALLER_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/8170208e-86db-4faa-a0d6-1ecf62699574/intel-deep-learning-essentials-2026.0.0.624_offline.sh
 
 jobs:
   build:
@@ -84,16 +83,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
-      - name: Install oneAPI 2026.0.0
-        run: |
-          wget -q -O oneapi.sh "${ONEAPI_DLE_INSTALLER_URL}"
-          bash oneapi.sh -a -s --eula accept --action remove || true
-          rm -rf /opt/intel/oneapi
-          bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
-          rm -f oneapi.sh
-          source /opt/intel/oneapi/setvars.sh --force
-          # verify oneAPI installation
-          icpx --version
       - name: Snapshot open skipped issues at build start
         run: |
           touch known_issue_static.log issues_snapshot.log

@@ -26,8 +26,12 @@ on:
       runner:
         required: true
         type: string
-        default: 'Windows_CI'
         description: Runner label
+      xpu_version:
+        required: false
+        type: string
+        default: '2026.0'
+        description: XPU version
 
 permissions: read-all
 
@@ -47,6 +51,12 @@ jobs:
         with:
           pattern: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/wheel_artifact
+      - name: Install oneAPI (for UT runtime)
+        shell: cmd
+        run: |
+          set XPU_VERSION=${{ inputs.xpu_version }}
+          call .github\scripts\install_xpu.bat
+          if errorlevel 1 exit /b 1
       - name: Setup Python Environment
         shell: cmd
         run: |
@@ -126,8 +136,6 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ut
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          
           for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
           python -m pip install "%TORCH_WHL%"
           cd %GITHUB_WORKSPACE%\..\pytorch
@@ -161,6 +169,9 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           call conda activate windows_ut
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
