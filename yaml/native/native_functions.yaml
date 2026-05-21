@@ -9400,6 +9400,16 @@
   dispatch:
     SparseCsrXPU: baddbmm_out_sparse_csr_xpu
 
+- func: sparse_sampled_addmm.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  python_module: sparse
+  dispatch:
+    SparseCsrXPU: sparse_sampled_addmm_out_sparse_csr_xpu
+
+- func: sparse_sampled_addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  python_module: sparse
+  dispatch:
+    SparseCsrXPU: sparse_sampled_addmm_sparse_csr_xpu
+
 - func: addmv(Tensor self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1) -> Tensor
   structured_delegate: addmv.out
   variants: function, method
