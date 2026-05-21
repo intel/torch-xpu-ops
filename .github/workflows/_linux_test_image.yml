@@ -44,12 +44,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-
       - name: Log in to Docker Hub
         if: env.WORKFLOW_PUSH_TO_HUB == 'true'
         uses: docker/login-action@v3
@@ -57,16 +51,10 @@ jobs:
           username: intelgpu
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .ci/docker
-          file: .ci/docker/ubuntu/Dockerfile
-          push: ${{ env.WORKFLOW_PUSH_TO_HUB == 'true' }}
-          tags: |
-            ${{ env.WORKFLOW_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Push Docker image
+        if: env.WORKFLOW_PUSH_TO_HUB == 'true'
+        run: |
+          docker push "${{ env.WORKFLOW_TAG }}"
 
       - name: Verify and list images
         run: |
