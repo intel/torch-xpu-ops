@@ -423,6 +423,22 @@ Tensor _fft_c2r_mkl(
   if (dim.empty()) {
     return orig_self.clone();
   }
+  TORCH_CHECK(
+      last_dim_size >= 1,
+      "Invalid number of data points (",
+      last_dim_size,
+      ") specified");
+  {
+    const int64_t expected = last_dim_size / 2 + 1;
+    TORCH_CHECK(
+        orig_self.size(dim.back()) == expected,
+        "Expected size of last transformed dimension of input to be ",
+        expected,
+        " (= last_dim_size / 2 + 1, where last_dim_size=",
+        last_dim_size,
+        "), but got ",
+        orig_self.size(dim.back()));
+  }
   auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
