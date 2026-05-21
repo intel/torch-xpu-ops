@@ -83,14 +83,20 @@ void memcpyAsync(
     bool p2p_enabled) {
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
-  if (dst_device == src_device) {
+  if (dst_device != src_device) {
+    TORCH_INTERNAL_ASSERT(p2p_enabled == true);
+  }
+  auto q = copy_stream.queue();
+  auto dev = q.get_device();
+  if (dev.ext_oneapi_architecture_is(
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc) ||
+      dev.ext_oneapi_architecture_is(
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg)) {
     copy_kernel(iter);
   } else {
-    TORCH_INTERNAL_ASSERT(p2p_enabled == true);
     auto dst = (char*)iter.data_ptr(0);
     auto src = (char*)iter.data_ptr(1);
     size_t size = iter.numel() * iter.element_size(0);
-    auto q = copy_stream.queue();
     q.copy(src, dst, size);
   }
 }
@@ -137,8 +143,6 @@ void copy_device_to_device(
   }
 
   if (memcpy_eligible) {
-    // SYCL queue.memcpy performance is worse than SYCL copy kernel
-    // implementation.
     memcpyAsync(iter, copy_stream, p2p_enabled);
   } else {
     if (same_neg) {
