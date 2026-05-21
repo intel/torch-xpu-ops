@@ -694,6 +694,7 @@ class TestExport(TestCase):
                 self.assertTrue("custom" in node.meta)
                 self.assertTrue(node.meta["custom"] != {})
 
+    @testing.xpuExpectedSuccess  # XPU supports vmap in serdes export (issue #3551)
     @testing.expectedFailureSerDer  # can't serialize functorch ops
     @testing.expectedFailureSerDerNonStrict  # can't serialize functorch ops
     def test_vmap_to_assert(self):
@@ -3627,6 +3628,7 @@ graph():
         res = ep.module()(ref_x)
         self.assertEqual(res, ref_out)
 
+    @testing.xpuExpectedSuccess  # XPU supports vmap in serdes export (issue #3551)
     @testing.expectedFailureSerDer  # can't serialize functorch ops
     @testing.expectedFailureSerDerNonStrict  # can't serialize functorch ops
     @testing.expectedFailureCppRuntime
