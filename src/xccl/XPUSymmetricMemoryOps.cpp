@@ -28,7 +28,6 @@
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
-#include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/AllgatherGemmOps.hpp>
 
 #include <xccl/Signal.hpp>
@@ -796,21 +795,27 @@ static c10::intrusive_ptr<c10d::symmetric_memory::SymmetricMemory>
 acquire_workspace(
     int64_t min_bytes,
     int device_idx,
+    const std::string& cache_key,
     const std::string& group_name) {
-  // workspace cache: group_name -> WorkspaceEntry
+  // workspace cache: cache_key -> WorkspaceEntry. The cache_key includes a
+  // per-op prefix (e.g. "ag:" or "rs:") so AG and RS workspaces don't fight
+  // over the same allocation. The actual `group_name` (no prefix) is used
+  // for alloc + rendezvous, because that name must match a registered
+  // process group.
   static std::mutex ws_mu;
   static std::unordered_map<std::string, WorkspaceEntry> ws_cache;
 
   std::lock_guard<std::mutex> lk(ws_mu);
-  auto& entry = ws_cache[group_name];
+  auto& entry = ws_cache[cache_key];
+
+  // (Re-)acquire the symmetric allocator. Use the base interface only so
+  // this SYCL TU does not pull in XPUSymmetricMemoryAllocator's typeinfo /
+  // vtable (which live in the regular C++ XPUSymmetricMemory.cpp TU).
+  auto allocator =
+      c10d::symmetric_memory::get_allocator(c10::DeviceType::XPU);
+  TORCH_CHECK(allocator != nullptr, "fused op: XPU symm_mem allocator not found.");
 
   if (entry.raw_ptr == nullptr || entry.bytes < min_bytes) {
-    // (Re-)allocate via the XPU symmetric memory allocator.
-    auto* allocator = dynamic_cast<
-        c10d::symmetric_memory::XPUSymmetricMemoryAllocator*>(
-        c10d::symmetric_memory::get_allocator(c10::DeviceType::XPU));
-    TORCH_CHECK(allocator != nullptr, "fused op: XPU symm_mem allocator not found.");
-
     if (entry.raw_ptr != nullptr) {
       allocator->free(entry.raw_ptr);
     }
@@ -820,8 +825,7 @@ acquire_workspace(
   }
 
   if (entry.symm_mem == nullptr) {
-    entry.symm_mem =
-        c10d::symmetric_memory::rendezvous(entry.raw_ptr, group_name);
+    entry.symm_mem = allocator->rendezvous(entry.raw_ptr, group_name);
     TORCH_CHECK(
         entry.symm_mem != nullptr,
         "fused op: workspace rendezvous failed for group '",
@@ -851,11 +855,12 @@ acquire_workspace(
 // Constraints: bfloat16, gather_dim=0, 2D A_shard [shard_m, k],
 //              each B in Bs is [k, n_i].
 // ============================================================================
-std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
+std::tuple<std::optional<at::Tensor>, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
   const at::Tensor& A_shard,
   const std::vector<at::Tensor>& Bs,
   int64_t gather_dim,
-  std::string group_name) {
+  std::string group_name,
+  bool return_A) {
   constexpr const char* kOpName = "fused_all_gather_matmul(xpu)";
   TORCH_CHECK(
     A_shard.is_xpu() && A_shard.is_contiguous(),
@@ -903,7 +908,7 @@ std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
   // Symm workspace for gathered A: world_size * shard_m * k * 2 bytes per rank.
   const int64_t ws_bytes =
     static_cast<int64_t>(world_size) * shard_m * k * A_shard.element_size();
-  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "ag:" + group_name);
+  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "ag:" + group_name, group_name);
 
   sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
   sycl::queue secondary_q(
@@ -925,11 +930,14 @@ std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
     at::empty({static_cast<int64_t>(world_size) * shard_m, n0},
         A_shard.options());
 
+  // Keep the host-side peer pointer vector alive across the kernel launch.
+  std::vector<void*> peer_ptrs_vec = ws_symm->get_buffer_ptrs();
+
   xpu_symm_gemm::run_allgather_gemm_bf16(
     A_shard.data_ptr(),
     B0.data_ptr(),
     mm_out0.data_ptr(),
-    ws_symm->get_buffer_ptrs(),
+    peer_ptrs_vec.data(),
     rank,
     world_size,
     shard_m,
@@ -949,7 +957,7 @@ std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
         A_shard.options());
   q.memcpy(
     gathered_A.data_ptr(),
-    ws_symm->get_buffer_ptrs()[rank],
+    peer_ptrs_vec[rank],
     static_cast<size_t>(world_size) * shard_m * k * A_shard.element_size());
 
   // Remaining Bs: run GEMM on the (now ready) gathered_A.
@@ -967,6 +975,9 @@ std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
   mm_outs.push_back(at::mm(gathered_A, Bi));
   }
 
+  if (!return_A) {
+    return {std::nullopt, mm_outs};
+  }
   return {gathered_A, mm_outs};
 }
 
@@ -1043,7 +1054,7 @@ at::Tensor fused_matmul_reduce_scatter_xpu(
   // Symm workspace: world_size * shard_m * n * 2 bytes per rank.
   const int64_t ws_bytes =
     static_cast<int64_t>(world_size) * shard_m * n * A.element_size();
-  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "rs:" + group_name);
+  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "rs:" + group_name, group_name);
 
   sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
   sycl::queue secondary_q(
@@ -1053,11 +1064,13 @@ at::Tensor fused_matmul_reduce_scatter_xpu(
 
   at::Tensor out_C = at::empty({shard_m, n}, A.options());
 
+  std::vector<void*> peer_ptrs_vec = ws_symm->get_buffer_ptrs();
+
   xpu_symm_gemm::run_reduce_scatter_gemm_bf16(
     A.data_ptr(),
     B_c.data_ptr(),
     out_C.data_ptr(),
-    ws_symm->get_buffer_ptrs(),
+    peer_ptrs_vec.data(),
     rank,
     world_size,
     shard_m,

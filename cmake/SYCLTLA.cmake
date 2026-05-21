@@ -23,18 +23,27 @@ endmacro()
 if(NOT __SYCLTLA_INCLUDED)
   set(__SYCLTLA_INCLUDED TRUE)
   include(FetchContent)
-  FetchContent_Declare(
-      repo-sycl-tla
-      GIT_REPOSITORY https://github.com/intel/sycl-tla.git
-      GIT_TAG        v0.6
-      GIT_SHALLOW    OFF
-  )
+  if(DEFINED ENV{SYCLTLA_SOURCE_DIR} AND EXISTS "$ENV{SYCLTLA_SOURCE_DIR}/include/cutlass")
+    message(STATUS "Using local sycl-tla source: $ENV{SYCLTLA_SOURCE_DIR}")
+    FetchContent_Declare(
+        repo-sycl-tla
+        SOURCE_DIR "$ENV{SYCLTLA_SOURCE_DIR}"
+    )
+  else()
+    FetchContent_Declare(
+        repo-sycl-tla
+        GIT_REPOSITORY https://github.com/intel/sycl-tla.git
+        GIT_TAG        v0.6
+        GIT_SHALLOW    OFF
+    )
+  endif()
   FetchContent_GetProperties(repo-sycl-tla)
   if(NOT repo-sycl-tla_POPULATED)
     FetchContent_Populate(repo-sycl-tla)
   endif()
   set(SYCLTLA_INCLUDE_DIRS ${repo-sycl-tla_SOURCE_DIR}/include
                            ${repo-sycl-tla_SOURCE_DIR}/applications
+                           ${repo-sycl-tla_SOURCE_DIR}/examples/common
                            ${repo-sycl-tla_SOURCE_DIR}/tools/util/include)
   set(SYCLTLA_COMPILE_DEFINITIONS CUTLASS_ENABLE_SYCL SYCL_INTEL_TARGET)
 endif()

@@ -495,7 +495,7 @@ void run_reduce_scatter_gemm_bf16(
 
     if (vec_elems > 0) {
         primary_q.submit([=](sycl::handler& h) {
-            h.parallel_for(
+            h.parallel_for<class XPUSymmRSReduceVecKernel>(
                 sycl::nd_range<1>(n_groups * WG_SIZE, WG_SIZE),
                 [=](sycl::nd_item<1> item) {
                     const size_t vi = item.get_global_linear_id();
@@ -524,7 +524,7 @@ void run_reduce_scatter_gemm_bf16(
         }
         SyclBF16* tail_out = reinterpret_cast<SyclBF16*>(out_C) + tail_start;
         primary_q.submit([=](sycl::handler& h) {
-            h.parallel_for(
+            h.parallel_for<class XPUSymmRSReduceTailKernel>(
                 sycl::range<1>(tail),
                 [=](sycl::id<1> i) {
                     const size_t idx = tail_start + i[0];
