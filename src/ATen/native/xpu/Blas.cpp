@@ -396,6 +396,45 @@ Tensor& baddbmm_complex_out_xpu(
 #endif // USE_ONEMKL_XPU
 }
 
+Tensor& addmv_out_xpu(
+    const Tensor& self,
+    const Tensor& mat,
+    const Tensor& vec,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  c10::DeviceGuard guard(mat.device());
+
+  auto betaval = beta.toComplexDouble();
+  bool beta_is_zero = (betaval.real() == 0.0 && betaval.imag() == 0.0);
+
+  if (mat.numel() == 0) {
+    // Empty matrix: result = beta * self, or zero if beta == 0
+    if (beta_is_zero) {
+      result.zero_();
+    } else {
+      result.copy_(self.expand(result.sizes()).mul(beta));
+    }
+    return result;
+  }
+
+  // Compute mat @ vec: (m, k) @ (k,) -> (m,) via mm
+  Tensor mat_vec = at::mm(mat, vec.unsqueeze(1)).squeeze(1);
+
+  if (beta_is_zero) {
+    // result = alpha * (mat @ vec); skip self to avoid NaN propagation when
+    // beta == 0
+    result.copy_(mat_vec.mul(alpha));
+  } else {
+    // result = beta * self + alpha * (mat @ vec)
+    // Use copy_ to write into result, preserving its strides
+    result.copy_(
+        self.expand(result.sizes()).mul(beta).add_(mat_vec.mul(alpha)));
+  }
+
+  return result;
+}
+
 inline void dot_check(const Tensor& self, const Tensor& other) {
   TORCH_CHECK(
       self.dim() == 1 && other.dim() == 1,
