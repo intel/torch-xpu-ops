@@ -1266,3 +1266,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
         )
     return os.system(test_command)
+
+
+def ensure_pytorch_test_path(test_dir):
+    test_dir = os.path.abspath(test_dir)
+    if test_dir not in sys.path:
+        sys.path.insert(0, test_dir)
