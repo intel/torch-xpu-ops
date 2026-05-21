@@ -988,7 +988,7 @@ void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
       iter.dtype(),
       "geometric_xpu",
       [&] {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
         auto p_ = static_cast<accscalar_t>(p);
         GeometricFunctor<scalar_t, accscalar_t> geometric_func(p_);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
