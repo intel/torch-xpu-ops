@@ -73,8 +73,6 @@ struct LocalPermuteCopyVecKernel {
   int32_t topk;
   int32_t remote_token_offset;
   int32_t hidden_vecs;       // hidden_size / VEC_SIZE
-  int32_t hidden_vecs_mask;  // hidden_vecs - 1 (for bitwise mod)
-  int32_t hidden_vecs_shift; // log2(hidden_vecs) (for bitwise div)
   int32_t total;             // num_tokens_per_rank * hidden_vecs
 
   LocalPermuteCopyVecKernel(
@@ -85,9 +83,7 @@ struct LocalPermuteCopyVecKernel {
       int32_t hidden_size_,
       int32_t topk_,
       int32_t remote_token_offset_,
-      int32_t hidden_vecs_,
-      int32_t hidden_vecs_mask_,
-      int32_t hidden_vecs_shift_)
+      int32_t hidden_vecs_)
       : src_ptr(src_ptr_),
         dst_ptr(dst_ptr_),
         scatter_idx_ptr(scatter_idx_ptr_),
@@ -96,17 +92,14 @@ struct LocalPermuteCopyVecKernel {
         topk(topk_),
         remote_token_offset(remote_token_offset_),
         hidden_vecs(hidden_vecs_),
-        hidden_vecs_mask(hidden_vecs_mask_),
-        hidden_vecs_shift(hidden_vecs_shift_),
         total(num_tokens_per_rank_ * hidden_vecs_) {}
 
   void operator()(sycl::nd_item<1> item) const {
     const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
     if (idx >= total) return;
 
-    // Bitwise decomposition: avoid int div/mod
-    const int32_t vec_h = idx & hidden_vecs_mask;
-    const int32_t local_token_idx = idx >> hidden_vecs_shift;
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t local_token_idx = idx / hidden_vecs;
     const int32_t global_token_idx = remote_token_offset + local_token_idx;
 
     // Load source vector once
@@ -172,13 +165,6 @@ at::Tensor local_permute_copy_(
   constexpr int VEC_SIZE = 8;
   constexpr int64_t threads = 128;
 
-  // Helper: compute log2 for power-of-2 values
-  auto log2_po2 = [](int32_t v) -> int32_t {
-    int32_t r = 0;
-    while (v > 1) { v >>= 1; ++r; }
-    return r;
-  };
-
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       src_hidden.scalar_type(), "local_permute_copy_", [&]() {
         const int32_t n = static_cast<int32_t>(num_tokens_per_rank);
@@ -188,15 +174,13 @@ at::Tensor local_permute_copy_(
 
         if (hidden_size % VEC_SIZE == 0) {
           const int32_t hidden_vecs = h / VEC_SIZE;
-          const int32_t hv_mask = hidden_vecs - 1;
-          const int32_t hv_shift = log2_po2(hidden_vecs);
           const int64_t total = static_cast<int64_t>(n) * hidden_vecs;
           const int64_t blocks = (total + threads - 1) / threads;
           auto kfn = LocalPermuteCopyVecKernel<scalar_t, VEC_SIZE>(
               src_hidden.data_ptr<scalar_t>(),
               remap_hidden_states.data_ptr<scalar_t>(),
               scatter_idx.data_ptr<int32_t>(),
-              n, h, tk, off, hidden_vecs, hv_mask, hv_shift);
+              n, h, tk, off, hidden_vecs);
           sycl_kernel_submit(sycl::range<1>(blocks * threads), sycl::range<1>(threads), queue, kfn);
         } else {
           // Scalar fallback for non-aligned hidden_size.
@@ -235,8 +219,6 @@ struct LocalPermuteCopyFusedKernel {
   int32_t hidden_size;
   int32_t topk;
   int32_t hidden_vecs;
-  int32_t hidden_vecs_mask;
-  int32_t hidden_vecs_shift;
   int32_t tokens_per_rank_mask;
   int32_t tokens_per_rank_shift;
   int32_t total;
@@ -249,8 +231,6 @@ struct LocalPermuteCopyFusedKernel {
       int32_t hidden_size_,
       int32_t topk_,
       int32_t hidden_vecs_,
-      int32_t hidden_vecs_mask_,
-      int32_t hidden_vecs_shift_,
       int32_t tokens_per_rank_mask_,
       int32_t tokens_per_rank_shift_,
       int32_t total_)
@@ -261,8 +241,6 @@ struct LocalPermuteCopyFusedKernel {
         hidden_size(hidden_size_),
         topk(topk_),
         hidden_vecs(hidden_vecs_),
-        hidden_vecs_mask(hidden_vecs_mask_),
-        hidden_vecs_shift(hidden_vecs_shift_),
         tokens_per_rank_mask(tokens_per_rank_mask_),
         tokens_per_rank_shift(tokens_per_rank_shift_),
         total(total_) {}
@@ -272,8 +250,8 @@ struct LocalPermuteCopyFusedKernel {
     if (idx >= total) return;
 
     // Decompose: idx = (src_rank * num_tokens_per_rank + local_token_idx) * hidden_vecs + vec_h
-    const int32_t vec_h = idx & hidden_vecs_mask;
-    const int32_t rank_and_token = idx >> hidden_vecs_shift;
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t rank_and_token = idx / hidden_vecs;
     const int32_t local_token_idx = rank_and_token & tokens_per_rank_mask;
     const int32_t src_rank = rank_and_token >> tokens_per_rank_shift;
 
@@ -349,8 +327,6 @@ at::Tensor local_permute_copy_fused_(
 
         if (hidden_size % VEC_SIZE == 0) {
           const int32_t hidden_vecs = h / VEC_SIZE;
-          const int32_t hv_mask = hidden_vecs - 1;
-          const int32_t hv_shift = log2_po2(hidden_vecs);
           const int32_t tpr_mask = n - 1;
           const int32_t tpr_shift = log2_po2(n);
           const int32_t total = static_cast<int32_t>(world_size) * n * hidden_vecs;
@@ -360,7 +336,7 @@ at::Tensor local_permute_copy_fused_(
               src_all.data_ptr<scalar_t>(),
               remap_hidden_states.data_ptr<scalar_t>(),
               scatter_idx.data_ptr<int32_t>(),
-              n, h, tk, hidden_vecs, hv_mask, hv_shift,
+              n, h, tk, hidden_vecs,
               tpr_mask, tpr_shift, total);
           sycl_kernel_submit(
               sycl::range<1>(blocks * threads),
