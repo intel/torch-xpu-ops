@@ -185,7 +185,7 @@ static inline accscalar_t area_pixel_compute_source_index(
 struct NearestIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
     const int src_index =
-        min(static_cast<int>(floorf((dst_index)*scale)), input_size - 1);
+        min(static_cast<int>(sycl::floor((dst_index)*scale)), input_size - 1);
     return src_index;
   }
 };
@@ -193,7 +193,7 @@ struct NearestIndexOp {
 struct NearestExactIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
     const int src_index = min(
-        static_cast<int>(floorf((dst_index + static_cast<float>(0.5)) * scale)),
+        static_cast<int>(sycl::floor((dst_index + static_cast<float>(0.5)) * scale)),
         input_size - 1);
     return src_index;
   }
