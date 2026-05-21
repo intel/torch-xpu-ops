@@ -132,7 +132,7 @@ Tensor& max_unpooling2d_forward_kernel(
   int64_t inputHeight;
   int64_t inputWidth;
 
-  auto memory_format = self_.suggest_memory_format();
+  constexpr auto memory_format = at::MemoryFormat::Contiguous;
   auto self = self_.contiguous(memory_format);
   auto indices = indices_.contiguous(memory_format);
 
@@ -162,50 +162,26 @@ Tensor& max_unpooling2d_forward_kernel(
                   : ScalarType::Long,
               "max_unpooling2d_forward_xpu",
               [&] {
-                if (is_channels_last(memory_format)) {
-                  auto kfn = MaxUnpooling2dForwardKernelFunctor<
-                      scalar_t,
-                      index_t,
-                      true>(
-                      count,
-                      self.const_data_ptr<scalar_t>(),
-                      indices.const_data_ptr<int64_t>(),
-                      numChannels,
-                      inputHeight,
-                      inputWidth,
-                      oheight,
-                      owidth,
-                      output.mutable_data_ptr<scalar_t>());
-
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
-                  sycl_kernel_submit(
-                      num_groups * group_size,
-                      group_size,
-                      getCurrentSYCLQueue(),
-                      kfn);
-                } else {
-                  auto kfn = MaxUnpooling2dForwardKernelFunctor<
-                      scalar_t,
-                      index_t,
-                      false>(
-                      count,
-                      self.const_data_ptr<scalar_t>(),
-                      indices.const_data_ptr<int64_t>(),
-                      numChannels,
-                      inputHeight,
-                      inputWidth,
-                      oheight,
-                      owidth,
-                      output.mutable_data_ptr<scalar_t>());
-                  int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
-                  sycl_kernel_submit(
-                      num_groups * group_size,
-                      group_size,
-                      getCurrentSYCLQueue(),
-                      kfn);
-                }
+                auto kfn = MaxUnpooling2dForwardKernelFunctor<
+                    scalar_t,
+                    index_t,
+                    false>(
+                    count,
+                    self.const_data_ptr<scalar_t>(),
+                    indices.const_data_ptr<int64_t>(),
+                    numChannels,
+                    inputHeight,
+                    inputWidth,
+                    oheight,
+                    owidth,
+                    output.mutable_data_ptr<scalar_t>());
+                int64_t group_size = syclMaxWorkItemsPerSubSlice();
+                int64_t num_groups = (count + group_size - 1) / group_size;
+                sycl_kernel_submit(
+                    num_groups * group_size,
+                    group_size,
+                    getCurrentSYCLQueue(),
+                    kfn);
               });
         }));
   }
