@@ -323,7 +323,7 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  LoopScanConfig() {}
+  LoopScanConfig() = default;
 
   LoopScanConfig(
       InputInfo input_info,
@@ -685,7 +685,7 @@ class SegmentScanConfig : public BatchKernelConfig {
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
 
-  SegmentScanConfig() {}
+  SegmentScanConfig() = default;
 
   SegmentScanConfig(
       InputInfo input_info,
