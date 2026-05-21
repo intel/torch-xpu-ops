@@ -5,6 +5,8 @@ import unittest
 from collections import defaultdict
 from contextlib import contextmanager
 
+sys.path.append("../../../../test/dynamo")
+
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing
