@@ -237,7 +237,16 @@ skip_dict = {
     "test_compile_benchmark_util_xpu.py": None,
     "test_hub_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
-    "test_custom_ops_xpu.py": None,
+    "test_custom_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/3644
+        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
+        "test_backward_dict_grad_for_nontensor",
+        "test_backward_dict_invalid_keys",
+        "test_backward_dict_requires_keys_for_input_optional_tensors",
+        "test_backward_dict_requires_keys_for_input_tensors",
+        "test_backward_grads_are_tensor_or_none",
+        "test_backward_impl_on_existing_op",
+    ),
     "test_flop_counter_xpu.py": None,
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
