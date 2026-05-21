@@ -31,6 +31,8 @@ from functools import wraps
 from typing import Any, Literal, TypedDict
 from unittest import mock
 
+sys.path.append("../../../../test/dynamo")
+
 import numpy as np
 import torch
 import torch._dynamo.test_case
