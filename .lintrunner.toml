@@ -13,6 +13,9 @@ exclude_patterns = [
     'test/regressions/test_unary.py',
     'tools/codegen/remove_headers.py',
     '.github/scripts/*.py',
+    'test/xpu/test_*.py',
+    'test/xpu/**/test_*.py',
+    'test/xpu/dynamo/test_*.py',
 ]
 command = [
     'uv',
