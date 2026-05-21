@@ -290,9 +290,16 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
     init_ff_url = oldest_checked.get("html_url") if oldest_checked else None
 
     # Track per-test-case results first, then aggregate by file
-    per_case = {t: {"first_fail_sha": init_ff_sha, "first_fail_run_url": init_ff_url,
-                     "last_pass_sha": None, "last_pass_run_url": None,
-                     "lookback_exhausted": False} for t in remaining}
+    per_case = {
+        t: {
+            "first_fail_sha": init_ff_sha,
+            "first_fail_run_url": init_ff_url,
+            "last_pass_sha": None,
+            "last_pass_run_url": None,
+            "lookback_exhausted": False,
+        }
+        for t in remaining
+    }
     checked_ids = {r["id"] for r in already_checked_runs}
 
     # Fetch more runs with a wider time window
@@ -515,9 +522,9 @@ def main():
             "existing_failure_scope": {},
         }
     else:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"RESULTS for [{args.event}] runs")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Total failed tests: {len(latest_tests)}")
         if prev_tests:
             print(f"  [NEW]      {len(new_tests)} (not in previous run)")
