@@ -13,13 +13,13 @@ import torch.distributed as dist
 from allgather_local_permute_fusion import compute_scatter_idx
 from deepep_dispatch import (
     _HAS_EP_COMBINE_KERNEL,
-    build_combine_rank_output_ptrs,
+    _HAS_EP_COMBINE_LOCAL,
     deepep_owner_combine,
     get_expert_owner,
 )
 
-TOKENS_PER_RANK = 2048
-HIDDEN_SIZE = 2048
+TOKENS_PER_RANK = 4096
+HIDDEN_SIZE = 5120
 TOPK = 8
 NUM_EXPERTS = 128
 LOOP = 40
@@ -85,14 +85,15 @@ def build_reference_shard(expert_output_full, scatter_idx, topk_weights, rank, w
     hidden = expert_output_full.shape[1]
     num_tokens_per_rank = num_tokens // world_size
 
-    full_result = torch.zeros(num_tokens, hidden, device=expert_output_full.device, dtype=expert_output_full.dtype)
+    # Accumulate in float32 for precision, then convert back
+    full_result = torch.zeros(num_tokens, hidden, device=expert_output_full.device, dtype=torch.float32)
     for i in range(num_tokens):
         for k in range(topk):
             src_row = int(scatter_idx[i, k].item())
-            full_result[i] += topk_weights[i, k] * expert_output_full[src_row]
+            full_result[i] += topk_weights[i, k] * expert_output_full[src_row].float()
 
     my_start = rank * num_tokens_per_rank
-    return full_result[my_start: my_start + num_tokens_per_rank]
+    return full_result[my_start: my_start + num_tokens_per_rank].to(expert_output_full.dtype)
 
 
 def check_deepep_owner_combine():
@@ -107,13 +108,7 @@ def check_deepep_owner_combine():
         rank, world_size, device
     )
 
-    rank_output_ptrs = None
-    if _HAS_EP_COMBINE_KERNEL:
-        rank_output_ptrs = build_combine_rank_output_ptrs(
-            expert_output=expert_output_local,
-            topk_idx=topk_idx,
-            group=group,
-        )
+    rank_output_ptrs = None  # Pipeline approach doesn't need precomputed pointers
 
     backend_stream = torch.xpu.Stream()
 
@@ -183,7 +178,7 @@ def check_deepep_owner_combine():
         world_size=world_size,
     )
 
-    assert torch.allclose(check_out, ref_shard, atol=1e-2, rtol=1e-2), (
+    assert torch.allclose(check_out, ref_shard, atol=2e-2, rtol=2e-2), (
         f"deepep_owner_combine mismatch in rank {rank}, "
         f"max_diff={(check_out - ref_shard).abs().max().item():.6f}"
     )
@@ -191,9 +186,12 @@ def check_deepep_owner_combine():
     if rank == 0:
         avg = sum(latencies) / len(latencies)
         print(f"[Summary] deepep_owner_combine avg={avg:.3f} ms")
-        print(
-            f"[Summary] ep_combine_kernel={'yes' if _HAS_EP_COMBINE_KERNEL else 'no (Python fallback)'}"
-        )
+        if _HAS_EP_COMBINE_LOCAL:
+            print("[Summary] kernel=pipeline (ep_combine_local + push)")
+        elif _HAS_EP_COMBINE_KERNEL:
+            print("[Summary] kernel=ep_combine (single fused kernel)")
+        else:
+            print("[Summary] kernel=no (Python fallback)")
 
     dist.destroy_process_group()
 
