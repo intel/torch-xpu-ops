@@ -29,9 +29,6 @@ const Tensor& resize_xpu_(
     const Tensor& self,
     IntArrayRef size,
     std::optional<MemoryFormat> optional_memory_format) {
-  if (self.has_names()) {
-    return resize_named_tensor_(self, size, optional_memory_format);
-  }
   auto* self_ = self.unsafeGetTensorImpl();
   int64_t old_storage_nbytes =
       self_->unsafe_storage() ? self_->unsafe_storage().nbytes() : 0;

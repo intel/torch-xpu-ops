@@ -12,7 +12,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
