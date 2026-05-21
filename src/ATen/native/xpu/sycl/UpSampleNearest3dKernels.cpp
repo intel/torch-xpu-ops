@@ -28,27 +28,27 @@ namespace at::native::xpu {
 template <typename scalar_t, typename index_op_t>
 struct UpsampleNearest3dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
+    int64_t dst_idx = item.get_global_linear_id();
 
     if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
-    int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+    int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+    int64_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
-    int c = (dst_idx / (dst_c_stride)) % dim_c_;
+    int64_t c = (dst_idx / (dst_c_stride)) % dim_c_;
 
-    int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
-    int src_z = index_op_(depth_scale_, dst_z, src_dim_d_);
-    int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
-    int src_y = index_op_(height_scale_, dst_y, src_dim_h_);
+    int64_t dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
+    int64_t src_z = index_op_(depth_scale_, dst_z, src_dim_d_);
+    int64_t dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
+    int64_t src_y = index_op_(height_scale_, dst_y, src_dim_h_);
 
-    int dst_x = dst_idx % dst_dim_w_;
-    int src_x = index_op_(width_scale_, dst_x, src_dim_w_);
+    int64_t dst_x = dst_idx % dst_dim_w_;
+    int64_t src_x = index_op_(width_scale_, dst_x, src_dim_w_);
 
-    int src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
+    int64_t src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
         src_y * src_dim_w_ + src_x;
-    for (int b = 0; b < dim_b_; b++) {
+    for (int64_t b = 0; b < dim_b_; b++) {
       output_[dst_idx] = input_[src_idx];
       src_idx += dim_c_ * src_c_stride;
       dst_idx += dim_c_ * dst_c_stride;
@@ -104,7 +104,7 @@ struct UpsampleNearest3dKernelFunctor {
 template <typename scalar_t, typename index_op_t>
 void upsample_nearest3d_out_template(
     const scalar_t* input,
-    unsigned int n,
+    int64_t n,
     size_t dim_b,
     size_t dim_c,
     size_t src_dim_d,
@@ -135,8 +135,7 @@ void upsample_nearest3d_out_template(
       width_scale,
       index_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num =
-      at::ceil_div((unsigned int)n, (unsigned int)work_group_size);
+  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
   sycl_kernel_submit(
       work_group_num * work_group_size, work_group_size, queue, kfn);
 }
@@ -159,19 +158,18 @@ void upsample_nearest3d_kernel(
       ? output
       : at::empty(output.sizes(), output.options());
 
-  int output_depth = output_size[0];
-  int output_height = output_size[1];
-  int output_width = output_size[2];
+  int64_t output_depth = output_size[0];
+  int64_t output_height = output_size[1];
+  int64_t output_width = output_size[2];
 
-  int nbatch = input_.size(0);
-  int channels = input_.size(1);
-  int input_depth = input_.size(2);
-  int input_height = input_.size(3);
-  int input_width = input_.size(4);
+  int64_t nbatch = input_.size(0);
+  int64_t channels = input_.size(1);
+  int64_t input_depth = input_.size(2);
+  int64_t input_height = input_.size(3);
+  int64_t input_width = input_.size(4);
 
   Tensor input = input_.contiguous();
-  unsigned int n = output.numel() / nbatch;
-  TORCH_CHECK(output.numel() <= std::numeric_limits<int32_t>::max());
+  int64_t n = output.numel() / nbatch;
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -232,34 +230,34 @@ void upsample_nearest3d_kernel(
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest3dBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
+    int64_t dst_idx = item.get_global_linear_id();
 
     if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
-    int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+    int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+    int64_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
-    int c = (dst_idx / (dst_c_stride)) % dim_c_;
+    int64_t c = (dst_idx / (dst_c_stride)) % dim_c_;
 
-    int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
-    int src_z = index_bw_op_(depth_scale_, dst_z, src_dim_d_);
-    int src_z_up = index_bw_op_(depth_scale_, dst_z + 1, src_dim_d_);
+    int64_t dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
+    int64_t src_z = index_bw_op_(depth_scale_, dst_z, src_dim_d_);
+    int64_t src_z_up = index_bw_op_(depth_scale_, dst_z + 1, src_dim_d_);
 
-    int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
-    int src_y = index_bw_op_(height_scale_, dst_y, src_dim_h_);
-    int src_y_up = index_bw_op_(height_scale_, dst_y + 1, src_dim_h_);
+    int64_t dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
+    int64_t src_y = index_bw_op_(height_scale_, dst_y, src_dim_h_);
+    int64_t src_y_up = index_bw_op_(height_scale_, dst_y + 1, src_dim_h_);
 
-    int dst_x = dst_idx % dst_dim_w_;
-    int src_x = index_bw_op_(width_scale_, dst_x, src_dim_w_);
-    int src_x_up = index_bw_op_(width_scale_, dst_x + 1, src_dim_w_);
+    int64_t dst_x = dst_idx % dst_dim_w_;
+    int64_t src_x = index_bw_op_(width_scale_, dst_x, src_dim_w_);
+    int64_t src_x_up = index_bw_op_(width_scale_, dst_x + 1, src_dim_w_);
 
-    for (int b = 0; b < dim_b_; b++) {
+    for (int64_t b = 0; b < dim_b_; b++) {
       accscalar_t grad = 0;
-      for (int z = src_z; z < src_z_up; z++) {
-        for (int y = src_y; y < src_y_up; y++) {
-          for (int x = src_x; x < src_x_up; x++) {
-            int src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
+      for (int64_t z = src_z; z < src_z_up; z++) {
+        for (int64_t y = src_y; y < src_y_up; y++) {
+          for (int64_t x = src_x; x < src_x_up; x++) {
+            int64_t src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
                 z * src_dim_h_ * src_dim_w_ + y * src_dim_w_ + x;
             grad += grad_o_[src_idx];
           }
@@ -318,7 +316,7 @@ struct UpsampleNearest3dBackwardFunctor {
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 void upsample_nearest3d_backward_template(
     const scalar_t* grad_o,
-    unsigned int n,
+    int64_t n,
     size_t dim_b,
     size_t dim_c,
     size_t src_dim_d,
@@ -350,7 +348,7 @@ void upsample_nearest3d_backward_template(
           width_scale,
           index_bw_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num = at::ceil_div(n, (unsigned int)work_group_size);
+  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
   sycl_kernel_submit(
       work_group_num * work_group_size, work_group_size, queue, kfn);
 }
@@ -372,20 +370,18 @@ void upsample_nearest3d_backward_kernel(
     return;
   }
 
-  int output_depth = output_size[0];
-  int output_height = output_size[1];
-  int output_width = output_size[2];
+  int64_t output_depth = output_size[0];
+  int64_t output_height = output_size[1];
+  int64_t output_width = output_size[2];
 
-  int nbatch = input_size[0];
-  int channels = input_size[1];
-  int input_depth = input_size[2];
-  int input_height = input_size[3];
-  int input_width = input_size[4];
+  int64_t nbatch = input_size[0];
+  int64_t channels = input_size[1];
+  int64_t input_depth = input_size[2];
+  int64_t input_height = input_size[3];
+  int64_t input_width = input_size[4];
 
   Tensor grad_output = grad_output_.contiguous();
-  unsigned int n = grad_input.numel() / nbatch;
-  TORCH_CHECK(grad_input.numel() <= std::numeric_limits<int32_t>::max());
-  TORCH_CHECK(grad_output.numel() <= std::numeric_limits<int32_t>::max());
+  int64_t n = grad_input.numel() / nbatch;
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::Half,
       ScalarType::BFloat16,
