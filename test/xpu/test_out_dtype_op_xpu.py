@@ -15,9 +15,9 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_out_dtype_op import TestOutDtypeOp
@@ -61,10 +61,16 @@ def forward(self, x_1, w_1):
 
 
 # Override the CUDA-only tests with XPU variants
-TestOutDtypeOp.test_out_dtype_inductor_decomp_trace = (
-    _out_dtype_inductor_decomp_trace_xpu
+register_test(
+    TestOutDtypeOp,
+    _out_dtype_inductor_decomp_trace_xpu,
+    target_name="test_out_dtype_inductor_decomp_trace",
 )
-TestOutDtypeOp.test_out_dtype_int_mm_default_trace = _out_dtype_int_mm_default_trace_xpu
+register_test(
+    TestOutDtypeOp,
+    _out_dtype_int_mm_default_trace_xpu,
+    target_name="test_out_dtype_int_mm_default_trace",
+)
 
 
 if __name__ == "__main__":

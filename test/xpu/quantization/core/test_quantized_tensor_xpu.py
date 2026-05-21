@@ -20,14 +20,14 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
     import os
     import sys
 
     script_path = os.path.split(__file__)[0]
     sys.path.insert(0, os.path.realpath(os.path.join(script_path, "../..")))
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_quantized_tensor import TestQuantizedTensor
@@ -173,25 +173,17 @@ with XPUPatchForImport(False):
         self._test_qtensor_masked_fill("xpu")
 
 
-TestQuantizedTensor.test_compare_per_channel_device_numerics = (
-    _test_compare_per_channel_device_numerics
-)
-TestQuantizedTensor.test_compare_per_tensor_device_numerics = (
-    _test_compare_per_tensor_device_numerics
-)
-TestQuantizedTensor.test_cuda_quantization_does_not_pin_memory = (
-    _test_cuda_quantization_does_not_pin_memory
-)
-TestQuantizedTensor.test_dequantize_fp16_cuda = _test_dequantize_fp16_cuda
-TestQuantizedTensor.test_per_channel_qtensor_creation_cuda = (
-    _test_per_channel_qtensor_creation_cuda
-)
-TestQuantizedTensor.test_per_channel_to_device = _test_per_channel_to_device
-TestQuantizedTensor.test_per_tensor_to_device = _test_per_tensor_to_device
-TestQuantizedTensor.test_qtensor_cuda = _test_qtensor_cuda
-TestQuantizedTensor.test_qtensor_index_put_cuda = _test_qtensor_index_put_cuda
-TestQuantizedTensor.test_qtensor_index_select_cuda = _test_qtensor_index_select_cuda
-TestQuantizedTensor.test_qtensor_masked_fill_cuda = _test_qtensor_masked_fill_cuda
+register_test(TestQuantizedTensor, _test_compare_per_channel_device_numerics)
+register_test(TestQuantizedTensor, _test_compare_per_tensor_device_numerics)
+register_test(TestQuantizedTensor, _test_cuda_quantization_does_not_pin_memory)
+register_test(TestQuantizedTensor, _test_dequantize_fp16_cuda)
+register_test(TestQuantizedTensor, _test_per_channel_qtensor_creation_cuda)
+register_test(TestQuantizedTensor, _test_per_channel_to_device)
+register_test(TestQuantizedTensor, _test_per_tensor_to_device)
+register_test(TestQuantizedTensor, _test_qtensor_cuda)
+register_test(TestQuantizedTensor, _test_qtensor_index_put_cuda)
+register_test(TestQuantizedTensor, _test_qtensor_index_select_cuda)
+register_test(TestQuantizedTensor, _test_qtensor_masked_fill_cuda)
 
 
 instantiate_device_type_tests(

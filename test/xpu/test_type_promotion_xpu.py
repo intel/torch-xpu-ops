@@ -15,9 +15,9 @@ from torch.testing._internal.common_device_type import (
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     import itertools
@@ -104,8 +104,8 @@ with XPUPatchForImport(False):
                         ),
                     )
 
-    TestTypePromotion.test_complex_assertraises = _test_complex_assertraises
-    TestTypePromotion.test_mixed_type_backward = _test_mixed_type_backward
+    register_test(TestTypePromotion, _test_complex_assertraises)
+    register_test(TestTypePromotion, _test_mixed_type_backward)
 
 instantiate_device_type_tests(
     TestTypePromotion, globals(), only_for=("xpu"), allow_xpu=True

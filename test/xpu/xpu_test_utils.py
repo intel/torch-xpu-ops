@@ -14,6 +14,7 @@
 
 
 import copy
+import functools
 import logging
 import os
 import sys
@@ -626,7 +627,42 @@ def ModuleTest_test_xpu(self, test_case):
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
-ModuleTest.test_cuda = ModuleTest_test_xpu
+def register_test(cls, override_func, *, target_name=None):
+    if not callable(override_func):
+        raise TypeError(
+            f"Expected callable override test function, got {type(override_func)}"
+        )
+
+    if target_name is None:
+        target_name = override_func.__name__.removeprefix("_")
+        if not target_name.startswith("test_"):
+            raise ValueError(
+                "register_test() requires target_name when override function name "
+                f"does not map directly to a test name: {override_func.__name__!r}"
+            )
+    elif not isinstance(target_name, str):
+        raise TypeError(f"Expected target test name to be str, got {type(target_name)}")
+
+    if not target_name.startswith("test_"):
+        raise ValueError(
+            f"Registered test name must start with 'test_', got {target_name!r}"
+        )
+    if not hasattr(cls, target_name):
+        raise AttributeError(
+            f"Cannot register {override_func.__name__!r} as "
+            f"{cls.__name__}.{target_name}: target test does not exist"
+        )
+
+    @functools.wraps(override_func)
+    def wrapper(*args, **kwargs):
+        return override_func(*args, **kwargs)
+
+    wrapper.__name__ = target_name
+    wrapper.__qualname__ = f"{cls.__name__}.{target_name}"
+    setattr(cls, target_name, wrapper)
+
+
+register_test(ModuleTest, ModuleTest_test_xpu, target_name="test_cuda")
 
 
 def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
@@ -701,7 +737,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         )
 
 
-CriterionTest.test_cuda = CriterionTest_test_xpu
+register_test(CriterionTest, CriterionTest_test_xpu, target_name="test_cuda")
 
 from functools import partial
 

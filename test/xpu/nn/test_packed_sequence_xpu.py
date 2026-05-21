@@ -74,7 +74,11 @@ with XPUPatchForImport(False):
                     self.assertIs(b, b.to(dtype=torch.int32))
                     self.assertEqual(b.long(), b.to(dtype=torch.int64))
 
-    PackedSequenceTest.test_to = my_test_to
+    try:
+        from .xpu_test_utils import register_test
+    except Exception:
+        from ..xpu_test_utils import register_test
+    register_test(PackedSequenceTest, my_test_to, target_name="test_to")
 
 if __name__ == "__main__":
     run_tests()
