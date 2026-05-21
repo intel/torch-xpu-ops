@@ -18,44 +18,43 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      build_runner:
-        required: false
+      runner:
+        required: true
         type: string
-        default: 'Windows_CI_Build'
         description: Runner label for build job
       xpu_version:
         required: false
         type: string
-        default: '2025.3'
+        default: '2026.0'
         description: XPU version
 
 permissions: read-all
 
 env: 
-    USE_XPU: 1
-    PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.3.2 | 
-      intel-cmplr-lib-ur==2025.3.2 | 
-      intel-cmplr-lic-rt==2025.3.2 | 
-      intel-sycl-rt==2025.3.2 | 
-      onemkl-license==2025.3.1 | 
-      onemkl-sycl-blas==2025.3.1 | 
-      onemkl-sycl-dft==2025.3.1 | 
-      onemkl-sycl-lapack==2025.3.1 | 
-      onemkl-sycl-rng==2025.3.1 | 
-      onemkl-sycl-sparse==2025.3.1 | 
-      dpcpp-cpp-rt==2025.3.2 | 
-      intel-opencl-rt==2025.3.2 | 
-      mkl==2025.3.1 | 
-      intel-openmp==2025.3.2 | 
-      tbb==2022.3.1 | 
-      tcmlib==1.4.1 | 
-      umf==1.0.3 | 
-      intel-pti==0.16.0
+  USE_XPU: 1
+  PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
+    intel-cmplr-lib-rt==2026.0.0 |
+    intel-cmplr-lib-ur==2026.0.0 |
+    intel-cmplr-lic-rt==2026.0.0 |
+    intel-sycl-rt==2026.0.0 |
+    onemkl-license==2026.0.0 |
+    onemkl-sycl-blas==2026.0.0 |
+    onemkl-sycl-dft==2026.0.0 |
+    onemkl-sycl-lapack==2026.0.0 |
+    onemkl-sycl-rng==2026.0.0 |
+    onemkl-sycl-sparse==2026.0.0 |
+    dpcpp-cpp-rt==2026.0.0 |
+    intel-opencl-rt==2026.0.0 |
+    mkl==2026.0.0 |
+    intel-openmp==2026.0.0 |
+    tbb==2023.0.0 |
+    tcmlib==1.5.0 |
+    umf==1.1.0 |
+    intel-pti==0.17.0
 
 jobs:
   build:
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 1000
     outputs:
       torch_whl_name: ${{ steps.find_whl.outputs.torch_whl_name }}
@@ -175,7 +174,7 @@ jobs:
           cd ../pytorch
           python -m pip install -r requirements.txt
           python -m pip install cmake setuptools clang-format
-          python -m pip install mkl-static mkl-include
+          python -m pip install mkl-static==2026.0.0 mkl-include==2026.0.0
           set USE_STATIC_MKL=1
           copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
           copy "%CONDA_PREFIX%\Library\bin\uv.dll" .\torch\lib
