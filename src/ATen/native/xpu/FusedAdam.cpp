@@ -8,8 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/native/ForeachUtils.h>
 #include <ATen/OpMathType.h>
+#include <ATen/native/ForeachUtils.h>
 
 #include <cmath>
 #include <vector>
