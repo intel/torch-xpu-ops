@@ -18,10 +18,9 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      build_runner:
-        required: false
+      runner:
+        required: true
         type: string
-        default: 'Windows_CI_Build'
         description: Runner label for build job
       xpu_version:
         required: false
@@ -55,7 +54,7 @@ env:
 
 jobs:
   build:
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 1000
     outputs:
       torch_whl_name: ${{ steps.find_whl.outputs.torch_whl_name }}
