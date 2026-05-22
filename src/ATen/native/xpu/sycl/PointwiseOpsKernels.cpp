@@ -34,6 +34,22 @@ struct AddcmulFunctor {
 };
 
 template <typename scalar_t>
+struct AddcmulCpuScalarFunctor {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return static_cast<accscalar_t>(a) +
+        alpha_ * static_cast<accscalar_t>(b) * c_val_;
+  }
+
+  AddcmulCpuScalarFunctor(accscalar_t alpha, accscalar_t c_val)
+      : alpha_(alpha), c_val_(c_val) {}
+
+ private:
+  accscalar_t alpha_;
+  accscalar_t c_val_;
+};
+
+template <typename scalar_t>
 struct AddcmulComplexFunctor {
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return a + alpha_ * b * c;
@@ -43,6 +59,20 @@ struct AddcmulComplexFunctor {
 
  private:
   scalar_t alpha_;
+};
+
+template <typename scalar_t>
+struct AddcmulComplexCpuScalarFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return a + alpha_ * b * c_val_;
+  }
+
+  AddcmulComplexCpuScalarFunctor(scalar_t alpha, scalar_t c_val)
+      : alpha_(alpha), c_val_(c_val) {}
+
+ private:
+  scalar_t alpha_;
+  scalar_t c_val_;
 };
 
 void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
@@ -59,7 +89,30 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
       "please swap your tensor1 and tensor2 terms.");
 
   auto dtype = iter.common_dtype();
-  if (at::isComplexType(dtype)) {
+  if (iter.is_cpu_scalar(3)) {
+    if (at::isComplexType(dtype)) {
+      AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {
+        auto alpha = value.to<scalar_t>();
+        auto c_val = iter.scalar_value<scalar_t>(3);
+        iter.remove_operand(3);
+        gpu_kernel(
+            iter, AddcmulComplexCpuScalarFunctor<scalar_t>(alpha, c_val));
+      });
+    } else {
+      AT_DISPATCH_ALL_TYPES_AND2(
+          at::ScalarType::Half,
+          at::ScalarType::BFloat16,
+          iter.dtype(),
+          "addcmul_xpu",
+          [&]() {
+            using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+            auto alpha = value.to<accscalar_t>();
+            auto c_val = iter.scalar_value<accscalar_t>(3);
+            iter.remove_operand(3);
+            gpu_kernel(iter, AddcmulCpuScalarFunctor<scalar_t>(alpha, c_val));
+          });
+    }
+  } else if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {
       auto alpha = value.to<scalar_t>();
       gpu_kernel(iter, AddcmulComplexFunctor<scalar_t>(alpha));
