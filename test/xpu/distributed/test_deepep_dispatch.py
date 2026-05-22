@@ -10,7 +10,12 @@ import os
 import torch
 import torch.distributed as dist
 
-from deepep_dispatch import deepep_owner_dispatch, get_expert_owner, build_rank_buffers_ptr
+from deepep_dispatch import (
+    deepep_owner_dispatch,
+    get_expert_owner,
+    build_rank_buffers_ptr,
+    build_topk_weight_rank_buffers_ptr,
+)
 from allgather_local_permute_fusion import compute_scatter_idx
 
 TOKENS_PER_RANK = 2048
@@ -140,9 +145,12 @@ def check_deepep_owner_dispatch():
 
     # Compute expert-centric scatter_idx from global topk_idx
     scatter_idx, _ = compute_scatter_idx(topk_idx, num_experts=NUM_EXPERTS)
+    topk_weights = torch.ones((num_tokens, topk), device=device, dtype=torch.float32)
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+    rank_buffers = build_rank_buffers_ptr(hidden_shard, NUM_EXPERTS, group=group)
+    topk_weight_rank_buffers = build_topk_weight_rank_buffers_ptr(topk_weights, group=group)
 
     # Warm up
     for _ in range(WARMUP):
@@ -151,19 +159,23 @@ def check_deepep_owner_dispatch():
             device=device,
             dtype=hidden_shard.dtype,
         )
+        recv_topk_idx = torch.full((num_tokens * topk,), -1, device=device, dtype=topk_idx.dtype)
+        recv_topk_weights = torch.zeros((num_tokens * topk,), device=device, dtype=topk_weights.dtype)
         deepep_owner_dispatch(
             hidden_shard,
             topk_idx,
             remap_hidden_states,
             num_experts=NUM_EXPERTS,
             scatter_idx=scatter_idx,
+            topk_weights=topk_weight_rank_buffers,
+            recv_topk_idx=recv_topk_idx,
+            recv_topk_weights=recv_topk_weights,
+            topk_weights_stride=topk,
             group=group,
+            rank_buffers_ptr=rank_buffers,
         )
     torch.xpu.synchronize()
     dist.barrier()
-
-    # Precompute rank_buffers_ptr for timed path (pointers are stable after warmup)
-    rank_buffers = build_rank_buffers_ptr(hidden_shard, NUM_EXPERTS, group=group)
 
     remap_hidden_states = torch.zeros(
         (num_tokens * topk, hidden_size),
@@ -174,12 +186,18 @@ def check_deepep_owner_dispatch():
     for i in range(LOOP):
         if i >= WARMUP:
             begin_events[i].record()
+        recv_topk_idx = torch.full((num_tokens * topk,), -1, device=device, dtype=topk_idx.dtype)
+        recv_topk_weights = torch.zeros((num_tokens * topk,), device=device, dtype=topk_weights.dtype)
         deepep_owner_dispatch(
             hidden_shard,
             topk_idx,
             remap_hidden_states,
             num_experts=NUM_EXPERTS,
             scatter_idx=scatter_idx,
+            topk_weights=topk_weight_rank_buffers,
+            recv_topk_idx=recv_topk_idx,
+            recv_topk_weights=recv_topk_weights,
+            topk_weights_stride=topk,
             group=group,
             rank_buffers_ptr=rank_buffers,
         )

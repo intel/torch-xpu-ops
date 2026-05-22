@@ -26,20 +26,27 @@
 //    (vs old: num_tokens * topk * hidden_vecs with 75% early-exit waste).
 
 // Scalar fallback for non-aligned hidden_size.
-template <typename T>
+template <typename T, typename idx_out_t, typename weight_t>
 struct EpDispatchRingScalarKernel {
   const int64_t* rank_ptrs;
   const int64_t* topk_idx_ptr;
+  const int64_t* topk_weight_rank_ptrs;
   const int32_t* scatter_idx_ptr;
   T* remap_ptr;
+  idx_out_t* recv_topk_idx_ptr;
+  weight_t* recv_topk_weights_ptr;
   int64_t num_tokens_per_rank;
   int64_t hidden_size;
   int64_t topk;
+  int64_t topk_weight_stride;
   int64_t rank;
   int64_t world_size;
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  int64_t remap_rows;
+  int64_t recv_idx_cols;
+  int64_t recv_weight_cols;
 
   void operator()(sycl::nd_item<1> item) const {
     const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
@@ -72,7 +79,18 @@ struct EpDispatchRingScalarKernel {
       if (owner == static_cast<int32_t>(rank)) {
         const int64_t dst_row = static_cast<int64_t>(
             scatter_idx_ptr[global_token_idx * topk + k]);
+        if (dst_row < 0 || dst_row >= remap_rows) {
+          continue;
+        }
         remap_ptr[dst_row * hidden_size + h] = val;
+
+        const weight_t* src_topk_weight =
+            reinterpret_cast<const weight_t*>(topk_weight_rank_ptrs[src_rank]);
+        const weight_t w = src_topk_weight[local_token_idx * topk_weight_stride + k];
+
+        recv_topk_idx_ptr[dst_row * recv_idx_cols + k] =
+            static_cast<idx_out_t>(expert);
+        recv_topk_weights_ptr[dst_row * recv_weight_cols + k] = w;
       }
     }
   }
@@ -90,7 +108,7 @@ struct EpDispatchRingScalarKernel {
 //   vec_h = idx % hidden_vecs           (innermost: coalesced access)
 //   step = (idx / hidden_vecs) % world_size  (interleaved: overlap reads)
 //   local_token_idx = idx / (hidden_vecs * world_size)
-template <typename scalar_t, int VEC_SIZE>
+template <typename scalar_t, typename idx_out_t, typename weight_t, int VEC_SIZE>
 struct EpDispatchRingVecKernel {
   using vec_elem_t =
       std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
@@ -98,17 +116,24 @@ struct EpDispatchRingVecKernel {
 
   const int64_t* rank_ptrs;
   const int64_t* topk_idx_ptr;
+  const int64_t* topk_weight_rank_ptrs;
   const int32_t* scatter_idx_ptr;
   scalar_t* remap_ptr;
+  idx_out_t* recv_topk_idx_ptr;
+  weight_t* recv_topk_weights_ptr;
   int32_t num_tokens_per_rank;
   int32_t hidden_size;
   int32_t topk;
+  int32_t topk_weight_stride;
   int32_t rank;
   int32_t world_size;
   int32_t hidden_vecs;  // hidden_size / VEC_SIZE
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  int64_t remap_rows;
+  int64_t recv_idx_cols;
+  int64_t recv_weight_cols;
 
   void operator()(sycl::nd_item<1> item) const {
     const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
@@ -159,9 +184,24 @@ struct EpDispatchRingVecKernel {
       if (owner == rank) {
         const int32_t dst_row = scatter_idx_ptr[
             static_cast<int64_t>(global_token_idx) * topk + k];
+        if (dst_row < 0 || static_cast<int64_t>(dst_row) >= remap_rows) {
+          continue;
+        }
         auto dst_vec = reinterpret_cast<vec_t*>(
             remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
         dst_vec[vec_h] = v;
+
+        // write recv_topk_idx/recv_topk_weights once per (token, k)
+        if (vec_h == 0) {
+          const weight_t* src_topk_weight =
+              reinterpret_cast<const weight_t*>(topk_weight_rank_ptrs[src_rank]);
+          const weight_t w =
+              src_topk_weight[static_cast<int64_t>(local_token_idx) * topk_weight_stride + k];
+
+          recv_topk_idx_ptr[static_cast<int64_t>(dst_row) * recv_idx_cols + k] =
+              static_cast<idx_out_t>(expert);
+          recv_topk_weights_ptr[static_cast<int64_t>(dst_row) * recv_weight_cols + k] = w;
+        }
       }
     }
   }
@@ -170,8 +210,12 @@ struct EpDispatchRingVecKernel {
 at::Tensor ep_dispatch(
     const at::Tensor& rank_buffers_ptr,
     const at::Tensor& topk_idx,
+    const at::Tensor& topk_weight_rank_buffers_ptr,
     const at::Tensor& scatter_idx,
     at::Tensor remap_hidden_states,
+    at::Tensor recv_topk_idx,
+    at::Tensor recv_topk_weights,
+    int64_t topk_weight_stride,
     int64_t num_experts,
     int64_t rank,
     int64_t world_size) {
@@ -182,6 +226,13 @@ at::Tensor ep_dispatch(
       rank_buffers_ptr.scalar_type() == at::kLong,
       "ep_dispatch: rank_buffers_ptr must be int64");
   TORCH_CHECK(topk_idx.dim() == 2, "ep_dispatch: topk_idx must be 2D");
+    TORCH_CHECK(
+      topk_weight_rank_buffers_ptr.dim() == 1 &&
+        topk_weight_rank_buffers_ptr.size(0) == world_size,
+      "ep_dispatch: topk_weight_rank_buffers_ptr must be 1D with size == world_size");
+    TORCH_CHECK(
+      topk_weight_rank_buffers_ptr.scalar_type() == at::kLong,
+      "ep_dispatch: topk_weight_rank_buffers_ptr must be int64");
   TORCH_CHECK(
       scatter_idx.dim() == 2 && scatter_idx.size(0) == topk_idx.size(0) &&
           scatter_idx.size(1) == topk_idx.size(1),
@@ -195,10 +246,43 @@ at::Tensor ep_dispatch(
   TORCH_CHECK(
       remap_hidden_states.is_contiguous(),
       "ep_dispatch: remap_hidden_states must be contiguous");
+      TORCH_CHECK(
+        recv_topk_idx.dim() == 2,
+        "ep_dispatch: recv_topk_idx must be 2D [rows, topk]");
+      TORCH_CHECK(
+        recv_topk_weights.dim() == 2,
+        "ep_dispatch: recv_topk_weights must be 2D [rows, topk]");
+    TORCH_CHECK(
+      recv_topk_idx.is_contiguous(),
+      "ep_dispatch: recv_topk_idx must be contiguous");
+    TORCH_CHECK(
+      recv_topk_weights.is_contiguous(),
+      "ep_dispatch: recv_topk_weights must be contiguous");
+    TORCH_CHECK(
+      recv_topk_weights.scalar_type() == at::kFloat ||
+        recv_topk_weights.scalar_type() == at::kHalf ||
+        recv_topk_weights.scalar_type() == at::kBFloat16,
+      "ep_dispatch: recv_topk_weights must be float/half/bfloat16");
+    TORCH_CHECK(
+      recv_topk_idx.scalar_type() == at::kInt || recv_topk_idx.scalar_type() == at::kLong,
+      "ep_dispatch: recv_topk_idx must be int32 or int64");
 
   const int64_t num_tokens = topk_idx.size(0);
   const int64_t topk = topk_idx.size(1);
   const int64_t hidden_size = remap_hidden_states.size(1);
+  TORCH_CHECK(
+      topk_weight_stride >= topk,
+      "ep_dispatch: topk_weight_stride must be >= topk");
+
+  TORCH_CHECK(
+      recv_topk_idx.size(1) == topk,
+      "ep_dispatch: recv_topk_idx second dim must equal topk");
+  TORCH_CHECK(
+      recv_topk_weights.size(1) == topk,
+      "ep_dispatch: recv_topk_weights second dim must equal topk");
+    TORCH_CHECK(
+      recv_topk_weights.size(0) == recv_topk_idx.size(0),
+      "ep_dispatch: recv_topk_weights and recv_topk_idx must have same rows");
 
   TORCH_CHECK(
       num_tokens % world_size == 0,
@@ -208,6 +292,12 @@ at::Tensor ep_dispatch(
   TORCH_CHECK(
       remap_hidden_states.size(0) == num_tokens * topk,
       "ep_dispatch: remap_hidden_states first dim mismatch");
+    TORCH_CHECK(
+      recv_topk_idx.size(0) == remap_hidden_states.size(0),
+      "ep_dispatch: recv_topk_idx rows must equal remap_hidden_states rows");
+    TORCH_CHECK(
+      recv_topk_weights.size(0) == remap_hidden_states.size(0),
+      "ep_dispatch: recv_topk_weights rows must equal remap_hidden_states rows");
 
   const int64_t total_elems = num_tokens * topk * hidden_size;
   if (total_elems == 0) {
@@ -227,53 +317,154 @@ at::Tensor ep_dispatch(
   auto stream = at::xpu::getCurrentXPUStream();
   auto& queue = stream.queue();
 
+  const int64_t recv_idx_cols = recv_topk_idx.size(1);
+  const int64_t recv_weight_cols = recv_topk_weights.size(1);
+  const int64_t remap_rows = remap_hidden_states.size(0);
+
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       remap_hidden_states.scalar_type(), "ep_dispatch", [&]() {
-        if (hidden_size % VEC_SIZE == 0) {
-          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
-          const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
-          const int64_t blocks = (total + threads - 1) / threads;
-          auto kfn = EpDispatchRingVecKernel<scalar_t, VEC_SIZE>{
-              rank_buffers_ptr.data_ptr<int64_t>(),
-              topk_idx.data_ptr<int64_t>(),
-              scatter_idx.data_ptr<int32_t>(),
-              remap_hidden_states.data_ptr<scalar_t>(),
-              static_cast<int32_t>(num_tokens_per_rank),
-              static_cast<int32_t>(hidden_size),
-              static_cast<int32_t>(topk),
-              static_cast<int32_t>(rank),
-              static_cast<int32_t>(world_size),
-              static_cast<int32_t>(hidden_vecs),
-              base_experts,
-              rem_experts,
-              boundary};
-          sycl_kernel_submit(
-              sycl::range<1>(blocks * threads),
-              sycl::range<1>(threads),
-              queue,
-              kfn);
-        } else {
-          const int64_t total = world_size * num_tokens_per_rank * hidden_size;
-          const int64_t blocks = (total + threads - 1) / threads;
-          auto kfn = EpDispatchRingScalarKernel<scalar_t>{
-              rank_buffers_ptr.data_ptr<int64_t>(),
-              topk_idx.data_ptr<int64_t>(),
-              scatter_idx.data_ptr<int32_t>(),
-              remap_hidden_states.data_ptr<scalar_t>(),
-              num_tokens_per_rank,
-              hidden_size,
-              topk,
-              rank,
-              world_size,
-              base_experts,
-              rem_experts,
-              boundary};
-          sycl_kernel_submit(
-              sycl::range<1>(blocks * threads),
-              sycl::range<1>(threads),
-              queue,
-              kfn);
-        }
+        using remap_t = scalar_t;
+        AT_DISPATCH_SWITCH(recv_topk_idx.scalar_type(), "ep_dispatch_recv_idx",
+          AT_DISPATCH_CASE(at::kInt, [&]() {
+            using idx_out_t = int32_t;
+            AT_DISPATCH_FLOATING_TYPES_AND2(
+                at::kHalf,
+                at::kBFloat16,
+                recv_topk_weights.scalar_type(),
+                "ep_dispatch_recv_weight",
+                [&]() {
+                  using weight_t = scalar_t;
+                  if (hidden_size % VEC_SIZE == 0) {
+                    const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+                    const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
+                    const int64_t blocks = (total + threads - 1) / threads;
+                    auto kfn = EpDispatchRingVecKernel<remap_t, idx_out_t, weight_t, VEC_SIZE>{
+                        rank_buffers_ptr.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int64_t>(),
+                        topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
+                        scatter_idx.data_ptr<int32_t>(),
+                        remap_hidden_states.data_ptr<remap_t>(),
+                        recv_topk_idx.data_ptr<idx_out_t>(),
+                        recv_topk_weights.data_ptr<weight_t>(),
+                        static_cast<int32_t>(num_tokens_per_rank),
+                        static_cast<int32_t>(hidden_size),
+                        static_cast<int32_t>(topk),
+                        static_cast<int32_t>(topk_weight_stride),
+                        static_cast<int32_t>(rank),
+                        static_cast<int32_t>(world_size),
+                        static_cast<int32_t>(hidden_vecs),
+                        base_experts,
+                        rem_experts,
+                        boundary,
+                        remap_rows,
+                        recv_idx_cols,
+                        recv_weight_cols};
+                    sycl_kernel_submit(
+                        sycl::range<1>(blocks * threads),
+                        sycl::range<1>(threads),
+                        queue,
+                        kfn);
+                  } else {
+                    const int64_t total = world_size * num_tokens_per_rank * hidden_size;
+                    const int64_t blocks = (total + threads - 1) / threads;
+                    auto kfn = EpDispatchRingScalarKernel<remap_t, idx_out_t, weight_t>{
+                        rank_buffers_ptr.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int64_t>(),
+                        topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
+                        scatter_idx.data_ptr<int32_t>(),
+                        remap_hidden_states.data_ptr<remap_t>(),
+                        recv_topk_idx.data_ptr<idx_out_t>(),
+                        recv_topk_weights.data_ptr<weight_t>(),
+                        num_tokens_per_rank,
+                        hidden_size,
+                        topk,
+                        topk_weight_stride,
+                        rank,
+                        world_size,
+                        base_experts,
+                        rem_experts,
+                        boundary,
+                        remap_rows,
+                        recv_idx_cols,
+                        recv_weight_cols};
+                    sycl_kernel_submit(
+                        sycl::range<1>(blocks * threads),
+                        sycl::range<1>(threads),
+                        queue,
+                        kfn);
+                  }
+                });
+          });
+          AT_DISPATCH_CASE(at::kLong, [&]() {
+            using idx_out_t = int64_t;
+            AT_DISPATCH_FLOATING_TYPES_AND2(
+                at::kHalf,
+                at::kBFloat16,
+                recv_topk_weights.scalar_type(),
+                "ep_dispatch_recv_weight",
+                [&]() {
+                  using weight_t = scalar_t;
+                  if (hidden_size % VEC_SIZE == 0) {
+                    const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+                    const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
+                    const int64_t blocks = (total + threads - 1) / threads;
+                    auto kfn = EpDispatchRingVecKernel<remap_t, idx_out_t, weight_t, VEC_SIZE>{
+                        rank_buffers_ptr.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int64_t>(),
+                        topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
+                        scatter_idx.data_ptr<int32_t>(),
+                        remap_hidden_states.data_ptr<remap_t>(),
+                        recv_topk_idx.data_ptr<idx_out_t>(),
+                        recv_topk_weights.data_ptr<weight_t>(),
+                        static_cast<int32_t>(num_tokens_per_rank),
+                        static_cast<int32_t>(hidden_size),
+                        static_cast<int32_t>(topk),
+                        static_cast<int32_t>(topk_weight_stride),
+                        static_cast<int32_t>(rank),
+                        static_cast<int32_t>(world_size),
+                        static_cast<int32_t>(hidden_vecs),
+                        base_experts,
+                        rem_experts,
+                        boundary,
+                        remap_rows,
+                        recv_idx_cols,
+                        recv_weight_cols};
+                    sycl_kernel_submit(
+                        sycl::range<1>(blocks * threads),
+                        sycl::range<1>(threads),
+                        queue,
+                        kfn);
+                  } else {
+                    const int64_t total = world_size * num_tokens_per_rank * hidden_size;
+                    const int64_t blocks = (total + threads - 1) / threads;
+                    auto kfn = EpDispatchRingScalarKernel<remap_t, idx_out_t, weight_t>{
+                        rank_buffers_ptr.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int64_t>(),
+                        topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
+                        scatter_idx.data_ptr<int32_t>(),
+                        remap_hidden_states.data_ptr<remap_t>(),
+                        recv_topk_idx.data_ptr<idx_out_t>(),
+                        recv_topk_weights.data_ptr<weight_t>(),
+                        num_tokens_per_rank,
+                        hidden_size,
+                        topk,
+                        topk_weight_stride,
+                        rank,
+                        world_size,
+                        base_experts,
+                        rem_experts,
+                        boundary,
+                        remap_rows,
+                        recv_idx_cols,
+                        recv_weight_cols};
+                    sycl_kernel_submit(
+                        sycl::range<1>(blocks * threads),
+                        sycl::range<1>(threads),
+                        queue,
+                        kfn);
+                  }
+                });
+          }));
       });
 
   return remap_hidden_states;
@@ -282,8 +473,9 @@ at::Tensor ep_dispatch(
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ep_dispatch(Tensor rank_buffers_ptr, Tensor topk_idx, "
-      "Tensor scatter_idx, "
-      "Tensor(a!) remap_hidden_states, int num_experts, "
+      "Tensor topk_weight_rank_buffers_ptr, Tensor scatter_idx, "
+      "Tensor(a!) remap_hidden_states, Tensor(a!) recv_topk_idx, Tensor(a!) recv_topk_weights, "
+      "int topk_weight_stride, int num_experts, "
       "int rank, int world_size) -> Tensor(a!)");
 }
 

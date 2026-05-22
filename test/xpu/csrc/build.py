@@ -80,6 +80,7 @@ def build():
         build_one(cfg, "LocalPermuteCopy.cpp", "liblocal_permute_copy.so", "LocalPermuteCopy")
     )
     outputs.append(build_one(cfg, "EpDispatch.cpp", "libep_dispatch.so", "EpDispatch"))
+    outputs.append(build_one(cfg, "NotifyDispatch.cpp", "libnotify_dispatch.so", "NotifyDispatch"))
     outputs.append(build_one(cfg, "EpCombine.cpp", "libep_combine.so", "EpCombine"))
     outputs.append(
         build_one(
@@ -97,6 +98,7 @@ def clean():
     outputs = [
         os.path.join(base_dir, "liblocal_permute_copy.so"),
         os.path.join(base_dir, "libep_dispatch.so"),
+        os.path.join(base_dir, "libnotify_dispatch.so"),
         os.path.join(base_dir, "libep_combine.so"),
         os.path.join(base_dir, "liballgather_with_symm_mem.so"),
     ]

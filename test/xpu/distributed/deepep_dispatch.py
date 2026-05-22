@@ -76,10 +76,14 @@ def get_expert_owner(expert_id: int, num_experts: int, tp_world_size: int) -> in
 
 def deepep_owner_dispatch(
     hidden_shard: torch.Tensor,
-    topk_idx: torch.Tensor,
+    global_topk_idx: torch.Tensor,
     remap_hidden_states: torch.Tensor,
     num_experts: int,
     scatter_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        recv_topk_idx: torch.Tensor,
+        recv_topk_weights: torch.Tensor,
+        topk_weights_stride: int,
     group: dist.ProcessGroup = None,
     group_name: str = None,
     rank_buffers_ptr: torch.Tensor = None,
@@ -95,9 +99,8 @@ def deepep_owner_dispatch(
         Args:
             scatter_idx: [num_tokens, topk] int32 - pre-computed expert-sorted
                 write positions (from compute_scatter_idx).
-            rank_buffers_ptr: Optional precomputed device tensor of per-rank
-                buffer pointers (int64). Pass this to avoid per-call overhead
-                when hidden_shard and workspace are stable across calls.
+                        rank_buffers_ptr: Precomputed device tensor of per-rank
+                                buffer pointers (int64). This argument is required.
             skip_copy: If True, assume hidden_shard is already written to
                 the symmetric memory workspace (e.g., by a preceding matmul).
                 NOTE: the barrier mechanism may require the copy; use with caution.
@@ -110,7 +113,13 @@ def deepep_owner_dispatch(
         world_size = dist.get_world_size(group)
 
         num_tokens_per_rank, hidden_size = hidden_shard.shape
-        num_tokens, topk = topk_idx.shape
+        num_tokens, topk = global_topk_idx.shape
+        if scatter_idx.shape != global_topk_idx.shape:
+                raise ValueError("scatter_idx shape must match global_topk_idx shape")
+        if topk_weights is None or recv_topk_idx is None or recv_topk_weights is None:
+                raise ValueError("topk_weights, recv_topk_idx, and recv_topk_weights must be provided")
+        if topk_weights.dim() != 1 or topk_weights.dtype != torch.int64 or topk_weights.numel() != world_size:
+                raise ValueError("topk_weights must be rank buffer ptr tensor with shape [world_size] and dtype int64")
         assert num_tokens % world_size == 0
         assert num_tokens_per_rank == num_tokens // world_size
 
@@ -127,54 +136,38 @@ def deepep_owner_dispatch(
                 local_slot.copy_(hidden_shard)
         workspace.barrier()
 
-        if _HAS_NATIVE_KERNEL:
-                if rank_buffers_ptr is None:
-                        # Collect per-rank buffer pointers for the kernel
-                        ptr_list = []
-                        for r in range(world_size):
-                                if r == rank:
-                                        ptr_list.append(hidden_shard.data_ptr())
-                                else:
-                                        offset = r * num_tokens_per_rank * hidden_size
-                                        buf = workspace.get_buffer(
-                                                r, (num_tokens_per_rank, hidden_size),
-                                                hidden_shard.dtype, storage_offset=offset,
-                                        )
-                                        ptr_list.append(buf.data_ptr())
-                        # Device pointers may exceed signed int64 range; wrap to preserve bits
-                        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
-                        rank_buffers_ptr = torch.tensor(
-                                signed_ptrs, dtype=torch.int64,
-                        ).to(hidden_shard.device)
-
-                torch.ops.symm_mem.ep_dispatch(
-                        rank_buffers_ptr, topk_idx, scatter_idx,
-                        remap_hidden_states, num_experts, rank, world_size,
+        if not _HAS_NATIVE_KERNEL:
+                raise RuntimeError(
+                        "deepep_owner_dispatch requires native ep_dispatch kernel; "
+                        "please build and load libep_dispatch.so"
                 )
-        else:
-                # Python fallback
-                for step in range(world_size):
-                        remote_rank = (rank + step) % world_size
-                        if remote_rank == rank:
-                                src_buffer = hidden_shard
-                        else:
-                                remote_offset = remote_rank * num_tokens_per_rank * hidden_size
-                                src_buffer = workspace.get_buffer(
-                                        remote_rank, (num_tokens_per_rank, hidden_size),
-                                        hidden_shard.dtype, storage_offset=remote_offset,
-                                )
-                        remote_token_offset = remote_rank * num_tokens_per_rank
-                        for i in range(num_tokens_per_rank):
-                                global_token_idx = remote_token_offset + i
-                                for k in range(topk):
-                                        expert = int(topk_idx[global_token_idx, k].item())
-                                        owner = get_expert_owner(expert, num_experts, world_size)
-                                        if owner == rank:
-                                                dst = int(scatter_idx[global_token_idx, k].item())
-                                                remap_hidden_states[dst].copy_(src_buffer[i])
+
+        topk_idx_kernel = (
+                global_topk_idx
+                if global_topk_idx.dtype == torch.int64
+                else global_topk_idx.to(torch.int64)
+        )
+        if rank_buffers_ptr is None:
+                raise ValueError("rank_buffers_ptr must not be None")
+
+        recv_topk_idx.fill_(-1)
+        recv_topk_weights.zero_()
+        torch.ops.symm_mem.ep_dispatch(
+                rank_buffers_ptr,
+                topk_idx_kernel,
+                topk_weights,
+                scatter_idx,
+                remap_hidden_states,
+                recv_topk_idx,
+                recv_topk_weights,
+                topk_weights_stride,
+                num_experts,
+                rank,
+                world_size,
+        )
 
         workspace.barrier()
-        return remap_hidden_states
+        return remap_hidden_states, recv_topk_idx, recv_topk_weights
 
 
 def deepep_owner_combine(
@@ -407,3 +400,51 @@ def build_rank_buffers_ptr(
                         ptr_list.append(buf.data_ptr())
         signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
         return torch.tensor(signed_ptrs, dtype=torch.int64).to(hidden_shard.device)
+
+
+def build_topk_weight_rank_buffers_ptr(
+    topk_weights: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    group_name: str = None,
+) -> torch.Tensor:
+        """Precompute rank buffer pointers for per-rank topk weights."""
+        if group is None:
+                group = dist.group.WORLD
+        if group_name is None:
+                group_name = group.group_name
+        rank = dist.get_rank(group)
+        world_size = dist.get_world_size(group)
+
+        num_tokens, topk = topk_weights.shape
+        if num_tokens % world_size != 0:
+                raise ValueError("topk_weights first dim must be divisible by world_size")
+        num_tokens_per_rank = num_tokens // world_size
+
+        workspace_size_bytes = num_tokens_per_rank * topk * topk_weights.element_size()
+        workspace = symm_mem.get_symm_mem_workspace(
+                group_name + "_topk_weight_dispatch", min_size=workspace_size_bytes
+        )
+
+        start = rank * num_tokens_per_rank
+        end = start + num_tokens_per_rank
+        local = topk_weights[start:end].contiguous()
+        local_slot = workspace.get_buffer(
+                rank,
+                (num_tokens_per_rank, topk),
+                topk_weights.dtype,
+                storage_offset=0,
+        )
+        local_slot.copy_(local)
+        workspace.barrier()
+
+        ptr_list = []
+        for r in range(world_size):
+                buf = workspace.get_buffer(
+                        r,
+                        (num_tokens_per_rank, topk),
+                        topk_weights.dtype,
+                        storage_offset=0,
+                )
+                ptr_list.append(buf.data_ptr())
+        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+        return torch.tensor(signed_ptrs, dtype=torch.int64).to(topk_weights.device)
