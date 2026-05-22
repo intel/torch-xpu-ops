@@ -550,7 +550,7 @@ CUTLASS_DEVICE void softmax_backward(
   }
 }
 
-template <bool Is_even_N, bool Seq_parallel, class Trait>
+template <bool Is_even_N, class Trait>
 void dq_dk_dv_1colblock(
     Trait& trait,
     Param<typename Trait::DType>& param,
@@ -771,10 +771,10 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   const int bidhkv = bidhq / param.num_qh_per_kvh;
   for (int n_block = bidnblk; n_block < param.n_block; n_block += GridDimX()) {
     if (param.tail_n > 0 and n_block == param.n_block - 1)
-      dq_dk_dv_1colblock<false, false>(
+      dq_dk_dv_1colblock<false>(
           trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
     else
-      dq_dk_dv_1colblock<true, false>(
+      dq_dk_dv_1colblock<true>(
           trait, param, bidb, bidhq, bidhkv, n_block);
   }
 }

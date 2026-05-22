@@ -364,15 +364,21 @@ struct FMHAFwdMainloop<
         }
       }
 
-      /* Apply softmax and scaling */
-      softmax(K == blk_k0, tSrS, tA_max, tA_sum, tArA);
+      /* Apply softmax and scaling (tA rescaling fused into GEMM2 VTile loop) */
+      auto rescale = softmax(K == blk_k0, tSrS, tA_max, tA_sum);
+
       reorder(tSrS, tArP);
 
-      /* GEMM 2: A += P * V, split in v dimension */
+      /* Apply softmax and scaling (tA rescaling fused into GEMM2 VTile loop) */
       CUTLASS_PRAGMA_UNROLL
       for (int VV = 0; VV < VTiles; VV++) {
         copy(copy_v, tVgV(_, _, _, VV, K), tVrV);
         reorder(tVrV, tArV);
+        if (K != blk_k0) {
+          CUTLASS_PRAGMA_UNROLL
+          for (int i = 0; i < tArA.size() / VTiles; i++)
+            tArA(_,_,_,VV)(i) *= broadcast<0>(rescale, tArA, i);
+        }
         cute::gemm(mma_pv, tArP, tArV, tArA(_, _, _, VV));
       }
 
@@ -416,19 +422,17 @@ struct FMHAFwdMainloop<
 
   // Single step of blocked softmax.
   CUTLASS_DEVICE
-  void softmax(
+  FragSRow softmax(
       bool first_block, // First softmax block?
       FragS& tS, // Softmax src/dst block
       FragSRow& tS_max, // Softmax row-wise max accumulator
-      FragSRow& tS_sum, // Softmax row-wise sum accumulator
-      FragA& tA // O accumulator (for rescaling)
+      FragSRow& tS_sum  // Softmax row-wise sum accumulator
   ) {
     /* Compute row-wise maxima for this block */
     auto tS_bmax = reduce<1>(tS, sycl::maximum{});
 
     /* Update (scaled) maxima */
     FragSRow rescale;
-    auto tS_prev_max = tS_max;
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < tS_max.size(); i++) {
       ElementS new_max = sycl::max(tS_max(i), params.scale * tS_bmax(i));
@@ -443,23 +447,20 @@ struct FMHAFwdMainloop<
           params.scale * tS(i) -
           broadcast<0>(tS_max, tS, i)); // Local exponentials
 
-    /* Rescale existing S sums and O accumulator */
+    /* Rescale existing S sums */
     if (!first_block) {
       CUTLASS_PRAGMA_UNROLL
       for (int i = 0; i < tS_max.size(); i++) {
-        rescale(i) = sycl::native::exp2(tS_prev_max(i) - tS_max(i)); //
         tS_sum(i) *= rescale(i);
       }
-
-      CUTLASS_PRAGMA_UNROLL
-      for (int i = 0; i < tA.size(); i++)
-        tA(i) *= broadcast<0>(rescale, tA, i);
     }
 
     /* Update sums */
     auto tS_bsum = reduce<1>(tS, sycl::plus<void>{}); // local sum
     for (int i = 0; i < tS_sum.size(); i++) // Add for each row
       tS_sum(i) += tS_bsum(i);
+
+    return rescale;
   }
 };
 
