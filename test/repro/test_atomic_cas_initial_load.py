@@ -152,8 +152,11 @@ def test_fp_high_collision(xpu, dtype):
     dst = torch.zeros(1, dtype=dtype, device=xpu)
     dst.index_add_(0, index, src)
 
-    # Allow a small tolerance for reduced-precision dtypes
-    atol = 1.0 if dtype in (torch.float16, torch.bfloat16) else 1e-3
+    # 512 * 1.0 = 512.0 is exactly representable in all FP formats including
+    # float16 and bfloat16 (integers up to 2048 are exact in float16), so a
+    # tolerance of 0.5 catches any single lost atomic update (which would
+    # reduce the sum to at most 511.0).
+    atol = 0.5
     assert abs(dst[0].item() - n) <= atol, (
         f"Lost updates detected for dtype={dtype}: expected {n}, got {dst[0].item()}"
     )
