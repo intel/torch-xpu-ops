@@ -24,7 +24,8 @@ namespace {
 bool use_signal_barrier_enabled() {
   static const bool cached_value = []() {
     const char* env = std::getenv("USE_SIGNAL_BARRIER");
-    return env != nullptr && std::string(env) == "1";
+    // Default to enabled; only opt out when explicitly set to "0".
+    return env == nullptr || std::string(env) != "0";
   }();
   return cached_value;
 }

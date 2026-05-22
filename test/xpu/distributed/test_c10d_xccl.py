@@ -1409,8 +1409,6 @@ class XCCLTraceTest(XCCLTraceTestBase):
 # XPU SymmetricMemory tests (SYCL IPC backend)
 # ------------------------------------------------------------------
 
-# Use the SYCL signal-pad kernel for barrier / put_signal / wait_signal.
-os.environ.setdefault("USE_SIGNAL_BARRIER", "1")
 # XPU does not support multicast.
 os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
 
