@@ -16,7 +16,6 @@ placeholders:
 - Read `.github/copilot-instructions.md` for full repo context before starting.
 - Read `.github/skills/xpu-issues-triaging/SKILL.md` for issue triaging before creating a PR.
 
-
 **MANDATORY STEPS**:
 
 - You MUST read the issue body's "Root Cause Analysis" and "Proposed Fix Strategy" BEFORE proposing any fix.
