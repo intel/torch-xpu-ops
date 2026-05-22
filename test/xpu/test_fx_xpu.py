@@ -37,6 +37,74 @@ with XPUPatchForImport(False):
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 
+
+# Canonical kernel launch event token used in test baselines.
+_XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
+
+
+# The SYCL runtime may emit either "urEnqueueKernelLaunch" or
+# "urEnqueueKernelLaunchWithArgsExp" (the latter truncated to 30 chars by
+# _canonicalize_profiler_events). Accept both.
+# Keep the full variant for future compatibility.
+# SYCL runtime may emit:
+#   * "urEnqueueKernelLaunch"
+#   * "urEnqueueKernelLaunchWithArgsE"      (truncated)
+#   * "urEnqueueKernelLaunchWithArgsExp"    (full name)
+_XPU_KERNEL_LAUNCH_EVENT_VARIANTS = (
+    _XPU_KERNEL_LAUNCH_EVENT,
+    "urEnqueueKernelLaunchWithArgsE",
+    "urEnqueueKernelLaunchWithArgsExp",
+)
+
+_XPU_RUNTIME_EVENT_PREFIXES = ("ze", "ur")
+
+
+def _parse_event_name(line):
+    """Extract NAME from a line shaped "event=NAME node=... stack_trace=...",
+    or return None if the line doesn't match the expected format."""
+    if not line.startswith("event="):
+        return None
+    end = line.find(" node=")
+    if end == -1:
+        return None
+    return line[len("event=") : end]
+
+
+# Drop UR/ZE bookkeeping events (zeKernelSetArgumentValue, zeKernelCreate,
+# etc.) that XPU emits per aten op but upstream CUDA/HIP baselines don't
+# include. Keep aten ops and the canonical launch event so the test
+# asserts the same invariant upstream does: every kernel launch is
+# attributed to its aten op via the FX stack trace.
+def _filter_xpu_runtime_events(actual_traces):
+    kept = []
+    for line in actual_traces.split("\n"):
+        name = _parse_event_name(line)
+        if name is None:
+            kept.append(line)
+            continue
+        if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+            kept.append(line)
+            continue
+        if name.startswith(_XPU_RUNTIME_EVENT_PREFIXES):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _canonicalize_xpu_launch_events(actual_traces):
+    lines = []
+    for line in actual_traces.split("\n"):
+        name = _parse_event_name(line)
+        if name in _XPU_KERNEL_LAUNCH_EVENT_VARIANTS:
+            line = f"event={_XPU_KERNEL_LAUNCH_EVENT}" + line[len(f"event={name}") :]
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _get_normalized_xpu_traces(actual_traces):
+    return _canonicalize_xpu_launch_events(_filter_xpu_runtime_events(actual_traces))
+
+
 # ---- TestCommonPass: rebuild with XPU added to Devices ---------------------
 # test_common_passes sets Devices = ["cpu"] (+ "cuda" when available) at
 # module-scope and decorates TestCommonPass with @instantiate_parametrized_tests.
@@ -144,7 +212,6 @@ def _test_profiler_stack_trace_augmentation(self):
 
     actual_traces = _enrich_profiler_traces(prof)
 
-    # Handle platform-specific event names
     if torch.version.hip:
         actual_traces = "\n".join(
             line
@@ -153,17 +220,23 @@ def _test_profiler_stack_trace_augmentation(self):
         )
         kernel_event = "hipExtModuleLaunchKernel"
         kernel_event_relu = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+        kernel_event_relu = _XPU_KERNEL_LAUNCH_EVENT
     else:
-        kernel_event = "xpuLaunchKernel"
-        kernel_event_relu = "xpuLaunchKernel"
+        kernel_event = "cudaLaunchKernel"
+        kernel_event_relu = "cudaLaunchKernel"
     if IS_WINDOWS:
         expected = f"""\
 event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::relu node=relu stack_trace=return F.relu(input, inplace=self.inplace)
@@ -173,8 +246,10 @@ event=aten::t node=t_1 stack_trace=return F.linear(input, self.weight, self.bias
 event=aten::transpose node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::addmm node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::resize_ node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::expand node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::empty node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
 event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
     else:
@@ -183,6 +258,10 @@ event=aten::t node=t stack_trace=x = self.linear1(x)
 event=aten::transpose node=t stack_trace=x = self.linear1(x)
 event=aten::as_strided node=t stack_trace=x = self.linear1(x)
 event=aten::addmm node=addmm stack_trace=x = self.linear1(x)
+event=aten::resize_ node=addmm stack_trace=x = self.linear1(x)
+event=aten::expand node=addmm stack_trace=x = self.linear1(x)
+event=aten::as_strided node=addmm stack_trace=x = self.linear1(x)
+event=aten::empty node=addmm stack_trace=x = self.linear1(x)
 event={kernel_event} node=addmm stack_trace=x = self.linear1(x)
 event=aten::relu node=relu stack_trace=x = self.relu(x)
 event=aten::clamp_min node=relu stack_trace=x = self.relu(x)
@@ -191,6 +270,10 @@ event=aten::t node=t_1 stack_trace=x = self.linear2(x)
 event=aten::transpose node=t_1 stack_trace=x = self.linear2(x)
 event=aten::as_strided node=t_1 stack_trace=x = self.linear2(x)
 event=aten::addmm node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::resize_ node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::expand node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::as_strided node=addmm_1 stack_trace=x = self.linear2(x)
+event=aten::empty node=addmm_1 stack_trace=x = self.linear2(x)
 event={kernel_event} node=addmm_1 stack_trace=x = self.linear2(x)"""
 
     self.assertExpectedInline(actual_traces, expected)
@@ -232,7 +315,13 @@ def _test_profiler_multiple_modules(self):
         result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
     actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    if torch.version.hip:
+        kernel_event = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    else:
+        kernel_event = "cudaLaunchKernel"
     self.assertExpectedInline(
         actual_traces,
         f"""\
@@ -284,7 +373,13 @@ def _test_profiler_nested_graph_modules(self):
         )
 
     actual_traces = _enrich_profiler_traces(prof)
-    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    if torch.version.hip:
+        kernel_event = "hipLaunchKernel"
+    elif torch.xpu.is_available():
+        actual_traces = _get_normalized_xpu_traces(actual_traces)
+        kernel_event = _XPU_KERNEL_LAUNCH_EVENT
+    else:
+        kernel_event = "cudaLaunchKernel"
     self.assertExpectedInline(
         actual_traces,
         f"""\
