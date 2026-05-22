@@ -16,6 +16,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <c10/macros/Macros.h>
+#include <sycl/sycl.hpp>
 
 namespace at::native::xpu {
 
@@ -260,18 +261,18 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
     if (ax < -MAXLOG) {
       return 0.0;
     }
-    return std::exp(ax);
+    return sycl::exp(ax);
   }
 
   fac = a + lanczos_g - 0.5;
   res = std::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
 
   if ((a < 200) && (x < 200)) {
-    res *= std::exp(a - x) * std::pow(x / fac, a);
+    res *= sycl::exp(a - x) * std::pow(x / fac, a);
   } else {
     num = x - a - lanczos_g + 0.5;
     numfac = num / fac;
-    res *= std::exp(
+    res *= sycl::exp(
         a * (std::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
   }
   return res;
@@ -336,7 +337,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
 
   logx = std::log(x);
   term = -std::expm1(a * logx - std::lgamma(1 + a));
-  return term - std::exp(a * logx - std::lgamma(a)) * sum;
+  return term - sycl::exp(a * logx - std::lgamma(a)) * sum;
 }
 
 template <typename scalar_t>
@@ -643,7 +644,7 @@ static const scalar_t _igam_helper_asymptotic_series(
     afac /= a;
   }
   const accscalar_t PI = 3.14159265358979323846;
-  res += sgn * std::exp(-0.5 * a * eta * eta) * sum / std::sqrt(2 * PI * a);
+  res += sgn * sycl::exp(-0.5 * a * eta * eta) * sum / std::sqrt(2 * PI * a);
 
   return res;
 }
@@ -942,14 +943,14 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = (x / scalar_t{2.0}) - scalar_t{2.0};
-    return (std::exp(x) * chbevl(y, A, len));
+    return (sycl::exp(x) * chbevl(y, A, len));
   }
 
   auto coeff_pair = chebyshev_coefficients_i0e_B<scalar_t>();
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   return (
-      std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
+      sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
       std::sqrt(x));
 }
 
@@ -1070,7 +1071,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = x / scalar_t{2.0} - scalar_t{2.0};
-    const scalar_t out = std::exp(x) * x * chbevl(y, A, len);
+    const scalar_t out = sycl::exp(x) * x * chbevl(y, A, len);
     return (_x < scalar_t{0.0}) ? -out : out;
   }
 
@@ -1078,7 +1079,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      (std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
+      (sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
       std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
@@ -1476,7 +1477,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
     }
 
     ai = T(5.64189583547756286948e-01f) * (an / ad) /
-        (T(2.0f) * std::sqrt(std::sqrt(x)) * std::exp(zeta));
+        (T(2.0f) * std::sqrt(std::sqrt(x)) * sycl::exp(zeta));
 
     if (x > T(8.3203353f)) {
       return ai;
