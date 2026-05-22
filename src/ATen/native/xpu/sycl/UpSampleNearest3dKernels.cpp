@@ -28,13 +28,13 @@ namespace at::native::xpu {
 template <typename scalar_t, typename index_op_t>
 struct UpsampleNearest3dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
+    int64_t dst_idx = item.get_global_linear_id();
 
     if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
-    int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+    int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+    int64_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
     int c = (dst_idx / (dst_c_stride)) % dim_c_;
 
@@ -46,7 +46,7 @@ struct UpsampleNearest3dKernelFunctor {
     int dst_x = dst_idx % dst_dim_w_;
     int src_x = index_op_(width_scale_, dst_x, src_dim_w_);
 
-    int src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
+    int64_t src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
         src_y * src_dim_w_ + src_x;
     for (int b = 0; b < dim_b_; b++) {
       output_[dst_idx] = input_[src_idx];
@@ -104,7 +104,7 @@ struct UpsampleNearest3dKernelFunctor {
 template <typename scalar_t, typename index_op_t>
 void upsample_nearest3d_out_template(
     const scalar_t* input,
-    unsigned int n,
+    int64_t n,
     size_t dim_b,
     size_t dim_c,
     size_t src_dim_d,
@@ -135,8 +135,7 @@ void upsample_nearest3d_out_template(
       width_scale,
       index_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num =
-      at::ceil_div((unsigned int)n, (unsigned int)work_group_size);
+  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
   sycl_kernel_submit(
       work_group_num * work_group_size, work_group_size, queue, kfn);
 }
@@ -170,8 +169,11 @@ void upsample_nearest3d_kernel(
   int input_width = input_.size(4);
 
   Tensor input = input_.contiguous();
-  unsigned int n = output.numel() / nbatch;
-  TORCH_CHECK(output.numel() <= std::numeric_limits<int32_t>::max());
+  int64_t n = output.numel() / nbatch;
+  TORCH_CHECK(
+      output.numel() <= std::numeric_limits<int64_t>::max(),
+      "upsample_nearest3d only supports output tensors with less than INT64_MAX elements, but got ",
+      output.sizes());
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -232,13 +234,13 @@ void upsample_nearest3d_kernel(
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest3dBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
+    int64_t dst_idx = item.get_global_linear_id();
 
     if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
       return;
 
-    int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+    int64_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+    int64_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
     int c = (dst_idx / (dst_c_stride)) % dim_c_;
 
@@ -259,7 +261,7 @@ struct UpsampleNearest3dBackwardFunctor {
       for (int z = src_z; z < src_z_up; z++) {
         for (int y = src_y; y < src_y_up; y++) {
           for (int x = src_x; x < src_x_up; x++) {
-            int src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
+            int64_t src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
                 z * src_dim_h_ * src_dim_w_ + y * src_dim_w_ + x;
             grad += grad_o_[src_idx];
           }
@@ -318,7 +320,7 @@ struct UpsampleNearest3dBackwardFunctor {
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 void upsample_nearest3d_backward_template(
     const scalar_t* grad_o,
-    unsigned int n,
+    int64_t n,
     size_t dim_b,
     size_t dim_c,
     size_t src_dim_d,
@@ -350,7 +352,7 @@ void upsample_nearest3d_backward_template(
           width_scale,
           index_bw_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num = at::ceil_div(n, (unsigned int)work_group_size);
+  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
   sycl_kernel_submit(
       work_group_num * work_group_size, work_group_size, queue, kfn);
 }
@@ -383,9 +385,15 @@ void upsample_nearest3d_backward_kernel(
   int input_width = input_size[4];
 
   Tensor grad_output = grad_output_.contiguous();
-  unsigned int n = grad_input.numel() / nbatch;
-  TORCH_CHECK(grad_input.numel() <= std::numeric_limits<int32_t>::max());
-  TORCH_CHECK(grad_output.numel() <= std::numeric_limits<int32_t>::max());
+  int64_t n = grad_input.numel() / nbatch;
+  TORCH_CHECK(
+      grad_input.numel() <= std::numeric_limits<int64_t>::max(),
+      "upsample_nearest3d_backward only supports input tensors with less than INT64_MAX elements, but got ",
+      grad_input.sizes());
+  TORCH_CHECK(
+      grad_output.numel() <= std::numeric_limits<int64_t>::max(),
+      "upsample_nearest3d_backward only supports output tensors with less than INT64_MAX elements, but got ",
+      grad_output.sizes());
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::Half,
       ScalarType::BFloat16,
