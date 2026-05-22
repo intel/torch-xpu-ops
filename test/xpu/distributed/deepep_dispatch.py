@@ -148,8 +148,8 @@ def deepep_owner_dispatch(
 
         topk_idx_kernel = (
                 global_topk_idx
-                if global_topk_idx.dtype == torch.int64
-                else global_topk_idx.to(torch.int64)
+                if global_topk_idx.dtype == torch.int32
+                else global_topk_idx.to(torch.int32)
         )
         if rank_buffers_ptr is None:
                 raise ValueError("rank_buffers_ptr must not be None")
@@ -441,12 +441,17 @@ def deepep_owner_combine(
                 )
 
                 topk_weights_f32 = topk_weights.float()
+                topk_idx_i32 = (
+                        topk_idx
+                        if topk_idx.dtype == torch.int32
+                        else topk_idx.to(torch.int32)
+                )
 
                 # Phase 1: Compute own chunk → output directly
                 my_chunk_start = rank * num_tokens_per_rank
                 output.zero_()  # kernel skips tokens with no owned experts
                 torch.ops.symm_mem.ep_combine_local_(
-                        expert_output, topk_idx, scatter_idx, topk_weights_f32,
+                        expert_output, topk_idx_i32, scatter_idx, topk_weights_f32,
                         output, num_experts,
                         my_chunk_start, num_tokens_per_rank, rank, world_size,
                 )
@@ -473,7 +478,7 @@ def deepep_owner_combine(
                                 target_chunk_start = target_rank * num_tokens_per_rank
                                 local_bufs[buf_idx].zero_()
                                 torch.ops.symm_mem.ep_combine_local_(
-                                        expert_output, topk_idx, scatter_idx, topk_weights_f32,
+                                        expert_output, topk_idx_i32, scatter_idx, topk_weights_f32,
                                         local_bufs[buf_idx], num_experts,
                                         target_chunk_start, num_tokens_per_rank, rank, world_size,
                                 )

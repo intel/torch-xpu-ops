@@ -29,7 +29,7 @@
 template <typename T, typename idx_out_t, typename weight_t>
 struct EpDispatchRingScalarKernel {
   const int64_t* rank_ptrs;
-  const int64_t* topk_idx_ptr;
+  const int32_t* topk_idx_ptr;
   const int64_t* topk_weight_rank_ptrs;
   const int32_t* scatter_idx_ptr;
   T* remap_ptr;
@@ -68,8 +68,7 @@ struct EpDispatchRingScalarKernel {
 
     // Check ownership for each topk slot and write if owned
     for (int64_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(
-          topk_idx_ptr[global_token_idx * topk + k]);
+      const int32_t expert = topk_idx_ptr[global_token_idx * topk + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -115,7 +114,7 @@ struct EpDispatchRingVecKernel {
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
 
   const int64_t* rank_ptrs;
-  const int64_t* topk_idx_ptr;
+  const int32_t* topk_idx_ptr;
   const int64_t* topk_weight_rank_ptrs;
   const int32_t* scatter_idx_ptr;
   scalar_t* remap_ptr;
@@ -127,7 +126,7 @@ struct EpDispatchRingVecKernel {
   int32_t topk_weight_stride;
   int32_t rank;
   int32_t world_size;
-  int32_t hidden_vecs;  // hidden_size / VEC_SIZE
+  int32_t hidden_vecs;
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
@@ -155,7 +154,7 @@ struct EpDispatchRingVecKernel {
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
     bool has_owned = false;
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -174,7 +173,7 @@ struct EpDispatchRingVecKernel {
 
     // Loop over topk: check ownership and write to owned positions
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -226,6 +225,9 @@ at::Tensor ep_dispatch(
       rank_buffers_ptr.scalar_type() == at::kLong,
       "ep_dispatch: rank_buffers_ptr must be int64");
   TORCH_CHECK(topk_idx.dim() == 2, "ep_dispatch: topk_idx must be 2D");
+  TORCH_CHECK(
+      topk_idx.scalar_type() == at::kInt,
+      "ep_dispatch: topk_idx must be int32");
     TORCH_CHECK(
       topk_weight_rank_buffers_ptr.dim() == 1 &&
         topk_weight_rank_buffers_ptr.size(0) == world_size,
@@ -340,7 +342,7 @@ at::Tensor ep_dispatch(
                     const int64_t blocks = (total + threads - 1) / threads;
                     auto kfn = EpDispatchRingVecKernel<remap_t, idx_out_t, weight_t, VEC_SIZE>{
                         rank_buffers_ptr.data_ptr<int64_t>(),
-                        topk_idx.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int32_t>(),
                         topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
                         scatter_idx.data_ptr<int32_t>(),
                         remap_hidden_states.data_ptr<remap_t>(),
@@ -369,7 +371,7 @@ at::Tensor ep_dispatch(
                     const int64_t blocks = (total + threads - 1) / threads;
                     auto kfn = EpDispatchRingScalarKernel<remap_t, idx_out_t, weight_t>{
                         rank_buffers_ptr.data_ptr<int64_t>(),
-                        topk_idx.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int32_t>(),
                         topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
                         scatter_idx.data_ptr<int32_t>(),
                         remap_hidden_states.data_ptr<remap_t>(),
@@ -410,7 +412,7 @@ at::Tensor ep_dispatch(
                     const int64_t blocks = (total + threads - 1) / threads;
                     auto kfn = EpDispatchRingVecKernel<remap_t, idx_out_t, weight_t, VEC_SIZE>{
                         rank_buffers_ptr.data_ptr<int64_t>(),
-                        topk_idx.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int32_t>(),
                         topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
                         scatter_idx.data_ptr<int32_t>(),
                         remap_hidden_states.data_ptr<remap_t>(),
@@ -439,7 +441,7 @@ at::Tensor ep_dispatch(
                     const int64_t blocks = (total + threads - 1) / threads;
                     auto kfn = EpDispatchRingScalarKernel<remap_t, idx_out_t, weight_t>{
                         rank_buffers_ptr.data_ptr<int64_t>(),
-                        topk_idx.data_ptr<int64_t>(),
+                        topk_idx.data_ptr<int32_t>(),
                         topk_weight_rank_buffers_ptr.data_ptr<int64_t>(),
                         scatter_idx.data_ptr<int32_t>(),
                         remap_hidden_states.data_ptr<remap_t>(),

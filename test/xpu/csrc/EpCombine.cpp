@@ -45,7 +45,7 @@ template <typename T>
 struct EpCombineRingScalarKernel {
   const T* expert_output_ptr;       // [num_tokens * topk, hidden] local expert results
   const int64_t* rank_output_ptrs;  // [world_size] pointers to each rank's receive buffer
-  const int64_t* topk_idx_ptr;
+  const int32_t* topk_idx_ptr;
   const int32_t* scatter_idx_ptr;
   const float* topk_weights_ptr;
   int64_t num_tokens_per_rank;
@@ -76,7 +76,7 @@ struct EpCombineRingScalarKernel {
     const int64_t topk_base = global_token_idx * topk;
     bool has_owned = false;
     for (int64_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -90,7 +90,7 @@ struct EpCombineRingScalarKernel {
     // Compute weighted partial sum from local expert_output (only owned experts)
     float acc = 0.0f;
     for (int64_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -127,7 +127,7 @@ template <typename scalar_t, int VEC_SIZE>
 struct EpCombineRingVecKernel {
   const scalar_t* expert_output_ptr;
   const int64_t* rank_output_ptrs;
-  const int64_t* topk_idx_ptr;
+  const int32_t* topk_idx_ptr;
   const int32_t* scatter_idx_ptr;
   const float* topk_weights_ptr;
   int32_t num_tokens_per_rank;
@@ -160,7 +160,7 @@ struct EpCombineRingVecKernel {
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
     bool has_owned = false;
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -174,7 +174,7 @@ struct EpCombineRingVecKernel {
     // Compute weighted partial sum from LOCAL expert_output (only owned experts)
     float acc[VEC_SIZE] = {};
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -228,8 +228,8 @@ at::Tensor ep_combine(
   TORCH_CHECK(expert_output.is_contiguous());
   TORCH_CHECK(topk_idx.dim() == 2, "ep_combine: topk_idx must be 2D");
   TORCH_CHECK(
-      topk_idx.scalar_type() == at::kLong,
-      "ep_combine: topk_idx must be int64");
+      topk_idx.scalar_type() == at::kInt,
+      "ep_combine: topk_idx must be int32");
   TORCH_CHECK(topk_idx.is_contiguous());
   TORCH_CHECK(
       scatter_idx.dim() == 2 && scatter_idx.size(0) == topk_idx.size(0) &&
@@ -293,7 +293,7 @@ at::Tensor ep_combine(
           auto kfn = EpCombineRingVecKernel<scalar_t, VEC_SIZE>{
               expert_output.data_ptr<scalar_t>(),
               rank_output_ptrs.data_ptr<int64_t>(),
-              topk_idx.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
               scatter_idx.data_ptr<int32_t>(),
               topk_weights.data_ptr<float>(),
               static_cast<int32_t>(num_tokens_per_rank),
@@ -316,7 +316,7 @@ at::Tensor ep_combine(
           auto kfn = EpCombineRingScalarKernel<scalar_t>{
               expert_output.data_ptr<scalar_t>(),
               rank_output_ptrs.data_ptr<int64_t>(),
-              topk_idx.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
               scatter_idx.data_ptr<int32_t>(),
               topk_weights.data_ptr<float>(),
               num_tokens_per_rank,
@@ -345,7 +345,7 @@ at::Tensor ep_combine(
 template <typename scalar_t, int VEC_SIZE>
 struct EpCombineLocalVecKernel {
   const scalar_t* expert_output_ptr;
-  const int64_t* topk_idx_ptr;
+  const int32_t* topk_idx_ptr;
   const int32_t* scatter_idx_ptr;
   const float* topk_weights_ptr;
   scalar_t* output_ptr;
@@ -373,7 +373,7 @@ struct EpCombineLocalVecKernel {
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
     bool has_owned = false;
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -387,7 +387,7 @@ struct EpCombineLocalVecKernel {
     // Accumulate only from owned experts
     float acc[VEC_SIZE] = {};
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = static_cast<int32_t>(topk_idx_ptr[topk_base + k]);
+      const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
       if (expert < boundary) {
         owner = expert / (base_experts + 1);
@@ -428,7 +428,7 @@ at::Tensor ep_combine_local_(
     int64_t world_size) {
   TORCH_CHECK(expert_output.dim() == 2);
   TORCH_CHECK(expert_output.is_contiguous());
-  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.scalar_type() == at::kLong);
+  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.scalar_type() == at::kInt);
   TORCH_CHECK(topk_idx.is_contiguous());
   TORCH_CHECK(scatter_idx.dim() == 2 && scatter_idx.scalar_type() == at::kInt);
   TORCH_CHECK(scatter_idx.is_contiguous());
@@ -463,7 +463,7 @@ at::Tensor ep_combine_local_(
           const int64_t blocks = (total + threads - 1) / threads;
           auto kfn = EpCombineLocalVecKernel<scalar_t, VEC_SIZE>{
               expert_output.data_ptr<scalar_t>(),
-              topk_idx.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
               scatter_idx.data_ptr<int32_t>(),
               topk_weights.data_ptr<float>(),
               output.data_ptr<scalar_t>(),
