@@ -189,9 +189,8 @@ void upsample_nearest3d_kernel(
         const float width_scale =
             compute_scales_value<float>(scales_w, input_width, output_width);
         AT_DISPATCH_INDEX_TYPES(
-            at::native::canUse32BitIndexMath(output)
-                ? ScalarType::Int
-                : ScalarType::Long,
+            at::native::canUse32BitIndexMath(output) ? ScalarType::Int
+                                                     : ScalarType::Long,
             "upsample_nearest3d_xpu_index",
             [&] {
               if (is_exact) {
@@ -236,7 +235,11 @@ void upsample_nearest3d_kernel(
   }
 }
 
-template <typename scalar_t, typename accscalar_t, typename index_t, typename index_bw_op_t>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_t,
+    typename index_bw_op_t>
 struct UpsampleNearest3dBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     index_t dst_idx = item.get_global_linear_id();
@@ -322,7 +325,11 @@ struct UpsampleNearest3dBackwardFunctor {
   index_bw_op_t index_bw_op_;
 };
 
-template <typename scalar_t, typename accscalar_t, typename index_t, typename index_bw_op_t>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_t,
+    typename index_bw_op_t>
 void upsample_nearest3d_backward_template(
     const scalar_t* grad_o,
     int64_t n,
@@ -340,22 +347,25 @@ void upsample_nearest3d_backward_template(
     float width_scale,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto kfn =
-      UpsampleNearest3dBackwardFunctor<scalar_t, accscalar_t, index_t, index_bw_op_t>(
-          grad_o,
-          dim_b,
-          dim_c,
-          src_dim_d,
-          src_dim_h,
-          src_dim_w,
-          dst_dim_d,
-          dst_dim_h,
-          dst_dim_w,
-          grad_i,
-          depth_scale,
-          height_scale,
-          width_scale,
-          index_bw_op);
+  auto kfn = UpsampleNearest3dBackwardFunctor<
+      scalar_t,
+      accscalar_t,
+      index_t,
+      index_bw_op_t>(
+      grad_o,
+      dim_b,
+      dim_c,
+      src_dim_d,
+      src_dim_h,
+      src_dim_w,
+      dst_dim_d,
+      dst_dim_h,
+      dst_dim_w,
+      grad_i,
+      depth_scale,
+      height_scale,
+      width_scale,
+      index_bw_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
   int64_t work_group_num =
       at::ceil_div(n, static_cast<int64_t>(work_group_size));
@@ -411,9 +421,8 @@ void upsample_nearest3d_backward_kernel(
         float width_scale = compute_scales_value_backwards<float>(
             scales_w, output_width, input_width);
         AT_DISPATCH_INDEX_TYPES(
-            at::native::canUse32BitIndexMath(grad_input)
-                ? ScalarType::Int
-                : ScalarType::Long,
+            at::native::canUse32BitIndexMath(grad_input) ? ScalarType::Int
+                                                         : ScalarType::Long,
             "upsample_nearest3d_backward_xpu_index",
             [&] {
               if (is_exact) {
