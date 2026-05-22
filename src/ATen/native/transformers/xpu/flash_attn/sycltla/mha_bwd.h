@@ -70,7 +70,7 @@ struct FAKernel {
       Layout<Shape<Int<AtomLayoutNdKV>, Int<kNSGs / AtomLayoutNdKV>, _1>>;
   using SubgroupLayoutdQ =
       Layout<Shape<Int<AtomLayoutMdQ>, Int<kNSGs / AtomLayoutMdQ>, _1>>;
-  using TileShapeSdP = Layout<Shape<Int<kBlockN>, Int<kBlockM>, _K>>;
+  using TileShapeSdP = Layout<Shape<Int<kBlockM>, Int<kBlockN>, _K>>;
   using TileShapedKV = Layout<Shape<Int<kBlockN>, Int<kHeadDim>, _K>>;
   using TileShapedQ = Layout<Shape<Int<kBlockM>, Int<kHeadDim>, _K>>;
 

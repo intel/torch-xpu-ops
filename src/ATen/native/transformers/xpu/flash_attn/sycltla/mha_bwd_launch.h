@@ -201,8 +201,8 @@ CUTLASS_DEVICE void apply_mask_causal(
   for (int n = 0; n < size<1>(tensor); ++n) {
     CUTLASS_PRAGMA_UNROLL
     for (int m = 0; m < size<0>(tensor); ++m) {
-      int y = m_offset + get<1>(rC_2d(m, n)) + diagonal_offset;
-      int x = n_offset + get<0>(rC_2d(m, n));
+      int y = m_offset + get<0>(rC_2d(m, n)) + diagonal_offset;
+      int x = n_offset + get<1>(rC_2d(m, n));
       if (x > y) {
         tensor(m, n) = -INFINITY;
       }
@@ -485,22 +485,22 @@ CUTLASS_DEVICE void scale_apply_exp2(
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
   if constexpr (Is_even_M) {
     CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      const float max_scaled = max(n) == -INFINITY ? 0.f : max(n) * M_LOG2E;
+    for (int mi = 0; mi < size<0>(tensor); ++mi) {
+      int m = get<0>(rC_2d(mi, 0));
+      const float max_scaled = max(m) == -INFINITY ? 0.f : max(m) * M_LOG2E;
       CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(tensor); ++mi) {
+      for (int ni = 0; ni < size<1>(tensor); ++ni) {
         tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
       }
     }
   } else {
     CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
+    for (int mi = 0; mi < size<0>(tensor); ++mi) {
+      int m = get<0>(rC_2d(mi, 0));
       const float max_scaled =
-          ((n >= tail_m) || (max(n) == -INFINITY)) ? 0.f : max(n) * M_LOG2E;
+          ((m >= tail_m) || (max(m) == -INFINITY)) ? 0.f : max(m) * M_LOG2E;
       CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(tensor); ++mi) {
+      for (int ni = 0; ni < size<1>(tensor); ++ni) {
         tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
       }
     }
@@ -527,22 +527,22 @@ CUTLASS_DEVICE void softmax_backward(
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
   if constexpr (Is_even_M) {
     CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(dP); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      const float neg_dpsum_scaled = -(dP_sum(n) * scale);
+    for (int mi = 0; mi < size<0>(dP); ++mi) {
+      int m = get<0>(rC_2d(mi, 0));
+      const float neg_dpsum_scaled = -(dP_sum(m) * scale);
       CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(dP); ++mi) {
+      for (int ni = 0; ni < size<1>(dP); ++ni) {
         dP(mi, ni) = P(mi, ni) * fmaf(dP(mi, ni), scale, neg_dpsum_scaled);
       }
     }
   } else {
     CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(dP); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      if (n < tail_m) {
-        const float neg_dpsum_scaled = -(dP_sum(n) * scale);
+    for (int mi = 0; mi < size<0>(dP); ++mi) {
+      int m = get<0>(rC_2d(mi, 0));
+      if (m < tail_m) {
+        const float neg_dpsum_scaled = -(dP_sum(m) * scale);
         CUTLASS_PRAGMA_UNROLL
-        for (int mi = 0; mi < size<0>(dP); ++mi) {
+        for (int ni = 0; ni < size<1>(dP); ++ni) {
           dP(mi, ni) = P(mi, ni) * fmaf(dP(mi, ni), scale, neg_dpsum_scaled);
         }
       }
@@ -585,54 +585,80 @@ void dq_dk_dv_1colblock(
       2;
   const index_t dsb_offset = pb_offset + kBlockN * kBlockM;
 
-  const auto block_n_dim = tail_n == 0 ? Int<kBlockN>{} : ((tail_n + 1) & ~1);
-  auto shapeO = make_shape(kBlockM, Int<kHeadDim>{});
-  auto shapeQtOt = make_shape(Int<kHeadDim>{}, kBlockM);
-  auto shapeSPt = make_shape(Int<kBlockN>{}, kBlockM);
-  auto shapeSP = make_shape(kBlockM, block_n_dim);
+  // P = S = Q * K^t
+  auto shapeSP = make_shape(Int<kBlockM>{}, Int<kBlockN>{});
+  Tensor mP = make_tensor(
+      make_gmem_ptr(param.pb_ptr + pb_offset),
+      make_layout(shapeSP, make_stride(Int<kBlockN>{}, _1{})));
 
-  using Shape1 =
-      Shape<std::conditional_t<Is_even_N, Int<kBlockN>, int>, Int<kHeadDim>>;
-  using Shape2 =
-      Shape<Int<kHeadDim>, std::conditional_t<Is_even_N, Int<kBlockN>, int>>;
   auto shapeQ = make_shape(kBlockM, Int<kHeadDim>{});
-  auto shapedQ = Shape<Int<kBlockM>, Int<kHeadDim>>{};
-  Shape1 shapeKtVt;
-  Shape2 shapeKV;
-  if constexpr (Is_even_N) {
-    shapeKtVt = make_shape(Int<kBlockN>{}, Int<kHeadDim>{});
-    shapeKV = make_shape(Int<kHeadDim>{}, Int<kBlockN>{});
-  } else {
-    shapeKtVt = make_shape(tail_n, Int<kHeadDim>{});
-    shapeKV = make_shape(Int<kHeadDim>{}, tail_n);
-  }
   Tensor mQ = make_tensor(
       make_gmem_ptr(param.q_ptr + q_offset),
       make_layout(shapeQ, make_stride(param.q_r_stride, _1{})));
+  using ShapeKtVt_t =
+      Shape<std::conditional_t<Is_even_N, Int<kBlockN>, int>, Int<kHeadDim>>;
+  ShapeKtVt_t shapeKtVt;
+  if constexpr (Is_even_N) {
+    shapeKtVt = make_shape(Int<kBlockN>{}, Int<kHeadDim>{});
+  } else {
+    shapeKtVt = make_shape(tail_n, Int<kHeadDim>{});
+  }
   Tensor mKt = make_tensor(
       make_gmem_ptr(param.k_ptr + k_offset),
       make_layout(shapeKtVt, make_stride(param.k_r_stride, _1{})));
+
+  // dP = dO * V^t
+  Tensor mdP = make_tensor(
+      make_gmem_ptr(param.pb_ptr + dsb_offset),
+      make_layout(shapeSP, make_stride(Int<kBlockN>{}, _1{})));
+  auto shapedO = make_shape(kBlockM, Int<kHeadDim>{});
   Tensor mdO = make_tensor(
       make_gmem_ptr(param.do_ptr + do_offset),
-      make_layout(shapeO, make_stride(param.do_r_stride, _1{})));
+      make_layout(shapedO, make_stride(param.do_r_stride, _1{})));
   Tensor mVt = make_tensor(
       make_gmem_ptr(param.v_ptr + v_offset),
       make_layout(shapeKtVt, make_stride(param.v_r_stride, _1{})));
+
+  // dV = P^t * dO
+  Tensor mdV = make_tensor(
+      make_gmem_ptr(param.dv_ptr + dv_offset),
+      make_layout(shapeKtVt, make_stride(param.dv_r_stride, _1{})));
+  auto shapeSPt = make_shape(Int<kBlockN>{}, Int<kBlockM>{});
   Tensor mPt = make_tensor(
       make_gmem_ptr(param.pb_ptr + pb_offset),
-      make_layout(shapeSPt, make_stride(Int<kBlockM>{}, _1{})));
+      make_layout(shapeSPt, make_stride(_1{}, Int<kBlockN>{})));
+  auto shapeQtOt = make_shape(Int<kHeadDim>{}, kBlockM);
   Tensor mdOt = make_tensor(
       make_gmem_ptr(param.do_ptr + do_offset),
       make_layout(shapeQtOt, make_stride(_1{}, param.do_r_stride)));
-  Tensor mK = make_tensor(
-      make_gmem_ptr(param.k_ptr + k_offset),
-      make_layout(shapeKV, make_stride(_1{}, param.k_r_stride)));
+
+  // dK = (dP)^t * Q
+  Tensor mdK = make_tensor(
+      make_gmem_ptr(param.dk_ptr + dk_offset),
+      make_layout(shapeKtVt, make_stride(param.dk_r_stride, _1{})));
   Tensor mdPt = make_tensor(
       make_gmem_ptr(param.pb_ptr + dsb_offset),
-      make_layout(shapeSPt, make_stride(Int<kBlockM>{}, _1{})));
+      make_layout(shapeSPt, make_stride(_1{}, Int<kBlockN>{})));
   Tensor mQt = make_tensor(
       make_gmem_ptr(param.q_ptr + q_offset),
       make_layout(shapeQtOt, make_stride(_1{}, param.q_r_stride)));
+
+  // dQ = dP * K
+  auto shapedQ = Shape<Int<kBlockM>, Int<kHeadDim>>{};
+  Tensor mdQaccum = make_tensor(
+      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
+      make_layout(shapedQ, make_stride(param.head_dim, _1{})));
+  using ShapeK_t =
+      Shape<Int<kHeadDim>, std::conditional_t<Is_even_N, Int<kBlockN>, int>>;
+  ShapeK_t shapeK;
+  if constexpr (Is_even_N) {
+    shapeK = make_shape(Int<kHeadDim>{}, Int<kBlockN>{});
+  } else {
+    shapeK = make_shape(Int<kHeadDim>{}, tail_n);
+  }
+  Tensor mK = make_tensor(
+      make_gmem_ptr(param.k_ptr + k_offset),
+      make_layout(shapeK, make_stride(_1{}, param.k_r_stride)));
 
   Tensor mLSE = make_tensor(
       make_gmem_ptr(param.lse_ptr + lse_offset),
@@ -641,28 +667,15 @@ void dq_dk_dv_1colblock(
       make_gmem_ptr(param.odo_ptr + lse_offset),
       make_layout(Shape<Int<kBlockM>>{}, Stride<_1>{}));
 
-  Tensor mdV = make_tensor(
-      make_gmem_ptr(param.dv_ptr + dv_offset),
-      make_layout(shapeKtVt, make_stride(param.dv_r_stride, _1{})));
-  Tensor mdP = make_tensor(
-      make_gmem_ptr(param.pb_ptr + dsb_offset),
-      make_layout(shapeSP, make_stride(_1{}, Int<kBlockM>{})));
-  Tensor mdQaccum = make_tensor(
-      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
-      make_layout(shapedQ, make_stride(param.head_dim, _1{})));
-  Tensor mdK = make_tensor(
-      make_gmem_ptr(param.dk_ptr + dk_offset),
-      make_layout(shapeKtVt, make_stride(param.dk_r_stride, _1{})));
-
   typename Trait::TiledMmaSdP tiled_mma_sdp;
   typename Trait::TiledMmadKV tiled_mma_dkv;
   typename Trait::TiledMmadQ tiled_mma_dq;
 
   auto thr_mma_sdp = tiled_mma_sdp.get_slice(local_id);
 
-  Tensor caccSt = make_identity_tensor(Shape<Int<kBlockN>, Int<kBlockM>>{});
-  Tensor taccScSt = thr_mma_sdp.partition_C(caccSt);
-  Tensor taccScS_rt = logical_divide(taccScSt, Shape<_1>{});
+  Tensor caccS = make_identity_tensor(Shape<Int<kBlockM>, Int<kBlockN>>{});
+  Tensor taccScS = thr_mma_sdp.partition_C(caccS);
+  Tensor taccScS_rt = logical_divide(taccScS, Shape<_1>{});
 
   const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
   const int tail_m = param.seq_len_q % kBlockM;
@@ -674,7 +687,6 @@ void dq_dk_dv_1colblock(
   for (int m_block = 0; m_block < max_m_block; ++m_block) {
     const bool Is_even_M = not((m_block == max_m_block - 1) and (tail_m != 0));
     if (not Is_even_M) {
-      const int block_m_dim = ((tail_m + 1) & ~1);
       mQ = make_tensor(
           make_gmem_ptr(mQ.data()),
           make_layout(
@@ -685,29 +697,11 @@ void dq_dk_dv_1colblock(
           make_layout(
               make_shape(tail_m, Int<kHeadDim>{}),
               make_stride(param.do_r_stride, _1{})));
-      mPt = make_tensor(
-          make_gmem_ptr(mPt.data()),
-          make_layout(
-              make_shape(Int<kBlockN>{}, block_m_dim),
-              make_stride(Int<kBlockM>{}, _1{})));
       mdOt = make_tensor(
           make_gmem_ptr(mdOt.data()),
           make_layout(
               make_shape(Int<kHeadDim>{}, tail_m),
               make_stride(_1{}, param.do_r_stride)));
-      mdPt = make_tensor(
-          make_gmem_ptr(mdPt.data()),
-          make_layout(
-              make_shape(Int<kBlockN>{}, block_m_dim),
-              make_stride(Int<kBlockM>{}, _1{})));
-      mdP = make_tensor(
-          make_gmem_ptr(mdP.data()),
-          make_layout(
-              make_shape(block_m_dim, block_n_dim),
-              make_stride(_1{}, Int<kBlockM>{})));
-      mdQaccum = make_tensor(
-          make_gmem_ptr(mdQaccum.data()),
-          make_layout(shapedQ, make_stride(param.head_dim, _1{})));
       mQt = make_tensor(
           make_gmem_ptr(mQt.data()),
           make_layout(
@@ -715,8 +709,8 @@ void dq_dk_dv_1colblock(
               make_stride(_1{}, param.q_r_stride)));
     }
     {
-      auto rS = create_reg<V>(trait, mPt, tiled_mma_sdp);
-      gemm_SdP(trait, mKt, mQ, rS, tiled_mma_sdp);
+      auto rS = create_reg<V>(trait, mP, tiled_mma_sdp);
+      gemm_SdP(trait, mQ, mKt, rS, tiled_mma_sdp);
       Tensor scores =
           make_tensor(rS.data(), convert_layout_acc_layout(rS.layout()));
       if constexpr (is_causal) {
@@ -734,8 +728,8 @@ void dq_dk_dv_1colblock(
         scale_apply_exp2<false>(
             scores, mLSE, taccScS_rt, param.scale_softmax_log2, tail_m);
       }
-      auto rdP = create_reg<V>(trait, mdPt, tiled_mma_sdp);
-      gemm_SdP(trait, mVt, mdO, rdP, tiled_mma_sdp);
+      auto rdP = create_reg<V>(trait, mdP, tiled_mma_sdp);
+      gemm_SdP(trait, mdO, mVt, rdP, tiled_mma_sdp);
       Tensor dS = make_tensor(rdP.data(), scores.layout());
       if (Is_even_M) {
         softmax_backward<true>(
@@ -744,8 +738,8 @@ void dq_dk_dv_1colblock(
         softmax_backward<false>(
             scores, mdPsum, dS, taccScS_rt, param.scale_softmax, tail_m);
       }
-      mha_reorder_copy(trait, tiled_mma_sdp, rS, mPt);
-      mha_reorder_copy(trait, tiled_mma_sdp, rdP, mdPt);
+      mha_reorder_copy(trait, tiled_mma_sdp, rS, mP);
+      mha_reorder_copy(trait, tiled_mma_sdp, rdP, mdP);
     }
     sycl::group_barrier(group);
     gemm_dKV(trait, mPt, mdOt, rdV, tiled_mma_dkv);
@@ -754,8 +748,8 @@ void dq_dk_dv_1colblock(
     mQ.data() = mQ.data() + int(kBlockM * param.q_r_stride);
     mdO.data() = mdO.data() + int(kBlockM * param.do_r_stride);
     mdOt.data() = mdOt.data() + int(kBlockM * param.do_r_stride);
-    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.head_dim);
     mQt.data() = mQt.data() + int(kBlockM * param.q_r_stride);
+    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.head_dim);
     mLSE.data() = mLSE.data() + int(kBlockM);
     mdPsum.data() = mdPsum.data() + int(kBlockM);
   }
@@ -774,8 +768,7 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
       dq_dk_dv_1colblock<false>(
           trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
     else
-      dq_dk_dv_1colblock<true>(
-          trait, param, bidb, bidhq, bidhkv, n_block);
+      dq_dk_dv_1colblock<true>(trait, param, bidb, bidhq, bidhkv, n_block);
   }
 }
 
