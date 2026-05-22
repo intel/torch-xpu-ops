@@ -135,7 +135,7 @@ void upsample_nearest3d_out_template(
       width_scale,
       index_op);
   auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
+  int64_t work_group_num = at::ceil_div(n, work_group_size);
   sycl_kernel_submit(
       work_group_num * work_group_size, work_group_size, queue, kfn);
 }
