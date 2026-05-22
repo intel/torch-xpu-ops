@@ -168,7 +168,7 @@ jobs:
           fi
 
   conditions-filter-win:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name) }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -191,7 +191,7 @@ jobs:
 
   linux-build:
     needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name) }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -204,7 +204,7 @@ jobs:
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
-    if: ${{ !contains(github.event.pull_request.labels.*.name) }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     permissions:
       contents: read
@@ -219,7 +219,7 @@ jobs:
 
   linux-ut:
     needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name) && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions:
       contents: read
@@ -238,7 +238,7 @@ jobs:
 
   linux-distributed:
     needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name) && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions:
       contents: read
@@ -258,7 +258,7 @@ jobs:
   linux-e2e:
     name: linux-e2e
     needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name) && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -275,7 +275,7 @@ jobs:
   linux-e2e-summary:
     name: linux-e2e-summary
     needs: [linux-e2e]
-    if: ${{ !cancelled() && !contains(github.event.pull_request.labels.*.name) && !endsWith(needs.linux-e2e.result, 'ed') }}
+    if: ${{ !cancelled() && !contains(github.event.pull_request.labels.*.name, 'disable_all') && !endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
@@ -290,7 +290,7 @@ jobs:
     needs: preci-lint-check
     if: >-
       ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
-      && !contains(github.event.pull_request.labels.*.name)
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all')
       && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
@@ -302,7 +302,7 @@ jobs:
     name: windows-ut
     needs: [windows-build, conditions-filter-win]
     if: >-
-      ${{ !contains(github.event.pull_request.labels.*.name)
+      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
       && !contains(github.event.pull_request.labels.*.name, 'disable_win')
       && (contains(github.event.pull_request.labels.*.name, 'windows_ci')
       || (!contains(github.event.pull_request.labels.*.name, 'disable_ut')
