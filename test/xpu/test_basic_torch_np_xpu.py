@@ -53,7 +53,7 @@ def _test_f16_on_cuda(self):
     assert_allclose(w.corrcoef(t.xpu()), w.corrcoef(t).tensor.xpu())
 
 
-register_test(TestMisc, _test_f16_on_cuda)
+register_test(TestMisc, TestMisc.test_f16_on_cuda, _test_f16_on_cuda)
 
 
 if __name__ == "__main__":

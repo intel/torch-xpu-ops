@@ -205,14 +205,46 @@ TestFakeQuantizeOps.test_backward_per_channel = rewrap_hypothesis_test(
     ),
 )
 
-register_test(TestFakeQuantizeOps, _test_forward_per_tensor_cachemask_cuda)
-register_test(TestFakeQuantizeOps, _test_backward_per_tensor_cachemask_cuda)
-register_test(TestFakeQuantizeOps, _test_learnable_forward_per_tensor_cuda)
-register_test(TestFakeQuantizeOps, _test_learnable_backward_per_tensor_cuda)
-register_test(TestFakeQuantizeOps, _test_forward_per_channel_cachemask_cuda)
-register_test(TestFakeQuantizeOps, _test_learnable_forward_per_channel_cuda)
-register_test(TestFakeQuantizeOps, _test_backward_per_channel_cachemask_cuda)
-register_test(TestFakeQuantizeOps, _test_learnable_backward_per_channel_cuda)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_forward_per_tensor_cachemask_cuda,
+    _test_forward_per_tensor_cachemask_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_backward_per_tensor_cachemask_cuda,
+    _test_backward_per_tensor_cachemask_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_learnable_forward_per_tensor_cuda,
+    _test_learnable_forward_per_tensor_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_learnable_backward_per_tensor_cuda,
+    _test_learnable_backward_per_tensor_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_forward_per_channel_cachemask_cuda,
+    _test_forward_per_channel_cachemask_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_learnable_forward_per_channel_cuda,
+    _test_learnable_forward_per_channel_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_backward_per_channel_cachemask_cuda,
+    _test_backward_per_channel_cachemask_cuda,
+)
+register_test(
+    TestFakeQuantizeOps,
+    TestFakeQuantizeOps.test_learnable_backward_per_channel_cuda,
+    _test_learnable_backward_per_channel_cuda,
+)
 TestFakeQuantizeOps.test_fixed_qparams_fq_module = rewrap_hypothesis_test(
     TestFakeQuantizeOps.test_fixed_qparams_fq_module,
     extra_given_kwargs=given_kwargs_dict1,

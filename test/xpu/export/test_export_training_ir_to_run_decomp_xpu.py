@@ -174,10 +174,24 @@ def _test_exception(self):
             ).module()
 
 
-register_test(test_export.TestExport, _test_export_associative_scan_symbol_dim)
-register_test(test_export.TestExport, _test_export_associative_scan_symbol_scandim)
-register_test(test_export.TestExport, _test_export_associative_scan_lifted_buffers)
-register_test(test_export.TestExport, _test_exception)
+register_test(
+    test_export.TestExport,
+    test_export.TestExport.test_export_associative_scan_symbol_dim,
+    _test_export_associative_scan_symbol_dim,
+)
+register_test(
+    test_export.TestExport,
+    test_export.TestExport.test_export_associative_scan_symbol_scandim,
+    _test_export_associative_scan_symbol_scandim,
+)
+register_test(
+    test_export.TestExport,
+    test_export.TestExport.test_export_associative_scan_lifted_buffers,
+    _test_export_associative_scan_lifted_buffers,
+)
+register_test(
+    test_export.TestExport, test_export.TestExport.test_exception, _test_exception
+)
 
 test_classes = {}
 

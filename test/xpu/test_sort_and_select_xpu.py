@@ -124,7 +124,11 @@ with XPUPatchForImport(False):
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
-    register_test(TestSortAndSelect, _test_sort_large_slice)
+    register_test(
+        TestSortAndSelect,
+        TestSortAndSelect.test_sort_large_slice,
+        _test_sort_large_slice,
+    )
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True

@@ -88,7 +88,11 @@ def _test_fused_cpu_matches_cuda(self, device, dtype, optim_info):
     self._compare_between(inpts, models, optimizers)
 
 
-register_test(TestOptimRenewed, _test_fused_cpu_matches_cuda)
+register_test(
+    TestOptimRenewed,
+    TestOptimRenewed.test_fused_cpu_matches_cuda,
+    _test_fused_cpu_matches_cuda,
+)
 
 
 @optims(
@@ -188,7 +192,11 @@ def _test_peak_memory_foreach(self, device, dtype, optim_info):
         self.assertLessEqual(mt_max_mem, expected_max_mem)
 
 
-register_test(TestOptimRenewed, _test_peak_memory_foreach)
+register_test(
+    TestOptimRenewed,
+    TestOptimRenewed.test_peak_memory_foreach,
+    _test_peak_memory_foreach,
+)
 
 
 @optims(optim_db, dtypes=[torch.float32])
@@ -258,7 +266,11 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
             self.assertEqual(optimizer.state_dict(), optimizer_cuda.state_dict())
 
 
-register_test(TestOptimRenewed, _test_state_dict_with_cuda_params)
+register_test(
+    TestOptimRenewed,
+    TestOptimRenewed.test_state_dict_with_cuda_params,
+    _test_state_dict_with_cuda_params,
+)
 
 instantiate_device_type_tests(
     TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True

@@ -189,7 +189,11 @@ with XPUPatchForImport(False):
     from test_modules import TestModule
 
     TestModule._test_gradients_helper = _gradients_helper
-    register_test(TestModule, _test_multiple_device_transfer)
+    register_test(
+        TestModule,
+        TestModule.test_multiple_device_transfer,
+        _test_multiple_device_transfer,
+    )
 
 instantiate_device_type_tests(TestModule, globals(), only_for="xpu", allow_xpu=True)
 

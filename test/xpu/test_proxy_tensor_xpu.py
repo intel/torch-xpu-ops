@@ -71,8 +71,8 @@ for _cls in (
     TestGenericProxyTensorFake,
     TestGenericProxyTensorSymbolic,
 ):
-    register_test(_cls, _amp_cache_xpu, target_name="test_amp_cache")
-    register_test(_cls, _T244632748_xpu, target_name="test_T244632748")
+    register_test(_cls, _cls.test_amp_cache, _amp_cache_xpu)
+    register_test(_cls, _cls.test_T244632748, _T244632748_xpu)
 del _cls
 
 
@@ -174,23 +174,23 @@ def _unbacked_unify_guard_transitivity_xpu(self):
 
 register_test(
     TestSymbolicTracing,
+    TestSymbolicTracing.test_cpu_scalar_cuda,
     _cpu_scalar_cuda_xpu,
-    target_name="test_cpu_scalar_cuda",
 )
 register_test(
     TestSymbolicTracing,
+    TestSymbolicTracing.test_view_divisibility_unbacked_relatively_prime,
     _view_divisibility_unbacked_relatively_prime_xpu,
-    target_name="test_view_divisibility_unbacked_relatively_prime",
 )
 register_test(
     TestSymbolicTracing,
+    TestSymbolicTracing.test_unbacked_unify_guard_transitivity,
     _unbacked_unify_guard_transitivity_xpu,
-    target_name="test_unbacked_unify_guard_transitivity",
 )
 register_test(
     TestSymbolicTracing,
+    TestSymbolicTracing.test_unbacked_unify_dependency_violation,
     _unbacked_unify_dependency_violation_xpu,
-    target_name="test_unbacked_unify_dependency_violation",
 )
 
 

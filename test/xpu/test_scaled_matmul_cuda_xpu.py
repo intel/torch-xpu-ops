@@ -47,8 +47,8 @@ def _xpu_test_float8_scale_fast_accum(self, device) -> None:
 
 register_test(
     TestFP8Matmul,
+    TestFP8Matmul.test_float8_scale_fast_accum,
     _xpu_test_float8_scale_fast_accum,
-    target_name="test_float8_scale_fast_accum",
 )
 
 
@@ -80,10 +80,10 @@ def _xpu_test_float8_rowwise_scaling_sanity(self, device, use_fast_accum: bool) 
 
 register_test(
     TestFP8Matmul,
+    TestFP8Matmul.test_float8_rowwise_scaling_sanity,
     parametrize("use_fast_accum", [True, False])(
         _xpu_test_float8_rowwise_scaling_sanity
     ),
-    target_name="test_float8_rowwise_scaling_sanity",
 )
 
 

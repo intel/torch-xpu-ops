@@ -104,8 +104,16 @@ with XPUPatchForImport(False):
                         ),
                     )
 
-    register_test(TestTypePromotion, _test_complex_assertraises)
-    register_test(TestTypePromotion, _test_mixed_type_backward)
+    register_test(
+        TestTypePromotion,
+        TestTypePromotion.test_complex_assertraises,
+        _test_complex_assertraises,
+    )
+    register_test(
+        TestTypePromotion,
+        TestTypePromotion.test_mixed_type_backward,
+        _test_mixed_type_backward,
+    )
 
 instantiate_device_type_tests(
     TestTypePromotion, globals(), only_for=("xpu"), allow_xpu=True

@@ -129,9 +129,19 @@ def _test_conversion_errors(self):
         numba.cuda.as_cuda_array(xpu_gradt)
 
 
-register_test(TestNumbaIntegration, _test_cuda_array_interface)
-register_test(TestNumbaIntegration, _test_array_adaptor)
-register_test(TestNumbaIntegration, _test_conversion_errors)
+register_test(
+    TestNumbaIntegration,
+    TestNumbaIntegration.test_cuda_array_interface,
+    _test_cuda_array_interface,
+)
+register_test(
+    TestNumbaIntegration, TestNumbaIntegration.test_array_adaptor, _test_array_adaptor
+)
+register_test(
+    TestNumbaIntegration,
+    TestNumbaIntegration.test_conversion_errors,
+    _test_conversion_errors,
+)
 
 
 if __name__ == "__main__":

@@ -65,7 +65,9 @@ def _test_avg_pool1d_ceil_mode(self):
     self.assertTrue(not torch.isnan(y).any())
 
 
-register_test(TestAvgPool, _test_avg_pool1d_ceil_mode)
+register_test(
+    TestAvgPool, TestAvgPool.test_avg_pool1d_ceil_mode, _test_avg_pool1d_ceil_mode
+)
 
 
 def _test_avg_pool2d_ceil_mode(self):
@@ -92,7 +94,9 @@ def _test_avg_pool2d_ceil_mode(self):
     self.assertTrue(not torch.isnan(y).any())
 
 
-register_test(TestAvgPool, _test_avg_pool2d_ceil_mode)
+register_test(
+    TestAvgPool, TestAvgPool.test_avg_pool2d_ceil_mode, _test_avg_pool2d_ceil_mode
+)
 
 
 def _test_avg_pool3d_ceil_mode(self):
@@ -113,7 +117,9 @@ def _test_avg_pool3d_ceil_mode(self):
     self.assertTrue(not torch.isnan(y).any())
 
 
-register_test(TestAvgPool, _test_avg_pool3d_ceil_mode)
+register_test(
+    TestAvgPool, TestAvgPool.test_avg_pool3d_ceil_mode, _test_avg_pool3d_ceil_mode
+)
 
 
 def _test_adaptive_pooling_avg_nhwc(self):
@@ -140,7 +146,11 @@ def _test_adaptive_pooling_avg_nhwc(self):
         self.assertEqual(input.grad, ref_input.grad)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc,
+    _test_adaptive_pooling_avg_nhwc,
+)
 
 
 def _test_adaptive_pooling_avg_nhwc_non_contiguous(self):
@@ -169,7 +179,11 @@ def _test_adaptive_pooling_avg_nhwc_non_contiguous(self):
         self.assertEqual(input.grad, ref_input.grad)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_non_contiguous)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc_non_contiguous,
+    _test_adaptive_pooling_avg_nhwc_non_contiguous,
+)
 
 
 def _test_adaptive_avg_pooling_overflow(self):
@@ -180,7 +194,11 @@ def _test_adaptive_avg_pooling_overflow(self):
     self.assertFalse(torch.isnan(out).any())
 
 
-register_test(TestPoolingNN, _test_adaptive_avg_pooling_overflow)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_avg_pooling_overflow,
+    _test_adaptive_avg_pooling_overflow,
+)
 
 
 def _test_adaptive_avg_pooling_nhwc_overflow(self):
@@ -192,7 +210,11 @@ def _test_adaptive_avg_pooling_nhwc_overflow(self):
     self.assertFalse(torch.isnan(out).any())
 
 
-register_test(TestPoolingNN, _test_adaptive_avg_pooling_nhwc_overflow)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_avg_pooling_nhwc_overflow,
+    _test_adaptive_avg_pooling_nhwc_overflow,
+)
 
 
 def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
@@ -219,7 +241,11 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
     self.assertEqual(input.grad, ref_input.grad)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_backward)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward,
+    _test_adaptive_pooling_avg_nhwc_launch_config_backward,
+)
 
 
 def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
@@ -238,7 +264,11 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
     self.assertEqual(out, ref_out)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_forward)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward,
+    _test_adaptive_pooling_avg_nhwc_launch_config_forward,
+)
 
 
 def _test_max_pool2d(self, device):
@@ -262,7 +292,9 @@ def _test_max_pool2d(self, device):
     helper(1, 100000, 1, 4, ks=(1, 4))  # test for max_pool1d
 
 
-register_test(TestPoolingNNDeviceType, _test_max_pool2d)
+register_test(
+    TestPoolingNNDeviceType, TestPoolingNNDeviceType.test_max_pool2d, _test_max_pool2d
+)
 
 
 def _test_max_pool2d_indices(self, device):
@@ -296,7 +328,11 @@ def _test_max_pool2d_indices(self, device):
     helper(None, 3, 50, 50, ks=5)
 
 
-register_test(TestPoolingNNDeviceType, _test_max_pool2d_indices)
+register_test(
+    TestPoolingNNDeviceType,
+    TestPoolingNNDeviceType.test_max_pool2d_indices,
+    _test_max_pool2d_indices,
+)
 
 
 @parametrize_test(
@@ -404,7 +440,11 @@ torch.xpu.synchronize()
             unpool(output, indices)
 
 
-register_test(TestPoolingNNDeviceType, _test_MaxUnpool_index_errors)
+register_test(
+    TestPoolingNNDeviceType,
+    TestPoolingNNDeviceType.test_MaxUnpool_index_errors,
+    _test_MaxUnpool_index_errors,
+)
 
 
 @dtypes(torch.half, torch.float, torch.double)
@@ -444,7 +484,11 @@ def _test_max_pool_nan_inf(self, device, dtype):
             self.assertTrue(math.isinf(res2.item()))
 
 
-register_test(TestPoolingNNDeviceType, _test_max_pool_nan_inf)
+register_test(
+    TestPoolingNNDeviceType,
+    TestPoolingNNDeviceType.test_max_pool_nan_inf,
+    _test_max_pool_nan_inf,
+)
 
 
 # Upstream test_pooling.py:test_adaptive_pooling_avg_nhwc_launch_config_backward
@@ -477,7 +521,11 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
     self.assertEqual(input.grad, ref_input.grad)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_backward)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward,
+    _test_adaptive_pooling_avg_nhwc_launch_config_backward,
+)
 
 
 # Upstream test_pooling.py:test_adaptive_pooling_avg_nhwc_launch_config_forward
@@ -502,7 +550,11 @@ def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
     self.assertEqual(out, ref_out)
 
 
-register_test(TestPoolingNN, _test_adaptive_pooling_avg_nhwc_launch_config_forward)
+register_test(
+    TestPoolingNN,
+    TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward,
+    _test_adaptive_pooling_avg_nhwc_launch_config_forward,
+)
 
 
 # Upstream test_pooling.py:test_pool3d_large_size_int64 uses
@@ -534,7 +586,11 @@ def _test_pool3d_large_size_int64(self, device):
     self.assertEqual(x.grad, ref_x.grad, exact_dtype=False)
 
 
-register_test(TestPoolingNNDeviceType, _test_pool3d_large_size_int64)
+register_test(
+    TestPoolingNNDeviceType,
+    TestPoolingNNDeviceType.test_pool3d_large_size_int64,
+    _test_pool3d_large_size_int64,
+)
 
 
 # Upstream test_pooling.py:test_pooling_large uses hard-coded device="cuda"
@@ -557,7 +613,11 @@ def _test_pooling_large(self, device):
     helper(torch.nn.AdaptiveAvgPool2d((2**6, 2**6)))
 
 
-register_test(TestPoolingNNDeviceType, _test_pooling_large)
+register_test(
+    TestPoolingNNDeviceType,
+    TestPoolingNNDeviceType.test_pooling_large,
+    _test_pooling_large,
+)
 
 instantiate_device_type_tests(
     TestPoolingNNDeviceType, globals(), only_for="xpu", allow_xpu=True

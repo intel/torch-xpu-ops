@@ -75,7 +75,9 @@ def _test_max_pool2d_pt2e(self):
         self.assertEqual(a_pool, a_hat, msg="ops.quantized.max_pool2d results are off")
 
 
-register_test(TestQuantizedOps, _test_max_pool2d_pt2e)
+register_test(
+    TestQuantizedOps, TestQuantizedOps.test_max_pool2d_pt2e, _test_max_pool2d_pt2e
+)
 
 instantiate_device_type_tests(
     TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True

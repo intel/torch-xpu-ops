@@ -63,13 +63,13 @@ def forward(self, x_1, w_1):
 # Override the CUDA-only tests with XPU variants
 register_test(
     TestOutDtypeOp,
+    TestOutDtypeOp.test_out_dtype_inductor_decomp_trace,
     _out_dtype_inductor_decomp_trace_xpu,
-    target_name="test_out_dtype_inductor_decomp_trace",
 )
 register_test(
     TestOutDtypeOp,
+    TestOutDtypeOp.test_out_dtype_int_mm_default_trace,
     _out_dtype_int_mm_default_trace_xpu,
-    target_name="test_out_dtype_int_mm_default_trace",
 )
 
 

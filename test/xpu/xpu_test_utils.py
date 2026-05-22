@@ -627,22 +627,17 @@ def ModuleTest_test_xpu(self, test_case):
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
-def register_test(cls, override_func, *, target_name=None):
+def register_test(cls, original_func, override_func):
+    if not callable(original_func):
+        raise TypeError(
+            f"Expected original_func to be callable, got {type(original_func)}"
+        )
     if not callable(override_func):
         raise TypeError(
-            f"Expected callable override test function, got {type(override_func)}"
+            f"Expected override_func to be callable, got {type(override_func)}"
         )
 
-    if target_name is None:
-        target_name = override_func.__name__.removeprefix("_")
-        if not target_name.startswith("test_"):
-            raise ValueError(
-                "register_test() requires target_name when override function name "
-                f"does not map directly to a test name: {override_func.__name__!r}"
-            )
-    elif not isinstance(target_name, str):
-        raise TypeError(f"Expected target test name to be str, got {type(target_name)}")
-
+    target_name = original_func.__name__
     if not target_name.startswith("test_"):
         raise ValueError(
             f"Registered test name must start with 'test_', got {target_name!r}"
@@ -662,7 +657,7 @@ def register_test(cls, override_func, *, target_name=None):
     setattr(cls, target_name, wrapper)
 
 
-register_test(ModuleTest, ModuleTest_test_xpu, target_name="test_cuda")
+register_test(ModuleTest, ModuleTest.test_cuda, ModuleTest_test_xpu)
 
 
 def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
@@ -737,7 +732,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         )
 
 
-register_test(CriterionTest, CriterionTest_test_xpu, target_name="test_cuda")
+register_test(CriterionTest, CriterionTest.test_cuda, CriterionTest_test_xpu)
 
 from functools import partial
 

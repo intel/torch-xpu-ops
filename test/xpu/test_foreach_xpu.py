@@ -154,7 +154,11 @@ def _test_binary_op_list_slow_path(self, device, dtype, op):
     )
 
 
-register_test(TestForeach, _test_binary_op_list_slow_path)
+register_test(
+    TestForeach,
+    TestForeach.test_binary_op_list_slow_path,
+    _test_binary_op_list_slow_path,
+)
 
 
 def _test_0dim_tensor_overload_cpu_ok(self):
@@ -171,6 +175,7 @@ def _test_0dim_tensor_overload_cpu_ok(self):
 
 register_test(
     TestForeach,
+    TestForeach.test_0dim_tensor_overload_cpu_ok,
     _test_0dim_tensor_overload_cpu_ok,
 )
 
@@ -184,7 +189,7 @@ def _test_div_reciprocal(self):
     self.assertEqual(expect_e, actual_e)
 
 
-register_test(TestForeach, _test_div_reciprocal)
+register_test(TestForeach, TestForeach.test_div_reciprocal, _test_div_reciprocal)
 
 
 def _test_0dim_tensor_overload_exception(self):
@@ -202,6 +207,7 @@ def _test_0dim_tensor_overload_exception(self):
 
 register_test(
     TestForeach,
+    TestForeach.test_0dim_tensor_overload_exception,
     _test_0dim_tensor_overload_exception,
 )
 
@@ -220,6 +226,7 @@ def _test_foreach_copy_with_multi_dtypes_large_input(self):
 
 register_test(
     TestForeach,
+    TestForeach.test_foreach_copy_with_multi_dtypes_large_input,
     _test_foreach_copy_with_multi_dtypes_large_input,
 )
 
@@ -259,6 +266,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
 
 register_test(
     TestForeach,
+    TestForeach.test_foreach_copy_with_different_device_inputs,
     _test_foreach_copy_with_different_device_inputs,
 )
 
@@ -312,7 +320,7 @@ def _test_big_num_tensors(self, device, dtype, op, use_xpu_graph, w_empty):
         self.assertEqual(expect, actual, equal_nan=True)
 
 
-register_test(TestForeach, _test_big_num_tensors)
+register_test(TestForeach, TestForeach.test_big_num_tensors, _test_big_num_tensors)
 
 instantiate_device_type_tests(TestForeach, globals(), only_for="xpu", allow_xpu=True)
 
