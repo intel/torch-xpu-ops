@@ -58,7 +58,8 @@ AllocationRef::~AllocationRef() {
   c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
   auto stream = at::xpu::getCurrentXPUStream();
-  sycl::free(ptr, stream);
+  auto& queue = stream.queue();
+  sycl::free(ptr, queue);
 }
 
 XPUSymmetricMemory::XPUSymmetricMemory(
@@ -365,6 +366,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::DeviceGuard guard(local_device);
 
   auto group = resolve_process_group(group_name_);
+  TORCH_CHECK(
+      group != nullptr,
+      "XPUSymmetricMemory::rendezvous: Could not resolve process group '",
+      group_name_,
+      "'. This can happen if rendezvous() is called before the process "
+      "group is initialized or if the group name is incorrect.");
   auto rank = group->getRank();
   auto world_size = group->getSize();
   auto store = group->getStore();

@@ -16,7 +16,7 @@ std::string getSymmMemBackendXPU() {
   if (val.has_value()) {
     TORCH_CHECK(
         val.value() == "XPU",
-        "TORCH_SYMMMEM environment variable must be 'XPU'.")
+        "TORCH_SYMMMEM environment variable must be 'XPU'.");
     return val.value();
   }
   return "XPU";
