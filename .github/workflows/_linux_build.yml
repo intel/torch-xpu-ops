@@ -75,6 +75,7 @@ jobs:
           cat /etc/os-release
           hostname && id
           # install gh
+          rm -rf /etc/yum.repos.d/intel-gpu-8.10.repo
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf install -y gh --repo gh-cli
