@@ -190,8 +190,8 @@ jobs:
               - '.github/workflows/_windows_ut.yml'
 
   linux-build:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
-    needs: [preci-lint-check]
+    needs: preci-lint-check
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -199,7 +199,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
+      runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   reproducer-test:
