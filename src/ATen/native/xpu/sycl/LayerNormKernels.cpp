@@ -591,8 +591,11 @@ struct VectorizedLayerNormKernelFunctor
 };
 
 int64_t layer_norm_wg_size_select(int64_t max_wg_size, int n) {
-  while (max_wg_size > n && max_wg_size > SIMD) {
-    max_wg_size >>= 1;
+  // To reduce the barrier overhead during tree-reduce
+  // with 4 subgroups per workgroup
+  constexpr int64_t preferred_wg_size = SIMD * 4;
+  if (n <= max_wg_size && preferred_wg_size <= max_wg_size) {
+    return preferred_wg_size;
   }
   return max_wg_size;
 }
