@@ -31,6 +31,7 @@ from torch.testing._internal.torchbind_impls import (
 
 class TestConverter(TestCase):
     def setUp(self):
+        super().setUp()
         init_torchbind_implementations()
 
         self.torch_bind_ops = [

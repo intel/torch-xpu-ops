@@ -6,7 +6,6 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
         description: Runner label
       pytorch:
         type: string

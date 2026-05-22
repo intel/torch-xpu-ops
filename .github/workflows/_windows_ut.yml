@@ -26,37 +26,14 @@ on:
       runner:
         required: true
         type: string
-        default: 'Windows_CI'
         description: Runner label
       xpu_version:
         required: false
         type: string
-        default: '2025.3'
+        default: '2026.0'
         description: XPU version
 
 permissions: read-all
-
-env: 
-    USE_XPU: 1
-    PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.3.2 | 
-      intel-cmplr-lib-ur==2025.3.2 | 
-      intel-cmplr-lic-rt==2025.3.2 | 
-      intel-sycl-rt==2025.3.2 | 
-      onemkl-license==2025.3.1 | 
-      onemkl-sycl-blas==2025.3.1 | 
-      onemkl-sycl-dft==2025.3.1 | 
-      onemkl-sycl-lapack==2025.3.1 | 
-      onemkl-sycl-rng==2025.3.1 | 
-      onemkl-sycl-sparse==2025.3.1 | 
-      dpcpp-cpp-rt==2025.3.2 | 
-      intel-opencl-rt==2025.3.2 | 
-      mkl==2025.3.1 | 
-      intel-openmp==2025.3.2 | 
-      tbb==2022.3.1 | 
-      tcmlib==1.4.1 | 
-      umf==1.0.3 | 
-      intel-pti==0.16.0
 
 jobs:
   ut_test:
@@ -91,7 +68,7 @@ jobs:
           call conda remove --all -y -n windows_ut
           call conda create -n windows_ut python=${{ inputs.python }} -y
           call conda activate windows_ut
-          pip install pyyaml requests pytest-timeout pytest pytest-xdist
+          python -m pip install pyyaml requests pytest-timeout pytest pytest-xdist
           call conda install -y libuv
           call conda install -y rust
           cd ..
@@ -135,7 +112,6 @@ jobs:
           )
           git clone %PYTORCH_REPO% pytorch
           cd pytorch && git checkout %PYTORCH_COMMIT%
-          pip install -r .ci\docker\requirements-ci.txt
           if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
@@ -160,13 +136,10 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ut
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
-          
           for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
-          pip install "%TORCH_WHL%"
+          python -m pip install "%TORCH_WHL%"
+          cd %GITHUB_WORKSPACE%\..\pytorch
+          python -m pip install -r .ci\docker\requirements-ci.txt
       - name: Torch Config Check
         shell: cmd
         run: |
@@ -262,7 +235,7 @@ jobs:
       - name: UT Test Results Summary
         shell: bash
         run: |
-          pip install junitparser
+          python -m pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
           python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs

@@ -35,6 +35,7 @@ env:
 
 jobs:
   runner:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
     runs-on: ${{ inputs.runner }}
     name: get-runner
     outputs:
@@ -134,7 +135,7 @@ jobs:
 
   summary:
     needs: [reproducer-test]
-    if: ${{ ! cancelled() && needs.reproducer-test.result == 'failure' }}
+    if: ${{ ! cancelled() && needs.reproducer-test.result == 'failure' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -182,6 +183,8 @@ jobs:
             const body = [
               '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
               '',
+              '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
+              '',
               `Full log: ${jobUrl}`,
               '',
               outputSection,
@@ -190,7 +193,8 @@ jobs:
               '1. Review the test failure output above (or the full log via the link)',
               '2. Identify the root cause of the failure',
               '3. Update the relevant source code to fix the issue',
-              '4. Ensure the reproducer tests pass after your fix (files in test/repro/ and/or PR description command)'
+              '4. Ensure the reproducer tests pass after your fix (files in test/repro/ and/or PR description command)',
+              '5. Use reply comments to report progress - do NOT modify the PR description plan directly'
             ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -198,3 +202,24 @@ jobs:
               issue_number: prNumber,
               body: body
             });
+
+  reproducer-status-check:
+    needs: [reproducer-test]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check reproducer-test result
+        run: |
+          result="${{ needs.reproducer-test.result }}"
+          echo "reproducer-test result: $result"
+          if [ "$result" = "skipped" ]; then
+            echo "reproducer-test was skipped, marking as pass"
+            exit 0
+          elif [ "$result" = "success" ]; then
+            echo "reproducer-test passed"
+            exit 0
+          else
+            echo "reproducer-test failed with result: $result"
+            exit 1
+          fi

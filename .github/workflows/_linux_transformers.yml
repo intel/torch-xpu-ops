@@ -21,7 +21,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'pvc-1100'
         description: Runner label
       driver:
         required: false
@@ -84,7 +84,7 @@ defaults:
 
 jobs:
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc-1100' }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')

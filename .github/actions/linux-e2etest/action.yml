@@ -22,6 +22,10 @@ inputs:
     type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
+  overwrite_model_list:
+    type: string
+    default: 'true'
+    description: 'Overwrite pytorch model lists with torch-xpu-ops .ci/benchmarks/ overlay'
 
 runs:
   using: composite
@@ -36,11 +40,8 @@ runs:
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
-        if [ "${{ github.event_name }}" != "pull_request" ];then
-          # set models list for nightly tests
-          # huggingface all and remove CamemBert
-          # timm_models all
-          # torchbench all
+        if [ "${{ inputs.overwrite_model_list }}" == "true" ];then
+          # overlay torch-xpu-ops model lists for nightly / PR tests
           rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
         fi
         rm -rf inductor_log torch
@@ -58,10 +59,10 @@ runs:
         }
         run_with_shard() {
           # set models to run
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
-          elif [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
+          if [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
+          elif [ "${{ inputs.overwrite_model_list }}" != "true" ];then
+            models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
           else
             models_list_args=""
           fi
