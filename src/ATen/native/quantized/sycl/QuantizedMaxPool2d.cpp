@@ -102,7 +102,7 @@ struct QuantizedMaxPool2dKernelFunctor {
 
   QuantizedMaxPool2dKernelFunctor(
       scalar_t* output,
-      scalar_t* input,
+      const scalar_t* input,
       int64_t iC,
       int64_t iH,
       int64_t iW,
@@ -138,7 +138,7 @@ struct QuantizedMaxPool2dKernelFunctor {
 
  private:
   scalar_t* output_;
-  scalar_t* input_;
+  const scalar_t* input_;
   int64_t iC_; // input/output channels
   int64_t iH_;
   int64_t iW_; // input sizes
@@ -159,7 +159,7 @@ struct QuantizedMaxPool2dKernelFunctor {
 template <typename scalar_t>
 void launch_quantized_max_pool2d_kernel(
     scalar_t* output,
-    scalar_t* input,
+    const scalar_t* input,
     int64_t nBatch,
     int64_t iC,
     int64_t iH,
@@ -282,7 +282,7 @@ Tensor quantized_max_pool2d_kernel(
         input.scalar_type(), "quantized_max_pool2d_xpu", [&]() {
           launch_quantized_max_pool2d_kernel(
               output.data_ptr<scalar_t>(),
-              input.data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
               nbatch,
               iC,
               iH,

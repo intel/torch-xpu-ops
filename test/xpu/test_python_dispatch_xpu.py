@@ -8,27 +8,22 @@
 
 # Owner(s): ["module: intel"]
 
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
-except Exception as e:
+except Exception:
     from .xpu_test_utils import XPUPatchForImport
 
-
-def select_cuda(self):
-    self._test_select("xpu")
-
-
-def as_strided_cuda(self):
-    self._test_as_strided("xpu")
-
-
 with XPUPatchForImport(False):
-    from test_namedtensor import TestNamedTensor
+    from test_python_dispatch import TestWrapperSubclassAliasing
 
-TestNamedTensor.test_select_cuda = select_cuda
-TestNamedTensor.test_as_strided_cuda = as_strided_cuda
+
+instantiate_device_type_tests(
+    TestWrapperSubclassAliasing, globals(), only_for="xpu", allow_xpu=True
+)
+
 
 if __name__ == "__main__":
     run_tests()

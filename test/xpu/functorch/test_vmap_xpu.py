@@ -34,7 +34,6 @@ from common_utils import (
     is_valid_inplace_sample_input,
     opsToleranceOverride,
     skip,
-    skipOps,
     tol1,
     xfail,
     xfailIf,
@@ -61,6 +60,7 @@ from torch.testing._internal.common_device_type import (
     onlyOn,
     OpDTypes,
     ops,
+    skipOps,
     tol,
     toleranceOverride,
 )
@@ -3976,6 +3976,15 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
             fail_with_randomness = randomness == "error"
             if backend != SDPBackend.MATH:
                 fail_with_randomness |= randomness == "same"
+            # On XPU, EFFICIENT_ATTENTION currently maps/falls back to the
+            # MATH implementation, so randomness="same" is allowed here.
+            if backend == SDPBackend.EFFICIENT_ATTENTION and randomness == "same":
+                fail_with_randomness = False
+            # On XPU, FLASH_ATTENTION with dropout and randomness="different"
+            # currently has no available kernel, so this path is expected to raise.
+            if backend == SDPBackend.FLASH_ATTENTION and randomness == "different":
+                fail_with_randomness = True
+
             context = (
                 self.assertRaises(RuntimeError)
                 # We currently don't support randomness == "same", and "error" should always error with randomness
@@ -4386,8 +4395,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_exhaustive",
         vmap_fail.union(
             {
                 # RuntimeError: Batch norm got a batched tensor as input while the running_mean or running_var,
@@ -4406,9 +4413,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("torch.ops.aten._efficient_attention_forward"),  # outputs ints
                 # TypeError: expected Tensor as element 0 in argument 0, but got float
                 xfail("item"),
-                xfail(
-                    "unbind_copy"
-                ),  # Batching rule not implemented for aten::unbind_copy.int.
                 # RuntimeError: required rank 4 tensor to use channels_last format
                 xfailIf(
                     "to",
@@ -4453,8 +4457,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_op_has_batch_rule",
         vmap_fail.union(
             {
                 xfail("as_strided", "partial_views"),
@@ -4491,9 +4493,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("item"),
                 xfail("tril"),  # Exception not raised on error input
                 xfail("triu"),  # Exception not raised on error input
-                xfail(
-                    "unbind_copy"
-                ),  # Batching rule not implemented for aten::unbind_copy.int.
                 xfail("__getitem__", ""),
                 xfail("count_nonzero"),
                 xfail(
@@ -5187,8 +5186,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         allowed_dtypes=(torch.float,),
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_linalg_failure_1D_input",
         {
             xfail("linalg.vector_norm"),  # can accept vector inputs
             xfail("linalg.norm"),  # can accept vector inputs
