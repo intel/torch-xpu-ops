@@ -6,8 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
-        description: Runner label
+        description: Runner label for build job
       pytorch:
         type: string
         default: 'main'
