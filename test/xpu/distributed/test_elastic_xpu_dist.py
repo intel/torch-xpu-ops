@@ -201,37 +201,9 @@ def check_elastic_xpu_dispatch_and_combine():
 
     assert torch.equal(recv_topk_idx, expected_recv_topk_idx)
     assert torch.allclose(recv_topk_weights, expected_recv_topk_weights)
-    assert handle is None
-
-    # Build a synthetic handle for combine since dispatch currently returns None.
-    num_tokens = topk_idx.shape[0]
-    topk = topk_idx.shape[1]
-    recv_src_metadata = torch.arange(num_tokens, device=device, dtype=torch.int64).repeat_interleave(topk)
-    dst_buffer_slot_idx = scatter_idx.clone()
-    num_recv_tokens_per_expert_list = torch.bincount(
-        topk_idx.reshape(-1).to(torch.int64).clamp_min(0),
-        minlength=NUM_EXPERTS,
-    ).tolist()
-    psum_num_recv_tokens_per_expert = torch.cumsum(
-        torch.tensor(num_recv_tokens_per_expert_list, device=device, dtype=torch.int64), dim=0
-    )
-    psum_num_recv_tokens_per_scaleup_rank = torch.tensor([num_tokens], device=device, dtype=torch.int64)
-    handle = EPHandle(
-        do_expand=False,
-        num_experts=NUM_EXPERTS,
-        expert_alignment=1,
-        num_max_tokens_per_rank=TOKENS_PER_RANK,
-        num_sms=0,
-        topk_idx=topk_idx,
-        num_recv_tokens_per_expert_list=num_recv_tokens_per_expert_list,
-        psum_num_recv_tokens_per_scaleup_rank=psum_num_recv_tokens_per_scaleup_rank,
-        psum_num_recv_tokens_per_expert=psum_num_recv_tokens_per_expert,
-        recv_src_metadata=recv_src_metadata,
-        dst_buffer_slot_idx=dst_buffer_slot_idx,
-        token_metadata_at_forward=None,
-        channel_linked_list=None,
-    )
-    handle.scatter_idx = scatter_idx
+    assert handle is not None
+    assert handle.scatter_idx is not None
+    assert torch.equal(handle.scatter_idx, scatter_idx)
 
     # Combine should match the deepep reference path.
     rank_output_ptrs = build_combine_rank_output_ptrs(expert_output_local, topk_idx, group=group)

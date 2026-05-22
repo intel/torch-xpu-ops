@@ -124,7 +124,8 @@ class EPHandle:
         expert_alignment: int,
         num_max_tokens_per_rank: int,
         num_sms: int,
-        topk_idx: torch.Tensor,
+        recv_topk_idx: torch.Tensor,
+        recv_topk_weights: torch.Tensor,
         num_recv_tokens_per_expert_list: list,
         psum_num_recv_tokens_per_scaleup_rank: torch.Tensor,
         psum_num_recv_tokens_per_expert: torch.Tensor,
@@ -138,7 +139,8 @@ class EPHandle:
         self.expert_alignment = expert_alignment
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
         self.num_sms = num_sms
-        self.topk_idx = topk_idx
+        self.topk_idx = recv_topk_idx
+        self.topk_weights = recv_topk_weights
         self.psum_num_recv_tokens_per_scaleup_rank = psum_num_recv_tokens_per_scaleup_rank
         self.psum_num_recv_tokens_per_expert = psum_num_recv_tokens_per_expert
         self.num_recv_tokens_per_expert_list = num_recv_tokens_per_expert_list
@@ -150,6 +152,11 @@ class EPHandle:
 
         # XPU-specific convenience field used by combine.
         self.scatter_idx: Optional[torch.Tensor] = None
+        self.combine_topk_idx: Optional[torch.Tensor] = None
+        self.combine_topk_weights: Optional[torch.Tensor] = None
+        # Internal-only tensors for deepep_owner_combine kernel contract.
+        self._combine_kernel_topk_idx: Optional[torch.Tensor] = None
+        self._combine_kernel_topk_weights: Optional[torch.Tensor] = None
 
 
 class ElasticBuffer:
@@ -689,7 +696,69 @@ class ElasticBuffer:
             skip_copy=True,
         )
 
-        return remap_hidden_states, recv_topk_idx, recv_topk_weights, None, None
+        # Keep scatter_idx in handle so combine can consume it directly.
+        scatter_idx_for_handle = scatter_idx.clone() if do_handle_copy else scatter_idx
+        recv_topk_idx_for_handle = recv_topk_idx.clone() if do_handle_copy else recv_topk_idx
+        recv_topk_weights_for_handle = (
+            recv_topk_weights.clone() if do_handle_copy else recv_topk_weights
+        )
+        combine_kernel_topk_idx = recv_topk_idx
+        combine_kernel_topk_weights = recv_topk_weights
+
+        local_combine_rows = combine_kernel_topk_idx.shape[0] // self.num_ranks
+        combine_topk_idx_local = recv_topk_idx_for_handle[:local_combine_rows]
+        combine_topk_weights_local = recv_topk_weights_for_handle[:local_combine_rows]
+
+        combine_topk_idx_local_for_handle = (
+            combine_topk_idx_local.clone() if do_handle_copy else combine_topk_idx_local
+        )
+        combine_topk_weights_local_for_handle = (
+            combine_topk_weights_local.clone() if do_handle_copy else combine_topk_weights_local
+        )
+        combine_kernel_topk_idx_for_handle = (
+            combine_kernel_topk_idx.clone() if do_handle_copy else combine_kernel_topk_idx
+        )
+        combine_kernel_topk_weights_for_handle = (
+            combine_kernel_topk_weights.clone()
+            if do_handle_copy
+            else combine_kernel_topk_weights
+        )
+        recv_src_metadata = torch.arange(
+            num_tokens,
+            device=topk_idx.device,
+            dtype=torch.int64,
+        ).repeat_interleave(topk)
+        dst_buffer_slot_idx = scatter_idx_for_handle
+        if do_cpu_sync:
+            num_recv_tokens_per_expert_list = psum_num_recv_tokens_per_expert.to("cpu").tolist()
+        else:
+            num_recv_tokens_per_expert_list = []
+
+        handle_obj = EPHandle(
+            do_expand=do_expand,
+            num_experts=num_experts,
+            expert_alignment=value_or(expert_alignment, 1),
+            num_max_tokens_per_rank=value_or(num_max_tokens_per_rank, self.num_max_tokens_per_rank),
+            num_sms=num_sms,
+            recv_topk_idx=recv_topk_idx_for_handle,
+            recv_topk_weights=recv_topk_weights_for_handle,
+            num_recv_tokens_per_expert_list=num_recv_tokens_per_expert_list,
+            psum_num_recv_tokens_per_scaleup_rank=torch.empty(
+                0, device=topk_idx.device, dtype=torch.int32
+            ),
+            psum_num_recv_tokens_per_expert=psum_num_recv_tokens_per_expert,
+            recv_src_metadata=recv_src_metadata,
+            dst_buffer_slot_idx=dst_buffer_slot_idx,
+            token_metadata_at_forward=None,
+            channel_linked_list=None,
+        )
+        handle_obj.scatter_idx = scatter_idx_for_handle
+        handle_obj.combine_topk_idx = combine_topk_idx_local_for_handle
+        handle_obj.combine_topk_weights = combine_topk_weights_local_for_handle
+        handle_obj._combine_kernel_topk_idx = combine_kernel_topk_idx_for_handle
+        handle_obj._combine_kernel_topk_weights = combine_kernel_topk_weights_for_handle
+
+        return remap_hidden_states, recv_topk_idx, recv_topk_weights, handle_obj, None
 
     @staticmethod
     def _unpack_bias(
@@ -720,28 +789,54 @@ class ElasticBuffer:
             previous_event.wait()
 
         num_sms = handle.num_sms if num_sms == 0 else num_sms
+        combine_topk_idx = getattr(handle, "combine_topk_idx", None)
+        if combine_topk_idx is None:
+            raise ValueError("handle.combine_topk_idx must be provided by dispatch")
+        combine_kernel_topk_idx = getattr(handle, "_combine_kernel_topk_idx", None)
+        if combine_kernel_topk_idx is None:
+            raise ValueError("handle._combine_kernel_topk_idx must be provided by dispatch")
+        if combine_kernel_topk_idx.dim() != 2:
+            raise ValueError("handle._combine_kernel_topk_idx must be 2D")
+        if combine_topk_idx.dim() != 2:
+            raise ValueError("handle.combine_topk_idx must be 2D")
+        num_tokens_global = combine_kernel_topk_idx.shape[0]
+        if num_tokens_global % self.num_ranks != 0:
+            raise ValueError("handle._combine_kernel_topk_idx shape[0] must be divisible by world_size")
+        if combine_topk_idx.shape[0] != num_tokens_global // self.num_ranks:
+            raise ValueError(
+                "handle.combine_topk_idx shape[0] must equal "
+                "handle._combine_kernel_topk_idx shape[0] // world_size"
+            )
+        if combine_topk_idx.shape[1] != combine_kernel_topk_idx.shape[1]:
+            raise ValueError("local/kernel combine_topk_idx must have same topk")
 
         if topk_weights is None:
-            topk_weights = torch.ones_like(handle.topk_idx, dtype=torch.float32)
+            topk_weights = getattr(handle, "_combine_kernel_topk_weights", None)
+            if topk_weights is None:
+                topk_weights = torch.ones_like(combine_kernel_topk_idx, dtype=torch.float32)
 
         scatter_idx = getattr(handle, "scatter_idx", None)
         if scatter_idx is None:
-            scatter_idx, _ = compute_scatter_idx(handle.topk_idx, num_experts=handle.num_experts)
+            raise ValueError("handle.scatter_idx must be provided by dispatch")
+        if scatter_idx.shape != combine_kernel_topk_idx.shape:
+            raise ValueError("handle.scatter_idx shape must match handle._combine_kernel_topk_idx shape")
 
-        num_tokens = handle.topk_idx.shape[0]
-        num_tokens_per_rank = num_tokens // self.num_ranks
+        if topk_weights.shape != combine_kernel_topk_idx.shape:
+            raise ValueError("topk_weights shape must match handle._combine_kernel_topk_idx shape")
+
+        num_combined_tokens = combine_topk_idx.shape[0]
         hidden = x.shape[1]
-        output = torch.zeros(num_tokens_per_rank, hidden, device=x.device, dtype=x.dtype)
+        output = torch.zeros(num_combined_tokens, hidden, device=x.device, dtype=x.dtype)
 
         deepep_owner_combine(
             expert_output=x.contiguous(),
-            topk_idx=handle.topk_idx,
+            topk_idx=combine_kernel_topk_idx,
             scatter_idx=scatter_idx,
             topk_weights=topk_weights.contiguous(),
             output=output,
             num_experts=handle.num_experts,
             group=self.group,
-            rank_output_ptrs=build_combine_rank_output_ptrs(x, handle.topk_idx, group=self.group),
+            rank_output_ptrs=build_combine_rank_output_ptrs(x, combine_kernel_topk_idx, group=self.group),
         )
 
         bias_0, bias_1 = self._unpack_bias(bias)
