@@ -14,7 +14,7 @@
 
 #include <ATen/EmptyTensor.h>
 #include <ATen/native/ResizeCommon.h>
-#include <comm/SYCLContext.h>
+#include <comm/Memory.h>
 
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
 
@@ -40,8 +40,7 @@ void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   if (storage->data_ptr()) {
     at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
 
-    auto q = at::xpu::getCurrentSYCLQueue();
-    q.memcpy(
+    ::xpu::sycl::memcpyAsync(
         data.get(), storage->data(), std::min(storage->nbytes(), size_bytes));
   }
 

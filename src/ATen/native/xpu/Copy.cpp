@@ -26,11 +26,12 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
-#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
+#include <comm/Memory.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/ops/empty_like.h>
 
@@ -86,18 +87,17 @@ void memcpyAsync(
   if (dst_device != src_device) {
     TORCH_INTERNAL_ASSERT(p2p_enabled == true);
   }
-  auto q = copy_stream.queue();
-  auto dev = q.get_device();
+  auto dev = copy_stream.queue().get_device();
   if (dev.ext_oneapi_architecture_is(
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc) ||
       dev.ext_oneapi_architecture_is(
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg)) {
     copy_kernel(iter);
   } else {
-    auto dst = (char*)iter.data_ptr(0);
-    auto src = (char*)iter.data_ptr(1);
+    auto dst = iter.data_ptr(0);
+    auto src = iter.data_ptr(1);
     size_t size = iter.numel() * iter.element_size(0);
-    q.copy(src, dst, size);
+    ::xpu::sycl::memcpyAsync(dst, src, size);
   }
 }
 
@@ -259,47 +259,16 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   void* src = iter.data_ptr(1);
   int64_t nbytes = iter.numel() * iter.element_size(0);
 
-  auto q = getCurrentSYCLQueue();
   if (non_blocking) {
     if (copy_kind == _H2D_) {
-      if (at::detail::getXPUHooks().isPinnedPtr(src)) {
-        q.memcpy(dst, src, nbytes);
-        at::getHostAllocator(at::kXPU)->record_event(
-            const_cast<void*>(src),
-            iter.tensor(1).storage().data_ptr().get_context(),
-            at::xpu::getCurrentXPUStream());
-      } else {
-        // Using stage memory for async copy to avoid incorrect
-        // free of src host memory before async H2D copy. E.g. memory allocated
-        // by CPU tensor factory won't be cached in CPU allocator. When host
-        // memory is freed with CPU tensor dtor at the end of train main loop,
-        // but the corresponding H2D copy might not have been executed yet.
-        auto stage_mem_dptr = at::getHostAllocator(at::kXPU)->allocate(nbytes);
-        void* stage_mem = stage_mem_dptr.get();
-        if (!stage_mem) {
-          throw std::runtime_error(
-              "Fail to allocate host memory from XPU HostAllocator");
-        }
-
-        std::memcpy(stage_mem, src, nbytes);
-        q.memcpy(dst, stage_mem, nbytes);
-        at::getHostAllocator(at::kXPU)->record_event(
-            const_cast<void*>(stage_mem),
-            stage_mem_dptr.get_context(),
-            at::xpu::getCurrentXPUStream());
-      }
+      ::xpu::sycl::memcpyHostToDeviceAsync(
+          dst, src, nbytes, iter.tensor(1).storage().data_ptr().get_context());
     } else {
-      q.memcpy(dst, src, nbytes);
-      if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
-        at::getHostAllocator(at::kXPU)->record_event(
-            const_cast<void*>(dst),
-            iter.tensor(0).storage().data_ptr().get_context(),
-            at::xpu::getCurrentXPUStream());
-      }
+      ::xpu::sycl::memcpyDeviceToHostAsync(
+          dst, src, nbytes, iter.tensor(0).storage().data_ptr().get_context());
     }
   } else {
-    auto e = q.memcpy(dst, src, nbytes);
-    e.wait();
+    ::xpu::sycl::memcpyAndSync(dst, src, nbytes);
   }
 
   if (iter.tensor(0).is_conj() != iter.tensor(1).is_conj()) {
