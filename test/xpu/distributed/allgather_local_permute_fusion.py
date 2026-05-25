@@ -64,7 +64,7 @@ def compute_scatter_idx(topk_idx: torch.Tensor, num_experts: int = None):
     appear in the order determined by stable sort of (expert_id, original_position).
 
     Args:
-        topk_idx: [num_tokens, topk] int64 - expert assignment for each (token, k)
+        topk_idx: [num_tokens, topk] int32 - expert assignment for each (token, k)
         num_experts: total number of experts (optional, inferred from topk_idx if None)
 
     Returns:

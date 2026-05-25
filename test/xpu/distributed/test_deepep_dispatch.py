@@ -1,22 +1,24 @@
 """
-Accuracy + performance check for deepep_owner_dispatch (distributed style)
+Accuracy + performance check for ep_dispatch kernel (distributed style)
 
 Usage:
     mpirun -n 2 python test_deepep_dispatch.py
 """
 
 import os
+import ctypes
 
 import torch
 import torch.distributed as dist
+import torch.distributed._symmetric_memory as symm_mem
 
-from deepep_dispatch import (
-    deepep_owner_dispatch,
-    get_expert_owner,
-    build_rank_buffers_ptr,
-    build_topk_weight_rank_buffers_ptr,
-)
+from deepep_dispatch import get_expert_owner
 from allgather_local_permute_fusion import compute_scatter_idx
+
+# Load ep_dispatch kernel
+_EP_LIB = os.path.join(os.path.dirname(__file__), "..", "csrc", "libep_dispatch.so")
+if os.path.exists(_EP_LIB):
+    torch.ops.load_library(_EP_LIB)
 
 TOKENS_PER_RANK = 2048
 HIDDEN_SIZE = 2048
@@ -140,7 +142,7 @@ def check_deepep_owner_dispatch():
         NUM_EXPERTS,
         (num_tokens, topk),
         device=device,
-        dtype=torch.int64,
+        dtype=torch.int32,
     )
 
     # Compute expert-centric scatter_idx from global topk_idx
@@ -149,8 +151,57 @@ def check_deepep_owner_dispatch():
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
-    rank_buffers = build_rank_buffers_ptr(hidden_shard, NUM_EXPERTS, group=group)
-    topk_weight_rank_buffers = build_topk_weight_rank_buffers_ptr(topk_weights, group=group)
+
+    # --- Build workspace pointers (elastic_xpu style, offset=0) ---
+    # Hidden workspace
+    h_ws = symm_mem.get_symm_mem_workspace(
+        group.group_name,
+        min_size=hidden_shard.numel() * hidden_shard.element_size(),
+    )
+    h_ptrs = []
+    for r in range(world_size):
+        buf = h_ws.get_buffer(r, (num_tokens_per_rank, hidden_size),
+                              hidden_shard.dtype, storage_offset=0)
+        h_ptrs.append(buf.data_ptr())
+    rank_buffers = torch.tensor(
+        [ctypes.c_int64(p).value for p in h_ptrs], dtype=torch.int64,
+    ).to(device)
+
+    # Topk weight workspace (dedicated group)
+    tw_group = dist.new_group(list(range(world_size)),
+                              group_desc="topk_weight_dispatch")
+    tw_ws = symm_mem.get_symm_mem_workspace(
+        tw_group.group_name,
+        min_size=num_tokens_per_rank * topk * topk_weights.element_size(),
+    )
+    start = rank * num_tokens_per_rank
+    tw_slot = tw_ws.get_buffer(rank, (num_tokens_per_rank, topk),
+                               topk_weights.dtype, storage_offset=0)
+    tw_slot.copy_(topk_weights[start : start + num_tokens_per_rank])
+    tw_ptrs = []
+    for r in range(world_size):
+        buf = tw_ws.get_buffer(r, (num_tokens_per_rank, topk),
+                               topk_weights.dtype, storage_offset=0)
+        tw_ptrs.append(buf.data_ptr())
+    tw_buffers = torch.tensor(
+        [ctypes.c_int64(p).value for p in tw_ptrs], dtype=torch.int64,
+    ).to(device)
+    tw_ws.barrier()
+
+    def run_dispatch(remap, recv_topk_idx, recv_topk_weights):
+        """Copy hidden_shard into workspace, barrier, run kernel."""
+        local_slot = h_ws.get_buffer(rank, (num_tokens_per_rank, hidden_size),
+                                     hidden_shard.dtype, storage_offset=0)
+        local_slot.copy_(hidden_shard)
+        h_ws.barrier()
+        recv_topk_idx.fill_(-1)
+        recv_topk_weights.zero_()
+        torch.ops.symm_mem.ep_dispatch(
+            rank_buffers, topk_idx, tw_buffers, scatter_idx,
+            remap, recv_topk_idx, recv_topk_weights,
+            topk, NUM_EXPERTS, rank, world_size,
+        )
+        h_ws.barrier()
 
     # Warm up
     for _ in range(WARMUP):
@@ -159,21 +210,9 @@ def check_deepep_owner_dispatch():
             device=device,
             dtype=hidden_shard.dtype,
         )
-        recv_topk_idx = torch.full((num_tokens * topk,), -1, device=device, dtype=topk_idx.dtype)
-        recv_topk_weights = torch.zeros((num_tokens * topk,), device=device, dtype=topk_weights.dtype)
-        deepep_owner_dispatch(
-            hidden_shard,
-            topk_idx,
-            remap_hidden_states,
-            num_experts=NUM_EXPERTS,
-            scatter_idx=scatter_idx,
-            topk_weights=topk_weight_rank_buffers,
-            recv_topk_idx=recv_topk_idx,
-            recv_topk_weights=recv_topk_weights,
-            topk_weights_stride=topk,
-            group=group,
-            rank_buffers_ptr=rank_buffers,
-        )
+        recv_topk_idx = torch.full((num_tokens * topk, topk), -1, device=device, dtype=topk_idx.dtype)
+        recv_topk_weights = torch.zeros((num_tokens * topk, topk), device=device, dtype=topk_weights.dtype)
+        run_dispatch(remap_hidden_states, recv_topk_idx, recv_topk_weights)
     torch.xpu.synchronize()
     dist.barrier()
 
@@ -186,21 +225,9 @@ def check_deepep_owner_dispatch():
     for i in range(LOOP):
         if i >= WARMUP:
             begin_events[i].record()
-        recv_topk_idx = torch.full((num_tokens * topk,), -1, device=device, dtype=topk_idx.dtype)
-        recv_topk_weights = torch.zeros((num_tokens * topk,), device=device, dtype=topk_weights.dtype)
-        deepep_owner_dispatch(
-            hidden_shard,
-            topk_idx,
-            remap_hidden_states,
-            num_experts=NUM_EXPERTS,
-            scatter_idx=scatter_idx,
-            topk_weights=topk_weight_rank_buffers,
-            recv_topk_idx=recv_topk_idx,
-            recv_topk_weights=recv_topk_weights,
-            topk_weights_stride=topk,
-            group=group,
-            rank_buffers_ptr=rank_buffers,
-        )
+        recv_topk_idx = torch.full((num_tokens * topk, topk), -1, device=device, dtype=topk_idx.dtype)
+        recv_topk_weights = torch.zeros((num_tokens * topk, topk), device=device, dtype=topk_weights.dtype)
+        run_dispatch(remap_hidden_states, recv_topk_idx, recv_topk_weights)
         if i >= WARMUP:
             end_events[i].record()
     torch.xpu.synchronize()

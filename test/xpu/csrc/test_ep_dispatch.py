@@ -4,7 +4,7 @@ import pytest
 def test_basic_float32():
     # Create dummy tensors for testing
     hidden_shard = torch.rand((4, 8), dtype=torch.float32, device='xpu')
-    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int64, device='xpu')
+    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int32, device='xpu')
     remap_hidden_states = torch.zeros((16 * 2, 8), dtype=torch.float32, device='xpu')
 
     # Call the ep_dispatch function
@@ -17,7 +17,7 @@ def test_basic_float32():
 def test_basic_bfloat16():
     # Create dummy tensors for testing
     hidden_shard = torch.rand((4, 8), dtype=torch.bfloat16, device='xpu')
-    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int64, device='xpu')
+    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int32, device='xpu')
     remap_hidden_states = torch.zeros((16 * 2, 8), dtype=torch.bfloat16, device='xpu')
 
     # Call the ep_dispatch function
@@ -30,7 +30,7 @@ def test_basic_bfloat16():
 def test_large_topk():
     # Create dummy tensors for testing
     hidden_shard = torch.rand((4, 8), dtype=torch.float32, device='xpu')
-    topk_idx = torch.randint(0, 4, (16, 8), dtype=torch.int64, device='xpu')
+    topk_idx = torch.randint(0, 4, (16, 8), dtype=torch.int32, device='xpu')
     remap_hidden_states = torch.zeros((16 * 8, 8), dtype=torch.float32, device='xpu')
 
     # Call the ep_dispatch function
@@ -43,7 +43,7 @@ def test_large_topk():
 def test_zero_tokens():
     # Create dummy tensors for testing
     hidden_shard = torch.rand((0, 8), dtype=torch.float32, device='xpu')
-    topk_idx = torch.randint(0, 4, (0, 2), dtype=torch.int64, device='xpu')
+    topk_idx = torch.randint(0, 4, (0, 2), dtype=torch.int32, device='xpu')
     remap_hidden_states = torch.zeros((0, 8), dtype=torch.float32, device='xpu')
 
     # Call the ep_dispatch function
@@ -56,7 +56,7 @@ def test_zero_tokens():
 def test_inplace_semantics():
     # Create dummy tensors for testing
     hidden_shard = torch.rand((4, 8), dtype=torch.float32, device='xpu')
-    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int64, device='xpu')
+    topk_idx = torch.randint(0, 4, (16, 2), dtype=torch.int32, device='xpu')
     remap_hidden_states = torch.zeros((16 * 2, 8), dtype=torch.float32, device='xpu')
 
     # Call the ep_dispatch function

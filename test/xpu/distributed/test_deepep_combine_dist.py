@@ -51,7 +51,7 @@ def make_inputs(rank, world_size, device):
         NUM_EXPERTS,
         (num_tokens, topk),
         device=device,
-        dtype=torch.int64,
+        dtype=torch.int32,
     )
     scatter_idx, _ = compute_scatter_idx(topk_idx, num_experts=NUM_EXPERTS)
 

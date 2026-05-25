@@ -90,7 +90,7 @@ def check_allgather_local_permute_fusion():
 
     # All ranks: same topk_idx
     torch.manual_seed(42)
-    topk_idx = torch.randint(0, world_size, (num_tokens, topk), device=device, dtype=torch.int64)
+    topk_idx = torch.randint(0, world_size, (num_tokens, topk), device=device, dtype=torch.int32)
     scatter_idx, _ = compute_scatter_idx(topk_idx)
 
     # Precompute rank_buffers_ptr (also allocates workspace)

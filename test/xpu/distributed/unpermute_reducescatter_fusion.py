@@ -279,11 +279,11 @@ def unpermute_reducescatter_fusion_native(
     )
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-    # Phase 2: write local reduced result to symmetric memory and synchronize
-    reduced_workspace_size_bytes = local_reduced.numel() * local_reduced.element_size()
-    reduced_workspace = symm_mem.get_symm_mem_workspace(
-        group_name + "_local_reduced",
-        min_size=reduced_workspace_size_bytes,
+    # Phase 1: Compute own chunk → write directly to output
+    my_chunk_start = rank * num_tokens_per_rank
+    torch.ops.symm_mem.local_unpermute_copy_(
+        expert_output, scatter_idx, topk_weights,
+        my_chunk_start, num_tokens_per_rank, output,
     )
 
     # Phase 2: Compute + push for each remote rank (two-stream round-robin)

@@ -46,6 +46,9 @@ _HAS_EP_COMBINE_LOCAL = False
 if _HAS_EP_COMBINE_KERNEL:
         _HAS_EP_COMBINE_LOCAL = hasattr(torch.ops.symm_mem, "ep_combine_local_")
 
+# Cache for dedicated process groups used by build_topk_weight_rank_buffers_ptr
+_topk_weight_dispatch_groups: Dict[str, dist.ProcessGroup] = {}
+
 
 def get_owner_expert_ranges(num_experts: int, tp_world_size: int) -> List[Tuple[int, int]]:
         """Return contiguous expert ranges [start, end) owned by each TP rank."""
@@ -127,14 +130,12 @@ def deepep_owner_dispatch(
         assert num_tokens % world_size == 0
         assert num_tokens_per_rank == num_tokens // world_size
 
-        workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
+        workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size()
         workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-        # Write local hidden_shard at rank-specific offset
-        local_offset = rank * num_tokens_per_rank * hidden_size
         local_slot = workspace.get_buffer(
                 rank, (num_tokens_per_rank, hidden_size),
-                hidden_shard.dtype, storage_offset=local_offset,
+                hidden_shard.dtype, storage_offset=0,
         )
         if not skip_copy:
                 local_slot.copy_(hidden_shard)
@@ -200,7 +201,7 @@ def deepep_owner_combine(
         Args:
             expert_output: [num_tokens * topk, hidden] expert-centric output.
                 On each rank, rows for non-owned experts may be zeros/invalid and are ignored.
-            topk_idx: [num_tokens, topk] int64 - expert assignment per (token, k).
+            topk_idx: [num_tokens, topk] int32 - expert assignment per (token, k).
             scatter_idx: [num_tokens, topk] int32 - maps (token, k) to expert_output row.
             topk_weights: [num_tokens, topk] float32/float16/bfloat16 routing weights.
             output: [num_tokens_per_rank, hidden] output shard for this rank.
@@ -407,7 +408,7 @@ def deepep_owner_combine(
         Args:
             expert_output: [num_tokens * topk, hidden] expert-centric output.
                 On each rank, rows for non-owned experts are zeros.
-            topk_idx: [num_tokens, topk] int64 - expert assignment per (token, k).
+            topk_idx: [num_tokens, topk] int32 - expert assignment per (token, k).
             scatter_idx: [num_tokens, topk] int32 - maps (token, k) to expert_output row.
             topk_weights: [num_tokens, topk] float32 routing weights.
             output: [num_tokens_per_rank, hidden] output shard for this rank.
@@ -631,20 +632,16 @@ def build_rank_buffers_ptr(
         world_size = dist.get_world_size(group)
 
         num_tokens_per_rank, hidden_size = hidden_shard.shape
-        workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size() * world_size
+        workspace_size_bytes = hidden_shard.numel() * hidden_shard.element_size()
         workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
         ptr_list = []
         for r in range(world_size):
-                if r == rank:
-                        ptr_list.append(hidden_shard.data_ptr())
-                else:
-                        offset = r * num_tokens_per_rank * hidden_size
-                        buf = workspace.get_buffer(
-                                r, (num_tokens_per_rank, hidden_size),
-                                hidden_shard.dtype, storage_offset=offset,
-                        )
-                        ptr_list.append(buf.data_ptr())
+                buf = workspace.get_buffer(
+                        r, (num_tokens_per_rank, hidden_size),
+                        hidden_shard.dtype, storage_offset=0,
+                )
+                ptr_list.append(buf.data_ptr())
         signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
         return torch.tensor(signed_ptrs, dtype=torch.int64).to(hidden_shard.device)
 
@@ -654,13 +651,28 @@ def build_topk_weight_rank_buffers_ptr(
     group: dist.ProcessGroup = None,
     group_name: str = None,
 ) -> torch.Tensor:
-        """Precompute rank buffer pointers for per-rank topk weights."""
+        """Precompute rank buffer pointers for per-rank topk weights.
+
+        Creates a dedicated process group for the topk weight workspace
+        (cached across calls) so it does not collide with the hidden_shard
+        workspace that uses the default group name.
+        """
         if group is None:
                 group = dist.group.WORLD
         if group_name is None:
                 group_name = group.group_name
         rank = dist.get_rank(group)
         world_size = dist.get_world_size(group)
+
+        # Create a dedicated process group for topk weight workspace (collective,
+        # all ranks must call this together — safe because callers always do).
+        cache_key = group_name + "_topk_weight_dispatch"
+        if cache_key not in _topk_weight_dispatch_groups:
+                ranks = list(range(world_size))
+                _topk_weight_dispatch_groups[cache_key] = dist.new_group(
+                        ranks, group_desc="topk_weight_dispatch"
+                )
+        tw_group = _topk_weight_dispatch_groups[cache_key]
 
         num_tokens, topk = topk_weights.shape
         if num_tokens % world_size != 0:
@@ -669,7 +681,7 @@ def build_topk_weight_rank_buffers_ptr(
 
         workspace_size_bytes = num_tokens_per_rank * topk * topk_weights.element_size()
         workspace = symm_mem.get_symm_mem_workspace(
-                group_name + "_topk_weight_dispatch", min_size=workspace_size_bytes
+                tw_group.group_name, min_size=workspace_size_bytes
         )
 
         start = rank * num_tokens_per_rank
