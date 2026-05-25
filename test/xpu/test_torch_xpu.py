@@ -2228,7 +2228,7 @@ class TestTorchDeviceType(TestCase):
         for op_call in [torch.histc, torch.Tensor.histc]:
             self.check_nondeterministic_alert(
                 lambda: op_call(a, min=0, max=3),
-                "_histc_" + torch.device(device).type + "_with floating point input",
+                "_histc_" + torch.device(device).type + "with floating point input",
                 (
                     torch.device(device).type == "cuda"
                     or torch.device(device).type == "xpu"
