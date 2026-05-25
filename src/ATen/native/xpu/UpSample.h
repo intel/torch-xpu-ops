@@ -192,9 +192,10 @@ struct NearestIndexOp {
 
 struct NearestExactIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
-    const int src_index = min(
-        static_cast<int>(sycl::floor((dst_index + static_cast<float>(0.5)) * scale)),
-        input_size - 1);
+    const int src_index =
+        min(static_cast<int>(
+                sycl::floor((dst_index + static_cast<float>(0.5)) * scale)),
+            input_size - 1);
     return src_index;
   }
 };

@@ -16,8 +16,8 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
-#include <ATen/ceil_div.h>
 #include <ATen/OpMathType.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/SYCLContext.h>
@@ -53,13 +53,13 @@ struct PsRoiPoolForwardKernel {
       T bin_size_h =
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
-      
+
       using opmath_t = at::opmath_type<T>;
 
-      int hstart =
-          static_cast<int>(sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
-      int wstart =
-          static_cast<int>(sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
       int hend =
           static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
       int wend =
@@ -207,13 +207,13 @@ struct PsRoiPoolBackwardKernel {
       T bin_size_h =
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
-      
+
       using opmath_t = at::opmath_type<T>;
 
-      int hstart =
-          static_cast<int>(sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
-      int wstart =
-          static_cast<int>(sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
       int hend =
           static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
       int wend =

@@ -393,8 +393,10 @@ struct GridSampler2dBackwardKernelFunctor {
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
-      index_t ix_nw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
-      index_t iy_nw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
+      index_t ix_nw =
+          static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      index_t iy_nw =
+          static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
       index_t ix_ne = ix_nw + 1;
       index_t iy_ne = iy_nw;
       index_t ix_sw = ix_nw;
@@ -531,8 +533,10 @@ struct GridSampler2dBackwardKernelFunctor {
       iy = grid_sampler_unnormalize_set_grad(
           y, inp_H_, align_corners_, &giy_mult);
 
-      scalar_t ix_nw = static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(ix)));
-      scalar_t iy_nw = static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(iy)));
+      scalar_t ix_nw =
+          static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      scalar_t iy_nw =
+          static_cast<scalar_t>(sycl::floor(static_cast<opmath_t>(iy)));
 
       const scalar_t tx = ix - ix_nw;
       const scalar_t ty = iy - iy_nw;
@@ -1259,9 +1263,12 @@ struct GridSampler3dBackwardKernelFunctor {
       // get corner pixel values from (x, y, z)
       // for 4d, we used north-east-south-west
       // for 5d, we add top-bottom
-      index_t ix_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
-      index_t iy_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
-      index_t iz_tnw = static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iz)));
+      index_t ix_tnw =
+          static_cast<index_t>(sycl::floor(static_cast<opmath_t>(ix)));
+      index_t iy_tnw =
+          static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iy)));
+      index_t iz_tnw =
+          static_cast<index_t>(sycl::floor(static_cast<opmath_t>(iz)));
 
       index_t ix_tne = ix_tnw + 1;
       index_t iy_tne = iy_tnw;

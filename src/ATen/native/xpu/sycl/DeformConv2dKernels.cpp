@@ -77,8 +77,8 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
-#include <ATen/ceil_div.h>
 #include <ATen/OpMathType.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
