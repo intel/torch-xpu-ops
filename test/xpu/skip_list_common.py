@@ -27,6 +27,11 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # AssertionError: Quantized tensor-likes are not close!
+        # Rounding mismatch at quantization midpoint due to hypothesis
+        # derandomize seed difference from _xpu suffix.
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_leaky_relu_observed_output_xpu",
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
