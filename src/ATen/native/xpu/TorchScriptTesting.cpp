@@ -40,9 +40,9 @@ TORCH_LIBRARY_IMPL(_TorchScriptTesting, XPU, m) {
 }
 
 TORCH_LIBRARY_IMPL(_TorchScriptTesting, AutocastXPU, m) {
-    m.impl(
-            "queue_push",
-            torch::CppFunction::makeFromBoxedFunction<&queue_push_boxed>());
+  m.impl(
+      "queue_push",
+      torch::CppFunction::makeFromBoxedFunction<&queue_push_boxed>());
 }
 
 } // namespace at::native::xpu

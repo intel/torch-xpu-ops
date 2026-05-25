@@ -38,7 +38,6 @@ from torch.testing._internal.torchbind_impls import (
     init_torchbind_implementations,
 )
 
-
 requires_cuda_or_xpu = unittest.skipIf(
     not (
         torch.cuda.is_available()
