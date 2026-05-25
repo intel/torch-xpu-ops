@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
 
@@ -84,7 +85,8 @@ void frac_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct CeilFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::ceil(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(sycl::ceil(static_cast<opmath_t>(a)));
   }
 };
 
