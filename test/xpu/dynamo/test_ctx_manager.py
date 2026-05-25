@@ -30,7 +30,6 @@ from torch.testing._internal.common_utils import (
     skipIfXpu,
 )
 
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
