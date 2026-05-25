@@ -11,9 +11,9 @@
 
 #include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
-#include <atomic>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <atomic>
 
 namespace c10d {
 namespace symmetric_memory {
@@ -279,8 +279,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + get_signal_pad_size();
 
-  c10::DeviceGuard device_guard(
-      c10::Device(c10::DeviceType::XPU, device_idx));
+  c10::DeviceGuard device_guard(c10::Device(c10::DeviceType::XPU, device_idx));
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
