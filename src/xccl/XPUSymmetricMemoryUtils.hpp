@@ -4,43 +4,12 @@
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
 
-#include <sys/socket.h>
-#include <sys/syscall.h>
-#include <sys/un.h>
-#include <unistd.h>
-
 #include <c10/util/error.h>
 
 namespace c10d {
 namespace symmetric_memory {
 
 std::string getSymmMemBackendXPU();
-
-class IpcChannel {
- public:
-  IpcChannel();
-  ~IpcChannel();
-
-  void send_fd(int dst_pid, int fd);
-  int recv_fd();
-
-  std::vector<int> all_gather_fds(
-      int rank,
-      const std::vector<int>& pids,
-      int fd);
-
-  int broadcast_fds(
-      int rank,
-      int src_rank,
-      const std::vector<int>& pids,
-      int fd);
-
- private:
-  static std::string get_socket_name(int pid);
-
-  std::string socket_name_;
-  int socket_;
-};
 
 class StoreExchange {
  public:
