@@ -16,10 +16,6 @@ name: OnDemand Acceptance Comparison
 on:
   workflow_dispatch:
     inputs:
-      runner:
-        type: choice
-        options: [acceptance]
-        description: 'Runner label for the test pool (UT + E2E).'
       python:
         type: string
         required: true
@@ -58,23 +54,6 @@ run-name: >-
 
 jobs:
   # ==================================================================
-  # Pick ONE runner and reuse for every test job (target & baseline,
-  # UT & E2E) so they all execute on the same physical machine.
-  # ==================================================================
-  pick-runner:
-    name: pick-runner
-    runs-on: ${{ inputs.runner }}
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-    steps:
-      - name: Derive runner id
-        id: runner-info
-        shell: bash -xe {0}
-        run: |
-          runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
-          echo "runner_id=${runner_id}" | tee -a "${GITHUB_OUTPUT}"
-
-  # ==================================================================
   # TARGET pipeline
   # ==================================================================
   target-build:
@@ -92,7 +71,7 @@ jobs:
 
   target-ut:
     name: target / ut
-    needs: [pick-runner, target-build]
+    needs: target-build
     secrets: inherit
     permissions:
       contents: read
@@ -100,7 +79,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -110,7 +89,7 @@ jobs:
 
   target-e2e:
     name: target / e2e
-    needs: [pick-runner, target-build]
+    needs: target-build
     secrets: inherit
     strategy:
       fail-fast: false
@@ -118,11 +97,12 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
+      scenario: accuracy,performance
       category: target
 
   # ==================================================================
@@ -143,7 +123,7 @@ jobs:
 
   baseline-ut:
     name: baseline / ut
-    needs: [pick-runner, baseline-build]
+    needs: baseline-build
     secrets: inherit
     permissions:
       contents: read
@@ -151,7 +131,7 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: acceptance
       pytorch: ${{ inputs.pytorch }}
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       python: ${{ inputs.python }}
@@ -161,7 +141,7 @@ jobs:
 
   baseline-e2e:
     name: baseline / e2e
-    needs: [pick-runner, baseline-build]
+    needs: baseline-build
     secrets: inherit
     strategy:
       fail-fast: false
@@ -169,11 +149,12 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      runner: acceptance
       test_type: build-acceptance
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
+      scenario: accuracy,performance
       category: baseline
 
   # ==================================================================
