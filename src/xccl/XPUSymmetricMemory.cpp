@@ -11,15 +11,22 @@
 
 #include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
+#include <atomic>
 #include <sys/socket.h>
 #include <unistd.h>
 
 namespace c10d {
 namespace symmetric_memory {
 
-static StoreExchange storeExchange = StoreExchange("XPUSymmetricMemory");
-
 namespace {
+
+std::atomic<uint64_t> store_exchange_nonce{0};
+
+thread_local StoreExchange storeExchange = []() {
+  const auto nonce =
+      store_exchange_nonce.fetch_add(1, std::memory_order_relaxed);
+  return StoreExchange("XPUSymmetricMemory_" + std::to_string(nonce));
+}();
 
 bool use_signal_barrier_enabled() {
   static const bool cached_value = []() {
@@ -272,6 +279,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + get_signal_pad_size();
 
+  c10::DeviceGuard device_guard(
+      c10::Device(c10::DeviceType::XPU, device_idx));
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
