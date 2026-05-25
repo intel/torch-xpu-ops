@@ -2982,7 +2982,7 @@ class GraphModule(torch.nn.Module):
         "triton requires CUDA with SM>=7.0",
     )
     @parametrize("layers", [1, 2, 3])
-    @parametrize("device", ["cpu", "cuda", "xpu"])
+    @parametrize("device", ["cpu", "xpu"])
     @torch._dynamo.config.patch(capture_scalar_outputs=True)
     def test_scan_multiple_layers_gradient(self, layers, device):
         import torch.nn as nn
@@ -5386,7 +5386,7 @@ class GraphModule(torch.nn.Module):
 
         with self.assertRaisesRegex(
             AssertionError,
-            "Combin_fn received wrong number of arguments.*",
+            "Combine_fn received wrong number of arguments.*",
         ):
             associative_scan(fct_wrong_pytree, inp, 0, combine_mode="generic")
 
