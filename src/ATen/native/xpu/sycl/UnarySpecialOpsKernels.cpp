@@ -291,7 +291,8 @@ struct EntrFunctor {
       return x;
     } else if (x > 0) {
       using opmath_t = at::opmath_type<scalar_t>;
-      return static_cast<scalar_t>(static_cast<opmath_t>(-x) * sycl::log(static_cast<opmath_t>(x)));
+      return static_cast<scalar_t>(
+          static_cast<opmath_t>(-x) * sycl::log(static_cast<opmath_t>(x)));
     } else if (x == 0) {
       return 0;
     }
