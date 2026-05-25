@@ -75,13 +75,13 @@ class TestStreams(torch._dynamo.test_case.TestCase):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]", arg1_1: "f32[2, 2]"):
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1)
 
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         add_1: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1);  arg0_1 = arg1_1 = None
 
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         add_2: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_1, 2);  add_1 = None
         add_3: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_2, add);  add_2 = add = None
         return (add_3,)
@@ -231,13 +231,13 @@ class <lambda>(torch.nn.Module):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]", arg1_1: "f32[2, 2]"):
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1)
 
-        # Annotation: {'stream': 2}
+        # Annotation: {'stream': 3}
         add_1: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1);  arg0_1 = arg1_1 = None
 
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         add_2: "f32[2, 2]" = torch.ops.aten.add.Tensor(add, 2);  add = None
         return (add_1, add_2)
 """,
@@ -279,13 +279,13 @@ class <lambda>(torch.nn.Module):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]", arg1_1: "f32[2, 2]"):
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1)
 
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add_1: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1);  arg0_1 = arg1_1 = None
 
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add_2: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_1, 2);  add_1 = None
         add_3: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_2, add);  add_2 = add = None
         return (add_3,)
@@ -323,13 +323,13 @@ class <lambda>(torch.nn.Module):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]", arg1_1: "f32[2, 2]"):
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1)
 
-        # Annotation: {'stream': 2}
+        # Annotation: {'stream': 3}
         add_1: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1);  arg0_1 = arg1_1 = None
 
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add_2: "f32[2, 2]" = torch.ops.aten.add.Tensor(add, 2);  add = None
         return (add_1, add_2)
 """,
@@ -451,19 +451,19 @@ class <lambda>(torch.nn.Module):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]", arg1_1: "f32[2, 2]"):
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, arg1_1)
 
-        # Annotation: {'stream': 2}
+        # Annotation: {'stream': 3}
         add_1: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg1_1, arg1_1)
 
-        # Annotation: {'stream': 2}
+        # Annotation: {'stream': 3}
         add_2: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_1, arg1_1);  arg1_1 = None
 
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add_3: "f32[2, 2]" = torch.ops.aten.add.Tensor(add_1, 2);  add_1 = None
 
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         copy_: "f32[2, 2]" = torch.ops.aten.copy_.default(arg0_1, add);  arg0_1 = add = copy_ = None
         return (add_2, add_3)
 """,
@@ -677,7 +677,7 @@ class GraphModule(torch.nn.Module):
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]"):
         #
-        record_event = torch.ops.streams.record_event.default(0, 1);  record_event = None
+        record_event = torch.ops.streams.record_event.default(1, 0);  record_event = None
 
         #
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, 1)
@@ -1076,7 +1076,7 @@ class GraphModule(torch.nn.Module):
             """\
 class <lambda>(torch.nn.Module):
     def forward(self, arg0_1: "f32[2, 2]"):
-        # Annotation: {'stream': 0}
+        # Annotation: {'stream': 1}
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(arg0_1, 2)
         copy_: "f32[2, 2]" = torch.ops.aten.copy_.default(arg0_1, add);  arg0_1 = add = None
         return (copy_,)
@@ -1151,7 +1151,7 @@ class <lambda>(torch.nn.Module):
             """\
 class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f32[2, 2]", primals_2: "f32[2, 2]"):
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         mul: "f32[2, 2]" = torch.ops.aten.mul.Tensor(primals_1, 2)
         add: "f32[2, 2]" = torch.ops.aten.add.Tensor(mul, primals_2);  primals_2 = None
         return (add, primals_1, mul)
@@ -1168,13 +1168,13 @@ class GraphModule(torch.nn.Module):
             """\
 class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f32[2, 2]", mul: "f32[2, 2]", tangents_1: "f32[2, 2]"):
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         mul_2: "f32[2, 2]" = torch.ops.aten.mul.Tensor(tangents_1, 2)
 
-        # Annotation: {'stream': 1}
+        # Annotation: {'stream': 2}
         clone: "f32[2, 2]" = torch.ops.aten.clone.default(tangents_1);  tangents_1 = None
 
-        # Annotation: {'stream': 0} No stacktrace found for following nodes
+        # Annotation: {'stream': 1} No stacktrace found for following nodes
         copy_: "f32[2, 2]" = torch.ops.aten.copy_.default(primals_1, mul);  primals_1 = mul = copy_ = None
         return (mul_2, clone)
 """,
