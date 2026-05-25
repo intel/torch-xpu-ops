@@ -248,7 +248,7 @@ def check_elastic_xpu_dispatch_and_combine():
     assert torch.allclose(combine_out, ref_combine_out, atol=1e-2, rtol=1e-2), (
         f"elastic_xpu.combine mismatch in rank {rank}"
     )
-    # combine returns handle.combine_topk_weights which is per-rank local.
+    # combine returns handle.topk_weights (recv_topk_weights from dispatch).
     assert torch.allclose(returned_topk_weights, topk_weights)
 
     if rank == 0:

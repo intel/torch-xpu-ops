@@ -124,22 +124,19 @@ class EPHandle:
         self,
         num_experts: int,
         num_sms: int,
+        num_tokens_per_rank: int,
         scatter_idx: torch.Tensor,
-        combine_topk_idx: torch.Tensor,
-        combine_topk_weights: torch.Tensor,
-        combine_kernel_topk_idx: torch.Tensor,
-        combine_kernel_topk_weights: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
     ):
         self.num_experts = num_experts
         self.num_sms = num_sms
+        self.num_tokens_per_rank = num_tokens_per_rank
         # Global [num_tokens_global, topk] scatter index.
         self.scatter_idx = scatter_idx
-        # Per-rank local [num_tokens_per_rank, topk] routing tensors.
-        self.combine_topk_idx = combine_topk_idx
-        self.combine_topk_weights = combine_topk_weights
-        # Global [num_tokens_global, topk] routing tensors for the kernel.
-        self._combine_kernel_topk_idx = combine_kernel_topk_idx
-        self._combine_kernel_topk_weights = combine_kernel_topk_weights
+        # Received topk routing tensors from dispatch, same first dim as recv_x.
+        self.topk_idx = topk_idx
+        self.topk_weights = topk_weights
 
 
 class ElasticBuffer:
@@ -623,23 +620,27 @@ class ElasticBuffer:
                 psum_cpu = psum_num_recv_tokens_per_expert.to("cpu")
                 remap_rows = int(psum_cpu.sum().item())
             else:
-                remap_rows = num_tokens * topk
+                # Without CPU sync we cannot read the exact psum, but the
+                # ep_dispatch kernel output is always bounded by
+                # dispatch_rows (= num_tokens * topk).  Using 0 here lets
+                # work_rows = max(0, dispatch_rows) = dispatch_rows, which
+                # is the correct upper-bound allocation.
+                remap_rows = 0
 
         # ep_dispatch currently requires output rows == num_tokens * topk.
         # Keep an internal work buffer that satisfies the kernel contract.
         dispatch_rows = num_tokens * topk
         work_rows = max(remap_rows, dispatch_rows)
-        remap_hidden_states = torch.zeros(work_rows, hidden, device=x.device, dtype=x.dtype)
+        remap_hidden_states = torch.empty(work_rows, hidden, device=x.device, dtype=x.dtype)
         dispatch_view = remap_hidden_states[:dispatch_rows]
 
         # Build receive-layout topk tensors (shape differs from input topk layout).
-        recv_topk_idx = torch.full(
+        recv_topk_idx = torch.empty(
             (work_rows, topk),
-            -1,
             device=topk_idx.device,
             dtype=topk_idx.dtype,
         )
-        recv_topk_weights = torch.zeros(
+        recv_topk_weights = torch.empty(
             (work_rows, topk),
             device=topk_weights.device,
             dtype=topk_weights.dtype,
@@ -656,8 +657,6 @@ class ElasticBuffer:
 
         # Stage 2: run ep_dispatch kernel directly (bypass deepep_owner_dispatch
         # to skip its 2 redundant barriers — elastic already barrier'd above).
-        recv_topk_idx.fill_(-1)
-        recv_topk_weights.zero_()
         torch.ops.symm_mem.ep_dispatch(
             rank_buffers_ptr,
             global_topk_idx,
@@ -675,58 +674,13 @@ class ElasticBuffer:
         # Keep scatter_idx in handle so combine can consume it directly.
         scatter_idx_for_handle = scatter_idx.clone() if do_handle_copy else scatter_idx
 
-        # The combine kernel needs the original (num_tokens, topk) routing
-        # tensors, not the receive-side layout (work_rows, topk).
-        combine_kernel_topk_idx = global_topk_idx
-
-        # Reconstruct global topk_weights from all ranks' symmetric memory
-        # slots.  Each rank wrote its local portion before the barrier, so
-        # remote slots are visible here (same fence as ep_dispatch reads).
-        global_topk_weights = torch.empty(
-            num_tokens, topk, device=topk_weights.device, dtype=topk_weights.dtype
-        )
-        for r in range(self.num_ranks):
-            remote_weight_slot = self.dispatch_topk_weight_workspace.get_buffer(
-                r,
-                (self.num_max_tokens_per_rank, self.num_topk),
-                topk_weights.dtype,
-                storage_offset=0,
-            )
-            start = r * num_tokens_per_rank
-            global_topk_weights[start:start + num_tokens_per_rank, :topk].copy_(
-                remote_weight_slot[:num_tokens_per_rank, :topk]
-            )
-        combine_kernel_topk_weights = global_topk_weights
-
-        combine_topk_idx_local = combine_kernel_topk_idx[
-            self.rank_idx * num_tokens_per_rank:(self.rank_idx + 1) * num_tokens_per_rank
-        ]
-        # topk_weights input is already per-rank local.
-        combine_topk_weights_local = topk_weights
-
-        combine_topk_idx_local_for_handle = (
-            combine_topk_idx_local.clone() if do_handle_copy else combine_topk_idx_local
-        )
-        combine_topk_weights_local_for_handle = (
-            combine_topk_weights_local.clone() if do_handle_copy else combine_topk_weights_local
-        )
-        combine_kernel_topk_idx_for_handle = (
-            combine_kernel_topk_idx.clone() if do_handle_copy else combine_kernel_topk_idx
-        )
-        combine_kernel_topk_weights_for_handle = (
-            combine_kernel_topk_weights.clone()
-            if do_handle_copy
-            else combine_kernel_topk_weights
-        )
-
         handle_obj = EPHandle(
             num_experts=num_experts,
             num_sms=num_sms,
+            num_tokens_per_rank=num_tokens_per_rank,
             scatter_idx=scatter_idx_for_handle,
-            combine_topk_idx=combine_topk_idx_local_for_handle,
-            combine_topk_weights=combine_topk_weights_local_for_handle,
-            combine_kernel_topk_idx=combine_kernel_topk_idx_for_handle,
-            combine_kernel_topk_weights=combine_kernel_topk_weights_for_handle,
+            topk_idx=recv_topk_idx,
+            topk_weights=recv_topk_weights,
         )
 
         return remap_hidden_states, recv_topk_idx, recv_topk_weights, handle_obj, None
@@ -761,9 +715,10 @@ class ElasticBuffer:
 
         num_sms = handle.num_sms if num_sms == 0 else num_sms
 
-        combine_kernel_topk_idx = handle._combine_kernel_topk_idx
-        combine_kernel_topk_weights = handle._combine_kernel_topk_weights
         scatter_idx = handle.scatter_idx
+        num_tokens_per_rank = handle.num_tokens_per_rank
+        topk = handle.topk_idx.shape[1]
+        num_tokens = num_tokens_per_rank * self.num_ranks
 
         if topk_weights is not None and topk_weights.shape[0] != x.shape[0]:
             raise ValueError(
@@ -771,15 +726,36 @@ class ElasticBuffer:
                 f"x shape[0] ({x.shape[0]})"
             )
 
-        num_combined_tokens = handle.combine_topk_idx.shape[0]
+        # Reconstruct global topk routing from symmetric memory for the kernel.
+        global_topk_idx = self.dispatch_topk_workspace.get_buffer(
+            self.rank_idx,
+            (num_tokens, topk),
+            torch.int32,
+            storage_offset=self.dispatch_global_topk_offset_elems,
+        )
+        global_topk_weights = torch.empty(
+            num_tokens, topk, device=x.device, dtype=handle.topk_weights.dtype
+        )
+        for r in range(self.num_ranks):
+            remote_weight_slot = self.dispatch_topk_weight_workspace.get_buffer(
+                r,
+                (self.num_max_tokens_per_rank, self.num_topk),
+                handle.topk_weights.dtype,
+                storage_offset=0,
+            )
+            start = r * num_tokens_per_rank
+            global_topk_weights[start:start + num_tokens_per_rank, :topk].copy_(
+                remote_weight_slot[:num_tokens_per_rank, :topk]
+            )
+
         hidden = x.shape[1]
-        output = torch.zeros(num_combined_tokens, hidden, device=x.device, dtype=x.dtype)
+        output = torch.zeros(num_tokens_per_rank, hidden, device=x.device, dtype=x.dtype)
 
         deepep_owner_combine(
             expert_output=x.contiguous(),
-            topk_idx=combine_kernel_topk_idx,
+            topk_idx=global_topk_idx,
             scatter_idx=scatter_idx,
-            topk_weights=combine_kernel_topk_weights.contiguous(),
+            topk_weights=global_topk_weights.contiguous(),
             output=output,
             num_experts=handle.num_experts,
             group=self.group,
@@ -792,9 +768,16 @@ class ElasticBuffer:
         if bias_1 is not None:
             output.add_(bias_1)
 
+        # Return per-rank local topk_weights from symmetric memory.
+        local_weight_slot = self.dispatch_topk_weight_workspace.get_buffer(
+            self.rank_idx,
+            (self.num_max_tokens_per_rank, self.num_topk),
+            handle.topk_weights.dtype,
+            storage_offset=0,
+        )
+        combined_topk_weights = local_weight_slot[:num_tokens_per_rank, :topk].clone()
+
         event = torch.xpu.Event() if async_with_compute_stream else None
         if event is not None:
             event.record()
-        # Return per-rank local topk_weights [num_tokens_per_rank, topk]
-        # matching the output shape.
-        return output, handle.combine_topk_weights, EventOverlap(event)
+        return output, combined_topk_weights, EventOverlap(event)
