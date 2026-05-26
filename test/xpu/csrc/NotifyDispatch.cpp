@@ -113,6 +113,8 @@ struct NotifyDispatchAssignKernel : __SYCL_KER_CONFIG_CONVENTION__ {
   int32_t num_experts;
   int32_t world_size;
   int64_t total_pairs;
+  const int64_t* weights_rank_ptrs;      // nullable: symm_mem pointers to per-rank weights
+  float* global_topk_weights_out;        // nullable: output buffer for gathered weights
 
   // SLM layout: [0..num_experts) = histogram / local counter,
   //             [MAX_EXPERTS..MAX_EXPERTS+num_experts) = reserved base offset.
@@ -169,7 +171,7 @@ struct NotifyDispatchAssignKernel : __SYCL_KER_CONFIG_CONVENTION__ {
     }
     item.barrier(sycl::access::fence_space::local_space);
 
-    // (c) Second pass: assign scatter_idx.
+    // (c) Second pass: assign scatter_idx and optionally gather weights.
     for (int64_t idx = wg_start + lid; idx < wg_end; idx += lsize) {
       const int32_t token_idx = static_cast<int32_t>(idx / topk);
       const int32_t k = static_cast<int32_t>(idx % topk);
@@ -190,6 +192,13 @@ struct NotifyDispatchAssignKernel : __SYCL_KER_CONFIG_CONVENTION__ {
         const int32_t pos = cref.fetch_add(1);
         scatter_idx[out_idx] = slm[MAX_EXPERTS + expert] + pos;
       }
+      // Gather weights from symm_mem (same access pattern as topk_idx).
+      if (weights_rank_ptrs != nullptr) {
+        const float* src_weights =
+            reinterpret_cast<const float*>(weights_rank_ptrs[src_rank]);
+        global_topk_weights_out[out_idx] =
+            src_weights[src_token * topk_storage_stride + k];
+      }
     }
   }
 };
@@ -206,7 +215,9 @@ at::Tensor notify_dispatch(
     int64_t topk_storage_stride,
     int64_t num_experts,
     int64_t rank,
-    int64_t world_size) {
+    int64_t world_size,
+    const std::optional<at::Tensor>& weights_rank_ptrs,
+    const std::optional<at::Tensor>& global_topk_weights) {
   TORCH_CHECK(
       topk_rank_ptrs.dim() == 1 && topk_rank_ptrs.size(0) == world_size,
       "notify_dispatch: topk_rank_ptrs must be 1D with size == world_size");
@@ -314,6 +325,31 @@ at::Tensor notify_dispatch(
   sycl_kernel_submit(
       sycl::range<1>(WG_SIZE), sycl::range<1>(WG_SIZE), queue, k1);
 
+  // Extract optional weights pointers for K2.
+  const int64_t* w_rank_ptrs = nullptr;
+  float* w_out_ptr = nullptr;
+  if (weights_rank_ptrs.has_value() && global_topk_weights.has_value()) {
+    TORCH_CHECK(
+        weights_rank_ptrs->dim() == 1 && weights_rank_ptrs->size(0) == world_size,
+        "notify_dispatch: weights_rank_ptrs must be 1D with size == world_size");
+    TORCH_CHECK(
+        weights_rank_ptrs->scalar_type() == at::kLong,
+        "notify_dispatch: weights_rank_ptrs must be int64");
+    TORCH_CHECK(
+        global_topk_weights->dim() == 2 &&
+        global_topk_weights->size(0) == num_tokens &&
+        global_topk_weights->size(1) == topk,
+        "notify_dispatch: global_topk_weights shape mismatch");
+    TORCH_CHECK(
+        global_topk_weights->scalar_type() == at::kFloat,
+        "notify_dispatch: global_topk_weights must be float32");
+    TORCH_CHECK(
+        global_topk_weights->is_contiguous(),
+        "notify_dispatch: global_topk_weights must be contiguous");
+    w_rank_ptrs = weights_rank_ptrs->data_ptr<int64_t>();
+    w_out_ptr = global_topk_weights->data_ptr<float>();
+  }
+
   // --- Kernel 2: assign scatter_idx (multi-WG, SLM reservation) ---
   const int64_t num_wgs = (total_pairs + WG_SIZE - 1) / WG_SIZE;
   const int64_t global_range = num_wgs * WG_SIZE;
@@ -329,6 +365,8 @@ at::Tensor notify_dispatch(
       static_cast<int32_t>(num_experts),
       static_cast<int32_t>(world_size),
       total_pairs,
+      w_rank_ptrs,
+      w_out_ptr,
       {}};
   sycl_kernel_submit(
       sycl::range<1>(global_range), sycl::range<1>(WG_SIZE), queue, k2);
@@ -341,7 +379,8 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "notify_dispatch(Tensor topk_rank_ptrs, Tensor(a!) global_topk_idx, "
       "Tensor(a!) scatter_idx, Tensor(a!) psum_num_recv_tokens_per_expert, "
       "int num_tokens_per_rank, int topk, int topk_storage_stride, "
-      "int num_experts, int rank, int world_size) -> Tensor(a!)");
+      "int num_experts, int rank, int world_size, "
+      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
