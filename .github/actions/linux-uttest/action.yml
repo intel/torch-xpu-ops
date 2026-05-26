@@ -143,6 +143,13 @@ runs:
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
+        original_ptrace_scope=$(cat /proc/sys/kernel/yama/ptrace_scope)
+        echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
+        restore_ptrace_scope() {
+          echo "${original_ptrace_scope}" | sudo tee /proc/sys/kernel/yama/ptrace_scope >/dev/null || true
+          cat /proc/sys/kernel/yama/ptrace_scope || true
+        }
+        trap restore_ptrace_scope EXIT
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
