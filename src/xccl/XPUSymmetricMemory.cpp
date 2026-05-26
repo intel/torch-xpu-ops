@@ -391,8 +391,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   // SYCL/L0 IPC import uses `pidfd_getfd` between peer processes.
   // Using prctl(PR_SET_PTRACER, ppid) ensures that only the parent process can
   // trace the current process.
-  static std::once_flag prctl_once;
-  std::call_once(prctl_once, []() {
+  static c10::once_flag prctl_once;
+  c10::call_once(prctl_once, []() {
     (void)::prctl(PR_SET_PTRACER, ::getppid(), 0, 0, 0);
   });
 
