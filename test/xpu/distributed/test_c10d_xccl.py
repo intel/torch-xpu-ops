@@ -25,6 +25,7 @@ import time
 from datetime import datetime, timedelta
 from enum import auto, Enum
 from unittest import mock
+import unittest
 
 import torch
 import torch._C._distributed_c10d
@@ -1414,6 +1415,11 @@ os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
 
 device_type = "xpu"
 
+try:
+    from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON as _HAS_XPU_AND_TRITON
+except ImportError:
+    _HAS_XPU_AND_TRITON = False
+
 
 @instantiate_parametrized_tests
 class SymmetricMemoryTest(MultiProcContinuousTest):
@@ -1617,6 +1623,121 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 
         torch.testing.assert_close(output_0, output_1)
         self.assertEqual(output_0.stride(), output_1.stride())
+
+
+# ------------------------------------------------------------------
+# Inductor micro-pipeline TP FX-pass tests (single-process, FakeStore)
+# ------------------------------------------------------------------
+#
+@instantiate_parametrized_tests
+class MicroPipelineTPXpuTest(TestCase):
+    def setUp(self):
+        from torch.testing._internal.distributed.fake_pg import FakeStore
+
+        torch._inductor.config._micro_pipeline_tp = True
+
+        self.rank = 0
+        self.world_size = 2
+        torch.xpu.set_device("xpu:0")
+
+        store = FakeStore()
+        dist.init_process_group(
+            backend="fake",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+
+    def tearDown(self):
+        dist.destroy_process_group()
+
+    @unittest.skipIf(
+        not _HAS_XPU_AND_TRITON,
+        "Inductor+XPU needs triton and a recent XPU arch",
+    )
+    @parametrize("A_dims", [2, 3])
+    @parametrize("gather_dim", [0, 1, 2])
+    @parametrize("return_A", [True, False])
+    def test_fuse_all_gather_matmul(self, A_dims, gather_dim, return_A):
+        from torch._inductor.utils import fresh_cache, run_and_get_triton_code
+        from torch.distributed._functional_collectives import all_gather_tensor
+        from torch.distributed._symmetric_memory import _test_mode
+
+        if gather_dim >= A_dims:
+            return
+
+        group = dist.group.WORLD
+
+        def func(A_shard: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+            A = all_gather_tensor(A_shard, gather_dim=gather_dim, group=group)
+            if return_A:
+                return A, A @ B
+            else:
+                return None, A @ B
+
+        if A_dims == 2:
+            A_shard_shape = [64, 32]
+        elif A_dims == 3:
+            A_shard_shape = [2, 64, 32]
+        else:
+            raise AssertionError(f"Invalid A_dims: {A_dims}")
+
+        A_shard_shape[gather_dim] //= self.world_size
+        A_shard = torch.rand(*A_shard_shape, device="xpu")
+        B = torch.rand(32, 16, device="xpu")
+
+        with _test_mode(), fresh_cache():
+            compiled = torch.compile(func)
+            code = run_and_get_triton_code(compiled, A_shard, B)
+
+            eager_stride = func(A_shard, B)[1].stride()
+            compiled_stride = compiled(A_shard, B)[1].stride()
+            self.assertEqual(eager_stride, compiled_stride)
+
+        if gather_dim == A_dims - 1:
+            # Decomposing the matmul on the K dimension is not supported.
+            self.assertNotIn("fused_all_gather_matmul", code)
+        elif gather_dim == 1:
+            # view-chunk-cat optimization removes the all_gather entirely.
+            self.assertNotIn("fused_all_gather_matmul", code)
+        else:
+            self.assertIn("fused_all_gather_matmul", code)
+            self.assertNotIn("all_gather_into_tensor", code)
+            self.assertEqual("return_A=True" in code, return_A)
+
+    @unittest.skipIf(
+        not _HAS_XPU_AND_TRITON,
+        "Inductor+XPU needs triton and a recent XPU arch",
+    )
+    @parametrize("A_dims", [2, 3])
+    @parametrize("scatter_dim", [0, 1, 2])
+    def test_fuse_matmul_reduce_scatter(self, A_dims, scatter_dim):
+        from torch._inductor.utils import fresh_cache, run_and_get_triton_code
+        from torch.distributed._functional_collectives import reduce_scatter_tensor
+        from torch.distributed._symmetric_memory import _test_mode
+
+        if scatter_dim >= A_dims:
+            return
+
+        group = dist.group.WORLD
+
+        def func(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+            return reduce_scatter_tensor(A @ B, "avg", scatter_dim, group)
+
+        if A_dims == 2:
+            A = torch.rand(64, 32, device="xpu")
+        elif A_dims == 3:
+            A = torch.rand(2, 64, 32, device="xpu")
+        else:
+            raise AssertionError(f"Invalid A_dims: {A_dims}")
+        B = torch.rand(32, 16, device="xpu")
+
+        with _test_mode(), fresh_cache():
+            compiled = torch.compile(func)
+            code = run_and_get_triton_code(compiled, A, B)
+
+        self.assertIn("fused_matmul_reduce_scatter", code)
+        self.assertNotIn("reduce_scatter_tensor", code)
 
 
 instantiate_parametrized_tests(XCCLTraceTest)
