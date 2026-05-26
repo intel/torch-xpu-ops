@@ -61,6 +61,29 @@ def run_reference_allgather_local_permute(
             output_tensor,
         )
 
+
+def run_naive_reference_allgather_local_permute(
+    hidden_shard,
+    output_tensor,
+    scatter_idx,
+    group,
+    world_size,
+    num_tokens_per_rank,
+    topk,
+    gathered_ref,
+):
+    dist.all_gather(gathered_ref, hidden_shard, group=group)
+    all_hidden_ref = torch.stack(gathered_ref, dim=0)
+    for src_rank in range(world_size):
+        token_offset = src_rank * num_tokens_per_rank
+        for local_token_idx in range(num_tokens_per_rank):
+            global_token_idx = token_offset + local_token_idx
+            hidden_vec = all_hidden_ref[src_rank, local_token_idx]
+            for k in range(topk):
+                dst = scatter_idx[global_token_idx, k].item()
+                output_tensor[dst].copy_(hidden_vec)
+
+
 def init_distributed():
     os.environ['RANK'] = str(os.environ.get('PMI_RANK', 0))
     os.environ['WORLD_SIZE'] = str(os.environ.get('PMI_SIZE', 1))
@@ -312,14 +335,14 @@ def check_allgather_local_permute_fusion():
     if fused_perm_latencies:
         print(f"[Fused permute (single launch) time in rank {rank}] {fused_perm_latencies} ms")
 
-    # Accuracy check: run one fresh pass and compare against reference
+    # Accuracy check: run one fresh pass and compare against a naive Python reference.
     remap_check = torch.zeros((num_tokens * topk, hidden_size), device=device, dtype=hidden_shard.dtype)
     allgather_local_permute_fusion(
         hidden_shard, topk_idx, scatter_idx, remap_hidden_states=remap_check, group=group,
         backend_stream=backend_stream, rank_buffers_ptr=rank_buffers,
     )
     ref = torch.zeros_like(remap_check)
-    run_reference_allgather_local_permute(
+    run_naive_reference_allgather_local_permute(
         hidden_shard,
         ref,
         scatter_idx,

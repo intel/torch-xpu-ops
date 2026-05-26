@@ -58,8 +58,10 @@ struct LocalUnpermuteCopyScalarKernel {
   }
 };
 
-// Vectorized local unpermute kernel.
+// Vectorized local unpermute kernel with pre-loaded indices for better pipelining.
 // Each work-item processes VEC_SIZE hidden elements for one token.
+// Pre-loads all scatter_idx/topk_weights before the compute loop to allow
+// the compiler to pipeline expert_output reads across iterations.
 template <typename scalar_t, int VEC_SIZE>
 struct LocalUnpermuteCopyVecKernel {
   const scalar_t* expert_output_ptr;
@@ -71,31 +73,43 @@ struct LocalUnpermuteCopyVecKernel {
   int32_t topk;
   int32_t token_offset;
   int32_t hidden_vecs;       // hidden_size / VEC_SIZE
-  int32_t hidden_vecs_mask;  // hidden_vecs - 1
-  int32_t hidden_vecs_shift; // log2(hidden_vecs)
 
   void operator()(sycl::nd_item<1> item) const {
     const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
     const int32_t total = token_count * hidden_vecs;
     if (idx >= total) return;
 
-    const int32_t vec_h = idx & hidden_vecs_mask;
-    const int32_t local_idx = idx >> hidden_vecs_shift;
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t local_idx = idx / hidden_vecs;
     const int32_t global_token_idx = token_offset + local_idx;
     const int32_t h_start = vec_h * VEC_SIZE;
 
-    // Float accumulator for precision
-    float acc[VEC_SIZE] = {};
-
     const int32_t scatter_base = global_token_idx * topk;
+
+    // Pre-load all src_rows and weights into registers.
+    // scatter_idx and topk_weights are contiguous (8×4B = 32B each),
+    // so this is 1-2 cache line reads. Separating index loads from
+    // data reads lets the compiler pipeline expert_output reads.
+    int32_t src_rows[8];
+    float weights[8];
+    #pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      if (k < topk) {
+        src_rows[k] = scatter_idx_ptr[scatter_base + k];
+        weights[k] = topk_weights_ptr[scatter_base + k];
+      }
+    }
+
+    // Compute weighted sum with fully unrolled loop
+    float acc[VEC_SIZE] = {};
+    #pragma unroll 8
     for (int32_t k = 0; k < topk; ++k) {
-      const int32_t src_row = scatter_idx_ptr[scatter_base + k];
-      const float weight = topk_weights_ptr[scatter_base + k];
       const scalar_t* src = expert_output_ptr +
-          static_cast<int64_t>(src_row) * hidden_size + h_start;
+          static_cast<int64_t>(src_rows[k]) * hidden_size + h_start;
+      const float w = weights[k];
       #pragma unroll
       for (int i = 0; i < VEC_SIZE; ++i) {
-        acc[i] += weight * static_cast<float>(src[i]);
+        acc[i] += w * static_cast<float>(src[i]);
       }
     }
 
@@ -147,12 +161,6 @@ at::Tensor local_unpermute_copy_(
   constexpr int VEC_SIZE = 8;
   constexpr int64_t threads = 256;
 
-  auto log2_po2 = [](int32_t v) -> int32_t {
-    int32_t r = 0;
-    while (v > 1) { v >>= 1; ++r; }
-    return r;
-  };
-
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       expert_output.scalar_type(), "local_unpermute_copy_", [&]() {
         const int32_t tc = static_cast<int32_t>(token_count);
@@ -161,9 +169,8 @@ at::Tensor local_unpermute_copy_(
         const int32_t off = static_cast<int32_t>(token_offset);
 
         if (hidden_size % VEC_SIZE == 0) {
+          constexpr int VEC_SIZE = 8;
           const int32_t hidden_vecs = h / VEC_SIZE;
-          const int32_t hv_mask = hidden_vecs - 1;
-          const int32_t hv_shift = log2_po2(hidden_vecs);
           const int64_t total = static_cast<int64_t>(tc) * hidden_vecs;
           const int64_t blocks = (total + threads - 1) / threads;
           auto kfn = LocalUnpermuteCopyVecKernel<scalar_t, VEC_SIZE>{
@@ -171,7 +178,7 @@ at::Tensor local_unpermute_copy_(
               scatter_idx.data_ptr<int32_t>(),
               topk_weights.data_ptr<float>(),
               output.data_ptr<scalar_t>(),
-              tc, h, tk, off, hidden_vecs, hv_mask, hv_shift};
+              tc, h, tk, off, hidden_vecs};
           sycl_kernel_submit(
               sycl::range<1>(blocks * threads),
               sycl::range<1>(threads),
