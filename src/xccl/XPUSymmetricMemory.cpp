@@ -11,9 +11,11 @@
 
 #include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <atomic>
+#include <mutex>
 
 namespace c10d {
 namespace symmetric_memory {
@@ -385,6 +387,14 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto world_size = group->getSize();
   auto store = group->getStore();
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+
+  // SYCL/L0 IPC import uses `pidfd_getfd` between peer processes.
+  // Using prctl(PR_SET_PTRACER, ppid) ensures that only the parent process can
+  // trace the current process.
+  static std::once_flag prctl_once;
+  std::call_once(prctl_once, []() {
+    (void)::prctl(PR_SET_PTRACER, ::getppid(), 0, 0, 0);
+  });
 
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
