@@ -24,8 +24,8 @@ from unpermute_reducescatter_fusion import (
 )
 from symm_buffer import SymmBuffer
 
-TOKENS_PER_RANK = 2048
-HIDDEN_SIZE = 2048
+TOKENS_PER_RANK = 4096
+HIDDEN_SIZE = 5120
 TOPK = 8
 NUM_EXPERTS = 128
 LOOP = 40
@@ -149,9 +149,12 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
         (num_tokens * TOPK, HIDDEN_SIZE), device=device, dtype=torch.bfloat16
     )
 
-    # --- SymmBuffer API (full: per-rank topk metadata) ---
-    def run_symm_full():
-        sbuf.allgather_local_permute_fusion(
+    # --- SymmBuffer API ---
+    symm_handle = None
+
+    def run_symm():
+        nonlocal symm_handle
+        _, _, _, symm_handle = sbuf.allgather_local_permute_fusion(
             hidden_shard=hidden_shard,
             topk_idx=topk_idx,
             topk_weights=topk_weights,
@@ -159,30 +162,30 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
             remap_hidden_states=remap_symm,
         )
 
-    symm_full_latencies = timed_loop(run_symm_full, LOOP, WARMUP)
+    symm_latencies = timed_loop(run_symm, LOOP, WARMUP)
 
-    avg_symm_full = print_latency_summary(
-        "SymmBuffer.allgather_permute(full)", symm_full_latencies, rank
+    avg_symm = print_latency_summary(
+        "SymmBuffer.allgather_permute", symm_latencies, rank
     )
     avg_standalone = print_latency_summary(
-        "Standalone allgather_permute        ", standalone_latencies, rank
+        "Standalone allgather_permute", standalone_latencies, rank
     )
 
     if rank == 0:
         print(f"\n{'='*70}")
         print("[Allgather + Permute Fusion]")
         print(
-            f"  SymmBuffer(full): avg={avg_symm_full:.3f} ms  "
-            f"min={min(symm_full_latencies):.3f} ms  max={max(symm_full_latencies):.3f} ms"
+            f"  SymmBuffer:  avg={avg_symm:.3f} ms  "
+            f"min={min(symm_latencies):.3f} ms  max={max(symm_latencies):.3f} ms"
         )
         print(
-            f"  Standalone:       avg={avg_standalone:.3f} ms  "
+            f"  Standalone:  avg={avg_standalone:.3f} ms  "
             f"min={min(standalone_latencies):.3f} ms  max={max(standalone_latencies):.3f} ms"
         )
         if avg_standalone > 0:
-            overhead_full = (avg_symm_full - avg_standalone) / avg_standalone * 100
+            overhead = (avg_symm - avg_standalone) / avg_standalone * 100
             print(
-                f"  SymmBuffer overhead (full): {overhead_full:+.1f}%"
+                f"  SymmBuffer overhead: {overhead:+.1f}%"
             )
 
         elem_size = hidden_shard.element_size()
@@ -205,11 +208,11 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
         print(f"  [Projection] lower_bound={lower_bound:.3f} ms")
         print(
             f"  [Efficiency] standalone={lower_bound / avg_standalone * 100:.1f}%  "
-            f"symmbuffer={lower_bound / avg_symm_full * 100:.1f}%"
+            f"symmbuffer={lower_bound / avg_symm * 100:.1f}%"
         )
         print(f"{'='*70}\n")
 
-    return scatter_idx
+    return scatter_idx, symm_handle
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +220,7 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
 # ---------------------------------------------------------------------------
 
 def bench_unpermute_reducescatter_fusion(sbuf, scatter_idx, global_topk_idx,
-                                         global_topk_weights,
+                                         global_topk_weights, symm_handle,
                                          rank, world_size, device):
     num_tokens_per_rank = TOKENS_PER_RANK
     num_tokens = num_tokens_per_rank * world_size
@@ -247,84 +250,44 @@ def bench_unpermute_reducescatter_fusion(sbuf, scatter_idx, global_topk_idx,
 
     standalone_latencies = timed_loop(run_standalone, LOOP, WARMUP)
 
-    # --- SymmBuffer API (full: from recv_topk_weights) ---
-    # Build recv_topk_idx / recv_topk_weights for full mode
-    topk = TOPK
-    recv_topk_idx = torch.full(
-        (num_tokens * topk, topk), -1, device=device, dtype=torch.int32
-    )
-    recv_topk_weights = torch.zeros(
-        (num_tokens * topk, topk), device=device, dtype=torch.float32
-    )
-    flat_scatter = scatter_idx.reshape(-1)
-    flat_k = (
-        torch.arange(topk, device=device, dtype=torch.int32)
-        .view(1, -1)
-        .expand(num_tokens, -1)
-        .reshape(-1)
-    )
-    recv_topk_idx[flat_scatter, flat_k] = global_topk_idx.reshape(-1)
-    recv_topk_weights[flat_scatter, flat_k] = global_topk_weights.reshape(-1)
-
+    # --- SymmBuffer API ---
     output_symm = torch.zeros(
         num_tokens_per_rank, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
     )
 
-    def run_symm_full():
+    def run_symm():
         sbuf.unpermute_reducescatter_fusion(
             expert_output=expert_output,
-            scatter_idx=scatter_idx,
-            recv_topk_idx=recv_topk_idx,
-            recv_topk_weights=recv_topk_weights,
+            recv_topk_idx=symm_handle.recv_topk_idx,
+            recv_topk_weights=symm_handle.recv_topk_weights,
+            handle=symm_handle,
             output=output_symm,
         )
 
-    symm_full_latencies = timed_loop(run_symm_full, LOOP, WARMUP)
+    symm_latencies = timed_loop(run_symm, LOOP, WARMUP)
 
-    # --- SymmBuffer API (core: global topk_weights directly) ---
-    def run_symm_core():
-        sbuf.unpermute_reducescatter_fusion(
-            expert_output=expert_output,
-            scatter_idx=scatter_idx,
-            topk_weights=global_topk_weights,
-            output=output_symm,
-        )
-
-    symm_core_latencies = timed_loop(run_symm_core, LOOP, WARMUP)
-
-    avg_symm_full = print_latency_summary(
-        "SymmBuffer.unpermute_rs(full)", symm_full_latencies, rank
-    )
-    avg_symm_core = print_latency_summary(
-        "SymmBuffer.unpermute_rs(core)", symm_core_latencies, rank
+    avg_symm = print_latency_summary(
+        "SymmBuffer.unpermute_rs", symm_latencies, rank
     )
     avg_standalone = print_latency_summary(
-        "Standalone unpermute_rs      ", standalone_latencies, rank
+        "Standalone unpermute_rs", standalone_latencies, rank
     )
 
     if rank == 0:
         print(f"\n{'='*70}")
         print("[Unpermute + Reduce-Scatter Fusion]")
         print(
-            f"  SymmBuffer(full): avg={avg_symm_full:.3f} ms  "
-            f"min={min(symm_full_latencies):.3f} ms  max={max(symm_full_latencies):.3f} ms"
+            f"  SymmBuffer:  avg={avg_symm:.3f} ms  "
+            f"min={min(symm_latencies):.3f} ms  max={max(symm_latencies):.3f} ms"
         )
         print(
-            f"  SymmBuffer(core): avg={avg_symm_core:.3f} ms  "
-            f"min={min(symm_core_latencies):.3f} ms  max={max(symm_core_latencies):.3f} ms"
-        )
-        print(
-            f"  Standalone:       avg={avg_standalone:.3f} ms  "
+            f"  Standalone:  avg={avg_standalone:.3f} ms  "
             f"min={min(standalone_latencies):.3f} ms  max={max(standalone_latencies):.3f} ms"
         )
         if avg_standalone > 0:
-            overhead_full = (avg_symm_full - avg_standalone) / avg_standalone * 100
-            overhead_core = (avg_symm_core - avg_standalone) / avg_standalone * 100
+            overhead = (avg_symm - avg_standalone) / avg_standalone * 100
             print(
-                f"  SymmBuffer overhead (full): {overhead_full:+.1f}%"
-            )
-            print(
-                f"  SymmBuffer overhead (core): {overhead_core:+.1f}%"
+                f"  SymmBuffer overhead: {overhead:+.1f}%"
             )
 
         elem_size = expert_output.element_size()
@@ -349,7 +312,7 @@ def bench_unpermute_reducescatter_fusion(sbuf, scatter_idx, global_topk_idx,
         print(f"  [Projection] lower_bound={lower_bound:.3f} ms")
         print(
             f"  [Efficiency] standalone={lower_bound / avg_standalone * 100:.1f}%  "
-            f"symmbuffer={lower_bound / avg_symm_core * 100:.1f}%"
+            f"symmbuffer={lower_bound / avg_symm * 100:.1f}%"
         )
         print(f"{'='*70}\n")
 
@@ -380,7 +343,7 @@ def main():
     )
 
     # Benchmark 1: allgather + permute fusion
-    scatter_idx = bench_allgather_permute_fusion(
+    scatter_idx, symm_handle = bench_allgather_permute_fusion(
         sbuf, hidden_shard, topk_idx, topk_weights,
         global_topk_idx, rank, world_size, device,
     )
@@ -391,7 +354,7 @@ def main():
 
     # Benchmark 2: unpermute + reduce-scatter fusion
     bench_unpermute_reducescatter_fusion(
-        sbuf, scatter_idx, global_topk_idx, global_topk_weights,
+        sbuf, scatter_idx, global_topk_idx, global_topk_weights, symm_handle,
         rank, world_size, device,
     )
 

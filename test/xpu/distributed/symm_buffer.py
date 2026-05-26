@@ -4,8 +4,8 @@ Provides two fused operations built on top of torch symmetric memory:
 1. allgather_local_permute_fusion  — allgather hidden states + permute to expert-centric layout
 2. unpermute_reducescatter_fusion  — unpermute expert output + reduce-scatter back to token-centric layout
 
-All per-call allocations (workspace views, rank_buffers_ptr, scratch buffers,
-streams) are pre-built in __init__ so the hot path has zero Python overhead.
+Core workspace views, pointers, and streams are pre-built in __init__.
+Per-call output tensors are created in the fused APIs.
 """
 
 from __future__ import annotations
@@ -23,11 +23,13 @@ import torch.distributed._symmetric_memory as symm_mem
 _LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "liblocal_permute_copy.so")
 _HAS_LOCAL_PERMUTE_KERNEL = False
 _HAS_ALLGATHER_PERMUTE_KERNEL = False
+_HAS_ALLGATHER_PERMUTE_TOPK_KERNEL = False
 if os.path.exists(_LIB_PATH):
     try:
         torch.ops.load_library(_LIB_PATH)
         _HAS_LOCAL_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_permute_copy_")
         _HAS_ALLGATHER_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "allgather_permute")
+        _HAS_ALLGATHER_PERMUTE_TOPK_KERNEL = hasattr(torch.ops.symm_mem, "allgather_permute_topk")
     except Exception:
         pass
 
@@ -64,8 +66,8 @@ class SymmHandle:
     """
 
     scatter_idx: torch.Tensor         # [num_tokens, topk] int32
-    recv_topk_idx: torch.Tensor       # [num_tokens * topk, topk] int32
-    recv_topk_weights: torch.Tensor   # [num_tokens * topk, topk] float32
+    recv_topk_idx: torch.Tensor       # [num_tokens * topk, topk] int32 (recv layout)
+    recv_topk_weights: torch.Tensor   # [num_tokens, topk] float32 (gathered global weights)
     num_tokens_per_rank: int
 
 
@@ -134,21 +136,9 @@ class SymmBuffer:
             hidden_dtype,
             storage_offset=local_offset,
         )
-        self._remap_hidden_states = torch.empty(
-            num_tokens_max * topk, hidden,
-            device=device, dtype=hidden_dtype,
-        )
-        self._recv_topk_idx = torch.full(
-            (num_tokens_max * topk, topk), -1,
+        self._scatter_idx = torch.empty(
+            num_tokens_max, topk,
             device=device, dtype=torch.int32,
-        )
-        self._recv_topk_weights = torch.zeros(
-            num_tokens_max * topk, topk,
-            device=device, dtype=torch.float32,
-        )
-        self._flat_k = (
-            torch.arange(topk, device=device, dtype=torch.int32)
-            .view(1, -1).expand(num_tokens_max, -1).reshape(-1)
         )
         self._global_topk_idx_buf = torch.empty(
             num_tokens_max, topk, device=device, dtype=torch.int32,
@@ -290,8 +280,8 @@ class SymmBuffer:
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
         num_experts: int,
-        remap_hidden_states: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, SymmHandle]:
+        remap_hidden_states: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, SymmHandle]:
         """Fused allgather + local permute using symmetric memory.
 
         Writes per-rank topk_idx to symmetric memory, then uses the
@@ -305,15 +295,27 @@ class SymmBuffer:
             topk_weights: [num_tokens_per_rank, topk] float32, per-rank
                 routing weights.
             num_experts: Total number of experts.
-            remap_hidden_states: Optional pre-allocated output buffer
-                [num_tokens * topk, hidden]. Uses internal buffer if None.
+            remap_hidden_states: Pre-allocated output buffer
+                [num_tokens * topk, hidden].
 
         Returns:
-            (remap_hidden_states, handle)
+            (remap_hidden_states, recv_topk_idx, recv_topk_weights, handle)
         """
         num_tokens_per_rank = hidden_shard.shape[0]
         topk = topk_idx.shape[1]
         num_tokens = num_tokens_per_rank * self.num_ranks
+
+        expected_rows = num_tokens * topk
+        if remap_hidden_states.shape[0] < expected_rows:
+            raise ValueError(
+                f"remap_hidden_states rows ({remap_hidden_states.shape[0]}) must be >= "
+                f"num_tokens * topk ({expected_rows})"
+            )
+        if remap_hidden_states.shape[1] != self.hidden:
+            raise ValueError(
+                f"remap_hidden_states hidden ({remap_hidden_states.shape[1]}) must equal "
+                f"self.hidden ({self.hidden})"
+            )
 
         # Write local topk_idx, topk_weights, and hidden_shard to symmetric memory
         self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
@@ -328,12 +330,12 @@ class SymmBuffer:
         num_local_experts = base + (1 if self.rank_idx < rem else 0)
         psum_buf = self._psum_buf[:num_local_experts]
 
-        scatter_idx = torch.empty(
-            num_tokens, topk, device=hidden_shard.device, dtype=torch.int32,
-        )
+        scatter_idx = self._scatter_idx[:num_tokens, :topk]
+        global_topk_idx_buf = self._global_topk_idx_buf[:num_tokens, :topk]
+        global_topk_weights_buf = self._global_topk_weights_buf[:num_tokens, :topk]
         torch.ops.symm_mem.notify_dispatch(
             self._topk_rank_ptrs,
-            self._global_topk_idx_buf,
+            global_topk_idx_buf,
             scatter_idx,
             psum_buf,
             num_tokens_per_rank,
@@ -343,55 +345,76 @@ class SymmBuffer:
             self.rank_idx,
             self.num_ranks,
             self._weights_rank_ptrs,
-            self._global_topk_weights_buf,
+            global_topk_weights_buf,
         )
 
-        # Build recv_topk_idx / recv_topk_weights
-        self._recv_topk_idx.fill_(-1)
-        self._recv_topk_weights.zero_()
-        flat_scatter = scatter_idx.reshape(-1)
-        self._recv_topk_idx[flat_scatter, self._flat_k] = (
-            self._global_topk_idx_buf.reshape(-1)
+        # Build recv-topk outputs in recv layout to match ep_dispatch style.
+        recv_topk_idx = torch.empty(
+            (num_tokens * topk, topk),
+            device=topk_idx.device,
+            dtype=topk_idx.dtype,
         )
-        self._recv_topk_weights[flat_scatter, self._flat_k] = (
-            self._global_topk_weights_buf.reshape(-1)
+        recv_topk_weights = torch.empty(
+            (num_tokens * topk, topk),
+            device=topk_weights.device,
+            dtype=topk_weights.dtype,
         )
-        recv_topk_idx = self._recv_topk_idx
-        recv_topk_weights = self._recv_topk_weights
 
-        if remap_hidden_states is None:
-            remap_hidden_states = self._remap_hidden_states
+        if _HAS_ALLGATHER_PERMUTE_TOPK_KERNEL:
+            torch.ops.symm_mem.allgather_permute_topk(
+                self._allgather_permute_rank_buffers_ptr,
+                global_topk_idx_buf,
+                self._weights_rank_ptrs,
+                scatter_idx,
+                remap_hidden_states,
+                recv_topk_idx,
+                recv_topk_weights,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+            )
+        else:
+            flat_k = (
+                torch.arange(topk, device=hidden_shard.device, dtype=torch.int32)
+                .view(1, -1).expand(num_tokens, -1).reshape(-1)
+            )
+            flat_scatter = scatter_idx.reshape(-1)
+            recv_topk_idx[flat_scatter, flat_k] = (
+                global_topk_idx_buf.reshape(-1)
+            )
+            recv_topk_weights[flat_scatter, flat_k] = (
+                global_topk_weights_buf.reshape(-1)
+            )
 
-        # Hidden data already in symm mem (written + barrier'd above)
-        torch.ops.symm_mem.allgather_permute(
-            self._allgather_permute_rank_buffers_ptr,
-            scatter_idx,
-            remap_hidden_states,
-            self.rank_idx,
-            self.num_ranks,
-        )
+            # Hidden data already in symm mem (written + barrier'd above)
+            torch.ops.symm_mem.allgather_permute(
+                self._allgather_permute_rank_buffers_ptr,
+                scatter_idx,
+                remap_hidden_states,
+                self.rank_idx,
+                self.num_ranks,
+            )
 
         self.workspace.barrier()
 
         handle = SymmHandle(
             scatter_idx=scatter_idx,
             recv_topk_idx=recv_topk_idx,
-            recv_topk_weights=recv_topk_weights,
+            recv_topk_weights=global_topk_weights_buf,
             num_tokens_per_rank=num_tokens_per_rank,
         )
 
-        return remap_hidden_states, handle
+        return remap_hidden_states, recv_topk_idx, recv_topk_weights, handle
 
     def unpermute_reducescatter_fusion(
         self,
         expert_output: torch.Tensor,
-        scatter_idx: Optional[torch.Tensor] = None,
-        topk_weights: Optional[torch.Tensor] = None,
-        recv_topk_idx: Optional[torch.Tensor] = None,
-        recv_topk_weights: Optional[torch.Tensor] = None,
-        output: Optional[torch.Tensor] = None,
-        handle: Optional[SymmHandle] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        recv_topk_idx: torch.Tensor,
+        recv_topk_weights: torch.Tensor,
+        handle: SymmHandle,
+        output: torch.Tensor,
+    ) -> torch.Tensor:
         """Fused unpermute + reduce-scatter using symmetric memory.
 
         Pipelined implementation: computes local unpermute for remote chunks
@@ -400,131 +423,54 @@ class SymmBuffer:
 
         Args:
             expert_output: [num_tokens * topk, hidden] expert-centric layout.
-            scatter_idx: [num_tokens, topk] int32, source positions.
-                Can be omitted if handle is provided.
-            topk_weights: Optional [num_tokens_per_rank, topk] or [num_tokens, topk]
-                routing weights. Used when neither handle nor recv_topk_weights
-                is provided.
-            recv_topk_idx: Optional, unused (kept for API compatibility).
-            recv_topk_weights: Optional [num_tokens * topk, topk] remapped weights.
-                If provided, global_topk_weights is reconstructed from this.
-            output: Optional pre-allocated output [num_tokens_per_rank, hidden].
-            handle: Optional SymmHandle from allgather_local_permute_fusion.
-                When provided, scatter_idx and recv_topk_weights are taken
-                from the handle (explicit arguments still override).
+            recv_topk_idx: [num_tokens * topk, topk] int32 (recv layout).
+            recv_topk_weights: [num_tokens, topk] routing weights.
+            handle: SymmHandle from allgather_local_permute_fusion.
+            output: Pre-allocated output [num_tokens_per_rank, hidden].
 
         Returns:
-            (output, global_topk_weights)
+            output
         """
-        # Unpack handle fields (explicit args override)
-        if handle is not None:
-            if scatter_idx is None:
-                scatter_idx = handle.scatter_idx
-            if recv_topk_weights is None:
-                recv_topk_weights = handle.recv_topk_weights
-            if recv_topk_idx is None:
-                recv_topk_idx = handle.recv_topk_idx
-
-        if scatter_idx is None:
-            raise ValueError(
-                "scatter_idx is required — provide it directly or via handle"
+        if not _HAS_LOCAL_UNPERMUTE_KERNEL:
+            raise RuntimeError(
+                "local_unpermute_copy_ kernel is required for "
+                "unpermute_reducescatter_fusion"
             )
+
+        scatter_idx = handle.scatter_idx
+        global_topk_weights = recv_topk_weights
+
         num_tokens = scatter_idx.shape[0]
         num_tokens_per_rank = num_tokens // self.num_ranks
-        topk = scatter_idx.shape[1]
-
-        # Reconstruct global_topk_weights
-        if recv_topk_weights is not None:
-            global_topk_weights = recv_topk_weights[
-                scatter_idx, self._gather_k[:num_tokens]
-            ].contiguous()
-        elif topk_weights is not None and topk_weights.shape[0] == num_tokens_per_rank:
-            dist.all_gather_into_tensor(
-                self._global_topk_weights_buf, topk_weights, group=self.group,
-            )
-            global_topk_weights = self._global_topk_weights_buf
-        elif topk_weights is not None and topk_weights.shape[0] == num_tokens:
-            global_topk_weights = topk_weights
-        else:
+        if output.shape[0] != num_tokens_per_rank:
             raise ValueError(
-                "Either recv_topk_weights or topk_weights must be provided"
+                f"output rows ({output.shape[0]}) must equal num_tokens_per_rank ({num_tokens_per_rank})"
             )
 
-        if output is None:
-            output = torch.zeros(
-                num_tokens_per_rank,
-                expert_output.shape[1],
-                device=expert_output.device,
-                dtype=expert_output.dtype,
-            )
-
-        hidden = expert_output.shape[1]
-
-        if _HAS_LOCAL_UNPERMUTE_KERNEL:
-            my_chunk_start = self.rank_idx * num_tokens_per_rank
-
-            # Pipeline: remote chunks compute+push first, own-chunk at END
-            # to overlap with last step's DMA push.
-            stream = self._backend_stream
-            for step in range(self.num_ranks - 1):
-                buf_idx = step % 2
-                cur_stream = stream if step % 2 == 0 else torch.xpu.current_stream()
-                with torch.xpu.stream(cur_stream):
-                    target_chunk_start = self._unpermute_target_ranks[step] * num_tokens_per_rank
-                    torch.ops.symm_mem.local_unpermute_copy_(
-                        expert_output, scatter_idx, global_topk_weights,
-                        target_chunk_start, num_tokens_per_rank,
-                        self._unpermute_local_bufs[buf_idx],
-                    )
-                    self._unpermute_target_recv_bufs[step][self.rank_idx].copy_(
-                        self._unpermute_local_bufs[buf_idx]
-                    )
-
-            # Own-chunk compute on main stream — overlaps with last push
-            torch.ops.symm_mem.local_unpermute_copy_(
-                expert_output, scatter_idx, global_topk_weights,
-                my_chunk_start, num_tokens_per_rank, output,
-            )
-
-            torch.xpu.current_stream().wait_stream(stream)
-            self.workspace.barrier()
-
-            for i in range(self.num_ranks):
-                if i != self.rank_idx:
-                    output.add_(self._unpermute_my_recv_buf[i])
-
-            self.workspace.barrier()
-            return output, global_topk_weights
-
-        # Python fallback (no native kernel)
         my_chunk_start = self.rank_idx * num_tokens_per_rank
-        output.zero_()
-        for i in range(num_tokens_per_rank):
-            global_i = my_chunk_start + i
-            for k in range(topk):
-                src_row = scatter_idx[global_i, k].item()
-                output[i] += global_topk_weights[global_i, k] * expert_output[src_row]
 
+        # Pipeline: remote chunks compute+push first, own-chunk at END
+        # to overlap with last step's DMA push.
         stream = self._backend_stream
-        local_bufs = self._unpermute_local_bufs
-
         for step in range(self.num_ranks - 1):
-            target_rank = self._unpermute_target_ranks[step]
             buf_idx = step % 2
             cur_stream = stream if step % 2 == 0 else torch.xpu.current_stream()
             with torch.xpu.stream(cur_stream):
-                target_chunk_start = target_rank * num_tokens_per_rank
-                local_bufs[buf_idx].zero_()
-                for i in range(num_tokens_per_rank):
-                    global_i = target_chunk_start + i
-                    for k in range(topk):
-                        src_row = scatter_idx[global_i, k].item()
-                        local_bufs[buf_idx][i] += (
-                            global_topk_weights[global_i, k] * expert_output[src_row]
-                        )
-                self._unpermute_target_recv_bufs[step][self.rank_idx].copy_(
-                    local_bufs[buf_idx]
+                target_chunk_start = self._unpermute_target_ranks[step] * num_tokens_per_rank
+                torch.ops.symm_mem.local_unpermute_copy_(
+                    expert_output, scatter_idx, global_topk_weights,
+                    target_chunk_start, num_tokens_per_rank,
+                    self._unpermute_local_bufs[buf_idx],
                 )
+                self._unpermute_target_recv_bufs[step][self.rank_idx].copy_(
+                    self._unpermute_local_bufs[buf_idx]
+                )
+
+        # Own-chunk compute on main stream — overlaps with last push
+        torch.ops.symm_mem.local_unpermute_copy_(
+            expert_output, scatter_idx, global_topk_weights,
+            my_chunk_start, num_tokens_per_rank, output,
+        )
 
         torch.xpu.current_stream().wait_stream(stream)
         self.workspace.barrier()
@@ -534,4 +480,6 @@ class SymmBuffer:
                 output.add_(self._unpermute_my_recv_buf[i])
 
         self.workspace.barrier()
-        return output, global_topk_weights
+        return output
+
+        

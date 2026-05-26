@@ -109,19 +109,27 @@ def check_elastic_xpu_fusions():
 
     flat_k = torch.arange(TOPK, device=device, dtype=torch.int32).view(1, -1).expand(num_tokens, -1).reshape(-1)
 
+    flat_k = torch.arange(TOPK, device=device, dtype=torch.int32).view(1, -1).expand(num_tokens, -1).reshape(-1)
+
     symm_buf = SymmBuffer(
         group=group,
         num_max_tokens_per_rank=TOKENS_PER_RANK,
         hidden=HIDDEN_SIZE,
         num_topk=TOPK,
     )
+    remap_hidden_states = torch.empty(
+        (num_tokens * TOPK, HIDDEN_SIZE),
+        device=device,
+        dtype=torch.bfloat16,
+    )
 
     # 1) allgather + local permute fusion (returns handle)
-    dispatch_out, handle = symm_buf.allgather_local_permute_fusion(
+    dispatch_out, _, _, handle = symm_buf.allgather_local_permute_fusion(
         hidden_shard=hidden_shard,
         topk_idx=topk_idx,
         topk_weights=topk_weights,
         num_experts=NUM_EXPERTS,
+        remap_hidden_states=remap_hidden_states,
     )
 
     assert isinstance(handle, SymmHandle), "Expected SymmHandle from allgather_local_permute_fusion"
@@ -155,13 +163,18 @@ def check_elastic_xpu_fusions():
         dtype=torch.bfloat16,
     )
 
-    reduce_out, gathered_weights = symm_buf.unpermute_reducescatter_fusion(
-        expert_output=expert_output,
-        handle=handle,
+    reduce_out_buf = torch.zeros(
+        TOKENS_PER_RANK,
+        HIDDEN_SIZE,
+        device=device,
+        dtype=torch.bfloat16,
     )
-
-    assert torch.allclose(gathered_weights, global_topk_weights, atol=0, rtol=0), (
-        f"gathered global topk_weights mismatch on rank {rank}"
+    reduce_out = symm_buf.unpermute_reducescatter_fusion(
+        expert_output=expert_output,
+        recv_topk_idx=handle.recv_topk_idx,
+        recv_topk_weights=handle.recv_topk_weights,
+        handle=handle,
+        output=reduce_out_buf,
     )
 
     ref_reduce_out = torch.zeros_like(reduce_out)
@@ -178,32 +191,6 @@ def check_elastic_xpu_fusions():
         f"unpermute_reducescatter_fusion mismatch on rank {rank}: "
         f"max_diff={(reduce_out - ref_reduce_out).abs().max().item():.6f}, atol={atol}"
     )
-
-    # 3) unpermute with explicit args (no handle) — verify same result
-    reduce_out2, _ = symm_buf.unpermute_reducescatter_fusion(
-        expert_output=expert_output,
-        scatter_idx=handle.scatter_idx,
-        recv_topk_weights=handle.recv_topk_weights,
-    )
-    assert torch.allclose(reduce_out2, ref_reduce_out, atol=atol, rtol=1e-2), (
-        f"unpermute (explicit args) mismatch on rank {rank}: "
-        f"max_diff={(reduce_out2 - ref_reduce_out).abs().max().item():.6f}"
-    )
-
-    # 4) unpermute with global topk_weights directly
-    reduce_out3, gathered_weights3 = symm_buf.unpermute_reducescatter_fusion(
-        expert_output=expert_output,
-        scatter_idx=handle.scatter_idx,
-        topk_weights=global_topk_weights,
-    )
-    assert torch.allclose(reduce_out3, ref_reduce_out, atol=atol, rtol=1e-2), (
-        f"unpermute(global weights) mismatch on rank {rank}: "
-        f"max_diff={(reduce_out3 - ref_reduce_out).abs().max().item():.6f}"
-    )
-    assert torch.allclose(gathered_weights3, global_topk_weights, atol=0, rtol=0), (
-        f"unpermute(global weights) weights mismatch on rank {rank}"
-    )
-
     print(f"[Rank {rank}] SymmBuffer fusion UT passed")
     dist.destroy_process_group()
 
