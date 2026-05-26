@@ -116,6 +116,8 @@ skip_dict = {
         "narrow_copy",
         "histogramdd",
         "_jiterator_",
+        # https://github.com/intel/torch-xpu-ops/issues/2285
+        "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
     "test_native_functions_xpu.py": None,
