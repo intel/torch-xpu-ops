@@ -13,6 +13,15 @@
 # Owner(s): ["module: intel"]
 
 
+from torch.testing._internal.opinfo.core import SampleInput
+from torch.testing._internal.common_methods_invocations import (
+    M,
+    make_tensor,
+    mask_not_all_zeros,
+    S,
+    sample_inputs_cat_concat,
+)
+from functools import partial
 import copy
 import logging
 import os
@@ -716,17 +725,6 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
 
 CriterionTest.test_cuda = CriterionTest_test_xpu
 
-from functools import partial
-
-from torch.testing._internal.common_methods_invocations import (
-    M,
-    make_tensor,
-    mask_not_all_zeros,
-    S,
-    sample_inputs_cat_concat,
-)
-from torch.testing._internal.opinfo.core import SampleInput
-
 
 def reference_inputs_cat_nofp64(op, device, dtype, requires_grad, **kwargs):
     yield from sample_inputs_cat_concat(op, device, dtype, requires_grad, **kwargs)
@@ -1269,30 +1267,35 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    import subprocess
+    import shlex
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     if skip_list is not None and len(skip_list) > 0:
-        skip_options = ' -k "not ' + skip_list[0]
-        for skip_case in skip_list[1:]:
-            skip_option = " and not " + skip_case
-            skip_options += skip_option
-        skip_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-        )
-        test_command += skip_options
+        k_expr = "not " + " and not ".join(skip_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_skip.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     elif exe_list is not None and len(exe_list) > 0:
-        exe_options = ' -k "' + exe_list[0]
-        for exe_case in exe_list[1:]:
-            exe_option = " or " + exe_case
-            exe_options += exe_option
-        exe_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-        )
-        test_command += exe_options
+        k_expr = " or ".join(exe_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_exe.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
-    return os.system(test_command)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_all.{module_name}.xml",
+            test_case,
+        ]
+    # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
+    result = subprocess.run(cmd_args)
+    return result.returncode
