@@ -48,9 +48,13 @@ except ImportError:
     )
 
 try:
-    from .allgather_local_permute_fusion import compute_scatter_idx
+    from .allgather_local_permute_fusion import (
+        compute_scatter_idx,
+    )
 except ImportError:
-    from allgather_local_permute_fusion import compute_scatter_idx  # type: ignore
+    from allgather_local_permute_fusion import (  # type: ignore
+        compute_scatter_idx,
+    )
 
 _NOTIFY_DISPATCH_LIB_PATH = os.path.join(
     os.path.dirname(__file__), "..", "csrc", "libnotify_dispatch.so"
@@ -454,6 +458,404 @@ class ElasticBuffer:
             ptr_list.append(buf.data_ptr())
         signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
         return torch.tensor(signed_ptrs, dtype=torch.int64, device=f"xpu:{self.rank_idx}")
+
+    def _all_gather_concat_local_shard(self, local_tensor: torch.Tensor) -> torch.Tensor:
+        local = local_tensor.contiguous()
+        local_flat = local.view(-1)
+        numel_per_rank = local_flat.numel()
+
+        workspace_size_bytes = numel_per_rank * self.num_ranks * local_flat.element_size()
+        workspace = symm_mem.get_symm_mem_workspace(
+            f"{self.group.group_name}_elastic_gather",
+            min_size=workspace_size_bytes,
+        )
+
+        local_slot = workspace.get_buffer(
+            self.rank_idx,
+            (numel_per_rank,),
+            local_flat.dtype,
+            storage_offset=self.rank_idx * numel_per_rank,
+        )
+        local_slot.copy_(local_flat)
+        workspace.barrier()
+
+        gathered_flat = torch.empty(
+            numel_per_rank * self.num_ranks,
+            device=local.device,
+            dtype=local.dtype,
+        )
+        for r in range(self.num_ranks):
+            remote_slot = workspace.get_buffer(
+                r,
+                (numel_per_rank,),
+                local_flat.dtype,
+                storage_offset=r * numel_per_rank,
+            )
+            start = r * numel_per_rank
+            gathered_flat[start:start + numel_per_rank].copy_(remote_slot)
+
+        workspace.barrier()
+
+        return gathered_flat.view(self.num_ranks, *local.shape).reshape(
+            self.num_ranks * local.shape[0], *local.shape[1:]
+        )
+
+    def allgather_local_permute_fusion(
+        self,
+        hidden_shard: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        scatter_idx: Optional[torch.Tensor] = None,
+        num_experts: Optional[int] = None,
+        remap_hidden_states: Optional[torch.Tensor] = None,
+        backend_stream: Optional[torch.xpu.Stream] = None,
+        rank_buffers_ptr: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        num_tokens_per_rank = hidden_shard.shape[0]
+        if topk_idx.dtype != torch.int32:
+            raise ValueError(f"topk_idx must be torch.int32, but got {topk_idx.dtype}")
+        if topk_idx.shape[0] != num_tokens_per_rank:
+            raise ValueError(
+                f"topk_idx shape[0] ({topk_idx.shape[0]}) must equal "
+                f"hidden_shard shape[0] ({num_tokens_per_rank})"
+            )
+        if topk_weights.shape != topk_idx.shape:
+            raise ValueError(
+                f"topk_weights shape ({topk_weights.shape}) must equal "
+                f"topk_idx shape ({topk_idx.shape})"
+            )
+
+        global_topk_idx = self._all_gather_concat_local_shard(topk_idx)
+        global_topk_weights = self._all_gather_concat_local_shard(topk_weights)
+        num_tokens, topk = global_topk_idx.shape
+        if num_tokens != num_tokens_per_rank * self.num_ranks:
+            raise ValueError(
+                f"global topk rows ({num_tokens}) must equal "
+                f"num_tokens_per_rank * world_size ({num_tokens_per_rank * self.num_ranks})"
+            )
+        if global_topk_weights.shape != global_topk_idx.shape:
+            raise ValueError(
+                f"global topk_weights shape {global_topk_weights.shape} must match "
+                f"global topk_idx shape {global_topk_idx.shape}"
+            )
+
+        if scatter_idx is None:
+            scatter_idx, _ = compute_scatter_idx(global_topk_idx, num_experts=num_experts)
+        elif scatter_idx.shape != global_topk_idx.shape:
+            raise ValueError(
+                f"scatter_idx shape {scatter_idx.shape} must match global topk shape "
+                f"{global_topk_idx.shape}"
+            )
+        if scatter_idx.dtype != torch.int32:
+            raise ValueError(
+                f"scatter_idx must be torch.int32, but got {scatter_idx.dtype}"
+            )
+
+        if remap_hidden_states is None:
+            remap_hidden_states = torch.empty(
+                (num_tokens * topk, hidden_shard.shape[1]),
+                device=hidden_shard.device,
+                dtype=hidden_shard.dtype,
+            )
+        elif remap_hidden_states.shape != (num_tokens * topk, hidden_shard.shape[1]):
+            raise ValueError(
+                f"remap_hidden_states shape {remap_hidden_states.shape} must be "
+                f"({num_tokens * topk}, {hidden_shard.shape[1]})"
+            )
+
+        num_tokens_per_rank_local, hidden_size = hidden_shard.shape
+        workspace_size_bytes = (
+            hidden_shard.numel() * hidden_shard.element_size() * self.num_ranks
+        )
+        workspace = symm_mem.get_symm_mem_workspace(
+            f"{self.group.group_name}_allgather_permute",
+            min_size=workspace_size_bytes,
+        )
+
+        local_offset = self.rank_idx * num_tokens_per_rank_local * hidden_size
+        local_slot = workspace.get_buffer(
+            self.rank_idx,
+            (num_tokens_per_rank_local, hidden_size),
+            hidden_shard.dtype,
+            storage_offset=local_offset,
+        )
+        local_slot.copy_(hidden_shard)
+        workspace.barrier()
+
+        has_fused_kernel = hasattr(torch.ops.symm_mem, "allgather_permute")
+        if not has_fused_kernel:
+            raise RuntimeError(
+                "allgather_local_permute_fusion requires torch.ops.symm_mem.allgather_permute"
+            )
+
+        if rank_buffers_ptr is None:
+            ptr_list = []
+            for r in range(self.num_ranks):
+                if r == self.rank_idx:
+                    ptr_list.append(hidden_shard.data_ptr())
+                else:
+                    remote_offset = r * num_tokens_per_rank_local * hidden_size
+                    remote_buf = workspace.get_buffer(
+                        r,
+                        (num_tokens_per_rank_local, hidden_size),
+                        hidden_shard.dtype,
+                        storage_offset=remote_offset,
+                    )
+                    ptr_list.append(remote_buf.data_ptr())
+            signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+            rank_buffers_ptr = torch.tensor(
+                signed_ptrs,
+                dtype=torch.int64,
+                device=hidden_shard.device,
+            )
+
+        torch.ops.symm_mem.allgather_permute(
+            rank_buffers_ptr,
+            scatter_idx,
+            remap_hidden_states,
+            self.rank_idx,
+            self.num_ranks,
+        )
+        out = remap_hidden_states
+
+        workspace.barrier()
+
+        recv_topk_idx = torch.full(
+            (num_tokens * topk, topk),
+            -1,
+            device=global_topk_idx.device,
+            dtype=global_topk_idx.dtype,
+        )
+        recv_topk_weights = torch.zeros(
+            (num_tokens * topk, topk),
+            device=global_topk_weights.device,
+            dtype=global_topk_weights.dtype,
+        )
+        flat_scatter = scatter_idx.reshape(-1)
+        flat_k = torch.arange(
+            topk, device=global_topk_idx.device, dtype=torch.int32
+        ).view(1, -1).expand(num_tokens, -1).reshape(-1)
+        recv_topk_idx[flat_scatter, flat_k] = global_topk_idx.reshape(-1)
+        recv_topk_weights[flat_scatter, flat_k] = global_topk_weights.reshape(-1)
+
+        return out, scatter_idx, recv_topk_idx, recv_topk_weights
+
+    def unpermute_reducescatter_fusion(
+        self,
+        expert_output: torch.Tensor,
+        scatter_idx: torch.Tensor,
+        topk_weights: Optional[torch.Tensor] = None,
+        recv_topk_idx: Optional[torch.Tensor] = None,
+        recv_topk_weights: Optional[torch.Tensor] = None,
+        output: Optional[torch.Tensor] = None,
+        backend_stream: Optional[torch.xpu.Stream] = None,
+        rank_buffers_ptr: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        num_tokens, _ = scatter_idx.shape
+        if scatter_idx.dtype != torch.int32:
+            raise ValueError(
+                f"scatter_idx must be torch.int32, but got {scatter_idx.dtype}"
+            )
+        if num_tokens % self.num_ranks != 0:
+            raise ValueError(
+                f"scatter_idx rows ({num_tokens}) must be divisible by world_size ({self.num_ranks})"
+            )
+        num_tokens_per_rank = num_tokens // self.num_ranks
+
+        if recv_topk_weights is not None:
+            if recv_topk_weights.shape != (num_tokens * scatter_idx.shape[1], scatter_idx.shape[1]):
+                raise ValueError(
+                    f"recv_topk_weights shape {recv_topk_weights.shape} must be "
+                    f"({num_tokens * scatter_idx.shape[1]}, {scatter_idx.shape[1]})"
+                )
+            if recv_topk_idx is not None and recv_topk_idx.shape != recv_topk_weights.shape:
+                raise ValueError(
+                    f"recv_topk_idx shape {recv_topk_idx.shape} must match "
+                    f"recv_topk_weights shape {recv_topk_weights.shape}"
+                )
+
+            topk = scatter_idx.shape[1]
+            gather_rows = scatter_idx
+            gather_k = torch.arange(
+                topk, device=scatter_idx.device, dtype=torch.int32
+            ).view(1, -1).expand(num_tokens, -1)
+            global_topk_weights = recv_topk_weights[gather_rows, gather_k].contiguous()
+
+        elif topk_weights is not None and topk_weights.shape[0] == num_tokens_per_rank:
+            global_topk_weights = self._all_gather_concat_local_shard(topk_weights)
+        elif topk_weights is not None and topk_weights.shape[0] == num_tokens:
+            global_topk_weights = topk_weights.contiguous()
+        else:
+            raise ValueError(
+                "Either recv_topk_weights must be provided, or topk_weights must "
+                f"have shape[0] equal to num_tokens_per_rank ({num_tokens_per_rank}) "
+                f"or num_tokens ({num_tokens})"
+            )
+
+        if global_topk_weights.shape != scatter_idx.shape:
+            raise ValueError(
+                f"global topk_weights shape {global_topk_weights.shape} must match "
+                f"scatter_idx shape {scatter_idx.shape}"
+            )
+
+        if output is None:
+            output = torch.zeros(
+                num_tokens_per_rank,
+                expert_output.shape[1],
+                device=expert_output.device,
+                dtype=expert_output.dtype,
+            )
+        elif output.shape != (num_tokens_per_rank, expert_output.shape[1]):
+            raise ValueError(
+                f"output shape {output.shape} must be "
+                f"({num_tokens_per_rank}, {expert_output.shape[1]})"
+            )
+
+        _ = rank_buffers_ptr
+        hidden = expert_output.shape[1]
+        workspace_size_bytes = (
+            self.num_ranks * num_tokens_per_rank * hidden * expert_output.element_size()
+        )
+        workspace = symm_mem.get_symm_mem_workspace(
+            f"{self.group.group_name}_unpermute_rs",
+            min_size=workspace_size_bytes,
+        )
+
+        has_local_unpermute_kernel = hasattr(torch.ops.symm_mem, "local_unpermute_copy_")
+
+        if has_local_unpermute_kernel:
+            my_chunk_start = self.rank_idx * num_tokens_per_rank
+            output.zero_()
+            torch.ops.symm_mem.local_unpermute_copy_(
+                expert_output,
+                scatter_idx,
+                global_topk_weights,
+                my_chunk_start,
+                num_tokens_per_rank,
+                output,
+            )
+
+            if backend_stream is None:
+                backend_stream = torch.xpu.Stream()
+
+            local_bufs = [
+                torch.empty(
+                    num_tokens_per_rank,
+                    hidden,
+                    device=expert_output.device,
+                    dtype=expert_output.dtype,
+                ),
+                torch.empty(
+                    num_tokens_per_rank,
+                    hidden,
+                    device=expert_output.device,
+                    dtype=expert_output.dtype,
+                ),
+            ]
+
+            for step in range(self.num_ranks - 1):
+                target_rank = (self.rank_idx - step - 1) % self.num_ranks
+                buf_idx = step % 2
+                stream = backend_stream if step % 2 == 0 else torch.xpu.current_stream()
+                with torch.xpu.stream(stream):
+                    target_chunk_start = target_rank * num_tokens_per_rank
+                    torch.ops.symm_mem.local_unpermute_copy_(
+                        expert_output,
+                        scatter_idx,
+                        global_topk_weights,
+                        target_chunk_start,
+                        num_tokens_per_rank,
+                        local_bufs[buf_idx],
+                    )
+
+                    target_recv_buf = workspace.get_buffer(
+                        target_rank,
+                        (self.num_ranks, num_tokens_per_rank, hidden),
+                        expert_output.dtype,
+                        storage_offset=0,
+                    )
+                    target_recv_buf[self.rank_idx].copy_(local_bufs[buf_idx])
+
+            torch.xpu.current_stream().wait_stream(backend_stream)
+            workspace.barrier()
+
+            my_recv_buf = workspace.get_buffer(
+                self.rank_idx,
+                (self.num_ranks, num_tokens_per_rank, hidden),
+                expert_output.dtype,
+                storage_offset=0,
+            )
+            for i in range(self.num_ranks):
+                if i != self.rank_idx:
+                    output.add_(my_recv_buf[i])
+
+            workspace.barrier()
+            return output, global_topk_weights
+
+        my_chunk_start = self.rank_idx * num_tokens_per_rank
+        output.zero_()
+        for i in range(num_tokens_per_rank):
+            global_i = my_chunk_start + i
+            for k in range(scatter_idx.shape[1]):
+                src_row = scatter_idx[global_i, k].item()
+                output[i] += global_topk_weights[global_i, k] * expert_output[src_row]
+
+        if backend_stream is None:
+            backend_stream = torch.xpu.Stream()
+
+        local_bufs = [
+            torch.zeros(
+                num_tokens_per_rank,
+                hidden,
+                device=expert_output.device,
+                dtype=expert_output.dtype,
+            ),
+            torch.zeros(
+                num_tokens_per_rank,
+                hidden,
+                device=expert_output.device,
+                dtype=expert_output.dtype,
+            ),
+        ]
+
+        for step in range(self.num_ranks - 1):
+            target_rank = (self.rank_idx - step - 1) % self.num_ranks
+            buf_idx = step % 2
+            stream = backend_stream if step % 2 == 0 else torch.xpu.current_stream()
+            with torch.xpu.stream(stream):
+                target_chunk_start = target_rank * num_tokens_per_rank
+                local_bufs[buf_idx].zero_()
+                for i in range(num_tokens_per_rank):
+                    global_i = target_chunk_start + i
+                    for k in range(scatter_idx.shape[1]):
+                        src_row = scatter_idx[global_i, k].item()
+                        local_bufs[buf_idx][i] += (
+                            global_topk_weights[global_i, k] * expert_output[src_row]
+                        )
+
+                target_recv_buf = workspace.get_buffer(
+                    target_rank,
+                    (self.num_ranks, num_tokens_per_rank, hidden),
+                    expert_output.dtype,
+                    storage_offset=0,
+                )
+                target_recv_buf[self.rank_idx].copy_(local_bufs[buf_idx])
+
+        torch.xpu.current_stream().wait_stream(backend_stream)
+        workspace.barrier()
+
+        my_recv_buf = workspace.get_buffer(
+            self.rank_idx,
+            (self.num_ranks, num_tokens_per_rank, hidden),
+            expert_output.dtype,
+            storage_offset=0,
+        )
+        for i in range(self.num_ranks):
+            if i != self.rank_idx:
+                output.add_(my_recv_buf[i])
+
+        workspace.barrier()
+        return output, global_topk_weights
 
     def dispatch(
         self,
