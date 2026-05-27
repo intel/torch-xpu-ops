@@ -22,10 +22,10 @@ import sys
 import tempfile
 import threading
 import time
+import unittest
 from datetime import datetime, timedelta
 from enum import auto, Enum
 from unittest import mock
-import unittest
 
 import torch
 import torch._C._distributed_c10d
@@ -1416,7 +1416,9 @@ os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
 device_type = "xpu"
 
 try:
-    from torch.testing._internal.inductor_utils import HAS_XPU_AND_TRITON as _HAS_XPU_AND_TRITON
+    from torch.testing._internal.inductor_utils import (
+        HAS_XPU_AND_TRITON as _HAS_XPU_AND_TRITON,
+    )
 except ImportError:
     _HAS_XPU_AND_TRITON = False
 
@@ -1576,8 +1578,7 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
             M // self.world_size, K, dtype=torch.bfloat16, device=self.device
         )
         Bs = [
-            torch.rand(K, N, dtype=torch.bfloat16, device=self.device)
-            for _ in range(3)
+            torch.rand(K, N, dtype=torch.bfloat16, device=self.device) for _ in range(3)
         ]
 
         ag_output_0, mm_outputs_0 = symm_mem._fused_all_gather_matmul_fallback(
@@ -1696,9 +1697,6 @@ class MicroPipelineTPXpuTest(TestCase):
 
         if gather_dim == A_dims - 1:
             # Decomposing the matmul on the K dimension is not supported.
-            self.assertNotIn("fused_all_gather_matmul", code)
-        elif gather_dim == 1:
-            # view-chunk-cat optimization removes the all_gather entirely.
             self.assertNotIn("fused_all_gather_matmul", code)
         else:
             self.assertIn("fused_all_gather_matmul", code)
