@@ -18,11 +18,13 @@
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
+#include <ATen/ops/to_dense.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/_to_dense_native.h>
 #include <ATen/ops/add.h>
 #include <ATen/ops/addmm.h>
 #include <ATen/ops/addmv.h>
@@ -345,6 +347,14 @@ Tensor expand_batch_if_necessary(const Tensor& mat) {
   auto updated_sparse_tensor = at::sparse_compressed_tensor(
       compressed_indices, plain_indices, values, mat.sizes(), mat.options());
   return updated_sparse_tensor;
+}
+
+Tensor sparse_compressed_to_dense_xpu(
+    const Tensor& self,
+    std::optional<ScalarType> dtype,
+    std::optional<bool> masked_grad) {
+  return at::native::sparse_compressed_to_dense(
+      expand_batch_if_necessary(self), dtype, masked_grad);
 }
 
 Tensor& baddbmm_out_sparse_csr_xpu(
