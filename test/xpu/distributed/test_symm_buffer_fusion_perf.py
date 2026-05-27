@@ -24,8 +24,8 @@ from unpermute_reducescatter_fusion import (
 )
 from symm_buffer import SymmBuffer
 
-TOKENS_PER_RANK = 4096
-HIDDEN_SIZE = 5120
+TOKENS_PER_RANK = 2048
+HIDDEN_SIZE = 2048
 TOPK = 8
 NUM_EXPERTS = 128
 LOOP = 40
@@ -89,21 +89,18 @@ def make_inputs(rank, world_size, device):
 
 def timed_loop(fn, loop, warmup):
     """Run fn in a warmup+timed loop, return per-iteration latencies (ms)."""
-    for _ in range(warmup):
-        fn()
-    torch.xpu.synchronize()
-    dist.barrier()
-
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     for i in range(loop):
-        begin_events[i].record()
+        if i >= warmup:
+            begin_events[i].record()
         fn()
-        end_events[i].record()
+        if i >= warmup:
+            end_events[i].record()
     torch.xpu.synchronize()
     dist.barrier()
 
-    return [begin_events[i].elapsed_time(end_events[i]) for i in range(loop)]
+    return [begin_events[i].elapsed_time(end_events[i]) for i in range(warmup, loop)]
 
 
 def print_latency_summary(label, latencies, rank):
@@ -154,7 +151,7 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
 
     def run_symm():
         nonlocal symm_handle
-        _, _, _, symm_handle = sbuf.allgather_local_permute_fusion(
+        _, symm_handle = sbuf.allgather_local_permute_fusion(
             hidden_shard=hidden_shard,
             topk_idx=topk_idx,
             topk_weights=topk_weights,
@@ -258,8 +255,6 @@ def bench_unpermute_reducescatter_fusion(sbuf, scatter_idx, global_topk_idx,
     def run_symm():
         sbuf.unpermute_reducescatter_fusion(
             expert_output=expert_output,
-            recv_topk_idx=symm_handle.recv_topk_idx,
-            recv_topk_weights=symm_handle.recv_topk_weights,
             handle=symm_handle,
             output=output_symm,
         )
