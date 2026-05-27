@@ -77,7 +77,8 @@ struct CopyFunctor {
     const size_t chunk_offset = chunk_idx * chunk_size;
     const size_t n = tlAddress[tensor_loc].numel_to_tensor - chunk_offset;
 
-    const int64_t updated_chunk_size = std::min(chunk_size, n);
+    const size_t updated_chunk_size =
+        std::min(static_cast<size_t>(chunk_size), n);
 
     src_t* src_ptr =
         static_cast<src_t*>(tlAddress[tensor_loc].addresses[0]) + chunk_offset;
@@ -92,22 +93,22 @@ struct CopyFunctor {
 
     // vec path
     if (same_sized_dtypes && updated_chunk_size % kILP == 0 && all_aligned) {
-      for (int64_t i = item_idx; i * kILP < updated_chunk_size;
+      for (size_t i = item_idx; i * kILP < updated_chunk_size;
            i += item_range) {
         load_store<src_t, kILP>(src_args, src_ptr, 0, i);
 #pragma unroll
-        for (int64_t ii = 0; ii < kILP; ++ii) {
+        for (size_t ii = 0; ii < kILP; ++ii) {
           r_args[ii] = op(src_args[ii]);
         }
         load_store<dst_t, kILP>(dst_ptr, r_args, i, 0);
       }
       // non-vec path
     } else {
-      for (int64_t i = 0; i < updated_chunk_size; i += item_range * kILP) {
-        const int64_t base_idx = i + item_idx;
+      for (size_t i = 0; i < updated_chunk_size; i += item_range * kILP) {
+        const size_t base_idx = i + item_idx;
 #pragma unroll
-        for (int64_t ii = 0; ii < kILP; ++ii) {
-          const int64_t i_start = base_idx + ii * item_range;
+        for (size_t ii = 0; ii < kILP; ++ii) {
+          const size_t i_start = base_idx + ii * item_range;
           if (i_start < updated_chunk_size) {
             dst_ptr[i_start] = op(src_ptr[i_start]);
           }
