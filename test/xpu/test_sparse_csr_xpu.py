@@ -1987,6 +1987,35 @@ class TestSparseCSR(TestCase):
     def test_sparse_csc_to_dense(self, device, dtype):
         self._test_sparse_compressed_to_dense(device, dtype, torch.sparse_csc)
 
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_sparse_csr_to_dense_implicit_batch(self, device, dtype):
+        # Regression test for https://github.com/intel/torch-xpu-ops/issues/2801
+        # A batched sparse CSR tensor can have index arrays stored without explicit
+        # batch dimensions (implicit broadcast shorthand). XPU's sparse_compressed_to_dense
+        # must expand those dims before delegating to the upstream implementation.
+        crow = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=device)
+        col = torch.tensor([0, 2, 1, 0, 2], dtype=torch.int64, device=device)
+        vals = torch.tensor([1., 2., 3., 4., 5.], dtype=dtype, device=device)
+
+        @torch.sparse.check_sparse_tensor_invariants(enable=False)
+        def run():
+            sparse = torch.sparse_csr_tensor(crow, col, vals, size=(1, 3, 3))
+            return sparse.to_dense()
+
+        result = run()
+
+        # Expected dense layout for the single batch:
+        #   row 0: col 0 -> 1, col 2 -> 2  =>  [1, 0, 2]
+        #   row 1: col 1 -> 3              =>  [0, 3, 0]
+        #   row 2: col 0 -> 4, col 2 -> 5  =>  [4, 0, 5]
+        expected = torch.tensor(
+            [[[1., 0., 2.], [0., 3., 0.], [4., 0., 5.]]],
+            dtype=dtype,
+            device=device,
+        )
+
+        self.assertEqual(result, expected)
+
     @skipMeta
     @skipCPUIfNoMklSparse
     @coalescedonoff
