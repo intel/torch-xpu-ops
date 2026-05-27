@@ -1995,7 +1995,7 @@ class TestSparseCSR(TestCase):
         # must expand those dims before delegating to the upstream implementation.
         crow = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=device)
         col = torch.tensor([0, 2, 1, 0, 2], dtype=torch.int64, device=device)
-        vals = torch.tensor([1., 2., 3., 4., 5.], dtype=dtype, device=device)
+        vals = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=dtype, device=device)
 
         @torch.sparse.check_sparse_tensor_invariants(enable=False)
         def run():
@@ -2009,7 +2009,7 @@ class TestSparseCSR(TestCase):
         #   row 1: col 1 -> 3              =>  [0, 3, 0]
         #   row 2: col 0 -> 4, col 2 -> 5  =>  [4, 0, 5]
         expected = torch.tensor(
-            [[[1., 0., 2.], [0., 3., 0.], [4., 0., 5.]]],
+            [[[1.0, 0.0, 2.0], [0.0, 3.0, 0.0], [4.0, 0.0, 5.0]]],
             dtype=dtype,
             device=device,
         )
