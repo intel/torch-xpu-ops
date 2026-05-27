@@ -47,34 +47,12 @@ namespace cute {
 template <typename T, int Headdim, bool IS_CAUSAL>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
 
-template <typename T, bool IS_CAUSAL>
-void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
-  const int headdim = params.head_size_vo;
-
-  if (headdim <= 32) {
-    run_mha_fwd_<T, 32, IS_CAUSAL>(queue, params);
-  } else if (headdim <= 64) {
-    run_mha_fwd_<T, 64, IS_CAUSAL>(queue, params);
-  } else if (headdim <= 96) {
-    run_mha_fwd_<T, 96, IS_CAUSAL>(queue, params);
-  } else if (headdim <= 128) {
-    run_mha_fwd_<T, 128, IS_CAUSAL>(queue, params);
-  } else if (headdim <= 192) {
-    run_mha_fwd_<T, 192, IS_CAUSAL>(queue, params);
-  } else if (headdim <= 256) {
-    run_mha_fwd_<T, 256, IS_CAUSAL>(queue, params);
-  } else {
-    TORCH_CHECK(
-        false,
-        "FlashAttentionForwardXPU only support headdim up to 256, got ",
-        headdim);
-  }
-}
-
 void run_mha_fwd(sycl::queue& queue, FLASH_FWD_params& params) {
   FP16_SWITCH(params.is_fp16, [&] {
     BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
-      run_mha_fwd_<elem_type, IS_CAUSAL>(queue, params);
+      HEADDIM_SWITCH(params.head_size_vo, [&] {
+        run_mha_fwd_<elem_type, Headdim, IS_CAUSAL>(queue, params);
+      });
     });
   });
 }
@@ -274,7 +252,15 @@ mha_fwd(
   at::Tensor logsumexp =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
 
-  at::Tensor p = at::empty({0}, opts);
+  at::Tensor p;
+  if (return_softmax) {
+    TORCH_CHECK(
+        p_dropout > 0.0f,
+        "return_softmax is only supported when p_dropout > 0.0");
+    p = at::empty({batch_size, numhead_qo, seqlen_qo, seqlen_kv}, opts);
+  } else {
+    p = at::empty({0}, opts);
+  }
 
   FLASH_FWD_params params;
   set_params_fprop(
@@ -293,13 +279,35 @@ mha_fwd(
       v_padded,
       out_padded,
       logsumexp,
+      return_softmax ? std::optional<at::Tensor>(p) : std::nullopt,
       softmax_scale,
+      p_dropout,
       is_causal);
 
   at::Tensor philox_seed =
       at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
   at::Tensor philox_offset =
       at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
+  if (p_dropout > 0.0) {
+    auto gen = at::get_generator_or_default<at::XPUGeneratorImpl>(
+        std::nullopt, at::xpu::detail::getDefaultXPUGenerator());
+    // Advance the Philox counter so that successive kernel launches
+    // draw non-overlapping random sequences.
+    //
+    // Our dropout scheme assigns each (batch, head, subgroup_lane_id) triple a
+    // unique Philox offset, and uses (block_row_id, block_col_id)
+    // as the subsequence to generate 8×uint16 for the 8 elements
+    // each lane holds in one m8×n16 MMA atomic block.
+    //
+    // Total unique offsets = batch_size × nheads × subgroup_size.
+    int64_t counter_offset =
+        params.batch_size * params.num_heads_qo * kSubgroupSize;
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    at::PhiloxXpuState philox_state = gen->philox_xpu_state(counter_offset);
+    params.rng_seed = reinterpret_cast<uint64_t*>(philox_seed.data_ptr());
+    params.rng_offset = reinterpret_cast<uint64_t*>(philox_offset.data_ptr());
+    params.philox_args = philox_state;
+  }
 
   if (seqlen_kv > 0) {
     cute::run_mha_fwd(sycl_queue, params);
