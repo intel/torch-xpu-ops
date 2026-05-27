@@ -585,7 +585,6 @@ struct VectorizedLayerNormKernelFunctor
   T_ACC* mean_;
   T_ACC* rstd_;
   T* Y_;
-  int64_t sg_size_;
   int64_t wg_size_;
   sycl_local_acc_t<T_ACC> buf_;
 };
