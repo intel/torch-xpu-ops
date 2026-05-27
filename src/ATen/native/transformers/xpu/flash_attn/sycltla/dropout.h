@@ -51,9 +51,9 @@ struct Dropout {
 #pragma unroll
     for (int m = 0; m < size<1>(tensor); ++m, block_row_start += 1) {
 #pragma unroll
-      for (int n = 0; n < size<2>(tensor); ++n, block_col_start += 1) {
+      for (int n = 0; n < size<2>(tensor); ++n) {
         uint64_t rowcol =
-            (uint64_t(block_row_start) << 32) | uint64_t(block_col_start);
+            (uint64_t(block_row_start) << 32) | uint64_t(block_col_start + n);
         uint4 random_uint4 = FLASH_NAMESPACE::philox(seed, rowcol, offset);
         uint16_t(&rnd_16)[8] = reinterpret_cast<uint16_t(&)[8]>(random_uint4);
 #pragma unroll

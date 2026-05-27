@@ -86,17 +86,12 @@ mha_fwd(
     const bool return_softmax,
     std::optional<at::Generator> gen_) {
   TORCH_CHECK(
-      p_dropout == 0.0, "mha_fwd on xpu does not support p_dropout > 0.0 yet");
-  TORCH_CHECK(
       alibi_slopes_.has_value() == false,
       "mha_fwd on xpu does not support alibi_slopes yet");
   TORCH_CHECK(
       window_size_left == -1 && window_size_right == -1,
       "mha_fwd on xpu does not support window_size yet");
   TORCH_CHECK(softcap == 0.0, "mha_fwd on xpu does not support softcap yet");
-  TORCH_CHECK(
-      return_softmax == false,
-      "mha_fwd on xpu does not support return_softmax yet");
   TORCH_CHECK(
       !gen_.has_value(),
       "mha_fwd on xpu does not support custom generator yet");
@@ -257,7 +252,10 @@ mha_fwd(
     TORCH_CHECK(
         p_dropout > 0.0f,
         "return_softmax is only supported when p_dropout > 0.0");
-    p = at::empty({batch_size, numhead_qo, seqlen_qo, seqlen_kv}, opts);
+    p = at::full(
+        {batch_size, numhead_qo, seqlen_qo, seqlen_kv},
+        -1.f,
+        opts.dtype(at::kFloat));
   } else {
     p = at::empty({0}, opts);
   }

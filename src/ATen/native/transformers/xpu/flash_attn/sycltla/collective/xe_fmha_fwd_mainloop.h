@@ -423,8 +423,10 @@ struct FMHAFwdMainloop<
         for (int i = 0; i < rP_drop.size(); ++i) {
           auto row_idx = get<0>(cS_thread(i));
           auto col_idx = get<1>(cS_thread(i));
-          int idx = row_idx * seq_len_kv + col_idx;
-          p_ptr[idx] = rP_drop(i);
+          if (row_idx < seq_len_qo && col_idx < seq_len_kv) {
+            int idx = row_idx * seq_len_kv + col_idx;
+            p_ptr[idx] = rP_drop(i);
+          }
         }
       }
 

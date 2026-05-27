@@ -376,25 +376,37 @@ void gemm_dQ(
 }
 
 template <
+    bool is_causal,
     typename Engine0,
     typename Layout0,
     typename Engine1,
     typename Layout1>
-CUTLASS_DEVICE void apply_mask_causal(
+CUTLASS_DEVICE void apply_mask(
     Tensor<Engine0, Layout0>& tensor,
     Tensor<Engine1, Layout1>& rC,
     int m_offset,
     int n_offset,
+    int m_size,
+    int n_size,
     int diagonal_offset = 0) {
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
   CUTLASS_PRAGMA_UNROLL
   for (int n = 0; n < size<1>(tensor); ++n) {
     CUTLASS_PRAGMA_UNROLL
     for (int m = 0; m < size<0>(tensor); ++m) {
-      int y = m_offset + get<0>(rC_2d(m, n)) + diagonal_offset;
+      int y = m_offset + get<0>(rC_2d(m, n));
       int x = n_offset + get<1>(rC_2d(m, n));
-      if (x > y) {
+      // mask out of bound positions with -inf, so that after softmax they
+      // become 0 and do not contribute to the output
+      if (y >= m_size || x >= n_size) {
         tensor(m, n) = -INFINITY;
+      }
+
+      // apply bottom-right causal mask
+      if constexpr (is_causal) {
+        if (x > y + diagonal_offset) {
+          tensor(m, n) = -INFINITY;
+        }
       }
     }
   }
@@ -413,7 +425,7 @@ CUTLASS_DEVICE void scale_apply_exp2(
     Tensor<Engine0, Layout0>& tensor,
     Tensor<Engine1, Layout1>& max,
     Tensor<Engine2, Layout2>& rC,
-    const float scale,
+    const float scale_softmax_log2,
     const int tail_m = 0) {
   static_assert(Layout0::rank == 2, "Only support 2D Tensor");
   static_assert(Layout1::rank == 1, "Only support 1D Tensor");
@@ -422,21 +434,30 @@ CUTLASS_DEVICE void scale_apply_exp2(
     CUTLASS_PRAGMA_UNROLL
     for (int mi = 0; mi < size<0>(tensor); ++mi) {
       int m = get<0>(rC_2d(mi, 0));
-      const float max_scaled = max(m) == -INFINITY ? 0.f : max(m) * M_LOG2E;
+      const bool max_is_inf = max(m) == -INFINITY;
       CUTLASS_PRAGMA_UNROLL
       for (int ni = 0; ni < size<1>(tensor); ++ni) {
-        tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
+        if (max_is_inf) {
+          tensor(mi, ni) = 0.f;
+        } else {
+          tensor(mi, ni) =
+              exp2f(tensor(mi, ni) * scale_softmax_log2 - max(m) * M_LOG2E);
+        }
       }
     }
   } else {
     CUTLASS_PRAGMA_UNROLL
     for (int mi = 0; mi < size<0>(tensor); ++mi) {
       int m = get<0>(rC_2d(mi, 0));
-      const float max_scaled =
-          ((m >= tail_m) || (max(m) == -INFINITY)) ? 0.f : max(m) * M_LOG2E;
+      const bool max_is_inf = m >= tail_m || max(m) == -INFINITY;
       CUTLASS_PRAGMA_UNROLL
       for (int ni = 0; ni < size<1>(tensor); ++ni) {
-        tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
+        if (max_is_inf) {
+          tensor(mi, ni) = 0.f;
+        } else {
+          tensor(mi, ni) =
+              exp2f(tensor(mi, ni) * scale_softmax_log2 - max(m) * M_LOG2E);
+        }
       }
     }
   }
@@ -484,7 +505,7 @@ CUTLASS_DEVICE void softmax_backward(
         const float dpsum = dP_sum(m);
         CUTLASS_PRAGMA_UNROLL
         for (int ni = 0; ni < size<1>(dP); ++ni) {
-        dP(mi, ni) = pointwise_mult(P(mi, ni), dP(mi, ni), dpsum);
+          dP(mi, ni) = pointwise_mult(P(mi, ni), dP(mi, ni), dpsum);
         }
       }
     }
@@ -568,7 +589,7 @@ void dq_dk_dv_1colblock(
 
   FLASH_NAMESPACE::Dropout dropout(
       param.rng_seed[0],
-      param.rng_offset[1],
+      param.rng_offset[0],
       param.p_dropout_in_uint16_t,
       bidb,
       bidh,
@@ -718,14 +739,15 @@ void dq_dk_dv_1colblock(
       gemm_SdP(trait, mQ, mKt, rS, tiled_mma_sdp);
       Tensor scores =
           make_tensor(rS.data(), convert_layout_acc_layout(rS.layout()));
-      if constexpr (is_causal) {
-        apply_mask_causal(
-            scores,
-            taccScS_rt,
-            m_block * kBlockM,
-            n_block * kBlockN,
-            param.seq_len_kv - param.seq_len_q);
-      }
+
+      apply_mask<is_causal>(
+          scores,
+          taccScS_rt,
+          m_block * kBlockM,
+          n_block * kBlockN,
+          param.seq_len_q,
+          param.seq_len_kv,
+          param.seq_len_kv - param.seq_len_q);
 
       if (Is_even_M) {
         scale_apply_exp2<true>(
