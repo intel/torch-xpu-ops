@@ -9,6 +9,7 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 
+#include <sycl/ext/oneapi/experimental/device_architecture.hpp>
 #include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
 #include <sys/prctl.h>
@@ -22,6 +23,33 @@ namespace symmetric_memory {
 
 namespace {
 
+// Whether to use the device-clock-based timeout (BMG) or the iteration
+// counter fallback (PVC / others). Decided host-side per device via SYCL's
+// architecture query; cached per (XPU) device index since the answer is
+// fixed for the lifetime of the process.
+bool device_supports_clock_timer(int device_idx) {
+  namespace syclex = sycl::ext::oneapi::experimental;
+  static std::mutex mu;
+  static std::vector<int> cache; // -1 = unknown, 0 = no, 1 = yes
+  std::lock_guard<std::mutex> lk(mu);
+  if (static_cast<int>(cache.size()) <= device_idx) {
+    cache.resize(device_idx + 1, -1);
+  }
+  if (cache[device_idx] != -1) {
+    return cache[device_idx] == 1;
+  }
+  auto& device = c10::xpu::get_raw_device(device_idx);
+  bool ok = false;
+  try {
+    auto arch = device.get_info<syclex::info::device::architecture>();
+    ok = (arch == syclex::architecture::intel_gpu_bmg_g21);
+  } catch (...) {
+    ok = false;
+  }
+  cache[device_idx] = ok ? 1 : 0;
+  return ok;
+}
+
 std::atomic<uint64_t> store_exchange_nonce{0};
 
 thread_local StoreExchange storeExchange = []() {
@@ -29,15 +57,6 @@ thread_local StoreExchange storeExchange = []() {
       store_exchange_nonce.fetch_add(1, std::memory_order_relaxed);
   return StoreExchange("XPUSymmetricMemory_" + std::to_string(nonce));
 }();
-
-bool use_signal_barrier_enabled() {
-  static const bool cached_value = []() {
-    const char* env = std::getenv("USE_SIGNAL_BARRIER");
-    // Default to enabled; only opt out when explicitly set to "0".
-    return env == nullptr || std::string(env) != "0";
-  }();
-  return cached_value;
-}
 
 } // namespace
 
@@ -161,51 +180,16 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  if (use_signal_barrier_enabled()) {
-    auto stream = at::xpu::getCurrentXPUStream();
-    barrier_impl_xpu(
-        reinterpret_cast<uint32_t**>(signal_pads_dev_),
-        channel,
-        rank_,
-        world_size_,
-        timeout_ms,
-        stream);
-    return;
-  }
-
-  auto group = c10d::resolve_process_group(group_name_);
-  TORCH_CHECK(
-      group != nullptr,
-      "Process group '",
-      group_name_,
-      "' not found, please init process group first before calling "
-      "SymmetricMemory");
-
-  auto backend = group->getBackend(c10::DeviceType::XPU);
-
-  static thread_local at::Tensor barrier_tensor;
-  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-    barrier_tensor = at::zeros(
-        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-  } else {
-    barrier_tensor.zero_();
-  }
-
-  c10d::AllreduceOptions arOpts;
-  arOpts.asyncOp = false;
-  std::vector<at::Tensor> tensors = {barrier_tensor};
-  auto work = backend->allreduce(tensors, arOpts);
-
-  if (work) {
-    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-    TORCH_CHECK(
-        success,
-        "Barrier timeout after ",
-        timeout_ms,
-        " ms for group '",
-        group_name_,
-        "'");
-  }
+  auto stream = at::xpu::getCurrentXPUStream();
+  const bool use_device_timer = false; (void)device_supports_clock_timer;
+  barrier_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      use_device_timer,
+      stream);
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -217,6 +201,7 @@ void XPUSymmetricMemory::put_signal(
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
   auto stream = at::xpu::getCurrentXPUStream();
+  const bool use_device_timer = false;
 
   put_signal_impl_xpu(
       reinterpret_cast<uint32_t**>(signal_pads_dev_),
@@ -225,6 +210,7 @@ void XPUSymmetricMemory::put_signal(
       rank_,
       world_size_,
       timeout_ms,
+      use_device_timer,
       stream);
 }
 
@@ -237,6 +223,7 @@ void XPUSymmetricMemory::wait_signal(
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
   auto stream = at::xpu::getCurrentXPUStream();
+  const bool use_device_timer = false;
 
   wait_signal_impl_xpu(
       reinterpret_cast<uint32_t**>(signal_pads_dev_),
@@ -245,6 +232,7 @@ void XPUSymmetricMemory::wait_signal(
       rank_,
       world_size_,
       timeout_ms,
+      use_device_timer,
       stream);
 }
 
