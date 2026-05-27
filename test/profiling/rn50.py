@@ -430,10 +430,10 @@ def main():
 
 def pt2e_quantize(model, val_loader_calib, args):
     """Quantize model using PT2E quantization with XPUInductorQuantizer."""
-    from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
-    import torchao.quantization.pt2e.quantizer.xpu_inductor_quantizer as xiq
     import torchao.quantization.pt2e
+    import torchao.quantization.pt2e.quantizer.xpu_inductor_quantizer as xiq
     from torch.export import export
+    from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
 
     print("doing PT2E int8 quantization")
     model.eval()
