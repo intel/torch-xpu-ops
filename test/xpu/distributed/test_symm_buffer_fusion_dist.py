@@ -124,7 +124,7 @@ def check_elastic_xpu_fusions():
     )
 
     # 1) allgather + local permute fusion (returns handle)
-    dispatch_out, _, _, handle = symm_buf.allgather_local_permute_fusion(
+    dispatch_out, recv_topk_idx_out, recv_topk_weights_out, handle = symm_buf.allgather_local_permute_fusion(
         hidden_shard=hidden_shard,
         topk_idx=topk_idx,
         topk_weights=topk_weights,
@@ -139,14 +139,16 @@ def check_elastic_xpu_fusions():
     if handle.is_v2:
         expert_cumsum = torch.zeros(NUM_EXPERTS, device=device, dtype=torch.int32)
         expert_cumsum[1:] = handle.rows_per_expert[:-1]
-        expert_cumsum = expert_cumsum.cumsum(0)
-        abs_scatter_idx = expert_cumsum[handle.global_topk_idx] + handle.scatter_idx
+        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
+        abs_scatter_idx = (expert_cumsum[handle.global_topk_idx] + handle.scatter_idx).to(torch.int32)
     else:
         abs_scatter_idx = handle.scatter_idx
 
     flat_scatter = abs_scatter_idx.reshape(-1)
-    rebuilt_topk_idx = handle.recv_topk_idx[flat_scatter, flat_k].reshape(num_tokens, TOPK)
-    rebuilt_topk_weights = handle.recv_topk_weights[flat_scatter, flat_k].reshape(num_tokens, TOPK)
+    # Use recv-layout tensors (shape [num_tokens*topk, topk]) for reconstruction,
+    # NOT handle.recv_topk_weights which is global_topk_weights_buf [num_tokens, topk].
+    rebuilt_topk_idx = recv_topk_idx_out[flat_scatter, flat_k].reshape(num_tokens, TOPK)
+    rebuilt_topk_weights = recv_topk_weights_out[flat_scatter, flat_k].reshape(num_tokens, TOPK)
     assert torch.equal(rebuilt_topk_idx, global_topk_idx), (
         f"recv_topk_idx -> global_topk_idx mismatch on rank {rank}"
     )
