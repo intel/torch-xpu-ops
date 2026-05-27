@@ -13,15 +13,6 @@
 # Owner(s): ["module: intel"]
 
 
-from torch.testing._internal.opinfo.core import SampleInput
-from torch.testing._internal.common_methods_invocations import (
-    M,
-    make_tensor,
-    mask_not_all_zeros,
-    S,
-    sample_inputs_cat_concat,
-)
-from functools import partial
 import copy
 import logging
 import os
@@ -725,6 +716,17 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
 
 CriterionTest.test_cuda = CriterionTest_test_xpu
 
+from functools import partial
+
+from torch.testing._internal.common_methods_invocations import (
+    M,
+    make_tensor,
+    mask_not_all_zeros,
+    S,
+    sample_inputs_cat_concat,
+)
+from torch.testing._internal.opinfo.core import SampleInput
+
 
 def reference_inputs_cat_nofp64(op, device, dtype, requires_grad, **kwargs):
     yield from sample_inputs_cat_concat(op, device, dtype, requires_grad, **kwargs)
@@ -1268,7 +1270,6 @@ def copy_tests(
 
 def launch_test(test_case, skip_list=None, exe_list=None):
     import subprocess
-    import shlex
 
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
