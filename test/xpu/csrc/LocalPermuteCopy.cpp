@@ -12,6 +12,8 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+constexpr int32_t MAX_EXPERTS_V2 = 512;
+
 // Scalar fallback kernel for non-aligned hidden_size.
 // Uses scatter_idx to write each (token, k) to its expert-sorted position.
 template <typename T>
@@ -452,6 +454,156 @@ struct AllgatherPermuteRingVecKernel {
   }
 };
 
+// ---------------------------------------------------------------------------
+// V2 allgather + permute: accepts expert-relative scatter_idx + global_topk_idx
+// + rows_per_expert. Each WG computes expert cumsum in SLM for absolute addressing.
+// ---------------------------------------------------------------------------
+
+// Scalar fallback for non-aligned hidden_size.
+template <typename T>
+struct AllgatherPermuteRingV2ScalarKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  const int64_t* rank_ptrs;
+  const int32_t* scatter_idx_ptr;
+  const int32_t* global_topk_idx_ptr;
+  const int32_t* rows_per_expert_ptr;
+  T* remap_ptr;
+  int64_t num_tokens_per_rank;
+  int64_t hidden_size;
+  int64_t topk;
+  int64_t rank;
+  int64_t world_size;
+  int32_t num_experts;
+  int64_t total_elems;
+
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS_V2, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    // Load rows_per_expert into SLM and compute exclusive prefix-sum
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[e] = rows_per_expert_ptr[e];
+    item.barrier(sycl::access::fence_space::local_space);
+    if (lid == 0) {
+      int32_t running = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        const int32_t c = slm[e];
+        slm[e] = running;
+        running += c;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    // Main work: same as AllgatherPermuteRingScalarKernel but with relative->absolute
+    const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
+    if (idx >= total_elems) return;
+
+    const int64_t h = idx % hidden_size;
+    const int64_t pair_idx = idx / hidden_size;
+    const int64_t step = pair_idx % world_size;
+    const int64_t local_token_idx = pair_idx / world_size;
+
+    const int64_t src_rank = (rank + step + 1) % world_size;
+    const int64_t global_token_idx = src_rank * num_tokens_per_rank + local_token_idx;
+
+    const T* src = reinterpret_cast<const T*>(rank_ptrs[src_rank]);
+    const T val = src[local_token_idx * hidden_size + h];
+
+    for (int64_t k = 0; k < topk; ++k) {
+      const int64_t flat_idx = global_token_idx * topk + k;
+      const int32_t expert_id = global_topk_idx_ptr[flat_idx];
+      const int32_t rel_pos = scatter_idx_ptr[flat_idx];
+      if (expert_id >= 0 && expert_id < num_experts && rel_pos >= 0) {
+        const int32_t dst_row = slm[expert_id] + rel_pos;
+        remap_ptr[static_cast<int64_t>(dst_row) * hidden_size + h] = val;
+      }
+    }
+  }
+};
+
+// Vectorized v2 ring-ordered kernel.
+template <typename scalar_t, int VEC_SIZE>
+struct AllgatherPermuteRingV2VecKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const int64_t* rank_ptrs;
+  const int32_t* scatter_idx_ptr;
+  const int32_t* global_topk_idx_ptr;
+  const int32_t* rows_per_expert_ptr;
+  scalar_t* remap_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+  int32_t num_experts;
+  int32_t total_vecs;
+
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS_V2, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    // Load rows_per_expert into SLM and compute exclusive prefix-sum
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[e] = rows_per_expert_ptr[e];
+    item.barrier(sycl::access::fence_space::local_space);
+    if (lid == 0) {
+      int32_t running = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        const int32_t c = slm[e];
+        slm[e] = running;
+        running += c;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    // Main work
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    if (idx >= total_vecs) return;
+
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t pair_idx = idx / hidden_vecs;
+    const int32_t step = pair_idx % world_size;
+    const int32_t local_token_idx = pair_idx / world_size;
+
+    const int32_t src_rank = (rank + step + 1) % world_size;
+    const int32_t global_token_idx = src_rank * num_tokens_per_rank + local_token_idx;
+
+    // Coalesced vectorized read from source rank's memory
+    const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
+    auto src_vec = reinterpret_cast<const vec_t*>(
+        src + static_cast<int64_t>(local_token_idx) * hidden_size);
+    vec_t v = src_vec[vec_h];
+
+    // Write to ALL topk destinations using relative->absolute conversion
+    const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert_id = global_topk_idx_ptr[topk_base + k];
+      const int32_t rel_pos = scatter_idx_ptr[topk_base + k];
+      if (expert_id >= 0 && expert_id < num_experts && rel_pos >= 0) {
+        const int32_t dst_row = slm[expert_id] + rel_pos;
+        auto dst_vec = reinterpret_cast<vec_t*>(
+            remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
+        dst_vec[vec_h] = v;
+      }
+    }
+  }
+};
+
 at::Tensor allgather_permute(
     const at::Tensor& rank_buffers_ptr,
     const at::Tensor& scatter_idx,
@@ -541,6 +693,142 @@ at::Tensor allgather_permute(
               topk,
               rank,
               world_size};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        }
+      });
+
+  return remap_hidden_states;
+}
+
+at::Tensor allgather_permute_v2(
+    const at::Tensor& rank_buffers_ptr,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& global_topk_idx,
+    const at::Tensor& rows_per_expert,
+    at::Tensor remap_hidden_states,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      rank_buffers_ptr.dim() == 1 && rank_buffers_ptr.size(0) == world_size,
+      "allgather_permute_v2: rank_buffers_ptr must be 1D with size == world_size");
+  TORCH_CHECK(
+      rank_buffers_ptr.scalar_type() == at::kLong,
+      "allgather_permute_v2: rank_buffers_ptr must be int64");
+  TORCH_CHECK(
+      scatter_idx.dim() == 2,
+      "allgather_permute_v2: scatter_idx must be 2D [num_tokens, topk]");
+  TORCH_CHECK(
+      scatter_idx.scalar_type() == at::kInt,
+      "allgather_permute_v2: scatter_idx must be int32");
+  TORCH_CHECK(
+      scatter_idx.is_contiguous(),
+      "allgather_permute_v2: scatter_idx must be contiguous");
+  TORCH_CHECK(
+      global_topk_idx.dim() == 2,
+      "allgather_permute_v2: global_topk_idx must be 2D [num_tokens, topk]");
+  TORCH_CHECK(
+      global_topk_idx.scalar_type() == at::kInt,
+      "allgather_permute_v2: global_topk_idx must be int32");
+  TORCH_CHECK(
+      global_topk_idx.is_contiguous(),
+      "allgather_permute_v2: global_topk_idx must be contiguous");
+  TORCH_CHECK(
+      rows_per_expert.dim() == 1,
+      "allgather_permute_v2: rows_per_expert must be 1D");
+  TORCH_CHECK(
+      rows_per_expert.scalar_type() == at::kInt,
+      "allgather_permute_v2: rows_per_expert must be int32");
+  TORCH_CHECK(
+      remap_hidden_states.dim() == 2,
+      "allgather_permute_v2: remap_hidden_states must be 2D");
+  TORCH_CHECK(
+      remap_hidden_states.is_contiguous(),
+      "allgather_permute_v2: remap_hidden_states must be contiguous");
+  TORCH_CHECK(
+      rank >= 0 && rank < world_size,
+      "allgather_permute_v2: rank must be in [0, world_size)");
+
+  const int64_t num_tokens = scatter_idx.size(0);
+  const int64_t topk = scatter_idx.size(1);
+  const int64_t hidden_size = remap_hidden_states.size(1);
+  const int64_t num_experts = rows_per_expert.size(0);
+
+  TORCH_CHECK(
+      num_tokens % world_size == 0,
+      "allgather_permute_v2: num_tokens must be divisible by world_size");
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
+
+  TORCH_CHECK(
+      remap_hidden_states.size(0) == num_tokens * topk,
+      "allgather_permute_v2: remap_hidden_states first dim must be num_tokens * topk");
+  TORCH_CHECK(
+      global_topk_idx.size(0) == num_tokens && global_topk_idx.size(1) == topk,
+      "allgather_permute_v2: global_topk_idx shape mismatch");
+  TORCH_CHECK(
+      num_experts > 0 && num_experts <= MAX_EXPERTS_V2,
+      "allgather_permute_v2: num_experts must be in (0, ", MAX_EXPERTS_V2, "]");
+
+  if (num_tokens == 0 || topk == 0 || hidden_size == 0) {
+    return remap_hidden_states;
+  }
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  c10::Device device(c10::DeviceType::XPU, remap_hidden_states.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      remap_hidden_states.scalar_type(), "allgather_permute_v2", [&]() {
+        if (hidden_size % VEC_SIZE == 0) {
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = AllgatherPermuteRingV2VecKernel<scalar_t, VEC_SIZE>{
+              {},
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              global_topk_idx.data_ptr<int32_t>(),
+              rows_per_expert.data_ptr<int32_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs),
+              static_cast<int32_t>(num_experts),
+              static_cast<int32_t>(total),
+              {}};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue,
+              kfn);
+        } else {
+          const int64_t total = world_size * num_tokens_per_rank * hidden_size;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = AllgatherPermuteRingV2ScalarKernel<scalar_t>{
+              {},
+              rank_buffers_ptr.data_ptr<int64_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              global_topk_idx.data_ptr<int32_t>(),
+              rows_per_expert.data_ptr<int32_t>(),
+              remap_hidden_states.data_ptr<scalar_t>(),
+              num_tokens_per_rank,
+              hidden_size,
+              topk,
+              rank,
+              world_size,
+              static_cast<int32_t>(num_experts),
+              total,
+              {}};
           sycl_kernel_submit(
               sycl::range<1>(blocks * threads),
               sycl::range<1>(threads),
@@ -729,6 +1017,10 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "allgather_permute(Tensor rank_buffers_ptr, Tensor scatter_idx, "
       "Tensor(a!) remap_hidden_states, int rank, int world_size) -> Tensor(a!)");
   m.def(
+      "allgather_permute_v2(Tensor rank_buffers_ptr, Tensor scatter_idx, "
+      "Tensor global_topk_idx, Tensor rows_per_expert, "
+      "Tensor(a!) remap_hidden_states, int rank, int world_size) -> Tensor(a!)");
+  m.def(
       "allgather(Tensor rank_buffers_ptr, "
       "Tensor(a!) output, int rank, int world_size) -> Tensor(a!)");
 }
@@ -737,5 +1029,6 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("local_permute_copy_", local_permute_copy_);
   m.impl("local_permute_copy_fused_", local_permute_copy_fused_);
   m.impl("allgather_permute", allgather_permute);
+  m.impl("allgather_permute_v2", allgather_permute_v2);
   m.impl("allgather", allgather);
 }

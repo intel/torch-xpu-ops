@@ -135,7 +135,16 @@ def check_elastic_xpu_fusions():
     assert isinstance(handle, SymmHandle), "Expected SymmHandle from allgather_local_permute_fusion"
     assert handle.num_tokens_per_rank == TOKENS_PER_RANK
 
-    flat_scatter = handle.scatter_idx.reshape(-1)
+    # For v2, compute absolute scatter_idx from relative + rows_per_expert
+    if handle.is_v2:
+        expert_cumsum = torch.zeros(NUM_EXPERTS, device=device, dtype=torch.int32)
+        expert_cumsum[1:] = handle.rows_per_expert[:-1]
+        expert_cumsum = expert_cumsum.cumsum(0)
+        abs_scatter_idx = expert_cumsum[handle.global_topk_idx] + handle.scatter_idx
+    else:
+        abs_scatter_idx = handle.scatter_idx
+
+    flat_scatter = abs_scatter_idx.reshape(-1)
     rebuilt_topk_idx = handle.recv_topk_idx[flat_scatter, flat_k].reshape(num_tokens, TOPK)
     rebuilt_topk_weights = handle.recv_topk_weights[flat_scatter, flat_k].reshape(num_tokens, TOPK)
     assert torch.equal(rebuilt_topk_idx, global_topk_idx), (
@@ -147,12 +156,37 @@ def check_elastic_xpu_fusions():
 
     ref_dispatch = build_allgather_local_permute_reference(
         hidden_shard=hidden_shard,
-        scatter_idx=handle.scatter_idx,
+        scatter_idx=abs_scatter_idx,
         group=group,
     )
     assert torch.equal(dispatch_out, ref_dispatch), (
         f"allgather_local_permute_fusion mismatch on rank {rank}"
     )
+
+    # V2-specific validation: check scatter_idx is expert-relative
+    if handle.is_v2:
+        assert handle.global_topk_idx is not None, "V2 handle must have global_topk_idx"
+        assert handle.rows_per_expert is not None, "V2 handle must have rows_per_expert"
+
+        # Verify scatter_idx values are within [0, rows_per_expert[expert_id]) for each entry
+        for t in range(min(num_tokens, 8)):  # spot-check first 8 tokens
+            for k in range(TOPK):
+                expert_id = handle.global_topk_idx[t, k].item()
+                rel_pos = handle.scatter_idx[t, k].item()
+                expert_count = handle.rows_per_expert[expert_id].item()
+                assert 0 <= rel_pos < expert_count, (
+                    f"V2 scatter_idx out of range: token={t}, k={k}, "
+                    f"expert={expert_id}, rel_pos={rel_pos}, count={expert_count}"
+                )
+
+        # Verify rows_per_expert sums to num_tokens * topk
+        total_assigned = handle.rows_per_expert.sum().item()
+        assert total_assigned == num_tokens * TOPK, (
+            f"V2 rows_per_expert sum ({total_assigned}) != num_tokens * topk ({num_tokens * TOPK})"
+        )
+        print(f"[Rank {rank}] V2-specific validations passed")
+    else:
+        print(f"[Rank {rank}] Running with V1 kernels (V2 not available)")
 
     # 2) unpermute + reduce-scatter fusion (via handle)
     torch.manual_seed(2026)
@@ -180,7 +214,7 @@ def check_elastic_xpu_fusions():
     ref_reduce_out = torch.zeros_like(reduce_out)
     unpermute_allreduce_simple(
         expert_output=expert_output,
-        scatter_idx=handle.scatter_idx,
+        scatter_idx=abs_scatter_idx,
         topk_weights=global_topk_weights,
         output=ref_reduce_out,
         group=group,

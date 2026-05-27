@@ -12,6 +12,8 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+constexpr int32_t MAX_EXPERTS_V2 = 512;
+
 // ---------------------------------------------------------------------------
 // Local unpermute kernel: weighted gather from expert-centric layout to
 // token-centric layout for a range of tokens.
@@ -192,6 +194,266 @@ at::Tensor local_unpermute_copy_(
               topk_weights.data_ptr<float>(),
               output.data_ptr<scalar_t>(),
               tc, h, tk, static_cast<int32_t>(num_tokens), off};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue, kfn);
+        }
+      });
+
+  return output;
+}
+
+// ---------------------------------------------------------------------------
+// V2 local unpermute: accepts expert-relative scatter_idx + global_topk_idx
+// + rows_per_expert. Each WG computes expert cumsum in SLM.
+// ---------------------------------------------------------------------------
+
+template <typename T>
+struct LocalUnpermuteCopyV2ScalarKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  const T* expert_output_ptr;
+  const int32_t* scatter_idx_ptr;
+  const int32_t* global_topk_idx_ptr;
+  const int32_t* rows_per_expert_ptr;
+  const float* topk_weights_ptr;
+  T* output_ptr;
+  int32_t token_count;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t token_offset;
+  int32_t num_experts;
+  int32_t total_elems;
+
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS_V2, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    // Load rows_per_expert into SLM and compute exclusive prefix-sum
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[e] = rows_per_expert_ptr[e];
+    item.barrier(sycl::access::fence_space::local_space);
+    if (lid == 0) {
+      int32_t running = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        const int32_t c = slm[e];
+        slm[e] = running;
+        running += c;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    if (idx >= total_elems) return;
+
+    const int32_t h = idx % hidden_size;
+    const int32_t local_idx = idx / hidden_size;
+    const int32_t global_token_idx = token_offset + local_idx;
+
+    float acc = 0.0f;
+    const int32_t scatter_base = global_token_idx * topk;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert_id = global_topk_idx_ptr[scatter_base + k];
+      const int32_t rel_pos = scatter_idx_ptr[scatter_base + k];
+      if (expert_id >= 0 && expert_id < num_experts && rel_pos >= 0) {
+        const int32_t src_row = slm[expert_id] + rel_pos;
+        const float weight = topk_weights_ptr[scatter_base + k];
+        acc += weight * static_cast<float>(
+            expert_output_ptr[static_cast<int64_t>(src_row) * hidden_size + h]);
+      }
+    }
+    output_ptr[static_cast<int64_t>(local_idx) * hidden_size + h] = static_cast<T>(acc);
+  }
+};
+
+template <typename scalar_t, int VEC_SIZE>
+struct LocalUnpermuteCopyV2VecKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  const scalar_t* expert_output_ptr;
+  const int32_t* scatter_idx_ptr;
+  const int32_t* global_topk_idx_ptr;
+  const int32_t* rows_per_expert_ptr;
+  const float* topk_weights_ptr;
+  scalar_t* output_ptr;
+  int32_t token_count;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t token_offset;
+  int32_t hidden_vecs;
+  int32_t num_experts;
+  int32_t total_vecs;
+
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS_V2, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    // Load rows_per_expert into SLM and compute exclusive prefix-sum
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[e] = rows_per_expert_ptr[e];
+    item.barrier(sycl::access::fence_space::local_space);
+    if (lid == 0) {
+      int32_t running = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        const int32_t c = slm[e];
+        slm[e] = running;
+        running += c;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
+    if (idx >= total_vecs) return;
+
+    const int32_t vec_h = idx % hidden_vecs;
+    const int32_t local_idx = idx / hidden_vecs;
+    const int32_t global_token_idx = token_offset + local_idx;
+    const int32_t h_start = vec_h * VEC_SIZE;
+
+    const int32_t scatter_base = global_token_idx * topk;
+
+    // Pre-load all src_rows and weights
+    int32_t src_rows[8];
+    float weights[8];
+    #pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      if (k < topk) {
+        const int32_t expert_id = global_topk_idx_ptr[scatter_base + k];
+        const int32_t rel_pos = scatter_idx_ptr[scatter_base + k];
+        if (expert_id >= 0 && expert_id < num_experts && rel_pos >= 0) {
+          src_rows[k] = slm[expert_id] + rel_pos;
+        } else {
+          src_rows[k] = -1;
+        }
+        weights[k] = topk_weights_ptr[scatter_base + k];
+      } else {
+        src_rows[k] = -1;
+        weights[k] = 0.0f;
+      }
+    }
+
+    // Compute weighted sum
+    float acc[VEC_SIZE] = {};
+    #pragma unroll 8
+    for (int32_t k = 0; k < topk; ++k) {
+      if (src_rows[k] < 0) continue;
+      const scalar_t* src = expert_output_ptr +
+          static_cast<int64_t>(src_rows[k]) * hidden_size + h_start;
+      const float w = weights[k];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        acc[i] += w * static_cast<float>(src[i]);
+      }
+    }
+
+    // Write result
+    scalar_t* dst = output_ptr +
+        static_cast<int64_t>(local_idx) * hidden_size + h_start;
+    #pragma unroll
+    for (int i = 0; i < VEC_SIZE; ++i) {
+      dst[i] = static_cast<scalar_t>(acc[i]);
+    }
+  }
+};
+
+at::Tensor local_unpermute_copy_v2(
+    const at::Tensor& expert_output,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& global_topk_idx,
+    const at::Tensor& rows_per_expert,
+    const at::Tensor& topk_weights,
+    int64_t token_offset,
+    int64_t token_count,
+    at::Tensor output) {
+  TORCH_CHECK(expert_output.dim() == 2, "local_unpermute_copy_v2: expert_output must be 2D");
+  TORCH_CHECK(scatter_idx.dim() == 2, "local_unpermute_copy_v2: scatter_idx must be 2D");
+  TORCH_CHECK(scatter_idx.scalar_type() == at::kInt, "local_unpermute_copy_v2: scatter_idx must be int32");
+  TORCH_CHECK(global_topk_idx.dim() == 2, "local_unpermute_copy_v2: global_topk_idx must be 2D");
+  TORCH_CHECK(global_topk_idx.scalar_type() == at::kInt, "local_unpermute_copy_v2: global_topk_idx must be int32");
+  TORCH_CHECK(rows_per_expert.dim() == 1, "local_unpermute_copy_v2: rows_per_expert must be 1D");
+  TORCH_CHECK(rows_per_expert.scalar_type() == at::kInt, "local_unpermute_copy_v2: rows_per_expert must be int32");
+  TORCH_CHECK(topk_weights.dim() == 2, "local_unpermute_copy_v2: topk_weights must be 2D");
+  TORCH_CHECK(topk_weights.scalar_type() == at::kFloat, "local_unpermute_copy_v2: topk_weights must be float32");
+  TORCH_CHECK(expert_output.is_contiguous());
+  TORCH_CHECK(scatter_idx.is_contiguous());
+  TORCH_CHECK(global_topk_idx.is_contiguous());
+  TORCH_CHECK(topk_weights.is_contiguous());
+  TORCH_CHECK(output.is_contiguous());
+  TORCH_CHECK(output.dim() == 2);
+
+  const int64_t hidden_size = expert_output.size(1);
+  const int64_t num_tokens = scatter_idx.size(0);
+  const int64_t topk = scatter_idx.size(1);
+  const int64_t num_experts = rows_per_expert.size(0);
+
+  TORCH_CHECK(token_offset >= 0 && token_offset + token_count <= num_tokens);
+  TORCH_CHECK(output.size(0) == token_count);
+  TORCH_CHECK(output.size(1) == hidden_size);
+  TORCH_CHECK(topk_weights.size(0) == num_tokens && topk_weights.size(1) == topk);
+  TORCH_CHECK(global_topk_idx.size(0) == num_tokens && global_topk_idx.size(1) == topk);
+  TORCH_CHECK(num_experts > 0 && num_experts <= MAX_EXPERTS_V2,
+      "local_unpermute_copy_v2: num_experts must be in (0, ", MAX_EXPERTS_V2, "]");
+
+  if (token_count == 0) return output;
+
+  c10::Device device(c10::DeviceType::XPU, expert_output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      expert_output.scalar_type(), "local_unpermute_copy_v2", [&]() {
+        const int32_t tc = static_cast<int32_t>(token_count);
+        const int32_t h = static_cast<int32_t>(hidden_size);
+        const int32_t tk = static_cast<int32_t>(topk);
+        const int32_t off = static_cast<int32_t>(token_offset);
+        const int32_t ne = static_cast<int32_t>(num_experts);
+
+        if (hidden_size % VEC_SIZE == 0) {
+          const int32_t hidden_vecs = h / VEC_SIZE;
+          const int64_t total = static_cast<int64_t>(tc) * hidden_vecs;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = LocalUnpermuteCopyV2VecKernel<scalar_t, VEC_SIZE>{
+              {},
+              expert_output.data_ptr<scalar_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              global_topk_idx.data_ptr<int32_t>(),
+              rows_per_expert.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              output.data_ptr<scalar_t>(),
+              tc, h, tk, off, hidden_vecs, ne,
+              static_cast<int32_t>(total),
+              {}};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue, kfn);
+        } else {
+          const int64_t total = static_cast<int64_t>(tc) * h;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = LocalUnpermuteCopyV2ScalarKernel<scalar_t>{
+              {},
+              expert_output.data_ptr<scalar_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              global_topk_idx.data_ptr<int32_t>(),
+              rows_per_expert.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              output.data_ptr<scalar_t>(),
+              tc, h, tk, off, ne,
+              static_cast<int32_t>(total),
+              {}};
           sycl_kernel_submit(
               sycl::range<1>(blocks * threads),
               sycl::range<1>(threads),
@@ -578,6 +840,11 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "Tensor topk_weights, int token_offset, int token_count, "
       "Tensor(a!) output) -> Tensor(a!)");
   m.def(
+      "local_unpermute_copy_v2(Tensor expert_output, Tensor scatter_idx, "
+      "Tensor global_topk_idx, Tensor rows_per_expert, "
+      "Tensor topk_weights, int token_offset, int token_count, "
+      "Tensor(a!) output) -> Tensor(a!)");
+  m.def(
       "unpermute_reduce_scatter(Tensor rank_buffers_ptr, Tensor scatter_idx, "
       "Tensor topk_weights, Tensor(a!) output, int rank, int world_size) -> Tensor(a!)");
   m.def(
@@ -587,6 +854,7 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("local_unpermute_copy_", local_unpermute_copy_);
+  m.impl("local_unpermute_copy_v2", local_unpermute_copy_v2);
   m.impl("unpermute_reduce_scatter", unpermute_reduce_scatter);
   m.impl("reduce_scatter_sum", reduce_scatter_sum);
 }
