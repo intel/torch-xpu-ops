@@ -457,7 +457,7 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
             torch.library.opcheck(op.op, args, kwargs)
 
     def test_opcheck_fails_basic(self, device):
-        if device == "xpu":
+        if device.startswith("xpu"):
             self.skipTest(
                 "XPU schema error path for this opcheck case is not supported"
             )
