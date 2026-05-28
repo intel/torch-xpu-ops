@@ -71,6 +71,12 @@ if(WIN32 OR NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_
   set(USE_SYCLTLA OFF)
   message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
 endif()
+if(USE_SYCLTLA AND DEFINED ENV{USE_SYCLTLA} AND NOT "$ENV{USE_SYCLTLA}" STREQUAL "")
+  if(NOT "$ENV{USE_SYCLTLA}")
+    set(USE_SYCLTLA OFF)
+    message(STATUS "SYCL-TLA is disabled by the user via the USE_SYCLTLA environment variable.")
+  endif()
+endif()
 
 if(USE_SYCLTLA)
   include(${TORCH_XPU_OPS_ROOT}/cmake/SYCLTLA.cmake)
