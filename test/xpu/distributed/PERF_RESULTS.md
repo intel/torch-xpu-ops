@@ -30,7 +30,6 @@ def allgather_local_permute_fusion(
 ) -> Tuple[torch.Tensor, SymmHandle]:
 ```
 
-- **功能：** 融合 allgather + local permute。通过 symmetric memory 将各 rank 的 hidden states、topk_idx、topk_weights 广播到所有 rank，然后使用 notify_dispatch_v2 内核直接计算 scatter_idx（无需外部预计算），最后调用 allgather_permute 内核将 hidden states 按 expert-centric 布局排列。
 - **输入要求：**
   - `hidden_shard`: 形状 `[num_tokens_per_rank, hidden]`，dtype 为 `bfloat16`，本 rank 拥有的 token hidden states
   - `topk_idx`: 形状 `[num_tokens_per_rank, topk]`，dtype 为 `int32`，每个 token 选中的 expert ID（仅本 rank 的 token）
@@ -40,7 +39,6 @@ def allgather_local_permute_fusion(
 - **输出：**
   - `remap_hidden_states`: expert-centric 布局的 hidden states
   - `SymmHandle`: 包含 scatter_idx、global_topk_weights、global_topk_idx 等信息，供 `unpermute_reducescatter_fusion` 使用
-- **注意：** 需要 `notify_dispatch_v2` 和 `allgather_permute` 内核已加载
 
 ### SymmBuffer.unpermute_reducescatter_fusion
 
@@ -53,27 +51,11 @@ def unpermute_reducescatter_fusion(
 ) -> torch.Tensor:
 ```
 
-- **功能：** 融合 unpermute + reduce-scatter。流水线实现：先对远端 chunk 计算 local unpermute 并通过 symmetric memory 推送到目标 rank，最后计算本 rank 的 chunk（与最后一次推送重叠）。所有 rank 的部分结果通过 sum_reduction 内核聚合。
 - **输入要求：**
   - `expert_output`: 形状 `[num_tokens * topk, hidden]`，dtype 为 `bfloat16`，expert 处理后的输出（与 allgather_local_permute_fusion 的 remap_hidden_states 形状相同）
   - `handle`: `SymmHandle` 对象，必须由同一轮 `allgather_local_permute_fusion` 返回，包含 `abs_scatter_idx` 和 `global_topk_weights`
   - `output`: 预分配的输出 tensor，形状 `[num_tokens_per_rank, hidden]`，dtype 为 `bfloat16`
 - **输出：** `output` tensor，包含 reduce-scatter 聚合后的结果
-- **注意：** 需要 `local_unpermute_copy_` 内核已加载；当 `num_ranks > 2` 时使用 `sum_reduction` 内核加速聚合
-
-### SymmHandle 数据结构
-
-```python
-@dataclass
-class SymmHandle:
-    scatter_idx: torch.Tensor         # [num_tokens, topk] int32，expert-relative 位置
-    global_topk_weights: torch.Tensor # [num_tokens, topk] float32，全局路由权重
-    num_tokens_per_rank: int          # 每个 rank 的 token 数
-    global_topk_idx: torch.Tensor     # [num_tokens, topk] int32，全局 expert 索引
-    rows_per_expert: torch.Tensor     # [num_experts] int32，每个 expert 的 token 行数
-    abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32，绝对写入位置（用于 unpermute）
-```
-
 
 ## Results — allgather_local_permute_fusion
 
