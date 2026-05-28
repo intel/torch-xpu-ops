@@ -98,6 +98,7 @@ with XPUPatchForImport(False):
     def _test_dequantize_fp16_cuda(self):
         self._test_dequantize_fp16(torch.device("xpu"))
 
+
 TestQuantizedTensor.test_compare_per_channel_device_numerics = (
     _test_compare_per_channel_device_numerics
 )
