@@ -40,12 +40,14 @@ _LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "libunpermute_
 _HAS_LOCAL_UNPERMUTE_KERNEL = False
 _HAS_UNPERMUTE_RS_KERNEL = False
 _HAS_REDUCE_SCATTER_SUM = False
+_HAS_SUM_REDUCTION = False
 if os.path.exists(_LIB_PATH):
     try:
         torch.ops.load_library(_LIB_PATH)
         _HAS_LOCAL_UNPERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_unpermute_copy_")
         _HAS_UNPERMUTE_RS_KERNEL = hasattr(torch.ops.symm_mem, "unpermute_reduce_scatter")
         _HAS_REDUCE_SCATTER_SUM = hasattr(torch.ops.symm_mem, "reduce_scatter_sum")
+        _HAS_SUM_REDUCTION = hasattr(torch.ops.symm_mem, "sum_reduction")
     except Exception:
         pass
 
@@ -323,9 +325,12 @@ def unpermute_reducescatter_fusion_native(
     workspace.barrier()
 
     # Sum received contributions from all other ranks
-    for i in range(world_size):
-        if i != rank:
-            output.add_(my_recv_buf[i])
+    if _HAS_SUM_REDUCTION and world_size > 2:
+        torch.ops.symm_mem.sum_reduction(my_recv_buf, output, rank, world_size)
+    else:
+        for i in range(world_size):
+            if i != rank:
+                output.add_(my_recv_buf[i])
 
     workspace.barrier()
     return output

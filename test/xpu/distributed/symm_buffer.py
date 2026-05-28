@@ -33,10 +33,12 @@ _UNPERMUTE_LIB_PATH = os.path.join(
     os.path.dirname(__file__), "..", "csrc", "libunpermute_reduce_scatter.so"
 )
 _HAS_LOCAL_UNPERMUTE_KERNEL = False
+_HAS_SUM_REDUCTION_KERNEL = False
 if os.path.exists(_UNPERMUTE_LIB_PATH):
     try:
         torch.ops.load_library(_UNPERMUTE_LIB_PATH)
         _HAS_LOCAL_UNPERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_unpermute_copy_")
+        _HAS_SUM_REDUCTION_KERNEL = hasattr(torch.ops.symm_mem, "sum_reduction")
     except Exception:
         pass
 
@@ -441,9 +443,14 @@ class SymmBuffer:
         torch.xpu.current_stream().wait_stream(stream)
         self.workspace.barrier()
 
-        for i in range(self.num_ranks):
-            if i != self.rank_idx:
-                output.add_(self._unpermute_my_recv_buf[i])
+        if _HAS_SUM_REDUCTION_KERNEL and self.num_ranks > 2:
+            torch.ops.symm_mem.sum_reduction(
+                self._unpermute_my_recv_buf, output, self.rank_idx, self.num_ranks
+            )
+        else:
+            for i in range(self.num_ranks):
+                if i != self.rank_idx:
+                    output.add_(self._unpermute_my_recv_buf[i])
 
         self.workspace.barrier()
         return output

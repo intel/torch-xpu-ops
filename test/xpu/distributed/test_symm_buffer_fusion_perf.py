@@ -24,7 +24,7 @@ from unpermute_reducescatter_fusion import (
 )
 from symm_buffer import SymmBuffer
 
-TOKENS_PER_RANK = 2048
+TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 2048))
 HIDDEN_SIZE = 2048
 TOPK = 8
 NUM_EXPERTS = 128

@@ -1,4 +1,4 @@
-# DeePEP Dispatch vs Allgather Local Permute Fusion — Performance Results
+# SymmBuffer Fusion API — Performance Results
 
 ## Configuration
 
@@ -9,159 +9,192 @@
 | num_experts | 128 |
 | world_size | 4 GPUs |
 | dtype | bfloat16 |
+| PCIe BW (discounted) | 22.0 GB/s |
+| HBM BW | 437.0 GB/s |
 | warmup | 20 iterations |
 | timed loops | 20 iterations |
 
 
-## API definition
+## SymmBuffer Fusion API
 
-### compute_scatter_idx
-
-```python
-def compute_scatter_idx(
-    topk_idx: torch.Tensor,            # [num_tokens, topk], int64, 全局 topk expert 索引
-    num_experts: int = None,           # expert 总数（可选，默认从 topk_idx 推断）
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    # 返回 (scatter_idx, expert_offsets)
-```
-
-- **input arguments:**
-  - `topk_idx`: `[num_tokens, topk]` int64 — 全局 token→expert 映射
-  - `num_experts`: 整数，expert 总数。若为 `None`，从 `topk_idx.max() + 1` 推断
-
-- **output:**
-  - `scatter_idx`: `[num_tokens, topk]` int32 — 每个 `(token, k)` 在输出 buffer 中的写入位置。输出按 expert 分组：expert 0 的所有 token 在前，接着 expert 1，依此类推。同一 expert 内 token 按原始顺序排列（stable sort）
-  - `expert_offsets`: `[num_experts + 1]` int64 — 每个 expert 在输出中的起始偏移（前缀和）。expert `e` 的 token 占据 `remap_hidden_states[expert_offsets[e] : expert_offsets[e+1]]`
-
-- **算法:**
-  1. 将 `topk_idx` flatten 为 `[num_tokens * topk]`
-  2. 按 expert ID stable sort → `sort_indices`
-  3. 计算逆置换：`scatter_idx[sort_indices[i]] = i`
-  4. `expert_offsets` = `bincount(topk_flat).cumsum()` 前缀补零
-
-- **`topk_idx` vs `scatter_idx` 的区别:**
-
-  两者 shape 相同 `[num_tokens, topk]`，但语义完全不同：
-
-  | | `topk_idx[i, k]` | `scatter_idx[i, k]` |
-  |---|---|---|
-  | **语义** | token `i` 的第 `k` 个 topk 选中了**哪个 expert** | token `i` 的第 `k` 份 hidden 应该**写到 output 的哪一行** |
-  | **值域** | `[0, num_experts)` (expert ID) | `[0, num_tokens * topk)` (output row index) |
-  | **用途** | 路由信息：告诉你"这个 token 去哪个 expert" | 内存布局：告诉 kernel "往 remap_hidden_states 的哪个位置写" |
-
-  具体例子（4 tokens, topk=2, 3 experts）：
-  ```
-  topk_idx = [[0, 1],    # token 0 → expert 0, expert 1
-              [2, 0],    # token 1 → expert 2, expert 0
-              [1, 2],    # token 2 → expert 1, expert 2
-              [0, 1]]    # token 3 → expert 0, expert 1
-
-  # 按 expert 排序后的输出布局:
-  #   expert 0 的 token: (0,0), (1,1), (3,0)  → 占 row 0,1,2
-  #   expert 1 的 token: (0,1), (2,0), (3,1)  → 占 row 3,4,5
-  #   expert 2 的 token: (1,0), (2,1)         → 占 row 6,7
-
-  scatter_idx = [[0, 3],   # token 0 写到 row 0 (expert0第1个), row 3 (expert1第1个)
-                [6, 1],    # token 1 写到 row 6 (expert2第1个), row 1 (expert0第2个)
-                [4, 7],    # token 2 写到 row 4 (expert1第2个), row 7 (expert2第2个)
-                [2, 5]]    # token 3 写到 row 2 (expert0第3个), row 5 (expert1第3个)
-
-  expert_offsets = [0, 3, 6, 8]
-  ```
-
-  **本质：** `scatter_idx` 编码了"当前 token 是该 expert 的第几个"这个信息。没有它，kernel 不知道往 expert 块内的哪个偏移写。
-
-### allgather_local_permute_fusion
+### SymmBuffer.allgather_local_permute_fusion
 
 ```python
 def allgather_local_permute_fusion(
-    hidden_shard: torch.Tensor,       # [num_tokens_per_rank, hidden_size], bfloat16, 本 rank 的输入 hidden states
-    topk_idx: torch.Tensor,           # [num_tokens, topk], int64, 全局 topk expert 索引（所有 rank 相同）
-    scatter_idx: torch.Tensor,        # [num_tokens, topk], int32, 预计算的 expert-sorted 写入位置（来自 compute_scatter_idx）
-    remap_hidden_states: torch.Tensor, # [num_tokens * topk, hidden_size], bfloat16, 输出（expert-centric 布局）
-    group: dist.ProcessGroup = None,   # TP process group（默认 WORLD）
-    group_name: str = None,            # symmetric memory workspace 名称
-    backend_stream: torch.xpu.Stream = None,  # overlap stream
-) -> torch.Tensor:                     # 返回 remap_hidden_states [num_tokens * topk, hidden_size]
+    self,
+    hidden_shard: torch.Tensor,       # [num_tokens_per_rank, hidden] bfloat16, 本 rank 的输入 hidden states
+    topk_idx: torch.Tensor,           # [num_tokens_per_rank, topk] int32, 本 rank 的 expert 分配索引
+    topk_weights: torch.Tensor,       # [num_tokens_per_rank, topk] float32, 本 rank 的路由权重
+    num_experts: int,                 # expert 总数
+    remap_hidden_states: torch.Tensor, # [num_tokens * topk, hidden] bfloat16, 预分配的输出 buffer
+) -> Tuple[torch.Tensor, SymmHandle]:
 ```
 
-### deepep_owner_dispatch
+- **功能：** 融合 allgather + local permute。通过 symmetric memory 将各 rank 的 hidden states、topk_idx、topk_weights 广播到所有 rank，然后使用 notify_dispatch_v2 内核直接计算 scatter_idx（无需外部预计算），最后调用 allgather_permute 内核将 hidden states 按 expert-centric 布局排列。
+- **输入要求：**
+  - `hidden_shard`: 形状 `[num_tokens_per_rank, hidden]`，dtype 为 `bfloat16`，本 rank 拥有的 token hidden states
+  - `topk_idx`: 形状 `[num_tokens_per_rank, topk]`，dtype 为 `int32`，每个 token 选中的 expert ID（仅本 rank 的 token）
+  - `topk_weights`: 形状 `[num_tokens_per_rank, topk]`，dtype 为 `float32`，路由权重（仅本 rank 的 token）
+  - `num_experts`: 整数，expert 总数（例如 128）
+  - `remap_hidden_states`: 预分配的输出 tensor，形状 `[num_tokens * topk, hidden]`，dtype 为 `bfloat16`，其中 `num_tokens = num_tokens_per_rank * world_size`
+- **输出：**
+  - `remap_hidden_states`: expert-centric 布局的 hidden states
+  - `SymmHandle`: 包含 scatter_idx、global_topk_weights、global_topk_idx 等信息，供 `unpermute_reducescatter_fusion` 使用
+- **注意：** 需要 `notify_dispatch_v2` 和 `allgather_permute` 内核已加载
+
+### SymmBuffer.unpermute_reducescatter_fusion
 
 ```python
-def deepep_owner_dispatch(
-    hidden_shard: torch.Tensor,        # [num_tokens_per_rank, hidden_size], bfloat16, 本 rank 的输入 hidden states
-    topk_idx: torch.Tensor,            # [num_tokens, topk], int64, 全局 topk expert 索引
-    remap_hidden_states: torch.Tensor, # [num_tokens * topk, hidden_size], bfloat16, 输出（仅填充本 rank 拥有的 expert 对应位置）
-    num_experts: int,                  # expert 总数（用于计算 ownership）
-    group: dist.ProcessGroup = None,   # TP process group（默认 WORLD）
-    group_name: str = None,            # symmetric memory workspace 名称
-    skip_copy: bool = False,           # 若 True，跳过 hidden_shard→symmetric memory 的 copy（需确保数据已就位）
-) -> torch.Tensor:                     # 返回 remap_hidden_states [num_tokens * topk, hidden_size]
+def unpermute_reducescatter_fusion(
+    self,
+    expert_output: torch.Tensor,   # [num_tokens * topk, hidden] bfloat16, expert 输出（expert-centric 布局）
+    handle: SymmHandle,            # 由 allgather_local_permute_fusion 返回的句柄
+    output: torch.Tensor,          # [num_tokens_per_rank, hidden] bfloat16, 预分配的输出 buffer
+) -> torch.Tensor:
 ```
 
-## Results
+- **功能：** 融合 unpermute + reduce-scatter。流水线实现：先对远端 chunk 计算 local unpermute 并通过 symmetric memory 推送到目标 rank，最后计算本 rank 的 chunk（与最后一次推送重叠）。所有 rank 的部分结果通过 sum_reduction 内核聚合。
+- **输入要求：**
+  - `expert_output`: 形状 `[num_tokens * topk, hidden]`，dtype 为 `bfloat16`，expert 处理后的输出（与 allgather_local_permute_fusion 的 remap_hidden_states 形状相同）
+  - `handle`: `SymmHandle` 对象，必须由同一轮 `allgather_local_permute_fusion` 返回，包含 `abs_scatter_idx` 和 `global_topk_weights`
+  - `output`: 预分配的输出 tensor，形状 `[num_tokens_per_rank, hidden]`，dtype 为 `bfloat16`
+- **输出：** `output` tensor，包含 reduce-scatter 聚合后的结果
+- **注意：** 需要 `local_unpermute_copy_` 内核已加载；当 `num_ranks > 2` 时使用 `sum_reduction` 内核加速聚合
+
+### SymmHandle 数据结构
+
+```python
+@dataclass
+class SymmHandle:
+    scatter_idx: torch.Tensor         # [num_tokens, topk] int32，expert-relative 位置
+    global_topk_weights: torch.Tensor # [num_tokens, topk] float32，全局路由权重
+    num_tokens_per_rank: int          # 每个 rank 的 token 数
+    global_topk_idx: torch.Tensor     # [num_tokens, topk] int32，全局 expert 索引
+    rows_per_expert: torch.Tensor     # [num_experts] int32，每个 expert 的 token 行数
+    abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32，绝对写入位置（用于 unpermute）
+```
+
+
+## Results — allgather_local_permute_fusion
+
+### tokens_per_rank = 1024
+
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **0.639** | **0.632** | **0.649** |
+
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| allgather (PCIe) | 12.0 MB | 22.0 GB/s | 0.571 |
+| permute R+W (HBM) | 144.0 MB | 437.0 GB/s | 0.346 |
+| **lower_bound** | — | — | **0.916** |
+| **efficiency** | — | — | **143.4%** |
 
 ### tokens_per_rank = 2048
 
-| Method | Avg (ms) | Min (ms) | Notes |
-|--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.013** | **1.009** | ownership pre-check skips ~10% PCIe reads |
-| **Allgather+permute (fused)** | **1.118** | **1.115** | single kernel, single stream, ring-ordered |
-| Allgather+permute w/o overlap | 1.869 | 1.861 | no overlap |
-| Allgather+permute w/ overlap | 1.365 | 1.322 | overlap(legacy) |
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **1.196** | **1.189** | **1.200** |
+
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| allgather (PCIe) | 24.0 MB | 22.0 GB/s | 1.141 |
+| permute R+W (HBM) | 288.0 MB | 437.0 GB/s | 0.691 |
+| **lower_bound** | — | — | **1.832** |
+| **efficiency** | — | — | **153.2%** |
 
 ### tokens_per_rank = 4096
 
-| Method | Avg (ms) | Min (ms) | Notes |
-|--------|----------|----------|-------|
-| **EP Dispatch (ring-ordered)** | **1.969** | **1.967** | |
-| **Allgather+permute (fused)** | **2.166** | **2.165** | |
-| Allgather+permute w/o overlap | 3.673 | 3.668 | (legacy) |
-| Allgather+permute w/ overlap | 2.820 | 2.627 | (legacy) |
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **2.441** | **2.311** | **4.840** |
+
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| allgather (PCIe) | 48.0 MB | 22.0 GB/s | 2.283 |
+| permute R+W (HBM) | 576.0 MB | 437.0 GB/s | 1.382 |
+| **lower_bound** | — | — | **3.665** |
+| **efficiency** | — | — | **150.1%** |
+
+### tokens_per_rank = 8192
+
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **4.540** | **4.533** | **4.543** |
+
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| allgather (PCIe) | 96.0 MB | 22.0 GB/s | 4.565 |
+| permute R+W (HBM) | 1152.0 MB | 437.0 GB/s | 2.764 |
+| **lower_bound** | — | — | **7.329** |
+| **efficiency** | — | — | **161.4%** |
 
 
-## Data Transfer Analysis
+## Results — unpermute_reducescatter_fusion
 
-Common parameters: `num_experts=128, topk=8, hidden_size=2048, dtype=bfloat16 (2B)`
+### tokens_per_rank = 1024
 
-Each token data = 2048 × 2B = **4 KB**
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **0.708** | **0.701** | **0.738** |
 
-### 4 devices × 2048 tokens_per_rank
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| reduce_scatter (PCIe) | 12.0 MB | 22.0 GB/s | 0.571 |
+| unpermute R+W (HBM) | 132.0 MB | 437.0 GB/s | 0.317 |
+| **lower_bound** | — | — | **0.887** |
+| **efficiency** | — | — | **125.4%** |
 
-- Device 0 owns 32/128 experts → P(slot on device 0) = 1/4
-- P(token unneeded) = (3/4)^8 ≈ 10.0%  →  **~90% of remote tokens need transfer**
-- Remote tokens = 3 × 2048 = 6144
+### tokens_per_rank = 2048
 
-| Method | Transferred tokens | Volume | Savings |
-|--------|-------------------|--------|---------|
-| Allgather (全拉) | 6144 | 24 MB | — |
-| EP Dispatch (only owned) | ~5530 | ~21.6 MB | **~10%** |
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **1.348** | **1.344** | **1.355** |
 
-### 8 devices × 1024 tokens_per_rank
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| reduce_scatter (PCIe) | 24.0 MB | 22.0 GB/s | 1.141 |
+| unpermute R+W (HBM) | 264.0 MB | 437.0 GB/s | 0.633 |
+| **lower_bound** | — | — | **1.775** |
+| **efficiency** | — | — | **131.7%** |
 
-- Device 0 owns 16/128 experts → P(slot on device 0) = 1/8
-- P(token unneeded) = (7/8)^8 ≈ 34.4%  →  **~65.6% of remote tokens need transfer**
-- Remote tokens = 7 × 1024 = 7168
+### tokens_per_rank = 4096
 
-| Method | Transferred tokens | Volume | Savings |
-|--------|-------------------|--------|---------|
-| Allgather (全拉) | 7168 | 28 MB | — |
-| EP Dispatch (only owned) | ~4702 | ~18.4 MB | **~34%** |
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **2.612** | **2.609** | **2.616** |
 
-### Scaling Projection (num_experts=128, topk=8)
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| reduce_scatter (PCIe) | 48.0 MB | 22.0 GB/s | 2.283 |
+| unpermute R+W (HBM) | 528.0 MB | 437.0 GB/s | 1.267 |
+| **lower_bound** | — | — | **3.550** |
+| **efficiency** | — | — | **135.9%** |
 
-General formula: `P(token unneeded) = ((W-1)/W)^topk`，其中 W = world_size
+### tokens_per_rank = 8192
 
-| world_size | experts/device | P(unneeded) | EP Dispatch 传输比例 | vs Allgather 节省 |
-|:----------:|:--------------:|:-----------:|:-------------------:|:----------------:|
-| 2 | 64 | (1/2)^8 = 0.4% | 99.6% | ~0% |
-| 4 | 32 | (3/4)^8 = 10.0% | 90.0% | **~10%** |
-| 8 | 16 | (7/8)^8 = 34.4% | 65.6% | **~34%** |
-| 16 | 8 | (15/16)^8 = 59.7% | 40.3% | **~60%** |
-| 32 | 4 | (31/32)^8 = 77.6% | 22.4% | **~78%** |
-| 64 | 2 | (63/64)^8 = 88.2% | 11.8% | **~88%** |
+| | Avg (ms) | Min (ms) | Max (ms) |
+|---|:---:|:---:|:---:|
+| **Measured** | **5.153** | **5.148** | **5.159** |
 
-**Takeaway**: Device 越多 → 每个 device 拥有的 expert 比例越小 (1/W) → ownership pre-check 跳过的无效读取越多 → EP Dispatch 相对 allgather 的传输量优势从 ~0% (2 devices) 增大到 ~88% (64 devices)。在大规模部署（≥16 devices）下，EP Dispatch 的选择性读取带来的传输量优势非常显著。
+| Projection | Data Volume | BW | Time (ms) |
+|---|:---:|:---:|:---:|
+| reduce_scatter (PCIe) | 96.0 MB | 22.0 GB/s | 4.565 |
+| unpermute R+W (HBM) | 1056.0 MB | 437.0 GB/s | 2.534 |
+| **lower_bound** | — | — | **7.099** |
+| **efficiency** | — | — | **137.8%** |
+
+
+## Summary
+
+| tokens_per_rank | AG+Permute Avg (ms) | AG+Permute Efficiency | Unperm+RS Avg (ms) | Unperm+RS Efficiency |
+|:---:|:---:|:---:|:---:|:---:|
+| 1024 | 0.639 | 143.4% | 0.708 | 125.4% |
+| 2048 | 1.196 | 153.2% | 1.348 | 131.7% |
+| 4096 | 2.441 | 150.1% | 2.612 | 135.9% |
+| 8192 | 4.540 | 161.4% | 5.153 | 137.8% |
+
+> Efficiency = lower_bound / measured × 100%。Efficiency > 100% 表示实测延迟低于 non-overlapped projection（PCIe + HBM 串行），说明 allgather/reduce-scatter 与 permute/unpermute 有效重叠。
 
 ## How to Reproduce
 
@@ -169,11 +202,8 @@ General formula: `P(token unneeded) = ((W-1)/W)^topk`，其中 W = world_size
 # Build the kernel
 cd test/xpu/csrc && python build.py
 
-# Run the allgather + local permute fusion
+# Run the SymmBuffer fusion performance benchmark
 cd test/xpu/distributed
-SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=1 mpirun -np 4 python test_allgather_local_permute_fusion.py
-
-# Run the standalone correctness + performance test
-SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=1 mpirun -np 4 python test_deepep_dispatch.py
+SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE_FOR_D2D_COPY=1 TOKENS_PER_RANK=2048 mpirun -np 4 python test_symm_buffer_fusion_perf.py
 ```
 

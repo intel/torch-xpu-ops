@@ -674,6 +674,187 @@ at::Tensor unpermute_reduce_scatter(
 }
 
 // ---------------------------------------------------------------------------
+// Sum reduction kernel: sums all slices of a [world_size, tokens_per_rank, hidden]
+// buffer (excluding the self-rank slice) into output in a single kernel launch.
+//
+// Replaces the Python loop:
+//   for i in range(world_size):
+//       if i != rank:
+//           output.add_(recv_buf[i])
+//
+// For each (token_idx, h):
+//   output[token_idx, h] += sum_{i != rank}(recv_buf[i, token_idx, h])
+// ---------------------------------------------------------------------------
+
+template <typename T>
+struct SumReductionScalarKernel {
+  const T* recv_buf_ptr;
+  T* output_ptr;
+  int64_t num_tokens_per_rank;
+  int64_t hidden_size;
+  int64_t rank;
+  int64_t world_size;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t idx = static_cast<int64_t>(item.get_global_id(0));
+    const int64_t total = num_tokens_per_rank * hidden_size;
+    if (idx >= total) return;
+
+    const int64_t h = idx % hidden_size;
+    const int64_t token_idx = idx / hidden_size;
+
+    float acc = 0.0f;
+    const int64_t slice_stride = num_tokens_per_rank * hidden_size;
+    for (int64_t i = 0; i < world_size; ++i) {
+      if (i == rank) continue;
+      acc += static_cast<float>(
+          recv_buf_ptr[i * slice_stride + token_idx * hidden_size + h]);
+    }
+    const int64_t out_idx = token_idx * hidden_size + h;
+    output_ptr[out_idx] = static_cast<T>(
+        static_cast<float>(output_ptr[out_idx]) + acc);
+  }
+};
+
+template <typename scalar_t, int VEC_SIZE>
+struct SumReductionVecKernel {
+  const scalar_t* recv_buf_ptr;
+  scalar_t* output_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+
+  void operator()(sycl::nd_item<2> item) const {
+    const int32_t token_idx = static_cast<int32_t>(item.get_global_id(0));
+    const int32_t vec_h = static_cast<int32_t>(item.get_global_id(1));
+    if (token_idx >= num_tokens_per_rank || vec_h >= hidden_vecs) return;
+
+    const int32_t h_start = vec_h * VEC_SIZE;
+    float acc[VEC_SIZE] = {};
+
+    const int64_t slice_stride =
+        static_cast<int64_t>(num_tokens_per_rank) * hidden_size;
+    const int64_t row_offset =
+        static_cast<int64_t>(token_idx) * hidden_size + h_start;
+
+    // Branchless slice iteration: skip rank without divergent branch
+    #pragma unroll 8
+    for (int32_t step = 0; step < world_size - 1; ++step) {
+      const int32_t i = step + (step >= rank);
+      const scalar_t* src = recv_buf_ptr + i * slice_stride + row_offset;
+      #pragma unroll
+      for (int j = 0; j < VEC_SIZE; ++j) {
+        acc[j] += static_cast<float>(src[j]);
+      }
+    }
+
+    scalar_t* dst = output_ptr + row_offset;
+    #pragma unroll
+    for (int j = 0; j < VEC_SIZE; ++j) {
+      dst[j] = static_cast<scalar_t>(static_cast<float>(dst[j]) + acc[j]);
+    }
+  }
+};
+
+at::Tensor sum_reduction(
+    const at::Tensor& recv_buf,
+    at::Tensor output,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      recv_buf.dim() == 3,
+      "sum_reduction: recv_buf must be 3D [world_size, tokens_per_rank, hidden]");
+  TORCH_CHECK(
+      recv_buf.size(0) == world_size,
+      "sum_reduction: recv_buf dim0 must equal world_size");
+  TORCH_CHECK(recv_buf.is_contiguous());
+  TORCH_CHECK(output.dim() == 2, "sum_reduction: output must be 2D");
+  TORCH_CHECK(output.is_contiguous());
+  TORCH_CHECK(rank >= 0 && rank < world_size);
+  TORCH_CHECK(output.size(0) == recv_buf.size(1));
+  TORCH_CHECK(output.size(1) == recv_buf.size(2));
+  TORCH_CHECK(
+      recv_buf.scalar_type() == output.scalar_type(),
+      "sum_reduction: recv_buf and output must have same dtype");
+  TORCH_CHECK(recv_buf.is_xpu(), "sum_reduction: recv_buf must be XPU");
+  TORCH_CHECK(output.is_xpu(), "sum_reduction: output must be XPU");
+  TORCH_CHECK(
+      recv_buf.device() == output.device(),
+      "sum_reduction: recv_buf and output must be on same device");
+
+  const int64_t num_tokens_per_rank = recv_buf.size(1);
+  const int64_t hidden_size = recv_buf.size(2);
+
+  if (num_tokens_per_rank == 0 || hidden_size == 0) {
+    return output;
+  }
+
+  // Fast path: use ATen add_() when the per-chunk data is small enough that
+  // L2 caching across add_ calls outperforms our single-pass kernel.
+  // Crossover: ~4M elements per chunk (e.g., tpr=768, hidden=7168, bf16).
+  constexpr int64_t FAST_PATH_ELEM_THRESHOLD = 4 * 1024 * 1024;
+  const int64_t elements_per_chunk = num_tokens_per_rank * hidden_size;
+  if (elements_per_chunk < FAST_PATH_ELEM_THRESHOLD) {
+    for (int64_t i = 0; i < world_size; ++i) {
+      if (i != rank) {
+        output.add_(recv_buf.select(0, i));
+      }
+    }
+    return output;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int32_t wg_vecs = 256;  // work-items per WG along hidden dim
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "sum_reduction", [&]() {
+        if (hidden_size % VEC_SIZE == 0 &&
+            num_tokens_per_rank <= INT_MAX && hidden_size <= INT_MAX) {
+          const int32_t hv = static_cast<int32_t>(hidden_size / VEC_SIZE);
+          // 2D launch: dim0=token, dim1=vec_h — avoids integer division
+          const int32_t gd0 = static_cast<int32_t>(num_tokens_per_rank);
+          const int32_t gd1 = ((hv + wg_vecs - 1) / wg_vecs) * wg_vecs;
+          auto kfn = SumReductionVecKernel<scalar_t, VEC_SIZE>{
+              recv_buf.data_ptr<scalar_t>(),
+              output.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              hv};
+          sycl_kernel_submit(
+              sycl::range<2>(gd0, gd1),
+              sycl::range<2>(1, wg_vecs),
+              queue, kfn);
+        } else {
+          constexpr int64_t threads = 256;
+          const int64_t total = num_tokens_per_rank * hidden_size;
+          const int64_t blocks = (total + threads - 1) / threads;
+          auto kfn = SumReductionScalarKernel<scalar_t>{
+              recv_buf.data_ptr<scalar_t>(),
+              output.data_ptr<scalar_t>(),
+              num_tokens_per_rank,
+              hidden_size,
+              rank,
+              world_size};
+          sycl_kernel_submit(
+              sycl::range<1>(blocks * threads),
+              sycl::range<1>(threads),
+              queue, kfn);
+        }
+      });
+
+  return output;
+}
+
+// ---------------------------------------------------------------------------
 // Reduce-scatter sum kernel: reads all ranks' local_reduced from symmetric
 // memory and sums them for this rank's token shard.
 //
@@ -850,6 +1031,9 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "reduce_scatter_sum(Tensor rank_buffers_ptr, Tensor(a!) output, "
       "int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "sum_reduction(Tensor recv_buf, Tensor(a!) output, "
+      "int rank, int world_size) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
@@ -857,4 +1041,5 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("local_unpermute_copy_v2", local_unpermute_copy_v2);
   m.impl("unpermute_reduce_scatter", unpermute_reduce_scatter);
   m.impl("reduce_scatter_sum", reduce_scatter_sum);
+  m.impl("sum_reduction", sum_reduction);
 }
