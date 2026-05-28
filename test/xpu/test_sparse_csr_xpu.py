@@ -1998,24 +1998,21 @@ class TestSparseCSR(TestCase):
         col = torch.tensor([0, 2, 1, 0, 2], dtype=torch.int64, device=device)
         vals = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=dtype, device=device)
 
-        @torch.sparse.check_sparse_tensor_invariants(enable=False)
-        def run():
-            sparse = torch.sparse_csr_tensor(crow, col, vals, size=(1, 3, 3))
-            return sparse.to_dense()
-
-        result = run()
-
-        # Expected dense layout for the single batch:
-        #   row 0: col 0 -> 1, col 2 -> 2  =>  [1, 0, 2]
-        #   row 1: col 1 -> 3              =>  [0, 3, 0]
-        #   row 2: col 0 -> 4, col 2 -> 5  =>  [4, 0, 5]
-        expected = torch.tensor(
-            [[[1.0, 0.0, 2.0], [0.0, 3.0, 0.0], [4.0, 0.0, 5.0]]],
+        expected_2d = torch.tensor(
+            [[1.0, 0.0, 2.0], [0.0, 3.0, 0.0], [4.0, 0.0, 5.0]],
             dtype=dtype,
             device=device,
         )
 
-        self.assertEqual(result, expected)
+        # Case 1: batch size = 1
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse1 = torch.sparse_csr_tensor(crow, col, vals, size=(1, 3, 3))
+        self.assertEqual(sparse1.to_dense(), expected_2d.unsqueeze(0))
+
+        # Case 2: batch size = 3
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse3 = torch.sparse_csr_tensor(crow, col, vals, size=(3, 3, 3))
+        self.assertEqual(sparse3.to_dense(), expected_2d.unsqueeze(0).expand(3, 3, 3))
 
     @skipMeta
     @skipCPUIfNoMklSparse
