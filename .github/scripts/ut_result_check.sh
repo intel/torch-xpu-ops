@@ -2,7 +2,7 @@
 # Test Suite Runner for Intel Torch-XPU-Ops
 # Usage: TEST_PLATFORM=linux ./script.sh <test_suite>
 
-# Available suites: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut
+# Available suites: op_regression, op_extended, op_ut, test_xpu, torch_xpu, inductor, xpu_distributed, skipped_ut
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
@@ -35,6 +35,8 @@ declare -A EXPECTED_CASES=(
     ["op_regression_dev1"]=1
     ["op_ut"]="${OP_UT_EXPECTED[$TEST_PLATFORM]}"
     ["test_xpu"]=69
+    ["torch_xpu"]=""
+    ["inductor"]=""
 )
 
 # Tests that are known to randomly pass and should be ignored when detecting new passes
@@ -376,7 +378,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|torch_xpu|inductor)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -391,6 +393,6 @@ case "$ut_suite" in
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
         printf "💡 Available: op_regression, op_regression_dev1, op_extended, " >&2
-        printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
+        printf "op_ut, test_xpu, torch_xpu, inductor, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
