@@ -16,6 +16,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -53,10 +54,11 @@ struct RoiPoolForwardKernel {
           static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
       int wstart =
           static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
-      int hend =
-          static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
-      int wend =
-          static_cast<int>(std::ceil(static_cast<T>(pw + 1) * bin_size_w));
+      using opmath_t = at::opmath_type<T>;
+      int hend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(ph + 1) * static_cast<opmath_t>(bin_size_h)));
+      int wend = static_cast<int>(sycl::ceil(
+          static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
       hstart = std::min(std::max(hstart + roi_start_h, 0), height_);

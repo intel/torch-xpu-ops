@@ -2215,6 +2215,49 @@ class TestSparse(TestSparseBase):
         test_shape(1000, 100, 0, 0)
         test_shape(1000, 100, 0, 20)
 
+    @onlyOn("xpu")
+    @coalescedonoff
+    @dtypes(torch.double)
+    def test_hspmm_out(self, device, dtype, coalesced):
+        x = self._gen_sparse(2, 20, [7, 5], dtype, device, coalesced)[0]
+        y = self.randn(5, 3, dtype=dtype, device=device)
+        out = torch.empty(0, dtype=dtype, device=device).to_sparse()
+
+        result = torch.ops.aten.hspmm.out(x, y, out=out)
+        expected = torch.mm(self.safeToDense(x), y)
+
+        self.assertIs(result, out)
+        self.assertEqual(result.to_dense(), expected)
+
+    @onlyOn("xpu")
+    @dtypes(torch.double)
+    def test_hspmm_out_errors(self, device, dtype):
+        x = self._gen_sparse(2, 10, [4, 3], dtype, device, coalesced=True)[0]
+        out = torch.empty(0, dtype=dtype, device=device).to_sparse()
+
+        with self.assertRaisesRegex(RuntimeError, "Expected dim 0 size 3"):
+            torch.ops.aten.hspmm.out(
+                x, self.randn(2, 5, dtype=dtype, device=device), out=out
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "expected 'mat2' to be XPU|mat2 is on cpu",
+        ):
+            torch.ops.aten.hspmm.out(
+                x, self.randn(3, 5, dtype=dtype, device="cpu"), out=out
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "expected 'out' to be XPU|out is on cpu|different from other tensors on cpu",
+        ):
+            torch.ops.aten.hspmm.out(
+                x,
+                self.randn(3, 5, dtype=dtype, device=device),
+                out=torch.empty(0, dtype=dtype, device="cpu").to_sparse(),
+            )
+
     @coalescedonoff
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
@@ -6711,10 +6754,9 @@ class TestSparseAny(TestCase):
         if layout is torch.sparse_bsr and not masked or layout is torch.sparse_bsc:
             with self.assertRaisesRegex(
                 RuntimeError,
-                r"addmm: computation on (CPU|CUDA) is not implemented for Strided \+ Sparse(Bsr|Bsc) @ Strided",
+                r"addmm: computation on (CPU|CUDA|XPU) is not implemented for Strided \+ Sparse(Bsr|Bsc) @ Strided",
             ):
                 torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
-            self.skipTest("NOT IMPL")
         elif (
             layout in {torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc} and masked
         ):
@@ -6722,11 +6764,10 @@ class TestSparseAny(TestCase):
                 RuntimeError,
                 r"(sparse_addmm_sparse_backward: unsupported combination of layouts,"
                 r" grad: Strided, mat1: Sparse(Csc|Bsr|Bsc), mat2: Strided"
-                r"|addmm: computation on (CPU|CUDA) is not implemented for "
+                r"|addmm: computation on (CPU|CUDA|XPU) is not implemented for "
                 r"Strided \+ Sparse(Csc|Bsr|Bsc) @ Strided without MKL)",
             ):
                 torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
-            self.skipTest("NOT IMPL")
         else:
             torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
 

@@ -275,10 +275,8 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
         self.assertEqual(len(ret), 1)
         self.assertEqual(x, ret[0])
 
+    @skipIfXpu(msg="XPU opcheck path for missing abstract impl is not supported")
     def test_missing_abstract_impl(self, device):
-        if device == "xpu":
-            self.skipTest("XPU opcheck path for missing abstract impl is not supported")
-
         lib = self.lib()
         lib.define("foo(Tensor x) -> Tensor")
         op = self.ns().foo.default
@@ -459,7 +457,7 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
             torch.library.opcheck(op.op, args, kwargs)
 
     def test_opcheck_fails_basic(self, device):
-        if device == "xpu":
+        if device.startswith("xpu"):
             self.skipTest(
                 "XPU schema error path for this opcheck case is not supported"
             )
