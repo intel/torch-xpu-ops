@@ -414,7 +414,7 @@ class SymmBuffer:
             raise ValueError(
                 f"output rows ({output.shape[0]}) must equal num_tokens_per_rank ({num_tokens_per_rank})"
             )
-
+        self.workspace.barrier()
         my_chunk_start = self.rank_idx * num_tokens_per_rank
 
         # Pipeline: remote chunks compute+push first, own-chunk at END
