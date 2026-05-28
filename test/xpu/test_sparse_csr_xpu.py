@@ -1987,6 +1987,7 @@ class TestSparseCSR(TestCase):
     def test_sparse_csc_to_dense(self, device, dtype):
         self._test_sparse_compressed_to_dense(device, dtype, torch.sparse_csc)
 
+    @onlyOn(["xpu"])
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_sparse_csr_to_dense_implicit_batch(self, device, dtype):
         # Regression test for https://github.com/intel/torch-xpu-ops/issues/2801
