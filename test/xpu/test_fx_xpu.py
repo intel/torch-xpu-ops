@@ -21,9 +21,9 @@ from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 # test/fx is not in the XPUPatchForImport default search path; add it so
 # the TestCommonPass import works.
@@ -392,9 +392,19 @@ event={kernel_event} node=add stack_trace=a = s + self.c""",
     )
 
 
-TestFX.test_profiler_stack_trace_augmentation = _test_profiler_stack_trace_augmentation
-TestFX.test_profiler_multiple_modules = _test_profiler_multiple_modules
-TestFX.test_profiler_nested_graph_modules = _test_profiler_nested_graph_modules
+register_test(
+    TestFX,
+    TestFX.test_profiler_stack_trace_augmentation,
+    _test_profiler_stack_trace_augmentation,
+)
+register_test(
+    TestFX, TestFX.test_profiler_multiple_modules, _test_profiler_multiple_modules
+)
+register_test(
+    TestFX,
+    TestFX.test_profiler_nested_graph_modules,
+    _test_profiler_nested_graph_modules,
+)
 
 
 if __name__ == "__main__":

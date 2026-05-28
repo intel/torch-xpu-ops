@@ -14,9 +14,9 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import parametrize, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_scaled_matmul_cuda import (
@@ -47,7 +47,11 @@ def _xpu_test_float8_scale_fast_accum(self, device) -> None:
     self.assertEqual(out_fp8, out_fp8_s)
 
 
-TestFP8Matmul.test_float8_scale_fast_accum = _xpu_test_float8_scale_fast_accum
+register_test(
+    TestFP8Matmul,
+    TestFP8Matmul.test_float8_scale_fast_accum,
+    _xpu_test_float8_scale_fast_accum,
+)
 
 
 def _xpu_test_float8_rowwise_scaling_sanity(self, device, use_fast_accum: bool) -> None:
@@ -76,9 +80,13 @@ def _xpu_test_float8_rowwise_scaling_sanity(self, device, use_fast_accum: bool) 
     )
 
 
-TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
-    "use_fast_accum", [True, False]
-)(_xpu_test_float8_rowwise_scaling_sanity)
+register_test(
+    TestFP8Matmul,
+    TestFP8Matmul.test_float8_rowwise_scaling_sanity,
+    parametrize("use_fast_accum", [True, False])(
+        _xpu_test_float8_rowwise_scaling_sanity
+    ),
+)
 
 
 # Override test_scaled_mm_deepseek_error_messages: upstream gates with @onlyCUDA and a

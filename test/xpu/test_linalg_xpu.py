@@ -44,9 +44,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import register_test, XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import register_test, XPUPatchForImport
 
 
 def large_bmm_mm_backward(self, device):
@@ -730,8 +730,8 @@ TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
 TestLinalg.test_matmul_45724 = matmul_45724
 TestLinalg.test_preferred_linalg_library = preferred_linalg_library
 TestLinalg.test_addbmm = addbmm
-TestLinalg.test__int_mm = _int_mm
-TestLinalg.test__int4_mm = _int4_mm
+register_test(TestLinalg, TestLinalg.test__int_mm, _int_mm)
+register_test(TestLinalg, TestLinalg.test__int4_mm, _int4_mm)
 TestLinalg.test_matmul_small_brute_force_1d_Nd = matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd

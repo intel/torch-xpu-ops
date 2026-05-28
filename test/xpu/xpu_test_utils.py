@@ -14,6 +14,7 @@
 
 
 import copy
+import functools
 import logging
 import os
 import sys
@@ -639,7 +640,37 @@ def ModuleTest_test_xpu(self, test_case):
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
-ModuleTest.test_cuda = ModuleTest_test_xpu
+def register_test(cls, original_func, override_func):
+    if not callable(original_func):
+        raise TypeError(
+            f"Expected original_func to be callable, got {type(original_func)}"
+        )
+    if not callable(override_func):
+        raise TypeError(
+            f"Expected override_func to be callable, got {type(override_func)}"
+        )
+
+    target_name = original_func.__name__
+    if not target_name.startswith("test_"):
+        raise ValueError(
+            f"Registered test name must start with 'test_', got {target_name!r}"
+        )
+    if not hasattr(cls, target_name):
+        raise AttributeError(
+            f"Cannot register {override_func.__name__!r} as "
+            f"{cls.__name__}.{target_name}: target test does not exist"
+        )
+
+    @functools.wraps(override_func)
+    def wrapper(*args, **kwargs):
+        return override_func(*args, **kwargs)
+
+    wrapper.__name__ = target_name
+    wrapper.__qualname__ = f"{cls.__name__}.{target_name}"
+    setattr(cls, target_name, wrapper)
+
+
+register_test(ModuleTest, ModuleTest.test_cuda, ModuleTest_test_xpu)
 
 
 def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
@@ -714,7 +745,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         )
 
 
-CriterionTest.test_cuda = CriterionTest_test_xpu
+register_test(CriterionTest, CriterionTest.test_cuda, CriterionTest_test_xpu)
 
 from functools import partial
 
