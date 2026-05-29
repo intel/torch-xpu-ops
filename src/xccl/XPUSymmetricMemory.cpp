@@ -388,12 +388,18 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto store = group->getStore();
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
 
-  // SYCL/L0 IPC import uses `pidfd_getfd` between peer processes.
-  // Using prctl(PR_SET_PTRACER, ppid) ensures that only the parent process can
-  // trace the current process.
+  // SYCL/L0 IPC import uses `pidfd_getfd` between peer processes, which
+  // requires PTRACE_MODE_ATTACH_REALCREDS on the target pid. With Yama
+  // (/proc/sys/kernel/yama/ptrace_scope >= 1, the default on most distros),
+  // only ancestor processes or those explicitly whitelisted via
+  // PR_SET_PTRACER can attach. Sibling ranks spawned by a launcher are
+  // neither ancestors nor descendants of each other, so
+  // PR_SET_PTRACER(getppid()) is NOT sufficient -- it only authorizes the
+  // launcher. We need PR_SET_PTRACER_ANY so any peer rank can import our
+  // IPC handles. This is scoped to the lifetime of this process.
   static c10::once_flag prctl_once;
   c10::call_once(prctl_once, []() {
-    (void)::prctl(PR_SET_PTRACER, ::getppid(), 0, 0, 0);
+    (void)::prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
   });
 
   auto local_req = RendezvousRequest{
