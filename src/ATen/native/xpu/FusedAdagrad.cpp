@@ -77,23 +77,41 @@ void _fused_adagrad_kernel_xpu_(
         maximize,
         grad_scale,
         found_inf);
-  } else {
-    TORCH_CHECK(
-        at::native::check_fast_path_restrictions({params, grads, state_sums}),
-        "params, grads, and state_sums must have same dtype, device, and layout");
-    xpu::fused_adagrad_kernel(
-        params,
-        grads,
-        state_sums,
-        state_steps,
-        lr,
-        lr_decay,
-        weight_decay,
-        eps,
-        maximize,
-        grad_scale,
-        found_inf);
+    return;
   }
+
+  // Manually check devices since we specify no device check in
+  // native_functions.yaml
+  Device param_device = params[0].device();
+  if (grad_scale != std::nullopt) {
+    TORCH_CHECK(
+        grad_scale->device() == param_device,
+        "grad_scale must be on the same GPU device as the params");
+  }
+  if (found_inf != std::nullopt) {
+    TORCH_CHECK(
+        found_inf->device() == param_device,
+        "found_inf must be on the same GPU device as the params");
+  }
+  TORCH_CHECK(
+      lr.device() == param_device,
+      "lr must be on the same GPU device as the params");
+
+  TORCH_CHECK(
+      at::native::check_fast_path_restrictions({params, grads, state_sums}),
+      "params, grads, and state_sums must have same dtype, device, and layout");
+  xpu::fused_adagrad_kernel(
+      params,
+      grads,
+      state_sums,
+      state_steps,
+      lr,
+      lr_decay,
+      weight_decay,
+      eps,
+      maximize,
+      grad_scale,
+      found_inf);
 }
 
 } // namespace native
