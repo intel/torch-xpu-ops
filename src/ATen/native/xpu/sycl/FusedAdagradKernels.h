@@ -23,8 +23,8 @@ TORCH_XPU_API void fused_adagrad_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const std::optional<at::Tensor>& grad_scale,
-    const std::optional<at::Tensor>& found_inf);
+    const float* grad_scale_ptr,
+    const float* found_inf_ptr);
 
 TORCH_XPU_API void fused_adagrad_kernel(
     at::TensorList params,
@@ -36,7 +36,7 @@ TORCH_XPU_API void fused_adagrad_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const std::optional<at::Tensor>& grad_scale,
-    const std::optional<at::Tensor>& found_inf);
+    const float* grad_scale_ptr,
+    const float* found_inf_ptr);
 
 } // namespace at::native::xpu

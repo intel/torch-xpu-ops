@@ -38,6 +38,12 @@ void _fused_adagrad_kernel_xpu_(
   TORCH_CHECK(
       at::native::check_fast_path_restrictions({params, grads, state_sums}),
       "params, grads, and state_sums must have same dtype, device, and layout");
+
+  const float* grad_scale_ptr =
+      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+  const float* found_inf_ptr =
+      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
+
   xpu::fused_adagrad_kernel(
       params,
       grads,
@@ -48,8 +54,8 @@ void _fused_adagrad_kernel_xpu_(
       weight_decay,
       eps,
       maximize,
-      grad_scale,
-      found_inf);
+      grad_scale_ptr,
+      found_inf_ptr);
 }
 
 void _fused_adagrad_kernel_xpu_(
@@ -100,6 +106,12 @@ void _fused_adagrad_kernel_xpu_(
   TORCH_CHECK(
       at::native::check_fast_path_restrictions({params, grads, state_sums}),
       "params, grads, and state_sums must have same dtype, device, and layout");
+
+  const float* grad_scale_ptr =
+      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+  const float* found_inf_ptr =
+      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
+
   xpu::fused_adagrad_kernel(
       params,
       grads,
@@ -110,8 +122,8 @@ void _fused_adagrad_kernel_xpu_(
       weight_decay,
       eps,
       maximize,
-      grad_scale,
-      found_inf);
+      grad_scale_ptr,
+      found_inf_ptr);
 }
 
 } // namespace native
