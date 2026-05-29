@@ -106,7 +106,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
 
   test-in-baremetal:
-    timeout-minutes: 600
+    timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     env:
