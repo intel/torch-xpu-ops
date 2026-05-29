@@ -377,6 +377,8 @@ void gemm_dQ(
 
 template <
     bool is_causal,
+    bool Is_even_N = false,
+    bool Is_even_M = false,
     typename Engine0,
     typename Layout0,
     typename Engine1,
@@ -389,6 +391,12 @@ CUTLASS_DEVICE void apply_mask(
     int m_size,
     int n_size,
     int diagonal_offset = 0) {
+  // When both M and N dimensions are even (no tail), all positions are
+  // in bounds -- skip the OOB position mask entirely.
+  constexpr bool skip_pos_mask = Is_even_N && Is_even_M;
+  if constexpr (!is_causal && skip_pos_mask) {
+    return;
+  }
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
   CUTLASS_PRAGMA_UNROLL
   for (int n = 0; n < size<1>(tensor); ++n) {
@@ -398,8 +406,10 @@ CUTLASS_DEVICE void apply_mask(
       int x = n_offset + get<1>(rC_2d(m, n));
       // mask out of bound positions with -inf, so that after softmax they
       // become 0 and do not contribute to the output
-      if (y >= m_size || x >= n_size) {
-        tensor(m, n) = -INFINITY;
+      if constexpr (!skip_pos_mask) {
+        if (y >= m_size || x >= n_size) {
+          tensor(m, n) = -INFINITY;
+        }
       }
 
       // apply bottom-right causal mask
@@ -430,41 +440,29 @@ CUTLASS_DEVICE void scale_apply_exp2(
   static_assert(Layout0::rank == 2, "Only support 2D Tensor");
   static_assert(Layout1::rank == 1, "Only support 1D Tensor");
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
-  if constexpr (Is_even_M) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int mi = 0; mi < size<0>(tensor); ++mi) {
-      int m = get<0>(rC_2d(mi, 0));
-      const bool max_is_inf = max(m) == -INFINITY;
-      CUTLASS_PRAGMA_UNROLL
-      for (int ni = 0; ni < size<1>(tensor); ++ni) {
-        if (max_is_inf) {
-          tensor(mi, ni) = 0.f;
-        } else {
-          tensor(mi, ni) =
-              exp2f(tensor(mi, ni) * scale_softmax_log2 - max(m) * M_LOG2E);
+  CUTLASS_PRAGMA_UNROLL
+  for (int mi = 0; mi < size<0>(tensor); ++mi) {
+    int m = get<0>(rC_2d(mi, 0));
+    if constexpr (!Is_even_M) {
+      if (m >= tail_m) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int ni = 0; ni < size<1>(tensor); ++ni) {
+          tensor(mi, ni) = 0.0f;
         }
+        continue;
       }
     }
-  } else {
+    const float max_scaled = max(m) == -INFINITY ? 0.f : max(m) * M_LOG2E;
     CUTLASS_PRAGMA_UNROLL
-    for (int mi = 0; mi < size<0>(tensor); ++mi) {
-      int m = get<0>(rC_2d(mi, 0));
-      const bool max_is_inf = m >= tail_m || max(m) == -INFINITY;
-      CUTLASS_PRAGMA_UNROLL
-      for (int ni = 0; ni < size<1>(tensor); ++ni) {
-        if (max_is_inf) {
-          tensor(mi, ni) = 0.f;
-        } else {
-          tensor(mi, ni) =
-              exp2f(tensor(mi, ni) * scale_softmax_log2 - max(m) * M_LOG2E);
-        }
-      }
+    for (int ni = 0; ni < size<1>(tensor); ++ni) {
+      tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);
     }
   }
 }
 
 template <
     bool Is_even_M,
+    bool is_dropout,
     class Engine0,
     class Layout0,
     class Engine1,
@@ -480,33 +478,24 @@ CUTLASS_DEVICE void softmax_backward(
     Tensor<Engine3, Layout3>& rC,
     const int tail_m,
     const float scale,
-    const bool is_dropout = false,
     const float rp_dropout = 1.0f) {
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
-  auto pointwise_mult = [is_dropout, scale, rp_dropout](
-                            float p, float dp, float d) {
-    return scale * p * (!is_dropout || p >= 0 ? dp * rp_dropout - d : d);
-  };
-  if constexpr (Is_even_M) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int mi = 0; mi < size<0>(dP); ++mi) {
-      int m = get<0>(rC_2d(mi, 0));
-      const float dpsum = dP_sum(m);
-      CUTLASS_PRAGMA_UNROLL
-      for (int ni = 0; ni < size<1>(dP); ++ni) {
-        dP(mi, ni) = pointwise_mult(P(mi, ni), dP(mi, ni), dpsum);
-      }
+  CUTLASS_PRAGMA_UNROLL
+  for (int mi = 0; mi < size<0>(dP); ++mi) {
+    int m = get<0>(rC_2d(mi, 0));
+    if constexpr (!Is_even_M) {
+      if (m >= tail_m)
+        continue;
     }
-  } else {
+    const float dpsum = dP_sum(m);
     CUTLASS_PRAGMA_UNROLL
-    for (int mi = 0; mi < size<0>(dP); ++mi) {
-      int m = get<0>(rC_2d(mi, 0));
-      if (m < tail_m) {
-        const float dpsum = dP_sum(m);
-        CUTLASS_PRAGMA_UNROLL
-        for (int ni = 0; ni < size<1>(dP); ++ni) {
-          dP(mi, ni) = pointwise_mult(P(mi, ni), dP(mi, ni), dpsum);
-        }
+    for (int ni = 0; ni < size<1>(dP); ++ni) {
+      if constexpr (is_dropout) {
+        float p = P(mi, ni);
+        dP(mi, ni) =
+            scale * p * (p >= 0 ? dP(mi, ni) * rp_dropout - dpsum : dpsum);
+      } else {
+        dP(mi, ni) = scale * P(mi, ni) * (dP(mi, ni) - dpsum);
       }
     }
   }
@@ -566,7 +555,7 @@ void mha_reorder_copy(
   mha_copy(trait, tiled_mma, r16, m);
 }
 
-template <bool Is_even_N, class Trait>
+template <bool Is_even_N, bool is_dropout, class Trait>
 void dq_dk_dv_1colblock(
     Trait& trait,
     Param<typename Trait::DType>& param,
@@ -586,16 +575,6 @@ void dq_dk_dv_1colblock(
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
   auto group = compat::get_nd_item<1>().get_group();
   auto bofst = Boffset(param);
-
-  FLASH_NAMESPACE::Dropout dropout(
-      param.rng_seed[0],
-      param.rng_offset[0],
-      param.p_dropout_in_uint16_t,
-      bidb,
-      bidh,
-      local_id,
-      param.num_head_q);
-  bool is_dropout = param.p_dropout < 1.0f;
 
   const index_t q_offset = bofst.q_offset(bidb, bidh, 0);
   const index_t k_offset = bofst.k_offset(bidb, bidhkv, n_block * kBlockN);
@@ -740,14 +719,25 @@ void dq_dk_dv_1colblock(
       Tensor scores =
           make_tensor(rS.data(), convert_layout_acc_layout(rS.layout()));
 
-      apply_mask<is_causal>(
-          scores,
-          taccScS_rt,
-          m_block * kBlockM,
-          n_block * kBlockN,
-          param.seq_len_q,
-          param.seq_len_kv,
-          param.seq_len_kv - param.seq_len_q);
+      if (Is_even_M) {
+        apply_mask<is_causal, Is_even_N, true>(
+            scores,
+            taccScS_rt,
+            m_block * kBlockM,
+            n_block * kBlockN,
+            param.seq_len_q,
+            param.seq_len_kv,
+            param.seq_len_kv - param.seq_len_q);
+      } else {
+        apply_mask<is_causal, Is_even_N, false>(
+            scores,
+            taccScS_rt,
+            m_block * kBlockM,
+            n_block * kBlockN,
+            param.seq_len_q,
+            param.seq_len_kv,
+            param.seq_len_kv - param.seq_len_q);
+      }
 
       if (Is_even_M) {
         scale_apply_exp2<true>(
@@ -757,13 +747,21 @@ void dq_dk_dv_1colblock(
             scores, mLSE, taccScS_rt, param.scale_softmax_log2, tail_m);
       }
 
-      if (is_dropout) {
+      if constexpr (is_dropout) {
         static_assert(
             decltype(size<0>(
                 typename Trait::TiledMmaSdP::AtomShape_MNK{}))::value == 8);
         int block_row_id = (m_block * kBlockM + get<0>(taccScS(0))) / 8;
         int block_col_id =
             (n_block * kBlockN + get<1>(taccScS(0))) / intel::sg_size;
+        FLASH_NAMESPACE::Dropout dropout(
+            param.rng_seed[0],
+            param.rng_offset[0],
+            param.p_dropout_in_uint16_t,
+            bidb,
+            bidh,
+            local_id,
+            param.num_head_q);
         dropout.apply_dropout</*encode_dropout_in_sign_bit=*/true>(
             rS, block_row_id, block_col_id);
       }
@@ -772,28 +770,26 @@ void dq_dk_dv_1colblock(
       gemm_SdP(trait, mdO, mVt, rdP, tiled_mma_sdp);
       Tensor dS = make_tensor(rdP.data(), scores.layout());
       if (Is_even_M) {
-        softmax_backward<true>(
+        softmax_backward<true, is_dropout>(
             scores,
             mdPsum,
             dS,
             taccScS_rt,
             0,
             param.scale_softmax,
-            is_dropout,
             param.rp_dropout);
       } else {
-        softmax_backward<false>(
+        softmax_backward<false, is_dropout>(
             scores,
             mdPsum,
             dS,
             taccScS_rt,
             tail_m,
             param.scale_softmax,
-            is_dropout,
             param.rp_dropout);
       }
 
-      if (is_dropout) {
+      if constexpr (is_dropout) {
         apply_dropout_on_signed_P(rS, param.rp_dropout);
       }
       mha_reorder_copy(trait, tiled_mma_sdp, rS, mP);
@@ -821,12 +817,23 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   const int bidhq = BlockIdxY();
   const int bidnblk = BlockIdxX();
   const int bidhkv = bidhq / param.num_qh_per_kvh;
+  const bool is_dropout = param.p_dropout < 1.0f;
   for (int n_block = bidnblk; n_block < param.n_block; n_block += GridDimX()) {
-    if (param.tail_n > 0 and n_block == param.n_block - 1)
-      dq_dk_dv_1colblock<false>(
-          trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
-    else
-      dq_dk_dv_1colblock<true>(trait, param, bidb, bidhq, bidhkv, n_block);
+    if (param.tail_n > 0 and n_block == param.n_block - 1) {
+      if (is_dropout)
+        dq_dk_dv_1colblock<false, true>(
+            trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
+      else
+        dq_dk_dv_1colblock<false, false>(
+            trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
+    } else {
+      if (is_dropout)
+        dq_dk_dv_1colblock<true, true>(
+            trait, param, bidb, bidhq, bidhkv, n_block);
+      else
+        dq_dk_dv_1colblock<true, false>(
+            trait, param, bidb, bidhq, bidhkv, n_block);
+    }
   }
 }
 
