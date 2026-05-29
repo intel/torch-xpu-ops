@@ -15,17 +15,30 @@ import os
 from dataclasses import dataclass
 from typing import Tuple
 
+import logging
 import torch
 import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
 
+# Debug logging controlled by SYMM_BUFFER_DEBUG environment variable.
+# Set SYMM_BUFFER_DEBUG=1 to enable detailed input/output logging.
+_SYMM_BUFFER_DEBUG = os.environ.get("SYMM_BUFFER_DEBUG", "0") == "1"
+_logger = logging.getLogger("SymmBuffer")
+if _SYMM_BUFFER_DEBUG and not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("[SymmBuffer %(levelname)s] %(message)s"))
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.DEBUG)
+
 # Load native kernels
 _LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "csrc", "liblocal_permute_copy.so")
 _HAS_ALLGATHER_PERMUTE_KERNEL = False
+_HAS_LOCAL_PERMUTE_KERNEL = False
 if os.path.exists(_LIB_PATH):
     try:
         torch.ops.load_library(_LIB_PATH)
         _HAS_ALLGATHER_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "allgather_permute")
+        _HAS_LOCAL_PERMUTE_KERNEL = hasattr(torch.ops.symm_mem, "local_permute_copy_")
     except Exception:
         pass
 
@@ -83,6 +96,9 @@ class SymmBuffer:
         hidden: Hidden dimension size.
         num_topk: Number of top-k experts per token.
         hidden_dtype: Data type for hidden states (default: torch.bfloat16).
+        fallback_token_threshold: When the per-rank token count is below this
+            value, fall back to standard ``dist`` APIs instead of the fused
+            symmetric-memory kernels.  Set to 0 to disable the fallback.
     """
 
     def __init__(
@@ -92,6 +108,7 @@ class SymmBuffer:
         hidden: int,
         num_topk: int,
         hidden_dtype: torch.dtype = torch.bfloat16,
+        fallback_token_threshold: int = 512,
     ):
         self.group = group
         self.rank_idx = dist.get_rank(group)
@@ -100,6 +117,8 @@ class SymmBuffer:
         self.hidden = hidden
         self.num_topk = num_topk
         self.hidden_dtype = hidden_dtype
+        self.count = 0
+        self.fallback_token_threshold = fallback_token_threshold
 
         device = f"xpu:{self.rank_idx}"
         num_tokens_max = num_max_tokens_per_rank * self.num_ranks
@@ -273,6 +292,135 @@ class SymmBuffer:
             signed_ptrs, dtype=torch.int64, device=f"xpu:{self.rank_idx}"
         )
 
+    @staticmethod
+    def _log_tensor(name: str, t: torch.Tensor) -> None:
+        """Log tensor metadata and a data snippet."""
+        _logger.debug(
+            "%s: shape=%s dtype=%s device=%s\n  data=%s",
+            name, list(t.shape), t.dtype, t.device, t,
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Fallback implementations using standard dist APIs                  #
+    # ------------------------------------------------------------------ #
+
+    def _allgather_permute_fallback(
+        self,
+        hidden_shard: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        num_experts: int,
+        remap_hidden_states: torch.Tensor,
+    ) -> Tuple[torch.Tensor, SymmHandle]:
+        """Allgather + permute via standard ``dist.all_gather`` + PyTorch ops."""
+        num_tokens_per_rank = hidden_shard.shape[0]
+        topk = topk_idx.shape[1]
+        num_tokens = num_tokens_per_rank * self.num_ranks
+        device = hidden_shard.device
+
+        # All-gather hidden states, topk_idx, and topk_weights
+        hidden_list = [torch.empty_like(hidden_shard) for _ in range(self.num_ranks)]
+        topk_idx_list = [torch.empty_like(topk_idx) for _ in range(self.num_ranks)]
+        weights_list = [torch.empty_like(topk_weights) for _ in range(self.num_ranks)]
+
+        dist.all_gather(hidden_list, hidden_shard.contiguous(), group=self.group)
+        dist.all_gather(topk_idx_list, topk_idx.contiguous(), group=self.group)
+        dist.all_gather(weights_list, topk_weights.contiguous(), group=self.group)
+
+        global_hidden = torch.cat(hidden_list, dim=0)        # [num_tokens, H]
+        global_topk_idx = torch.cat(topk_idx_list, dim=0)    # [num_tokens, topk]
+        global_topk_weights = torch.cat(weights_list, dim=0)  # [num_tokens, topk]
+
+        # Compute rows_per_expert and expert-relative scatter_idx
+        flat_expert = global_topk_idx.reshape(-1)
+        rows_per_expert = torch.bincount(
+            flat_expert.long(), minlength=num_experts,
+        ).to(torch.int32)[:num_experts]
+
+        scatter_idx_flat = torch.zeros(
+            num_tokens * topk, device=device, dtype=torch.int32,
+        )
+        for e in range(num_experts):
+            mask = flat_expert == e
+            n = mask.sum().item()
+            if n > 0:
+                scatter_idx_flat[mask] = torch.arange(n, device=device, dtype=torch.int32)
+        scatter_idx = scatter_idx_flat.reshape(num_tokens, topk)
+
+        # Compute absolute scatter_idx
+        expert_cumsum = torch.zeros(num_experts, device=device, dtype=torch.int32)
+        expert_cumsum[1:] = rows_per_expert[:-1]
+        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
+        abs_scatter_idx = (
+            expert_cumsum[flat_expert] + scatter_idx_flat
+        ).reshape(num_tokens, topk)
+
+        # Permute hidden states into expert-centric layout
+        if _HAS_LOCAL_PERMUTE_KERNEL:
+            for src_rank in range(self.num_ranks):
+                token_offset = src_rank * num_tokens_per_rank
+                torch.ops.symm_mem.local_permute_copy_(
+                    hidden_list[src_rank],
+                    abs_scatter_idx,
+                    token_offset,
+                    remap_hidden_states,
+                )
+        else:
+            expanded_hidden = global_hidden.unsqueeze(1).expand(
+                -1, topk, -1,
+            ).reshape(-1, self.hidden)
+            remap_hidden_states[abs_scatter_idx.reshape(-1).long()] = expanded_hidden
+
+        handle = SymmHandle(
+            scatter_idx=scatter_idx,
+            global_topk_weights=global_topk_weights,
+            num_tokens_per_rank=num_tokens_per_rank,
+            global_topk_idx=global_topk_idx,
+            rows_per_expert=rows_per_expert,
+            abs_scatter_idx=abs_scatter_idx,
+        )
+        return remap_hidden_states, handle
+
+    def _unpermute_reducescatter_fallback(
+        self,
+        expert_output: torch.Tensor,
+        handle: SymmHandle,
+        output: torch.Tensor,
+    ) -> torch.Tensor:
+        """Unpermute + reduce-scatter via PyTorch gather + ``dist.reduce_scatter``."""
+        abs_scatter_idx = handle.abs_scatter_idx
+        global_topk_weights = handle.global_topk_weights
+        num_tokens = abs_scatter_idx.shape[0]
+        num_tokens_per_rank = num_tokens // self.num_ranks
+
+        # Unpermute: gather expert outputs back to token order with weights
+        if _HAS_LOCAL_UNPERMUTE_KERNEL:
+            full_output = torch.zeros(
+                num_tokens, expert_output.shape[1],
+                device=expert_output.device, dtype=expert_output.dtype,
+            )
+            torch.ops.symm_mem.local_unpermute_copy_(
+                expert_output, abs_scatter_idx, global_topk_weights,
+                0, num_tokens, full_output,
+            )
+        else:
+            gathered = expert_output[abs_scatter_idx.long()]       # [num_tokens, topk, H]
+            full_output = (
+                global_topk_weights.unsqueeze(-1) * gathered
+            ).sum(dim=1).to(expert_output.dtype)                   # [num_tokens, H]
+
+        # Reduce-scatter across ranks
+        chunks = [
+            full_output[i * num_tokens_per_rank : (i + 1) * num_tokens_per_rank].contiguous()
+            for i in range(self.num_ranks)
+        ]
+        dist.reduce_scatter(output, chunks, op=dist.ReduceOp.SUM, group=self.group)
+        return output
+
+    # ------------------------------------------------------------------ #
+    #  Fused implementations using symmetric-memory kernels               #
+    # ------------------------------------------------------------------ #
+
     def allgather_local_permute_fusion(
         self,
         hidden_shard: torch.Tensor,
@@ -301,6 +449,20 @@ class SymmBuffer:
             (remap_hidden_states, handle) — handle carries all state needed
             by unpermute_reducescatter_fusion.
         """
+        self.count += 1
+
+        if _SYMM_BUFFER_DEBUG:
+            _logger.debug(
+                "=== allgather_local_permute_fusion INPUT (rank=%d, fusion_count=%d) ===",
+                self.rank_idx, self.count,
+            )
+            _logger.debug("num_input_tokens=%d", hidden_shard.shape[0])
+            self._log_tensor("hidden_shard", hidden_shard)
+            self._log_tensor("topk_idx", topk_idx)
+            self._log_tensor("topk_weights", topk_weights)
+            _logger.debug("num_experts=%d", num_experts)
+            self._log_tensor("remap_hidden_states (pre-allocated)", remap_hidden_states)
+
         num_tokens_per_rank = hidden_shard.shape[0]
         topk = topk_idx.shape[1]
         num_tokens = num_tokens_per_rank * self.num_ranks
@@ -317,6 +479,29 @@ class SymmBuffer:
                 f"self.hidden ({self.hidden})"
             )
 
+        # Fallback to standard dist APIs for small token counts
+        if num_tokens_per_rank < self.fallback_token_threshold:
+            if _SYMM_BUFFER_DEBUG:
+                _logger.debug(
+                    "Fallback to dist APIs (num_tokens_per_rank=%d < threshold=%d)",
+                    num_tokens_per_rank, self.fallback_token_threshold,
+                )
+            remap_hidden_states, handle = self._allgather_permute_fallback(
+                hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states,
+            )
+            if _SYMM_BUFFER_DEBUG:
+                _logger.debug(
+                    "=== allgather_local_permute_fusion OUTPUT (rank=%d, fusion_count=%d, fallback) ===",
+                    self.rank_idx, self.count,
+                )
+                self._log_tensor("remap_hidden_states", remap_hidden_states)
+                self._log_tensor("handle.scatter_idx", handle.scatter_idx)
+                self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
+                self._log_tensor("handle.global_topk_idx", handle.global_topk_idx)
+                self._log_tensor("handle.rows_per_expert", handle.rows_per_expert)
+                self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
+            return remap_hidden_states, handle
+
         if not _HAS_NOTIFY_DISPATCH_V2_KERNEL:
             raise RuntimeError("notify_dispatch_v2 kernel is required")
         if not _HAS_ALLGATHER_PERMUTE_KERNEL:
@@ -325,7 +510,7 @@ class SymmBuffer:
         # Write local topk_idx, topk_weights, and hidden_shard to symmetric memory
         self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
         self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
-        self._allgather_local_slot.copy_(hidden_shard)
+        self._allgather_local_slot[:num_tokens_per_rank].copy_(hidden_shard)
         self.workspace.barrier()
 
         scatter_idx = self._scatter_idx[:num_tokens, :topk]
@@ -377,6 +562,18 @@ class SymmBuffer:
             abs_scatter_idx=abs_scatter_idx,
         )
 
+        if _SYMM_BUFFER_DEBUG:
+            _logger.debug(
+                "=== allgather_local_permute_fusion OUTPUT (rank=%d) ===",
+                self.rank_idx,
+            )
+            self._log_tensor("remap_hidden_states", remap_hidden_states)
+            self._log_tensor("handle.scatter_idx", handle.scatter_idx)
+            self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
+            self._log_tensor("handle.global_topk_idx", handle.global_topk_idx)
+            self._log_tensor("handle.rows_per_expert", handle.rows_per_expert)
+            self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
+
         return remap_hidden_states, handle
 
     def unpermute_reducescatter_fusion(
@@ -399,11 +596,18 @@ class SymmBuffer:
         Returns:
             output
         """
-        if not _HAS_LOCAL_UNPERMUTE_KERNEL:
-            raise RuntimeError(
-                "local_unpermute_copy_ kernel is required for "
-                "unpermute_reducescatter_fusion"
+        self.count += 1
+
+        if _SYMM_BUFFER_DEBUG:
+            _logger.debug(
+                "=== unpermute_reducescatter_fusion INPUT (rank=%d, fusion_count=%d) ===",
+                self.rank_idx, self.count,
             )
+            _logger.debug("num_input_tokens=%d", expert_output.shape[0])
+            self._log_tensor("expert_output", expert_output)
+            self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
+            self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
+            self._log_tensor("output (pre-allocated)", output)
 
         scatter_idx = handle.abs_scatter_idx
         global_topk_weights = handle.global_topk_weights
@@ -414,6 +618,29 @@ class SymmBuffer:
             raise ValueError(
                 f"output rows ({output.shape[0]}) must equal num_tokens_per_rank ({num_tokens_per_rank})"
             )
+
+        # Fallback to standard dist APIs for small token counts
+        if num_tokens_per_rank < self.fallback_token_threshold:
+            if _SYMM_BUFFER_DEBUG:
+                _logger.debug(
+                    "Fallback to dist APIs (num_tokens_per_rank=%d < threshold=%d)",
+                    num_tokens_per_rank, self.fallback_token_threshold,
+                )
+            self._unpermute_reducescatter_fallback(expert_output, handle, output)
+            if _SYMM_BUFFER_DEBUG:
+                _logger.debug(
+                    "=== unpermute_reducescatter_fusion OUTPUT (rank=%d, fusion_count=%d, fallback) ===",
+                    self.rank_idx, self.count,
+                )
+                self._log_tensor("output", output)
+            return output
+
+        if not _HAS_LOCAL_UNPERMUTE_KERNEL:
+            raise RuntimeError(
+                "local_unpermute_copy_ kernel is required for "
+                "unpermute_reducescatter_fusion"
+            )
+
         self.workspace.barrier()
         my_chunk_start = self.rank_idx * num_tokens_per_rank
 
@@ -428,10 +655,10 @@ class SymmBuffer:
                 torch.ops.symm_mem.local_unpermute_copy_(
                     expert_output, scatter_idx, global_topk_weights,
                     target_chunk_start, num_tokens_per_rank,
-                    self._unpermute_local_bufs[buf_idx],
+                    self._unpermute_local_bufs[buf_idx][:num_tokens_per_rank],
                 )
-                self._unpermute_target_recv_bufs[step][self.rank_idx].copy_(
-                    self._unpermute_local_bufs[buf_idx]
+                self._unpermute_target_recv_bufs[step][self.rank_idx, :num_tokens_per_rank].copy_(
+                    self._unpermute_local_bufs[buf_idx][:num_tokens_per_rank]
                 )
 
         # Own-chunk compute on main stream — overlaps with last push
@@ -444,15 +671,32 @@ class SymmBuffer:
         self.workspace.barrier()
 
         if _HAS_SUM_REDUCTION_KERNEL and self.num_ranks > 2:
-            torch.ops.symm_mem.sum_reduction(
-                self._unpermute_my_recv_buf, output, self.rank_idx, self.num_ranks
-            )
+            # Slicing the middle dim produces a non-contiguous view;
+            # avoid .contiguous() (which copies) — try the strided view first.
+            recv_view = self._unpermute_my_recv_buf[:, :num_tokens_per_rank, :]
+            try:
+                torch.ops.symm_mem.sum_reduction(
+                    recv_view, output, self.rank_idx, self.num_ranks
+                )
+            except RuntimeError:
+                # Kernel requires contiguous input — fall back to per-rank add
+                for i in range(self.num_ranks):
+                    if i != self.rank_idx:
+                        output.add_(self._unpermute_my_recv_buf[i, :num_tokens_per_rank])
         else:
             for i in range(self.num_ranks):
                 if i != self.rank_idx:
-                    output.add_(self._unpermute_my_recv_buf[i])
+                    output.add_(self._unpermute_my_recv_buf[i, :num_tokens_per_rank])
 
         self.workspace.barrier()
+
+        if _SYMM_BUFFER_DEBUG:
+            _logger.debug(
+                "=== unpermute_reducescatter_fusion OUTPUT (rank=%d) ===",
+                self.rank_idx,
+            )
+            self._log_tensor("output", output)
+
         return output
 
         
