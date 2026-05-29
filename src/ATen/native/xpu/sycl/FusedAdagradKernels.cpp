@@ -21,6 +21,10 @@
 
 namespace at::native::xpu {
 
+constexpr uint8_t kParamIdx = 0;
+constexpr uint8_t kGradIdx = 1;
+constexpr uint8_t kStateSumIdx = 2;
+
 // ---------------------------------------------------------------------------
 // Adagrad math: operates on kILP elements at a time, matching SGD/Adam style
 //
@@ -32,26 +36,24 @@ namespace at::native::xpu {
 //   state_sum += grad * grad
 //   param -= clr * grad / (sqrt(state_sum) + eps)
 // ---------------------------------------------------------------------------
-template <typename scalar_t>
+template <typename scalar_t, typename opmath_t>
 void adagrad_math(
     scalar_t r_args[3][kILP],
     const double clr,
-    const double lr_decay,
     const double weight_decay,
     const double eps,
     const bool maximize,
     const float* grad_scale_ptr) {
-  using opmath_t = at::opmath_type<scalar_t>;
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
-    opmath_t param = static_cast<opmath_t>(r_args[0][ii]);
-    opmath_t grad = static_cast<opmath_t>(r_args[1][ii]);
-    opmath_t state_sum = static_cast<opmath_t>(r_args[2][ii]);
+    opmath_t param = static_cast<opmath_t>(r_args[kParamIdx][ii]);
+    opmath_t grad = static_cast<opmath_t>(r_args[kGradIdx][ii]);
+    opmath_t state_sum = static_cast<opmath_t>(r_args[kStateSumIdx][ii]);
 
     if (grad_scale_ptr) {
       grad /= static_cast<opmath_t>(*grad_scale_ptr);
-      r_args[1][ii] = static_cast<scalar_t>(grad);
     }
+    const opmath_t grad_to_store = grad;
     if (maximize) {
       grad = -grad;
     }
@@ -60,11 +62,14 @@ void adagrad_math(
     }
 
     state_sum += grad * grad;
-    r_args[2][ii] = static_cast<scalar_t>(state_sum);
-
     param -= static_cast<opmath_t>(clr) * grad /
         (sycl::sqrt(state_sum) + static_cast<opmath_t>(eps));
-    r_args[0][ii] = static_cast<scalar_t>(param);
+
+    r_args[kParamIdx][ii] = static_cast<scalar_t>(param);
+    if (grad_scale_ptr) {
+      r_args[kGradIdx][ii] = static_cast<scalar_t>(grad_to_store);
+    }
+    r_args[kStateSumIdx][ii] = static_cast<scalar_t>(state_sum);
   }
 }
 
@@ -72,7 +77,6 @@ void adagrad_math(
 // state_steps stored separately in TLFusedMetaForAddress::state_steps_addresses
 template <typename scalar_t>
 struct FusedAdagradMathFunctor {
-  using opmath_t = at::opmath_type<scalar_t>;
 
   template <typename TLA, typename TLW>
   void operator()(
@@ -104,6 +108,7 @@ struct FusedAdagradMathFunctor {
         tlAddress[tensor_loc].state_steps_addresses);
     const double step = static_cast<double>(*step_ptr);
     const double lr_val = lr_ptr ? static_cast<double>(*lr_ptr) : lr;
+    using opmath_t = at::opmath_type<scalar_t>;
     const double clr = lr_val / (1.0 + (step - 1.0) * lr_decay);
 
     scalar_t* args[3];
@@ -121,32 +126,32 @@ struct FusedAdagradMathFunctor {
         for (int i = 0; i < 3; i++) {
           load_store(r_args[i], args[i], 0, i_start);
         }
-        adagrad_math<scalar_t>(
-            r_args, clr, lr_decay, weight_decay, eps, maximize, grad_scale_ptr);
+        adagrad_math<scalar_t, opmath_t>(
+            r_args, clr, weight_decay, eps, maximize, grad_scale_ptr);
         // store param
-        load_store(args[0], r_args[0], i_start, 0);
+        load_store(args[kParamIdx], r_args[kParamIdx], i_start, 0);
         // store grad (only when grad_scale applied)
         if (grad_scale_ptr) {
-          load_store(args[1], r_args[1], i_start, 0);
+          load_store(args[kGradIdx], r_args[kGradIdx], i_start, 0);
         }
         // store state_sum
-        load_store(args[2], r_args[2], i_start, 0);
+        load_store(args[kStateSumIdx], r_args[kStateSumIdx], i_start, 0);
       }
     } else {
       for (auto i_start = 0; i_start < n && i_start < chunk_size;
            i_start += local_range * kILP) {
         load_args<3>(
             r_args, args, i_start, chunk_size, n, item_id, local_range);
-        adagrad_math<scalar_t>(
-            r_args, clr, lr_decay, weight_decay, eps, maximize, grad_scale_ptr);
+        adagrad_math<scalar_t, opmath_t>(
+            r_args, clr, weight_decay, eps, maximize, grad_scale_ptr);
         store_args(
-            args[0], r_args[0], i_start, chunk_size, n, item_id, local_range);
+            args[kParamIdx], r_args[kParamIdx], i_start, chunk_size, n, item_id, local_range);
         if (grad_scale_ptr) {
           store_args(
-              args[1], r_args[1], i_start, chunk_size, n, item_id, local_range);
+              args[kGradIdx], r_args[kGradIdx], i_start, chunk_size, n, item_id, local_range);
         }
         store_args(
-            args[2], r_args[2], i_start, chunk_size, n, item_id, local_range);
+            args[kStateSumIdx], r_args[kStateSumIdx], i_start, chunk_size, n, item_id, local_range);
       }
     }
   }
