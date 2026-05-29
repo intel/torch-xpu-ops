@@ -87,7 +87,7 @@ struct TopKTypeConfig<float> {
   static inline RadixType convert(float v) {
     RadixType x = *((uint32_t*)&v);
     RadixType mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
-    return (v == v) ? (x ^ mask) : 0xffffffff;
+    return (x ^ mask);
   }
 
   static inline float deconvert(RadixType v) {
@@ -168,7 +168,7 @@ struct TopKTypeConfig<double> {
   static inline RadixType convert(double v) {
     RadixType x = *((uint64_t*)&v);
     RadixType mask = -((x >> 63)) | 0x8000000000000000;
-    return (v == v) ? (x ^ mask) : 0xffffffffffffffff;
+    return (x ^ mask);
   }
 
   static inline double deconvert(RadixType v) {
@@ -183,12 +183,12 @@ struct TopKTypeConfig<at::Half> {
 
   static inline RadixType convert(at::Half v) {
     RadixType x = *((uint16_t*)&v);
-    RadixType mask = (x & 0x00008000) ? 0x0000ffff : 0x00008000;
-    return (v == v) ? (x ^ mask) : 0xffff;
+    RadixType mask = -((x >> 15)) | 0x8000;
+    return (x ^ mask);
   }
 
   static inline at::Half deconvert(RadixType v) {
-    RadixType mask = (v & 0x00008000) ? 0x00008000 : 0x0000ffff;
+    RadixType mask = ((v >> 15) - 1) | 0x8000;
     return __ushort_as_half(v ^ mask);
   }
 };
