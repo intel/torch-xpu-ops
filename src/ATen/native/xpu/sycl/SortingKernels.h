@@ -17,16 +17,10 @@
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
 #include <cstdint>
-#include <limits>
 
 namespace at {
 namespace native {
 namespace xpu {
-
-inline int checked_num_tiles(int64_t n) {
-  TORCH_CHECK(n <= std::numeric_limits<int>::max(), "num_tiles overflow: ", n);
-  return static_cast<int>(n);
-}
 
 // ======================= group sort =======================
 
@@ -182,9 +176,8 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int64_t num_tiles_64 =
-      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
-  int num_tiles = checked_num_tiles(num_tiles_64);
+  int num_tiles = static_cast<int>(
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
   auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
       keys_in, counts, num_elements, num_tiles, begin_bit, end_bit);
   sycl_kernel_submit(
@@ -316,9 +309,8 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int64_t num_tiles_64 =
-      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH);
-  int num_tiles = checked_num_tiles(num_tiles_64);
+  int num_tiles = static_cast<int>(
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
   auto caller =
       SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
           keys_in,
@@ -361,9 +353,8 @@ void segmented_radix_sort_pairs_kernel(
     int num_segments,
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
-  int64_t num_tiles_64 =
-      ceil_div<int64_t>(num_elements, TILE_PROCESSING_LENGTH);
-  int num_tiles = checked_num_tiles(num_tiles_64);
+  int num_tiles =
+      static_cast<int>(ceil_div<int64_t>(num_elements, TILE_PROCESSING_LENGTH));
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
