@@ -17,6 +17,7 @@ import collections
 import copy
 import gc
 import json
+import math
 import mmap
 import os
 import pickle
@@ -2108,9 +2109,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
     # also checks to see that GPU values are present in trace if cuda is used
     def _validate_basic_json(self, traceEvents, device_type="cpu"):
         MAX_GPU_COUNT = 8
-        PROFILER_IDX = -4
+        PROFILER_IDX = -7 if TEST_XPU else -4
         RECORD_END = -1
-        RECORD_START = -2
+        RECORD_START = -5 if TEST_XPU else -2
         traceEventProfiler = traceEvents[PROFILER_IDX]
 
         self.assertTrue(traceEventProfiler["name"] == "PyTorch Profiler (0)")
@@ -2124,9 +2125,13 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
             traceEvents[RECORD_START]["ts"],
             "Profiler starts before record!",
         )
+
+        # Compare to nextafter value to avoid errors due to floating point precision
+        RECORDS_END_TS = math.nextafter(traceEvents[RECORD_END]["ts"], math.inf)
+
         self.assertLessEqual(
             traceEventProfiler["ts"] + traceEventProfiler["dur"],
-            traceEvents[RECORD_END]["ts"],
+            RECORDS_END_TS,
             "Profiler ends after record end!",
         )
 
@@ -2146,7 +2151,12 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 )
             # some python events seem to go a little past record end probably because
             # of some clock inaccuracies so just compare events ending to RECORD_END
-            if "dur" in traceEvent:
+            tid = traceEvent.get("tid", "")
+            if (
+                "dur" in traceEvent
+                and isinstance(tid, str)
+                and "__xpu_profiler__" not in tid
+            ):
                 is_async_xpu_event = device_type == "xpu" and (
                     traceEvent.get("cat", "") in {"kernel", "gpu_memcpy"}
                     or "runtime" in traceEvent.get("cat", "")
@@ -2155,7 +2165,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 if not is_async_xpu_event:
                     self.assertLessEqual(
                         traceEvent["ts"] + traceEvent["dur"],
-                        traceEvents[RECORD_END]["ts"],
+                        RECORDS_END_TS,
                         "Trace event ends too late!",
                     )
             gpu_value = traceEvent.get("args", {}).get("labels", None)
@@ -2526,7 +2536,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                         any(is_runtime_category(cat) for cat in seen_event_types)
                     )
 
-        # Run with External Id for CUDA events on and off
+        # Run with External Id for device events on and off
         for disable_external_correlation in [False, True]:
             with profile(
                 activities=activities,
@@ -3577,7 +3587,7 @@ aten::mm""",
                 report = json.load(f)
 
             # It is platform dependent whether the path will include "profiler/"
-            keys = [k for k in report if k.endswith("test_profiler.py")]
+            keys = [k for k in report if k.endswith(os.path.basename(__file__))]
             self.assertEqual(len(keys), 1, f"{keys}")
             entry = report[keys[0]]
 

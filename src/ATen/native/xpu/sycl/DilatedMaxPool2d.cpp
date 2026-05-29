@@ -130,7 +130,6 @@ struct MaxPool2dKernelFunctor {
               outputW;
         }
         scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
-        index_t maxIndex = -1;
         index_t StartH = outputH * dH_ - padH_;
         index_t StartW = outputW * dW_ - padW_;
         index_t EndH =
@@ -141,6 +140,7 @@ struct MaxPool2dKernelFunctor {
           StartH += dilationH_;
         while (StartW < 0)
           StartW += dilationW_;
+        index_t maxIndex = StartH * inputSizeW_ + StartW;
 #pragma unroll
         for (index_t h = StartH; h < EndH; h += dilationH_) {
 #pragma unroll
@@ -247,10 +247,6 @@ struct MaxPool2dChannelLastVec {
       for (int i = 0; i < vec_size; i++) {
         maxVal_vec[i] = at::numeric_limits<scalar_t>::lower_bound();
       }
-      int64_t maxIndex[vec_size];
-      for (int i = 0; i < vec_size; i++) {
-        maxIndex[i] = int64_t(-1);
-      }
       index_t StartH = outputH * dH_ - padH_;
       index_t StartW = outputW * dW_ - padW_;
       index_t EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
@@ -259,6 +255,10 @@ struct MaxPool2dChannelLastVec {
         StartH += dilationH_;
       while (StartW < 0)
         StartW += dilationW_;
+      int64_t maxIndex[vec_size];
+      for (int i = 0; i < vec_size; i++) {
+        maxIndex[i] = StartH * inputSizeW_ + StartW;
+      }
       for (index_t h = StartH; h < EndH; h += dilationH_) {
         for (index_t w = StartW; w < EndW; w += dilationW_) {
           load_offset =
@@ -416,7 +416,11 @@ struct MaxPool2dBackwardKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
-template <typename scalar_t, bool is_channels_last, typename index_t = int>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    bool is_channels_last,
+    typename index_t = int>
 struct MaxPool2dBackwardDeterministicKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto desc = cfg_.get_item_desc(item);
@@ -441,14 +445,14 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
         int pwstart =
             p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
         int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
-        scalar_t grad = 0;
+        accscalar_t grad = accscalar_t(0);
         if constexpr (is_channels_last) {
           index_t offset = batch * out_n_stride_ + plane;
           for (int ph = phstart; ph < phend; ++ph) {
             for (int pw = pwstart; pw < pwend; ++pw) {
               if (indices_[offset + (ph * gradOutputSizeW_ + pw) * numPlane_] ==
                   input_hw_index) {
-                grad += static_cast<scalar_t>(
+                grad += static_cast<accscalar_t>(
                     gradOutput_
                         [offset + (ph * gradOutputSizeW_ + pw) * numPlane_]);
               }
@@ -460,13 +464,13 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
             for (int pw = pwstart; pw < pwend; ++pw) {
               if (indices_[offset + ph * gradOutputSizeW_ + pw] ==
                   input_hw_index) {
-                grad += static_cast<scalar_t>(
+                grad += static_cast<accscalar_t>(
                     gradOutput_[offset + ph * gradOutputSizeW_ + pw]);
               }
             }
           }
         }
-        gradInput_[inputIndex] = grad;
+        gradInput_[inputIndex] = static_cast<scalar_t>(grad);
       }
     } while (cfg_.next(item, desc));
   }
@@ -543,6 +547,7 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
 
 template <
     typename scalar_t,
+    typename accscalar_t,
     typename vec_t,
     int vec_size,
     typename index_t = int>
@@ -566,10 +571,10 @@ struct MaxPool2dBackwardChannelLastVec {
       int phend = p_end(inputH, pad_h_, gradOutputSizeH_, stride_h_);
       int pwstart = p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
       int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
-      vec_t grad_vec;
+      accscalar_t grad_acc[vec_size];
 #pragma unroll
       for (int i = 0; i < vec_size; i++) {
-        grad_vec[i] = 0;
+        grad_acc[i] = accscalar_t(0);
       }
 
       int offset = batch * out_n_stride_ / vec_size + plane;
@@ -582,13 +587,17 @@ struct MaxPool2dBackwardChannelLastVec {
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
             if (indices_[load_offset * vec_size + i] == input_hw_index) {
-              grad_vec[i] = static_cast<scalar_t>(grad_vec[i]) +
-                  static_cast<scalar_t>(gout_val_vec[i]);
+              grad_acc[i] += static_cast<accscalar_t>(gout_val_vec[i]);
             }
           }
         }
       }
 
+      vec_t grad_vec;
+#pragma unroll
+      for (int i = 0; i < vec_size; i++) {
+        grad_vec[i] = static_cast<scalar_t>(grad_acc[i]);
+      }
       gradInput_[inputIndex] = grad_vec;
     }
   }
@@ -890,30 +899,35 @@ void launch_max_pool2d_kernel(
     dilation_h,                                                                \
     dilation_w)                                                                \
   {                                                                            \
+    using accscalar_t = at::acc_type_device<scalar_t, kXPU>;                   \
     using vec_t = memory::aligned_vector<scalar_t, vec_size>;                  \
     const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput); \
     vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);               \
-    auto kfn =                                                                 \
-        MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(   \
-            grad_input_vec,                                                    \
-            grad_output_vec,                                                   \
-            indices,                                                           \
-            numPlane,                                                          \
-            gradInputSizeH,                                                    \
-            gradInputSizeW,                                                    \
-            gradOutputSizeH,                                                   \
-            gradOutputSizeW,                                                   \
-            gradInputSize,                                                     \
-            out_n_stride,                                                      \
-            in_n_stride,                                                       \
-            kernel_h,                                                          \
-            kernel_w,                                                          \
-            stride_h,                                                          \
-            stride_w,                                                          \
-            pad_h,                                                             \
-            pad_w,                                                             \
-            dilation_h,                                                        \
-            dilation_w);                                                       \
+    auto kfn = MaxPool2dBackwardChannelLastVec<                                \
+        scalar_t,                                                              \
+        accscalar_t,                                                           \
+        vec_t,                                                                 \
+        vec_size,                                                              \
+        index_t>(                                                              \
+        grad_input_vec,                                                        \
+        grad_output_vec,                                                       \
+        indices,                                                               \
+        numPlane,                                                              \
+        gradInputSizeH,                                                        \
+        gradInputSizeW,                                                        \
+        gradOutputSizeH,                                                       \
+        gradOutputSizeW,                                                       \
+        gradInputSize,                                                         \
+        out_n_stride,                                                          \
+        in_n_stride,                                                           \
+        kernel_h,                                                              \
+        kernel_w,                                                              \
+        stride_h,                                                              \
+        stride_w,                                                              \
+        pad_h,                                                                 \
+        pad_w,                                                                 \
+        dilation_h,                                                            \
+        dilation_w);                                                           \
     sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                  \
   }
 
@@ -1064,8 +1078,10 @@ void launch_max_pool2d_backward_kernel(
         break;
     };
   }
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   using KernelClass = MaxPool2dBackwardDeterministicKernelFunctor<
       scalar_t,
+      accscalar_t,
       is_channels_last,
       index_t>;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
@@ -1131,8 +1147,6 @@ void max_pool2d_with_indices_kernel(
     bool ceil_mode,
     const Tensor& output,
     const Tensor& indices) {
-  NoNamesGuard guard;
-
   TensorArg output_arg{output, "output", 1};
   TensorArg indices_arg{indices, "indices", 2};
   TensorArg input_arg{input_, "input_", 3};
@@ -1300,7 +1314,6 @@ void max_pool2d_with_indices_backward_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode) {
-  NoNamesGuard guard;
   TensorArg gradInput_arg{gradInput, "gradInput", 1};
   TensorArg gradOutput_arg{gradOutput_, "gradOutput", 2};
   TensorArg input_arg{input_, "input", 3};
