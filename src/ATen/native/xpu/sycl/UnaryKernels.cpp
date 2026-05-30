@@ -246,7 +246,7 @@ void nan_to_num_kernel(
 template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::expm1(a);
+    return sycl::expm1(a);
   }
 };
 
@@ -273,7 +273,7 @@ template <typename scalar_t>
 struct FrexpFunctor {
   std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
     int32_t exponent;
-    scalar_t mantissa = std::frexp(a, &exponent);
+    scalar_t mantissa = sycl::frexp(a, &exponent);
     return {mantissa, exponent};
   }
 };

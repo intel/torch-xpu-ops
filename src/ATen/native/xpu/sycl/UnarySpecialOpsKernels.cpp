@@ -119,7 +119,7 @@ void erfinv_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp2(a);
+    return sycl::exp2(a);
   }
 };
 
