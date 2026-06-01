@@ -51,7 +51,7 @@ inline void adagrad_math(
     }
     state_sum += grad * grad;
     param -= static_cast<opmath_t>(corrected_lr) * grad /
-        (std::sqrt(state_sum) + static_cast<opmath_t>(eps));
+        (sycl::sqrt(state_sum) + static_cast<opmath_t>(eps));
 
     r_args[kParamIdx][ii] = param;
     if (grad_scale_ptr) {
