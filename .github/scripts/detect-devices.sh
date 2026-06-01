@@ -83,6 +83,10 @@ detect_cpu_count() {
 }
 
 get_device_rows() {
+  if ! command -v lspci &>/dev/null; then
+    sudo -E apt-get update -qq
+    sudo -E apt-get install -y -qq pciutils
+  fi
   lspci -nn | grep -Ei 'VGA|DISPLAY' | grep -v 'UHD' | grep '8086:' || true
 }
 
