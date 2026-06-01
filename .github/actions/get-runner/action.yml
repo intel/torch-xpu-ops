@@ -1,125 +1,147 @@
 name: Get Runner Infos
+description: Get runner information and detect XPU devices
+
+inputs:
+  ut_name:
+    required: false
+    description: Which ut to launch
+    default: ''
+  github_token:
+    required: false
+    description: GitHub token for runner label management
+    default: ''
+  performance_test:
+    required: false
+    description: Whether this is a performance test (enables exclusive label swap)
+    default: 'false'
 
 outputs:
   runner_id:
+    description: Runner ID (name without trailing index)
     value: ${{ steps.runner.outputs.runner_id }}
   user_id:
+    description: User ID
     value: ${{ steps.runner.outputs.user_id }}
   render_id:
+    description: Render group ID
     value: ${{ steps.runner.outputs.render_id }}
   hostname:
+    description: Runner hostname
     value: ${{ steps.runner.outputs.hostname }}
+  random_label:
+    description: Temporary random label assigned to this runner
+    value: ${{ steps.labels.outputs.RANDOM_RUNNER_LABEL }}
   ZE_AFFINITY_MASK:
-    value: ${{ steps.cpu-gpu.outputs.ZE_AFFINITY_MASK }}
+    description: ZE_AFFINITY_MASK for GPU selection
+    value: ${{ steps.devices.outputs.ZE_AFFINITY_MASK }}
   numactl_args:
-    value: ${{ steps.cpu-gpu.outputs.numactl_args }}
+    description: numactl arguments for CPU binding
+    value: ${{ steps.devices.outputs.NUMACTL_ARGS }}
   pytest_extra_args:
-    value: ${{ steps.cpu-gpu.outputs.pytest_extra_args }}
+    description: Extra pytest arguments for sharding
+    value: ${{ steps.devices.outputs.PYTEST_EXTRA_ARGS }}
 
 runs:
   using: composite
   steps:
-    - name: Get runner id
-      shell: bash -xe {0}
+    # --- Identify runner ---
+    - name: Get runner info
       id: runner
+      shell: bash -euo pipefail {0}
       run: |
-        # get test runner
-        echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
-        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
-        echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
-        echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
+        runner_root="${RUNNER_WORKSPACE%/_work*}"
+        api_runner_id=$(jq -r '.agentId' "${runner_root}/.runner")
+        echo "runner_id=$(echo ${RUNNER_NAME} | sed 's/\-[0-9]$//')" | tee -a ${GITHUB_OUTPUT}
+        echo "api_runner_id=${api_runner_id}" | tee -a ${GITHUB_OUTPUT}
+        echo "user_id=$(id -u)" | tee -a ${GITHUB_OUTPUT}
+        echo "render_id=$(getent group render | cut -d: -f3)" | tee -a ${GITHUB_OUTPUT}
+        echo "hostname=$(hostname)" | tee -a ${GITHUB_OUTPUT}
+
+    # --- Prevent re-scheduling by swapping labels (performance tests only) ---
+    - name: Save labels and assign random label
+      if: inputs.performance_test == 'true'
+      id: labels
+      shell: bash -euo pipefail {0}
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ github.repository }}
+        API_RUNNER_ID: ${{ steps.runner.outputs.api_runner_id }}
+      run: |
+        # Save current custom labels
+        current_labels=$(gh api "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels" \
+          --jq '[.labels[] | select(.type=="custom") | .name] | join(",")')
+        echo "Saved labels: ${current_labels}"
+        echo "SAVED_RUNNER_LABELS=${current_labels}" >> ${GITHUB_ENV}
+        echo "SAVED_RUNNER_LABELS=${current_labels}" >> ${GITHUB_OUTPUT}
+        # Remove all custom labels
+        if [ -n "${current_labels}" ]; then
+          IFS=',' read -ra label_arr <<< "${current_labels}"
+          for label in "${label_arr[@]}"; do
+            gh api --method DELETE "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels/${label}" || true
+          done
+        fi
+        # Assign a temporary random label
+        random_label="runner-$(date +%s)-$(head -c 8 /dev/urandom | xxd -p)"
+        gh api --method POST "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels" \
+          -f "labels[]=${random_label}"
+        echo "Assigned random label: ${random_label}"
+        echo "RANDOM_RUNNER_LABEL=${random_label}" >> ${GITHUB_OUTPUT}
+
+    # --- Show hardware info ---
     - name: Show runner info
-      shell: bash -xe {0}
+      shell: bash -euo pipefail {0}
       run: |
-        # show host info
         lscpu
         lshw -C display
         free -h
         df -h
         cat /etc/os-release
         uname -a
-        dpkg -l |grep -E 'intel-opencl-icd|libze-dev|libigc-dev' || true
-        # clinfo and reboot system to recover if hang
+        dpkg -l | grep -E 'intel-opencl-icd|libze-dev|libigc-dev' || true
         timeout 120 clinfo --list || sudo reboot
-    - name: CPU frequency check
-      shell: bash -xe {0}
+
+    # --- Detect XPU devices ---
+    - name: Detect devices and distribute CPUs/GPUs
+      id: devices
+      shell: bash -euo pipefail {0}
       run: |
-        scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq)
-        if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
-            if [ "${scaling_governor}" != "performance" ];then
-                # set frequency governor to performance mode
-                sudo apt-get update
-                sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
-                sudo cpupower set -b 0
-                sudo cpupower frequency-set -g performance
-            fi
-            # clean cache
-            sync; sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
-        else
-            echo "[INFO] You do NOT have ROOT permission to set system config."
-            echo "       The frequency governor is ${scaling_governor}."
-        fi
-    - name: Distribute CPUs and GPUs evently
-      id: cpu-gpu
-      shell: bash -xe {0}
-      run: |
-        cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
-        total_xpu_num="$(ls /sys/class/drm/card*/device/enable |wc -l |awk '{if($1 > 8){n=8}else{n=$1};print n}')"
-        online_xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
-          if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
-        }' |wc -l)"
-        # check the online GPUs
-        if [ ${online_xpu_num} -ne ${total_xpu_num} ];then
-          echo "[Warning] Some cards are offline!"
-        fi
-        cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${total_xpu_num}" '{printf c/x}')"
-        # get all online GPUs
-        xpu_list=""
-        for id in $(seq 0 ${total_xpu_num})
-        do
-          xpu_detected="$(ZE_AFFINITY_MASK=$id clinfo --list |grep "Graphics" || true)"
-          if [ "${xpu_detected}" != "" ] && [[ "${xpu_detected}" != *" UHD "* ]];then
-            xpu_list+="${id},"
-          fi
-        done
-        export ZE_AFFINITY_MASK=${xpu_list%,*}
-        numactl_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-          split(z, xpu_list, ",");
-          if (length(xpu_list) > 1) {
-            for (i=0;i<length(xpu_list);i++) {
-              printf(" ZE_AFFINITY_MASK=%d OMP_NUM_THREADS=%d numactl -l -C %d-%d ;", xpu_list[i+1], cx, i*cx, (i+1)*cx-1);
-            }
-          }else {
-            printf(" numactl -l ");
-          }
-        }')"
-        if [ "${{ inputs.ut_name }}" == "xpu_distributed" ];then
+        ${{ github.workspace }}/.github/scripts/detect-devices.sh
+        if [ "${{ inputs.ut_name }}" == "xpu_distributed" ]; then
           pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
-        else
-          pytest_extra_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-            split(z, xpu_list, ",");
-            if (length(xpu_list) > 1) {
-              for (i=0;i<length(xpu_list);i++) {
-                ze = xpu_list[i+1];
-                printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
-                        ze, cx, i*cx, (i+1)*cx-1);
-              }
-            }else {
-              printf(" -n 1 ");
-            }
-          }')"
+          echo "PYTEST_EXTRA_ARGS=${pytest_extra_args}" >> ${GITHUB_OUTPUT}
         fi
-        echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
-        echo "numactl_args=${numactl_args}" |tee -a ${GITHUB_OUTPUT}
-        echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
+
+    # --- Cleanup ---
     - name: Cleanup host
-      shell: bash -xe {0}
+      shell: bash -euo pipefail {0}
       run: |
-        # clean docker cache
         docker system prune -af || true
-        # fix potential permission issue
         sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
         cd ${RUNNER_WORKSPACE}/..
-        if [ "${PWD}" != "/" ];then
+        if [ "${PWD}" != "/" ]; then
           sudo chown $(id -u):$(id -g) . -R || true
+        fi
+
+    # --- Restore original labels (always runs for performance tests) ---
+    - name: Recover runner labels
+      if: always() && inputs.performance_test == 'true'
+      shell: bash -euo pipefail {0}
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ github.repository }}
+        API_RUNNER_ID: ${{ steps.runner.outputs.api_runner_id }}
+        RANDOM_LABEL: ${{ steps.labels.outputs.RANDOM_RUNNER_LABEL }}
+      run: |
+        # Remove the temporary random label
+        if [ -n "${RANDOM_LABEL}" ]; then
+          gh api --method DELETE "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels/${RANDOM_LABEL}" || true
+        fi
+        # Restore saved labels
+        if [ -n "${SAVED_RUNNER_LABELS:-}" ]; then
+          IFS=',' read -ra label_arr <<< "${SAVED_RUNNER_LABELS}"
+          for label in "${label_arr[@]}"; do
+            gh api --method POST "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels" \
+              -f "labels[]=${label}"
+          done
+          echo "Restored labels: ${SAVED_RUNNER_LABELS}"
         fi
