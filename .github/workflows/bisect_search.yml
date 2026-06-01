@@ -126,9 +126,9 @@ jobs:
           pip uninstall -y torch
       - name: Detect devices
         run: |
-          bash ${{ github.workspace }}/.github/scripts/detect-devices.sh
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/detect-devices.sh
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
@@ -206,6 +206,7 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh unlock
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
