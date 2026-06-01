@@ -39,7 +39,16 @@ skip_dict = {
         # CPU-only qnnpack backend, not applicable to XPU
         "test_qsoftmax_qnnpack_xpu",
     ),
-    "quantization/core/test_quantized_tensor_xpu.py": None,
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_qtensor_cuda_xpu",
+        "test_qtensor_masked_fill_cuda_xpu",
+        "test_qtensor_index_put_cuda_xpu",
+        "test_qtensor_index_select_cuda_xpu",
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        "test_per_channel_to_device_xpu",
+        "test_per_tensor_to_device_xpu",
+    ),
     "quantization/core/test_workflow_module_xpu.py": None,
     "quantization/core/test_workflow_ops_xpu.py": (
         # AssertionError:
@@ -225,7 +234,11 @@ skip_dict = {
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": None,
+    "test_view_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_ravel_xpu",
+        "test_flatten_xpu",
+    ),
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
     "functorch/test_eager_transforms_xpu.py": None,
