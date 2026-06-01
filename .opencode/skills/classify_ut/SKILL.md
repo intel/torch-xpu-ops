@@ -67,24 +67,24 @@ Do not collapse these workflows into a single pattern-matching script. Bulk scri
 workbook columns, collect candidate rows, or apply already-reviewed decisions, but the actual
 classification must follow the status-specific skill.
 
-## Optional Preparation (extract sheet + environment setup + local pre-screen)
+## Preparation (extract sheet — mandatory; environment setup + local pre-screen — optional)
 
 Three preparation steps live in `classify_ut/preparation/SKILL.md`:
 
-- **Extract Target Sheet** (run first): copy the single target sheet out of the large status
-  workbook into its own small `.xlsx` via `scripts/extract_target_sheet.py`. Every later
-  phase and step operates on this extracted file, not the original large workbook.
+- **Extract Target Sheet** — **MANDATORY**: copy the single target sheet out of the large
+  status workbook into its own small `.xlsx` via `scripts/extract_target_sheet.py`. Every
+  later phase and step operates on this extracted file, not the original large workbook.
 - **Environment Setup** (formerly "Step -1"): align `pytorch_opencode_env` to the PyTorch
   XPU nightly and align the local pytorch + torch-xpu-ops checkouts to the wheel's commits.
 - **Local Pre-Screen** (formerly "Step 0"): bulk-run every blank-`Reason` row and record a
   `local_result` plus captured logs.
 
-**Extract Target Sheet SHOULD be run first** whenever the source workbook is large or
-multi-sheet (the normal case). **Environment Setup and Local Pre-Screen are OPTIONAL and NOT
-run by default** — run them only when the user explicitly asks to refresh the environment or
-bulk pre-screen a sheet, or when a verdict genuinely depends on a fresh, source-aligned local
-run. Classification (source inspection, known-issue search, the status-specific subskills) can
-proceed without the optional steps.
+**Extract Target Sheet is MANDATORY** and must always be run first before any other phase or
+step. **Environment Setup and Local Pre-Screen are OPTIONAL and NOT run by default** — run
+them only when the user explicitly asks to refresh the environment or bulk pre-screen a sheet,
+or when a verdict genuinely depends on a fresh, source-aligned local run. Classification
+(source inspection, known-issue search, the status-specific subskills) can proceed without
+the optional steps.
 
 When preparation IS run, its artifacts become authoritative inputs:
 
@@ -140,7 +140,7 @@ environment, or when a verdict depends on a fresh, source-aligned local run.
 
 ## Workflow
 
-1. **Extract the target sheet first** (run by default for large/multi-sheet workbooks): run
+1. **Extract the target sheet** (MANDATORY — always run first): run
    `scripts/extract_target_sheet.py <original.xlsx> --sheet "<Target Sheet>"` to produce the
    small single-sheet `<stem>.<sheet_slug>.xlsx`. Use that extracted file as the working
    target for every step below; leave the original large workbook untouched. See

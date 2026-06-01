@@ -1,22 +1,23 @@
-# classify_ut preparation (OPTIONAL)
+# classify_ut preparation
 
-This skill follows agent-guidelines AND extends it with optional preparation steps for UT
+This skill follows agent-guidelines AND extends it with preparation steps for UT
 classification. Always apply agent-guidelines rules including the mandatory post-write commit
 protocol.
 
 ## Steps in this skill
 
-1. **Extract Target Sheet** (run first) — copy the single target sheet out of the large
+1. **Extract Target Sheet** — **MANDATORY**. Copy the single target sheet out of the large
    status workbook into its own small `.xlsx`. Every later preparation step AND the entire
    parent classification workflow then operate on this extracted file, never the original.
 2. **Environment Setup** (formerly "Step -1") — OPTIONAL.
 3. **Local Pre-Screen** (formerly "Step 0") — OPTIONAL.
 
-Step 1 SHOULD be run first whenever the source workbook is large or multi-sheet (the normal
-case): the weekly status workbooks are too big to re-open and re-save in every phase. Steps 2
-and 3 are **preparation aids, not mandatory steps** — by default they are **NOT run**. Invoke
-them only when the user explicitly asks to refresh the environment or to bulk pre-screen a
-sheet, or when a verdict genuinely depends on a fresh source-aligned local run.
+Step 1 is **MANDATORY** and must always be run before any other phase or step: the weekly
+status workbooks are too big to re-open and re-save in every phase, and all downstream work
+must operate on the extracted single-sheet file. Steps 2 and 3 are **preparation aids, not
+mandatory steps** — by default they are **NOT run**. Invoke them only when the user explicitly
+asks to refresh the environment or to bulk pre-screen a sheet, or when a verdict genuinely
+depends on a fresh source-aligned local run.
 
 The parent `classify_ut/SKILL.md` workflow can proceed (source inspection, known-issue
 search, status-specific subskills) without running steps 2-3. When those steps ARE run,
