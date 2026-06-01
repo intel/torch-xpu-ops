@@ -4,6 +4,7 @@ set -euo pipefail
 readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread --dist worksteal '
 
 env_file="${GITHUB_ENV:-}"
+output_file="${GITHUB_OUTPUT:-}"
 base_pytest_addopts="${PYTEST_BASE_ARGS:-${DEFAULT_PYTEST_ADDOPTS}}"
 
 log() {
@@ -22,11 +23,13 @@ Options:
 
 Environment overrides:
   GITHUB_ENV
+  GITHUB_OUTPUT
   NUM_GPUS
   PYTEST_BASE_ARGS
 
 Outputs:
   ZE_AFFINITY_MASK
+  NUMACTL_ARGS
   PYTEST_EXTRA_ARGS
   PYTEST_ADDOPTS
   XPU_CPU_COUNT
@@ -173,6 +176,37 @@ count_csv_items() {
   fi
 }
 
+build_numactl_args() {
+  local gpu_list="$1"
+  local cpus_per_gpu="$2"
+  local gpu_ids=()
+  local index
+  local gpu_id
+  local cpu_start
+  local cpu_end
+  local numactl_args=""
+
+  if [ -z "${gpu_list}" ]; then
+    printf ' numactl -l '
+    return
+  fi
+
+  IFS=',' read -r -a gpu_ids <<< "${gpu_list}"
+  if ((${#gpu_ids[@]} <= 1)); then
+    printf ' numactl -l '
+    return
+  fi
+
+  for index in "${!gpu_ids[@]}"; do
+    gpu_id="${gpu_ids[index]}"
+    cpu_start=$((index * cpus_per_gpu))
+    cpu_end=$((((index + 1) * cpus_per_gpu) - 1))
+    numactl_args+=" ZE_AFFINITY_MASK=${gpu_id} OMP_NUM_THREADS=${cpus_per_gpu} numactl -l -C ${cpu_start}-${cpu_end} ;"
+  done
+
+  printf '%s' "${numactl_args}"
+}
+
 build_pytest_extra_args() {
   local gpu_list="$1"
   local cpus_per_gpu="$2"
@@ -210,7 +244,11 @@ emit_var() {
 
   if [ -n "${env_file}" ]; then
     printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
-  else
+  fi
+  if [ -n "${output_file}" ]; then
+    printf '%s=%s\n' "${key}" "${value}" >> "${output_file}"
+  fi
+  if [ -z "${env_file}" ] && [ -z "${output_file}" ]; then
     printf '%s=%s\n' "${key}" "${value}"
   fi
 }
@@ -256,6 +294,7 @@ main() {
   local ze_affinity_mask
   local cpus_per_xpu
   local pytest_extra_args
+  local numactl_args
   local device_names
   local cpu_governor
 
@@ -291,8 +330,10 @@ main() {
   fi
 
   pytest_extra_args="$(build_pytest_extra_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
+  numactl_args="$(build_numactl_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
 
   emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
+  emit_var NUMACTL_ARGS "${numactl_args}"
   emit_var PYTEST_EXTRA_ARGS "${pytest_extra_args}"
   emit_var PYTEST_ADDOPTS "${base_pytest_addopts} ${pytest_extra_args}"
   emit_var XPU_CPU_COUNT "${cpu_count}"
