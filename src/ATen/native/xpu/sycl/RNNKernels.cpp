@@ -111,7 +111,8 @@ template <
     int indexing_kind>
 struct LstmCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_bias = bias1_.data != nullptr;
+    bool has_bias1 = bias1_.data != nullptr;
+    bool has_bias2 = bias2_.data != nullptr;
 
     for (index_type linearIndex = item.get_global_id(0);
          linearIndex < totalElements_;
@@ -141,21 +142,24 @@ struct LstmCellForwardFunctor {
       scalar_t b1i, b1f, b1c, b1o;
       scalar_t b2i, b2f, b2c, b2o;
 
-      if (has_bias) {
+      if (has_bias1) {
         b1i = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 0 * hsz_);
         b1f = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 1 * hsz_);
         b1c = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 2 * hsz_);
         b1o = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 3 * hsz_);
-
-        b2i = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 0 * hsz_);
-        b2f = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 1 * hsz_);
-        b2c = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 2 * hsz_);
-        b2o = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 3 * hsz_);
       } else {
         b1i = F2H(0.0);
         b1f = F2H(0.0);
         b1c = F2H(0.0);
         b1o = F2H(0.0);
+      }
+
+      if (has_bias2) {
+        b2i = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 0 * hsz_);
+        b2f = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 1 * hsz_);
+        b2c = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 2 * hsz_);
+        b2o = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 3 * hsz_);
+      } else {
         b2i = F2H(0.0);
         b2f = F2H(0.0);
         b2c = F2H(0.0);
