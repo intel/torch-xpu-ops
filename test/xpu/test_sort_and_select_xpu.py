@@ -17,9 +17,10 @@ import torch
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
+    largeTensorTest,
 )
 from torch.testing._internal.common_dtype import all_types_and, floating_types_and
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import run_tests, slowTest
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -125,6 +126,25 @@ with XPUPatchForImport(False):
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
     TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
+
+    # XPU variant of upstream test_sort_and_select.py:test_topk_large_k.
+    # Based on /home/bkokoszx/scripts/topk.py and targets the large-k path
+    # near INT_MAX where output tensors are very large.
+    @slowTest
+    @largeTensorTest("20GB", "xpu")
+    def _test_topk_large_k(self, device):
+        int_max = 2**31 - 1
+        n = int_max
+        k = n - 100
+
+        data = torch.randn((1, n), device=device, dtype=torch.float16)
+        with self.assertRaisesRegex(
+            torch.OutOfMemoryError,
+            r"XPU out of memory\. Tried to allocate 16\.00 GiB\.",
+        ):
+            torch.topk(data, k, dim=1, largest=True, sorted=False)
+
+    TestSortAndSelect.test_topk_large_k = _test_topk_large_k
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
