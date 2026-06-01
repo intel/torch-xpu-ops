@@ -10,27 +10,24 @@ inputs:
     required: false
     description: GitHub token for runner label management
     default: ''
-  performance_test:
+  labels_action:
     required: false
-    description: Whether this is a performance test (enables exclusive label swap)
-    default: 'false'
+    description: "Label management action: 'set' to save and swap labels, 'reset' to restore, 'none' to skip"
+    default: 'none'
 
 outputs:
-  runner_id:
+  runner_name:
     description: Runner ID (name without trailing index)
-    value: ${{ steps.runner.outputs.runner_id }}
+    value: ${{ steps.runner.outputs.runner_name }}
+  random_label:
+    description: Temporary random label assigned to this runner
+    value: ${{ steps.labels.outputs.RANDOM_RUNNER_LABEL }}
   user_id:
     description: User ID
     value: ${{ steps.runner.outputs.user_id }}
   render_id:
     description: Render group ID
     value: ${{ steps.runner.outputs.render_id }}
-  hostname:
-    description: Runner hostname
-    value: ${{ steps.runner.outputs.hostname }}
-  random_label:
-    description: Temporary random label assigned to this runner
-    value: ${{ steps.labels.outputs.RANDOM_RUNNER_LABEL }}
   ZE_AFFINITY_MASK:
     description: ZE_AFFINITY_MASK for GPU selection
     value: ${{ steps.devices.outputs.ZE_AFFINITY_MASK }}
@@ -44,6 +41,30 @@ outputs:
 runs:
   using: composite
   steps:
+    # --- Cleanup ---
+    - name: Cleanup host
+      shell: bash -euo pipefail {0}
+      run: |
+        docker system prune -af || true
+        sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
+        cd ${RUNNER_WORKSPACE}/..
+        if [ "${PWD}" != "/" ]; then
+          sudo chown $(id -u):$(id -g) . -R || true
+        fi
+
+    # --- Show runner info ---
+    - name: Show runner info
+      shell: bash -euo pipefail {0}
+      run: |
+        hostname
+        cat /etc/os-release
+        uname -a
+        lspci -nn |grep  -Ei 'VGA|DISPLAY'
+        lscpu
+        free -h
+        df -h
+        timeout 120 clinfo --list
+
     # --- Identify runner ---
     - name: Get runner info
       id: runner
@@ -51,15 +72,14 @@ runs:
       run: |
         runner_root="${RUNNER_WORKSPACE%/_work*}"
         api_runner_id=$(jq -r '.agentId' "${runner_root}/.runner")
-        echo "runner_id=$(echo ${RUNNER_NAME} | sed 's/\-[0-9]$//')" | tee -a ${GITHUB_OUTPUT}
+        echo "runner_name=$(echo ${RUNNER_NAME} | sed 's/\-[0-9]$//')" | tee -a ${GITHUB_OUTPUT}
         echo "api_runner_id=${api_runner_id}" | tee -a ${GITHUB_OUTPUT}
         echo "user_id=$(id -u)" | tee -a ${GITHUB_OUTPUT}
         echo "render_id=$(getent group render | cut -d: -f3)" | tee -a ${GITHUB_OUTPUT}
-        echo "hostname=$(hostname)" | tee -a ${GITHUB_OUTPUT}
 
-    # --- Prevent re-scheduling by swapping labels (performance tests only) ---
+    # --- Prevent re-scheduling by swapping labels ---
     - name: Save labels and assign random label
-      if: inputs.performance_test == 'true'
+      if: inputs.labels_action == 'set'
       id: labels
       shell: bash -euo pipefail {0}
       env:
@@ -71,8 +91,7 @@ runs:
         current_labels=$(gh api "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels" \
           --jq '[.labels[] | select(.type=="custom") | .name] | join(",")')
         echo "Saved labels: ${current_labels}"
-        echo "SAVED_RUNNER_LABELS=${current_labels}" >> ${GITHUB_ENV}
-        echo "SAVED_RUNNER_LABELS=${current_labels}" >> ${GITHUB_OUTPUT}
+        echo "${current_labels}" > ${HOME}/.ci_saved_labels
         # Remove all custom labels
         if [ -n "${current_labels}" ]; then
           IFS=',' read -ra label_arr <<< "${current_labels}"
@@ -87,18 +106,12 @@ runs:
         echo "Assigned random label: ${random_label}"
         echo "RANDOM_RUNNER_LABEL=${random_label}" >> ${GITHUB_OUTPUT}
 
-    # --- Show hardware info ---
-    - name: Show runner info
+    # --- Fix CPU/GPU frequency for performance tests ---
+    - name: Fix frequency for stable benchmarking
       shell: bash -euo pipefail {0}
       run: |
-        lscpu
-        lshw -C display
-        free -h
-        df -h
-        cat /etc/os-release
-        uname -a
-        dpkg -l | grep -E 'intel-opencl-icd|libze-dev|libigc-dev' || true
-        timeout 120 clinfo --list || sudo reboot
+        ${{ github.workspace }}/.github/scripts/freq_fixed.sh lock
+        ${{ github.workspace }}/.github/scripts/freq_fixed.sh status
 
     # --- Detect XPU devices ---
     - name: Detect devices and distribute CPUs/GPUs
@@ -111,20 +124,9 @@ runs:
           echo "PYTEST_EXTRA_ARGS=${pytest_extra_args}" >> ${GITHUB_OUTPUT}
         fi
 
-    # --- Cleanup ---
-    - name: Cleanup host
-      shell: bash -euo pipefail {0}
-      run: |
-        docker system prune -af || true
-        sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
-        cd ${RUNNER_WORKSPACE}/..
-        if [ "${PWD}" != "/" ]; then
-          sudo chown $(id -u):$(id -g) . -R || true
-        fi
-
-    # --- Restore original labels (always runs for performance tests) ---
+    # --- Restore original labels ---
     - name: Recover runner labels
-      if: always() && inputs.performance_test == 'true'
+      if: inputs.labels_action == 'reset'
       shell: bash -euo pipefail {0}
       env:
         GH_TOKEN: ${{ inputs.github_token }}
@@ -136,12 +138,17 @@ runs:
         if [ -n "${RANDOM_LABEL}" ]; then
           gh api --method DELETE "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels/${RANDOM_LABEL}" || true
         fi
-        # Restore saved labels
-        if [ -n "${SAVED_RUNNER_LABELS:-}" ]; then
-          IFS=',' read -ra label_arr <<< "${SAVED_RUNNER_LABELS}"
+        # Restore saved labels from file
+        saved_labels=""
+        if [ -f "${HOME}/.ci_saved_labels" ]; then
+          saved_labels=$(cat "${HOME}/.ci_saved_labels")
+          rm -f "${HOME}/.ci_saved_labels"
+        fi
+        if [ -n "${saved_labels}" ]; then
+          IFS=',' read -ra label_arr <<< "${saved_labels}"
           for label in "${label_arr[@]}"; do
             gh api --method POST "repos/${REPO}/actions/runners/${API_RUNNER_ID}/labels" \
               -f "labels[]=${label}"
           done
-          echo "Restored labels: ${SAVED_RUNNER_LABELS}"
+          echo "Restored labels: ${saved_labels}"
         fi

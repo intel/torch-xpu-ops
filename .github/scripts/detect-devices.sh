@@ -82,29 +82,6 @@ detect_cpu_count() {
   printf '%d' "$((cores_per_socket * sockets))"
 }
 
-ensure_cpu_frequency() {
-  local scaling_governor
-
-  scaling_governor="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq)"
-
-  if [ "$(sudo -n true >/dev/null 2>&1 && echo $? || echo $?)" -eq 0 ]; then
-    if [ "${scaling_governor}" != "performance" ]; then
-      sudo apt-get update
-      sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
-      sudo cpupower set -b 0
-      sudo cpupower frequency-set -g performance
-      scaling_governor="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq)"
-    fi
-    sync
-    sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
-  else
-    log "[INFO] You do NOT have ROOT permission to set system config."
-    log "       The frequency governor is ${scaling_governor}."
-  fi
-
-  printf '%s' "${scaling_governor}"
-}
-
 get_device_rows() {
   lspci -nn | grep -Ei 'VGA|DISPLAY' | grep -v 'UHD' | grep '8086:' || true
 }
@@ -260,7 +237,6 @@ print_summary() {
   local ze_affinity_mask="$4"
   local cpus_per_xpu="$5"
   local device_names="$6"
-  local cpu_governor="$7"
   local availability_status='OK'
   local formatted_device_names='<none>'
 
@@ -279,7 +255,6 @@ print_summary() {
     printf '  %-20s %s\n' 'CPUs:' "${cpu_count}"
     printf '  %-20s %s\n' 'Detected GPUs:' "${total_xpu_count}"
     printf '  %-20s %s\n' 'Available GPUs:' "${online_xpu_count}"
-    printf '  %-20s %s\n' 'CPU governor:' "${cpu_governor}"
     printf '  %-20s %s\n' 'CPUs per GPU:' "${cpus_per_xpu}"
     printf '  %-20s %s\n' 'ZE_AFFINITY_MASK:' "${ze_affinity_mask:-<none>}"
     printf '  %-20s %s\n' 'Device names:' "${formatted_device_names}"
@@ -296,7 +271,6 @@ main() {
   local pytest_extra_args
   local numactl_args
   local device_names
-  local cpu_governor
 
   parse_args "$@"
 
@@ -308,7 +282,6 @@ main() {
   require_command numactl
 
   cpu_count="$(detect_cpu_count)"
-  cpu_governor="$(ensure_cpu_frequency)"
   device_rows="$(get_device_rows)"
   detect_device_info "${device_rows}"
   total_xpu_count="${DETECTED_GPU_COUNT}"
@@ -340,7 +313,7 @@ main() {
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
   emit_var XPU_ONLINE_COUNT "${online_xpu_count}"
 
-  print_summary "${cpu_count}" "${total_xpu_count}" "${online_xpu_count}" "${ze_affinity_mask}" "${cpus_per_xpu}" "${device_names}" "${cpu_governor}"
+  print_summary "${cpu_count}" "${total_xpu_count}" "${online_xpu_count}" "${ze_affinity_mask}" "${cpus_per_xpu}" "${device_names}"
 }
 
 main "$@"
