@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Detect devices
         run: |
-          # bash ${{ github.workspace }}/.github/scripts/detect-devices.sh
+          bash ${{ github.workspace }}/.github/scripts/detect-devices.sh
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
       - name: Prepare test env
@@ -73,6 +73,7 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU OP benchmark Log
         if: always()

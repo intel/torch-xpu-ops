@@ -261,6 +261,7 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}

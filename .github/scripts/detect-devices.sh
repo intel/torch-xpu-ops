@@ -40,7 +40,9 @@ EOF
 
 require_command() {
   local cmd="$1"
-
+  local package="$2"
+  sudo -E apt-get update -qq
+  sudo -E apt-get install -y -qq "${package}"
   if ! command -v "$cmd" >/dev/null 2>&1; then
     log "[Error] Missing required command: ${cmd}"
     exit 1
@@ -83,10 +85,6 @@ detect_cpu_count() {
 }
 
 get_device_rows() {
-  if ! command -v lspci &>/dev/null; then
-    sudo -E apt-get update -qq
-    sudo -E apt-get install -y -qq pciutils
-  fi
   lspci -nn | grep -Ei 'VGA|DISPLAY' | grep -v 'UHD' | grep '8086:' || true
 }
 
@@ -278,12 +276,9 @@ main() {
 
   parse_args "$@"
 
-  require_command awk
-  require_command clinfo
-  require_command grep
-  require_command lscpu
-  require_command lspci
-  require_command numactl
+  require_command clinfo  clinfo
+  require_command lspci   pciutils
+  require_command numactl numactl
 
   cpu_count="$(detect_cpu_count)"
   device_rows="$(get_device_rows)"
