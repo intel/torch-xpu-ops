@@ -240,7 +240,7 @@ print_summary() {
   local online_xpu_count="$3"
   local ze_affinity_mask="$4"
   local cpus_per_xpu="$5"
-  local device_names="$6"
+  local device_names_str="$6"
   local availability_status='OK'
   local formatted_device_names='<none>'
 
@@ -248,8 +248,8 @@ print_summary() {
     availability_status='WARNING: available < detected'
   fi
 
-  if [ -n "${device_names}" ]; then
-    formatted_device_names="$(printf '%s' "${device_names}" | sed 's/; /\n                       - /g')"
+  if [ -n "${device_names_str}" ]; then
+    formatted_device_names="$(printf '%s' "${device_names_str}" | sed 's/; /\n                       - /g')"
     formatted_device_names="- ${formatted_device_names}"
   fi
 
