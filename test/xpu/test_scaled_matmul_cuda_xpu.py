@@ -119,9 +119,24 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         expected_error = NotImplementedError
         expected_pattern = "1x128 and 128x128 scaling not available with ROCm"
     elif self.device_type == "xpu":
-        # XPU does not support DeepSeek-style blockwise scaling
+        # XPU currently supports the 1x128 RHS path, but still errors on other
+        # DeepSeek-style blockwise combinations.
+        if lhs_block == 1 and rhs_block == 128:
+            scaled_mm_wrap(
+                x_fp8,
+                y_fp8.t(),
+                scale_a=x_scales,
+                scale_recipe_a=lhs_recipe,
+                scale_b=y_scales.t(),
+                scale_recipe_b=rhs_recipe,
+                out_dtype=output_dtype,
+            )
+            return
         expected_error = ValueError
-        expected_pattern = "Invalid scaling configuration"
+        expected_pattern = (
+            "Invalid scaling configuration|"
+            "scale_[ab] must have shape .* Float elements, got \\[.*\\]"
+        )
     else:
         # CUDA non-SM90 should raise NotImplementedError
         expected_error = NotImplementedError
