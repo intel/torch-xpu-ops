@@ -14,6 +14,10 @@ inputs:
     required: false
     description: "Label management action: 'set' to save and swap labels, 'reset' to restore, 'none' to skip"
     default: 'none'
+  fixed_freq:
+    required: false
+    description: Whether to lock CPU/GPU frequencies for stable benchmarking
+    default: 'false'
 
 outputs:
   runner_name:
@@ -108,6 +112,7 @@ runs:
 
     # --- Fix CPU/GPU frequency for performance tests ---
     - name: Fix frequency for stable benchmarking
+      if: inputs.fixed_freq == 'true'
       shell: bash -euo pipefail {0}
       run: |
         ${{ github.workspace }}/.github/scripts/freq_fixed.sh lock
