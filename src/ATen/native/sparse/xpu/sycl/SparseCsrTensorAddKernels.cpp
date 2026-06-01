@@ -23,6 +23,7 @@
 
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <comm/Memory.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -238,13 +239,12 @@ void add_out_sparse_csr_kernel(
               // Set out_crow[0] = 0 on device (no wait needed; the
               // in-order queue guarantees this completes before the
               // memcpy below).
-              getCurrentSYCLQueue().memset(out_crow_ptr, 0, sizeof(index_t));
+              ::xpu::sycl::memsetAsync(out_crow_ptr, 0, sizeof(index_t));
 
               // Read total nnz from device.
               index_t total_nnz = 0;
-              getCurrentSYCLQueue()
-                  .memcpy(&total_nnz, out_crow_ptr + nrows, sizeof(index_t))
-                  .wait();
+              ::xpu::sycl::memcpyAndSync(
+                  &total_nnz, out_crow_ptr + nrows, sizeof(index_t));
 
               // Allocate output col_indices and values.
               Tensor out_col = at::empty({total_nnz}, dense_idx_options);

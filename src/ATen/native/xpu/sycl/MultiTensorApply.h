@@ -16,6 +16,7 @@
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/CachingHostAllocator.h>
+#include <comm/Memory.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -165,7 +166,6 @@ void multi_tensor_apply(
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
 
-  auto& q = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
@@ -194,14 +194,11 @@ void multi_tensor_apply(
     }
   }
 
-  q.memcpy(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
       (void*)metaAddressInput,
       (void*)tlAddress,
-      sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors);
-  at::getHostAllocator(at::kXPU)->record_event(
-      (void*)tlAddress,
-      tlAddress_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors,
+      tlAddress_dptr.get_context());
 
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
@@ -227,11 +224,11 @@ void multi_tensor_apply(
       posWG == totalWG,
       "Work group index dose not equal to the allocated memory size, segment fault might occur");
 
-  q.memcpy((void*)metaWGInput, (void*)tlWGMeta, sizeof(TLMetaForWG) * totalWG);
-  at::getHostAllocator(at::kXPU)->record_event(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
+      (void*)metaWGInput,
       (void*)tlWGMeta,
-      tlWGMeta_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLMetaForWG) * totalWG,
+      tlWGMeta_dptr.get_context());
 
   launch_multi_tensor_apply_kernel<false>(
       metaAddressInput, metaWGInput, callable, totalWG, args...);
@@ -247,7 +244,6 @@ void multi_tensor_apply(
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
 
-  auto& q = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
   int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
@@ -273,14 +269,11 @@ void multi_tensor_apply(
     }
   }
 
-  q.memcpy(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
       (void*)metaAddressInput,
       (void*)tlAddress,
-      sizeof(TLMetaForAddress<depth>) * n_tensors);
-  at::getHostAllocator(at::kXPU)->record_event(
-      (void*)tlAddress,
-      tlAddress_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLMetaForAddress<depth>) * n_tensors,
+      tlAddress_dptr.get_context());
 
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
@@ -306,11 +299,11 @@ void multi_tensor_apply(
       posWG == totalWG,
       "Work group index dose not equal to the allocated memory size, segment fault might occur");
 
-  q.memcpy((void*)metaWGInput, (void*)tlWGMeta, sizeof(TLMetaForWG) * totalWG);
-  at::getHostAllocator(at::kXPU)->record_event(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
+      (void*)metaWGInput,
       (void*)tlWGMeta,
-      tlWGMeta_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLMetaForWG) * totalWG,
+      tlWGMeta_dptr.get_context());
 
   launch_multi_tensor_apply_kernel<false>(
       metaAddressInput, metaWGInput, callable, totalWG, args...);
@@ -327,7 +320,6 @@ void multi_tensor_apply_for_fused_optimizer(
       "Number of tensor lists has to match the depth");
   const auto n_tensors = tensor_lists[0].size();
 
-  auto& q = getCurrentSYCLQueue();
   int64_t kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
 
   auto addressStorage = at::empty(
@@ -353,14 +345,11 @@ void multi_tensor_apply_for_fused_optimizer(
     }
   }
 
-  q.memcpy(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
       (void*)metaFusedAddressInput,
       (void*)tlAddress,
-      sizeof(TLFusedMetaForAddress<depth>) * n_tensors);
-  at::getHostAllocator(at::kXPU)->record_event(
-      (void*)tlAddress,
-      tlAddress_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLFusedMetaForAddress<depth>) * n_tensors,
+      tlAddress_dptr.get_context());
 
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
@@ -386,11 +375,11 @@ void multi_tensor_apply_for_fused_optimizer(
       posWG == totalWG,
       "Work group index dose not equal to the allocated memory size, segment fault might occur");
 
-  q.memcpy((void*)metaWGInput, (void*)tlWGMeta, sizeof(TLMetaForWG) * totalWG);
-  at::getHostAllocator(at::kXPU)->record_event(
+  ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
+      (void*)metaWGInput,
       (void*)tlWGMeta,
-      tlWGMeta_dptr.get_context(),
-      at::xpu::getCurrentXPUStream());
+      sizeof(TLMetaForWG) * totalWG,
+      tlWGMeta_dptr.get_context());
 
   launch_multi_tensor_apply_kernel<true>(
       metaFusedAddressInput, metaWGInput, callable, totalWG, args...);

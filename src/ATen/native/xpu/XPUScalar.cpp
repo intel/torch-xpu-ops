@@ -13,7 +13,7 @@
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/ops/_local_scalar_dense_native.h>
-#include <comm/SYCLContext.h>
+#include <comm/Memory.h>
 
 namespace at::native {
 
@@ -34,12 +34,8 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
             std::nullopt /* memory format */
         );
 
-        auto queue = at::xpu::getCurrentSYCLQueue();
-        auto e = queue.memcpy(
-            (void*)value.const_data_ptr<scalar_t>(),
-            self.const_data_ptr<scalar_t>(),
-            sizeof(scalar_t));
-        e.wait();
+        ::xpu::sycl::memcpyAndSync(
+            value.mutable_data_ptr(), self.const_data_ptr(), sizeof(scalar_t));
 
         r = Scalar(*value.const_data_ptr<scalar_t>());
       }),

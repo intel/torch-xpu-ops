@@ -16,6 +16,7 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 #include <ATen/xpu/EmptyTensor.h>
+#include <comm/Memory.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
@@ -246,7 +247,6 @@ std::vector<Tensor> foreach_norm_kernel(
   for (int i = 0; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
-  auto& q = getCurrentSYCLQueue();
   auto addressStorage =
       at::empty({(int)(sizeof(void*) * ntensors)}, options.dtype(at::kByte));
   auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
@@ -305,15 +305,11 @@ std::vector<Tensor> foreach_norm_kernel(
                   tensor_list_addresses[i] =
                       ret_per_tensor[i].mutable_data_ptr<out_t>();
                 }
-                q.memcpy(
+                ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
                     (void*)metaAddress,
                     (void*)tensor_list_addresses,
-                    sizeof(void*) * ntensors);
-
-                at::getHostAllocator(at::kXPU)->record_event(
-                    (void*)tensor_list_addresses,
-                    tensor_list_addresses_dptr.get_context(),
-                    at::xpu::getCurrentXPUStream());
+                    sizeof(void*) * ntensors,
+                    tensor_list_addresses_dptr.get_context());
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
@@ -374,15 +370,11 @@ std::vector<Tensor> foreach_norm_kernel(
                   tensor_list_addresses[i] =
                       ret_per_tensor[i].mutable_data_ptr<out_t>();
                 }
-                q.memcpy(
+                ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
                     (void*)metaAddress,
                     (void*)tensor_list_addresses,
-                    sizeof(void*) * ntensors);
-
-                at::getHostAllocator(at::kXPU)->record_event(
-                    (void*)tensor_list_addresses,
-                    tensor_list_addresses_dptr.get_context(),
-                    at::xpu::getCurrentXPUStream());
+                    sizeof(void*) * ntensors,
+                    tensor_list_addresses_dptr.get_context());
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
@@ -443,15 +435,11 @@ std::vector<Tensor> foreach_norm_kernel(
                   tensor_list_addresses[i] =
                       ret_per_tensor[i].mutable_data_ptr<out_t>();
                 }
-                q.memcpy(
+                ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
                     (void*)metaAddress,
                     (void*)tensor_list_addresses,
-                    sizeof(void*) * ntensors);
-
-                at::getHostAllocator(at::kXPU)->record_event(
-                    (void*)tensor_list_addresses,
-                    tensor_list_addresses_dptr.get_context(),
-                    at::xpu::getCurrentXPUStream());
+                    sizeof(void*) * ntensors,
+                    tensor_list_addresses_dptr.get_context());
                 if (simd == SIMD32) {
                   launch_lpnorm_chunk_reduce_kernel<
                       out_t,
@@ -632,7 +620,6 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
   const size_t ntensors = tensors.size();
   const auto options = tensors[0].options();
 
-  auto& q = getCurrentSYCLQueue();
   // Store output address for each tensor
   auto addressStorage =
       at::empty({(int)(sizeof(void*) * ntensors)}, options.dtype(at::kByte));
@@ -708,20 +695,16 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
         for (int i = 0; i < ntensors; i++) {
           tensor_list_addresses[i] = vec_res[i].mutable_data_ptr<scalar_t>();
         }
-        q.memcpy(
+        ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
             (void*)metaAddress,
             (void*)tensor_list_addresses,
-            sizeof(void*) * ntensors);
-        at::getHostAllocator(at::kXPU)->record_event(
-            (void*)tensor_list_addresses,
-            tensor_list_addresses_dptr.get_context(),
-            at::xpu::getCurrentXPUStream());
-        q.memcpy(
-            (void*)metaCounts, (void*)thunk_counts, sizeof(int) * ntensors);
-        at::getHostAllocator(at::kXPU)->record_event(
+            sizeof(void*) * ntensors,
+            tensor_list_addresses_dptr.get_context());
+        ::xpu::sycl::memcpyPinnedHostToDeviceAsync(
+            (void*)metaCounts,
             (void*)thunk_counts,
-            thunk_counts_dptr.get_context(),
-            at::xpu::getCurrentXPUStream());
+            sizeof(int) * ntensors,
+            thunk_counts_dptr.get_context());
         if (simd == SIMD32) {
           launch_lpmax_chunk_reduce_kernel<scalar_t, SIMD32>(
               output_per_tensor.mutable_data_ptr<scalar_t>(),
