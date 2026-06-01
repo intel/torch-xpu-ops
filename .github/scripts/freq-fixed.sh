@@ -245,8 +245,10 @@ lock_cpu_governor() {
 
     if ! command -v cpupower &>/dev/null; then
         info "Installing cpupower ..."
-        sudo -E apt-get update -qq && sudo -E apt-get install -y -qq \
-            linux-tools-common "linux-tools-$(uname -r)" "linux-cloud-tools-$(uname -r)" || true
+        if ! { sudo -E apt-get update -qq && sudo -E apt-get install -y -qq \
+            linux-tools-common "linux-tools-$(uname -r)" "linux-cloud-tools-$(uname -r)"; }; then
+            true
+        fi
     fi
     if command -v cpupower &>/dev/null; then
         sudo cpupower set -b 0 || warn "cpupower set -b 0 failed"
