@@ -4,9 +4,9 @@
 # Pin min frequency to max frequency for stable benchmarking results.
 #
 # Usage:
-#   ./freq_fixed.sh status  - Show current frequency settings
-#   ./freq_fixed.sh lock    - Pin min freq to max freq (requires sudo)
-#   ./freq_fixed.sh unlock  - Revert to original min freq values (requires sudo)
+#   ./freq-fixed.sh status  - Show current frequency settings
+#   ./freq-fixed.sh lock    - Pin min freq to max freq (requires sudo)
+#   ./freq-fixed.sh unlock  - Revert to original min freq values (requires sudo)
 # ==============================================================================
 
 set -euo pipefail
