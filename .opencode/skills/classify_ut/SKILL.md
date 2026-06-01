@@ -24,7 +24,10 @@ Known sheets:
 
 ## Inputs
 
-- Target workbook: the `.xlsx` file provided by the user
+- Target workbook: the `.xlsx` file provided by the user. The preparation **Extract Target
+  Sheet** step (run first) copies the target sheet into a small standalone
+  `<stem>.<sheet_slug>.xlsx`; that extracted file becomes the working target for all later
+  phases, while the original large workbook is left untouched as the source of record.
 - Source checkout for existence checks: use the user-provided path via `PYTORCH_SRC`; if none is
   provided, use `$HOME/upstream/pytorch`. Do not hard-code private checkout paths in commands or
   reusable logic.
@@ -64,19 +67,24 @@ Do not collapse these workflows into a single pattern-matching script. Bulk scri
 workbook columns, collect candidate rows, or apply already-reviewed decisions, but the actual
 classification must follow the status-specific skill.
 
-## Optional Preparation (environment setup + local pre-screen)
+## Optional Preparation (extract sheet + environment setup + local pre-screen)
 
-Two preparation aids live in `classify_ut/preparation/SKILL.md`:
+Three preparation steps live in `classify_ut/preparation/SKILL.md`:
 
+- **Extract Target Sheet** (run first): copy the single target sheet out of the large status
+  workbook into its own small `.xlsx` via `scripts/extract_target_sheet.py`. Every later
+  phase and step operates on this extracted file, not the original large workbook.
 - **Environment Setup** (formerly "Step -1"): align `pytorch_opencode_env` to the PyTorch
   XPU nightly and align the local pytorch + torch-xpu-ops checkouts to the wheel's commits.
 - **Local Pre-Screen** (formerly "Step 0"): bulk-run every blank-`Reason` row and record a
   `local_result` plus captured logs.
 
-These steps are **OPTIONAL and NOT run by default.** Run them only when the user explicitly
-asks to refresh the environment or bulk pre-screen a sheet, or when a verdict genuinely
-depends on a fresh, source-aligned local run. Classification (source inspection, known-issue
-search, the status-specific subskills) can proceed without them.
+**Extract Target Sheet SHOULD be run first** whenever the source workbook is large or
+multi-sheet (the normal case). **Environment Setup and Local Pre-Screen are OPTIONAL and NOT
+run by default** — run them only when the user explicitly asks to refresh the environment or
+bulk pre-screen a sheet, or when a verdict genuinely depends on a fresh, source-aligned local
+run. Classification (source inspection, known-issue search, the status-specific subskills) can
+proceed without the optional steps.
 
 When preparation IS run, its artifacts become authoritative inputs:
 
@@ -132,30 +140,36 @@ environment, or when a verdict depends on a fresh, source-aligned local run.
 
 ## Workflow
 
-1. (Optional) Run preparation only if requested or needed: environment setup and/or local
-   pre-screen, per `classify_ut/preparation/SKILL.md`. Not run by default.
-2. Open the target sheet in the workbook.
-3. Ensure workbook column `Reason TBD` exists.
-4. Initialize `Reason TBD` from the ORIGINAL workbook's `Reason` value (not the `.agent.xlsx`):
+1. **Extract the target sheet first** (run by default for large/multi-sheet workbooks): run
+   `scripts/extract_target_sheet.py <original.xlsx> --sheet "<Target Sheet>"` to produce the
+   small single-sheet `<stem>.<sheet_slug>.xlsx`. Use that extracted file as the working
+   target for every step below; leave the original large workbook untouched. See
+   `classify_ut/preparation/SKILL.md`.
+2. (Optional) Run the remaining preparation only if requested or needed: environment setup
+   and/or local pre-screen against the extracted file, per `classify_ut/preparation/SKILL.md`.
+   Not run by default.
+3. Open the target sheet in the extracted workbook.
+4. Ensure workbook column `Reason TBD` exists.
+5. Initialize `Reason TBD` from the ORIGINAL workbook's `Reason` value (not the `.agent.xlsx`):
    - if `Reason` is blank in the original, set `Reason TBD = True`
    - otherwise set `Reason TBD = False`
    - Once set, NEVER modify this column again during classification or reclassification
-5. If XPU test metadata is blank, derive it from CUDA metadata:
+6. If XPU test metadata is blank, derive it from CUDA metadata:
    - `classname_cuda` ending with `CUDA` -> replace with `XPU`
    - `name_cuda` ending with `_cuda` -> replace with `_xpu`
    - `testfile_xpu` defaults to `testfile_cuda` when blank
-6. For each blank-Reason row, choose the status-specific skill:
+7. For each blank-Reason row, choose the status-specific skill:
    - blank `status_xpu` -> `classify_ut/blank/SKILL.md`
    - `status_xpu = failed` -> `classify_ut/failed/SKILL.md`
    - `status_xpu = skipped` or `xfail` -> `classify_ut/skipped/SKILL.md`
-7. Execute the selected skill's deep analysis workflow. While classifying, also apply the
+8. Execute the selected skill's deep analysis workflow. While classifying, also apply the
    cross-cutting rules defined in `classify_ut/RULES.md` whenever they are in scope: the
    **Sibling-Class Verdict Mapping**, **CUDA-Only Judgement Rule**, **Dynamic-Skip Rule**, and the
    **Workbook Precedent Rule** (authoritative override for non-Inductor `Not applicable`).
- 8. Fill `Reason` and `DetailReason`. Mark cells blue.
- 9. Save local verification results to `/tmp/opencode/<workbook>_local_verify/`
- 10. Save output workbook as `.agent.xlsx` (do not modify original).
- 11. Verify: 0 blank Reason rows remaining, ZIP integrity OK, reason counts match.
+9. Fill `Reason` and `DetailReason`. Mark cells blue.
+10. Save local verification results to `/tmp/opencode/<workbook>_local_verify/`
+11. Save output workbook as `.agent.xlsx` (do not modify original).
+12. Verify: 0 blank Reason rows remaining, ZIP integrity OK, reason counts match.
 
 ## Notes
 

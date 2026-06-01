@@ -4,18 +4,57 @@ This skill follows agent-guidelines AND extends it with optional preparation ste
 classification. Always apply agent-guidelines rules including the mandatory post-write commit
 protocol.
 
-## Status: OPTIONAL — NOT run by default
+## Steps in this skill
 
-The two steps in this skill — **Environment Setup** (formerly "Step -1") and **Local
-Pre-Screen** (formerly "Step 0") — are **preparation aids, not mandatory steps**. By default
-they are **NOT run**. Invoke them only when the user explicitly asks to refresh the
-environment or to bulk pre-screen a sheet, or when a verdict genuinely depends on a fresh
-source-aligned local run.
+1. **Extract Target Sheet** (run first) — copy the single target sheet out of the large
+   status workbook into its own small `.xlsx`. Every later preparation step AND the entire
+   parent classification workflow then operate on this extracted file, never the original.
+2. **Environment Setup** (formerly "Step -1") — OPTIONAL.
+3. **Local Pre-Screen** (formerly "Step 0") — OPTIONAL.
+
+Step 1 SHOULD be run first whenever the source workbook is large or multi-sheet (the normal
+case): the weekly status workbooks are too big to re-open and re-save in every phase. Steps 2
+and 3 are **preparation aids, not mandatory steps** — by default they are **NOT run**. Invoke
+them only when the user explicitly asks to refresh the environment or to bulk pre-screen a
+sheet, or when a verdict genuinely depends on a fresh source-aligned local run.
 
 The parent `classify_ut/SKILL.md` workflow can proceed (source inspection, known-issue
-search, status-specific subskills) without running either step. When these steps ARE run,
+search, status-specific subskills) without running steps 2-3. When those steps ARE run,
 their artifacts (provenance JSON, `local_result` column, captured logs) become authoritative
 inputs that downstream classification should cite.
+
+## Extract Target Sheet (run first)
+
+The weekly UT status workbooks carry many sheets and thousands of rows, so re-opening and
+re-saving the whole file in every phase is slow. The first preparation action copies ONLY the
+target sheet into a new, small workbook. All subsequent phases and steps — environment setup,
+local pre-screen, and the full parent classification workflow — operate on this extracted file.
+
+### Extractor script (authoritative)
+
+```
+python3 .opencode/skills/classify_ut/scripts/extract_target_sheet.py \
+    <original_status_workbook.xlsx> --sheet "<Target Sheet Name>"
+```
+
+The script:
+
+- Loads the original workbook once, deletes every sheet except the target, and saves the
+  result to `<original_stem>.<sheet_slug>.xlsx` next to the original (override with `--out`).
+- Preserves the target sheet exactly (cell values, fills, column widths).
+- Never modifies the original workbook.
+- Errors out, listing available sheet names, if the target sheet does not exist.
+- Prints the extracted file path plus its row/column counts.
+
+### Downstream contract (MANDATORY once extracted)
+
+- The extracted single-sheet `.xlsx` is THE target workbook for every later phase and step.
+  Use its path wherever a workbook argument is required (local pre-screen below, and the
+  parent workflow's open/classify/save steps).
+- Do NOT re-open the original large workbook for classification; keep it only as the
+  untouched source of record.
+- The final `.agent.xlsx` output is derived from the extracted file (still "do not modify the
+  original"), so it likewise contains only the target sheet.
 
 ## When to run preparation
 
