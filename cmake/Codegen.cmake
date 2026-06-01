@@ -37,8 +37,8 @@ if(WIN32)
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${XPU_TEMPLATE_SRC_DIR}" "${XPU_TEMPLATE_DST_DIR}"
     COMMAND ${CMAKE_COMMAND} -E touch "${XPU_TEMPLATE_STAMP}"
     DEPENDS
-      ${TORCH_ROOT}/aten/src/ATen/templates/RegisterDispatchDefinitions.ini
-      ${TORCH_ROOT}/aten/src/ATen/templates/RegisterDispatchKey.cpp
+      ${XPU_TEMPLATE_SRC_DIR}/RegisterDispatchDefinitions.ini
+      ${XPU_TEMPLATE_SRC_DIR}/RegisterDispatchKey.cpp
     COMMENT "Syncing ATen templates for torch-xpu-ops codegen"
   )
 
