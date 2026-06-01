@@ -115,10 +115,18 @@ macro(set_build_flags)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
     endif()
 
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
+    # -- Device debug flags (aligned with CUDA behavior)
+    # XPU_DEVICE_DEBUG=1: full device debug, disables optimization (like CUDA's -g -G)
+    #   Orthogonal to build type, always forces device debug.
+    # DEBUG_XPU=1: line-table-only debug info (like CUDA's -lineinfo)
+    #   Only effective in Debug/RelWithDebInfo builds.
+    # DEBUG=1 alone: does NOT affect device code (same as CUDA).
+    if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
-    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
+    elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
+      if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only)
+      endif()
     endif()
 
     CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
