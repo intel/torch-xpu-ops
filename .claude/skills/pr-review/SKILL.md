@@ -111,6 +111,8 @@ Before reviewing, build understanding:
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
+If the diff includes SKILL.md changes, also evaluate against the Skill in skill-writer's [SKILL.md](../skill-writer/SKILL.md).
+
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
 - **Indexing**: 32-bit vs 64-bit indexing, large tensor overflow risk
