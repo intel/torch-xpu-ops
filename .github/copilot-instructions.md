@@ -39,9 +39,9 @@ memory. The contents of these files are authoritative.
 
 | When you are about to... | Read this file first |
 |--------------------------|---------------------|
-| Fix or triage an issue | `.github/skills/xpu-issues-triaging/SKILL.md` |
-| Open a pull request, push a branch, or write a PR body | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
-| Review a pull request | `.github/skills/xpu-ops-pr-review/SKILL.md` |
+| Fix or triage an issue | `.claude/skills/xpu-issues-triaging/SKILL.md` |
+| Open a pull request, push a branch, or write a PR body | `.claude/skills/xpu-ops-pr-creation/SKILL.md` |
+| Review a pull request | `.claude/skills/pr-review/SKILL.md` |
 
 Path-specific coding rules are auto-loaded by the agent based on the files you
 edit (via `applyTo` globs), so you do not need to read them manually:
