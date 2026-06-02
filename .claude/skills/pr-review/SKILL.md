@@ -8,9 +8,9 @@ description: Review pull requests for XPU operator or backend code. Use when rev
 Review torch-xpu-ops pull requests focusing on what CI cannot check: correctness against CPU/CUDA semantics, XPU-specific risks (synchronization, indexing, precision), test adequacy, and backward compatibility.
 
 Detailed reference:
-- [torch-xpu-ops-review-notes.md](torch-xpu-ops-review-notes.md)
-- [review-checklist.md](review-checklist.md)
-- [bc-guidelines.md](bc-guidelines.md)
+- [torch-xpu-ops-review-notes.md](references/torch-xpu-ops-review-notes.md)
+- [review-checklist.md](references/review-checklist.md)
+- [bc-guidelines.md](references/bc-guidelines.md)
 
 ## Usage Modes
 
@@ -109,7 +109,7 @@ Before reviewing, build understanding:
 
 ### Step 2: Deep Review
 
-Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](review-checklist.md).
+Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
@@ -121,7 +121,7 @@ Pay special attention to XPU-specific risks:
 
 ### Step 3: Check Backward Compatibility
 
-Evaluate BC implications per [bc-guidelines.md](bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
+Evaluate BC implications per [bc-guidelines.md](references/bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
 
 ### Step 4: Formulate Review
 
