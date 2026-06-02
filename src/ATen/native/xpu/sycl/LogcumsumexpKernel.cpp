@@ -52,7 +52,7 @@ scalar_t _log_add_exp_helper(const scalar_t& x, const scalar_t& y) {
   scalar_t max = isnan_y ? y : (isnan_x ? x : std::max(x, y));
   if (min != max || std::isfinite(min)) {
     // nan will be propagated here
-    return ::log1p(std::exp(min - max)) + max;
+    return ::log1p(sycl::exp(min - max)) + max;
   } else {
     // special case to correctly handle infinite cases
     return x;
