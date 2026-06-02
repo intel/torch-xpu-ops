@@ -1,4 +1,4 @@
-# RFC: Migrate `agentic_xpu` into `torch-xpu-ops`
+# AI Driven PyTorch XPU Dev & Val
 
 ## 1. Motivation
 There are some the key challenges we are facing in PyTorch development and validation.
