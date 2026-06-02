@@ -11,9 +11,9 @@ naming changes** to the migrated content. Scope is migration only.
   included here. So when the developer does not have the running scripts, one
   could still load the skills (like a local claude/opencode agent).
 - **Scripts / Python package** (`agentic_xpu/scripts/*`,
-  `agentic_xpu/agentic_xpu/issue_handler/`) → `torch-xpu-ops/tools/<scenario>/`.
-  The `tools/` folder will contain the README and the running scripts for local
-  running.
+  `agentic_xpu/agentic_xpu/issue_handler/`) →
+  `torch-xpu-ops/tools/agentic_xpu/<scenario>/`. Each scenario folder will
+  contain the README and the running scripts for local running.
 - **Shared deps** → one `tools/agentic_xpu/requirements.txt` and
   `tools/agentic_xpu/.env`.
 
@@ -29,11 +29,13 @@ torch-xpu-ops/
 │       ├── issue-triage/
 │       └── ...
 └── tools/
-    ├── agentic_xpu/requirements.txt  # shared deps
-    ├── nightly_CI_ut_fix/        # scripts + README + assets
-    ├── xpu_alignment/
-    ├── oob_perf_analysis/
-    └── issue_handler/            # python package: orchestrator, agents, config, utils
+    └── agentic_xpu/
+        ├── requirements.txt      # shared deps
+        ├── .env                  # shared config
+        ├── nightly_CI_ut_fix/    # scripts + README + assets
+        ├── xpu_alignment/
+        ├── oob_perf_analysis/
+        └── issue_handler/        # python package: orchestrator, agents, config, utils
 ```
 
 ## 4. Scenarios (short description + workflow graph, no data)
@@ -65,10 +67,10 @@ the attempt limit is reached.
 ## 5. PR Plan — one PR per scenario
 | # | PR | Moves |
 |---|---|---|
-| 1 | `nightly_CI_ut_fix` | skill + `tools/nightly_CI_ut_fix/` |
-| 2 | `xpu_alignment` | skill + `tools/xpu_alignment/` |
-| 3 | `oob_perf_analysis` | skill + `tools/oob_perf_analysis/` |
-| 4 | `issue_handler` (ut_scalable) | nested skill + `tools/issue_handler/` + `tools/agentic_xpu/requirements.txt` |
+| 1 | `nightly_CI_ut_fix` | skill + `tools/agentic_xpu/nightly_CI_ut_fix/` |
+| 2 | `xpu_alignment` | skill + `tools/agentic_xpu/xpu_alignment/` |
+| 3 | `oob_perf_analysis` | skill + `tools/agentic_xpu/oob_perf_analysis/` |
+| 4 | `issue_handler` (ut_scalable) | nested skill + `tools/agentic_xpu/issue_handler/` + `tools/agentic_xpu/requirements.txt` |
 
 Each PR is self-contained (skill + scripts + README + assets for that scenario)
 and independently reviewable. The `issue_handler` package is shared by
@@ -78,7 +80,7 @@ it without duplication.
 ## 6. Notes
 - **Naming:** final skill/folder naming (kebab-case vs. snake_case) is deferred
   to the implementing dev at PR time. The structure above keeps original
-  `tools/` names and assumes kebab-case skill names to match existing
-  `.github/skills/` convention.
+  `tools/agentic_xpu/` names and assumes kebab-case skill names to match
+  existing `.github/skills/` convention.
 - **Migration principle:** keep it simple — move content as-is, no behavior or
   layout changes beyond relocation.
