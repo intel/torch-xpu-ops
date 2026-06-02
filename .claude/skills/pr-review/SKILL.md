@@ -71,7 +71,7 @@ git diff --stat main...HEAD
 
 ### GitHub Actions Mode
 
-When invoked via `@claude /pr-review` on a GitHub PR, detect this mode by the presence of `<formatted_context>`, `<pr_or_issue_body>`, and `<comments>` tags in the prompt.
+When invoked via `@copilot /pr-review` or `@claude /pr-review` on a GitHub PR, detect this mode by the presence of `<formatted_context>`, `<pr_or_issue_body>`, and `<comments>` tags in the prompt.
 
 Use git commands to get the diff and commit history (do NOT use `gh` CLI in this mode):
 
