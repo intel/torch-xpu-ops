@@ -166,7 +166,7 @@ What the PR does (1 sentence), then the overall verdict.
 
 Missing tests (new functionality without tests, bug fixes without regression tests) always means **Request Changes**.
 
-[Brief justification — focus on what blocks approval]
+[Brief justification — focus on what blocks approval. IMPORTANT: Do NOT use `#N` (e.g., #1, #2, #3) to reference findings — GitHub auto-links these to real issues/PRs. Instead use descriptive references like "the step numbering issue", "the stale path in auto-labeling", or inline the file path.]
 ```
 
 ### Specific Comments (Detailed Review Only)
