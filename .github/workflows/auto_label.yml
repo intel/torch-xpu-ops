@@ -13,7 +13,7 @@ on:
       - release/*
     paths:
       - '.github/workflows/auto_label.yml'
-      - '.claude/skills/xpu-pr-auto-labeling/**'
+      - '.github/skills/xpu-pr-auto-labeling/**'
 
 permissions:
   contents: read
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout repo (for skill file)
         uses: actions/checkout@v4
         with:
-          sparse-checkout: .claude/skills/xpu-pr-auto-labeling
+          sparse-checkout: .github/skills/xpu-pr-auto-labeling
           sparse-checkout-cone-mode: false
 
       - name: Get changed files
@@ -72,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
-          SKILL_CONTENT=$(cat .claude/skills/xpu-pr-auto-labeling/SKILL.md)
+          SKILL_CONTENT=$(cat .github/skills/xpu-pr-auto-labeling/SKILL.md)
           FILES="$PR_FILES"
           API_SUCCESS=false
 
