@@ -2980,7 +2980,7 @@ class GraphModule(torch.nn.Module):
         "triton requires CUDA with SM>=7.0",
     )
     @parametrize("layers", [1, 2, 3])
-    @parametrize("device", ["cpu", "cuda", "xpu"])
+    @parametrize("device", ["cpu", "xpu"])
     @torch._dynamo.config.patch(capture_scalar_outputs=True)
     def test_scan_multiple_layers_gradient(self, layers, device):
         import torch.nn as nn
@@ -5373,7 +5373,7 @@ class GraphModule(torch.nn.Module):
 
         with self.assertRaisesRegex(
             AssertionError,
-            "Combin_fn received wrong number of arguments.*",
+            "Combine_fn received wrong number of arguments.*",
         ):
             associative_scan(fct_wrong_pytree, inp, 0, combine_mode="generic")
 
@@ -9036,12 +9036,13 @@ class GraphModule(torch.nn.Module):
                 """\
 class GraphModule(torch.nn.Module):
     def forward(self, primals_2: "f32[3, 3]", primals_3: "f32[3]", cat: "f32[u2, 3, 3]", tangents_1: "f32[3, 3]"):
-        zeros: "i64[]" = torch.ops.aten.zeros.default([], dtype = torch.int64, device = device(type='cpu'), pin_memory = False)
+        clone: "f32[3, 3]" = torch.ops.aten.clone.default(tangents_1, memory_format = torch.contiguous_format);  tangents_1 = None
         zeros_like: "f32[3]" = torch.ops.aten.zeros_like.default(primals_3, pin_memory = False)
         zeros_like_1: "f32[3, 3]" = torch.ops.aten.zeros_like.default(primals_2, pin_memory = False)
         while_loop_cond_graph_1 = self.while_loop_cond_graph_1
         while_loop_body_graph_1 = self.while_loop_body_graph_1
-        while_loop = torch.ops.higher_order.while_loop(while_loop_cond_graph_1, while_loop_body_graph_1, (zeros, tangents_1, zeros_like, zeros_like_1), (cat, primals_3, primals_2));  while_loop_cond_graph_1 = while_loop_body_graph_1 = zeros = tangents_1 = zeros_like = zeros_like_1 = cat = primals_3 = primals_2 = None
+        zeros: "i64[]" = torch.ops.aten.zeros.default([], dtype = torch.int64, device = device(type='cpu'), pin_memory = False)
+        while_loop = torch.ops.higher_order.while_loop(while_loop_cond_graph_1, while_loop_body_graph_1, (zeros, clone, zeros_like, zeros_like_1), (cat, primals_3, primals_2));  while_loop_cond_graph_1 = while_loop_body_graph_1 = zeros = clone = zeros_like = zeros_like_1 = cat = primals_3 = primals_2 = None
         getitem_2: "f32[3, 3]" = while_loop[1]
         getitem_3: "f32[3]" = while_loop[2]
         getitem_4: "f32[3, 3]" = while_loop[3];  while_loop = None
