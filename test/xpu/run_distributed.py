@@ -9,6 +9,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from skip_list_dist import skip_dict
 from xpu_test_utils import launch_test
@@ -17,7 +18,19 @@ res = 0
 res2 = 0
 fail_test = []
 
-os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
+# Ensure pytest subprocesses can import:
+#   * pipelining test utilities (../../../../test/distributed/pipelining)
+# Append-only: preserve any caller-provided PYTHONPATH entries.
+HERE = Path(__file__).resolve().parent
+extra_paths = [
+    str((HERE / "../../../../test/distributed/pipelining").resolve()),
+]
+entries = os.environ.get("PYTHONPATH", "").split(os.pathsep)
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    dict.fromkeys(p for p in (*entries, *extra_paths) if p)
+)
+print(f"PYTHONPATH={os.environ['PYTHONPATH']}")
+
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
