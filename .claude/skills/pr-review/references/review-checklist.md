@@ -2,6 +2,17 @@
 
 Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused on XPU-specific correctness, backend wiring, and risks that CI may not catch rather than style or lint.
 
+## PR Presentation & Structure
+
+- [ ] **Clear, descriptive PR title** — Summarizes the main purpose (e.g., "Fix memory leak in convolutional layers by optimizing tensor allocations", not "Bug fixes and improvements")
+- [ ] **Description answers "Why?" and "How?"** — not "What?" (the diff already shows what changed)
+- [ ] **Bug-fix PRs link to an issue** — The issue number is referenced and the PR states how it resolves the issue
+- [ ] **Feature PRs reference an RFC or prior discussion** — Non-trivial features should have been discussed before implementation
+- [ ] **Related PRs in a series are linked** — If the PR is part of a sequence, related PRs are referenced for context
+- [ ] **Commit messages are meaningful** — Accurately describe changes; facilitate navigation through PR history
+- [ ] **Draft/WIP marking** — If not ready for review, the PR is marked as draft with [WIP] in the title
+- [ ] **Missing tests are justified** — If the PR has no tests, the reason is explicitly explained in the description
+
 ## Scope And Ownership
 
 - [ ] The change belongs in `torch-xpu-ops` rather than upstream PyTorch XPU, oneDNN XPU, or oneMKL
@@ -24,6 +35,48 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] **Useful comments only** — Comments explain non-obvious context that cannot be inferred locally
 - [ ] **No backward-compatibility hacks** — Unused code is deleted completely, not renamed with underscores or marked with "removed" comments
 - [ ] **Documentation shows correct patterns only** — Code examples must have correct indentation, names, and syntax
+
+### Variable & Function Naming
+
+- [ ] **No single-letter variables** — except trivial loop counters (`i`, `j`, `k` in short loops)
+- [ ] **No ambiguous abbreviations** — `buf`, `tmp`, `val`, `res`, `ret`, `cnt` without context should use full words
+- [ ] **No type-encoded names** (Hungarian notation) — `iCount`, `strName`, `pPtr`
+- [ ] **Consistent casing** — no mixing `camelCase` and `snake_case` within the same scope/file
+- [ ] **Bool names read as predicates** — `is_ready`, `has_data`, `should_flush`, not `ready_flag`, `data_status`
+- [ ] **Name matches semantics** — a variable named `index` should not hold a count; `size` should not hold a capacity
+
+### No Magic Numbers
+
+- [ ] **No unexplained numeric literals** — in conditionals, arithmetic, or indexing (0, 1, -1 in common idioms are OK)
+- [ ] **No repeated unnamed literals** — same magic number in multiple places must be a named constant
+- [ ] **No unexplained bit operations** — bit shifts/masks must have named constants or comments
+- [ ] **No inline hardware constants** — register offsets, queue sizes, tile dimensions must be named
+
+### Comments & Readability
+
+- [ ] **No commented-out code** — without explanation; should be deleted or have a TODO
+- [ ] **No stale comments** — comments must not contradict the code
+- [ ] **No parroting comments** — `i++; // increment i` adds nothing
+- [ ] **Complex logic is commented** — multi-step transformations, non-trivial math, bitwise operations need WHY comments
+- [ ] **Non-trivial public functions have doc comments** — purpose, params, return value
+
+## Intel GPU Terminology — MANDATORY
+
+- [ ] **SYCL programming terms used in code** — subgroup size (not SIMD width), work-item (not SIMD lane), work-group (not XeCore)
+- [ ] **Hardware terms only in optimization comments** — XVE, XMX, XC terms appear only in comments explaining WHY an optimization was chosen
+- [ ] **No deprecated hardware terms** — EU → XVE, Subslice/DSS → Xe-core (XC), Systolic → XMX, HW thread → XVE thread
+- [ ] **API boundary legacy names are wrapped** — legacy API names at call site only, with modern-named helper and comment
+
+## General Code Quality
+
+Also flag during review:
+
+- [ ] **Dead code** — unreachable branches, unused variables, unused `#include`
+- [ ] **Error handling** — bare `catch(...)`, swallowed errors, missing return code checks
+- [ ] **Resource management** — raw `new`/`delete` without RAII in C++, unclosed handles
+- [ ] **Copy-paste patterns** — duplicated blocks that should be factored into a function
+- [ ] **Overly long functions** — >80 lines — suggest splitting
+- [ ] **Deep nesting** — >3 levels of `if/for` — suggest early returns or extraction
 
 ## Correctness And Semantics
 
