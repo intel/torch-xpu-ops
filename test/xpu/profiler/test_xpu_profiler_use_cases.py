@@ -47,6 +47,7 @@ def _gemm_kernels(kernels):
 class XpuProfilerUseCasesTest(TestCase):
     @staticmethod
     def _gemm_inputs():
+        # Tiny shapes: we only care that a GEMM kernel is traced, not perf.
         M = N = K = 4
         x = torch.randn(M, K, device="xpu")
         weight = torch.randn(K, N, device="xpu")
@@ -60,6 +61,7 @@ class XpuProfilerUseCasesTest(TestCase):
         """
         x, weight = self._gemm_inputs()
 
+        # Warm up so first-iteration setup costs stay out of the profiled region.
         for _ in range(2):
             _ = x @ weight
         torch.xpu.synchronize()
@@ -68,7 +70,8 @@ class XpuProfilerUseCasesTest(TestCase):
             activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
         ) as prof:
             _ = x @ weight
-            prof.step()
+            prof.step()  # flush events for the current profiling iteration
+        # Sync before export so async XPU kernels have finished and are recorded.
         torch.xpu.synchronize()
 
         with TemporaryFileName(mode="w+") as fname:
@@ -110,6 +113,7 @@ class XpuProfilerUseCasesTest(TestCase):
 
         # Single compile thread keeps the test light.
         with torch._inductor.config.patch(compile_threads=1):
+            # First call triggers (and warms up) compilation before profiling.
             compiled_model(x)
             torch.xpu.synchronize()
 
@@ -153,6 +157,7 @@ class XpuProfilerUseCasesTest(TestCase):
         """
         x, weight = self._gemm_inputs()
 
+        # Warm up so first-iteration setup costs stay out of the profiled region.
         for _ in range(2):
             _ = x @ weight
         torch.xpu.synchronize()
@@ -196,6 +201,7 @@ class XpuProfilerUseCasesTest(TestCase):
         """
         x, weight = self._gemm_inputs()
 
+        # Warm up so first-iteration setup costs stay out of the profiled region.
         for _ in range(2):
             _ = x @ weight
         torch.xpu.synchronize()

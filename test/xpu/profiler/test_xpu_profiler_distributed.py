@@ -85,6 +85,7 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
         backend and verify the per-rank chrome trace contains a GEMM
         kernel event. Each rank pins to its own XPU device.
         """
+        # FileStore-based rendezvous avoids needing a free TCP port per run.
         store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(
             "xccl",
@@ -93,12 +94,14 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
             store=store,
         )
         try:
+            # Pin each rank to its own device so collectives don't share one GPU.
             torch.xpu.set_device(self.rank)
 
             M = N = K = 4
             weight = torch.randn(K, N, device="xpu")
             x = torch.randn(M, K, device="xpu")
 
+            # Warm up so first-iteration setup costs stay out of the profiled region.
             for _ in range(2):
                 _ = x @ weight
             torch.xpu.synchronize()
@@ -127,6 +130,7 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
                 f"kernels: {[k.get('name') for k in kernels]}",
             )
         finally:
+            # Always tear down so a failing rank doesn't hang the others.
             dist.destroy_process_group()
 
 

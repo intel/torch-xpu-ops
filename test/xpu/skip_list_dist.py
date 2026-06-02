@@ -52,4 +52,5 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_math_ops.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
     "../../../../test/distributed/pipelining/test_microbatch.py": None,
+    "profiler/test_xpu_profiler_distributed.py": None,
 }
