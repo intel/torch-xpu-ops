@@ -36,10 +36,15 @@ runs:
         sudo apt update
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
-    - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
+    - name: Setup python-${{ inputs.python }} with uv
+      if: ${{ steps.python-bootstrap.outputs.method == 'uv' }}
+      shell: bash -xe {0}
+      run: |
+        rm -rf /opt/uv-python
+        uv python install "${{ inputs.python }}"
+        uv venv /opt/uv-python --python "${{ inputs.python }}" --clear
+        echo "/opt/uv-python/bin" >> ${GITHUB_PATH}
+        echo "VIRTUAL_ENV=/opt/uv-python" >> ${GITHUB_ENV}
     - name: Check python
       shell: bash -xe {0}
       run: |
