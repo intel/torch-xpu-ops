@@ -100,7 +100,7 @@ If neither tool is configured in the repo, skip this step and note it in your su
 
 ---
 
-## Step 6: Push your branch
+## Step 5: Push your branch
 
 ```bash
 git push origin agent/<slug>
@@ -111,7 +111,7 @@ to origin. **Do not push to `main`.**
 
 ---
 
-## Step 7: Open the PR (or hand off)
+## Step 6: Open the PR (or hand off)
 
 Agents do not auto-open PRs for this repo. Output your summary so a human can review
 and open the PR.

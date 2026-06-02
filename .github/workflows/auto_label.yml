@@ -150,6 +150,7 @@ jobs:
                 esac ;;
               .github/workflows/*) HAS_WORKFLOW=true ;;
               .github/*) HAS_GITHUB_META=true ;;
+              .claude/*) HAS_GITHUB_META=true ;;
               yaml/*) HAS_YAML=true ;;
             esac
           done <<< "$FILES"
