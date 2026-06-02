@@ -9,6 +9,22 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] The PR does not duplicate an existing library or backend capability without justification
 - [ ] The PR remains reviewable in one pass; if it exceeds 350 changed lines, call out the scope risk unless the size is clearly justified
 
+## Code Quality
+
+### Abstractions and Design
+
+- [ ] **Clear abstractions** — State management is explicit; no dynamic attribute setting/getting
+- [ ] **Match existing patterns in the same file** — Before accepting new code in a file, read how similar features are already implemented in that same file
+- [ ] **No over-engineering** — Only requested changes are made; no speculative features
+- [ ] **No premature abstraction** — Helpers and utilities are only created when reused
+
+### Code Clarity
+
+- [ ] **Self-explanatory code** — Variable and function names convey intent; minimal comments needed
+- [ ] **Useful comments only** — Comments explain non-obvious context that cannot be inferred locally
+- [ ] **No backward-compatibility hacks** — Unused code is deleted completely, not renamed with underscores or marked with "removed" comments
+- [ ] **Documentation shows correct patterns only** — Code examples must have correct indentation, names, and syntax
+
 ## Correctness And Semantics
 
 - [ ] CPU or CUDA parity claims were checked against the exact counterpart
@@ -29,6 +45,7 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] Channels-last support is either genuinely optimized or explicitly treated as a conversion path
 - [ ] Output and temporary allocation choices preserve the intended memory format when needed
 - [ ] Extra copies, format conversions, or oversized temporaries are justified
+- [ ] **Memory format propagation** — Output tensors use `input.suggest_memory_format()` to preserve ChannelsLast or other input formats rather than defaulting to contiguous
 
 ## Dtype, Precision, And Numerics
 
@@ -36,6 +53,7 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] Reductions, norms, softmax-style kernels, and atomic accumulation patterns were checked for numerical stability
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
+- [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
 
 ## Large Tensor Safety
 
@@ -49,19 +67,49 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] The hot path is not made branch-heavy just to support rare cases
 - [ ] Expensive queue, context, descriptor, or host-side setup is not repeated unnecessarily
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
+- [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
+- [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
 
 ## Dispatch, Fallback, And Generated Wiring
 
 - [ ] Relevant yaml, native implementation, backward logic, and generated expectations move together
 - [ ] Unsupported cases fail explicitly or intentionally fall back rather than taking the wrong path silently
 - [ ] The XPU path exercised by tests is the same path wired by the registration
+- [ ] **Operator tags** — New operators have appropriate tags (e.g., `pointwise`, `reduction`, `pt2_compliant_tag`)
+- [ ] **Meta function / Composite fallback** — New operators should either have a Composite implementation or a clear justification for why they can only work on specific backends
+
+## Thread Safety
+
+- [ ] **No unprotected shared mutable state** — Shared data structures accessed from multiple threads are protected by locks or are inherently thread-safe
+- [ ] **RAII lock guards** — Prefer `std::lock_guard` or `std::unique_lock` over manual `lock()`/`unlock()`
+- [ ] **SYCL queue/stream synchronization** — Operations across different SYCL queues require explicit synchronization; missing synchronization can cause silent data corruption
+- [ ] **No print statements** — No bare `print()` in production code; use proper logging utilities
 
 ## Test Coverage
 
+### Test Existence
+
 - [ ] Tests exercise the actual XPU path rather than only generic wrappers
+- [ ] New functionality has corresponding tests
+- [ ] Bug fixes include a regression test that reproduces the bug before the fix
+- [ ] Tests are in the right place (added to existing test file next to related tests)
+
+### Test Patterns
+
+- [ ] **Device generic** — Tests checking compute results should happen in device-generic test classes via `instantiate_device_type_tests`
+- [ ] **Use assertEqual for tensors** — Tensor comparisons use `assertEqual`, not raw assertions or `torch.allclose`
+- [ ] **Use make_tensor** — Test tensors use `make_tensor(shape, device=device, dtype=dtype)` rather than `torch.rand(shape)` with implicit CPU/dtype
+- [ ] **Use @dtypes** — Tests use the `@dtypes(...)` decorator rather than manual `for dtype in [...]` loops
+- [ ] **Use @parametrize** — Tests use `@parametrize` rather than duplicating test methods that differ only in a parameter
+- [ ] **Error conditions tested** — Expected exceptions are tested with `assertRaisesRegex`, not bare `assertRaises`
+
+### Test Quality
+
 - [ ] Coverage exists across relevant dtypes, layouts, shapes, and API variants
+- [ ] Edge cases covered — boundary conditions, empty inputs, error cases
 - [ ] Async-risk changes include stream-sensitive tests when appropriate
 - [ ] Performance PRs include benchmark or regression evidence
+- [ ] Test tolerances are chosen per dtype using `toleranceOverride` or equivalent
 
 ## Backward Compatibility
 
