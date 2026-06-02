@@ -62,7 +62,7 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 
 ## Intel GPU Terminology — MANDATORY
 
-- [ ] **SYCL programming terms used in code** — subgroup size (not SIMD width), work-item (not SIMD lane), work-group (not XeCore)
+- [ ] **SYCL programming terms used in code** — subgroup size (not SIMD width), work-item (not SIMD lane), work-group (not thread block/threadblock)
 - [ ] **Hardware terms only in optimization comments** — XVE, XMX, XC terms appear only in comments explaining WHY an optimization was chosen
 - [ ] **No deprecated hardware terms** — EU → XVE, Subslice/DSS → Xe-core (XC), Systolic → XMX, HW thread → XVE thread
 - [ ] **API boundary legacy names are wrapped** — legacy API names at call site only, with modern-named helper and comment
