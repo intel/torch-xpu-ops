@@ -19,7 +19,6 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
-  actions: write
 
 concurrency:
   group: auto-label-${{ github.event_name }}-${{ github.event.pull_request.number }}
