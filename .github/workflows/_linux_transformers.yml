@@ -21,7 +21,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'pvc'
         description: Runner label
       driver:
         required: false
@@ -84,7 +84,7 @@ defaults:
 
 jobs:
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'disable_all')
@@ -115,9 +115,9 @@ jobs:
 
   tests:
     needs: prepare
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc' }}
     container:
-      image: ${{ contains(inputs.runner || 'pvc_rolling', 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
+      image: ${{ contains(inputs.runner || 'pvc', 'pvc') && 'intelgpu/ubuntu-24.04-lts2:2523.40' || 'intelgpu/ubuntu-26.04-rolling:26.14' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
