@@ -146,6 +146,16 @@ Before reviewing, build understanding of what the PR touches and why:
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
+If the diff includes SKILL.md changes, also evaluate against the Skill in skill-writer's [SKILL.md](../skill-writer/SKILL.md).
+
+Pay special attention to XPU-specific risks:
+- **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
+- **Indexing**: 32-bit vs 64-bit indexing, large tensor overflow risk
+- **Layout**: contiguous vs non-contiguous, channels_last handling
+- **Precision**: FP32 / BF16 / FP16 behavior, accumulation dtype, AMP impact
+- **Kernel efficiency**: branch divergence, work-group choice, unnecessary copies
+- **Fallback/dispatch**: wrong registration, silent fallback, inconsistent path coverage
+
 ### Step 3: Check Backward Compatibility
 
 Evaluate BC implications per [bc-guidelines.md](references/bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
