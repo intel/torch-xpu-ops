@@ -37,7 +37,6 @@ runs:
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }} with uv
-      if: ${{ steps.python-bootstrap.outputs.method == 'uv' }}
       shell: bash -xe {0}
       run: |
         rm -rf /opt/uv-python
