@@ -1,0 +1,82 @@
+# Agent issue body template — bug issues (full body)
+# The format agent builds the entire issue body from this template.
+# Placeholders use Python str.format() syntax: {field_name}
+#
+# Canonical section names (used by the pipeline):
+#   Description, Reproducer, Error Log, Environment
+# The format agent extracts content from the raw issue and fills each slot.
+
+name: "Agent Issue Body"
+description: "Full body template for bug issues built by the format agent"
+
+body: |
+  <!-- agent:status:DISCOVERED -->
+
+  ## Description
+  {description}
+
+  ## Reproducer
+  {reproducer}
+
+  ## Error Log
+  {error_log}
+
+  ## Environment
+  {environment}
+
+  {footer}
+  ---
+
+  ## Test Info
+  - **Test Type:** {test_type}
+  - **Category:** {category}
+  - **Dependency:** {dependency}
+  - **Platform:** {platform}
+
+  ## Root Cause Analysis
+  {root_cause}
+
+  ## Proposed Fix Strategy
+  {fix_strategy}
+
+  ## Target Repository
+  {target_repo}
+
+  ## Additional Context
+  {additional_context}
+
+  ## Action Items
+  - [ ] 🔍 Issue formatted (Discovery Agent)
+    <details><summary>Discovery log</summary>
+    <!-- agent:discovery-log -->
+    </details>
+    <details><summary>Environment log (worktree, stashes, builds)</summary>
+    <!-- agent:env-log -->
+    </details>
+  - [ ] 🧠 Root cause identified (Triage Agent)
+    <details><summary>Upstream PR analysis</summary>
+    <!-- agent:upstream-log -->
+    </details>
+    <details><summary>Triage log</summary>
+    <!-- agent:triage-log -->
+    </details>
+  - [ ] 🎯 Triage complete — routed to fix agent (agent:triaged)
+  - [ ] 🔧 Fix implemented (Fix Agent)
+    <details><summary>Fix log</summary>
+    <!-- agent:fix-log -->
+    </details>
+  - [ ] ✅ Fix verified locally
+    <details><summary>Verification log</summary>
+
+    <!-- agent:verification-log -->
+    </details>
+  - [ ] 📋 PR proposed
+  - [ ] 👀 Human review
+  - [ ] 🎉 PR merged
+
+  ## Original Issue
+  <details><summary>Original issue body</summary>
+
+  {original_issue}
+
+  </details>

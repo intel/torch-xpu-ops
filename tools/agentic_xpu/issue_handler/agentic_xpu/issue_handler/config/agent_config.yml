@@ -1,0 +1,102 @@
+# Agent configuration
+# All agent constants in one place — Python config.py loads from this file.
+# Deployment-specific values can be overridden via environment variables.
+
+# ---------------------------------------------------------------------------
+# Repositories
+# ---------------------------------------------------------------------------
+# Override via env: UPSTREAM_ISSUE_REPO, ISSUE_REPO, PRIVATE_REVIEW_REPO,
+#                   PUBLIC_TARGET_REPO
+repos:
+  # torch-xpu-ops repos
+  xpu_ops_upstream: "intel/torch-xpu-ops"
+  xpu_ops_issue: "intel/torch-xpu-ops"
+  tracking: "intel/torch-xpu-ops"
+  # pytorch repos
+  pytorch_public: "pytorch/pytorch"                  # upstream pytorch
+  pytorch_private: "chuanqi129/pytorch"              # private review PRs for pytorch fixes
+
+# ---------------------------------------------------------------------------
+# Labels
+# ---------------------------------------------------------------------------
+issue_label: "ai_generated"
+
+# Label prefix mapping for issue metadata extraction
+# Labels like "agent_test: ut" map to test_type="ut"
+label_prefixes:
+  agent_test: test_type
+  agent_category: category
+  agent_dependency: dependency
+
+# Stage → GitHub label mapping
+stage_labels:
+  DISCOVERED: "agent:active"
+  UPSTREAM_VERIFYING: "agent:active"
+  WAITING_UPSTREAM: "agent:waiting-upstream"
+  TRIAGING: "agent:active"
+  TRIAGED: "agent:triaged"
+  IMPLEMENTING: "agent:active"
+  IN_REVIEW: "agent:active"
+  PUBLIC_PR: "agent:active"
+  CI_WATCH: "agent:active"
+  MERGED: "agent:active"
+  DONE: "agent:done"
+  SKIPPED: "agent:done"
+  NEEDS_HUMAN: "agent:needs-human"
+
+# ---------------------------------------------------------------------------
+# Timeouts & Limits
+# ---------------------------------------------------------------------------
+
+# Per-stage timeouts (seconds)
+# NOTE: TRIAGING / UPSTREAM_VERIFYING / IN_REVIEW are sized at 1h so the
+# OpenCode agent has budget to recover from a full PyTorch rebuild on the
+# rare path where incremental_build() falls back to ninja-from-scratch
+# (e.g. clean checkout, stale marker, CMake regen). The prebuild plan
+# (.hermes/plans/2026-05-26_011457-...) keeps the steady-state cost low
+# via cherry-pick + incremental rebuild; these timeouts are the safety
+# net, not the expected runtime.
+stage_timeouts:
+  DISCOVERED: 300
+  UPSTREAM_VERIFYING: 3600
+  TRIAGING: 3600
+  IMPLEMENTING: 3600
+  IN_REVIEW: 3600
+  CI_WATCH: 600
+# Limits
+limits:
+  max_agent_attempts: 3
+
+# Terminal stages — pipeline stops advancing when issue reaches one of these
+terminal_stages:
+  - DONE
+  - SKIPPED
+  - NEEDS_HUMAN
+
+# Polling interval (seconds) — temporary, removed when moving to webhooks
+poll_interval: 60
+
+# ---------------------------------------------------------------------------
+# Git
+# ---------------------------------------------------------------------------
+git:
+  review_remote: "review"
+  upstream_remote: "upstream"
+  branch_prefix: "agent/"
+  pr_prefix: "[Agent]"
+
+# ---------------------------------------------------------------------------
+# Agent backend
+# ---------------------------------------------------------------------------
+# Override via env: AGENT_BACKEND, OPENCODE_CMD
+backend:
+  type: "opencode"            # or "copilot"
+  opencode_cmd: "opencode"
+  model: "gpt-5.3-codex"    # model name for cost estimation & reporting
+
+# ---------------------------------------------------------------------------
+# Paths (relative to AGENT_DIR unless absolute)
+# ---------------------------------------------------------------------------
+# Override PYTORCH_DIR via env
+paths:
+  pytorch_dir: "~/pytorch"

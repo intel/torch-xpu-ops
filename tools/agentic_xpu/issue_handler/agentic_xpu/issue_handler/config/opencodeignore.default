@@ -1,0 +1,15 @@
+# Default .opencodeignore for large repos (e.g. pytorch)
+# Prevents opencode file watcher from hanging on inotify init
+third_party/
+build/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.o
+*.a
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
