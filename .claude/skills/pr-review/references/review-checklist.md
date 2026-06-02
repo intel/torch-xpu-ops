@@ -111,6 +111,21 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] Performance PRs include benchmark or regression evidence
 - [ ] Test tolerances are chosen per dtype using `toleranceOverride` or equivalent
 
+## CI/CD And Workflow Security
+
+When reviewing changes to workflows, build scripts, or CI configuration:
+
+- [ ] **No secrets in workflow files** — Secrets should not be hardcoded or echoed in workflow steps; use GitHub secrets mechanism properly
+- [ ] **No `weights_only=False`** — `torch.load` calls should not disable safe deserialization unless absolutely justified
+- [ ] **Protected branch rules respected** — Changes to merge rules, release workflows, or deployment environments require extra scrutiny
+- [ ] **Immutable artifact references** — Docker images use immutable tags; no overwriting of published artifacts
+- [ ] **No cache-dependent binaries in sensitive contexts** — sccache-backed builds are susceptible to cache corruption; these artifacts should not access sensitive info or be published for general use
+- [ ] **Workflow trigger scope** — `pull_request_target` workflows must not check out PR head code into a trusted context without proper isolation
+- [ ] **Token permissions minimized** — Workflow `permissions` block should request only what is needed (e.g., `contents: read` not `contents: write` unless required)
+- [ ] **No arbitrary code execution from PR inputs** — PR title, body, branch name, and commit messages must not be interpolated into shell commands without sanitization
+- [ ] **Third-party action pinning** — Actions are pinned to a full commit SHA, not a mutable tag (e.g., `actions/checkout@<sha>` not `actions/checkout@v4`)
+- [ ] **CI logic changes clearly explain impact** — Changes to workflow triggers, conditions, or job structure must document what validation coverage is gained or lost
+
 ## Backward Compatibility
 
 - [ ] Any user-visible behavior change is called out explicitly
