@@ -136,6 +136,7 @@ The `verify_existence`, `fix`, and `verify_fix` stages execute Python test code 
 
 ```bash
 cd ~/pytorch
+git submodule sync && git submodule update --init --recursive
 pip install -e . -v --no-build-isolation   # with USE_XPU=1, oneAPI sourced
 ```
 

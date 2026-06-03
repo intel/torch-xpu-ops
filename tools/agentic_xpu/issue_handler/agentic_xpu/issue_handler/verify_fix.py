@@ -58,7 +58,7 @@ def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
     This handles CMake reconfiguration and incremental builds correctly.
     """
     log("INFO", "Running incremental pytorch rebuild", issue=issue)
-    cmd = ENV_SETUP + f"cd {workdir} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
+    cmd = ENV_SETUP + f"cd {workdir} && git submodule sync && git submodule update --init --recursive && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     try:
         result = subprocess.run(
             cmd,

@@ -352,7 +352,8 @@ def _do_rebuild(issue: int | None = None, clean_cmake: bool = False) -> tuple[bo
             cmake_cache.unlink()
     cmd = (
         ENV_SETUP +
-        f"cd {PYTORCH_DIR} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
+        f"cd {PYTORCH_DIR} && git submodule sync && git submodule update --init --recursive"
+        f" && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
     try:
         result = subprocess.run(

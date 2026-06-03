@@ -387,7 +387,8 @@ def incremental_build(
         log("INFO", "No base ref available, running clean build", issue=issue)
 
     build_cmd = (
-        f"cd {workdir} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
+        f"cd {workdir} && git submodule sync && git submodule update --init --recursive"
+        f" && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
 
     # Try incremental first (unless we already know base_ref is missing,
@@ -409,6 +410,7 @@ def incremental_build(
     log("INFO", "Running clean build (clean + pip install)", issue=issue)
     clean_cmd = (
         f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py clean && "
+        f"git submodule sync && git submodule update --init --recursive && "
         f"{XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
     result = _run_build_streaming(
