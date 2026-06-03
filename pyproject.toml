@@ -123,3 +123,8 @@ select = [
 "tools/linter/**" = [
     "LOG015"
 ]
+
+"tools/agentic_xpu/**" = [
+    "PLW1509",  # preexec_fn needed for process-group kill
+    "UP028",    # yield-from not used for readability in streaming
+]

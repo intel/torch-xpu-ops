@@ -53,7 +53,7 @@ from .utils.reproducer import (
     run_reproducer_command,
 )
 from .utils.stages import Skill, Stage
-from .utils.xpu_env import ensure_xpu_ready, sync_pytorch
+from .utils.xpu_env import ensure_xpu_ready
 from .utils.agent_backend import get_backend
 
 # Avoid circular import with verify_fix at module load
@@ -1032,9 +1032,9 @@ def run(issue_number: int) -> bool:
             body = _log_to_body(body, [
                 f"_Refined reproducer extracted via LLM fallback "
                 f"(`{LLM_REPRO_MODEL}`):_",
-                f"```",
+                "```",
                 cmd,
-                f"```",
+                "```",
                 f"**Reason:** {llm_meta['reason']}",
             ])
 

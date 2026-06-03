@@ -33,7 +33,7 @@ def extract_json(text: str) -> str:
         if ch == "{":
             fragment = text[i:]
             # Try progressively closing the JSON
-            for suffix in ['"}', '"]}', '"}}', '"]}}']: 
+            for suffix in ['"}', '"]}', '"}}', '"]}}']:
                 try:
                     obj = json.loads(fragment + suffix)
                     return json.dumps(obj)

@@ -17,7 +17,6 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import subprocess
-from pathlib import Path
 
 from .config import PYTORCH_DIR
 from .logger import log

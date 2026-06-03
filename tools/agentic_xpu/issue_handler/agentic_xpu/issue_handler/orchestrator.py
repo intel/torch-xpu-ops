@@ -38,7 +38,7 @@ def _error_marker(step_name: str, short_err: str) -> str:
     traceback line-number drift doesn't defeat the dedup.
     """
     digest = hashlib.sha1(
-        f"{step_name}\n{short_err}".encode("utf-8")).hexdigest()[:12]
+        f"{step_name}\n{short_err}".encode()).hexdigest()[:12]
     return f"<!-- agent:error:{step_name}:{digest} -->"
 
 

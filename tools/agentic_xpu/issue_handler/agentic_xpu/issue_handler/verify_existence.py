@@ -37,7 +37,7 @@ from .utils.agent_backend import get_backend
 from .utils.locks import pytorch_lock
 from .utils.logger import log
 from .utils.stages import Skill, Stage
-from .utils.verification import extract_test_command, run_test
+from .utils.verification import extract_test_command
 
 
 # ---------------------------------------------------------------------------
