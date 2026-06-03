@@ -1,5 +1,0 @@
-# Shared dependencies for agentic_xpu scenarios
-PyYAML>=6.0
-
-# Test dependencies
-pytest>=7.0
