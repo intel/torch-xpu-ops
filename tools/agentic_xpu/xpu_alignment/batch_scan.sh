@@ -24,7 +24,7 @@ fi
 if [[ "$1" =~ ^([0-9]+)d$ ]]; then
   DAYS="${BASH_REMATCH[1]}"
   END_DATE="$(date -d 'yesterday' '+%Y-%m-%d' 2>/dev/null || date -v-1d '+%Y-%m-%d')"
-  START_DATE="$(date -d "$END_DATE - ${DAYS} days" '+%Y-%m-%d' 2>/dev/null || date -v-${DAYS}d '+%Y-%m-%d')"
+  START_DATE="$(date -d "$END_DATE - ${DAYS} days" '+%Y-%m-%d' 2>/dev/null || date -v-"${DAYS}"d '+%Y-%m-%d')"
 elif [[ $# -ge 2 ]]; then
   START_DATE="$1"; END_DATE="$2"
 else
@@ -37,6 +37,7 @@ SESSION_FILE="$RUN_DIR/.session_id"
 mkdir -p "$RUN_DIR"
 
 # shellcheck source=common.sh
+# shellcheck disable=SC1091
 . "$ENTRY_DIR/common.sh"
 
 echo "=== XPU Alignment Batch Scan: $START_DATE → $END_DATE  ($(date -Iseconds)) ==="

@@ -73,8 +73,6 @@ unset _skill
 run_post_scan() {
   local run_dir="$1" rc="${2:-0}"
   # Reports are written under the run directory by the render scripts.
-  local _run_name
-  _run_name="$(basename "$run_dir")"
   local _report_path="$run_dir/reports/full_scan.md"
 
   if [[ -f "$run_dir/artifacts/candidate_ledger.jsonl" ]]; then

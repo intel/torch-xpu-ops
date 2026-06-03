@@ -22,6 +22,7 @@ RUN_DIR="$ENTRY_DIR/runs/$SCAN_DATE"
 mkdir -p "$RUN_DIR"
 
 # shellcheck source=common.sh
+# shellcheck disable=SC1091
 . "$ENTRY_DIR/common.sh"
 
 echo "=== XPU Alignment Daily Scan: $SCAN_DATE  ($(date -Iseconds)) ==="
