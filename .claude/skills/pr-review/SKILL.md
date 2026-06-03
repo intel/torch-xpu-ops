@@ -23,6 +23,26 @@ If the user invokes `/pr-review` with no arguments, **do not perform a review**.
 > - A PR number or URL (e.g., `/pr-review 12345`)
 > - A local branch (e.g., `/pr-review branch`)
 
+### Optional: `pytorch-branch` Argument
+
+The user can specify which PyTorch branch to use as the upstream reference:
+
+```
+/pr-review 12345 pytorch-branch=release/2.7
+/pr-review 12345 detailed pytorch-branch=main
+/pr-review branch pytorch-branch=viable/strict
+```
+
+When `pytorch-branch` is provided, switch the PyTorch checkout to that branch before verifying upstream semantics:
+
+```bash
+cd /home/runner/work/pytorch
+git fetch origin <branch> --depth=1
+git checkout FETCH_HEAD
+```
+
+If `pytorch-branch` is not specified, use whatever is already checked out (default: `main`).
+
 ### Local CLI Mode
 
 The user provides a PR number or URL:
@@ -150,7 +170,14 @@ For every changed kernel or operator file, fetch and read the corresponding upst
 - `src/ATen/native/xpu/sycl/<Op>Kernels.cpp` → read `aten/src/ATen/native/cuda/<Op>.cu`
 - Shared math utilities (e.g., `MathExtensions.h`) → read `aten/src/ATen/native/Math.h`
 
-Use `gh api` or spawn a sub-agent to fetch the upstream file content. Do NOT proceed to the deep review until upstream code has been read. Quote or summarize relevant upstream patterns in your working notes before continuing.
+**In GitHub Actions mode** (when `/home/runner/work/pytorch` exists): read upstream files
+directly from the local PyTorch checkout. If the user specified `pytorch-branch`, ensure
+it was switched before reading.
+
+**In local CLI mode**: use `gh api` or spawn a sub-agent to fetch the upstream file content
+from GitHub.
+
+Do NOT proceed to the deep review until upstream code has been read. Quote or summarize relevant upstream patterns in your working notes before continuing.
 
 ### Step 3: Deep Review
 
