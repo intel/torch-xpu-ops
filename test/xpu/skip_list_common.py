@@ -36,6 +36,8 @@ skip_dict = {
         "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
         "test_qrelu_xpu",
+        # CPU-only qnnpack backend, not applicable to XPU
+        "test_qsoftmax_qnnpack_xpu",
     ),
     "quantization/core/test_quantized_tensor_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
