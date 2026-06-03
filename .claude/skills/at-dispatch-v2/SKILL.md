@@ -12,7 +12,7 @@ This skill helps convert PyTorch's legacy AT_DISPATCH macros to the new AT_DISPA
 Use this skill when:
 - Converting AT_DISPATCH_* macros to AT_DISPATCH_V2
 - Porting ATen kernels to use the new dispatch API
-- Working with files in `aten/src/ATen/native/` that use dispatch macros
+- Working with files in `src/` that use dispatch macros
 - User mentions "AT_DISPATCH", "dispatch v2", "Dispatch_v2.h", or macro conversion
 
 ## Quick reference
