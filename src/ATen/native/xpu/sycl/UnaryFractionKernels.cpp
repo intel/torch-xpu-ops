@@ -28,15 +28,15 @@ template <typename T>
 inline c10::complex<T> reciprocal_wrapper(c10::complex<T> v) {
   // Handle extreme cases for numpy compatibility
   auto both_inf = [](T real, T imag) {
-    return (std::isinf(real) && std::isinf(imag));
+    return (sycl::isinf(real) && sycl::isinf(imag));
   };
 
   auto either_inf = [](T real, T imag) {
-    return std::isinf(real) || std::isinf(imag);
+    return sycl::isinf(real) || sycl::isinf(imag);
   };
 
   auto either_nan = [](T real, T imag) {
-    return std::isnan(real) || std::isnan(imag);
+    return sycl::isnan(real) || sycl::isnan(imag);
   };
 
   if (either_nan(v.real(), v.imag()) || both_inf(v.real(), v.imag())) {
