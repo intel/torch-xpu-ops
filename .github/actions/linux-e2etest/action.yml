@@ -44,6 +44,7 @@ runs:
           rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
         fi
         rm -rf inductor_log torch
+        sed -i 's/choices=range(1, 16),/choices=range(1, 17),/g' benchmarks/dynamo/common.py
         # check param
         contains() {
           local pattern="$1"
