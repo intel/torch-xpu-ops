@@ -111,7 +111,7 @@ Also flag during review:
   - [ ] Real types use `sycl::<fn>` (e.g., `sycl::exp`), not `std::<fn>`
   - [ ] `sycl::native::<fn>` is used only when it exists AND the matching CUDA kernel uses a fast intrinsic (e.g., `__expf`)
   - [ ] Complex types use `std::<fn>`, not `sycl::<fn>` (see `src/ATen/native/xpu/sycl/UnaryKernels.cpp` for the real/complex split pattern)
-  - [ ] When `scalar_t` may be `c10::Half` and the function has a `sycl::half` overload, arguments are cast to `at::opmath_type<scalar_t>` to avoid overload ambiguity (`c10::Half` converts to both `float` and `sycl::half`)
+  - [ ] When `scalar_t` may be `c10::Half` and the `<fn>` has a `sycl::half` overload, arguments are cast to `at::opmath_type<scalar_t>` to avoid overload ambiguity (`c10::Half` converts to both `float` and `sycl::half`)
 
 ## Large Tensor Safety
 
