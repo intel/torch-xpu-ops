@@ -21,7 +21,8 @@ jobs:
 
       - name: Clone PyTorch
         run: |
+          PYTORCH_REPO="${{ vars.PYTORCH_REPO || 'pytorch/pytorch' }}"
           PYTORCH_BRANCH="${{ vars.PYTORCH_BRANCH || 'main' }}"
-          echo "Cloning pytorch/pytorch @ ${PYTORCH_BRANCH}"
+          echo "Cloning ${PYTORCH_REPO} @ ${PYTORCH_BRANCH}"
           git clone --depth=1 --branch "${PYTORCH_BRANCH}" \
-            https://github.com/pytorch/pytorch.git /home/runner/work/pytorch
+            "https://github.com/${PYTORCH_REPO}.git" /home/runner/work/pytorch

@@ -23,25 +23,29 @@ If the user invokes `/pr-review` with no arguments, **do not perform a review**.
 > - A PR number or URL (e.g., `/pr-review 12345`)
 > - A local branch (e.g., `/pr-review branch`)
 
-### Optional: `pytorch-branch` Argument
+### Optional: `pytorch-branch` and `pytorch-repo` Arguments
 
-The user can specify which PyTorch branch to use as the upstream reference:
+The user can specify which PyTorch repo and branch to use as the upstream reference:
 
 ```
 /pr-review 12345 pytorch-branch=release/2.7
-/pr-review 12345 detailed pytorch-branch=main
-/pr-review branch pytorch-branch=viable/strict
+/pr-review 12345 pytorch-repo=user/pytorch pytorch-branch=my-feature
+/pr-review 12345 detailed pytorch-repo=pytorch/pytorch pytorch-branch=main
 ```
 
-When `pytorch-branch` is provided, switch the PyTorch checkout to that branch before verifying upstream semantics:
+When `pytorch-repo` or `pytorch-branch` is provided, switch the PyTorch checkout accordingly:
 
 ```bash
 cd /home/runner/work/pytorch
+# If pytorch-repo is specified and differs from current remote
+git remote set-url origin "https://github.com/<pytorch-repo>.git"
 git fetch origin <branch> --depth=1
 git checkout FETCH_HEAD
 ```
 
-If `pytorch-branch` is not specified, use whatever is already checked out (default: `main`).
+Defaults (when not specified):
+- `pytorch-repo`: `pytorch/pytorch`
+- `pytorch-branch`: `main`
 
 ### Local CLI Mode
 
