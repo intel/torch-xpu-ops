@@ -405,7 +405,7 @@ def _agent_fix_loop(issue_number: int, body: str, detail: dict,
 
     def _post_session_id(sid: str) -> None:
         post_session_started(ISSUE_REPO, issue_number,
-                             "Implementation", sid, str(workdir))
+                             "Implementation", sid)
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 3600)

@@ -166,7 +166,7 @@ def _prune_old_stashes(pytorch: str, *, issue: int | None = None) -> int:
             if len(parts) != 3:
                 continue
             gd, ts_s, msg = parts
-            if AUTOSTASH_PREFIX not in msg:
+            if not msg.startswith(AUTOSTASH_PREFIX):
                 continue
             try:
                 ts = int(ts_s)

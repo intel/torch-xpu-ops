@@ -133,24 +133,32 @@ def run_issue(issue_number: int, stages: list[str]) -> str:
             _log(f"  #{issue_number}: already past '{stage_name}', skipping")
             continue
 
-        _log(f"  #{issue_number}: running '{stage_name}'...")
-        advance(issue_number)
+        # Keep advancing until we reach (or pass) the target stage.
+        # advance() only runs one step at a time, so if the issue is
+        # several stages behind the target we need multiple calls.
+        while current_idx < stage_idx:
+            _log(f"  #{issue_number}: running '{stage_name}'...")
+            advance(issue_number)
 
-        # Re-read status after advance
-        detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
-        status = get_status(detail.get("body", "") or "")
-        current_idx = _current_stage_index(status)
+            # Re-read status after advance
+            detail = gh.get_issue_detail(ISSUE_REPO, issue_number)
+            status = get_status(detail.get("body", "") or "")
+            current_idx = _current_stage_index(status)
 
-        # Stop if terminal
-        if status in TERMINAL_STAGES:
-            _log(f"  #{issue_number}: reached terminal stage {status}")
-            break
+            # Stop if terminal
+            if status in TERMINAL_STAGES:
+                _log(f"  #{issue_number}: reached terminal stage {status}")
+                break
 
-        # Stop if cycle-halt (WAITING_UPSTREAM, BLOCKED, UPSTREAM_VERIFYING).
-        # Issue will resume next cycle; no point dispatching the remaining
-        # stages now — they'd just short-circuit and pollute the log.
-        if status in _CYCLE_HALT_STAGES:
-            _log(f"  #{issue_number}: reached {status}, halting cycle")
+            # Stop if cycle-halt (WAITING_UPSTREAM, BLOCKED, UPSTREAM_VERIFYING).
+            # Issue will resume next cycle; no point dispatching the remaining
+            # stages now — they'd just short-circuit and pollute the log.
+            if status in _CYCLE_HALT_STAGES:
+                _log(f"  #{issue_number}: reached {status}, halting cycle")
+                break
+
+        # Propagate terminal / cycle-halt break to outer loop
+        if status in TERMINAL_STAGES or status in _CYCLE_HALT_STAGES:
             break
 
     _log(f"  #{issue_number}: done — {initial_status} → {status}")

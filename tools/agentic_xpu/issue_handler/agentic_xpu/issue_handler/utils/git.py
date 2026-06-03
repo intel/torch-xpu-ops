@@ -122,7 +122,7 @@ def get_issue_detail(repo: str, number: int) -> dict:
     """Get full issue details."""
     raw = _gh([
         "issue", "view", str(number), "--repo", repo,
-        "--json", "number,title,body,labels,comments,url,state,createdAt",
+        "--json", "number,title,body,labels,comments,url,state,createdAt,assignees",
     ], token=_token_for_repo(repo))
     return json.loads(raw)
 

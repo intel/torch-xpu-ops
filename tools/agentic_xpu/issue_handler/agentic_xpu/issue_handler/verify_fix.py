@@ -153,8 +153,8 @@ def _checkout_xpu_ops_pr(branch: str, issue: int) -> tuple[Path, str]:
     """
     base_ref = "main"
 
-    # Fetch the branch
-    git("fetch", "origin", branch, workdir=TORCH_XPU_OPS_DIR, issue=issue)
+    # Fetch the branch and main (so origin/main is up-to-date for diffs)
+    git("fetch", "origin", branch, "main", workdir=TORCH_XPU_OPS_DIR, issue=issue)
 
     # Create a temp worktree
     worktree_dir = Path(tempfile.mkdtemp(

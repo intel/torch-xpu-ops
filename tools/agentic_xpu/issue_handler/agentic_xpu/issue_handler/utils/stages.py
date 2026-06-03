@@ -12,14 +12,14 @@
 These were previously string literals scattered across orchestrator.py,
 triage_agent.py, code_fix.py and verify_*.py.  A single typo (``"TRIGED"``
 vs ``"TRIAGED"``) would silently jam an issue mid-pipeline forever, so
-they're consolidated here as ``StrEnum`` (which still compares equal to
+they're consolidated here as ``str, Enum`` pairs (which still compare equal to
 the underlying string — every existing comparison ``stage == "DONE"`` keeps
 working unchanged).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 from pathlib import Path
 
 from .config import (
@@ -28,7 +28,7 @@ from .config import (
 )
 
 
-class Stage(StrEnum):
+class Stage(str, Enum):
     """Pipeline stages stored in the issue body as ``<!-- agent:status:X -->``."""
 
     DISCOVERED = "DISCOVERED"
@@ -47,7 +47,7 @@ class Stage(StrEnum):
     AWAITING_COPILOT = "AWAITING_COPILOT"   # Copilot was assigned, waiting on PR
 
 
-class Skill(StrEnum):
+class Skill(str, Enum):
     """Names of the OpenCode skills the agents call into."""
 
     FORMAT = "issue-format"
@@ -57,7 +57,7 @@ class Skill(StrEnum):
     UPSTREAM_PR_ANALYSIS = "upstream-pr-analysis"
 
 
-class TargetRepo(StrEnum):
+class TargetRepo(str, Enum):
     """Where a fix should land."""
 
     PYTORCH = "pytorch"
