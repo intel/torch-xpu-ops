@@ -5,6 +5,19 @@
 torch-xpu-ops provides XPU (Intel GPU) operator implementations for PyTorch ATen.
 It is built as a submodule of PyTorch (`third_party/torch-xpu-ops`), not standalone.
 
+Before reviewing, implementing, or debugging any operator, you **MUST**
+read the corresponding upstream PyTorch code to understand the expected
+semantics and some patterns:
+
+- `src/ATen/native/xpu/<Op>.cpp` → upstream: `aten/src/ATen/native/<Op>.cpp`
+- `src/ATen/native/xpu/sycl/<Op>Kernels.cpp` → upstream CUDA equivalent: `aten/src/ATen/native/cuda/<Op>.cu`
+- Dispatch registration → upstream: `aten/src/ATen/native/native_functions.yaml`
+
+Use `gh` CLI, WebFetch, or sub-agents to fetch files from the `pytorch/pytorch`
+repository. Do not infer upstream behavior from memory — verify from source.
+This applies to code review, new implementations, bug fixes, and understanding
+existing logic.
+
 ## Working Principles
 
 ### Think Before Coding
