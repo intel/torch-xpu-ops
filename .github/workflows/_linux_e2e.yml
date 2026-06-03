@@ -74,11 +74,6 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Detect devices
-        run: |
-          bash ${{ github.workspace }}/.github/scripts/detect-devices.sh
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -86,6 +81,10 @@ jobs:
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
@@ -258,7 +257,7 @@ jobs:
             artifact_name+="-${{ inputs.category }}"
           fi
           echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
-      - name: Cleanup workspace
+      - name: Cleanup
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock

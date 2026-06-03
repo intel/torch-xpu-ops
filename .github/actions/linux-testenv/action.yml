@@ -212,6 +212,9 @@ runs:
         else
           echo "Skipping Update numpy because python is not 3.10 (python=${{ inputs.python }})"
         fi
+    - name: Detect devices
+      shell: bash -euo pipefail {0}
+      run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args='-v -rfEsxw'
     - name: Torch Config
       shell: bash -xe {0}
       run: |

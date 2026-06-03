@@ -46,16 +46,15 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Detect devices
-        run: |
-          bash ${{ github.workspace }}/.github/scripts/detect-devices.sh
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
-          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
       - name: Run Torch XPU Op Benchmark
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
@@ -70,7 +69,7 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
           python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --backward
-      - name: Cleanup workspace
+      - name: Cleanup
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock

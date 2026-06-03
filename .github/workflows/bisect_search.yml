@@ -76,6 +76,10 @@ jobs:
         with:
           pytorch: nightly_wheel
           python: ${{ inputs.python }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
@@ -124,11 +128,6 @@ jobs:
           python setup.py install
           cd ..
           pip uninstall -y torch
-      - name: Detect devices
-        run: |
-          bash ${{ github.workspace }}/gs-scripts/.github/scripts/detect-devices.sh
-          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh lock
-          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |

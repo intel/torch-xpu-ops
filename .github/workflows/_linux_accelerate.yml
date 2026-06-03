@@ -82,12 +82,7 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Detect devices
-        id: devices
-        run: |
-          ${{ github.workspace }}/.github/scripts/detect-devices.sh
-      - name: Set PYTEST_ADDOPTS
-        run: |
-          echo "PYTEST_ADDOPTS=-rsf --timeout 600 --timeout_method=thread --dist worksteal ${PYTEST_EXTRA_ARGS}" >> ${GITHUB_ENV}
+        run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args='-rsf'
       - name: Checkout Accelerate
         uses: actions/checkout@v4
         with:

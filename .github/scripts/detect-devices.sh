@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread --dist worksteal '
+# need pytest-timeout for timeout options
+# and pytest-rerunfailures for rerun options
+# and pytest-xdist for dist options, worksteal is used to minimize idle time of workers when some tests are slower than others
+readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread \
+        --only-rerun crashed.*while.*running --reruns 2 --max-worker-restart 1000000 \
+        --dist worksteal '
 
 env_file="${GITHUB_ENV:-}"
 output_file="${GITHUB_OUTPUT:-}"
-base_pytest_addopts="${PYTEST_BASE_ARGS:-${DEFAULT_PYTEST_ADDOPTS}}"
+PYTEST_BASE_ARGS="${PYTEST_BASE_ARGS:-${DEFAULT_PYTEST_ADDOPTS}}"
 
 log() {
   printf '%s\n' "$*" >&2
@@ -18,7 +23,7 @@ Usage: detect-devices.sh [options]
 Detect online XPU devices and produce pytest sharding environment variables.
 
 Options:
-  --pytest-base-args S     Base PYTEST_ADDOPTS prefix
+  --pytest-others-args S     Extra PYTEST_ADDOPTS suffix to customize pytest behavior (e.g. for different workflows)
   --help                   Show this message
 
 Environment overrides:
@@ -52,8 +57,8 @@ require_command() {
 parse_args() {
   while (($# > 0)); do
     case "$1" in
-      --pytest-base-args)
-        base_pytest_addopts="$2"
+      --pytest-others-args)
+        pytest_others_args="$2"
         shift 2
         ;;
       --help|-h)
@@ -307,7 +312,7 @@ main() {
   emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
   emit_var NUMACTL_ARGS "${numactl_args}"
   emit_var PYTEST_EXTRA_ARGS "${pytest_extra_args}"
-  emit_var PYTEST_ADDOPTS "${base_pytest_addopts} ${pytest_extra_args}"
+  emit_var PYTEST_ADDOPTS "${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
   emit_var XPU_CPU_COUNT "${cpu_count}"
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
   emit_var XPU_ONLINE_COUNT "${online_xpu_count}"

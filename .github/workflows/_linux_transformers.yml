@@ -179,11 +179,7 @@ jobs:
         with:
           path: torch-xpu-ops
       - name: Detect devices
-        run: |
-          ${{ github.workspace }}/torch-xpu-ops/.github/scripts/detect-devices.sh
-      - name: Set PYTEST_ADDOPTS
-        run: |
-          echo "PYTEST_ADDOPTS=-rsf --timeout 600 --timeout_method=thread --dist worksteal ${PYTEST_EXTRA_ARGS}" >> ${GITHUB_ENV}
+        run: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/detect-devices.sh --pytest-others-args='-rsf'
       - name: Checkout Transformers
         uses: actions/checkout@v4
         with:
