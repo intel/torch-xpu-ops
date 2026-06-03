@@ -107,6 +107,7 @@ Also flag during review:
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
+- [ ] **Math function** — std math functions (i.e. std::exp) should not be used in sycl kernels. We should use math functions under namespace sycl or sycl::native (i.e. sycl::exp or sycl::native::exp). sycl::native functions have less accuracy but higher performance, we only use it when the same kernel in CUDA uses intrinsic functions. (i.e. sycl::exp maps to CUDA expf and sycl::native::exp maps to CUDA __expf when fast math compiler flag is disabled)
 
 ## Large Tensor Safety
 
