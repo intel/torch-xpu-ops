@@ -70,7 +70,7 @@ Use these categories to classify the root cause. They help structure the fix str
 |----------|-------------|---------------------|
 | **XPU backend bug** | Bug in XPU kernel or backend code | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
 | **Tolerance too tight** | Numerical precision mismatch vs CUDA | Adjust `atol`/`rtol` to match CUDA tolerances |
-| **Skip decorator stale** | `@skipIfXpu` / `@expectedFailure` but test now passes | Remove decorator (see `ut-fixing` skill) |
+| **Skip decorator stale** | `@skipIfXpu` / `@expectedFailure` but test now passes | Remove decorator (see `issue-fix` skill) |
 | **Upstream regression** | New upstream code broke XPU; needs XPU-specific workaround | `torch/`, `aten/`, `test/` |
 | **Test infrastructure** | Environment, import, or setup issue | Test file or CI config |
 

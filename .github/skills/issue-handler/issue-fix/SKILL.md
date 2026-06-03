@@ -62,11 +62,36 @@ reconfiguration and a full rebuild from scratch (~hours).
 - **Never modify unrelated files**
 
 ### Fix Strategies by Category
-- **Unit tests (non-E2E):** For UT failures (not end-to-end models), follow the `ut-fixing` skill.
+- **Unit tests (non-E2E):** For UT failures (not end-to-end models), see the **UT Skip Removal** section below.
 - **Newly added test:** Try to enable it for XPU. If XPU support is genuinely missing and out of scope for this fix, do NOT add skip decorators — instead, add comments in the issue body and report `NEEDS_HUMAN` with reason "Requires new feature support, cannot fix in current scope".
 - **Regression:** Find the guilty commit by reviewing recent commit history. Apply an XPU-specific fix if necessary. If you can't identify the guilty commit, compare with cuda/rocm backend to find the root cause.
 - **Tolerance:** Match upstream CUDA tolerances when adjusting XPU tolerances.
-- **Skip decorator stale:** Follow the `ut-fixing` skill to remove decorators and verify.
+- **Skip decorator stale:** See the **UT Skip Removal** section below.
+
+### UT Skip Removal
+
+When the fix is removing a stale `@skipIfXpu` / `@xfailIfXPU` / `@expectedFailureXPU` decorator:
+
+**1. Find skip markers** — scan for these patterns:
+
+| Pattern | Location |
+|---------|----------|
+| `@skipXPU`, `@unittest.skipIf(..., "XPU ...")` | Decorator on test method |
+| `@expectedFailureXPU`, `@xfailIfXPU` | Decorator on test method |
+| `DecorateInfo(unittest.skip("..."), device_type='xpu')` | Inside `OpInfo` definitions |
+| Skip dictionaries: `skip_xpu`, `xfail_xpu` | Used in `instantiate_device_type_tests` |
+| `skipIfXpu` in conditional blocks | Inline skip logic |
+
+```bash
+grep -n "skipXPU\|skipIfXpu\|xfailIfXPU\|expectedFailureXPU\|device_type='xpu'" test/<test_file>.py
+grep -n -A2 "DecorateInfo.*skip.*xpu" torch/testing/_internal/common_methods_invocations.py
+```
+
+**2. Remove the marker** — delete the decorator/entry. Clean up unused imports if the decorator was the last usage. For `OpInfo` `DecorateInfo` entries, remove the entry from the `decorators` list.
+
+**3. Verify locally** — run the test on XPU. If it **FAILS**, the underlying bug is not fixed — do NOT remove the skip. If it **PASSES**, proceed.
+
+**4. Dynamic test names** — many test classes are dynamically generated via `instantiate_device_type_tests` (e.g., `TestCommonXPU` from `TestCommon`). If simple search fails, check for the base class + device suffix pattern.
 
 ## Step 3: Verify
 Run the reproducer command again to confirm the fix works.
