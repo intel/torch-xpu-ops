@@ -9,34 +9,13 @@ Scan `pytorch/pytorch` for issues, PRs, and bug-fix commits across any backend (
 
 ## Rules
 
-1. GitHub MCP first, `gh` CLI as fallback. Never hardcode tokens.
-2. Workspace-local XPU interpreter: `./.conda-xpu-fix-alignment/bin/python`. If missing, create it in-workspace; never use interpreters outside this workspace.
-3. Preflight checks nightly version; reinstall if stale or missing to ensure the latest nightly.
-4. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
-5. **Batched pipeline**: batch deep-filter → batch write repros → serial execution → batch route → batch report. Ledger enables resume from any interruption.
+1. Workspace-local XPU interpreter: look for `.venv/bin/python` or `.conda-*/bin/python` in the workspace. If missing, create a venv in-workspace; never use interpreters outside this workspace.
+2. Preflight checks nightly version; reinstall if stale or missing to ensure the latest nightly.
+3. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
+4. **Batched pipeline**: batch deep-filter → batch write repros → serial execution → batch route → batch report. Ledger enables resume from any interruption.
+5. Never hardcode GitHub tokens.
 
 ## Key Tables
-
-### CUDA-to-XPU Mapping
-
-| CUDA | XPU |
-|------|-----|
-| cuDNN / NCCL | oneDNN / oneCCL |
-| `CUDA_VISIBLE_DEVICES` | `ZE_AFFINITY_MASK` |
-
-### Ledger Schema (`artifacts/candidate_ledger.jsonl`)
-
-| Field | Values |
-|-------|--------|
-| `id` | issue/PR number or short SHA |
-| `kind` | `issue` / `pr` / `commit` |
-| `title_status` | `pass` / `reject` |
-| `deep_status` | `pending` / `pass-to-repro` / `reject` |
-| `local_status` | `pending` / `done` |
-| `local_bucket` | one of the buckets below |
-| `target` | `pytorch/pytorch` / `intel/torch-xpu-ops` / `null` |
-
-Actionable = `title_status == "pass" && deep_status != "reject" && local_status == "pending"`
 
 ### Bucket Vocabulary
 
@@ -63,15 +42,13 @@ Not sufficient: tiny float noise within tolerance, documented unsupported behavi
 
 ### Step 0: Preflight
 
-**Confirm scan time window with user** before doing anything else.
-
-Ask the user to specify the scan date or time range. Both formats are accepted:
-- Date only: `YYYY-MM-DD` (e.g. `2025-01-01`)
-- Full timestamp: `YYYY-MM-DDTHH:MM:SSZ` (ISO 8601, e.g. `2025-01-01T00:00:00Z`)
-
-If the user provides only a start date (`since`), ask whether an end date (`until`) is needed or if scanning up to today is acceptable. Do not proceed to candidate collection until the time window is confirmed.
-
 Verify XPU torch import and `torch.xpu.is_available()`, verify GitHub API access, create output directories (`artifacts/details`, `reports`, `scripts`), and save `collect_env` output.
+
+If any preflight check fails:
+- `torch.xpu.is_available()` returns `False` → ensure Intel oneAPI runtime is loaded (`source /opt/intel/oneapi/setvars.sh`) and the XPU driver is installed.
+- `import torch` fails → reinstall the XPU nightly wheel into the workspace venv.
+- GitHub API access fails → verify `GITHUB_TOKEN` is set and valid (`gh auth status`).
+- Output directory creation fails → check filesystem permissions.
 
 ### Step 1: Collect candidates
 

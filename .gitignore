@@ -13,3 +13,4 @@ yaml/templates
 
 agent_space/
 agent_space_xpu/
+tools/agentic_xpu/.env
