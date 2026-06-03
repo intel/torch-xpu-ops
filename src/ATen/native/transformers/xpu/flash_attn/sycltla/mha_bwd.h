@@ -19,6 +19,8 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wchanges-meaning"
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wdangling-pointer"
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>

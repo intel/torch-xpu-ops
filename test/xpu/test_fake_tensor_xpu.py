@@ -2196,24 +2196,26 @@ class FakeTensorDispatchCache(TestCase):
         with FakeTensorMode():
             FakeTensorMode.cache_clear()
             self.assertHitsMisses(0, 0)
+            try:
+                torch.set_default_device("cpu")
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, "cpu")
+                self.assertHitsMisses(0, 1)
 
-            torch.set_default_device("cpu")
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, "cpu")
-            self.assertHitsMisses(0, 1)
+                torch.set_default_device(device_type)
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, device_type)
+                self.assertHitsMisses(0, 2)
 
-            torch.set_default_device(device_type)
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, device_type)
-            self.assertHitsMisses(0, 2)
-
-            torch.set_default_device("cpu")
-            x = torch.tensor([1, 2])
-            y = x + 1.0
-            self.assertEqual(y.device.type, "cpu")
-            self.assertHitsMisses(1, 2)
+                torch.set_default_device("cpu")
+                x = torch.tensor([1, 2])
+                y = x + 1.0
+                self.assertEqual(y.device.type, "cpu")
+                self.assertHitsMisses(1, 2)
+            finally:
+                torch.set_default_device(None)
 
     def test_cache_inplace_op(self):
         """

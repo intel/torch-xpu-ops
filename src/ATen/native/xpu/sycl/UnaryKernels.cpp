@@ -12,9 +12,11 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
+#include <c10/util/complex.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -54,10 +56,14 @@ struct RsqrtFunctor<c10::complex<T>> {
   }
 };
 
-template <typename scalar_t, typename acc_t = scalar_t>
+template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct ExpFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp(static_cast<acc_t>(a));
+    if constexpr (c10::is_complex<acc_t>::value) {
+      return std::exp(static_cast<acc_t>(a));
+    } else {
+      return sycl::exp(static_cast<acc_t>(a));
+    }
   }
 };
 

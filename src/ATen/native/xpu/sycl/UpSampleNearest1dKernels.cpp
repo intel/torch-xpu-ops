@@ -15,8 +15,6 @@
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
-#include <ATen/native/xpu/sycl/UpSampleNearest1dKernels.h>
-
 namespace at::native {
 namespace xpu {
 
