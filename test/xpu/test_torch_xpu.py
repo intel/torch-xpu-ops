@@ -54,6 +54,7 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfCPU,
     dtypesIfCUDA,
+    dtypesIfXPU,
     expectedFailureMeta,
     expectedFailureXLA,
     instantiate_device_type_tests,
@@ -610,6 +611,10 @@ class TestTorchDeviceType(TestCase):
             ):
                 s0.pin_memory()
 
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
+                s0.xpu()
+
         with self.assertRaisesRegex(RuntimeError, r"only available on CPU"):
             s0.share_memory_()
 
@@ -620,7 +625,13 @@ class TestTorchDeviceType(TestCase):
             with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
                 s0._write_file(f, True, True, s0.element_size())
 
-        for device in ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]:
+        devices_to_test = ["cpu"]
+        if torch.cuda.is_available():
+            devices_to_test.append("cuda")
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            devices_to_test.append("xpu")
+
+        for device in devices_to_test:
             s1 = torch.TypedStorage([1, 2, 3, 4], device=device, dtype=dtype)
 
             with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
@@ -2599,6 +2610,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_types())
     @dtypesIfCPU(*floating_types_and(torch.bfloat16, torch.half))
     @dtypesIfCUDA(*floating_types_and(torch.half))
+    @dtypesIfXPU(*floating_types_and(torch.half))
     def test_bernoulli_p(self, device, dtype):
         for trivial_p in ([0, 1], [1, 0, 1, 1, 0, 1]):
             x = torch.tensor(trivial_p, dtype=dtype, device=device)
@@ -2621,6 +2633,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_types())
     @dtypesIfCPU(*all_types_and(torch.bool, torch.half))
     @dtypesIfCUDA(*all_types_and(torch.bool, torch.half))
+    @dtypesIfXPU(*all_types_and(torch.bool, torch.half))
     def test_bernoulli_self(self, device, dtype):
         def isBinary(t):
             return torch.ne(t, 0).mul_(torch.ne(t, 1)).sum().item() == 0
@@ -2757,6 +2770,7 @@ class TestTorchDeviceType(TestCase):
     @skipIfNoSciPy
     @dtypes(*floating_types_and(torch.half))
     @dtypesIfCUDA(*floating_types_and(torch.half, torch.bfloat16))
+    @dtypesIfXPU(*floating_types_and(torch.half, torch.bfloat16))
     def test_normal_kstest(self, device, dtype):
         from scipy import stats
 
@@ -3421,6 +3435,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*all_types_and_complex_and(torch.bool))
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool))
     def test_diff(self, device, dtype):
         shapes = ((1,), (1, 5), (3, 5), (1, 5, 1), (2, 3, 5))
 
@@ -4158,6 +4173,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_operations_to_large_input(self, device, dtype):
         index = torch.tensor([[1], [2]], device=device, dtype=torch.long)
         test_data = [
@@ -4192,6 +4208,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_scalar(self, device, dtype):
         index = torch.tensor([[1], [2]], device=device, dtype=torch.long)
         test_data = [
@@ -4243,6 +4260,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_non_unique_index(self, device, dtype):
         height = 2
         width = 2
@@ -4886,6 +4904,7 @@ class TestTorchDeviceType(TestCase):
     # FIXME: move to elementwise ternary test suite
     @onlyNativeDeviceTypes
     @dtypesIfCUDA(*set(get_all_math_dtypes("cuda")))
+    @dtypesIfXPU(*set(get_all_math_dtypes("xpu")), torch.half)
     @dtypes(*set(get_all_math_dtypes("cpu")))
     def test_addcdiv(self, device, dtype):
         # Returns floating or integral scalar corresponding to dtype
@@ -5758,9 +5777,12 @@ class TestTorchDeviceType(TestCase):
             if non_blocking:
                 if device == "cuda":
                     torch.cuda.synchronize()
+                    self.assertTrue(s_cpu.is_pinned())
                 elif device == "xpu":
                     torch.xpu.synchronize()
-                self.assertTrue(s_cpu.is_pinned())
+                    # Unlike CUDA, XPU storage->CPU non_blocking copy does not
+                    # currently guarantee a pinned CPU storage result.
+                    self.assertFalse(s_cpu.is_pinned())
             else:
                 self.assertFalse(s_cpu.is_pinned())
             t_cpu = torch.empty(()).set_(s_cpu)
@@ -7234,6 +7256,7 @@ class TestTorchDeviceType(TestCase):
 
     @dtypesIfCUDA(torch.float, torch.double, torch.half)
     @dtypesIfCPU(torch.float, torch.double, torch.bfloat16, torch.half)
+    @dtypesIfXPU(torch.float, torch.double, torch.half, torch.bfloat16)
     @dtypes(torch.float, torch.double)
     def test_multinomial_cpu(self, device, dtype):
         def make_prob_dist(shape, is_contiguous):
@@ -7584,6 +7607,16 @@ class TestDevicePrecision(TestCase):
         self.assertEqual(x.to(torch.int).device, torch.device(devices[1]))
 
     @dtypesIfCUDA(
+        torch.half,
+        torch.float,
+        torch.double,
+        torch.int8,
+        torch.short,
+        torch.int,
+        torch.long,
+        torch.uint8,
+    )
+    @dtypesIfXPU(
         torch.half,
         torch.float,
         torch.double,
