@@ -33,8 +33,7 @@ inline uint32_t load_acquire(uint32_t* addr) {
 // Put signal: wait until addr == 0, then set to 1 (release semantics)
 // =============================================================================
 
-template <std::memory_order Sem>
-bool try_put_signal_device(uint32_t* addr, size_t timeout_ms) {
+inline bool try_put_signal_device(uint32_t* addr, size_t timeout_ms) {
   // Wait until the slot is free (value == 0)
   while (load_acquire(addr) != 0) {
     // Spin wait (no timeout check as IGC issue)
@@ -48,8 +47,7 @@ bool try_put_signal_device(uint32_t* addr, size_t timeout_ms) {
 // =============================================================================
 // Wait signal: wait until addr == 1, then set to 0 (acquire semantics)
 // =============================================================================
-template <std::memory_order Sem>
-bool try_wait_signal_device(uint32_t* addr, size_t timeout_ms) {
+inline bool try_wait_signal_device(uint32_t* addr, size_t timeout_ms) {
   // Wait until signal is set (value == 1)
   while (load_acquire(addr) != 1) {
     // Spin wait (no timeout check as IGC issue)

@@ -14,13 +14,13 @@ struct barrierKernel {
       if (target_rank == rank) {
         return;
       }
-      auto put_success = try_put_signal_device<std::memory_order_release>(
+      auto put_success = try_put_signal_device(
           signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
       if (!put_success) {
         SYCL_KERNEL_ASSERT(false);
       }
 
-      auto wait_success = try_wait_signal_device<std::memory_order_acquire>(
+      auto wait_success = try_wait_signal_device(
           signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
       if (!wait_success) {
         SYCL_KERNEL_ASSERT(false);
@@ -77,7 +77,7 @@ struct putSignalKernel {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
-      auto put_success = try_put_signal_device<std::memory_order_release>(
+      auto put_success = try_put_signal_device(
           signal_pads[dst_rank] + world_size * channel + rank, 10000000);
       if (!put_success) {
         SYCL_KERNEL_ASSERT(false);
@@ -139,7 +139,7 @@ struct waitSignalKernel {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
-      auto wait_success = try_wait_signal_device<std::memory_order_acquire>(
+      auto wait_success = try_wait_signal_device(
           signal_pads[rank] + world_size * channel + src_rank, 10000000);
       if (!wait_success) {
         SYCL_KERNEL_ASSERT(false);
