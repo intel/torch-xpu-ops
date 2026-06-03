@@ -9,4 +9,4 @@ memory. The contents of these files are authoritative.
 | When you are about to... | Read this file first |
 |--------------------------|---------------------|
 | All agent instructions | `CLAUDE.md` |
-| Review a pull request | `.claude/skills/xpu-ops-pr-review/SKILL.md` |
+| Review a pull request | `.claude/skills/pr-review/SKILL.md` |
