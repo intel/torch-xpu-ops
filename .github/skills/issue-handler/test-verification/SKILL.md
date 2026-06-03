@@ -24,13 +24,7 @@ Read the issue body (provided in the prompt). Extract the test reference from:
 
 Identify the **raw test file path** and the **test selector** (class, method, `-k` filter).
 
-## Step 2: (Handled Automatically)
-
-The pytorch repo has already been synced and rebuilt (if needed) before this
-session started. **Do NOT run `git pull`, `git submodule update`, or
-`pip install -e . -v --no-build-isolation`.** Go straight to resolving paths.
-
-## Step 3: Resolve the Path
+## Step 2: Resolve the Path
 
 The working directory is always `$PYTORCH_DIR/`. All test paths must be relative to it.
 
@@ -61,7 +55,7 @@ ls -la $PYTORCH_DIR/<resolved_path>
 ```
 If the file does not exist, report `CANNOT_VERIFY` with reason.
 
-## Step 4: Validate the Test Selector
+## Step 3: Validate the Test Selector
 
 If the command has a test class or method selector (e.g., `::TestSparseAnyXPU::test_gradcheck_mm_...`):
 
@@ -91,7 +85,7 @@ cd $PYTORCH_DIR && pytest --collect-only -q "<file>" -k "<filter>" 2>&1 | tail -
 ```
 If `0 items / no tests collected` → the filter matches nothing → report `CANNOT_VERIFY`.
 
-## Step 5: Build and Run the Command
+## Step 4: Build and Run the Command
 
 ### Environment Setup
 **MANDATORY** — run these before ANY test or import of torch:
@@ -111,7 +105,7 @@ All commands run from `$PYTORCH_DIR/`.
 ### Run
 Execute the resolved command. Timeout: 10 minutes.
 
-## Step 6: Interpret Results
+## Step 5: Interpret Results
 
 ### PASSED (bug is fixed)
 - pytest exit code 0 with `N passed` and NO `xfailed`, NO `all skipped`
