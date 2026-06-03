@@ -141,7 +141,7 @@ No text after the JSON block.
 ```
 
 ## HARD RULES
-- NEVER commit or push anything.
+- NEVER commit or push anything. Only do verification.
 - NEVER skip the file existence check.
 - If you cannot resolve the path, report CANNOT_VERIFY. Do NOT guess.
 - If 0 tests are collected, report CANNOT_VERIFY, NEVER report PASSED.
