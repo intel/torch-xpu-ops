@@ -387,7 +387,7 @@ def incremental_build(
         log("INFO", "No base ref available, running clean build", issue=issue)
 
     build_cmd = (
-        f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py develop"
+        f"cd {workdir} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
 
     # Try incremental first (unless we already know base_ref is missing,
@@ -406,10 +406,10 @@ def incremental_build(
             issue=issue)
 
     # Clean build (either fallback path or force_rebuild requested it).
-    log("INFO", "Running clean build (setup.py clean + develop)", issue=issue)
+    log("INFO", "Running clean build (clean + pip install)", issue=issue)
     clean_cmd = (
         f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py clean && "
-        f"{XPU_BUILD_FLAGS} python setup.py develop"
+        f"{XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
     result = _run_build_streaming(
         ENV_SETUP + clean_cmd, cwd=workdir,

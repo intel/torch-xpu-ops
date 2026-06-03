@@ -26,7 +26,7 @@ Run it exactly as specified. If the issue has no reproducer, construct one
 from the failed test name and error context.
 
 If you modified C++/CUDA/SYCL code (not just Python), rebuild first:
-- **pytorch repo**: `source ~/intel/oneapi/setvars.sh --force 2>/dev/null && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 python setup.py develop 2>&1 | tail -20`
+- **pytorch repo**: `source ~/intel/oneapi/setvars.sh --force 2>/dev/null && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation 2>&1 | tail -20`
 - **torch-xpu-ops repo**: No separate build step needed (built as part of pytorch)
 
 ### torch-xpu-ops submodule pin (xpu.txt)
@@ -100,7 +100,7 @@ After fixing, update the issue body with:
 - Remove unused imports when removing skip decorators.
 - Keep commits focused: one fix per commit.
 - **Never cherry-pick** upstream fixes. If a fix already landed on trunk, rebase (`git rebase origin/main`) instead.
-- **Always rebuild after rebase or branch switch.** After `git rebase`, `git checkout`, or any operation that changes the commit base, rebuild (`source ~/intel/oneapi/setvars.sh --force 2>/dev/null && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 python setup.py develop`) before running tests. Without rebuilding, C++ extensions are stale and results are unreliable.
+- **Always rebuild after rebase or branch switch.** After `git rebase`, `git checkout`, or any operation that changes the commit base, rebuild (`source ~/intel/oneapi/setvars.sh --force 2>/dev/null && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation`) before running tests. Without rebuilding, C++ extensions are stale and results are unreliable.
 - Editable installs resolve Python from source but C++ headers from the installed location (`torch/include/`). After editing a C++ header, **manually copy** it to the installed include path.
 - Delete the PCH cache (`/tmp/torchinductor_<user>/precompiled_headers/`) after modifying any header under `torch/csrc/inductor/cpp_wrapper/` — stale precompiled headers mask the fix.
 - For C++ compile errors in AOT Inductor generated code (`CppCompileError`), the root cause is usually in the **codegen ordering** in `cpp_wrapper_cpu.py` (e.g., a function used before its definition is emitted). Check `write_wrapper_decl()` and `generate_input_output_runtime_checks()` ordering.

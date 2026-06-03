@@ -28,7 +28,7 @@ Identify the **raw test file path** and the **test selector** (class, method, `-
 
 The pytorch repo has already been synced and rebuilt (if needed) before this
 session started. **Do NOT run `git pull`, `git submodule update`, or
-`python setup.py develop`.** Go straight to resolving paths.
+`pip install -e . -v --no-build-isolation`.** Go straight to resolving paths.
 
 ## Step 3: Resolve the Path
 

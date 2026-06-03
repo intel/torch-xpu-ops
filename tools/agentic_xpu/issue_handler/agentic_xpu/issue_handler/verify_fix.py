@@ -53,12 +53,12 @@ def _needs_rebuild(diff_files: str) -> bool:
 
 
 def _rebuild_pytorch(workdir: Path, issue: int) -> tuple[bool, str]:
-    """Run incremental rebuild via python setup.py develop.
+    """Run incremental rebuild via pip install -e.
 
     This handles CMake reconfiguration and incremental builds correctly.
     """
     log("INFO", "Running incremental pytorch rebuild", issue=issue)
-    cmd = ENV_SETUP + f"cd {workdir} && {XPU_BUILD_FLAGS} python setup.py develop"
+    cmd = ENV_SETUP + f"cd {workdir} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     try:
         result = subprocess.run(
             cmd,

@@ -136,7 +136,7 @@ The `verify_existence`, `fix`, and `verify_fix` stages execute Python test code 
 
 ```bash
 cd ~/pytorch
-python setup.py develop   # with USE_XPU=1, oneAPI sourced
+pip install -e . -v --no-build-isolation   # with USE_XPU=1, oneAPI sourced
 ```
 
 The pipeline automatically syncs (`git pull` + submodule update) and rebuilds if the binary is stale before each verification run.

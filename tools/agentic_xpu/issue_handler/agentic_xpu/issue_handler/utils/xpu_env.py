@@ -352,7 +352,7 @@ def _do_rebuild(issue: int | None = None, clean_cmake: bool = False) -> tuple[bo
             cmake_cache.unlink()
     cmd = (
         ENV_SETUP +
-        f"cd {PYTORCH_DIR} && {XPU_BUILD_FLAGS} python setup.py develop"
+        f"cd {PYTORCH_DIR} && {XPU_BUILD_FLAGS} pip install -e . -v --no-build-isolation"
     )
     try:
         result = subprocess.run(
