@@ -56,9 +56,9 @@ STAGE_ORDER = ["format", "triage", "fix", "verify_fix"]
 
 # After each stage completes, the issue body status should be one of these
 _STAGE_DONE_STATUS: dict[str, tuple[str, ...]] = {
-    "format":     ("DISCOVERED",),
-    "triage":     ("TRIAGED", "NEEDS_HUMAN"),
-    "fix":        ("IMPLEMENTING", "IN_REVIEW"),
+    "format": ("DISCOVERED",),
+    "triage": ("TRIAGED", "NEEDS_HUMAN"),
+    "fix": ("IMPLEMENTING", "IN_REVIEW"),
     "verify_fix": ("IN_REVIEW", "DONE"),
 }
 

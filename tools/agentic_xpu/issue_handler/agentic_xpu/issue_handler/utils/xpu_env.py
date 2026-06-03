@@ -183,6 +183,7 @@ def _prune_old_stashes(pytorch: str, *, issue: int | None = None) -> int:
         # IMPORTANT: drop in reverse order — dropping a low-index stash
         # shifts all higher refs down by one.  Sort by numeric stash index
         # descending.
+
         def _idx(gd: str) -> int:
             try:
                 return int(gd.split("{")[1].rstrip("}"))
@@ -276,8 +277,8 @@ def sync_pytorch(ref: str = "main", *, pull: bool = True,
         if stash_ref:
             _prune_old_stashes(pytorch, issue=issue)
             if issue is not None:
-                _record_stash_in_body(issue, stash_ref,
-                                       switched_from=switched_from)
+                _record_stash_in_body(
+                    issue, stash_ref, switched_from=switched_from)
 
         # 1. git pull + submodule sync/update
         log("INFO", "Syncing pytorch repo", issue=issue)

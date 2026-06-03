@@ -189,4 +189,3 @@ python tools/agentic_xpu/issue_handler/run_pipeline.py --once --issues 12 15 23
 | `--issues N` | Process specific issue number(s). Default: all open agent issues |
 | `--stages`   | Run only named stages: `format`, `triage`, `fix`, `verify_fix`. Default: all |
 | `--batch`    | Label for the dashboard report batch                       |
-

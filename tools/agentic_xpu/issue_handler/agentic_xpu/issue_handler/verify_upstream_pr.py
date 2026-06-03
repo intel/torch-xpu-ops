@@ -768,8 +768,10 @@ def _commit_body(issue_number: int, body: str, stage: Stage) -> None:
     gh.sync_labels(ISSUE_REPO, issue_number, stage)
 
 
-def _handle_device_specific(issue_number: int, body: str, pr_meta: dict,
-                             verdict: dict, truncated: bool) -> bool:
+def _handle_device_specific(
+    issue_number: int, body: str, pr_meta: dict,
+    verdict: dict, truncated: bool,
+) -> bool:
     """Persist verdict, append log, restore DISCOVERED, fall through to triage."""
     summary = _format_pr_summary(pr_meta, verdict, truncated)
     summary.append("**Decision:** XPU-specific fix still required — handing to triage.")
@@ -785,8 +787,10 @@ def _handle_device_specific(issue_number: int, body: str, pr_meta: dict,
     return False  # orchestrator continues to triage
 
 
-def _handle_repro_inconclusive(issue_number: int, body: str, pr_meta: dict,
-                                verdict: dict, repro: ReproResult) -> bool:
+def _handle_repro_inconclusive(
+    issue_number: int, body: str, pr_meta: dict,
+    verdict: dict, repro: ReproResult,
+) -> bool:
     """Agnostic verdict — repro still fails after cherry-pick.
 
     If the upstream PR is still open (not yet merged), the cherry-pick may
@@ -869,8 +873,10 @@ def _prune_stale_upstream_log(body: str) -> str:
     return body
 
 
-def _handle_agnostic_verified(issue_number: int, body: str, pr_meta: dict,
-                               verdict: dict, repro: ReproResult) -> bool:
+def _handle_agnostic_verified(
+    issue_number: int, body: str, pr_meta: dict,
+    verdict: dict, repro: ReproResult,
+) -> bool:
     """Agnostic verdict + repro passes. Close (merged) or wait (open)."""
     # Collapse any prior NEEDS_HUMAN / diagnostic entries — the success
     # entry we are about to append supersedes them.
@@ -985,8 +991,8 @@ def run(issue_number: int) -> bool:
         truncated = False
     else:
         diff, truncated = _fetch_pr_diff(pr_num, issue=issue_number)
-        verdict = _classify_with_llm(pr_meta, diff, truncated,
-                                      issue=issue_number)
+        verdict = _classify_with_llm(
+            pr_meta, diff, truncated, issue=issue_number)
         log("INFO",
             f"Classifier verdict: {verdict['verdict']} "
             f"(confidence: {verdict['confidence']})",
@@ -1014,8 +1020,8 @@ def run(issue_number: int) -> bool:
             # continues to triage as a fallback for this cycle.
             _commit_body(issue_number, body, Stage.DISCOVERED)
             return False
-        return _handle_device_specific(issue_number, body, pr_meta,
-                                        verdict, truncated)
+        return _handle_device_specific(
+            issue_number, body, pr_meta, verdict, truncated)
 
     # AGNOSTIC path — need the refined reproducer
     cmd = extract_reproducer_command(body, issue=issue_number)
@@ -1243,10 +1249,10 @@ def run(issue_number: int) -> bool:
         raise
 
     if not repro.passed:
-        return _handle_repro_inconclusive(issue_number, body, pr_meta,
-                                           verdict, repro)
-    return _handle_agnostic_verified(issue_number, body, pr_meta,
-                                      verdict, repro)
+        return _handle_repro_inconclusive(
+            issue_number, body, pr_meta, verdict, repro)
+    return _handle_agnostic_verified(
+        issue_number, body, pr_meta, verdict, repro)
 
 
 def main() -> None:

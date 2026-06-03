@@ -78,8 +78,9 @@ def _agent_tmp() -> Path:
     return AGENT_TMP_DIR
 
 
-def extract_reproducer_command(body: str,
-                                issue: int | None = None) -> str | None:
+def extract_reproducer_command(
+    body: str, issue: int | None = None,
+) -> str | None:
     """Return a runnable reproducer command from the issue body, if present.
 
     Tiers (first hit wins):
@@ -296,8 +297,9 @@ def persist_refined_command(body: str, cmd: str) -> str:
 # Execute
 # ---------------------------------------------------------------------------
 
-def run_reproducer_command(cmd: str, issue: int,
-                            timeout: int = 300) -> ReproResult:
+def run_reproducer_command(
+    cmd: str, issue: int, timeout: int = 300,
+) -> ReproResult:
     """Execute a reproducer command under the XPU env in PYTORCH_DIR.
 
     A command "passes" (issue no longer reproduces) when:

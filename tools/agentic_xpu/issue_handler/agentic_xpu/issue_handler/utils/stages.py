@@ -84,10 +84,10 @@ class RepoProfile:
     base_ref: str        # branch on that remote (push target / PR base name)
     pr_repo: str         # owner/repo where the PR is opened
     diff_base: str       # full ref to diff/reset against (e.g. "upstream/main").
-                         # MUST match the ref the agent branch is created from
-                         # in code_fix._setup_*_branch — otherwise a stale push
-                         # remote produces a bogus huge diff that masquerades
-                         # as "already fixed" and triggers a wasted build.
+    # MUST match the ref the agent branch is created from
+    # in code_fix._setup_*_branch -- otherwise a stale push
+    # remote produces a bogus huge diff that masquerades
+    # as "already fixed" and triggers a wasted build.
 
 
 def repo_profile(target: str | TargetRepo) -> RepoProfile:

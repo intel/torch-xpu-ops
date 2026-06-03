@@ -491,7 +491,7 @@ def run(issue_number: int) -> None:
 
     # Log classification results
     classified = [s for s in [SLOT_DESCRIPTION, SLOT_REPRODUCER, SLOT_ERROR_LOG,
-                               SLOT_ENVIRONMENT, SLOT_ADDITIONAL] if s in slots]
+                              SLOT_ENVIRONMENT, SLOT_ADDITIONAL] if s in slots]
     log("INFO",
         f"Classified slots: {', '.join(f'{s}={len(slots[s])}ch' for s in classified)}",
         issue=issue_number)

@@ -244,7 +244,7 @@ def read_build_marker(workdir: Path = PYTORCH_DIR) -> str | None:
     marker = _marker_path(workdir)
     try:
         sha = marker.read_text().strip()
-    except (FileNotFoundError, OSError):
+    except OSError:
         return None
     return sha or None
 
