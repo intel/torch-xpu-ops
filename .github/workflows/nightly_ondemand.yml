@@ -206,6 +206,7 @@ jobs:
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     name: linux-microbench
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     if: false # Temporarily disabled
     permissions:
       actions: read
