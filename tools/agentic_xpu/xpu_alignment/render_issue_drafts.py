@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -297,7 +298,7 @@ def main() -> None:
     else:
         output_path = run_dir / "reports" / "issue_drafts.md"
 
-    exit(render_issue_drafts(run_dir, output_path))
+    sys.exit(render_issue_drafts(run_dir, output_path))
 
 
 if __name__ == "__main__":
