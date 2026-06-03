@@ -89,27 +89,28 @@ The coding agent backend requires [OpenCode](https://github.com/nicepkg/opencode
 
 ### 3. Configure environment
 
-Create `tools/agentic_xpu/tokens.env` and fill in the tokens. Also create a `repo.env` for repository paths if needed (use `tools/agentic_xpu/issue_handler/repo.env.example` as a template):
+Copy the shared env template and fill in your tokens and repo settings:
 
 ```bash
-cp tools/agentic_xpu/issue_handler/repo.env.example tools/agentic_xpu/issue_handler/repo.env
-# Edit tools/agentic_xpu/issue_handler/repo.env to set PRIVATE_REVIEW_REPO and other overrides
-
+cd /path/to/torch-xpu-ops/tools/agentic_xpu
+cp .env.example .env
+# Edit .env — at minimum set GITHUB_TOKEN and PRIVATE_REVIEW_REPO
+chmod 600 .env
 ```
 
-Required variables in `tokens.env`:
+Key variables:
 
-| Variable           | Description                                          | Required |
-|--------------------|------------------------------------------------------|----------|
-| `GH_TOKEN`         | GitHub PAT with write access to issue + review repos | ✅       |
-| `PYTORCH_DIR`      | Path to local PyTorch checkout (default: `~/pytorch`) | Optional |
-| `AGENT_BACKEND`    | `opencode` (default) or `copilot`                    | Optional |
-| `OPENCODE_CMD`     | Path to the opencode binary (default: `opencode`)    | Optional |
+| Variable              | Description                                          | Required |
+|-----------------------|------------------------------------------------------|----------|
+| `GITHUB_TOKEN`        | GitHub PAT with write access to issue + review repos | ✅       |
+| `PRIVATE_REVIEW_REPO` | Private review fork (e.g. `yourorg/pytorch`)         | ✅       |
+| `PYTORCH_DIR`         | Path to local PyTorch checkout (default: `~/pytorch`)| Optional |
+| `AGENT_BACKEND`       | `opencode` (default) or `copilot`                    | Optional |
+| `OPENCODE_CMD`        | Path to the opencode binary (default: `opencode`)    | Optional |
 
-**Important:** The `tokens.env` file has no `export` statements. Source both environment files with:
+Source the env file before running:
 ```bash
-set -a && [ -f tools/agentic_xpu/tokens.env ] && source tools/agentic_xpu/tokens.env && [ -f tools/agentic_xpu/issue_handler/repo.env ] && source tools/agentic_xpu/issue_handler/repo.env; set +a
-
+set -a && source tools/agentic_xpu/.env && set +a
 ```
 
 ### 4. Configure repos (optional)
@@ -161,7 +162,7 @@ cd ~/pytorch && git stash list | grep agent-autoclean
 ```bash
 # Source environment
 cd ~/torch-xpu-ops
-set -a && [ -f tools/agentic_xpu/tokens.env ] && source tools/agentic_xpu/tokens.env && [ -f tools/agentic_xpu/issue_handler/repo.env ] && source tools/agentic_xpu/issue_handler/repo.env; set +a
+set -a && source tools/agentic_xpu/.env && set +a
 
 
 # Run all stages on a specific issue

@@ -1,5 +1,0 @@
-# issue-handler dependencies
-PyYAML>=6.0
-
-# dev / test
-pytest>=7.0
