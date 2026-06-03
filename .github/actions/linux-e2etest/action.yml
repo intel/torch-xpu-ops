@@ -42,6 +42,7 @@ runs:
         cd ..
         cp torch-xpu-ops/.github/scripts/run_benchmark.py .
         cp torch-xpu-ops/.ci/benchmarks/models_list.txt .
+        export NUM_GPUS=8
         python run_benchmark.py --dtype "${{ inputs.dt }}" --suite "${{ inputs.suite }}" \
                                 --mode "${{ inputs.mode }}" --scenario "${{ inputs.scenario }}" \
                                 --model-only models_list.txt
