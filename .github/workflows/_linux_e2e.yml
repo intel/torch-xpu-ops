@@ -106,7 +106,7 @@ jobs:
           suite: huggingface
           dt: bfloat16,float16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: CICD Timm_models BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
@@ -115,7 +115,7 @@ jobs:
           suite: timm_models
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: CICD Torchbench BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
@@ -124,7 +124,7 @@ jobs:
           suite: torchbench
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
 
       # Nihglty launch
@@ -135,7 +135,7 @@ jobs:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -143,7 +143,7 @@ jobs:
           suite: timm_models
           dt: float16,bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -151,13 +151,13 @@ jobs:
           suite: torchbench
           dt: float16,bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
@@ -167,7 +167,7 @@ jobs:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly Timm_models Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -175,7 +175,7 @@ jobs:
           suite: timm_models
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly Torchbench Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -183,13 +183,13 @@ jobs:
           suite: torchbench
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
 
       # On-demand launch
       - name: Get test data types
@@ -240,7 +240,7 @@ jobs:
           suite: ${{ inputs.suite }}
           dt: amp_fp16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
@@ -249,17 +249,29 @@ jobs:
           suite: ${{ inputs.suite }}
           dt: bfloat16
           mode: inference
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}
+        id: archive
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+          artifact_name="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data"
+          artifact_name+="-${{ github.event.pull_request.number || github.sha }}"
+          artifact_name+="-${{ inputs.suite }}"
+          if [[ "${{ inputs.scenario }}" != *,* ]]; then
+            artifact_name+="-${{ inputs.scenario }}"
+          fi
+          artifact_name+="-${{ github.run_id }}-${{ github.run_attempt }}"
+          if [[ -n "${{ inputs.category }}" ]]; then
+            artifact_name+="-${{ inputs.category }}"
+          fi
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: ${{ steps.archive.outputs.name }}
           path: ${{ github.workspace }}/upload_files

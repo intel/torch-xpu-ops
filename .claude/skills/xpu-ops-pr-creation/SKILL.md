@@ -14,8 +14,14 @@ placeholders:
 # PR Creation — torch-xpu-ops
 
 - Read `.github/copilot-instructions.md` for full repo context before starting.
-- Read `.github/skills/xpu-issues-triaging/SKILL.md` for issue triaging before creating a PR. BE SURE to triage and understand the root cause first, then create PR.
----
+- Read `.claude/skills/xpu-issues-triaging/SKILL.md` for issue triaging before creating a PR.
+
+**MANDATORY STEPS**:
+
+- You MUST read the issue body "Root Cause Analysis" and "Proposed Fix Strategy" BEFORE proposing any fix.
+- If there is a CUDA kernel implementation, you have to refer to it first.
+- Before you make any changes, you need to understand the root cause, and answer yourself "why CUDA works but XPU failed". If there is any misalignment, you need to write in the PR body description.
+- After you make changes, you need to answer "If the implementation is different with the CUDA logic, is it reasonable?" If there is any misalignment, you need to write in the PR body description.
 
 ## Step 1: Verify your branch
 
@@ -94,7 +100,7 @@ If neither tool is configured in the repo, skip this step and note it in your su
 
 ---
 
-## Step 6: Push your branch
+## Step 5: Push your branch
 
 ```bash
 git push origin agent/<slug>
@@ -105,7 +111,7 @@ to origin. **Do not push to `main`.**
 
 ---
 
-## Step 7: Open the PR (or hand off)
+## Step 6: Open the PR (or hand off)
 
 Agents do not auto-open PRs for this repo. Output your summary so a human can review
 and open the PR.
