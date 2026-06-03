@@ -123,6 +123,7 @@ Also flag during review:
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
 - [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
 - [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
+- [ ] Check vectorization in sycl kernel. If developer want to do vectorization, the code should follows this paterrn: It should use `using vec_t = memory::aligned_vector<scalar_t, vec_size>;` and use `vec_t` to do load store. i.e. `const vec_t* input_vec = reinterpret_cast<const vec_t*>(input.const_data_ptr<scalar_t>());`, then `vec_t local_input_data = input_vec[i]`, use `local_input_data` to do following calculation.
 
 ## Dispatch, Fallback, And Generated Wiring
 
