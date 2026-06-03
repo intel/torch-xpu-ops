@@ -221,6 +221,7 @@ jobs:
       runner: pvc-1100
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Windows-Nightly-Ondemand-Build:
     name: windows-build
