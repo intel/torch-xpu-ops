@@ -919,6 +919,12 @@ class XCCLTraceTestBase(MultiProcessTestCase):
             os.remove(self.file_name)
         except OSError:
             pass
+        for _k in (
+            "TORCH_FR_BUFFER_SIZE",
+            "TORCH_FR_DUMP_TEMP_FILE",
+            "TORCH_FR_DEBUG_INFO_PIPE_FILE",
+        ):
+            os.environ.pop(_k, None)
 
     @property
     def world_size(self):
@@ -1427,6 +1433,12 @@ except ImportError:
 class SymmetricMemoryTest(MultiProcContinuousTest):
     """XPU SymmetricMemory tests (SYCL IPC backend)."""
 
+    @classmethod
+    def setUpClass(cls):
+        for _k in ("TORCH_FR_DUMP_TEMP_FILE", "TORCH_FR_DEBUG_INFO_PIPE_FILE"):
+            os.environ.pop(_k, None)
+        super().setUpClass()
+
     @property
     def device(self) -> torch.device:
         return torch.device("xpu", self.rank)
@@ -1629,7 +1641,8 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
 # ------------------------------------------------------------------
 # Inductor micro-pipeline TP FX-pass tests (single-process, FakeStore)
 # ------------------------------------------------------------------
-#
+
+
 @instantiate_parametrized_tests
 class MicroPipelineTPXpuTest(TestCase):
     def setUp(self):
