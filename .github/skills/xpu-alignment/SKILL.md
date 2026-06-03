@@ -9,7 +9,7 @@ Scan `pytorch/pytorch` for issues, PRs, and bug-fix commits across any backend (
 
 ## Rules
 
-1. Workspace-local XPU interpreter: look for `.venv/bin/python` or `.conda-*/bin/python` in the workspace. If missing, create a venv in-workspace; never use interpreters outside this workspace.
+1. Workspace-local XPU interpreter: look for `.venv/bin/python` or `.conda*/bin/python` in the workspace. If missing, create a venv in-workspace; never use interpreters outside this workspace.
 2. Preflight checks nightly version; reinstall if stale or missing to ensure the latest nightly.
 3. Zero pending actionable rows = done. Otherwise write `## Progress checkpoint`.
 4. **Batched pipeline**: batch deep-filter → batch write repros → serial execution → batch route → batch report. Ledger enables resume from any interruption.

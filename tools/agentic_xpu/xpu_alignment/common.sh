@@ -20,7 +20,7 @@ OPENCODE_BIN="${OPENCODE_BIN:-$(command -v opencode 2>/dev/null || echo "")}"
 [[ -n "$OPENCODE_BIN" ]] || { echo "ERROR: opencode not found. Set OPENCODE_BIN or add to PATH." >&2; exit 1; }
 
 # --- Load .env and token ---
-ENV_FILE="${ENV_FILE:-$ENTRY_DIR/../tokens.env}"
+ENV_FILE="${ENV_FILE:-$ENTRY_DIR/../.env}"
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090

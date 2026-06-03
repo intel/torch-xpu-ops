@@ -57,9 +57,9 @@ Copy the example env file and fill in your GitHub token:
 
 ```bash
 cd /path/to/torch-xpu-ops/tools/agentic_xpu
-cp tokens.env.example tokens.env
-# Edit tokens.env to fill in your actual token
-chmod 600 tokens.env
+cp .env.example .env
+# Edit .env to fill in your actual token
+chmod 600 .env
 ```
 
 Alternatively, export `GITHUB_TOKEN` in your shell before running.
@@ -298,7 +298,7 @@ All optional — auto-detected if unset.
 |----------|-------------|---------|
 | `OPENCODE_BIN` | Path to `opencode` binary | `opencode` in `$PATH` |
 | `WORKSPACE` | Workspace root (where `.opencode/` lives) | Auto-detected upward from entry dir |
-| `ENV_FILE` | Path to `tokens.env` file with `GITHUB_TOKEN` | `<entry-dir>/../tokens.env` |
-| `GITHUB_TOKEN` | GitHub personal access token | Inherited from env or `tokens.env` |
+| `ENV_FILE` | Path to `.env` file with `GITHUB_TOKEN` | `<entry-dir>/../.env` |
+| `GITHUB_TOKEN` | GitHub personal access token | Inherited from env or `.env` |
 | `GH_TOKEN` | Alias for `GITHUB_TOKEN` (used by `gh` CLI) | Set from `GITHUB_TOKEN` |
 | `XPU_ALIGNMENT_ISSUE_REPO` | Target issue repo for generated filing commands | `intel/torch-xpu-ops` |
