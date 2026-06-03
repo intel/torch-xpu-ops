@@ -107,7 +107,7 @@ Also flag during review:
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
-- [ ] **Math functions** — Avoid `std::` math functions (e.g., `std::exp`) in SYCL kernels; prefer `sycl::` / `sycl::native::` equivalents (e.g., `sycl::exp`, `sycl::native::exp`). `sycl::native::*` trades accuracy for performance; use it only when the corresponding CUDA kernel uses fast intrinsics (e.g., `__expf`).
+ - [ ] **Math functions** — In SYCL device code, avoid `std::` math functions for real types (e.g., `std::exp`) and prefer `sycl::` / `sycl::native::` equivalents (e.g., `sycl::exp`, `sycl::native::exp`). For complex math, `std::` functions may be required; follow the existing pattern used in `src/ATen/native/xpu/sycl/UnaryKernels.cpp` (complex: `std::exp`, real: `sycl::exp`). `sycl::native::*` trades accuracy for performance; use it only when the corresponding CUDA kernel uses fast intrinsics (e.g., `__expf`).
 
 ## Large Tensor Safety
 
