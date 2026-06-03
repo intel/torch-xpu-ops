@@ -44,7 +44,13 @@ Check whether:
 - out / inplace / backward behavior is correct
 - Error handling and unsupported cases are explicit
 
-### 3. Review XPU-specific risks
+### 3. Review performance
+Check whether:
+- The change may affect kernel performance
+- The change may affect host performance
+
+
+### 4. Review XPU-specific risks
 Pay special attention to:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
 - **Indexing**: 32-bit vs 64-bit indexing, large tensor overflow risk
@@ -53,7 +59,7 @@ Pay special attention to:
 - **Kernel efficiency**: branch divergence, work-group choice, unnecessary copies, temp buffers
 - **Fallback/dispatch**: wrong registration, silent fallback, inconsistent path coverage
 
-### 4. Review tests
+### 5. Review tests
 Check whether tests cover:
 - Correctness for normal and edge cases
 - Multiple dtypes if relevant
@@ -61,7 +67,7 @@ Check whether tests cover:
 - Large tensor / indexing cases if relevant
 - Performance evidence if PR claims optimization
 
-### 5. Give review output
+### 6. Give review output
 Structure feedback as:
 1. **Summary**: what the PR changes
 2. **Strengths**: what looks good
