@@ -90,7 +90,7 @@ Save to `artifacts/raw_candidates.json` (deduplicated by id, metadata only — n
 ### Step 1.5: Title triage
 
 Initialize ledger from raw candidates. Reject by title/message alone when it clearly indicates non-bug or platform-exclusive scope:
-- `DISABLED test_` (CI noise)
+- Titles that start with `DISABLED test_` or only disable/enable CI tests (covered by UT and issue-handler scenarios)
 - Platform prefixes: `[Windows]`, `[MPS]`, `[Build]`, `[Dependabot]`, `[RFC]`
 - Docs/CI/infra/release-only keywords
 - Obvious duplicates of already-processed candidates
