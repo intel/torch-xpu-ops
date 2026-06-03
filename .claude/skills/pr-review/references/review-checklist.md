@@ -123,7 +123,7 @@ Also flag during review:
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
 - [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
 - [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
-- [ ] Check vectorization in sycl kernel. If developer want to do vectorization, the code should follows this paterrn: It should use `using vec_t = memory::aligned_vector<scalar_t, vec_size>;` and use `vec_t` to do load store. i.e. `const vec_t* input_vec = reinterpret_cast<const vec_t*>(input.const_data_ptr<scalar_t>());`, then `vec_t local_input_data = input_vec[i]`, use `local_input_data` to do following calculation.
+- [ ] Check vectorization in SYCL kernels. When vectorization is used, it should rely on `memory::aligned_vector<scalar_t, vec_size>` (or an equivalent alias), guard the vectorized path with the required alignment and shape checks, and do aligned loads/stores from the raw kernel pointers instead of assuming a specific tensor-launch pattern.
 
 ## Dispatch, Fallback, And Generated Wiring
 
