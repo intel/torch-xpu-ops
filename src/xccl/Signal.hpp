@@ -13,6 +13,12 @@ using at::native::memory::get_alignment;
 // Signal primitives using store/load + atomic_fence
 // (sycl::atomic_ref is not supported, use explicit fence instead)
 // =============================================================================
+//
+// Note on memory scope:
+// We intentionally use memory_scope::system because signal pads are exchanged
+// across ranks/devices (including peer/device-visible IPC mappings). These
+// flags are polled and updated by kernels running on different devices, so a
+// device/work-group scope is too narrow for this protocol.
 
 // Store value with release fence (for put_signal)
 // Order: store first, then release fence to flush the store

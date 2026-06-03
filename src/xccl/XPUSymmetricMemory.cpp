@@ -239,6 +239,12 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   c10::DeviceGuard device_guard(c10::Device(c10::DeviceType::XPU, device_idx));
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  // Allocate directly from SYCL runtime instead of XPUCachingAllocator:
+  // 1) keep behavior aligned with CUDA symmetric-memory implementation;
+  // 2) avoid allocator-level expandable-memory remapping side effects on
+  //    exchanged IPC handles/addresses;
+  // 3) preserve flexibility for future handle-based features (for example,
+  //    reconstructing multicast objects from physical/shared handles).
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
   auto alloc_ref = c10::make_intrusive<AllocationRef>(
