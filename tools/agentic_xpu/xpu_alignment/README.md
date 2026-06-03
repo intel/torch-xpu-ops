@@ -8,15 +8,25 @@ adapt reproducers for XPU, validate locally, route confirmed bugs, and file trac
 
 ## Table of Contents
 
-1. [Prerequisites](#1-prerequisites)
-2. [One-time Setup](#2-one-time-setup)
-3. [Running a Scan](#3-running-a-scan)
-4. [Output Structure](#4-output-structure)
-5. [Reading the Report](#5-reading-the-report)
-6. [Issue Drafts (dry-run)](#6-issue-drafts-dry-run)
-7. [Cron / Automated Daily Scans](#7-cron--automated-daily-scans)
-8. [Resuming an Interrupted Scan](#8-resuming-an-interrupted-scan)
-9. [Environment Variables](#9-environment-variables)
+- [pytorch-cuda-fix-xpu-alignment — Usage Guide](#pytorch-cuda-fix-xpu-alignment--usage-guide)
+  - [Table of Contents](#table-of-contents)
+  - [1. Prerequisites](#1-prerequisites)
+  - [2. One-time Setup](#2-one-time-setup)
+    - [2a. Configure the GitHub token](#2a-configure-the-github-token)
+  - [3. Running a Scan](#3-running-a-scan)
+    - [Single day](#single-day)
+    - [Custom date range](#custom-date-range)
+    - [Last N days](#last-n-days)
+    - [Specifying opencode binary explicitly](#specifying-opencode-binary-explicitly)
+  - [4. Output Structure](#4-output-structure)
+  - [5. Reading the Report](#5-reading-the-report)
+    - [Bucket meanings](#bucket-meanings)
+  - [6. Issue Drafts (dry-run)](#6-issue-drafts-dry-run)
+    - [Issue body format specification](#issue-body-format-specification)
+    - [Pre-filing checklist](#pre-filing-checklist)
+  - [7. Cron / Automated Daily Scans](#7-cron--automated-daily-scans)
+  - [8. Resuming an Interrupted Scan](#8-resuming-an-interrupted-scan)
+  - [9. Environment Variables](#9-environment-variables)
 
 ---
 
