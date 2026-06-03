@@ -30,13 +30,11 @@ from torch.testing._internal.common_device_type import (
     onlyCPU,
     onlyNativeDeviceTypes,
     ops,
-)
-from torch.testing._internal.common_methods_invocations import (
-    op_db,
     skip,
     skipOps,
     xfail,
 )
+from torch.testing._internal.common_methods_invocations import op_db
 from torch.testing._internal.common_modules import module_db, modules
 from torch.testing._internal.common_utils import (
     is_iterable_of_tensors,
@@ -441,6 +439,9 @@ CROSS_REF_EXCLUDE_SET = {
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific exclude cases
     # ("xpu", None, "some_xpu_specific_op"),
+    # max_pool2d_with_indices_backward tests are not applicable
+    # More details in https://github.com/pytorch/pytorch/pull/182619
+    ("xpu", None, "max_pool2d_with_indices_backward"),
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
@@ -454,6 +455,10 @@ CROSS_REF_BACKWARD_EXCLUDE_SET = {
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific backward exclude cases
     # ("xpu", torch.float16, "nn.functional.some_op"),
+    # max_pool2d_with_indices_backward tests are not applicable
+    # More details in https://github.com/pytorch/pytorch/pull/182619
+    ("xpu", None, "nn.functional.max_pool1d"),
+    ("xpu", None, "nn.functional.max_pool2d"),
 }
 
 all_decomposed = set()
@@ -586,7 +591,7 @@ class TestDecomp(TestCase):
     def test_quick(self, device, dtype, op):
         self.do_cross_ref(device, dtype, op, run_all=False)
 
-    @skipOps("TestDecomp", "test_quick_core_backward", core_backward_failures)
+    @skipOps(core_backward_failures)
     @onlyNativeDeviceTypes
     @skipIfCrossRef
     @suppress_warnings
@@ -616,7 +621,7 @@ class TestDecomp(TestCase):
     @unittest.skipIf(TEST_WITH_ASAN, "Skipped under ASAN")
     @onlyNativeDeviceTypes
     @skipIfCrossRef
-    @skipOps("TestDecomp", "test_comprehensive", comprehensive_failures)
+    @skipOps(comprehensive_failures)
     @suppress_warnings
     @ops(op_db)
     def test_comprehensive(self, device, dtype, op):
@@ -949,6 +954,7 @@ def forward(self, scores_1, mask_1, value_1):
     def do_cross_ref(self, device, dtype, op, *, run_all):
         test_keys = [
             (torch.device(device).type, dtype, op.name),
+            (torch.device(device).type, None, op.name),
             (None, dtype, op.name),
             (None, None, op.name),
         ]
@@ -1188,14 +1194,12 @@ class DecompOneOffTests(TestCase):
     @onlyCPU
     @skipIfCrossRef
     @skipOps(
-        "DecompOneOffTests",
-        "test_sdpa",
         [
             xfail(
                 "nn.functional.scaled_dot_product_attention",
                 dtypes=[torch.half],
             ),
-        ],
+        ]
     )
     @ops(_sdpa_op_info)
     def test_sdpa(self, device, dtype, op):

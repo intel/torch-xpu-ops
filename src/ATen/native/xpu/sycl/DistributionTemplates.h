@@ -28,8 +28,6 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
-#include <ATen/ops/empty.h>
-
 namespace at {
 namespace native {
 namespace xpu {
@@ -472,11 +470,7 @@ void random_from_to_kernel(
       iter.dtype(),
       "random_from_to_kernel_xpu",
       AT_WRAP([&] {
-        if ((std::is_same<scalar_t, int64_t>::value ||
-             std::is_same<scalar_t, double>::value ||
-             std::is_same<scalar_t, float>::value ||
-             std::is_same<scalar_t, at::BFloat16>::value) &&
-            range >= 1ULL << 32) {
+        if (range >= 1ULL << 28) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -976,7 +970,7 @@ void cauchy_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct GeometricFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(std::ceil(
+    return static_cast<scalar_t>(sycl::ceil(
         std::log(rand) / std::log(static_cast<accscalar_t>(1.0) - p_)));
   }
 

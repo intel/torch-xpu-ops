@@ -27,7 +27,6 @@ from torch.testing._internal.triton_utils import requires_gpu
 if HAS_GPU:
     import triton
     import triton.language as tl
-
     from torch.library import wrap_triton
     from torch.utils._triton import has_triton
 
@@ -1480,10 +1479,12 @@ class TestDeserialize(TestCase):
         ep = torch.export.export(M(), (torch.ones(3, 3), None, torch.ones(3, 3)))
 
         serialized_program = ExportedProgramSerializer(None, 2).serialize(ep)
-        serialized_program.exported_program.graph_module.signature.input_specs[
-            1
-        ] = schema.InputSpec.create(
-            user_input=schema.UserInputSpec(arg=schema.Argument.create(as_none=True))
+        serialized_program.exported_program.graph_module.signature.input_specs[1] = (
+            schema.InputSpec.create(
+                user_input=schema.UserInputSpec(
+                    arg=schema.Argument.create(as_none=True)
+                )
+            )
         )
         ep = ExportedProgramDeserializer(None).deserialize(
             serialized_program.exported_program, {}, {}, {}

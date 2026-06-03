@@ -1136,8 +1136,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
 
-    const int interp_height = (int)ceilf(support_h_) * 2 + 1;
-    const int interp_width = (int)ceilf(support_w_) * 2 + 1;
+    const int interp_height = (int)sycl::ceil(support_h_) * 2 + 1;
+    const int interp_width = (int)sycl::ceil(support_w_) * 2 + 1;
 
     auto ptr =
         (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()
@@ -1282,8 +1282,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
 
-    const int interp_height = (int)ceilf(support_h_) * 2 + 1;
-    const int interp_width = (int)ceilf(support_w_) * 2 + 1;
+    const int interp_height = (int)sycl::ceil(support_h_) * 2 + 1;
+    const int interp_width = (int)sycl::ceil(support_w_) * 2 + 1;
 
     auto ptr =
         (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()

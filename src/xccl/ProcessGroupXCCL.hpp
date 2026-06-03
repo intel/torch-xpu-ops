@@ -31,6 +31,7 @@
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/TraceUtils.h>

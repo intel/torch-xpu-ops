@@ -27,8 +27,26 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # AssertionError: Quantized tensor-likes are not close!
+        # Rounding mismatch at quantization midpoint due to hypothesis
+        # derandomize seed difference from _xpu suffix.
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_leaky_relu_observed_output_xpu",
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_max_pool2d_cudnn_xpu",
+        "test_qgelu_xpu",
+        "test_qrelu_xpu",
     ),
-    "quantization/core/test_quantized_tensor_xpu.py": None,
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_qtensor_cuda_xpu",
+        "test_qtensor_masked_fill_cuda_xpu",
+        "test_qtensor_index_put_cuda_xpu",
+        "test_qtensor_index_select_cuda_xpu",
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        "test_per_channel_to_device_xpu",
+        "test_per_tensor_to_device_xpu",
+    ),
     "quantization/core/test_workflow_module_xpu.py": None,
     "quantization/core/test_workflow_ops_xpu.py": (
         # AssertionError:
@@ -47,6 +65,11 @@ skip_dict = {
         "test_profiler_emit_nvtx_xpu",
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
+        # CUDA-specific bogus autograd registration tests, not applicable to XPU
+        # As noted in pytorch/pytorch#180969, this test is not applicable to XPU.
+        "test_view_copy_xpu",
+        "test_autograd_multiple_dispatch_registrations_xpu",
+        "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,
@@ -104,7 +127,6 @@ skip_dict = {
         "_jiterator_",
     ),
     "test_modules_xpu.py": None,
-    "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,
     "test_native_mha_xpu.py": None,
     "test_nn_xpu.py": None,
@@ -123,17 +145,26 @@ skip_dict = {
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
         "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
+        # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
+        # Known upstream issue: https://github.com/pytorch/pytorch/issues/159150
+        "test_fake_crossref_backward_amp_nn_functional_bilinear_xpu_float32",
+        # Known upstream issue: https://github.com/pytorch/pytorch/issues/159151
+        "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
     "test_scatter_gather_ops_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
-    "test_shape_ops_xpu.py": None,
+    "test_shape_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_flip_xpu_float32",
+    ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_spectral_ops_xpu.py": None,
     "test_tensor_creation_ops_xpu.py": None,
+    "test_testing_xpu.py": None,
     "test_torch_xpu.py": (
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
@@ -163,72 +194,14 @@ skip_dict = {
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3133#issuecomment-4211942967
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_fused_kernels_nested_broadcasting_kernel",
         # https://github.com/intel/torch-xpu-ops/issues/3133
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         "test_scaled_dot_product_attention_fused_kernels_packed_type_nested_is_contiguous_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         "test_fused_kernels_seq_len_1_inputs_fused_kernel1_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_scaled_dot_product_attention_fused_kernels_packed_accuracy_type_nested_fused_kernel1_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_fused_kernels_nested_broadcasting_query_dense_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3129
         "test_fused_backwards_throws_determinism_warning_fused_kernel1_warn_only_True_xpu",
         "test_invalid_fused_inputs_dim_3_kernel2_xpu",
@@ -241,10 +214,29 @@ skip_dict = {
         "test_flash_fail_fp32_xpu",
         "test_fused_kernels_nested_broadcasting_requires_grad_failure_xpu",
         "test_flash_attention_fail_with_non_square_causal_attention_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3137
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_256_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_256_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3136
+        "test_disable_fastpath_xpu",
+        "test_fused_sdp_priority_order_use_compile_False_xpu",
+        "test_fused_sdp_priority_order_use_compile_True_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3132
+        "test_cudnn_attention_seqlen1_dropout_heuristic_xpu",
+        "test_scaled_dot_product_attention_fused_kernels_packed_accuracy_type_nested_fused_kernel0_xpu",
+        "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_True_xpu",
+        "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_False_xpu",
+        "test_fused_kernels_seq_len_1_inputs_fused_kernel0_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": None,
+    "test_view_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_ravel_xpu",
+        "test_flatten_xpu",
+    ),
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
     "functorch/test_eager_transforms_xpu.py": None,
@@ -263,7 +255,12 @@ skip_dict = {
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
-    "dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_ctx_manager_xpu.py": (
+        # Autocast to float64 is CUDA-specific and not supported on XPU.
+        # More details in https://github.com/pytorch/pytorch/pull/179141
+        "test_autocast_float64",
+        "test_cuda_amp_autocast",
+    ),
     "functorch/test_control_flow_xpu.py": None,
     "functorch/test_aot_joint_with_descriptors_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
@@ -284,6 +281,34 @@ skip_dict = {
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "dynamo/test_aot_autograd_cache_xpu.py": (
+        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
+        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
+        "test_cache_hot_load_device_cpu",
+        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
+        "test_cache_lazy_backward_for_compiled_autograd",
+    ),
+    "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_deviceguard_xpu.py": None,
+    "dynamo/test_functions_xpu.py": None,
+    "dynamo/test_higher_order_ops_xpu.py": None,
+    "dynamo/test_misc_xpu.py": None,
+    "dynamo/test_regional_inductor_xpu.py": None,
+    "dynamo/test_streams_xpu.py": None,
+    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
+    "export/test_export_training_ir_to_run_decomp_xpu.py": None,
+    "test_basic_torch_np_xpu.py": None,
+    "test_fx_xpu.py": None,
+    "test_multiprocessing_xpu.py": None,
+    "test_numba_integration_xpu.py": None,
+    "test_numpy_interop_xpu.py": None,
+    "test_out_dtype_op_xpu.py": None,
+    "test_prims_xpu.py": None,
+    "test_proxy_tensor_xpu.py": None,
+    "test_python_dispatch_xpu.py": None,
+    "test_scaled_matmul_cuda_xpu.py": None,
+    "test_serialization_xpu.py": None,
+    "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
 }
