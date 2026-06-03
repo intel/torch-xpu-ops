@@ -66,7 +66,6 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
-              --user root
               -e ZE_AFFINITY_MASK
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}

@@ -65,7 +65,6 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              --user root
               -e ZE_AFFINITY_MASK
       env:
         WORK_DIR: 'accelerate'
