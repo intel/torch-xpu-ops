@@ -1,3 +1,12 @@
 # Copilot Instructions — torch-xpu-ops
 
-See `CLAUDE.md` at the repository root for all agent instructions, skills index, and repo conventions.
+## Required reading (mandatory)
+
+All agent instructions live in `CLAUDE.md` at the repository root. You MUST read the linked file in
+full before proceeding. Do not skip this step. Do not paraphrase from
+memory. The contents of these files are authoritative.
+
+| When you are about to... | Read this file first |
+|--------------------------|---------------------|
+| All agent instructions | `CLAUDE.md` |
+| Review a pull request | `.claude/skills/xpu-ops-pr-review/SKILL.md` |
