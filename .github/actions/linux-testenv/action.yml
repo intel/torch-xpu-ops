@@ -214,7 +214,7 @@ runs:
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
-      run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw'
+      run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
     - name: Torch Config
       shell: bash -xe {0}
       run: |

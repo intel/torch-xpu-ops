@@ -4,7 +4,7 @@ set -euo pipefail
 # need pytest-timeout for timeout options
 # and pytest-rerunfailures for rerun options
 # and pytest-xdist for dist options, worksteal is used to minimize idle time of workers when some tests are slower than others
-readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread --only-rerun crashed.*while.*running --reruns 2 --max-worker-restart 1000000 --dist worksteal '
+readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread --max-worker-restart 1000000 --dist worksteal '
 
 env_file="${GITHUB_ENV:-}"
 output_file="${GITHUB_OUTPUT:-}"
