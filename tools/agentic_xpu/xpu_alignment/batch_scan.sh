@@ -42,7 +42,7 @@ mkdir -p "$RUN_DIR"
 echo "=== XPU Alignment Batch Scan: $START_DATE → $END_DATE  ($(date -Iseconds)) ==="
 
 DAYS_COUNT=$(( ( $(date -d "$END_DATE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$END_DATE" +%s) \
-              - $(date -d "$START_DATE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$START_DATE" +%s) ) / 86400 ))
+              - $(date -d "$START_DATE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$START_DATE" +%s) ) / 86400 + 1 ))
 
 PROMPT="Use the pytorch-cuda-fix-xpu-alignment skill. \
 Scan pytorch/pytorch for issues, PRs, and commits between $START_DATE and $END_DATE \

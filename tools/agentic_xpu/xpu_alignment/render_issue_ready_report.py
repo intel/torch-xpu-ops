@@ -99,6 +99,10 @@ def shorten(text: str, limit: int = 96) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
+def escape_md_table_cell(text: str) -> str:
+    return str(text).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+
+
 def first_nonempty_paragraph(text: str, limit: int = 500) -> str:
     paragraphs = []
     for block in text.split("\n\n"):
@@ -189,6 +193,15 @@ def route_label(row: dict[str, Any]) -> str:
     return row.get("target") or "unrouted"
 
 
+def scan_window(run_name: str) -> tuple[str, str]:
+    match = re.fullmatch(r"(\d{4}-\d{2}-\d{2})(?:_to_(\d{4}-\d{2}-\d{2}))?", run_name)
+    if not match:
+        return f"{run_name}T00:00:00Z", f"{run_name}T23:59:59Z"
+    start_date = match.group(1)
+    end_date = match.group(2) or start_date
+    return f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z"
+
+
 def display_path(path: Path, run_dir: Path) -> str:
     try:
         return str(path.relative_to(run_dir))
@@ -267,11 +280,11 @@ def render_executive_summary(
             report.append(
                 "| #{id} | {kind} | {route} | {signal} | {upstream} | {title} |".format(
                     id=row["id"],
-                    kind=row.get("kind", ""),
-                    route=route_label(row),
-                    signal=classify_signal(signature, row.get("local_bucket", "")),
+                    kind=escape_md_table_cell(row.get("kind", "")),
+                    route=escape_md_table_cell(route_label(row)),
+                    signal=escape_md_table_cell(classify_signal(signature, row.get("local_bucket", ""))),
                     upstream=upstream,
-                    title=shorten(str(row.get("title", "")), 80),
+                    title=escape_md_table_cell(shorten(str(row.get("title", "")), 80)),
                 )
             )
         report.append("")
@@ -287,10 +300,10 @@ def render_executive_summary(
             report.append(
                 "| #{id} | {kind} | {blocker} | {upstream} | {title} |".format(
                     id=row["id"],
-                    kind=row.get("kind", ""),
-                    blocker=shorten(signature, 56),
+                    kind=escape_md_table_cell(row.get("kind", "")),
+                    blocker=escape_md_table_cell(shorten(signature, 56)),
                     upstream=upstream,
-                    title=shorten(str(row.get("title", "")), 72),
+                    title=escape_md_table_cell(shorten(str(row.get("title", "")), 72)),
                 )
             )
         report.append("")
@@ -363,13 +376,18 @@ def render_report(run_dir: Path, output_path: Path) -> None:
     title_rejected = sum(row.get("title_status") == "reject" for row in rows)
     deep_counts = Counter(row.get("deep_status", "<missing>") for row in rows)
     bucket_counts = Counter(row.get("local_bucket") for row in tested)
-    route_counts = Counter(row.get("target") for row in tested if row.get("local_bucket") == "confirmed")
+    route_counts = Counter(
+        route_label(row)
+        for row in tested
+        if row.get("local_bucket") in {"confirmed", "related-failure"}
+    )
     kind_counts = Counter(row.get("kind") for row in rows)
 
+    window_start, window_end = scan_window(run_dir.name)
     report: list[str] = []
     report.append(f"# Full Scan Report — pytorch/pytorch {run_dir.name}")
     report.append("")
-    report.append(f"**Scan window:** {run_dir.name}T00:00:00Z to {run_dir.name}T23:59:59Z")
+    report.append(f"**Scan window:** {window_start} to {window_end}")
     report.append(f"**XPU torch version:** {env['torch']}")
     report.append(
         f"**Total raw candidates:** {len(rows)} (issues={kind_counts.get('issue', 0)}, prs={kind_counts.get('pr', 0)}, commits={kind_counts.get('commit', 0)})"
@@ -421,7 +439,7 @@ def render_report(run_dir: Path, output_path: Path) -> None:
     report.append("")
     report.append("## Final Summary")
     report.append("")
-    report.append("**Audit:** PASSED — 0 pending actionable rows.")
+    report.append("**Audit:** Run `audit_scan_report.sh` to verify pending actionable rows.")
     report.append("")
     report.append("### Filter Stats")
     report.append("| Stage | Count |")

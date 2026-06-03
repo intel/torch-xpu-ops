@@ -84,7 +84,7 @@ run_post_scan() {
   if [[ -f "$_report_path" ]]; then
     echo "Report: $_report_path"
     _audit="$ENTRY_DIR/audit_scan_report.sh"
-    if [[ ! -x "$_audit" ]]; then
+    if [[ ! -f "$_audit" ]]; then
       echo "STATUS: PASSED"
     elif bash "$_audit" "$_report_path" "$run_dir/artifacts/candidate_ledger.jsonl"; then
       echo "STATUS: PASSED"

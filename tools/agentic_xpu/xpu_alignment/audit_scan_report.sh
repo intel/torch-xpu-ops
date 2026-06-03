@@ -13,7 +13,7 @@ set -euo pipefail
 # Audit script: validates that a scan report + ledger are consistent.
 #
 # Usage:
-#   bash scripts/audit_scan_report.sh <scan-file> [ledger-file]
+#   bash tools/agentic_xpu/xpu_alignment/audit_scan_report.sh <scan-file> [ledger-file]
 #
 # Exit codes:
 #   0 - PASSED (no pending rows, report format valid)

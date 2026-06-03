@@ -63,19 +63,19 @@ All steps run once per machine (or after a fresh clone).
 > The scan scripts auto-sync it into the workspace before every run.
 > The XPU nightly venv is also created and refreshed automatically on every run.
 
-Copy the example env file and fill in your GitHub token and target repo:
+Copy the example env file and fill in your GitHub token:
 
 ```bash
 cd /path/to/torch-xpu-ops/tools/agentic_xpu
 cp .env.example .env
-# Edit .env — set GITHUB_TOKEN and ISSUE_REPO (required)
+# Edit .env — set GITHUB_TOKEN (and optionally XPU_ALIGNMENT_ISSUE_REPO)
 chmod 600 .env
 ```
 
-`ISSUE_REPO` must be explicitly set in `.env` (e.g. `intel/torch-xpu-ops`).
-This is intentional — it prevents accidental issue filing against the wrong repo.
+This workflow does not file issues automatically. Generated `gh issue create` commands use
+`XPU_ALIGNMENT_ISSUE_REPO` (default: `intel/torch-xpu-ops`) if you want to override the target.
 
-Alternatively, export `GITHUB_TOKEN` and `ISSUE_REPO` in your shell before running.
+Alternatively, export `GITHUB_TOKEN` (and optionally `XPU_ALIGNMENT_ISSUE_REPO`) in your shell before running.
 
 ---
 
@@ -309,7 +309,6 @@ All optional — auto-detected if unset.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ISSUE_REPO` | Target repo for issue operations — **must be set explicitly** | *(none)* |
 | `OPENCODE_BIN` | Path to `opencode` binary | `opencode` in `$PATH` |
 | `WORKSPACE` | Workspace root (where `.opencode/` lives) | Auto-detected upward from entry dir |
 | `ENV_FILE` | Path to `.env` file with `GITHUB_TOKEN` | `<entry-dir>/../.env` |

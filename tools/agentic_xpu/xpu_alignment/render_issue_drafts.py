@@ -210,7 +210,7 @@ def render_issue_drafts(run_dir: Path, output_path: Path) -> int:
     ledger_path = artifacts_dir / "candidate_ledger.jsonl"
     details_dir = artifacts_dir / "details"
     collect_env = read_text(artifacts_dir / "collect_env.txt")
-    scan_date = run_dir.name  # e.g. "2026-05-26"
+    scan_date = run_dir.name.replace("_to_", " to ")  # e.g. "2026-05-26" or "2026-05-18 to 2026-05-21"
 
     if not ledger_path.exists():
         print(f"ERROR: ledger not found: {ledger_path}")
