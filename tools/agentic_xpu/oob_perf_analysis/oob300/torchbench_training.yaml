@@ -1,0 +1,50 @@
+# OOB 300 Models — TorchBench Suite (Training)
+#
+# Each entry: model name + default batch size for train mode.
+# Used by run_all_models.sh and generate_all_reports.py.
+
+suite: torchbench
+test: train
+precision: bf16
+
+models:
+  - { name: alexnet, bs: 2048 }
+  - { name: BERT_pytorch, bs: 64 }
+  - { name: densenet121, bs: 128 }
+  - { name: hf_Albert, bs: 16 }
+  - { name: hf_Bart, bs: 8 }
+  - { name: hf_Bert, bs: 16 }
+  - { name: hf_Bert_large, bs: 4 }
+  - { name: hf_BigBird, bs: 4 }
+  - { name: hf_clip, bs: 256 }
+  - { name: hf_DistilBert, bs: 32 }
+  - { name: hf_GPT2, bs: 8 }
+  - { name: hf_GPT2_large, bs: 2 }
+  - { name: hf_Longformer, bs: 4 }
+  - { name: hf_Reformer, bs: 64 }
+  - { name: hf_Roberta_base, bs: 4 }
+  - { name: hf_T5, bs: 4 }
+  - { name: hf_T5_base, bs: 2 }
+  - { name: hf_T5_large, bs: 2 }
+  - { name: mnasnet1_0, bs: 256 }
+  - { name: mobilenet_v2, bs: 256 }
+  - { name: mobilenet_v3_large, bs: 512 }
+  - { name: moondream, bs: 1 }
+  - { name: nanogpt, bs: 256 }
+  - { name: phlippe_densenet, bs: 2048 }
+  - { name: pytorch_unet, bs: 4 }
+  - { name: resnet152, bs: 128 }
+  - { name: resnet18, bs: 512 }
+  - { name: resnet50, bs: 128 }
+  - { name: resnext50_32x4d, bs: 128 }
+  - { name: shufflenet_v2_x1_0, bs: 1024 }
+  - { name: squeezenet1_1, bs: 512 }
+  - { name: Super_SloMo, bs: 64 }
+  - { name: timm_efficientnet, bs: 256 }
+  - { name: timm_nfnet, bs: 128 }
+  - { name: timm_regnet, bs: 64 }
+  - { name: timm_resnest, bs: 256 }
+  - { name: timm_vision_transformer, bs: 128 }
+  - { name: timm_vision_transformer_large, bs: 8 }
+  - { name: timm_vovnet, bs: 128 }
+  - { name: vgg16, bs: 128 }

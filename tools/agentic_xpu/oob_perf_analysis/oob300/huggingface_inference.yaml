@@ -1,0 +1,61 @@
+# OOB 300 Models — HuggingFace Suite (Inference)
+#
+# Each entry: model name + default batch size for eval mode.
+# Some models have multiple batch size entries.
+# Used by run_all_models.sh and generate_all_reports.py.
+
+suite: huggingface
+test: eval
+precision: fp16
+
+models:
+  - { name: AlbertForMaskedLM, bs: 64 }
+  - { name: AlbertForQuestionAnswering, bs: 64 }
+  - { name: AllenaiLongformerBase, bs: 32 }
+  - { name: BartForCausalLM, bs: 32 }
+  - { name: BartForConditionalGeneration, bs: 32 }
+  - { name: BertForMaskedLM, bs: 128 }
+  - { name: BertForQuestionAnswering, bs: 512 }
+  - { name: BlenderbotForCausalLM, bs: 64 }
+  - { name: BlenderbotSmallForCausalLM, bs: 256 }
+  - { name: BlenderbotSmallForConditionalGeneration, bs: 256 }
+  - { name: CamemBert, bs: 128 }
+  - { name: DebertaForMaskedLM, bs: 64 }
+  - { name: DebertaForQuestionAnswering, bs: 256 }
+  - { name: DebertaV2ForMaskedLM, bs: 16 }
+  - { name: DebertaV2ForMaskedLM, bs: 8 }
+  - { name: DebertaV2ForQuestionAnswering, bs: 64 }
+  - { name: DistilBertForMaskedLM, bs: 512 }
+  - { name: DistilBertForQuestionAnswering, bs: 2048 }
+  - { name: DistilBertForQuestionAnswering, bs: 64 }
+  - { name: DistillGPT2, bs: 32 }
+  - { name: ElectraForCausalLM, bs: 64 }
+  - { name: ElectraForQuestionAnswering, bs: 1024 }
+  - { name: GPT2ForSequenceClassification, bs: 64 }
+  - { name: LayoutLMForMaskedLM, bs: 128 }
+  - { name: LayoutLMForSequenceClassification, bs: 256 }
+  - { name: M2M100ForConditionalGeneration, bs: 128 }
+  - { name: MBartForCausalLM, bs: 32 }
+  - { name: MBartForConditionalGeneration, bs: 32 }
+  - { name: MegatronBertForCausalLM, bs: 64 }
+  - { name: MegatronBertForQuestionAnswering, bs: 256 }
+  - { name: MobileBertForMaskedLM, bs: 512 }
+  - { name: MobileBertForQuestionAnswering, bs: 4096 }
+  - { name: MT5ForConditionalGeneration, bs: 64 }
+  - { name: OPTForCausalLM, bs: 8 }
+  - { name: PegasusForCausalLM, bs: 256 }
+  - { name: PegasusForCausalLM, bs: 128 }
+  - { name: PegasusForConditionalGeneration, bs: 256 }
+  - { name: PegasusForConditionalGeneration, bs: 64 }
+  - { name: PLBartForCausalLM, bs: 32 }
+  - { name: PLBartForConditionalGeneration, bs: 32 }
+  - { name: RobertaForCausalLM, bs: 32 }
+  - { name: RobertaForQuestionAnswering, bs: 512 }
+  - { name: Speech2Text2ForCausalLM, bs: 1024 }
+  - { name: T5ForConditionalGeneration, bs: 32 }
+  - { name: T5Small, bs: 32 }
+  - { name: TrOCRForCausalLM, bs: 64 }
+  - { name: TrOCRForCausalLM, bs: 32 }
+  - { name: XGLMForCausalLM, bs: 16 }
+  - { name: XLNetLMHeadModel, bs: 64 }
+  - { name: YituTechConvBert, bs: 128 }

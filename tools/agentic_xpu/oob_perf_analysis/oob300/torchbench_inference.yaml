@@ -1,0 +1,71 @@
+# OOB 300 Models — TorchBench Suite (Inference)
+#
+# Each entry: model name + default batch size for eval mode.
+# Used by run_all_models.sh and generate_all_reports.py.
+
+suite: torchbench
+test: eval
+precision: fp16
+
+models:
+  - { name: alexnet, bs: 512 }
+  - { name: BERT_pytorch, bs: 512 }
+  - { name: cm3leon_generate, bs: 16 }
+  - { name: densenet121, bs: 2048 }
+  - { name: detectron2_fasterrcnn_r_101_c4, bs: 8 }
+  - { name: detectron2_fasterrcnn_r_101_dc5, bs: 16 }
+  - { name: detectron2_fasterrcnn_r_101_fpn, bs: 16 }
+  - { name: detectron2_fasterrcnn_r_50_c4, bs: 8 }
+  - { name: detectron2_fasterrcnn_r_50_dc5, bs: 16 }
+  - { name: detectron2_fasterrcnn_r_50_fpn, bs: 16 }
+  - { name: detectron2_fcos_r_50_fpn, bs: 32 }
+  - { name: detectron2_maskrcnn, bs: 16 }
+  - { name: detectron2_maskrcnn_r_101_c4, bs: 8 }
+  - { name: detectron2_maskrcnn_r_101_fpn, bs: 16 }
+  - { name: detectron2_maskrcnn_r_50_c4, bs: 8 }
+  - { name: detectron2_maskrcnn_r_50_fpn, bs: 16 }
+  - { name: dlrm, bs: 4096 }
+  - { name: functorch_dp_cifar10, bs: 1024 }
+  - { name: hf_Albert, bs: 128 }
+  - { name: hf_Bart, bs: 64 }
+  - { name: hf_Bert, bs: 256 }
+  - { name: hf_Bert_large, bs: 512 }
+  - { name: hf_BigBird, bs: 8 }
+  - { name: hf_clip, bs: 2048 }
+  - { name: hf_DistilBert, bs: 128 }
+  - { name: hf_GPT2, bs: 1024 }
+  - { name: hf_GPT2_large, bs: 1 }
+  - { name: hf_Longformer, bs: 8 }
+  - { name: hf_Reformer, bs: 128 }
+  - { name: hf_Roberta_base, bs: 32 }
+  - { name: hf_T5, bs: 16 }
+  - { name: hf_T5_base, bs: 1 }
+  - { name: hf_T5_generate, bs: 16 }
+  - { name: hf_T5_large, bs: 32 }
+  - { name: mnasnet1_0, bs: 2048 }
+  - { name: mobilenet_v2, bs: 1024 }
+  - { name: mobilenet_v3_large, bs: 2048 }
+  - { name: moondream, bs: 1 }
+  - { name: nanogpt, bs: 1024 }
+  - { name: opacus_cifar10, bs: 1024 }
+  - { name: phlippe_densenet, bs: 2048 }
+  - { name: pyhpc_equation_of_state, bs: 512 }
+  - { name: pyhpc_isoneutral_mixing, bs: 1048576 }
+  - { name: pytorch_stargan, bs: 16 }
+  - { name: pytorch_unet, bs: 16 }
+  - { name: resnet152, bs: 1024 }
+  - { name: resnet18, bs: 512 }
+  - { name: resnet50, bs: 2048 }
+  - { name: resnext50_32x4d, bs: 2048 }
+  - { name: shufflenet_v2_x1_0, bs: 2048 }
+  - { name: squeezenet1_1, bs: 2048 }
+  - { name: Super_SloMo, bs: 512 }
+  - { name: timm_efficientnet, bs: 1024 }
+  - { name: timm_nfnet, bs: 512 }
+  - { name: timm_regnet, bs: 512 }
+  - { name: timm_resnest, bs: 1024 }
+  - { name: timm_vision_transformer, bs: 2048 }
+  - { name: timm_vision_transformer_large, bs: 512 }
+  - { name: timm_vovnet, bs: 512 }
+  - { name: vgg16, bs: 512 }
+  - { name: yolov3, bs: 128 }

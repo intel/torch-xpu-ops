@@ -1,0 +1,71 @@
+# OOB 300 Models — timm Suite (Training)
+#
+# Each entry: model name + default batch size for train mode.
+# Some models have multiple batch size entries.
+# Used by run_all_models.sh and generate_all_reports.py.
+
+suite: timm
+test: train
+precision: bf16
+
+models:
+  - { name: adv_inception_v3, bs: 128 }
+  - { name: beit_base_patch16_224, bs: 64 }
+  - { name: botnet26t_256, bs: 128 }
+  - { name: cait_m36_384, bs: 4 }
+  - { name: coat_lite_mini, bs: 128 }
+  - { name: convmixer_768_32, bs: 32 }
+  - { name: convnext_base, bs: 64 }
+  - { name: crossvit_9_240, bs: 256 }
+  - { name: cspdarknet53, bs: 128 }
+  - { name: deit_base_distilled_patch16_224, bs: 64 }
+  - { name: dla102, bs: 128 }
+  - { name: dm_nfnet_f0, bs: 128 }
+  - { name: dpn107, bs: 64 }
+  - { name: eca_botnext26ts_256, bs: 128 }
+  - { name: eca_halonext26ts, bs: 128 }
+  - { name: ese_vovnet19b_dw, bs: 256 }
+  - { name: fbnetc_100, bs: 256 }
+  - { name: fbnetv3_b, bs: 256 }
+  - { name: gernet_l, bs: 256 }
+  - { name: ghostnet_100, bs: 512 }
+  - { name: gluon_inception_v3, bs: 128 }
+  - { name: gmixer_24_224, bs: 128 }
+  - { name: gmlp_s16_224, bs: 128 }
+  - { name: hrnet_w18, bs: 128 }
+  - { name: inception_v3, bs: 128 }
+  - { name: jx_nest_base, bs: 32 }
+  - { name: lcnet_050, bs: 1024 }
+  - { name: mixer_b16_224, bs: 128 }
+  - { name: mixer_b16_224, bs: 32 }
+  - { name: mixnet_l, bs: 128 }
+  - { name: mnasnet_100, bs: 512 }
+  - { name: mobilenetv2_100, bs: 256 }
+  - { name: mobilenetv3_large_100, bs: 256 }
+  - { name: mobilevit_s, bs: 64 }
+  - { name: nfnet_l0, bs: 256 }
+  - { name: pit_b_224, bs: 64 }
+  - { name: pnasnet5large, bs: 16 }
+  - { name: poolformer_m36, bs: 64 }
+  - { name: regnety_002, bs: 512 }
+  - { name: repvgg_a2, bs: 256 }
+  - { name: repvgg_a2, bs: 64 }
+  - { name: res2net101_26w_4s, bs: 128 }
+  - { name: res2net50_14w_8s, bs: 128 }
+  - { name: res2next50, bs: 128 }
+  - { name: resmlp_12_224, bs: 256 }
+  - { name: resnest101e, bs: 64 }
+  - { name: rexnet_100, bs: 256 }
+  - { name: sebotnet33ts_256, bs: 128 }
+  - { name: selecsls42b, bs: 256 }
+  - { name: spnasnet_100, bs: 256 }
+  - { name: swin_base_patch4_window7_224, bs: 64 }
+  - { name: swsl_resnext101_32x16d, bs: 32 }
+  - { name: tf_efficientnet_b0, bs: 128 }
+  - { name: tf_mixnet_l, bs: 128 }
+  - { name: tinynet_a, bs: 256 }
+  - { name: tnt_s_patch16_224, bs: 128 }
+  - { name: twins_pcpvt_base, bs: 64 }
+  - { name: visformer_small, bs: 256 }
+  - { name: vit_base_patch16_224, bs: 64 }
+  - { name: volo_d1_224, bs: 128 }

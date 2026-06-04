@@ -1,0 +1,54 @@
+# OOB 300 Models — HuggingFace Suite (Training)
+#
+# Each entry: model name + default batch size for train mode.
+# Used by run_all_models.sh and generate_all_reports.py.
+
+suite: huggingface
+test: train
+precision: bf16
+
+models:
+  - { name: AlbertForMaskedLM, bs: 4 }
+  - { name: AlbertForQuestionAnswering, bs: 4 }
+  - { name: AllenaiLongformerBase, bs: 4 }
+  - { name: BartForCausalLM, bs: 4 }
+  - { name: BartForConditionalGeneration, bs: 2 }
+  - { name: BertForMaskedLM, bs: 16 }
+  - { name: BertForQuestionAnswering, bs: 16 }
+  - { name: BlenderbotSmallForCausalLM, bs: 128 }
+  - { name: BlenderbotSmallForConditionalGeneration, bs: 64 }
+  - { name: CamemBert, bs: 16 }
+  - { name: DebertaForMaskedLM, bs: 16 }
+  - { name: DebertaForQuestionAnswering, bs: 16 }
+  - { name: DebertaV2ForMaskedLM, bs: 2 }
+  - { name: DebertaV2ForQuestionAnswering, bs: 4 }
+  - { name: DistilBertForMaskedLM, bs: 128 }
+  - { name: DistilBertForQuestionAnswering, bs: 256 }
+  - { name: DistillGPT2, bs: 16 }
+  - { name: ElectraForCausalLM, bs: 32 }
+  - { name: ElectraForQuestionAnswering, bs: 64 }
+  - { name: GPT2ForSequenceClassification, bs: 4 }
+  - { name: LayoutLMForMaskedLM, bs: 16 }
+  - { name: LayoutLMForSequenceClassification, bs: 16 }
+  - { name: M2M100ForConditionalGeneration, bs: 16 }
+  - { name: MBartForCausalLM, bs: 4 }
+  - { name: MBartForConditionalGeneration, bs: 2 }
+  - { name: MegatronBertForCausalLM, bs: 8 }
+  - { name: MegatronBertForQuestionAnswering, bs: 8 }
+  - { name: MobileBertForMaskedLM, bs: 128 }
+  - { name: MobileBertForQuestionAnswering, bs: 128 }
+  - { name: MT5ForConditionalGeneration, bs: 16 }
+  - { name: OPTForCausalLM, bs: 1 }
+  - { name: PegasusForCausalLM, bs: 64 }
+  - { name: PegasusForConditionalGeneration, bs: 32 }
+  - { name: PLBartForCausalLM, bs: 8 }
+  - { name: PLBartForConditionalGeneration, bs: 4 }
+  - { name: RobertaForCausalLM, bs: 8 }
+  - { name: RobertaForQuestionAnswering, bs: 16 }
+  - { name: Speech2Text2ForCausalLM, bs: 512 }
+  - { name: T5ForConditionalGeneration, bs: 4 }
+  - { name: T5Small, bs: 4 }
+  - { name: TrOCRForCausalLM, bs: 32 }
+  - { name: XGLMForCausalLM, bs: 16 }
+  - { name: XLNetLMHeadModel, bs: 4 }
+  - { name: YituTechConvBert, bs: 16 }
