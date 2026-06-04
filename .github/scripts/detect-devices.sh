@@ -9,6 +9,9 @@ readonly DEFAULT_PYTEST_ADDOPTS=' --timeout 600 --timeout_method=thread --max-wo
 env_file="${GITHUB_ENV:-}"
 output_file="${GITHUB_OUTPUT:-}"
 PYTEST_BASE_ARGS="${PYTEST_BASE_ARGS:-${DEFAULT_PYTEST_ADDOPTS}}"
+pytest_others_args=""
+DETECTED_GPU_COUNT=0
+DETECTED_DEVICE_NAMES=""
 
 log() {
   printf '%s\n' "$*" >&2
@@ -274,6 +277,7 @@ main() {
   local ze_affinity_mask
   local cpus_per_xpu
   local pytest_extra_args
+  local pytest_addopts
   local numactl_args
   local device_names
 
@@ -306,16 +310,15 @@ main() {
 
   pytest_extra_args="$(build_pytest_extra_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
   numactl_args="$(build_numactl_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
-  if [ -z "${PYTEST_ADDOPTS}" ]; then
-    PYTEST_ADDOPTS="${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
-  else
-    PYTEST_ADDOPTS="${PYTEST_ADDOPTS}"
+  pytest_addopts="${PYTEST_ADDOPTS:-}"
+  if [ -z "${pytest_addopts}" ]; then
+    pytest_addopts="${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
   fi
 
   emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
   emit_var NUMACTL_ARGS "${numactl_args}"
   emit_var PYTEST_EXTRA_ARGS "${pytest_extra_args}"
-  emit_var PYTEST_ADDOPTS "${PYTEST_ADDOPTS}"
+  emit_var PYTEST_ADDOPTS "${pytest_addopts}"
   emit_var XPU_CPU_COUNT "${cpu_count}"
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
   emit_var XPU_ONLINE_COUNT "${online_xpu_count}"
