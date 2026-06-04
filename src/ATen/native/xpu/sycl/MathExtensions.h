@@ -72,6 +72,10 @@ inline c10::BFloat16 calc_erfinv(c10::BFloat16 a) {
   return calc_erfinv(float(a));
 }
 
+inline c10::Half calc_erfinv(c10::Half a) {
+  return calc_erfinv(float(a));
+}
+
 /*
  * For licensing information, please refer to the cpu implementation located in
  * "ATen/native/Math.h".

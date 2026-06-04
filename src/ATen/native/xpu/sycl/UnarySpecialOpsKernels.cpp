@@ -101,13 +101,6 @@ struct ErfinvFunctor {
   }
 };
 
-template <>
-struct ErfinvFunctor<c10::Half> {
-  c10::Half operator()(c10::Half in) const {
-    return calc_erfinv(float(in));
-  }
-};
-
 void erfinv_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half,
