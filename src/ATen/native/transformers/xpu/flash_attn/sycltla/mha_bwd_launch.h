@@ -13,18 +13,9 @@
 // per-headdim backward compilation units.
 
 #pragma once
-#pragma GCC diagnostic push
-// Suppress false-positive from cutlass/array_subbyte.h:133 where
-// reinterpret_cast<Storage const&>(x) reads a 4-byte uint through a 2-byte
-// half_t reference.  This is intentional subbyte packing in the external
-// sycl-tla/cutlass library and cannot be fixed here.
-#pragma GCC diagnostic ignored "-Warray-bounds"
 
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
-
-// batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
-using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
 
 namespace cute {
 
@@ -788,6 +779,17 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   }
 }
 
+template <typename To_type, typename Engine, typename Layout>
+CUTLASS_DEVICE auto convert_type(Tensor<Engine, Layout> const& tensor) {
+  using From_type = typename Engine::value_type;
+  constexpr int numel = decltype(size(tensor))::value;
+  cutlass::NumericArrayConverter<To_type, From_type, numel> convert_op;
+  auto frag =
+      convert_op(*reinterpret_cast<const cutlass::Array<From_type, numel>*>(
+          tensor.data()));
+  return make_tensor(make_rmem_ptr<To_type>(&frag), tensor.layout());
+}
+
 template <class Engine0, class Layout0, class Engine1, class Layout1>
 CUTLASS_DEVICE void convert_type(
     Tensor<Engine0, Layout0> const& src,
@@ -868,8 +870,7 @@ void convert_dq(
 
   copy(tileload_dQaccum, thr_tile_dQaccum_S, rdQaccum);
   if constexpr (Is_even_M) {
-    Tensor rdQ = make_tensor_like<DType>(rdQaccum);
-    convert_type(rdQaccum, rdQ);
+    Tensor rdQ = convert_type<DType>(rdQaccum);
     Tensor accQ = make_identity_tensor(shapeQ);
     Tensor taccQ = thr_save_dQ.partition_D(accQ);
     Tensor taccQ_rc = logical_divide(taccQ, Shape<_1>{})(0, _, 0);
@@ -1126,4 +1127,3 @@ void run_mha_bwd_hdim256(sycl::queue& queue, FLASH_BWD_params& params) {
 #undef RUN_MHA_BWD_SPECIALIZED
 
 } // namespace cute
-#pragma GCC diagnostic pop
