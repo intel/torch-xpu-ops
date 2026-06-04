@@ -14,14 +14,13 @@
 
 try:
     import testing_xpu as testing
-    
+
     from . import test_export_xpu
 except ImportError:
     import test_export_xpu  # @manual=fbcode//caffe2/test:test_export-library
     import testing_xpu as testing  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
-
 
 test_classes = {}
 
