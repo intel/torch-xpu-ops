@@ -107,7 +107,11 @@ Also flag during review:
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
- - [ ] **Math functions** — In SYCL device code, avoid `std::` math functions for real types (e.g., `std::exp`) and prefer `sycl::` / `sycl::native::` equivalents (e.g., `sycl::exp`, `sycl::native::exp`). For complex math, `std::` functions may be required; follow the existing pattern used in `src/ATen/native/xpu/sycl/UnaryKernels.cpp` (complex: `std::exp`, real: `sycl::exp`). `sycl::native::*` trades accuracy for performance; use it only when the corresponding CUDA kernel uses fast intrinsics (e.g., `__expf`).
+- [ ] **Math functions in SYCL device code**
+  - [ ] Real types use `sycl::<fn>` (e.g., `sycl::exp`), not `std::<fn>`
+  - [ ] `sycl::native::<fn>` is used only when it exists AND the matching CUDA kernel uses a fast intrinsic (e.g., `__expf`)
+  - [ ] Complex types use `std::<fn>`, not `sycl::<fn>` (see `src/ATen/native/xpu/sycl/UnaryKernels.cpp` for the real/complex split pattern)
+  - [ ] When `scalar_t` may be `c10::Half` and the `<fn>` has a `sycl::half` overload, arguments are cast to `at::opmath_type<scalar_t>` to avoid overload ambiguity (`c10::Half` converts to both `float` and `sycl::half`)
 
 ## Large Tensor Safety
 

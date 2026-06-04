@@ -48,7 +48,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
     return std::copysign(static_cast<scalar_t>(INFINITY), -x);
   }
 
-  bool x_is_integer = x == std::trunc(x);
+  bool x_is_integer = x == sycl::trunc(x);
   accscalar_t result = 0;
   if (x < accscalar_t(0)) {
     if (x_is_integer) {
@@ -257,7 +257,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
   if (std::fabs(a - x) > 0.4 * std::fabs(a)) {
-    ax = a * std::log(x) - x - std::lgamma(a);
+    ax = a * std::log(x) - x - sycl::lgamma(a);
     if (ax < -MAXLOG) {
       return 0.0;
     }
@@ -336,8 +336,8 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   }
 
   logx = std::log(x);
-  term = -std::expm1(a * logx - std::lgamma(1 + a));
-  return term - sycl::exp(a * logx - std::lgamma(a)) * sum;
+  term = -std::expm1(a * logx - sycl::lgamma(1 + a));
+  return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
 
 template <typename scalar_t>

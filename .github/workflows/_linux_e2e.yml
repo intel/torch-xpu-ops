@@ -57,46 +57,33 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  runner:
-    runs-on: ${{ inputs.runner }}
-    name: get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-      hostname: ${{ steps.runner-info.outputs.hostname }}
-      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   test:
-    runs-on: ${{ needs.runner.outputs.runner_id }}
-    needs: runner
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              -e ZE_AFFINITY_MASK
       env:
-        numactl_args: ${{ needs.runner.outputs.numactl_args }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
@@ -269,6 +256,11 @@ jobs:
             artifact_name+="-${{ inputs.category }}"
           fi
           echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+      - name: Cleanup
+        if: ${{ always() }}
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
+          chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
