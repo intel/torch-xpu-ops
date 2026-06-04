@@ -343,12 +343,6 @@ See `benchmark/common/context_func.py` for full implementation.
 Small ops whose memory access < cache threshold get reduced cost (not zero — scaled by
 DRAM_BW / L2_BW ratio). Hardware specs are in `config/hardware_specs.yaml`:
 
-| Platform | Cache Threshold | Peak FP16 TFLOPS | DRAM BW (GB/s) |
-|----------|----------------|-------------------|----------------|
-| B580     | 18 MB          | 93                | 410            |
-| B70 (G31)| 24 MB          | 154               | 532            |
-| 4080S    | 64 MB          | 100.96            | 716.8          |
-
 **Note**: `context_func.py` currently hardcodes these values. They should match
 `config/hardware_specs.yaml`. Refactoring to read from config is a future TODO.
 
