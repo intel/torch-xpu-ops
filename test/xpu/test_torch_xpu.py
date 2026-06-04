@@ -5777,12 +5777,9 @@ class TestTorchDeviceType(TestCase):
             if non_blocking:
                 if device == "cuda":
                     torch.cuda.synchronize()
-                    self.assertTrue(s_cpu.is_pinned())
                 elif device == "xpu":
                     torch.xpu.synchronize()
-                    # Unlike CUDA, XPU storage->CPU non_blocking copy does not
-                    # currently guarantee a pinned CPU storage result.
-                    self.assertFalse(s_cpu.is_pinned())
+                self.assertTrue(s_cpu.is_pinned())
             else:
                 self.assertFalse(s_cpu.is_pinned())
             t_cpu = torch.empty(()).set_(s_cpu)
