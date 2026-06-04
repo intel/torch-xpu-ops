@@ -586,6 +586,10 @@ class TestTorchDeviceType(TestCase):
 
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @slowTestIf(IS_WINDOWS)
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU.",
+    )
     def test_storage_meta_errors(self, device, dtype):
         s0 = torch.TypedStorage([1, 2, 3, 4], device="meta", dtype=dtype)
 
@@ -611,10 +615,6 @@ class TestTorchDeviceType(TestCase):
             ):
                 s0.pin_memory()
 
-        if hasattr(torch, "xpu") and torch.xpu.is_available():
-            with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
-                s0.xpu()
-
         with self.assertRaisesRegex(RuntimeError, r"only available on CPU"):
             s0.share_memory_()
 
@@ -625,13 +625,7 @@ class TestTorchDeviceType(TestCase):
             with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
                 s0._write_file(f, True, True, s0.element_size())
 
-        devices_to_test = ["cpu"]
-        if torch.cuda.is_available():
-            devices_to_test.append("cuda")
-        if hasattr(torch, "xpu") and torch.xpu.is_available():
-            devices_to_test.append("xpu")
-
-        for device in devices_to_test:
+        for device in ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]:
             s1 = torch.TypedStorage([1, 2, 3, 4], device=device, dtype=dtype)
 
             with self.assertRaisesRegex(NotImplementedError, r"Cannot copy out"):
