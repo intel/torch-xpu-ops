@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
@@ -119,7 +120,8 @@ void erfinv_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
-    return sycl::exp2(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::exp2(static_cast<opmath_t>(a));
   }
 };
 

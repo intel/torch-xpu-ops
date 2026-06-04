@@ -246,7 +246,8 @@ void nan_to_num_kernel(
 template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
-    return sycl::expm1(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::expm1(static_cast<opmath_t>(a));
   }
 };
 
@@ -272,9 +273,10 @@ void expm1_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FrexpFunctor {
   std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     int32_t exponent;
-    scalar_t mantissa = sycl::frexp(a, &exponent);
-    return {mantissa, exponent};
+    opmath_t mantissa = sycl::frexp(static_cast<opmath_t>(a), &exponent);
+    return {static_cast<scalar_t>(mantissa), exponent};
   }
 };
 
