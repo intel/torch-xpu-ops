@@ -306,11 +306,16 @@ main() {
 
   pytest_extra_args="$(build_pytest_extra_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
   numactl_args="$(build_numactl_args "${ze_affinity_mask}" "${cpus_per_xpu}")"
+  if [ -z "${PYTEST_ADDOPTS}" ]; then
+    PYTEST_ADDOPTS="${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
+  else
+    PYTEST_ADDOPTS="${PYTEST_ADDOPTS}"
+  fi
 
   emit_var ZE_AFFINITY_MASK "${ze_affinity_mask}"
   emit_var NUMACTL_ARGS "${numactl_args}"
   emit_var PYTEST_EXTRA_ARGS "${pytest_extra_args}"
-  emit_var PYTEST_ADDOPTS "${PYTEST_BASE_ARGS} ${pytest_others_args} ${pytest_extra_args}"
+  emit_var PYTEST_ADDOPTS "${PYTEST_ADDOPTS}"
   emit_var XPU_CPU_COUNT "${cpu_count}"
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
   emit_var XPU_ONLINE_COUNT "${online_xpu_count}"
