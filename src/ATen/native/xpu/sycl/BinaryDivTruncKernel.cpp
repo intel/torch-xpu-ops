@@ -37,8 +37,7 @@ template <typename scalar_t>
 struct DivTruncFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    return sycl::trunc(static_cast<opmath_t>(
-        c10::xpu::compat::div(a, b)));
+    return sycl::trunc(static_cast<opmath_t>(c10::xpu::compat::div(a, b)));
   }
 };
 
