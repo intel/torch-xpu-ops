@@ -238,7 +238,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   size_t block_size = signal_pad_offset + get_signal_pad_size();
 
   c10::DeviceGuard device_guard(c10::Device(c10::DeviceType::XPU, device_idx));
-  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  sycl::queue& current_queue = at::xpu::getCurrentXPUStream().queue();
   // Allocate directly from SYCL runtime instead of XPUCachingAllocator:
   // 1) keep behavior aligned with CUDA symmetric-memory implementation;
   // 2) avoid allocator-level expandable-memory remapping side effects on
@@ -348,7 +348,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto rank = group->getRank();
   auto world_size = group->getSize();
   auto store = group->getStore();
-  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  sycl::queue& current_queue = at::xpu::getCurrentXPUStream().queue();
 
   // SYCL/L0 IPC import uses `pidfd_getfd` between peer processes, which
   // requires PTRACE_MODE_ATTACH_REALCREDS on the target pid. With Yama
