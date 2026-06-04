@@ -106,8 +106,8 @@ def load_platform_specs(platform, config_path=None):
     else:
         # Fallback: hardcoded values (keep in sync with config)
         _FALLBACK = {
-            "G31":  {"peak": 154e12,    "bw": 532e9,   "label": "B70 (G31)"},
-            "B580": {"peak": 93e12,     "bw": 410e9,   "label": "B580"},
+            "G31": {"peak": 154e12, "bw": 532e9, "label": "B70 (G31)"},
+            "B580": {"peak": 93e12, "bw": 410e9, "label": "B580"},
             "4080": {"peak": 100.96e12, "bw": 716.8e9, "label": "RTX 4080 SUPER"},
         }
         fb = _FALLBACK[platform]
@@ -115,7 +115,7 @@ def load_platform_specs(platform, config_path=None):
         if not HAS_YAML:
             print("WARNING: PyYAML not installed, using fallback hardware specs")
         else:
-            print(f"WARNING: config/hardware_specs.yaml not found, using fallback specs")
+            print("WARNING: config/hardware_specs.yaml not found, using fallback specs")
 
     return {
         "peak_tflops": peak,
@@ -775,10 +775,10 @@ def print_aggregate_table(agg, spec, actual_source, sort_by="diff_ms", top_n=40)
     total_actual = sum(v["actual_time_ms"] for v in agg.values())
 
     print(f"\n{'=' * 155}")
-    print(f"AGGREGATE COMPARISON: Roofline Projection vs Actual GPU Time (per op type)")
+    print("AGGREGATE COMPARISON: Roofline Projection vs Actual GPU Time (per op type)")
     rr = spec["roofline_ratio"]
-    print(f"  {spec['label']}: {spec['peak_tflops']/1e12:.2f} TFLOPS, "
-          f"{spec['bandwidth']/1e9:.1f} GB/s, roofline ratio = {rr:.1f} OPs/byte")
+    print(f"  {spec['label']}: {spec['peak_tflops'] / 1e12:.2f} TFLOPS, "
+          f"{spec['bandwidth'] / 1e9:.1f} GB/s, roofline ratio = {rr:.1f} OPs/byte")
     print(f"  Actual source: {actual_source}")
     print(f"{'=' * 155}")
     print(f"{'OP NAME':<35} {'Proj(ms)':>10} {'Actual(ms)':>10} {'Ratio':>7} "
@@ -799,8 +799,8 @@ def print_aggregate_table(agg, spec, actual_source, sort_by="diff_ms", top_n=40)
 
         print(f"{name:<35} {v['proj_time_ms']:>10.3f} {v['actual_time_ms']:>10.3f} "
               f"{v['ratio']:>7.2f} {v['diff_ms']:>+10.3f} {v['count_calc']:>6} "
-              f"{v['count_actual']:>7} {bound_str:>12} {v['flops']/1e9:>10.1f} "
-              f"{v['memory_platform']/1e6:>12.1f}{marker}")
+              f"{v['count_actual']:>7} {bound_str:>12} {v['flops'] / 1e9:>10.1f} "
+              f"{v['memory_platform'] / 1e6:>12.1f}{marker}")
 
     print(f"{'=' * 155}")
     overall_ratio = total_proj / total_actual if total_actual > 0 else 0
@@ -815,12 +815,12 @@ def print_aggregate_table(agg, spec, actual_source, sort_by="diff_ms", top_n=40)
                    if not v["in_calc"] and v["actual_time_ms"] > 0.001]
 
     if calc_only:
-        print(f"\nOps in Calculate_Flops but NOT in actual (proj > 0.001ms):")
+        print("\nOps in Calculate_Flops but NOT in actual (proj > 0.001ms):")
         for n, v in sorted(calc_only, key=lambda x: x[1]["proj_time_ms"], reverse=True):
             print(f"  {n:<40} proj={v['proj_time_ms']:.3f}ms  count={v['count_calc']}")
 
     if actual_only:
-        print(f"\nOps in actual but NOT in Calculate_Flops (actual > 0.001ms):")
+        print("\nOps in actual but NOT in Calculate_Flops (actual > 0.001ms):")
         for n, v in sorted(actual_only, key=lambda x: x[1]["actual_time_ms"], reverse=True):
             print(f"  {n:<40} actual={v['actual_time_ms']:.3f}ms  count={v['count_actual']}")
 
@@ -850,8 +850,8 @@ def print_summary(agg, actual_source):
     print(f"  Projection from mixed-bound ops:   {proj_mixed:.3f} ms")
 
     if "unitrace" not in actual_source.lower():
-        print(f"\n  NOTE: 'actual' from profiler trace may include overhead.")
-        print(f"  For XPU, prefer --unitrace for accurate per-op timing.")
+        print("\n  NOTE: 'actual' from profiler trace may include overhead.")
+        print("  For XPU, prefer --unitrace for accurate per-op timing.")
 
 
 # ---------------------------------------------------------------------------
@@ -882,7 +882,7 @@ def main():
     spec = load_platform_specs(args.platform, config_path=args.config)
 
     print(f"Platform: {spec['label']}")
-    print(f"  Peak: {spec['peak_tflops']/1e12:.2f} TFLOPS, BW: {spec['bandwidth']/1e9:.1f} GB/s, "
+    print(f"  Peak: {spec['peak_tflops'] / 1e12:.2f} TFLOPS, BW: {spec['bandwidth'] / 1e9:.1f} GB/s, "
           f"Roofline ratio: {spec['roofline_ratio']:.1f} OPs/byte")
 
     # Parse calc_flops

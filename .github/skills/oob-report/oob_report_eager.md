@@ -12,7 +12,7 @@ collected via `skills/oob_profile_eager.md`.
 `trace.json` (profiler), and optionally `unitrace.json` (XPU only).
 
 **Working directory**: All commands must be run from the repo root
-(`/home2/jianyizh/pytorch.oob.bkc`). Scripts use relative imports from `scripts/oob300/`.
+(`$OOB_REPO_ROOT`). Scripts use relative imports from `scripts/oob300/`.
 
 ### Platform naming
 
@@ -410,23 +410,23 @@ XPU-specific overrideable ops, decomposition differences).
 ```bash
 # Inference: CUDA vs XPU (all models with calcflops on both platforms)
 python scripts/oob300/compare_graphs.py \
-  --dir-a /home2/jianyizh/results_cl/4080s \
-  --dir-b /home2/jianyizh/results_cl/b70 \
+  --dir-a $OOB_RESULTS_INFERENCE_4080S \
+  --dir-b $OOB_RESULTS_INFERENCE_B70 \
   --label-a CUDA --label-b XPU \
   -o reports/oob300/graph_consistency_eager_inference.md
 
 # Training: CUDA vs XPU
 python scripts/oob300/compare_graphs.py \
-  --dir-a /home2/jianyizh/results_training/4080s \
-  --dir-b /home2/jianyizh/results_training/b70 \
+  --dir-a $OOB_RESULTS_TRAINING_4080S \
+  --dir-b $OOB_RESULTS_TRAINING_B70 \
   --label-a CUDA --label-b XPU \
   --precision bf16 --test train \
   -o reports/oob300/graph_consistency_eager_training.md
 
 # Specific models only
 python scripts/oob300/compare_graphs.py \
-  --dir-a /home2/jianyizh/results_cl/4080s \
-  --dir-b /home2/jianyizh/results_cl/b70 \
+  --dir-a $OOB_RESULTS_INFERENCE_4080S \
+  --dir-b $OOB_RESULTS_INFERENCE_B70 \
   --label-a CUDA --label-b XPU \
   --models resnet50,BERT_pytorch,hf_GPT2
 ```
@@ -530,12 +530,12 @@ view operations with no GPU kernels and no calcflops records. Normalizing them t
 
 ## Current Data Locations
 
-Local result data for generating reports:
+Configure data directories in `tools/agentic_xpu/.env` (see `.env.example` for variable names).
 
-| Dataset | B580 | 4080S | B70 |
-|---------|------|-------|-----|
-| Inference (fp16/eval) | `/home2/jianyizh/results_cl/b580` | `/home2/jianyizh/results_cl/4080s` | `/home2/jianyizh/results_cl/b70` |
-| Training (bf16/train) | `/home2/jianyizh/results_training/b580` | `/home2/jianyizh/results_training/4080s` | `/home2/jianyizh/results_training/b70` |
+| Dataset | B580 env var | 4080S env var | B70 env var |
+|---------|-------------|--------------|------------|
+| Inference (fp16/eval) | `$OOB_RESULTS_INFERENCE_B580` | `$OOB_RESULTS_INFERENCE_4080S` | `$OOB_RESULTS_INFERENCE_B70` |
+| Training (bf16/train) | `$OOB_RESULTS_TRAINING_B580` | `$OOB_RESULTS_TRAINING_4080S` | `$OOB_RESULTS_TRAINING_B70` |
 
 Config file: `config/hardware_specs.yaml` (relative to repo root)
 Suite YAML dir: `benchmark/oob300/` (relative to repo root)
@@ -545,35 +545,35 @@ Suite YAML dir: `benchmark/oob300/` (relative to repo root)
 ```bash
 # Generate ALL inference per-model reports (154 models)
 python scripts/oob300/generate_all_reports.py \
-  --b580-dir /home2/jianyizh/results_cl/b580 \
-  --4080s-dir /home2/jianyizh/results_cl/4080s \
-  --b70-dir /home2/jianyizh/results_cl/b70 \
+  --b580-dir $OOB_RESULTS_INFERENCE_B580 \
+  --4080s-dir $OOB_RESULTS_INFERENCE_4080S \
+  --b70-dir $OOB_RESULTS_INFERENCE_B70 \
   --config config/hardware_specs.yaml \
   --output-dir reports/oob300/per_model/eager
 
 # Generate ALL training per-model reports (137 models)
 python scripts/oob300/generate_all_reports.py \
-  --b580-dir /home2/jianyizh/results_training/b580 \
-  --4080s-dir /home2/jianyizh/results_training/4080s \
-  --b70-dir /home2/jianyizh/results_training/b70 \
+  --b580-dir $OOB_RESULTS_TRAINING_B580 \
+  --4080s-dir $OOB_RESULTS_TRAINING_4080S \
+  --b70-dir $OOB_RESULTS_TRAINING_B70 \
   --config config/hardware_specs.yaml \
   --output-dir reports/oob300/per_model/eager \
   --precision bf16 --test train
 
 # Generate inference fleet summary
 python scripts/oob300/generate_fleet_summary.py \
-  --b580-dir /home2/jianyizh/results_cl/b580 \
-  --4080s-dir /home2/jianyizh/results_cl/4080s \
-  --b70-dir /home2/jianyizh/results_cl/b70 \
+  --b580-dir $OOB_RESULTS_INFERENCE_B580 \
+  --4080s-dir $OOB_RESULTS_INFERENCE_4080S \
+  --b70-dir $OOB_RESULTS_INFERENCE_B70 \
   --config config/hardware_specs.yaml \
   --suite-dir benchmark/oob300 \
   -o reports/oob300/summary_eager_inference.md
 
 # Generate training fleet summary
 python scripts/oob300/generate_fleet_summary.py \
-  --b580-dir /home2/jianyizh/results_training/b580 \
-  --4080s-dir /home2/jianyizh/results_training/4080s \
-  --b70-dir /home2/jianyizh/results_training/b70 \
+  --b580-dir $OOB_RESULTS_TRAINING_B580 \
+  --4080s-dir $OOB_RESULTS_TRAINING_4080S \
+  --b70-dir $OOB_RESULTS_TRAINING_B70 \
   --config config/hardware_specs.yaml \
   --suite-dir benchmark/oob300 \
   --precision bf16 --test train \
@@ -581,8 +581,8 @@ python scripts/oob300/generate_fleet_summary.py \
 
 # Generate standalone graph consistency report (inference)
 python scripts/oob300/compare_graphs.py \
-  --dir-a /home2/jianyizh/results_cl/4080s \
-  --dir-b /home2/jianyizh/results_cl/b70 \
+  --dir-a $OOB_RESULTS_INFERENCE_4080S \
+  --dir-b $OOB_RESULTS_INFERENCE_B70 \
   --label-a CUDA --label-b XPU \
   -o reports/oob300/graph_consistency_eager_inference.md
 ```

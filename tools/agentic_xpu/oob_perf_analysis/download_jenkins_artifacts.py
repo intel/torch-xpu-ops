@@ -45,8 +45,6 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from urllib.parse import urlparse
 
 try:
     import yaml
@@ -366,7 +364,7 @@ def main():
             job_data = query_trigger_job(args.server, build_num, auth=auth)
             result = job_data.get("result")
             if result is None:
-                print(f"    WARNING: Job still RUNNING. Skipping.")
+                print("    WARNING: Job still RUNNING. Skipping.")
                 continue
             if result != "SUCCESS":
                 print(f"    WARNING: Job result = {result}. Attempting anyway.")
@@ -410,7 +408,7 @@ def main():
             download_tasks.append((pass_type, model))
 
     print(f"\n  Total download tasks: {len(download_tasks)}")
-    print(f"  (= {len(all_pass_models)} passes x ~{len(download_tasks)//max(len(all_pass_models),1)} models)")
+    print(f"  (= {len(all_pass_models)} passes x ~{len(download_tasks) // max(len(all_pass_models), 1)} models)")
 
     if args.dry_run:
         print("\n  [DRY RUN] Would download:")

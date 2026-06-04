@@ -49,10 +49,10 @@ The batch_size is tuned per-model to avoid OOM. Larger models get smaller batch 
 
 ```bash
 # B70 (XPU):
-bash scripts/oob_llm/run_all_llm.sh xpu G31 http://proxy.ims.intel.com:911
+bash scripts/oob_llm/run_all_llm.sh xpu G31 $NODE_PROXY
 
 # 4080S (CUDA):
-bash scripts/oob_llm/run_all_llm.sh cuda 4080 http://proxy.ims.intel.com:911
+bash scripts/oob_llm/run_all_llm.sh cuda 4080 $NODE_PROXY
 ```
 
 Arguments:
@@ -103,18 +103,16 @@ remain in `profiler_profiles/` and must be manually matched by batch_size.
 
 **B70**:
 - GPU memory: 30.3 GB (not 48GB)
-- Proxy: `http://proxy.ims.intel.com:911`
-- Source conda: `source /root/miniforge3/etc/profile.d/conda.sh && conda activate jianyi`
+- Proxy: set `NODE_PROXY` in `.env`
+- Source conda: set `CONDA_ACTIVATE` in `.env`
 - Source oneAPI: `source /opt/intel/oneapi/setvars.sh`
-- HF cache via NFS: `export HF_HOME=/mnt/nfs_data/huggingface HF_HUB_OFFLINE=1`
-  - NFS mount: `10.112.228.229:/mnt/data` → `/mnt/nfs_data` (persistent in fstab)
-  - All 41 models pre-cached — no network download needed
+- HF cache: set `HF_HOME` env var. Use `HF_HUB_OFFLINE=1` if models are pre-cached.
 - HF token: set `HF_TOKEN` environment variable (only needed if HF_HUB_OFFLINE=0)
 - SSL workaround: `REQUESTS_CA_BUNDLE='' CURL_CA_BUNDLE=''`
 
 **4080S**:
-- HF cache: `/mnt/ssd1/huggingface/hub` (2.2TB, pre-cached)
-- Source conda: `source /root/miniforge3/etc/profile.d/conda.sh && conda activate jianyi`
+- HF cache: set `HF_HOME` env var pointing to local cache directory
+- Source conda: set `CONDA_ACTIVATE` in `.env`
 - HF token: set `HF_TOKEN` environment variable
 - `model.generation_config.disable_compile = True` — prevents StaticCache triggering
   auto-compilation on models that use it

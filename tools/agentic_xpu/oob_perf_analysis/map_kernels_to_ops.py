@@ -41,7 +41,6 @@ import re
 import argparse
 import csv
 import sys
-from collections import defaultdict
 
 
 # ---------------------------------------------------------------------------
@@ -273,10 +272,10 @@ def print_per_op_summary(toplevel_ops, top_n=30):
     # Sort by unitrace GPU time descending
     ranked = sorted(toplevel_ops, key=lambda o: o["unitrace_dur_us"], reverse=True)
 
-    print(f"\n{'='*140}")
+    print(f"\n{'=' * 140}")
     print(f"{'#':>4} {'OP NAME':<40} {'UNITRACE(ms)':>12} {'UT%':>7} "
           f"{'CPU(ms)':>10} {'Kernels':>8}  {'Input Dims'}")
-    print(f"{'-'*140}")
+    print(f"{'-' * 140}")
 
     for i, op in enumerate(ranked[:top_n]):
         if op["unitrace_dur_us"] == 0:
@@ -284,21 +283,21 @@ def print_per_op_summary(toplevel_ops, top_n=30):
         pct = op["unitrace_dur_us"] / total_ut * 100 if total_ut > 0 else 0
         dims = op["input_dims"][:50]
         print(f"{op['seq_idx']:>4} {op['name']:<40} "
-              f"{op['unitrace_dur_us']/1000:>12.3f} {pct:>6.1f}% "
-              f"{op['cpu_dur_us']/1000:>10.3f} {op['unitrace_kernel_count']:>8}  {dims}")
+              f"{op['unitrace_dur_us'] / 1000:>12.3f} {pct:>6.1f}% "
+              f"{op['cpu_dur_us'] / 1000:>10.3f} {op['unitrace_kernel_count']:>8}  {dims}")
 
-    print(f"{'='*140}")
+    print(f"{'=' * 140}")
     n_with_kernels = sum(1 for op in toplevel_ops if op["unitrace_dur_us"] > 0)
-    print(f"Total unitrace GPU time: {total_ut/1000:.3f} ms  "
+    print(f"Total unitrace GPU time: {total_ut / 1000:.3f} ms  "
           f"({n_with_kernels} ops with kernels out of {len(toplevel_ops)} top-level ops)")
     print()
 
 
 def print_per_op_detail(toplevel_ops):
     """Print every top-level op in execution order with its unitrace kernels."""
-    print(f"\n{'='*140}")
+    print(f"\n{'=' * 140}")
     print("Per-op detail (execution order)")
-    print(f"{'='*140}")
+    print(f"{'=' * 140}")
 
     for op in toplevel_ops:
         if op["unitrace_kernel_count"] == 0:
@@ -306,7 +305,7 @@ def print_per_op_detail(toplevel_ops):
                   f"(no GPU kernels)  dims={op['input_dims']}")
         else:
             print(f"\n[{op['seq_idx']:>3}] {op['name']:<40} "
-                  f"unitrace={op['unitrace_dur_us']/1000:.3f}ms  "
+                  f"unitrace={op['unitrace_dur_us'] / 1000:.3f}ms  "
                   f"kernels={op['unitrace_kernel_count']}  "
                   f"dims={op['input_dims']}")
             for kn in op["unitrace_kernel_names"]:
@@ -318,10 +317,12 @@ def write_csv(mapped, toplevel_ops, csv_path):
     """Write per-kernel mapping to CSV."""
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["kernel_idx", "trace_kernel_name", "unitrace_kernel_name",
-                     "unitrace_dur_us", "trace_dur_us",
-                     "op_name", "op_input_dims", "op_input_strides",
-                     "op_seq_idx", "name_match"])
+        w.writerow([
+            "kernel_idx", "trace_kernel_name", "unitrace_kernel_name",
+            "unitrace_dur_us", "trace_dur_us",
+            "op_name", "op_input_dims", "op_input_strides",
+            "op_seq_idx", "name_match",
+        ])
         for m in mapped:
             w.writerow([m["idx"], m["trace_kernel_name"], m["unitrace_kernel_name"],
                         m["unitrace_dur_us"], m["trace_dur_us"],
@@ -332,8 +333,10 @@ def write_csv(mapped, toplevel_ops, csv_path):
     op_csv = csv_path.replace(".csv", "_per_op.csv")
     with open(op_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["op_seq_idx", "op_name", "input_dims", "input_strides",
-                     "unitrace_dur_us", "cpu_dur_us", "kernel_count"])
+        w.writerow([
+            "op_seq_idx", "op_name", "input_dims", "input_strides",
+            "unitrace_dur_us", "cpu_dur_us", "kernel_count",
+        ])
         for op in toplevel_ops:
             w.writerow([op["seq_idx"], op["name"], op["input_dims"],
                         op["input_strides"],

@@ -273,7 +273,7 @@ def main():
             traceback.print_exc()
             fail += 1
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DONE: {success} success, {fail} fail out of {len(all_keys)}")
     print(f"Reports in: {args.output_dir}")
 

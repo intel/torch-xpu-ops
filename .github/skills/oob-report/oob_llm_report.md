@@ -12,7 +12,7 @@ collected via `skills/oob_llm_profile.md`.
 and `profiler/*/trace.json` (profiler trace).
 
 **Working directory**: All commands must be run from the repo root
-(`/home2/jianyizh/pytorch.oob.bkc`). The script imports shared parsing functions from
+(`$OOB_REPO_ROOT`). The script imports shared parsing functions from
 `scripts/oob300/`.
 
 ---
@@ -59,8 +59,8 @@ from seconds to milliseconds. The script handles two JSON formats:
 ```bash
 # Cross-platform reports (models on both platforms):
 python scripts/oob_llm/generate_all_llm_reports.py \
-  --4080s-dir /home2/jianyizh/results_hf_oob/4080s \
-  --b70-dir /home2/jianyizh/results_hf_oob/b70 \
+  --4080s-dir $OOB_RESULTS_LLM_4080S \
+  --b70-dir $OOB_RESULTS_LLM_B70 \
   --output-dir reports/oob_llm/per_model \
   --config config/hardware_specs.yaml
 
@@ -71,7 +71,7 @@ python scripts/oob_llm/generate_all_llm_reports.py \
 
 # Single platform (B70 only):
 python scripts/oob_llm/generate_all_llm_reports.py \
-  --b70-dir /home2/jianyizh/results_hf_oob/b70 \
+  --b70-dir $OOB_RESULTS_LLM_B70 \
   --output-dir reports/oob_llm/per_model \
   --config config/hardware_specs.yaml
 
@@ -134,8 +134,8 @@ This is separate from the fleet summary's Section 7, which embeds a subset of th
 
 ```bash
 python scripts/oob300/compare_graphs.py \
-    --dir-a /home2/jianyizh/results_hf_oob/4080s/calcflops \
-    --dir-b /home2/jianyizh/results_hf_oob/b70/calcflops \
+    --dir-a $OOB_RESULTS_LLM_4080S/calcflops \
+    --dir-b $OOB_RESULTS_LLM_B70/calcflops \
     --label-a CUDA --label-b XPU \
     --precision bfloat16 --test generate \
     -o reports/oob_llm/graph_consistency_generate.md
@@ -181,8 +181,8 @@ from OOB 300, with LLM-specific adaptations.
 
 ```bash
 python scripts/oob_llm/generate_llm_fleet_summary.py \
-    --4080s-dir /home2/jianyizh/results_hf_oob/4080s \
-    --b70-dir /home2/jianyizh/results_hf_oob/b70 \
+    --4080s-dir $OOB_RESULTS_LLM_4080S \
+    --b70-dir $OOB_RESULTS_LLM_B70 \
     --config config/hardware_specs.yaml \
     --models-yaml benchmark/OOB_llm/models.yaml \
     -o reports/oob_llm/summary_generate.md
@@ -204,33 +204,11 @@ Report written to `reports/oob_llm/summary_generate.md`.
 
 ---
 
-## Current data status
+## Data locations
 
-### Complete models (both platforms): 6
-
-| Model | 4080S R | B70 R | Batch size |
-|-------|---------|-------|------------|
-| allenai/OLMoE-1B-7B-0125-Instruct | 1.144 | 1.247 | 4 |
-| google/gemma-2b | 0.809 | 0.815 | 64 |
-| mistralai/Mistral-7B-Instruct-v0.2 | 0.725 | 0.841 | 2 |
-| HuggingFaceTB/SmolLM3-3B | 0.670 | 0.764 | 32 |
-| arcee-ai/AFM-4.5B-Base | 0.655 | 0.766 | 16 |
-| microsoft/phi-2 | 0.637 | 0.748 | 8 |
-
-### Incomplete models
-
-- **Qwen/Qwen2-VL-2B-Instruct**: Complete on B70 but 4080S profiler trace missing
-  (profiler pass ran but trace.json was not generated). Single-platform report possible.
-
-### Data locations
-
-| Location | Path |
-|----------|------|
-| 4080S results (local) | `/home2/jianyizh/results_hf_oob/4080s/` |
-| B70 results (local) | `/home2/jianyizh/results_hf_oob/b70/` |
-| Reports | `reports/oob_llm/per_model/` |
-| 4080S remote | `root@ai005.sh.intel.com:/root/jianyi/results_hf_oob/4080s/` |
-| B70 remote | `root@10.239.60.20:/root/jianyi/results_hf_oob/b70/` |
+Configure data directories in `tools/agentic_xpu/.env` (see `.env.example` for variable names).
+The `--4080s-dir` and `--b70-dir` CLI flags correspond to
+`$OOB_RESULTS_LLM_4080S` and `$OOB_RESULTS_LLM_B70`.
 
 ---
 

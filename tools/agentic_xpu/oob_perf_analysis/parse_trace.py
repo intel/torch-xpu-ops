@@ -26,7 +26,7 @@ from collections import defaultdict
 
 def parse_trace(path):
     """Parse trace.json and return per-op events with GPU/CPU times and kernel info.
-    
+
     Returns list of dicts: name, cpu_dur_us, gpu_dur_us, ext_id, input_dims, kernel_names
     """
     with open(path) as f:
@@ -137,19 +137,19 @@ def print_summary(agg, sort_by="gpu_time", top_n=30):
     total_gpu = sum(v["gpu_us"] for v in agg.values())
     total_cpu = sum(v["cpu_us"] for v in agg.values())
 
-    print(f"\n{'='*130}")
+    print(f"\n{'=' * 130}")
     print(f"{'OP NAME':<45} {'GPU(ms)':>10} {'GPU%':>7} {'CPU(ms)':>10} {'Calls':>6} {'Kernels':>8}  {'Kernel Names'}")
-    print(f"{'-'*130}")
+    print(f"{'-' * 130}")
 
     for name, v in items[:top_n]:
         gpu_pct = v["gpu_us"] / total_gpu * 100 if total_gpu > 0 else 0
         kernel_str = ", ".join(sorted(v["kernel_names"]))
         if len(kernel_str) > 50:
             kernel_str = kernel_str[:47] + "..."
-        print(f"{name:<45} {v['gpu_us']/1000:>10.3f} {gpu_pct:>6.1f}% {v['cpu_us']/1000:>10.3f} {v['count']:>6} {v['kernel_count']:>8}  {kernel_str}")
+        print(f"{name:<45} {v['gpu_us'] / 1000:>10.3f} {gpu_pct:>6.1f}% {v['cpu_us'] / 1000:>10.3f} {v['count']:>6} {v['kernel_count']:>8}  {kernel_str}")
 
-    print(f"{'='*130}")
-    print(f"{'TOTAL':<45} {total_gpu/1000:>10.3f} {'100.0%':>7} {total_cpu/1000:>10.3f}")
+    print(f"{'=' * 130}")
+    print(f"{'TOTAL':<45} {total_gpu / 1000:>10.3f} {'100.0%':>7} {total_cpu / 1000:>10.3f}")
     print()
 
 
@@ -160,7 +160,7 @@ def print_detail(ops, top_names, max_invocations=10):
         print(f"\n--- {name} ({len(invocations)} invocations) ---")
         print(f"  {'#':>4} {'GPU(ms)':>10} {'CPU(ms)':>10} {'Kernels':>8}  {'Input Dims'}")
         for i, op in enumerate(invocations[:max_invocations]):
-            print(f"  {i+1:>4} {op['gpu_dur_us']/1000:>10.3f} {op['cpu_dur_us']/1000:>10.3f} {len(op['kernel_names']):>8}  {op['input_dims']}")
+            print(f"  {i + 1:>4} {op['gpu_dur_us'] / 1000:>10.3f} {op['cpu_dur_us'] / 1000:>10.3f} {len(op['kernel_names']):>8}  {op['input_dims']}")
         if len(invocations) > max_invocations:
             print(f"  ... ({len(invocations) - max_invocations} more)")
 

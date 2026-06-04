@@ -14,7 +14,7 @@ Each model needs: `*_t2_compile.txt` (T2), `*_calcflops.txt` (T1 extern), `*_t1_
 **Platforms**: B580 (XPU), B70/G31 (XPU), 4080S (CUDA). Reports compare across platforms
 when data is available on multiple platforms.
 
-**Working directory**: All commands run from the repo root (`/home2/jianyizh/pytorch.oob.bkc`).
+**Working directory**: All commands run from the repo root (`$OOB_REPO_ROOT`).
 
 ---
 
@@ -37,18 +37,18 @@ when data is available on multiple platforms.
 # Generate cross-platform reports for all models with complete data:
 python scripts/oob300/generate_report_compile.py \
     --all \
-    --b580-dir /home2/jianyizh/results_compile/b580/ \
-    --b70-dir /home2/jianyizh/results_compile/b70/ \
-    --4080s-dir /home2/jianyizh/results_compile/4080s/ \
+    --b580-dir $OOB_RESULTS_COMPILE_B580 \
+    --b70-dir $OOB_RESULTS_COMPILE_B70 \
+    --4080s-dir $OOB_RESULTS_COMPILE_4080S \
     --config config/hardware_specs.yaml \
     --output-dir reports/oob300/per_model/compile/
 
 # Generate single model (all available platforms auto-detected):
 python scripts/oob300/generate_report_compile.py \
     --model nanogpt --bs 1024 --suite torchbench \
-    --b580-dir /home2/jianyizh/results_compile/b580/ \
-    --b70-dir /home2/jianyizh/results_compile/b70/ \
-    --4080s-dir /home2/jianyizh/results_compile/4080s/ \
+    --b580-dir $OOB_RESULTS_COMPILE_B580 \
+    --b70-dir $OOB_RESULTS_COMPILE_B70 \
+    --4080s-dir $OOB_RESULTS_COMPILE_4080S \
     --config config/hardware_specs.yaml \
     --output-dir reports/oob300/per_model/compile/
 ```
@@ -162,10 +162,8 @@ For models with both eager and compile reports, compare:
 
 ## Local Data Locations
 
-| Platform | Path |
-|----------|------|
-| B580 | `/home2/jianyizh/results_compile/b580/` |
-| B70/G31 | `/home2/jianyizh/results_compile/b70/` |
-| 4080S | `/home2/jianyizh/results_compile/4080s/` |
+Configure data directories in `tools/agentic_xpu/.env` (see `.env.example` for variable names).
+The `--b580-dir`, `--b70-dir`, and `--4080s-dir` CLI flags correspond to
+`$OOB_RESULTS_COMPILE_B580`, `$OOB_RESULTS_COMPILE_B70`, and `$OOB_RESULTS_COMPILE_4080S`.
 
 Config: `config/hardware_specs.yaml`

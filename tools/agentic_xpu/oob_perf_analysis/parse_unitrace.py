@@ -25,7 +25,7 @@ from collections import defaultdict
 
 def parse_unitrace(path):
     """Parse unitrace JSON and return GPU kernel events (excluding ze* runtime events).
-    
+
     Returns list of dicts: name, dur_us, ts_us
     """
     with open(path) as f:
