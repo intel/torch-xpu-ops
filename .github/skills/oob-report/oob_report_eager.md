@@ -481,10 +481,7 @@ what data is available:
 - `159GB/s` — memory-bound op, 159 GB/s achieved
 - `2.5TFLOPS/112GB/s` — mixed or op with both FLOPs and memory, shows both
 
-Compare against HW specs to judge efficiency:
-- B580: 93T peak, 410 GB/s BW
-- B70: 154T peak, 532 GB/s BW
-- 4080S: 100.96T peak, 716.8 GB/s BW
+Compare against HW specs to judge efficienc. Need to read from `config/hardware_specs.yaml` for peak TFLOPS and bandwidth.
 
 **Vector engine ops** (softmax, native_layer_norm, native_batch_norm, max_pool2d):
 FLOPs are zeroed in the parsing pipeline (`VECTOR_ENGINE_OPS` in
