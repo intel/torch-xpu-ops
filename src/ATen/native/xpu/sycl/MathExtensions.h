@@ -48,7 +48,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
     return std::copysign(static_cast<scalar_t>(INFINITY), -x);
   }
 
-  bool x_is_integer = x == std::trunc(x);
+  bool x_is_integer = x == sycl::trunc(x);
   accscalar_t result = 0;
   if (x < accscalar_t(0)) {
     if (x_is_integer) {

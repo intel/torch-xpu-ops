@@ -71,7 +71,8 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FracFunctor {
   scalar_t operator()(scalar_t a) const {
-    return a - std::trunc(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return a - sycl::trunc(static_cast<opmath_t>(a));
   }
 };
 
@@ -192,15 +193,15 @@ void floor_kernel(TensorIteratorBase& iter) {
       });
 }
 
-// We manually overload trunc because std::trunc does not work with std::complex
-// types and ROCm.
+// We manually overload trunc because sycl::trunc does not work with
+// std::complex types.
 template <typename scalar_t>
 inline scalar_t trunc_wrapper(scalar_t a) {
-  return static_cast<scalar_t>(std::truncf(static_cast<float>(a)));
+  return static_cast<scalar_t>(sycl::trunc(static_cast<float>(a)));
 }
 
 inline double trunc_wrapper(double a) {
-  return std::trunc(a);
+  return sycl::trunc(a);
 }
 
 inline c10::complex<float> trunc_wrapper(c10::complex<float> a) {
