@@ -204,16 +204,11 @@ inline double trunc_wrapper(double a) {
   return sycl::trunc(a);
 }
 
-inline c10::complex<float> trunc_wrapper(c10::complex<float> a) {
-  return c10::complex<float>(
-      sycl::trunc(static_cast<float>(a.real())),
-      sycl::trunc(static_cast<float>(a.imag())));
-}
-
-inline c10::complex<double> trunc_wrapper(c10::complex<double> a) {
-  return c10::complex<double>(
-      sycl::trunc(static_cast<double>(a.real())),
-      sycl::trunc(static_cast<double>(a.imag())));
+template <typename T>
+inline c10::complex<T> trunc_wrapper(c10::complex<T> a) {
+  return c10::complex<T>(
+      sycl::trunc(static_cast<T>(a.real())),
+      sycl::trunc(static_cast<T>(a.imag())));
 }
 
 template <typename scalar_t>
