@@ -176,11 +176,33 @@ with XPUPatchForImport(False):
             out = source.index_select(0, idx)
             self.assertEqual(out.item(), source.item())
 
+    def index_add_empty_index_1d(self, device):
+        dst = torch.arange(5, dtype=torch.float, device=device)
+        index = torch.empty((0,), dtype=torch.int64, device=device)
+        source = torch.empty((0,), dtype=torch.float, device=device)
+
+        out = dst.clone()
+        out.index_add_(0, index, source, alpha=2.0)
+
+        self.assertEqual(out, dst)
+
+    def index_add_empty_index_2d(self, device):
+        dst = torch.arange(12, dtype=torch.float, device=device).reshape(3, 4)
+        index = torch.empty((0,), dtype=torch.int64, device=device)
+        source = torch.empty((0, 4), dtype=torch.float, device=device)
+
+        out = dst.clone()
+        out.index_add_(0, index, source, alpha=2.0)
+
+        self.assertEqual(out, dst)
+
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
     TestIndexing.test_index_put_src_datatype = index_put_src_datatype
     TestIndexing.test_index_select = index_select
+    TestIndexing.test_index_add_empty_index_1d = index_add_empty_index_1d
+    TestIndexing.test_index_add_empty_index_2d = index_add_empty_index_2d
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 
