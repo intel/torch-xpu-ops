@@ -26,12 +26,12 @@ User provides a YAML file (e.g. `config/sessions/my_run.yaml`) containing 6 Jenk
 
 ```yaml
 # config/sessions/my_run.yaml
-t1: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
-unitrace: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
-xpu_profiler: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
-cuda_profiler: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
-xpu_t2: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
-cuda_t2: https://jenkins-aten-caffe2.sh.intel.com/job/newOOB_launch_benchmark_trigger/<N>/
+t1: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
+unitrace: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
+xpu_profiler: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
+cuda_profiler: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
+xpu_t2: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
+cuda_t2: $JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/
 ```
 
 **Session name** = YAML filename without extension (e.g. `my_run.yaml` → `my_run`).
@@ -85,11 +85,7 @@ python scripts/generate_fleet_summary.py \
 
 ## Hardware Specs
 
-| Platform | Peak FP16 (TFLOPS) | DRAM BW (GB/s) |
-|----------|-------------------:|---------------:|
-| B70 (G31) | 154.0 | 532.0 |
-| RTX 4080 SUPER | 100.96 | 716.8 |
-| B580 | 93.0 | 410.0 |
+Read from `config/hardware_specs.yaml`. Do not hardcode values — always load specs from that file.
 
 ## Key Scripts
 
@@ -106,8 +102,8 @@ python scripts/generate_fleet_summary.py \
 
 ## Jenkins Access
 
-- `jenkins-aten-caffe2.sh.intel.com` — no auth (anonymous)
-- `inteltf-jenk.sh.intel.com` — needs `--user <user> --token <token>`
+- Set `JENKINS_URL` in your `.env` (see `tools/agentic_xpu/oob_perf_analysis/.env.example`)
+- Some servers need `--user <user> --token <token>` (set `JENKINS_API_TOKEN` in `.env`)
 - All: `curl -sk --noproxy "*"`
 
 ## Troubleshooting
@@ -124,7 +120,7 @@ python scripts/generate_fleet_summary.py \
 
 ### Querying trigger jobs
 ```bash
-curl -sk --noproxy "*" "https://<server>/job/newOOB_launch_benchmark_trigger/<N>/api/json"
+curl -sk --noproxy "*" "$JENKINS_URL/job/newOOB_launch_benchmark_trigger/<N>/api/json"
 ```
 Extract: `result`, `actions[].parameters[]`, `artifacts` (contains `summary.log`).
 
