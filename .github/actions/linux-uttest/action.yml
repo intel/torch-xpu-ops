@@ -15,6 +15,7 @@ runs:
         which python && python -V
         which pip && pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
+        echo "XPU_REPORT_HTML=${{ github.workspace }}/ut_log/${{ inputs.ut_name }}/xpu_report.html" >> ${GITHUB_ENV}
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
