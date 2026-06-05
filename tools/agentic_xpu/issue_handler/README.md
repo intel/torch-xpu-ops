@@ -189,3 +189,29 @@ python tools/agentic_xpu/issue_handler/run_pipeline.py --once --issues 12 15 23
 | `--issues N` | Process specific issue number(s). Default: all open agent issues |
 | `--stages`   | Run only named stages: `format`, `triage`, `fix`, `verify_fix`. Default: all |
 | `--batch`    | Label for the dashboard report batch                       |
+
+
+### File Structure
+
+```
+.github/skills/issue-handler/
+├── issue-fix/SKILL.md
+├── issue-format/SKILL.md
+├── issue-triage/SKILL.md
+├── test-verification/SKILL.md
+└── ut-fixing/SKILL.md
+
+tools/agentic_xpu/issue_handler/
+├── run_pipeline.py                         ← CLI entry point
+├── README.md
+└── agentic_xpu/issue_handler/
+    ├── orchestrator.py                     ← stage sequencing
+    ├── triage_agent.py                     ← issue classification
+    ├── format_agent.py                     ← body rewriting
+    ├── verify_existence.py                 ← bug reproduction
+    ├── code_fix.py                         ← patch generation
+    ├── verify_fix.py                       ← fix validation
+    ├── verify_upstream_pr.py               ← upstream PR check
+    ├── config/                             ← YAML configs, templates
+    └── utils/                              ← git, build, env helpers
+```
