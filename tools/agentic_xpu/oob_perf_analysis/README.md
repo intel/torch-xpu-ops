@@ -52,18 +52,18 @@ tools/agentic_xpu/oob_perf_analysis/
     ├── torchbench_inference.yaml
     └── torchbench_training.yaml
 
-.github/skills/oob-report/             # OOB report generation skill
-.github/skills/oob-insights/           # Insights summary skill
+.claude/skills/oob-report/             # OOB report generation skill
+.claude/skills/oob-insights/           # Insights summary skill
 ```
 
 ## Skills
 
 | Skill | Location | Purpose |
 |-------|----------|---------|
-| `oob-report` | `.github/skills/oob-report/SKILL.md` | Per-model and fleet report generation |
-| `oob-insights` | `.github/skills/oob-insights/SKILL.md` | Final insights summary |
+| `oob-report` | `.claude/skills/oob-report/SKILL.md` | Per-model and fleet report generation |
+| `oob-insights` | `.claude/skills/oob-insights/SKILL.md` | Final insights summary |
 
-Additional skill guides in `.github/skills/oob-report/`:
+Additional skill guides in `.claude/skills/oob-report/`:
 - `oob_profile_eager.md` — OOB 300 eager-mode profiling steps
 - `oob_report_eager.md` — OOB 300 report generation details
 - `oob_llm_profile.md` — HuggingFace LLM profiling steps
