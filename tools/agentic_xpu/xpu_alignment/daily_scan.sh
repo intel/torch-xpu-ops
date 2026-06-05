@@ -27,7 +27,7 @@ mkdir -p "$RUN_DIR"
 
 echo "=== XPU Alignment Daily Scan: $SCAN_DATE  ($(date -Iseconds)) ==="
 
-PROMPT="Use the pytorch-cuda-fix-xpu-alignment skill. \
+PROMPT="Use the xpu-alignment skill. \
 Scan pytorch/pytorch for issues, PRs, and bug-fix commits from $SCAN_DATE \
 (window: ${SCAN_DATE}T00:00:00Z to ${SCAN_DATE}T23:59:59Z). \
 Work in: $RUN_DIR. Run all steps (Step 0-3). Zero pending rows. \

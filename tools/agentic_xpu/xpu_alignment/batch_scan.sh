@@ -45,7 +45,7 @@ echo "=== XPU Alignment Batch Scan: $START_DATE → $END_DATE  ($(date -Iseconds
 DAYS_COUNT=$(( ( $(date -d "$END_DATE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$END_DATE" +%s) \
               - $(date -d "$START_DATE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$START_DATE" +%s) ) / 86400 + 1 ))
 
-PROMPT="Use the pytorch-cuda-fix-xpu-alignment skill. \
+PROMPT="Use the xpu-alignment skill. \
 Scan pytorch/pytorch for issues, PRs, and commits between $START_DATE and $END_DATE \
 (window: ${START_DATE}T00:00:00Z to ${END_DATE}T23:59:59Z). \
 Work in: $RUN_DIR. Run all steps (Step 0-3). Zero pending rows. \
@@ -58,7 +58,7 @@ OPENCODE_ARGS=(--dir "$WORKSPACE" --dangerously-skip-permissions --title "XPU sc
 if [[ -f "$SESSION_FILE" ]]; then
   echo "Resuming session: $(cat "$SESSION_FILE")"
   OPENCODE_ARGS+=(--session "$(cat "$SESSION_FILE")")
-  PROMPT="Continue the pytorch-cuda-fix-xpu-alignment scan. \
+  PROMPT="Continue the xpu-alignment scan. \
 Dir: $RUN_DIR. Window: $START_DATE to $END_DATE. \
 Resume from ledger. Complete until zero pending rows and audit passes."
 fi

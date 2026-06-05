@@ -14,10 +14,10 @@
 # Sets:   SOURCE_SKILL_DIR  OPENCODE_BIN  WORKSPACE  XPU_PYTHON
 # Defines: run_post_scan <run_dir> [rc]
 
-# --- Locate source skill dir (prefer .claude/skills/pytorch-cuda-fix-xpu-alignment/ in repo root, fallback to ENTRY_DIR) ---
+# --- Locate source skill dir (prefer .claude/skills/xpu-alignment/ in repo root, fallback to ENTRY_DIR) ---
 _repo_root_skill="$(git -C "$ENTRY_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
-if [[ -n "$_repo_root_skill" && -f "$_repo_root_skill/.claude/skills/pytorch-cuda-fix-xpu-alignment/SKILL.md" ]]; then
-  SOURCE_SKILL_DIR="$_repo_root_skill/.claude/skills/pytorch-cuda-fix-xpu-alignment"
+if [[ -n "$_repo_root_skill" && -f "$_repo_root_skill/.claude/skills/xpu-alignment/SKILL.md" ]]; then
+  SOURCE_SKILL_DIR="$_repo_root_skill/.claude/skills/xpu-alignment"
 else
   SOURCE_SKILL_DIR="${SOURCE_SKILL_DIR:-$ENTRY_DIR}"
 fi
@@ -64,7 +64,7 @@ XPU_PYTHON="$_py"
 unset _venv _py _boot
 
 # --- Sync skill into workspace (.opencode/skills) so opencode can load it by name ---
-_skill="$WORKSPACE/.opencode/skills/pytorch-cuda-fix-xpu-alignment"
+_skill="$WORKSPACE/.opencode/skills/xpu-alignment"
 mkdir -p "$_skill"
 cp "$SOURCE_SKILL_DIR/SKILL.md" "$_skill/SKILL.md"
 unset _skill

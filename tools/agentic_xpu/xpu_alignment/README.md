@@ -1,4 +1,4 @@
-# pytorch-cuda-fix-xpu-alignment — Usage Guide
+# xpu-alignment — Usage Guide
 
 Scan `pytorch/pytorch` for backend bug-fix issues, PRs, and commits that may also affect XPU,
 adapt reproducers for XPU, validate locally, route confirmed bugs, and file tracking issues to
@@ -38,7 +38,7 @@ bash daily_scan.sh          # scan today's upstream commits
 
 ## Table of Contents
 
-- [pytorch-cuda-fix-xpu-alignment — Usage Guide](#pytorch-cuda-fix-xpu-alignment--usage-guide)
+- [xpu-alignment — Usage Guide](#xpu-alignment--usage-guide)
 - [TL;DR](#tldr)
   - [Workflow](#workflow)
   - [QuickStart](#quickstart)
@@ -355,7 +355,7 @@ All optional — auto-detected if unset.
 ## 10. File Structure
 
 ```
-.claude/skills/pytorch-cuda-fix-xpu-alignment/SKILL.md  ← agent skill (loaded by opencode)
+.claude/skills/xpu-alignment/SKILL.md      ← agent skill (loaded by opencode)
 tools/agentic_xpu/
 ├── .env.example                            ← shared env config (all scenarios)
 └── xpu_alignment/
