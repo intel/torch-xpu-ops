@@ -69,9 +69,8 @@ struct WelfordOpsXPU
         item(item) {}
 };
 
-template <typename T, int SIMD>
+template <typename T, typename T_ACC, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
@@ -93,8 +92,14 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       T_ACC m1;
       T_ACC m2;
       std::tie(m2, m1) = welford_op.project(val);
+      T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       mean_[i] = m1;
-      rstd_[i] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
+      rstd_[i] = rstd_val;
+      // save off the accelerated-precision output, if different
+      if constexpr (!std::is_same_v<T, T_ACC>) {
+        mean_acc_[i] = m1;
+        rstd_acc_[i] = rstd_val;
+      }
     }
   }
 
@@ -102,8 +107,21 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
   }
 
-  GNRowwiseMomentsFunctor(int64_t N, T eps, const T* X, T* mean, T* rstd)
-      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
+  GNRowwiseMomentsFunctor(
+      int64_t N,
+      T eps,
+      const T* X,
+      T* mean,
+      T* rstd,
+      T_ACC* mean_acc,
+      T_ACC* rstd_acc)
+      : N_(N),
+        eps_(eps),
+        X_(X),
+        mean_(mean),
+        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc) {}
 
  private:
   int64_t N_;
@@ -111,13 +129,14 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const T* X_;
   T* mean_;
   T* rstd_;
+  T_ACC* mean_acc_;
+  T_ACC* rstd_acc_;
   sycl_local_acc_t<WelfordType> shared_;
 };
 
-template <typename T, int SIMD, int VEC_SIZE>
+template <typename T, typename T_ACC, int SIMD, int VEC_SIZE>
 struct GNRowwiseMomentsVectorizedFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
@@ -158,8 +177,13 @@ struct GNRowwiseMomentsVectorizedFunctor
         T_ACC m1;
         T_ACC m2;
         std::tie(m2, m1) = welford_op.project(val[v]);
+        T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
         mean_vec[v] = m1;
-        rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
+        rstd_vec[v] = rstd_val;
+        if constexpr (!std::is_same_v<T, T_ACC>) {
+          mean_acc_[group_start + v] = m1;
+          rstd_acc_[group_start + v] = rstd_val;
+        }
       }
       *(reinterpret_cast<vec_t*>(mean_ + group_start)) = mean_vec;
       *(reinterpret_cast<vec_t*>(rstd_ + group_start)) = rstd_vec;
@@ -175,8 +199,16 @@ struct GNRowwiseMomentsVectorizedFunctor
       T eps,
       const T* X,
       T* mean,
-      T* rstd)
-      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
+      T* rstd,
+      T_ACC* mean_acc,
+      T_ACC* rstd_acc)
+      : N_(N),
+        eps_(eps),
+        X_(X),
+        mean_(mean),
+        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc) {}
 
  private:
   int64_t N_;
@@ -184,6 +216,8 @@ struct GNRowwiseMomentsVectorizedFunctor
   const T* X_;
   T* mean_;
   T* rstd_;
+  T_ACC* mean_acc_;
+  T_ACC* rstd_acc_;
   sycl_local_acc_t<WelfordType> shared_;
 };
 
@@ -194,25 +228,25 @@ struct ComputeFusedParamsFunctor {
     const int64_t ng = index / (C_ / group_);
     const int64_t c = index % C_;
     const T_ACC scale = (gamma_ == nullptr)
-        ? static_cast<T_ACC>(rstd_[ng])
-        : static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(gamma_[c]);
+        ? rstd_acc_[ng]
+        : rstd_acc_[ng] * static_cast<T_ACC>(gamma_[c]);
     a_[index] = scale;
-    b_[index] = -scale * static_cast<T_ACC>(mean_[ng]) +
+    b_[index] = -scale * mean_acc_[ng] +
         ((beta_ == nullptr) ? T_ACC(0) : static_cast<T_ACC>(beta_[c]));
   }
   ComputeFusedParamsFunctor(
       int64_t C,
       int64_t group,
-      const T* mean,
-      const T* rstd,
+      const T_ACC* mean_acc,
+      const T_ACC* rstd_acc,
       const T* gamma,
       const T* beta,
       T_ACC* a,
       T_ACC* b)
       : C_(C),
         group_(group),
-        mean_(mean),
-        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc),
         gamma_(gamma),
         beta_(beta),
         a_(a),
@@ -221,8 +255,8 @@ struct ComputeFusedParamsFunctor {
  private:
   int64_t C_;
   int64_t group_;
-  const T* mean_;
-  const T* rstd_;
+  const T_ACC* mean_acc_;
+  const T_ACC* rstd_acc_;
   const T* gamma_;
   const T* beta_;
   T_ACC* a_;
@@ -231,90 +265,88 @@ struct ComputeFusedParamsFunctor {
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dGammaBetaFunctor {
-  T operator()(T x, T mean, T rstd, T gamma, T beta) const {
-    return (static_cast<T_ACC>(x) - static_cast<T_ACC>(mean)) *
-        static_cast<T_ACC>(rstd) * static_cast<T_ACC>(gamma) +
+  T operator()(T x, T_ACC mean, T_ACC rstd, T gamma, T beta) const {
+    return (static_cast<T_ACC>(x) - mean) * rstd * static_cast<T_ACC>(gamma) +
         static_cast<T_ACC>(beta);
   }
 };
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dGammaFunctor {
-  T operator()(T x, T mean, T rstd, T gamma) const {
-    return (static_cast<T_ACC>(x) - static_cast<T_ACC>(mean)) *
-        static_cast<T_ACC>(rstd) * static_cast<T_ACC>(gamma);
+  T operator()(T x, T_ACC mean, T_ACC rstd, T gamma) const {
+    return (static_cast<T_ACC>(x) - mean) * rstd * static_cast<T_ACC>(gamma);
   }
 };
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dBetaFunctor {
-  T operator()(T x, T mean, T rstd, T beta) const {
-    return (static_cast<T_ACC>(x) - static_cast<T_ACC>(mean)) *
-        static_cast<T_ACC>(rstd) +
-        static_cast<T_ACC>(beta);
+  T operator()(T x, T_ACC mean, T_ACC rstd, T beta) const {
+    return (static_cast<T_ACC>(x) - mean) * rstd + static_cast<T_ACC>(beta);
   }
 };
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dFunctor {
-  T operator()(T x, T mean, T rstd) const {
-    return (static_cast<T_ACC>(x) - static_cast<T_ACC>(mean)) *
-        static_cast<T_ACC>(rstd);
+  T operator()(T x, T_ACC mean, T_ACC rstd) const {
+    return (static_cast<T_ACC>(x) - mean) * rstd;
   }
 };
 
-template <typename T>
+template <typename T, typename T_ACC>
 void group_norm_1d_forward(
     const Tensor& X,
-    const Tensor& mean,
-    const Tensor& rstd,
+    const Tensor& mean_acc,
+    const Tensor& rstd_acc,
     const Tensor& gamma,
     const Tensor& beta,
     int64_t N,
     int64_t C,
     int64_t group,
     Tensor& Y) {
-  using T_ACC = acc_type_device<T, kXPU>;
   const int64_t G = group;
   const int64_t D = C / G;
   if (gamma.defined() && beta.defined()) {
     auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                     .resize_outputs(false)
                     .add_owned_output(Y.view({N, G, D}))
                     .add_owned_const_input(X.view({N, G, D}))
-                    .add_owned_input(mean.view({N, G, 1}))
-                    .add_owned_input(rstd.view({N, G, 1}))
+                    .add_owned_input(mean_acc.view({N, G, 1}))
+                    .add_owned_input(rstd_acc.view({N, G, 1}))
                     .add_owned_const_input(gamma.view({1, G, D}))
                     .add_owned_const_input(beta.view({1, G, D}))
                     .build();
     gpu_kernel(iter, GroupNorm1dGammaBetaFunctor<T, T_ACC>());
   } else if (gamma.defined()) {
     auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                     .resize_outputs(false)
                     .add_owned_output(Y.view({N, G, D}))
                     .add_owned_const_input(X.view({N, G, D}))
-                    .add_owned_input(mean.view({N, G, 1}))
-                    .add_owned_input(rstd.view({N, G, 1}))
+                    .add_owned_input(mean_acc.view({N, G, 1}))
+                    .add_owned_input(rstd_acc.view({N, G, 1}))
                     .add_owned_const_input(gamma.view({1, G, D}))
                     .build();
     gpu_kernel(iter, GroupNorm1dGammaFunctor<T, T_ACC>());
   } else if (beta.defined()) {
     auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                     .resize_outputs(false)
                     .add_owned_output(Y.view({N, G, D}))
                     .add_owned_const_input(X.view({N, G, D}))
-                    .add_owned_input(mean.view({N, G, 1}))
-                    .add_owned_input(rstd.view({N, G, 1}))
+                    .add_owned_input(mean_acc.view({N, G, 1}))
+                    .add_owned_input(rstd_acc.view({N, G, 1}))
                     .add_owned_const_input(beta.view({1, G, D}))
                     .build();
     gpu_kernel(iter, GroupNorm1dBetaFunctor<T, T_ACC>());
   } else {
     auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                     .resize_outputs(false)
                     .add_owned_output(Y.view({N * G, D}))
                     .add_owned_const_input(X.view({N * G, D}))
-                    .add_owned_input(mean.view({N * G, 1}))
-                    .add_owned_input(rstd.view({N * G, 1}))
+                    .add_owned_input(mean_acc.view({N * G, 1}))
+                    .add_owned_input(rstd_acc.view({N * G, 1}))
                     .build();
     gpu_kernel(iter, GroupNorm1dFunctor<T, T_ACC>());
   }
@@ -333,7 +365,7 @@ bool can_use_vectorization(T* p, int vec_size) {
   return memory::can_vectorize_up_to<T>((char*)p) >= vec_size;
 }
 
-template <typename T>
+template <typename T, typename T_ACC = acc_type_device<T, kXPU>>
 void group_norm_kernel_impl(
     const Tensor& X,
     const Tensor& gamma,
@@ -346,7 +378,6 @@ void group_norm_kernel_impl(
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
-  using T_ACC = acc_type_device<T, kXPU>;
   TORCH_CHECK(X.numel() == N * C * HxW);
   TORCH_CHECK(!gamma.defined() || gamma.numel() == C);
   TORCH_CHECK(!beta.defined() || beta.numel() == C);
@@ -357,8 +388,18 @@ void group_norm_kernel_impl(
   const int64_t G = group;
   const int64_t D = C / G;
   const T* X_data = X.const_data_ptr<T>();
+
+  const bool needMeanAcc{
+      X.scalar_type() == kHalf || X.scalar_type() == kBFloat16};
+  const auto kAccTypeOpts{
+      X.options().dtype(needMeanAcc ? kFloat : X.scalar_type())};
+
   T* mean_data = mean.mutable_data_ptr<T>();
   T* rstd_data = rstd.mutable_data_ptr<T>();
+  Tensor mean_acc = needMeanAcc ? at::empty(mean.sizes(), kAccTypeOpts) : mean;
+  Tensor rstd_acc = needMeanAcc ? at::empty(rstd.sizes(), kAccTypeOpts) : rstd;
+  T_ACC* mean_acc_data = mean_acc.mutable_data_ptr<T_ACC>();
+  T_ACC* rstd_acc_data = rstd_acc.mutable_data_ptr<T_ACC>();
 
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
@@ -371,8 +412,10 @@ void group_norm_kernel_impl(
       can_use_vectorization(mean_data, VEC_SIZE) &&
       can_use_vectorization(rstd_data, VEC_SIZE) && prob_size % VEC_SIZE == 0 &&
       stride % VEC_SIZE == 0) {
-    using KernelS16T = GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
-    using KernelS32T = GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
+    using KernelS16T =
+        GNRowwiseMomentsVectorizedFunctor<T, T_ACC, SIMD16, VEC_SIZE>;
+    using KernelS32T =
+        GNRowwiseMomentsVectorizedFunctor<T, T_ACC, SIMD32, VEC_SIZE>;
     auto max_size = std::min(
         syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
     auto wg_size =
@@ -388,10 +431,12 @@ void group_norm_kernel_impl(
         eps,
         X_data,
         mean_data,
-        rstd_data);
+        rstd_data,
+        mean_acc_data,
+        rstd_acc_data);
   } else {
-    using KernelS16T = GNRowwiseMomentsFunctor<T, SIMD16>;
-    using KernelS32T = GNRowwiseMomentsFunctor<T, SIMD32>;
+    using KernelS16T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD16>;
+    using KernelS32T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD32>;
     auto max_size = std::min(
         syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
     auto wg_size = get_adaptive_workgroup_size(prob_size, simd, max_size);
@@ -406,34 +451,41 @@ void group_norm_kernel_impl(
         eps,
         X_data,
         mean_data,
-        rstd_data);
+        rstd_data,
+        mean_acc_data,
+        rstd_acc_data);
   }
 
   if (HxW == 1) {
-    group_norm_1d_forward<T>(X, mean, rstd, gamma, beta, N, C, G, Y);
+    group_norm_1d_forward<T, T_ACC>(
+        X, mean_acc, rstd_acc, gamma, beta, N, C, G, Y);
   } else if (!gamma.defined() && !beta.defined()) {
     auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                     .resize_outputs(false)
                     .add_owned_output(Y.view({N * G, prob_size}))
                     .add_owned_const_input(X.view({N * G, prob_size}))
-                    .add_owned_input(mean.view({N * G, 1}))
-                    .add_owned_input(rstd.view({N * G, 1}))
+                    .add_owned_input(mean_acc.view({N * G, 1}))
+                    .add_owned_input(rstd_acc.view({N * G, 1}))
                     .build();
     gpu_kernel(iter, GroupNorm1dFunctor<T, T_ACC>());
   } else {
-    const auto kAccType =
-        (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
-        ? kFloat
-        : X.scalar_type();
-    Tensor a = at::empty({N, C}, X.options().dtype(kAccType));
-    Tensor b = at::empty({N, C}, X.options().dtype(kAccType));
+    Tensor a = at::empty({N, C}, kAccTypeOpts);
+    Tensor b = at::empty({N, C}, kAccTypeOpts);
     const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
     const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
     T_ACC* a_data = a.mutable_data_ptr<T_ACC>();
     T_ACC* b_data = b.mutable_data_ptr<T_ACC>();
 
     auto caller = ComputeFusedParamsFunctor<T, T_ACC>(
-        C, G, mean_data, rstd_data, gamma_data, beta_data, a_data, b_data);
+        C,
+        G,
+        mean_acc_data,
+        rstd_acc_data,
+        gamma_data,
+        beta_data,
+        a_data,
+        b_data);
     sycl_kernel_submit(sycl::range<1>(N * C), queue, caller);
 
     TensorIterator iter = TensorIteratorConfig()

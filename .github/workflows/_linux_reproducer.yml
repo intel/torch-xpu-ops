@@ -34,31 +34,16 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  runner:
+  reproducer-test:
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
     runs-on: ${{ inputs.runner }}
-    name: get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
-  reproducer-test:
-    needs: runner
-    runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 30
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
@@ -126,6 +111,10 @@ jobs:
           name: Reproducer-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/reproducer_output.txt
           if-no-files-found: ignore
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 /__w /github ./ -R
       - name: Write summary
         if: ${{ steps.reproducer-files.outcome != 'failure' && steps.reproducer-cmd.outcome != 'failure' }}
         run: echo "✅ Reproducer test passed. All reproducer tests executed successfully." >> $GITHUB_STEP_SUMMARY

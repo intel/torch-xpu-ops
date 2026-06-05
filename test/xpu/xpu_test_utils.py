@@ -1269,6 +1269,8 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    import subprocess
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     rename = test_case.replace("../../../../", "").replace("/", ".")
     if skip_list is not None:
