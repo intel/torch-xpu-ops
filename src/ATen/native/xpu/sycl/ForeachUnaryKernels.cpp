@@ -391,7 +391,7 @@ struct Round {
 template <typename T>
 struct Trunc {
   T operator()(T t) const {
-    return t - std::trunc(t);
+    return t - sycl::trunc(t);
   }
 };
 

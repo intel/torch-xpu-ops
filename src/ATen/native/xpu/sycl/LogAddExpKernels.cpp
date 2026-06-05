@@ -31,9 +31,9 @@ c10::complex<scalar_t> _logaddexp_minmax(
     const c10::complex<scalar_t>& y) {
   scalar_t xr = std::real(x);
   scalar_t yr = std::real(y);
-  if (std::isnan(yr) || (std::isnan(std::imag(y)))) {
+  if (sycl::isnan(yr) || (sycl::isnan(std::imag(y)))) {
     return y;
-  } else if (std::isnan(xr) || (std::isnan(std::imag(x)))) {
+  } else if (sycl::isnan(xr) || (sycl::isnan(std::imag(x)))) {
     return x;
   } else if (min) {
     return (xr < yr) ? x : y;
@@ -59,7 +59,7 @@ template <typename scalar_t>
 c10::complex<scalar_t> _fast_build_exp_inf(const c10::complex<scalar_t>& x) {
   auto ximag = std::imag(x);
   constexpr auto exp_x_abs = std::numeric_limits<scalar_t>::infinity();
-  if (!std::isfinite(ximag)) { // Consistent with std::exp behavior
+  if (!sycl::isfinite(ximag)) { // Consistent with std::exp behavior
     return {exp_x_abs, std::numeric_limits<scalar_t>::quiet_NaN()};
   }
   auto sin = std::sin(ximag);
@@ -82,11 +82,11 @@ c10::complex<scalar_t> _log_add_exp_helper(
   scalar_t max_real = std::real(max);
 
   // Handle NaN propagation
-  if (std::isnan(min_real) || std::isnan(std::imag(min))) {
+  if (sycl::isnan(min_real) || sycl::isnan(std::imag(min))) {
     return {
         std::numeric_limits<scalar_t>::quiet_NaN(),
         std::numeric_limits<scalar_t>::quiet_NaN()};
-  } else if ((!std::isfinite(min_real)) && (min_real == max_real)) {
+  } else if ((!sycl::isfinite(min_real)) && (min_real == max_real)) {
     // Handle ±inf cases
     if (min_real < 0) {
       return min;
@@ -99,7 +99,7 @@ c10::complex<scalar_t> _log_add_exp_helper(
     // Normal case: use numerically stable formula
     auto minmax = min - max;
     c10::complex<scalar_t> exp_minmax;
-    if (!std::isfinite(minmax.real())) {
+    if (!sycl::isfinite(minmax.real())) {
       exp_minmax = minmax.real() < 0 ? c10::complex<scalar_t>{0.0, 0.0}
                                      : _fast_build_exp_inf(minmax);
     } else {
@@ -117,7 +117,7 @@ struct LogAddExpFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
-    if (std::isinf(a) && a == b) {
+    if (sycl::isinf(a) && a == b) {
       return a;
     } else {
       const auto m = std::max(a, b);
@@ -154,7 +154,7 @@ struct LogAddExp2Functor {
     const auto inv_log_2 = static_cast<opmath_t>(1.0 / c10::ln_2<double>);
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
-    if (std::isinf(a) && a == b) {
+    if (sycl::isinf(a) && a == b) {
       return a;
     } else {
       const auto m = std::max(a, b);
