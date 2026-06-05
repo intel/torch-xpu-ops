@@ -13,7 +13,7 @@ tools/agentic_xpu/nightly_ci_fix/
 ├── README.md              # This file
 └── run_fix.sh             # Pipeline entry point (invokes OpenCode)
 
-.github/skills/xpu-nightly-ci-fix/
+.claude/skills/xpu-nightly-ci-fix/
 ├── SKILL.md               # Full workflow definition (6 steps)
 └── PRINCIPLES.md          # LLM behavioral guidelines
 ```

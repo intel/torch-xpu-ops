@@ -73,7 +73,7 @@ OUTPUT_FILE="$OUTPUT_DIR/summary_${DATE_ARG}.md"
 mkdir -p "$OUTPUT_DIR"
 
 # --- Sync skill into workspace ---
-SKILL_SRC="$REPO_ROOT/.github/skills/xpu-nightly-ci-fix"
+SKILL_SRC="$REPO_ROOT/.claude/skills/xpu-nightly-ci-fix"
 SKILL_DST="$WORKSPACE/.opencode/skills/xpu-nightly-ci-fix"
 mkdir -p "$SKILL_DST"
 cp "$SKILL_SRC/SKILL.md" "$SKILL_DST/SKILL.md"
