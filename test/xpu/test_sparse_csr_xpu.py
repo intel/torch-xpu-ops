@@ -40,7 +40,6 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
     precisionOverride,
-    skipCPUIf,
     skipCPUIfNoMklSparse,
     skipCUDAIf,
     skipCUDAIfNoSparseGeneric,
@@ -1301,7 +1300,6 @@ class TestSparseCompressed(TestCase):
             subtest("sparse_compressed_tensor_no_size"),
         ],
     )
-    @skipCPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2229")
     def test_invalid_input(self, layout, device, target):
         for (
             label,
