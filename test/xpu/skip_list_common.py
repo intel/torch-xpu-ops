@@ -261,7 +261,12 @@ skip_dict = {
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
-    "export/test_torchbind_xpu.py": None,
+    "export/test_torchbind_xpu.py": (
+        "test_export_obj_torchbind_op_with_autocast_device_xpu",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_aot_eager",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
+    ),
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
