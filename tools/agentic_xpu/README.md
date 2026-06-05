@@ -15,12 +15,18 @@ specific user problem and is made up of two parts:
 This page is an overview. For setup and usage, follow the README inside each
 scenario folder.
 
+![Agentic XPU Overview](assets/overview.png)
+
+
 ## Table of Contents
 
-- [1. CI UT Fix](#1-ci-ut-fix)
-- [2. XPU Alignment](#2-xpu-alignment)
-- [3. Scalable UT Issue Fix](#3-scalable-ut-issue-fix)
-- [4. OOB Model Performance Analysis](#4-oob-model-performance-analysis)
+- [Agentic XPU](#agentic-xpu)
+  - [Table of Contents](#table-of-contents)
+  - [Scenarios](#scenarios)
+    - [1. CI UT Fix](#1-ci-ut-fix)
+    - [2. XPU Alignment](#2-xpu-alignment)
+    - [3. Scalable UT Issue Fix](#3-scalable-ut-issue-fix)
+    - [4. OOB Model Performance Analysis](#4-oob-model-performance-analysis)
 
 ## Scenarios
 
