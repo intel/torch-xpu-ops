@@ -185,7 +185,7 @@ scalar_t ratevl(
   }
   if (absx > 1) {
     i = N - M;
-    return std::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
+    return sycl::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
   } else {
     return num_ans / denom_ans;
   }
@@ -268,7 +268,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   res = std::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
 
   if ((a < 200) && (x < 200)) {
-    res *= sycl::exp(a - x) * std::pow(x / fac, a);
+    res *= sycl::exp(a - x) * sycl::pow(x / fac, a);
   } else {
     num = x - a - lanczos_g + 0.5;
     numfac = num / fac;

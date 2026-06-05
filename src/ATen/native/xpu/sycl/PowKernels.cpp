@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
 
@@ -17,6 +18,8 @@
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
 #include <ATen/native/xpu/sycl/PowKernels.h>
+
+#include <sycl/sycl.hpp>
 
 namespace at {
 namespace native {
@@ -30,7 +33,8 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  using opmath_t = at::opmath_type<Base_type>;
+  return sycl::pow(static_cast<opmath_t>(base), static_cast<opmath_t>(exp));
 }
 
 template <typename T>
