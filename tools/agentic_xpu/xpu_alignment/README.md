@@ -355,7 +355,7 @@ All optional — auto-detected if unset.
 ## 10. File Structure
 
 ```
-.github/skills/xpu-alignment/SKILL.md      ← agent skill (loaded by opencode)
+.claude/skills/xpu-alignment/SKILL.md      ← agent skill (loaded by opencode)
 tools/agentic_xpu/
 ├── .env.example                            ← shared env config (all scenarios)
 └── xpu_alignment/
