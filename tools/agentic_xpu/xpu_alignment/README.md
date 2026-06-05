@@ -4,11 +4,44 @@ Scan `pytorch/pytorch` for backend bug-fix issues, PRs, and commits that may als
 adapt reproducers for XPU, validate locally, route confirmed bugs, and file tracking issues to
 [intel/torch-xpu-ops](https://github.com/intel/torch-xpu-ops).
 
+# TL;DR
+
+## Workflow
+```
+daily_scan.sh / batch_scan.sh
+        │
+        ▼
+  common.sh (env, venv, skill sync)
+        │
+        ├─► opencode + SKILL.md ─► raw scan JSON
+        │
+        ▼
+  audit_scan_report.sh (validate reproducers)
+        │
+        ▼
+  render_issue_ready_report.py ─► full_scan.md
+  render_issue_drafts.py       ─► issue_drafts.md
+```
+
+## QuickStart
+
+```Bash
+cd tools/agentic_xpu
+cp .env.example .env && chmod 600 .env
+# Edit .env — set GITHUB_TOKEN and ISSUE_REPO
+
+cd xpu_alignment
+bash daily_scan.sh          # scan today's upstream commits
+```
+
 ---
 
 ## Table of Contents
 
 - [pytorch-cuda-fix-xpu-alignment — Usage Guide](#pytorch-cuda-fix-xpu-alignment--usage-guide)
+- [TL;DR](#tldr)
+  - [Workflow](#workflow)
+  - [QuickStart](#quickstart)
   - [Table of Contents](#table-of-contents)
   - [1. Prerequisites](#1-prerequisites)
   - [2. One-time Setup](#2-one-time-setup)
@@ -27,6 +60,7 @@ adapt reproducers for XPU, validate locally, route confirmed bugs, and file trac
   - [7. Cron / Automated Daily Scans](#7-cron--automated-daily-scans)
   - [8. Resuming an Interrupted Scan](#8-resuming-an-interrupted-scan)
   - [9. Environment Variables](#9-environment-variables)
+  - [10. File Structure](#10-file-structure)
 
 ---
 
@@ -315,3 +349,22 @@ All optional — auto-detected if unset.
 | `GITHUB_TOKEN` | GitHub personal access token | Inherited from env or `.env` |
 | `GH_TOKEN` | Alias for `GITHUB_TOKEN` (used by `gh` CLI) | Set from `GITHUB_TOKEN` |
 | `XPU_ALIGNMENT_ISSUE_REPO` | Target issue repo for generated filing commands | `intel/torch-xpu-ops` |
+
+---
+
+## 10. File Structure
+
+```
+.github/skills/xpu-alignment/SKILL.md      ← agent skill (loaded by opencode)
+tools/agentic_xpu/
+├── .env.example                            ← shared env config (all scenarios)
+└── xpu_alignment/
+    ├── common.sh                           ← shared helpers (env, venv, gh)
+    ├── daily_scan.sh                       ← single-day scan entry point
+    ├── batch_scan.sh                       ← multi-day scan entry point
+    ├── audit_scan_report.sh                ← validate reproducers
+    ├── render_issue_ready_report.py        ← generate full scan report
+    ├── render_issue_drafts.py              ← generate issue drafts
+    ├── issue_template.yml                  ← issue body template
+    └── README.md
+```
