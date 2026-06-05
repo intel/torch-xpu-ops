@@ -84,27 +84,21 @@ void store_args(
 } // namespace
 
 namespace foreach_internal {
-// Implement std::isnan<IntegralType> for MSVC.
-// taken from
-// https://github.com/pytorch/pytorch/blob/a67691e50803b31e98043d22ae29da4c0135ab3c/aten/src/ATen/native/ReduceOps.cpp#L239-L256
+// Use sycl::isnan for floating-point types, std::isnan for complex types,
+// and return false for integral types (they can never be NaN).
+// sycl::isnan only accepts float, double, and sycl::half.
 namespace {
-#ifdef _MSC_VER
-template <typename T>
-inline typename std::enable_if<std::is_integral<T>::value, bool>::type isnan_(
-    T x) {
-  return false;
-}
-template <typename T>
-inline typename std::enable_if<!std::is_integral<T>::value, bool>::type isnan_(
-    T x) {
-  return std::isnan(x);
-}
-#else
 template <typename T>
 inline bool isnan_(T x) {
-  return std::isnan(x);
+  if constexpr (std::is_integral<T>::value) {
+    return false;
+  } else if constexpr (c10::is_complex<T>::value) {
+    return std::isnan(x);
+  } else {
+    using opmath_t = at::opmath_type<T>;
+    return sycl::isnan(static_cast<opmath_t>(x));
+  }
 }
-#endif
 } // namespace
 
 template <typename T>
