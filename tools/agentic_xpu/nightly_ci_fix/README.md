@@ -66,9 +66,21 @@ source "${ONEAPI_PTI}"
 
 ## Workflow (from SKILL.md)
 
-1. **Parse** — Extract commit ID and failing test cases from the report
-2. **Reproduce** — Build PyTorch, run each failing test on XPU
-3. **Analyze** — Categorize root cause (XPU bug, tolerance, stale skip, upstream regression, infra)
-4. **Fix** — Apply appropriate fix per category
-5. **Verify** — Confirm fix passes, run full test file, lint
-6. **Report** — Write structured summary with root cause / fix / AR per test
+```
+report.md (CI failure report)
+      │
+      ▼
+run_fix.sh (pipeline entry point)
+      │
+      ├─► OpenCode + SKILL.md (6-step workflow)
+      │       │
+      │       ├─ Step 1: Parse failure report
+      │       ├─ Step 2: Reproduce locally
+      │       ├─ Step 3: Analyze & categorize root cause
+      │       ├─ Step 4: Fix
+      │       ├─ Step 5: Verify fix + lint
+      │       └─ Step 6: Generate summary report
+      │
+      ▼
+summary_<date>.md (structured fix report)
+```
