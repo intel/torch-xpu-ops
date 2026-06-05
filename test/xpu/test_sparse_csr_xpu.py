@@ -2014,6 +2014,16 @@ class TestSparseCSR(TestCase):
             sparse3 = torch.sparse_csr_tensor(crow, col, vals, size=(3, 3, 3))
         self.assertEqual(sparse3.to_dense(), expected_2d.unsqueeze(0).expand(3, 3, 3))
 
+        # Case 3: multi-dimensional batch shape (2, 3) — a 2×3 grid of identical matrices.
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse_2d_batch = torch.sparse_csr_tensor(
+                crow, col, vals, size=(2, 3, 3, 3)
+            )
+        self.assertEqual(
+            sparse_2d_batch.to_dense(),
+            expected_2d.unsqueeze(0).unsqueeze(0).expand(2, 3, 3, 3),
+        )
+
     @skipMeta
     @skipCPUIfNoMklSparse
     @coalescedonoff
