@@ -27,12 +27,28 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # AssertionError: Quantized tensor-likes are not close!
+        # Rounding mismatch at quantization midpoint due to hypothesis
+        # derandomize seed difference from _xpu suffix.
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_leaky_relu_observed_output_xpu",
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
         "test_qrelu_xpu",
+        # CPU-only qnnpack backend, not applicable to XPU
+        "test_qsoftmax_qnnpack_xpu",
     ),
-    "quantization/core/test_quantized_tensor_xpu.py": None,
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_qtensor_cuda_xpu",
+        "test_qtensor_masked_fill_cuda_xpu",
+        "test_qtensor_index_put_cuda_xpu",
+        "test_qtensor_index_select_cuda_xpu",
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        "test_per_channel_to_device_xpu",
+        "test_per_tensor_to_device_xpu",
+    ),
     "quantization/core/test_workflow_module_xpu.py": None,
     "quantization/core/test_workflow_ops_xpu.py": (
         # AssertionError:
@@ -218,7 +234,11 @@ skip_dict = {
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": None,
+    "test_view_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_ravel_xpu",
+        "test_flatten_xpu",
+    ),
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
     "functorch/test_eager_transforms_xpu.py": None,
@@ -232,7 +252,16 @@ skip_dict = {
     "test_compile_benchmark_util_xpu.py": None,
     "test_hub_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
-    "test_custom_ops_xpu.py": None,
+    "test_custom_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/3644
+        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
+        "test_backward_dict_grad_for_nontensor",
+        "test_backward_dict_invalid_keys",
+        "test_backward_dict_requires_keys_for_input_optional_tensors",
+        "test_backward_dict_requires_keys_for_input_tensors",
+        "test_backward_grads_are_tensor_or_none",
+        "test_backward_impl_on_existing_op",
+    ),
     "test_flop_counter_xpu.py": None,
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,

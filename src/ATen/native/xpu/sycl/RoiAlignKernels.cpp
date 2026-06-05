@@ -16,6 +16,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -127,12 +128,17 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
           input_ + (roi_batch_ind * channels_ + c) * height_ * width_;
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
 
       // We do average (integral) pooling inside a bin
       // When the grid is empty, output zeros.
@@ -313,12 +319,17 @@ struct RoiAlignBackwardKernel {
           offset_grad_output[ph * h_stride_ + pw * w_stride_];
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
 
       // We do average (integral) pooling inside a bin
       const T count = roi_bin_grid_h * roi_bin_grid_w; // e.g. = 4
