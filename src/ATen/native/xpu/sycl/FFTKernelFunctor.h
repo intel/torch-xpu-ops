@@ -33,6 +33,19 @@ void _fft_conjugate_copy_kernel(
 
 void _fft_fill_with_conjugate_symmetry_(const Tensor& input, IntArrayRef dim_);
 
+TORCH_XPU_API Tensor _fft_c2c_sycl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool forward);
+
+TORCH_XPU_API Tensor& _fft_c2c_sycl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool forward,
+    Tensor& out);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
