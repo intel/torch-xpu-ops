@@ -45,8 +45,9 @@ Create `build_pytorch.env` at the repo root (or set `BUILD_ENV` env var):
 
 ```bash
 export TORCH_XPU_ARCH_LIST=pvc
-ONEAPI_VARS=/opt/intel/oneapi/2026.0/oneapi-vars.sh
-ONEAPI_PTI=/opt/intel/oneapi/pti/latest/env/vars.sh
+ONEAPI_ROOT=${ONEAPI_ROOT:-/opt/intel/oneapi}
+ONEAPI_VARS=${ONEAPI_VARS:-${ONEAPI_ROOT}/setvars.sh}
+ONEAPI_PTI=${ONEAPI_PTI:-${ONEAPI_ROOT}/pti/latest/env/vars.sh}
 
 export USE_XPU=1
 export USE_CUDA=0

@@ -46,7 +46,7 @@ For each failure, determine the root cause category:
 
 ### Step 4: Fix
 
-- For newly added test case: try to enable it for XPU, if not possible, leave it skipped with a proper reason.
+- For newly added test case: try to enable it for XPU. If it cannot be enabled directly, leave it skipped with a proper reason, add a TODO with issue ID, and file a tracking issue in `intel/torch-xpu-ops` for engineering follow-up.
 - For a regression test, first try to find the guilty commit by reviewing the recent commit history and identifying which change introduced the failure. Apply an XPU-specific fix if necessary.
 - If can not identify the guilty commit, start analysis, compare with cuda/rocm backend, and try to find the root cause.
 
