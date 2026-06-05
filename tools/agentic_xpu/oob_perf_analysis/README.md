@@ -7,6 +7,26 @@
 Agent-assisted workflow for analyzing PyTorch OOB model performance on Intel XPU
 vs NVIDIA CUDA using T1/T2/R roofline metrics.
 
+## Workflow
+
+```
+launch_session.py (trigger 6 Jenkins jobs)
+        │
+        ▼
+download_jenkins_artifacts.py ─► raw_logs/<session>/
+        │
+        ▼
+prepare_flat_views.py ─► flat_views/<session>/
+        │
+        ├─► generate_all_eager_reports.py ─► per-model T1/T2/R reports
+        ├─► generate_fleet_summary.py     ─► fleet summary
+        ├─► compare_graphs.py             ─► graph consistency report
+        └─► compare_projection_vs_actual.py ─► T1 vs actual analysis
+        │
+        ▼
+oob-insights SKILL.md ─► insights_summary.md
+```
+
 ## Directory Layout
 
 ```
@@ -112,12 +132,6 @@ Requires `JENKINS_API_TOKEN` and `HF_TOKEN` environment variables.
 | T2 | Actual end-to-end CPU wall clock time |
 | R = T1/T2 | Software efficiency (1.0 = perfect roofline utilization) |
 
-## Hardware Specs (built-in fallback)
-
-| Platform | Peak FP16 (TFLOPS) | DRAM BW (GB/s) |
-|----------|-------------------:|---------------:|
-| B70 (G31) | 154.0 | 532.0 |
-| 4080 SUPER | 100.96 | 716.8 |
-| B580 | 93.0 | 410.0 |
+## Hardware Specs
 
 Override via `--config hardware_specs.yaml` on report scripts.
