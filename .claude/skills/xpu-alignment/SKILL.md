@@ -146,7 +146,7 @@ Requirements:
 
 Generate `reports/issue_drafts.md` for all `confirmed` and `related-failure` candidates.
 
-The file structure:
+The CI Body Structure:
 
 ```
 ## Issue 1
