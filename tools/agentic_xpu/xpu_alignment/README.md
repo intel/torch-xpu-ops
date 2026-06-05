@@ -28,7 +28,7 @@ daily_scan.sh / batch_scan.sh
 ```Bash
 cd tools/agentic_xpu
 cp .env.example .env && chmod 600 .env
-# Edit .env — set GITHUB_TOKEN and ISSUE_REPO
+# Edit .env — set GITHUB_TOKEN
 
 cd xpu_alignment
 bash daily_scan.sh          # scan today's upstream commits
@@ -355,7 +355,7 @@ All optional — auto-detected if unset.
 ## 10. File Structure
 
 ```
-.claude/skills/xpu-alignment/SKILL.md      ← agent skill (loaded by opencode)
+.claude/skills/pytorch-cuda-fix-xpu-alignment/SKILL.md  ← agent skill (loaded by opencode)
 tools/agentic_xpu/
 ├── .env.example                            ← shared env config (all scenarios)
 └── xpu_alignment/
@@ -365,6 +365,5 @@ tools/agentic_xpu/
     ├── audit_scan_report.sh                ← validate reproducers
     ├── render_issue_ready_report.py        ← generate full scan report
     ├── render_issue_drafts.py              ← generate issue drafts
-    ├── issue_template.yml                  ← issue body template
     └── README.md
 ```
