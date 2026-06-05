@@ -57,9 +57,9 @@ Starting point: [nightly_ci_fix/README.md](nightly_ci_fix/README.md)
 
 When a bug is fixed on another backend (CUDA, for example), the same bug may also
 affect XPU. This scenario routinely scans `pytorch/pytorch` for issues, PRs, and
-bug-fix commits, and generates fix PRs accordingly. The `xpu-alignment` agent
-collects candidates that may affect XPU, verifies them locally, and submits an
-issue. The Issue Triage Agent then drives the further fix.
+bug-fix commits, and generates issue-ready reports and issue drafts for filing.
+The `xpu-alignment` agent collects candidates that may affect XPU, verifies them
+locally, and prepares issues for triage and follow-up fixes.
 
 ![XPU Alignment Workflow](assets/xpu_alignment.png)
 
