@@ -36,9 +36,9 @@ from torch.testing._internal.common_dtype import (
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_utils import (
     IS_WINDOWS,
+    make_fullrank_matrices_with_distinct_singular_values,
     parametrize,
     run_tests,
-    make_fullrank_matrices_with_distinct_singular_values,
     setBlasBackendsToDefaultFinally,
     setLinalgBackendsToDefaultFinally,
     skipIfTorchDynamo,
@@ -723,109 +723,131 @@ if hasattr(TestLinalg, "test_rowwise_scaled_gemm_numerics_tunableop"):
         "XPU/oneDNN does not support Float8_e4m3fnuz (CUDA primary is ROCm-only)"
     )(TestLinalg.test_rowwise_scaled_gemm_numerics_tunableop)
 
+
 @skipIfTorchDynamo("Runtime error with torch._C._linalg.linalg_lu_factor")
 @dtypes(*floating_and_complex_types())
 def linalg_lu_family(self, device, dtype):
-        # Tests torch.lu
-        #       torch.linalg.lu_factor
-        #       torch.linalg.lu_factor_ex
-        #       torch.lu_unpack
-        #       torch.linalg.lu_solve
-        #       torch.linalg.solve
-        make_arg_full = partial(make_fullrank_matrices_with_distinct_singular_values, device=device, dtype=dtype)
-        make_arg = partial(make_tensor, device=device, dtype=dtype)
+    # Tests torch.lu
+    #       torch.linalg.lu_factor
+    #       torch.linalg.lu_factor_ex
+    #       torch.lu_unpack
+    #       torch.linalg.lu_solve
+    #       torch.linalg.solve
+    make_arg_full = partial(
+        make_fullrank_matrices_with_distinct_singular_values, device=device, dtype=dtype
+    )
+    make_arg = partial(make_tensor, device=device, dtype=dtype)
 
-        def run_test(A, pivot, singular, fn):
-            k = min(A.shape[-2:])
-            batch = A.shape[:-2]
-            check_errors = (fn == torch.linalg.lu_factor)
-            if singular and check_errors:
-                # It may or may not throw as the LU decomposition without pivoting
-                # may still succeed for singular matrices
-                try:
-                    LU, pivots = fn(A, pivot=pivot)
-                except RuntimeError:
-                    return
-            else:
-                LU, pivots = fn(A, pivot=pivot)[:2]
+    def run_test(A, pivot, singular, fn):
+        k = min(A.shape[-2:])
+        batch = A.shape[:-2]
+        check_errors = fn == torch.linalg.lu_factor
+        if singular and check_errors:
+            # It may or may not throw as the LU decomposition without pivoting
+            # may still succeed for singular matrices
+            try:
+                LU, pivots = fn(A, pivot=pivot)
+            except RuntimeError:
+                return
+        else:
+            LU, pivots = fn(A, pivot=pivot)[:2]
 
-            self.assertEqual(LU.size(), A.shape)
-            self.assertEqual(pivots.size(), batch + (k,))
+        self.assertEqual(LU.size(), A.shape)
+        self.assertEqual(pivots.size(), batch + (k,))
 
-            if not pivot:
-                self.assertEqual(pivots, torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(batch + (k, )))
+        if not pivot:
+            self.assertEqual(
+                pivots,
+                torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
+                    batch + (k,)
+                ),
+            )
 
-            P, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=pivot)
+        P, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=pivot)
 
-            self.assertEqual(P @ L @ U if pivot else L @ U, A)
+        self.assertEqual(P @ L @ U if pivot else L @ U, A)
 
-            PLU = torch.linalg.lu(A, pivot=pivot)
-            self.assertEqual(P, PLU.P)
-            self.assertEqual(L, PLU.L)
-            self.assertEqual(U, PLU.U)
+        PLU = torch.linalg.lu(A, pivot=pivot)
+        self.assertEqual(P, PLU.P)
+        self.assertEqual(L, PLU.L)
+        self.assertEqual(U, PLU.U)
 
-            if not singular and A.size(-2) == A.size(-1):
-                nrhs = ((), (1,), (3,))
-                for left, rhs in itertools.product((True, False), nrhs):
-                    # Vector case when left = False is not allowed
-                    if not left and rhs == ():
-                        continue
-                    if left:
-                        shape_B = A.shape[:-1] + rhs
-                    else:
-                        shape_B = A.shape[:-2] + rhs + A.shape[-1:]
-                    B = make_arg(shape_B)
+        if not singular and A.size(-2) == A.size(-1):
+            nrhs = ((), (1,), (3,))
+            for left, rhs in itertools.product((True, False), nrhs):
+                # Vector case when left = False is not allowed
+                if not left and rhs == ():
+                    continue
+                if left:
+                    shape_B = A.shape[:-1] + rhs
+                else:
+                    shape_B = A.shape[:-2] + rhs + A.shape[-1:]
+                B = make_arg(shape_B)
 
-                    # Test linalg.lu_solve. It does not support vectors as rhs
-                    # See https://github.com/pytorch/pytorch/pull/74045#issuecomment-1112304913
-                    if rhs != ():
-                        for adjoint in (True, False):
-                            X = torch.linalg.lu_solve(LU, pivots, B, left=left, adjoint=adjoint)
-                            A_adj = A.mH if adjoint else A
-                            if left:
-                                self.assertEqual(B, A_adj @ X)
-                            else:
-                                self.assertEqual(B, X @ A_adj)
+                # Test linalg.lu_solve. It does not support vectors as rhs
+                # See https://github.com/pytorch/pytorch/pull/74045#issuecomment-1112304913
+                if rhs != ():
+                    for adjoint in (True, False):
+                        X = torch.linalg.lu_solve(
+                            LU, pivots, B, left=left, adjoint=adjoint
+                        )
+                        A_adj = A.mH if adjoint else A
+                        if left:
+                            self.assertEqual(B, A_adj @ X)
+                        else:
+                            self.assertEqual(B, X @ A_adj)
 
-                    # Test linalg.solve
-                    X = torch.linalg.solve(A, B, left=left)
-                    X_ = X.unsqueeze(-1) if rhs == () else X
-                    B_ = B.unsqueeze(-1) if rhs == () else B
-                    if left:
-                        self.assertEqual(B_, A @ X_)
-                    else:
-                        self.assertEqual(B_, X_ @ A)
+                # Test linalg.solve
+                X = torch.linalg.solve(A, B, left=left)
+                X_ = X.unsqueeze(-1) if rhs == () else X
+                B_ = B.unsqueeze(-1) if rhs == () else B
+                if left:
+                    self.assertEqual(B_, A @ X_)
+                else:
+                    self.assertEqual(B_, X_ @ A)
 
-        sizes = ((3, 3), (5, 5), (4, 2), (3, 4), (0, 0), (0, 1), (1, 0))
-        batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
-        pivots = (True, False) if self.device_type == "cuda" else (True,)
-        fns = (partial(torch.lu, get_infos=True), torch.linalg.lu_factor, torch.linalg.lu_factor_ex)
-        for ms, batch, pivot, singular, fn in itertools.product(sizes, batches, pivots, (True, False), fns):
-            shape = batch + ms
-            A = make_arg(shape) if singular else make_arg_full(*shape)
-            # Just do one of them on singular matrices
-            if A.numel() == 0 and not singular:
-                continue
+    sizes = ((3, 3), (5, 5), (4, 2), (3, 4), (0, 0), (0, 1), (1, 0))
+    batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
+    pivots = (True, False) if self.device_type == "cuda" else (True,)
+    fns = (
+        partial(torch.lu, get_infos=True),
+        torch.linalg.lu_factor,
+        torch.linalg.lu_factor_ex,
+    )
+    for ms, batch, pivot, singular, fn in itertools.product(
+        sizes, batches, pivots, (True, False), fns
+    ):
+        shape = batch + ms
+        A = make_arg(shape) if singular else make_arg_full(*shape)
+        # Just do one of them on singular matrices
+        if A.numel() == 0 and not singular:
+            continue
+        run_test(A, pivot, singular, fn)
+
+        # Reproducer of a magma bug,
+        # see https://bitbucket.org/icl/magma/issues/13/getrf_batched-kernel-produces-nans-on
+        # This is also a bug in cuSOLVER < 11.3
+        if dtype == torch.double and singular:
+            A = torch.ones(batch + ms, dtype=dtype, device=device)
             run_test(A, pivot, singular, fn)
 
-            # Reproducer of a magma bug,
-            # see https://bitbucket.org/icl/magma/issues/13/getrf_batched-kernel-produces-nans-on
-            # This is also a bug in cuSOLVER < 11.3
-            if (dtype == torch.double
-               and singular):
-                A = torch.ones(batch + ms, dtype=dtype, device=device)
-                run_test(A, pivot, singular, fn)
+    # Info should be positive for rank deficient matrices
+    A = torch.ones(5, 3, 3, device=device)
+    self.assertTrue((torch.linalg.lu_factor_ex(A, pivot=True).info >= 0).all())
 
-        # Info should be positive for rank deficient matrices
-        A = torch.ones(5, 3, 3, device=device)
-        self.assertTrue((torch.linalg.lu_factor_ex(A, pivot=True).info >= 0).all())
-
-        if self.device_type == 'cpu':
-            # Error checking, no pivoting variant on CPU
-            fns = [torch.lu, torch.linalg.lu_factor, torch.linalg.lu_factor_ex, torch.linalg.lu]
-            for f in fns:
-                with self.assertRaisesRegex(RuntimeError, 'LU without pivoting is not implemented on the CPU'):
-                    f(torch.empty(1, 2, 2), pivot=False)
+    if self.device_type == "cpu":
+        # Error checking, no pivoting variant on CPU
+        fns = [
+            torch.lu,
+            torch.linalg.lu_factor,
+            torch.linalg.lu_factor_ex,
+            torch.linalg.lu,
+        ]
+        for f in fns:
+            with self.assertRaisesRegex(
+                RuntimeError, "LU without pivoting is not implemented on the CPU"
+            ):
+                f(torch.empty(1, 2, 2), pivot=False)
 
 
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
