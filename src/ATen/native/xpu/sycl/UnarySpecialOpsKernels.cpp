@@ -16,6 +16,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
@@ -51,28 +52,28 @@ void sigmoid_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erf(float(a));
+    return sycl::erf(float(a));
   }
 };
 
 template <>
 struct ErfFunctor<double> {
   double operator()(double a) const {
-    return std::erf(a);
+    return sycl::erf(a);
   }
 };
 
 template <typename scalar_t>
 struct ErfcFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erfc(float(a));
+    return sycl::erfc(float(a));
   }
 };
 
 template <>
 struct ErfcFunctor<double> {
   double operator()(double a) const {
-    return std::erfc(a);
+    return sycl::erfc(a);
   }
 };
 
@@ -98,13 +99,6 @@ template <typename scalar_t>
 struct ErfinvFunctor {
   scalar_t operator()(scalar_t in) const {
     return calc_erfinv(in);
-  }
-};
-
-template <>
-struct ErfinvFunctor<c10::Half> {
-  c10::Half operator()(c10::Half in) const {
-    return calc_erfinv(float(in));
   }
 };
 
