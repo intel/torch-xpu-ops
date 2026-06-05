@@ -2198,7 +2198,7 @@ Tensor& index_select_kernel(
   at::assert_no_overlap(out, self);
   at::assert_no_overlap(out, index);
 
-  dim = at::maybe_wrap_dim(dim, self);
+  dim = at::maybe_wrap_dim(dim, self.dim());
   TORCH_CHECK(
       self.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "Tensor too large or too many (> ",
