@@ -194,7 +194,7 @@ python tools/agentic_xpu/issue_handler/run_pipeline.py --once --issues 12 15 23
 ### File Structure
 
 ```
-.github/skills/issue-handler/
+.claude/skills/issue-handler/
 ├── issue-fix/SKILL.md
 ├── issue-format/SKILL.md
 ├── issue-triage/SKILL.md
