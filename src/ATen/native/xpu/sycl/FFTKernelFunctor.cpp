@@ -11,6 +11,7 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/Resize.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -57,106 +58,6 @@ static DimVector _sort_dims(
       sorted_dims.end() - exclude_last,
       [&](int64_t a, int64_t b) { return self_strides[a] > self_strides[b]; });
   return sorted_dims;
-}
-
-// Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
-Tensor& _exec_fft(
-    Tensor& out,
-    Tensor self,
-    IntArrayRef out_sizes,
-    IntArrayRef dim,
-    bool onesided,
-    bool forward) {
-  const auto ndim = self.dim();
-  const int64_t signal_ndim = dim.size();
-  const auto batch_dims = ndim - signal_ndim;
-
-  // Permute dimensions so batch dimensions come first, and in stride order
-  // This maximizes data locality when collapsing to a single batch dimension
-  DimVector dim_permute(ndim);
-  std::iota(dim_permute.begin(), dim_permute.end(), int64_t{0});
-
-  c10::SmallVector<bool, kDimVectorStaticSize> is_transformed_dim(ndim);
-  for (const auto& d : dim) {
-    is_transformed_dim[d] = true;
-  }
-
-  auto batch_end =
-      std::partition(dim_permute.begin(), dim_permute.end(), [&](int64_t d) {
-        return !is_transformed_dim[d];
-      });
-
-  auto self_strides = self.strides();
-  std::sort(dim_permute.begin(), batch_end, [&](int64_t a, int64_t b) {
-    return self_strides[a] > self_strides[b];
-  });
-  std::copy(dim.cbegin(), dim.cend(), batch_end);
-
-  auto input = self.permute(dim_permute);
-
-  // Collapse batch dimensions into a single dimension
-  DimVector batched_sizes(signal_ndim + 1);
-  batched_sizes[0] = -1;
-  std::copy(
-      input.sizes().cbegin() + batch_dims,
-      input.sizes().cend(),
-      batched_sizes.begin() + 1);
-  input = input.reshape(batched_sizes);
-
-  const auto in_sizes = input.sizes();
-  const auto batch_size = in_sizes[0];
-  DimVector signal_size(signal_ndim + 1);
-  signal_size[0] = batch_size;
-
-  for (const auto i : c10::irange(signal_ndim)) {
-    auto in_size = in_sizes[i + 1];
-    auto out_size = out_sizes[dim[i]];
-    signal_size[i + 1] = std::max(in_size, out_size);
-    TORCH_INTERNAL_ASSERT(
-        in_size == signal_size[i + 1] ||
-        in_size == (signal_size[i + 1] / 2) + 1);
-    TORCH_INTERNAL_ASSERT(
-        out_size == signal_size[i + 1] ||
-        out_size == (signal_size[i + 1] / 2) + 1);
-  }
-
-  batched_sizes[0] = batch_size;
-  DimVector batched_out_sizes(batched_sizes.begin(), batched_sizes.end());
-
-  for (const auto i : c10::irange(dim.size())) {
-    batched_out_sizes[i + 1] = out_sizes[dim[i]];
-  }
-
-  out.resize_(batched_out_sizes, MemoryFormat::Contiguous);
-
-  // run the FFT
-  _fft_with_size_sycl(
-      out,
-      input,
-      signal_ndim,
-      input.is_complex(),
-      out.is_complex(),
-      !forward,
-      signal_size,
-      onesided);  
-
-  // Inplace reshaping to original batch shape and inverting the dimension
-  // permutation
-  DimVector out_strides(ndim);
-  int64_t batch_numel = 1;
-
-  for (int64_t i = batch_dims - 1; i >= 0; --i) {
-    out_strides[dim_permute[i]] = batch_numel * out.stride(0);
-    batch_numel *= out_sizes[dim_permute[i]];
-  }
-
-  for (const auto i : c10::irange(batch_dims, ndim)) {
-    out_strides[dim_permute[i]] = out.stride(1 + (i - batch_dims));
-  }
-
-  out.as_strided_(out_sizes, out_strides, out.storage_offset());
-
-  return out;
 }
 
 double _dft_scale(
@@ -445,11 +346,40 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
 
 
 constexpr int supported_sizes[][3] = { {512, 32, 16},
-                             {768, 32, 24},
-                             {1024, 32, 32}};
+                                       {768, 32, 24},
+                                       {1024, 32, 32}};
 
 template<typename T>
-void calculate_twiddle_factors(sycl::queue &q, descriptor &desc) {
+struct TwiddleTableKernel2FactsFunctor {
+    void operator()(sycl::item<2> item) const {
+        const int row = item.get_id(0);
+        const int col = item.get_id(1);
+        const T theta = (2.0*row*col) / (fact0_*fact1_);
+        T * cosPtr = twidl_buf_ + row*fact1_*2 + col*2;
+        T * sinPtr = twidl_buf_ + row*fact1_*2 + col*2 + 1;
+        *cosPtr = scale_ * sycl::cospi(theta);
+        *sinPtr = scale_ * sycl::sinpi(theta);
+    }
+
+    TwiddleTableKernel2FactsFunctor(
+        std::int64_t fact0,
+        std::int64_t fact1,
+        T* twidl_buf,
+        T scale)
+        : fact0_(fact0),
+          fact1_(fact1),
+          twidl_buf_(twidl_buf),
+          scale_(scale) {}
+
+ private:
+    std::int64_t fact0_;
+    std::int64_t fact1_;
+    T* twidl_buf_;
+    T scale_;
+};
+
+template<typename T>
+void calculate_twiddle_factors(sycl::queue &q, fft_descriptor &desc) {
     for(size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
         auto fact0 = desc.facts[dim][0];
         auto fact1 = desc.facts[dim][1];
@@ -471,24 +401,16 @@ void calculate_twiddle_factors(sycl::queue &q, descriptor &desc) {
                 twidl_buf = (T *)desc.twidl_table[dim][i];
             }
 
-            auto twidlTableKernel2Facts = [=](sycl::item<2> item) {
-                const int row = item.get_id(0);
-                const int col = item.get_id(1);
-                const T theta = (2.0*row*col) / (fact0*fact1);
-                T * cosPtr = twidl_buf + row*fact1*2 + col*2;
-                T * sinPtr = twidl_buf + row*fact1*2 + col*2 + 1;
-                *cosPtr = scale * sycl::cospi(theta);
-                *sinPtr = scale * sycl::sinpi(theta);
-            };
+            auto ker = TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
             q.submit([&](sycl::handler &h) {
-                h.parallel_for(sycl::range<2>(fact0, fact1), twidlTableKernel2Facts);
+                h.parallel_for(sycl::range<2>(fact0, fact1), ker);
             }).wait();
         }
     }
 }
 
 template<typename T>
-void commit(sycl::queue &q, descriptor &desc) {
+void commit(sycl::queue &q, fft_descriptor &desc) {
     if(!q.get_device().is_gpu()) {
         throw std::runtime_error("Device is not a GPU");
     }
@@ -512,9 +434,9 @@ void commit(sycl::queue &q, descriptor &desc) {
     auto src_bundle = syclexp::create_kernel_bundle_from_source(q.get_context(), syclexp::source_language::sycl, kernel_src);
 
     for(size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
-        for(int i = 0; i < sizeof(sizes)/sizeof(sizes[0]); ++i) {
-            if(desc.fft_len[dim] == sizes[i][0]) {
-                desc.facts.push_back({sizes[i][1], sizes[i][2]});
+        for(int i = 0; i < sizeof(supported_sizes)/sizeof(supported_sizes[0]); ++i) {
+            if(desc.fft_len[dim] == supported_sizes[i][0]) {
+                desc.facts.push_back({supported_sizes[i][1], supported_sizes[i][2]});
                 break;
             }
         }
@@ -637,7 +559,7 @@ void commit(sycl::queue &q, descriptor &desc) {
 }
 
 template<typename T>
-void set_workspace(T *workspace, sycl::queue &q, descriptor &desc) {
+void set_workspace(T *workspace, sycl::queue &q, fft_descriptor &desc) {
     if(workspace == nullptr) {
         throw std::runtime_error("Workspace pointer is null");
     }
@@ -668,7 +590,7 @@ void set_workspace(T *workspace, sycl::queue &q, descriptor &desc) {
     calculate_twiddle_factors<T>(q, desc);
 }
 
-void free_descriptor(sycl::queue &q, descriptor &desc) {
+void free_descriptor(sycl::queue &q, fft_descriptor &desc) {
     for(int dim = 0; dim < 3; ++dim) {
         for(int dir = 0; dir < 2; ++dir) {
             if(desc.twidl_table[dim][dir] && !desc.external_workspace) {
@@ -684,10 +606,13 @@ void free_descriptor(sycl::queue &q, descriptor &desc) {
 }
 
 template <typename T>
-static sycl::event compute(sycl::queue &q, descriptor &desc, const T *in, T *out, int dir) {
+static sycl::event compute(sycl::queue &q, fft_descriptor &desc, const T *in, T *out, int dir) {
     const char *dir_suffix = (dir == 0) ? "_fwd" : "_bwd";
     sycl::event prev_ev;
     for(auto dim = 0; dim < desc.fft_len.size(); ++dim) {
+        if(desc.external_workspace && desc.twidl_table[dim][dir] == nullptr) {
+            throw std::runtime_error("set_workspace must be called with a valid workspace before compute");
+        }
         auto &bundle = *(desc.exe_bundle[dim][dir]);
         std::string kernel_name = "dft_2_facts_kernel_" + std::to_string(dim) + dir_suffix;
         auto kernel = bundle.ext_oneapi_get_kernel(kernel_name);
@@ -702,7 +627,7 @@ static sycl::event compute(sycl::queue &q, descriptor &desc, const T *in, T *out
             h.set_arg(0, input);
             h.set_arg(1, out);
             h.set_arg(2, sycl::local_accessor<T, 1>(desc.facts[dim][0] * desc.facts[dim][1] * 2, h));
-            h.set_arg(3, static_cast<const T *>(desc.twidl_buf[dim][dir]));
+            h.set_arg(3, static_cast<const T *>(desc.twidl_table[dim][dir]));
 
             h.parallel_for(ndrange, kernel);
         });
@@ -758,7 +683,6 @@ void _fft_with_size_sycl(
   desc.fwd_scale = 1.0;
   desc.bwd_scale = 1.0;
 
-  auto scale = _dft_scale(dims, norm_sizes, normalization);
   if (!inverse) {
     desc.which_dir = 0;
 
@@ -767,7 +691,6 @@ void _fft_with_size_sycl(
 
     desc.fwd_strides = input_strides;
     desc.bwd_strides = output_strides;
-    desc.fwd_scale = scale;
   } else {
     desc.which_dir = 1;
 
@@ -776,7 +699,6 @@ void _fft_with_size_sycl(
 
     desc.fwd_strides = output_strides;
     desc.bwd_strides = input_strides;
-    desc.bwd_scale = scale;
   }
 
   auto run = [&](auto type_tag) {
@@ -805,6 +727,106 @@ void _fft_with_size_sycl(
     run(double{});
   }
   queue.throw_asynchronous();
+}
+
+// Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
+Tensor& _exec_fft(
+    Tensor& out,
+    Tensor self,
+    IntArrayRef out_sizes,
+    IntArrayRef dim,
+    bool onesided,
+    bool forward) {
+  const auto ndim = self.dim();
+  const int64_t signal_ndim = dim.size();
+  const auto batch_dims = ndim - signal_ndim;
+
+  // Permute dimensions so batch dimensions come first, and in stride order
+  // This maximizes data locality when collapsing to a single batch dimension
+  DimVector dim_permute(ndim);
+  std::iota(dim_permute.begin(), dim_permute.end(), int64_t{0});
+
+  c10::SmallVector<bool, kDimVectorStaticSize> is_transformed_dim(ndim);
+  for (const auto& d : dim) {
+    is_transformed_dim[d] = true;
+  }
+
+  auto batch_end =
+      std::partition(dim_permute.begin(), dim_permute.end(), [&](int64_t d) {
+        return !is_transformed_dim[d];
+      });
+
+  auto self_strides = self.strides();
+  std::sort(dim_permute.begin(), batch_end, [&](int64_t a, int64_t b) {
+    return self_strides[a] > self_strides[b];
+  });
+  std::copy(dim.cbegin(), dim.cend(), batch_end);
+
+  auto input = self.permute(dim_permute);
+
+  // Collapse batch dimensions into a single dimension
+  DimVector batched_sizes(signal_ndim + 1);
+  batched_sizes[0] = -1;
+  std::copy(
+      input.sizes().cbegin() + batch_dims,
+      input.sizes().cend(),
+      batched_sizes.begin() + 1);
+  input = input.reshape(batched_sizes);
+
+  const auto in_sizes = input.sizes();
+  const auto batch_size = in_sizes[0];
+  DimVector signal_size(signal_ndim + 1);
+  signal_size[0] = batch_size;
+
+  for (const auto i : c10::irange(signal_ndim)) {
+    auto in_size = in_sizes[i + 1];
+    auto out_size = out_sizes[dim[i]];
+    signal_size[i + 1] = std::max(in_size, out_size);
+    TORCH_INTERNAL_ASSERT(
+        in_size == signal_size[i + 1] ||
+        in_size == (signal_size[i + 1] / 2) + 1);
+    TORCH_INTERNAL_ASSERT(
+        out_size == signal_size[i + 1] ||
+        out_size == (signal_size[i + 1] / 2) + 1);
+  }
+
+  batched_sizes[0] = batch_size;
+  DimVector batched_out_sizes(batched_sizes.begin(), batched_sizes.end());
+
+  for (const auto i : c10::irange(dim.size())) {
+    batched_out_sizes[i + 1] = out_sizes[dim[i]];
+  }
+
+  out.resize_(batched_out_sizes, MemoryFormat::Contiguous);
+
+  // run the FFT
+  _fft_with_size_sycl(
+      out,
+      input,
+      signal_ndim,
+      input.is_complex(),
+      out.is_complex(),
+      !forward,
+      signal_size,
+      onesided);  
+
+  // Inplace reshaping to original batch shape and inverting the dimension
+  // permutation
+  DimVector out_strides(ndim);
+  int64_t batch_numel = 1;
+
+  for (int64_t i = batch_dims - 1; i >= 0; --i) {
+    out_strides[dim_permute[i]] = batch_numel * out.stride(0);
+    batch_numel *= out_sizes[dim_permute[i]];
+  }
+
+  for (const auto i : c10::irange(batch_dims, ndim)) {
+    out_strides[dim_permute[i]] = out.stride(1 + (i - batch_dims));
+  }
+
+  out.as_strided_(out_sizes, out_strides, out.storage_offset());
+
+  return out;
 }
 
 } // namespace impl
@@ -954,7 +976,7 @@ bool _is_fft_size_supported_sycl(
   for (const auto& d : dim) {
     auto size = orig_self.sizes()[d];
     bool found = false;
-    for (const auto& size_pair : supported_sizes) {
+    for (const auto& size_pair : impl::supported_sizes) {
       if (size == size_pair[0]) {
         found = true;
         break;

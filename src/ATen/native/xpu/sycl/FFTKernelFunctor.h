@@ -33,6 +33,10 @@ void _fft_conjugate_copy_kernel(
 
 void _fft_fill_with_conjugate_symmetry_(const Tensor& input, IntArrayRef dim_);
 
+TORCH_XPU_API bool _is_fft_size_supported_sycl(
+    const Tensor& orig_self,
+    IntArrayRef dim);
+
 TORCH_XPU_API Tensor _fft_c2c_sycl(
     const Tensor& self,
     IntArrayRef dim,

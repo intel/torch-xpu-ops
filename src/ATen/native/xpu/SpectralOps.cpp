@@ -12,6 +12,7 @@
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #else
 #include <ATen/native/Resize.h>
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/_fft_c2c_native.h>
 #include <ATen/ops/_fft_c2r_native.h>
 #include <ATen/ops/_fft_r2c_native.h>
@@ -26,7 +27,7 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
-  if(native::xpu::_is_fft_size_supported(self, dim)) {
+  if(native::xpu::_is_fft_size_supported_sycl(self, dim)) {
     return native::xpu::_fft_c2c_sycl(self, dim, normalization, forward);
   }
 #if defined(USE_ONEMKL_XPU)
@@ -46,7 +47,7 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
-  if(native::xpu::_is_fft_size_supported(self, dim)) {
+  if(native::xpu::_is_fft_size_supported_sycl(self, dim)) {
     return native::xpu::_fft_c2c_sycl_out(self, dim, normalization, forward, out);
   }
 #if defined(USE_ONEMKL_XPU)
