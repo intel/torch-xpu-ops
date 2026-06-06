@@ -33,6 +33,7 @@ from torch._subclasses.fake_tensor import (
     extract_tensor_metadata,
     FakeTensor,
     FakeTensorConverter,
+    FakeTensorDeviceMismatchError,
     FakeTensorMode,
     MetadataMismatchError,
     unset_fake_temporarily,
@@ -245,7 +246,8 @@ class FakeTensorTest(TestCase):
         fake_y = mode.from_tensor(y)
 
         with self.assertRaisesRegex(
-            RuntimeError, "Expected all tensors to be on the same device"
+            FakeTensorDeviceMismatchError,
+            "Expected all tensors to be on the same device"
         ) as exc:
             torch.nextafter(fake_x, fake_y)
 
@@ -278,7 +280,8 @@ class FakeTensorTest(TestCase):
             y = torch.randn(10, device=device_type)
 
             with self.assertRaisesRegex(
-                RuntimeError, "Expected all tensors to be on the same device"
+                FakeTensorDeviceMismatchError,
+                "Expected all tensors to be on the same device"
             ) as exc:
                 x + y
 
@@ -2676,7 +2679,8 @@ class FakeTensorPreferDeviceType(TestCase):
 
             # Without the config, this should raise a device mismatch error
             with self.assertRaisesRegex(
-                RuntimeError, "Expected all tensors to be on the same device"
+                RuntimeError,
+                "Expected all tensors to be on the same device"
             ):
                 mixed_device_op(cuda_tensor, None)
 
@@ -2714,7 +2718,8 @@ class FakeTensorPreferDeviceType(TestCase):
 
             # After exiting the config context, should raise error again
             with self.assertRaisesRegex(
-                RuntimeError, "Expected all tensors to be on the same device"
+                RuntimeError,
+                "Expected all tensors to be on the same device"
             ):
                 mixed_device_op(cuda_tensor, None)
 
