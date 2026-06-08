@@ -19,15 +19,18 @@ cd "$(dirname "$0")"
 CCL_ROOT=${CCL_ROOT:-/opt/intel/oneapi/2025.3}
 MPI_ROOT=${I_MPI_ROOT:-${CCL_ROOT}}
 
-icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
-     -I"${CCL_ROOT}/include" \
-     -I"${MPI_ROOT}/include" \
-     -L"${CCL_ROOT}/lib" \
-     -L"${MPI_ROOT}/lib" \
-     -lccl -lmpi \
-     bench_ccl_collectives.cpp -o bench_ccl_collectives
+CXXFLAGS="-fsycl -fsycl-targets=spir64_gen -Xs \"-device bmg\" -O2 -std=c++17 \
+          -I${CCL_ROOT}/include -I${MPI_ROOT}/include \
+          -L${CCL_ROOT}/lib -L${MPI_ROOT}/lib \
+          -lccl -lmpi"
 
+# shellcheck disable=SC2086
+eval icpx $CXXFLAGS bench_ccl_collectives.cpp -o bench_ccl_collectives
 echo "[build] OK -> $(pwd)/bench_ccl_collectives"
+
+# shellcheck disable=SC2086
+eval icpx $CXXFLAGS bench_ccl_prefill.cpp -o bench_ccl_prefill
+echo "[build] OK -> $(pwd)/bench_ccl_prefill"
 
 if [[ "${1:-}" == "build" ]]; then
     exit 0
