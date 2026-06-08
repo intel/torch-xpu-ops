@@ -45,39 +45,19 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  runner:
-    runs-on: ${{ inputs.runner }}
-    name: get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-      hostname: ${{ steps.runner-info.outputs.hostname }}
-      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   test-in-container:
-    needs: runner
     timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
-    runs-on: ${{ needs.runner.outputs.runner_id }}
+    runs-on: ${{ inputs.runner }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
-                        --only-rerun 'crashed while running' --reruns 2
-                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -88,7 +68,7 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+      - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
@@ -106,12 +86,15 @@ jobs:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 /__w /github ./ -R
 
   test-in-baremetal:
-    needs: runner
     timeout-minutes: 600
     if: ${{ contains(inputs.ut, 'distributed') }}
-    runs-on: ${{ needs.runner.outputs.runner_id }}
+    runs-on: ${{ inputs.runner }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
@@ -125,7 +108,7 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+      - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
@@ -260,7 +243,12 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           overwrite: true
       - name: Comment on PR for new failures
-        if: ${{ ! cancelled() && github.event_name == 'pull_request' && steps.new-failures.outputs.has_new_failures == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
+        if: >-
+          ${{ ! cancelled() && github.event_name == 'pull_request'
+          && steps.new-failures.outputs.has_new_failures == 'true'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+              || github.event.pull_request.user.login == 'copilot[bot]') }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}

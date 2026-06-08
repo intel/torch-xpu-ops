@@ -353,6 +353,10 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("nn.LazyConv2d", "test_memory_format"),
+    ("nn.Conv2d", "test_memory_format"),
+    ("nn.ConvTranspose2d", "test_memory_format"),
+    ("nn.LazyConvTranspose2d", "test_memory_format"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
@@ -360,7 +364,6 @@ _cuda_xfail_xpu_pass = [
     ("_refs.div", "test_python_ref"),
     ("_refs.pow", "test_python_ref"),
     ("_refs.pow", "test_python_ref_torch_fallback"),
-    ("_refs.mul", "test_python_ref_executor"),
     (
         "_refs.div",
         "test_python_ref_torch_fallback",
@@ -375,6 +378,16 @@ _cuda_xfail_xpu_pass = [
     ("sort", "test_non_standard_bool_values"),
 ]
 
+# Additional unscoped (device_type=None) expectedFailure entries that should
+# also be stripped for XPU.  This list is maintained separately from
+# _cuda_xfail_xpu_pass because it is related to, but not necessarily a literal
+# subset of, the CUDA-scoped overrides above.  Keeping it separate preserves
+# unscoped xfails that genuinely fail on XPU (e.g. complex-dtype memory-format
+# tests for ConvTranspose2d).
+_none_device_xfail_xpu_pass = [
+    ("_refs.mul", "test_python_ref_executor"),
+    ("_refs.pow", "test_python_ref_executor"),
+]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
@@ -1022,6 +1035,23 @@ class XPUPatchForImport:
                         else:
                             wrapper.device_type = "xpu"
                             replaced = True
+                    elif (
+                        wrapper.device_type is None
+                        and unittest.expectedFailure in wrapper.decorators
+                        and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
+                    ):
+                        # For tests that are expected to fail on some devices but pass on XPU,
+                        # create an XPU-specific variant of the wrapper without expectedFailure.
+                        replaced = True
+                        new_wrapper = copy.copy(wrapper)
+                        new_wrapper.decorators = tuple(
+                            d
+                            for d in new_wrapper.decorators
+                            if d is not unittest.expectedFailure
+                        )
+                        new_wrapper.device_type = "xpu"
+                        wrapper_xpu.append(new_wrapper)
+                        continue
                     wrapper_xpu.append(wrapper)
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
@@ -1239,30 +1269,34 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    import subprocess
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     if skip_list is not None and len(skip_list) > 0:
-        skip_options = ' -k "not ' + skip_list[0]
-        for skip_case in skip_list[1:]:
-            skip_option = " and not " + skip_case
-            skip_options += skip_option
-        skip_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-        )
-        test_command += skip_options
+        k_expr = "not " + " and not ".join(skip_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_skip.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     elif exe_list is not None and len(exe_list) > 0:
-        exe_options = ' -k "' + exe_list[0]
-        for exe_case in exe_list[1:]:
-            exe_option = " or " + exe_case
-            exe_options += exe_option
-        exe_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-        )
-        test_command += exe_options
+        k_expr = " or ".join(exe_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_exe.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
-    return os.system(test_command)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_all.{module_name}.xml",
+            test_case,
+        ]
+    # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
+    result = subprocess.run(cmd_args)
+    return result.returncode

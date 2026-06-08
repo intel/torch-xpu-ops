@@ -428,48 +428,50 @@ def main():
         main_worker(ngpus_per_node, args)
 
 
-def jit_calib(model, val_loader_calib, args):
-    print("doing int8 jit calibration")
-    jit_model_file = os.path.join(args.jit_cache, "rn50_jit_model_int8.pt")
-    if os.path.isfile(jit_model_file):
-        print(f"=> load jit model from {jit_model_file}")
-        modelJit = torch.load(jit_model_file)
-        print("=> load jit model ... done")
-    else:
-        from torch.jit._recursive import wrap_cpp_module
-        from torch.quantization.quantize_jit import convert_jit, prepare_jit
+def pt2e_quantize(model, val_loader_calib, args):
+    """Quantize model using PT2E quantization with XPUInductorQuantizer."""
+    import torchao.quantization.pt2e
+    import torchao.quantization.pt2e.quantizer.xpu_inductor_quantizer as xiq
+    from torch.export import export
+    from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
 
-        modelJit = torch.jit.script(model)
-        modelJit = wrap_cpp_module(torch._C._jit_pass_fold_convbn(modelJit._c))
+    print("doing PT2E int8 quantization")
+    model.eval()
+    torch._inductor.config.freezing = True
 
-        qscheme = torch.per_tensor_affine if args.asymm else torch.per_tensor_symmetric
-        dtype = torch.quint8 if args.uint8 else torch.qint8
-        with torch.inference_mode():
-            if args.perchannel_weight:
-                qconfig = torch.quantization.QConfig(
-                    activation=torch.quantization.observer.MinMaxObserver.with_args(
-                        qscheme=qscheme, reduce_range=False, dtype=dtype
-                    ),
-                    weight=torch.quantization.default_per_channel_weight_observer,
-                )
-            else:
-                qconfig = torch.quantization.QConfig(
-                    activation=torch.quantization.observer.MinMaxObserver.with_args(
-                        qscheme=qscheme, reduce_range=False, dtype=dtype
-                    ),
-                    weight=torch.quantization.default_weight_observer,
-                )
-            modelJit = prepare_jit(modelJit, {"": qconfig}, True)
+    # Export the model
+    example_input = (torch.randn(args.batch_size, 3, 224, 224, device=args.xpu),)
+    exported_model = export(model, example_input, strict=True).module()
 
-            for i, (input, target) in enumerate(val_loader_calib):
-                calib = input.to(args.xpu)
-                modelJit(calib)
+    # Configure quantizer
+    quantizer = xiq.XPUInductorQuantizer()
+    quantizer.set_global(xiq.get_default_xpu_inductor_quantization_config())
 
-                if i == args.calib_iters - 1:
-                    break
-            modelJit = convert_jit(modelJit, True)
+    # Ensure buffers are on xpu
+    for name, buffer in exported_model.named_buffers():
+        if not buffer.is_xpu:
+            buffer.data = buffer.to("xpu")
 
-    return modelJit
+    # Prepare for calibration
+    prepared = prepare_pt2e(exported_model, quantizer)
+
+    # Run calibration
+    with torch.no_grad():
+        for i, (images, target) in enumerate(val_loader_calib):
+            prepared(images.to(args.xpu))
+            if i >= args.calib_iters - 1:
+                break
+
+    # Convert to quantized model
+    with torch.no_grad():
+        quantized = convert_pt2e(prepared)
+        torchao.quantization.pt2e.move_exported_model_to_eval(quantized)
+        torchao.quantization.pt2e.allow_exported_model_train_eval(quantized)
+
+    # Compile with Inductor
+    model_int8 = torch.compile(quantized)
+    print("PT2E int8 quantization done")
+    return model_int8
 
 
 def main_worker(ngpus_per_node, args):
@@ -801,13 +803,13 @@ def main_worker(ngpus_per_node, args):
                 pin_memory_device="xpu",
             )
 
-            # do calibration and return quant model
+            # do calibration and return quant model using PT2E
             if args.load:
-                model_calib = model
+                model_calib = torch.load(args.load)
             else:
-                model_calib = jit_calib(model, val_loader_calib, args)
+                model_calib = pt2e_quantize(model, val_loader_calib, args)
             if args.save:
-                torch.jit.save(model_calib, args.save)
+                torch.save(model_calib, args.save)
             validate_quantization(val_loader, model_calib, criterion, profiling, args)
         else:
             validate(

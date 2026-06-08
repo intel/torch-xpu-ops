@@ -13867,7 +13867,7 @@ fn
                     "this error is if we have y = custom_op(x) and y and x are the same "
                     "Tensor. Please instead return a clone of the offending output "
                     "tensor(s) (e.g. return x.clone()) or refactor the custom operator "
-                    "to not return y. This is deprecated and will become an error in PyTorch 2.12.",
+                    "to not return y. This is deprecated and will become an error in a future version of PyTorch.",
                 )
 
 

@@ -50,7 +50,7 @@ scalar_t _log_add_exp_helper(const scalar_t& x, const scalar_t& y) {
   auto isnan_y = at::_isnan(y);
   scalar_t min = isnan_y ? y : (isnan_x ? x : std::min(x, y));
   scalar_t max = isnan_y ? y : (isnan_x ? x : std::max(x, y));
-  if (min != max || std::isfinite(min)) {
+  if (min != max || sycl::isfinite(min)) {
     // nan will be propagated here
     return ::log1p(sycl::exp(min - max)) + max;
   } else {
@@ -103,7 +103,7 @@ c10::complex<scalar_t> _log_add_exp_helper(
     return {
         std::numeric_limits<scalar_t>::quiet_NaN(),
         std::numeric_limits<scalar_t>::quiet_NaN()};
-  } else if ((!std::isfinite(min_real)) && (min_real == max_real)) {
+  } else if ((!sycl::isfinite(min_real)) && (min_real == max_real)) {
     if (min_real < 0) {
       // handle the -inf case, the imaginary part here does not really matter as
       // the exp(value) will be around 0.0 and the angle (i.e. the imaginary

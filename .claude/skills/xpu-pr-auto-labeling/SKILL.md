@@ -32,7 +32,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 ### Rule 1: Pure CI infrastructure (no functional logic change)
 
-**Condition:** ALL changed files match `.github/workflows/`, `.github/scripts/`, `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.github/skills/`, or other `.github/` non-workflow metadata files AND the workflow changes do NOT alter job execution logic (only change triggers, permissions, concurrency, comments, labels conditions, yaml formatting).
+**Condition:** ALL changed files match `.github/workflows/`, `.github/scripts/`, `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.claude/skills/`, or other `.github/` non-workflow metadata files AND the workflow changes do NOT alter job execution logic (only change triggers, permissions, concurrency, comments, labels conditions, yaml formatting).
 
 **Labels:** `disable_all`
 
@@ -139,7 +139,6 @@ none
 
 ## Important Notes
 
-1. **Never label manually-labeled PRs.** If a PR already has `disable_*` labels applied by a human, do not override them.
-2. **Draft PRs** get `disable_all` regardless of file changes.
-3. **PRs with `ai_generated` label** should still follow these rules (they need CI validation).
-4. **When in doubt, disable less.** It's better to run unnecessary CI than to miss a regression.
+1. **`disable_auto` label** — When manually added to a PR, auto-labeling is completely disabled for that PR. The workflow will skip without allocating a runner. This label should only be added manually by humans (never by automation) to opt out of auto-labeling when full manual control over CI labels is needed.
+2. **PRs with `ai_generated` label** should still follow these rules (they need CI validation).
+3. **When in doubt, disable less.** It's better to run unnecessary CI than to miss a regression.
