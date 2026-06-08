@@ -2851,7 +2851,7 @@ class TestCustomOpAPI(TestCase):
             def backward(ctx, grad):
                 nonlocal called
                 called = True
-                return grad * ctx.c
+                return grad * ctx.c, None
 
             def setup_context(ctx, inputs, keyword_only_inputs, output):
                 if len(inputs) != 2:
