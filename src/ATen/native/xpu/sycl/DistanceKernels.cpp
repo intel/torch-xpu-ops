@@ -20,7 +20,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 static double device_sqrt(scalar_t val) {
-  return std::sqrt(val);
+  return sycl::sqrt(val);
 };
 
 template <typename scalar_t>

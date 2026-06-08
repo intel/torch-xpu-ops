@@ -81,9 +81,9 @@ inline void adam_math(
     opmath_t denom;
     if (amsgrad) {
       max_exp_avg_sq = std::max(max_exp_avg_sq, exp_avg_sq);
-      denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = (sycl::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
     } else {
-      denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = (sycl::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
     }
     param -= step_size * exp_avg / denom;
 
@@ -138,7 +138,7 @@ struct FusedAdamMathFunctor {
           tlAddress[tensor_loc].state_steps_addresses);
       const auto bias_correction1 = 1 - std::pow(beta1, *step_count);
       const auto bias_correction2 = 1 - std::pow(beta2, *step_count);
-      const auto bias_correction2_sqrt = std::sqrt(bias_correction2);
+      const auto bias_correction2_sqrt = sycl::sqrt(bias_correction2);
       return {bias_correction1, bias_correction2_sqrt};
     }();
 
