@@ -189,7 +189,15 @@ void floating_half_bfloat16_(TensorList tensors) {
 STD_FUNCTOR(erf, Erf);
 STD_FUNCTOR(erfc, Erfc);
 STD_FUNCTOR(expm1, Expm1);
-STD_FUNCTOR(lgamma, Lgamma);
+
+template <typename T>
+struct Lgamma {
+  T operator()(T t) const {
+    using opmath_t = at::opmath_type<T>;
+    return sycl::lgamma(static_cast<opmath_t>(t));
+  }
+};
+
 STD_FUNCTOR(trunc, Truncf);
 STD_FUNCTOR(floor, Floor);
 STD_FUNCTOR(ceil, Ceil);
@@ -383,7 +391,7 @@ struct Round {
 template <typename T>
 struct Trunc {
   T operator()(T t) const {
-    return t - std::trunc(t);
+    return t - sycl::trunc(t);
   }
 };
 
