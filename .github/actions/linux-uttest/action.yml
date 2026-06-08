@@ -60,7 +60,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/op_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py \
+        pytest . --junit-xml=${{ github.workspace }}/ut_log/op_ut.xml \
           2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
