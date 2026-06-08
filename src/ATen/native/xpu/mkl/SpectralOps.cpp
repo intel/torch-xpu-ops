@@ -376,10 +376,12 @@ Tensor _fft_c2c_mkl(
     }
   }
 
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
+    auto result = out.to(ScalarType::ComplexHalf);
+    impl::_fft_apply_normalization(result, normalization, input_sizes, dim);
+    return result;
+  }
   impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
-
-  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
-    return out.to(ScalarType::ComplexHalf);
   return out;
 }
 
@@ -456,10 +458,12 @@ Tensor _fft_c2r_mkl(
       /*onesided=*/true,
       /*forward=*/false);
 
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
+    auto result = out.to(ScalarType::Half);
+    impl::_fft_apply_normalization(result, normalization, out_sizes, dim);
+    return result;
+  }
   impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
-
-  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
-    return out.to(ScalarType::Half);
   return out;
 }
 
