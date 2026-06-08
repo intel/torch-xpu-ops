@@ -44,7 +44,10 @@ fi
 export CCL_ATL_TRANSPORT=${CCL_ATL_TRANSPORT:-mpi}
 
 echo "[run]   WS=${WS}  ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}  CCL_ATL_TRANSPORT=${CCL_ATL_TRANSPORT}"
-echo "[run]   --min 7 --max 20 --warmup 20 --iters 100"
+echo "[run]   args: ${BENCH_ARGS:---min 7 --max 20 --warmup 20 --iters 100}"
 echo ""
 
-mpirun -n "${WS}" ./bench_ccl_collectives --min 7 --max 20 --warmup 20 --iters 100
+# Extra args can be passed via BENCH_ARGS, e.g.:
+#   BENCH_ARGS="--op ar --min 10 --max 20" bash build_and_run_ccl.sh
+# shellcheck disable=SC2086
+mpirun -n "${WS}" ./bench_ccl_collectives ${BENCH_ARGS:---min 7 --max 20 --warmup 20 --iters 100}
