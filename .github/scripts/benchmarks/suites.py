@@ -10,6 +10,7 @@ import csv
 import os
 import re
 import shutil
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -174,9 +175,8 @@ class InductorSuite(BenchmarkSuite):
 class PT2ESuite(BenchmarkSuite):
     """Post-training-quantization (pt2e) accuracy and performance benchmarks."""
 
-    def prepare(self, task):
-        if task.scenario == "performance":
-            shutil.rmtree("pt2e-performance/.userbenchmark", ignore_errors=True)
+    #: Sentinel stored on a task to remember its private performance output dir.
+    _OUTPUT_ATTR = "_pt2e_output_dir"
 
     def env_overrides(self, task):
         return {"XPU_QUANT_CONFIG": task.quant.upper()} if task.quant else {}
@@ -192,6 +192,10 @@ class PT2ESuite(BenchmarkSuite):
             if task.dt == "float32":
                 parts.append("--is_fp32")
         else:  # performance
+            # Each run writes metrics to its own directory so parallel workers
+            # never clobber one another's results.
+            output_dir = tempfile.mkdtemp(prefix="pt2e-perf-")
+            setattr(task, self._OUTPUT_ATTR, output_dir)
             parts = [
                 "python pt2e-performance/run_benchmark.py",
                 device,
@@ -199,6 +203,7 @@ class PT2ESuite(BenchmarkSuite):
                 "--channels-last",
                 "--metrics throughputs",
                 "--torchdynamo inductor",
+                f"--output {output_dir}",
                 f"-m {task.model}",
             ]
             if task.quant:
@@ -211,7 +216,12 @@ class PT2ESuite(BenchmarkSuite):
             header = CSV_PREFIX + ["top1", "top5"]
             row = _prefix_row(device, task, elapsed=elapsed) + [acc1, acc5]
         else:  # performance
-            throughput = "failed" if kill_reason else self._parse_throughput()
+            output_dir = getattr(task, self._OUTPUT_ATTR, None)
+            try:
+                throughput = "failed" if kill_reason else self._parse_throughput(output_dir)
+            finally:
+                if output_dir:
+                    shutil.rmtree(output_dir, ignore_errors=True)
             header = CSV_PREFIX + ["throughput", "quantization"]
             row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
         _append_row(log_csv, header, row)
@@ -220,7 +230,7 @@ class PT2ESuite(BenchmarkSuite):
         if task.scenario == "accuracy":
             acc1, _ = self._parse_accuracy(log_file)
             return (f"acc1={acc1}", True) if acc1 != "failed" else ("failed", False)
-        throughput = self._parse_throughput()
+        throughput = self._parse_throughput(getattr(task, self._OUTPUT_ATTR, None))
         return (throughput, True) if throughput != "failed" else ("failed", False)
 
     @staticmethod
@@ -237,11 +247,12 @@ class PT2ESuite(BenchmarkSuite):
         return acc1, acc5
 
     @staticmethod
-    def _parse_throughput() -> str:
-        """Extract eval_throughput from .userbenchmark output files."""
-        userbenchmark_dir = Path("pt2e-performance/.userbenchmark")
+    def _parse_throughput(output_dir: str | None) -> str:
+        """Extract eval_throughput from the run's ``--output`` directory."""
+        if not output_dir:
+            return "failed"
         try:
-            for root, _dirs, files in os.walk(userbenchmark_dir):
+            for root, _dirs, files in os.walk(output_dir):
                 for fname in files:
                     content = (Path(root) / fname).read_text(encoding="utf-8", errors="ignore")
                     for line in content.splitlines():
