@@ -10,6 +10,8 @@ from pathlib import Path
 
 from .config import (
     IS_WINDOWS,
+    INDUCTOR_DT,
+    PT2E_DT,
     TestTask,
     VALID_DT,
     VALID_MODES,
@@ -157,15 +159,16 @@ def generate_tasks(
 ) -> list[TestTask]:
     """Generate the full task list from parameter combinations."""
     non_pt2e_suites = [s for s in suites if s != "pt2e"]
+    inductor_dts = [d for d in dts if d in INDUCTOR_DT]
     tasks = [
         TestTask(suite, dt, mode, scenario, model)
-        for suite, mode, dt, scenario in product(non_pt2e_suites, modes, dts, scenarios)
+        for suite, mode, dt, scenario in product(non_pt2e_suites, modes, inductor_dts, scenarios)
         for model in sorted(set(get_model_list(suite, mode, model_only)))
     ]
 
     # PT2E tasks (inference only, dtypes: float32/int8)
     if "pt2e" in suites:
-        pt2e_dts = [d for d in dts if d in {"float32", "int8"}]
+        pt2e_dts = [d for d in dts if d in PT2E_DT]
         for scenario in scenarios:
             for dt in pt2e_dts:
                 models = sorted(set(get_model_list("pt2e", "inference", model_only, scenario)))

@@ -81,6 +81,7 @@ def run_single(
     log_f = None
     try:
         log_f = open(log_file, "w")
+        run_start = time.monotonic()
         proc = subprocess.Popen(full_cmd_list, **popen_kwargs)
     except Exception as e:
         if log_f is not None and not log_f.closed:
@@ -162,6 +163,7 @@ def run_single(
         exit_code = proc.wait()
     except Exception:
         exit_code = -1
+    elapsed = time.monotonic() - run_start
     reader_thread.join(timeout=10)
     if log_f is not None and not log_f.closed:
         log_f.close()
@@ -170,7 +172,7 @@ def run_single(
     with kill_reason_lock:
         matched_pattern = kill_reason[0]
     try:
-        suite.collect_results(log_csv, log_file, tmp_log_csv, device, task, matched_pattern)
+        suite.collect_results(log_csv, log_file, tmp_log_csv, device, task, matched_pattern, elapsed)
     except Exception as e:
         log(f"CSV collection error for {task.model}: {e}", level="ERROR", worker=worker_id)
     finally:

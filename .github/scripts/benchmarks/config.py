@@ -25,6 +25,10 @@ VALID_DT: set[str] = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16", 
 VALID_MODES: set[str] = {"inference", "training"}
 VALID_SCENARIOS: set[str] = {"accuracy", "performance"}
 
+# Per-suite dtype support: pt2e only runs float32/int8; int8 is pt2e-only.
+PT2E_DT: set[str] = {"float32", "int8"}
+INDUCTOR_DT: set[str] = VALID_DT - {"int8"}
+
 # GPU memory monitoring settings (mutable at runtime via CLI args)
 gpu_memory_threshold: float = 0.8 if IS_WINDOWS else 0.9
 gpu_memory_monitor_enabled: bool = True

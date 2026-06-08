@@ -20,12 +20,12 @@ from .log import log
 from .tasks import get_torch_version
 
 # Common leading columns shared by every result CSV.
-CSV_PREFIX = ["dev", "suite", "name", "dtype", "mode", "scenario", "batch_size"]
+CSV_PREFIX = ["dev", "elapsed", "suite", "dtype", "mode", "name", "scenario", "batch_size"]
 
 
-def _prefix_row(device: str, task: TestTask, batch_size: str = "0") -> list[str]:
+def _prefix_row(device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
     """Build the leading CSV cells common to every suite."""
-    return [device, task.suite, task.model, task.dt, task.mode, task.scenario, batch_size]
+    return [device, f"{elapsed:.3f}", task.suite, task.dt, task.mode, task.model, task.scenario, batch_size]
 
 
 def _append_row(log_csv: Path, header: list[str], row: list[str]) -> None:
@@ -62,7 +62,7 @@ class BenchmarkSuite(ABC):
     @abstractmethod
     def collect_results(
         self, log_csv: Path, log_file: Path, tmp_csv: str | None,
-        device: str, task: TestTask, kill_reason: str | None,
+        device: str, task: TestTask, kill_reason: str | None, elapsed: float,
     ) -> None:
         """Parse the run output and append one row to *log_csv*."""
 
@@ -125,15 +125,15 @@ class InductorSuite(BenchmarkSuite):
         success = test_result in ("pass", "pass_due_to_skip") or bool(re.fullmatch(r"[0-9.]+x", test_result))
         return test_result, success
 
-    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason):
+    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         header, row = self._read_last_matching_row(tmp_csv, device)
         if not row:
-            final_header, final_row = self._fallback_row(device, task, kill_reason)
+            final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
         else:
             # Benchmark CSV row: dev, name, batch_size, <result_cols...>
             # Reorder to the common prefix plus the result columns.
             final_header = CSV_PREFIX + header[3:]
-            final_row = _prefix_row(device, task, row[2]) + row[3:]
+            final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
         _append_row(log_csv, final_header, final_row)
 
     @staticmethod
@@ -153,17 +153,17 @@ class InductorSuite(BenchmarkSuite):
             return [], []
 
     @staticmethod
-    def _fallback_row(device, task, kill_reason):
+    def _fallback_row(device, task, kill_reason, elapsed=0.0):
         """Build a placeholder row when the benchmark produced no CSV output."""
         fail_status = kill_reason or "core_dump"
         fallbacks = {
             "accuracy": (
                 CSV_PREFIX + ["accuracy"],
-                _prefix_row(device, task) + [fail_status],
+                _prefix_row(device, task, elapsed=elapsed) + [fail_status],
             ),
             "performance": (
                 CSV_PREFIX + ["speedup", "inductor_latency", "eager_latency"],
-                _prefix_row(device, task) + ["0", "0", "0"],
+                _prefix_row(device, task, elapsed=elapsed) + ["0", "0", "0"],
             ),
         }
         if task.scenario not in fallbacks:
@@ -205,15 +205,15 @@ class PT2ESuite(BenchmarkSuite):
                 parts.append("--quantization pt2e")
         return " ".join(parts)
 
-    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason):
+    def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         if task.scenario == "accuracy":
             acc1, acc5 = ("failed", "failed") if kill_reason else self._parse_accuracy(log_file)
             header = CSV_PREFIX + ["top1", "top5"]
-            row = _prefix_row(device, task) + [acc1, acc5]
+            row = _prefix_row(device, task, elapsed=elapsed) + [acc1, acc5]
         else:  # performance
             throughput = "failed" if kill_reason else self._parse_throughput()
             header = CSV_PREFIX + ["throughput", "quantization"]
-            row = _prefix_row(device, task) + [throughput, task.quant]
+            row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
         _append_row(log_csv, header, row)
 
     def check_success(self, log_file, task):
