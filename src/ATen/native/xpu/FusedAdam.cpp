@@ -10,6 +10,7 @@
 
 #include <ATen/OpMathType.h>
 #include <ATen/native/ForeachUtils.h>
+#include <ATen/native/xpu/FusedAdamMixedPrecisionUtils.h>
 
 #include <cmath>
 #include <vector>
@@ -29,37 +30,6 @@ namespace native {
 
 namespace {
 
-bool found_inf_nonzero(const std::optional<at::Tensor>& found_inf) {
-  return found_inf.has_value() && found_inf->item<double>() != 0.0;
-}
-
-double grad_scale_value(const std::optional<at::Tensor>& grad_scale) {
-  return grad_scale.has_value() && grad_scale->is_cpu()
-      ? grad_scale->item<double>()
-      : 1.0;
-}
-
-bool can_cast_without_narrowing(ScalarType from, ScalarType to) {
-  return from == to ||
-      (isFloatingType(from) && isFloatingType(to) &&
-       promoteTypes(from, to) == to);
-}
-
-ScalarType fallback_math_dtype(
-    ScalarType param_dtype,
-    ScalarType grad_dtype,
-    ScalarType exp_avg_dtype,
-    ScalarType exp_avg_sq_dtype,
-    std::optional<ScalarType> max_exp_avg_sq_dtype) {
-  auto math_dtype = promoteTypes(param_dtype, grad_dtype);
-  math_dtype = promoteTypes(math_dtype, exp_avg_dtype);
-  math_dtype = promoteTypes(math_dtype, exp_avg_sq_dtype);
-  if (max_exp_avg_sq_dtype.has_value()) {
-    math_dtype = promoteTypes(math_dtype, *max_exp_avg_sq_dtype);
-  }
-  return isFloatingType(math_dtype) ? toOpMathType(math_dtype) : math_dtype;
-}
-
 template <typename LrT>
 bool try_mixed_precision_fused_adam_xpu_(
     at::TensorList params,
@@ -77,7 +47,7 @@ bool try_mixed_precision_fused_adam_xpu_(
     const bool maximize,
     const std::optional<at::Tensor>& grad_scale,
     const std::optional<at::Tensor>& found_inf) {
-  if (params.empty() || found_inf_nonzero(found_inf)) {
+  if (params.empty() || at::native::found_inf_nonzero(found_inf)) {
     return true;
   }
 
@@ -109,12 +79,14 @@ bool try_mixed_precision_fused_adam_xpu_(
     if (!grads[i].defined()) {
       return false;
     }
-    if (!can_cast_without_narrowing(grads[i].scalar_type(), param_dtype) ||
-        !can_cast_without_narrowing(exp_avgs[i].scalar_type(), param_dtype) ||
-        !can_cast_without_narrowing(
+    if (!at::native::can_cast_without_narrowing(
+            grads[i].scalar_type(), param_dtype) ||
+        !at::native::can_cast_without_narrowing(
+            exp_avgs[i].scalar_type(), param_dtype) ||
+        !at::native::can_cast_without_narrowing(
             exp_avg_sqs[i].scalar_type(), param_dtype) ||
         (amsgrad &&
-         !can_cast_without_narrowing(
+         !at::native::can_cast_without_narrowing(
              max_exp_avg_sqs[i].scalar_type(), param_dtype))) {
       return false;
     }
@@ -219,7 +191,7 @@ void fused_adam_fallback_xpu_(
     const bool maximize,
     const std::optional<at::Tensor>& grad_scale,
     const std::optional<at::Tensor>& found_inf) {
-  if (params.empty() || found_inf_nonzero(found_inf)) {
+  if (params.empty() || at::native::found_inf_nonzero(found_inf)) {
     return;
   }
 
@@ -236,7 +208,7 @@ void fused_adam_fallback_xpu_(
   }
 
   const bool grad_scale_on_cpu = grad_scale.has_value() && grad_scale->is_cpu();
-  const double grad_scale_v = grad_scale_value(grad_scale);
+  const double grad_scale_v = at::native::grad_scale_value(grad_scale);
 
   for (int64_t i = 0; i < params.size(); ++i) {
     at::Tensor grad = grads[i];
@@ -259,7 +231,7 @@ void fused_adam_fallback_xpu_(
       grad = grad.add(param, weight_decay);
     }
 
-    const auto math_dtype = fallback_math_dtype(
+    const auto math_dtype = at::native::fallback_math_dtype(
         param.scalar_type(),
         grad.scalar_type(),
         exp_avg.scalar_type(),
