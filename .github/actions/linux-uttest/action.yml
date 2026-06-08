@@ -142,9 +142,6 @@ runs:
       shell: timeout 36000 bash -xe -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
-        source ${HOME}/miniforge3/etc/profile.d/conda.sh
-        conda activate xpu-py
-        xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
@@ -159,6 +156,7 @@ runs:
         export TEMP_DIR=/tmp
         export BACKEND="xccl"
         export WORLD_SIZE=4
+        export ZE_AFFINITY_MASK="0,1,2,3"
         pip install transformers pulp
         sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
         sed -i '51d' run_distributed_local.py
@@ -191,8 +189,6 @@ runs:
       if: ${{ !cancelled() }}
       shell: timeout 180 bash -xe {0}
       run: |
-        source ${HOME}/miniforge3/etc/profile.d/conda.sh
-        conda activate xpu-py
         pip install junitparser
         python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs

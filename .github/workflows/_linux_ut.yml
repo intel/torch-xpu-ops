@@ -95,9 +95,16 @@ jobs:
     timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
-    env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTEST_ADDOPTS: -v
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -108,7 +115,6 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
-          skip_setup_python: 'true'
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
