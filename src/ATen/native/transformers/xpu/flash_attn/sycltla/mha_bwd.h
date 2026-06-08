@@ -21,6 +21,7 @@
 #pragma GCC diagnostic ignored "-Wchanges-meaning"
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #pragma GCC diagnostic ignored "-Wdangling-pointer"
+#pragma GCC diagnostic ignored "-Wtemplate-id-cdtor"
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
