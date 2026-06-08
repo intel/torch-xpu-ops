@@ -12,11 +12,11 @@
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #else
 #include <ATen/native/Resize.h>
-#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/_fft_c2c_native.h>
 #include <ATen/ops/_fft_c2r_native.h>
 #include <ATen/ops/_fft_r2c_native.h>
 #endif // USE_ONEMKL_XPU
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 
 namespace at::native {
 
