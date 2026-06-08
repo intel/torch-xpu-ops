@@ -9616,7 +9616,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         for us in ([["C", 2], ["W", 5], ["H", 5]], [("C", 2), ("W", 5), ("H", 5)]):
             with self.assertRaisesRegex(
                 TypeError,
-                r"unflattened_size must be a tuple of tuples, but found type list",
+                r"unflattened_size must be tuple of ints",
             ):
                 nn.Unflatten(dim="features", unflattened_size=us)
 
@@ -9624,7 +9624,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
         with self.assertRaisesRegex(
             TypeError,
-            r"unflattened_size must be tuple of tuples, but found element of type list at pos 0",
+            r"unflattened_size must be tuple of ints, but found element of type list at pos 0",
         ):
             nn.Unflatten(
                 dim="features", unflattened_size=(["C", 2], ["W", 5], ["H", 5])
@@ -9634,7 +9634,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
         with self.assertRaisesRegex(
             TypeError,
-            r"unflattened_size must be tuple of tuples, but found element of type dict at pos 0",
+            r"unflattened_size must be tuple of ints, but found element of type dict at pos 0",
         ):
             nn.Unflatten(
                 dim="features", unflattened_size=({"C": 2}, {"W": 5}, {"H": 5})
