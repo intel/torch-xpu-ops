@@ -303,7 +303,6 @@ _xpu_computation_op_list = [
     "min",
     "floor",
     "floor_divide",
-    "frexp",
     "copysign",
     "count_nonzero",
     "nan_to_num",
