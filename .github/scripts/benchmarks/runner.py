@@ -10,9 +10,10 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
-from . import config, run_inductor, run_pt2e
+from . import config
 from .config import IS_WINDOWS, TestTask
 from .log import fmt_duration, log
+from .suites import get_suite
 from .monitor import (
     get_gpu_memory_utilization,
     get_host_memory_utilization,
@@ -48,24 +49,21 @@ def run_single(
     log_file = log_dir / f"inductor-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
     log_csv = log_dir / f"inductor-results-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
 
-    is_pt2e = task.suite == "pt2e"
+    suite = get_suite(task)
     tmp_log_csv = None
-    if not is_pt2e:
+    if suite.uses_temp_csv:
         tmp_fd, tmp_log_csv = tempfile.mkstemp(prefix='tmp_', suffix='.csv')
         os.close(tmp_fd)
 
-    if is_pt2e:
-        cmd = run_pt2e.prepare_run(task, device, dataset_dir)
-    else:
-        cmd = run_inductor.build_command(task, device, shape, tmp_log_csv)
+    suite.prepare(task)
+    cmd = suite.build_command(task, device, shape, dataset_dir, tmp_log_csv)
     full_cmd_list, full_cmd_str = _build_cmd_list(cmd, cmd_prefix)
     log(f"Running: {full_cmd_str[:200]}...", worker=worker_id)
 
     env = {**os.environ, **env_vars}
     if device != "cpu":
         env["ZE_AFFINITY_MASK"] = str(card)
-    if is_pt2e and task.quant:
-        env["XPU_QUANT_CONFIG"] = task.quant.upper()
+    env.update(suite.env_overrides(task))
 
     # Shared state for threads
     log_buffer: list[str] = []
@@ -172,10 +170,7 @@ def run_single(
     with kill_reason_lock:
         matched_pattern = kill_reason[0]
     try:
-        if is_pt2e:
-            run_pt2e.collect_results(log_csv, log_file, device, task, kill_reason=matched_pattern)
-        else:
-            run_inductor.collect_results(log_csv, tmp_log_csv, device, task, kill_reason=matched_pattern)
+        suite.collect_results(log_csv, log_file, tmp_log_csv, device, task, matched_pattern)
     except Exception as e:
         log(f"CSV collection error for {task.model}: {e}", level="ERROR", worker=worker_id)
     finally:
@@ -183,10 +178,7 @@ def run_single(
             with suppress(OSError):
                 os.unlink(tmp_log_csv)
 
-    if is_pt2e:
-        test_result, success = run_pt2e.check_success(log_file, task)
-    else:
-        test_result, success = run_inductor.check_success(log_file)
+    test_result, success = suite.check_success(log_file, task)
     return exit_code, success, test_result, matched_pattern
 
 
