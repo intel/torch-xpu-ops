@@ -95,6 +95,32 @@ Tracks whether the **original** Reason was blank in the SOURCE workbook (e.g.,
   state, not the current state. A row with `Reason TBD = True` and `Reason = "Not applicable"`
   means "this row originally had no Reason and was classified by deep analysis."
 
+### `TBE_Reverify` (Boolean, opt-in re-verification flag)
+
+A separate opt-in flag for re-verifying rows that already carry `Reason = "To be enabled"`
+in the SOURCE workbook. Use it when the workbook owner wants to double-check whether a
+prior `To be enabled` verdict still holds under the current source state (a new wrapper was
+added, a skip was removed, an issue was reopened, a sibling was generated, etc.).
+
+- **Initialize once at workbook init time** from the ORIGINAL workbook:
+  - `Reason = "To be enabled"` in the ORIGINAL workbook -> `TBE_Reverify = False` by default.
+    The agent flips individual rows to `True` to opt them into the re-verification pass.
+  - Any other `Reason` (including blank) -> `TBE_Reverify = False`.
+- **Set to `True` per row, not in bulk**, when the agent or workbook owner decides the
+  existing `To be enabled` verdict deserves a fresh look. Mark the cell blue when flipped.
+- **Independent of `Reason TBD`.** A row with `TBE_Reverify = True` keeps its
+  `Reason TBD = False` (Reason was non-blank in the original). The two columns answer
+  different questions: `Reason TBD` = "was the original Reason blank?"; `TBE_Reverify` =
+  "does the existing `To be enabled` verdict need a fresh re-check?".
+- **NEVER clear `TBE_Reverify` back to `False` after a re-verification pass.** A row that
+  was reverified keeps `TBE_Reverify = True` for the rest of the session as a permanent
+  record that reverification happened.
+- **No confidence prefix is required** for the re-verified `DetailReason` based on
+  `TBE_Reverify` alone (because `Reason TBD = False` for these rows). The agent SHOULD add
+  a `[Reverified: YYYY-MM-DD]` marker at the start of `DetailReason` for any row that
+  actually went through the re-verification pass, so a human reviewer can distinguish
+  untouched prior verdicts from re-checked ones.
+
 ### `Reason` (String) - Canonical Labels
 
 | Label | When to Use |
@@ -389,6 +415,94 @@ device monkey-patches inside the workspace:
 - Pushing the port to `pytorch/pytorch` or to `intel/torch-xpu-ops` directly. Local
   verification ports stay on `daisyden/pytorch` until the human review approves promotion.
 
+## TBE Re-verification Rule (re-checking existing `To be enabled` verdicts)
+
+A row with `Reason = "To be enabled"` in the SOURCE workbook has already been classified
+by a prior pass. The workbook owner may still want a fresh re-check when:
+
+- A new `test/xpu/**` wrapper, port, or `instantiate_device_type_tests(..., allow_xpu=True)`
+  has been added since the prior verdict.
+- A `skipIfXpu` / dynamic skip was removed or replaced.
+- A previously-closed issue was reopened, or a new related issue was opened.
+- The base test or its parametrization was renamed/refactored upstream.
+- A source rebase moved the XPU registration to a different module.
+- The workbook owner simply wants a periodic second look across the sheet.
+
+This rule is **opt-in per row** (via `TBE_Reverify = True`) and reuses the status-specific
+subskills (`blank/`, `failed/`, `skipped/`) — they are invoked the same way they are for
+blank-Reason rows, just over a different input row set.
+
+### Decision flow
+
+For each row with `TBE_Reverify = True`:
+
+1. **Re-read the source state** that the prior `To be enabled` verdict cited (typically
+   the file:line of the missing `allow_xpu=True`, the missing wrapper, the stale skip, or
+   the closed issue). Determine whether the cited signal is still present.
+2. **Check for changes since the prior verdict**:
+   - `git log` on the test file and the cited wrapper/decorator files for recent commits
+     that would invalidate the verdict.
+   - `gh issue view` for any cited closed issue to confirm it is still CLOSED (and not
+     silently reopened).
+   - `instantiate_device_type_tests` / `allow_xpu=True` presence at the cited call site.
+   - For `skipped`-label citations: confirm the skip decorator is still in place and
+     still references the same issue.
+3. **Route to the status_xpu subskill** (`blank/` if `status_xpu` is blank, `failed/`
+   if `status_xpu = failed`, `skipped/` if `status_xpu` in {`skipped`, `xfail`}) and let
+   it run its standard deep-analysis workflow against the **current** source state.
+4. **Apply the subskill's verdict** to `Reason` and `DetailReason`. The subskill's verdict
+   may:
+   - **Confirm `To be enabled`**: keep `Reason = "To be enabled"` and write a refreshed
+     `DetailReason` that cites the current source state and the reverification date.
+   - **Change the verdict**: e.g. the wrapper was added in a recent commit, so the row
+     is now `Local Passed` (after a fresh run) or `Failures (xpu broken)` (the case now
+     runs and crashes). Write the new `Reason` and an updated `DetailReason`.
+   - **Flag for human review**: e.g. the cited issue was reopened and the source
+     changed in a way the agent cannot fully resolve. Keep `Reason = "To be enabled"`
+     but prefix `DetailReason` with `[Confidence: LOW] Need human check` and explain
+     which signals were rechecked and why each is now inconclusive. This is the same
+     `Need human check` exit used for blank-Reason rows.
+5. **Tag the re-verified DetailReason** with a `[Reverified: YYYY-MM-DD]` marker at the
+   start (before any other content). This is the only reliable signal in `.agent.xlsx`
+   that the row was rechecked, since `Reason TBD` stays `False` and no confidence prefix
+   is required. A re-verified `DetailReason` therefore looks like one of:
+   - `[Reverified: 2026-06-07] To be enabled. Confirmed: <file>#L<line> still has
+     instantiate_device_type_tests(Base, globals()) without allow_xpu=True.`
+   - `[Reverified: 2026-06-07] Local Passed. Wrapper added in commit <hash>
+     (<author>, <date>); local run /tmp/opencode/<workbook>_local_verify/<case>.log
+     shows PASS.`
+   - `[Reverified: 2026-06-07] [Confidence: LOW] Need human check. Cited issue
+     <url> was reopened 2026-05-30; current source state no longer matches the
+     prior To be enabled rationale; manual review needed.`
+
+### What reverification MUST NOT do
+
+- **MUST NOT** silently downgrade a row to `Need human check` when the prior verdict still
+  holds. If the cited signal is unchanged, keep `Reason = "To be enabled"` and just
+  refresh the citation.
+- **MUST NOT** mass-flip `TBE_Reverify` from `False` to `True`. The flag is opt-in per
+  row so the agent's intent (and the workbook owner's) is auditable.
+- **MUST NOT** clear `TBE_Reverify` back to `False` after reverification. Once flipped
+  to `True` and processed, the column stays `True` for the rest of the session.
+- **MUST NOT** modify `Reason TBD` as part of reverification. The two columns are
+  independent records of the original workbook state and the re-verification intent.
+- **MUST NOT** write a reverification verdict without first re-reading the cited
+  source state. Verdicts based on memory of the prior classification are not allowed.
+
+### Anti-patterns
+
+- Re-classifying every TBE row to a different verdict just because the source moved.
+  `To be enabled` is a stable verdict unless the cited gap was actually closed.
+- Writing `Reason = "Need human check"` for every TBE row out of caution. That is a
+  shortcut that defeats the purpose of the re-verification pass.
+- Treating `TBE_Reverify = True` as equivalent to `Reason TBD = True` for the
+  confidence prefix. They are different signals: TBD says "original was blank",
+  TBE_Reverify says "existing TBE verdict deserves a recheck". The existing
+  confidence-prefix rule still keys off `Reason TBD` only.
+- Forgetting the `[Reverified: ...]` marker. Without it, a human reviewer reading
+  the `.agent.xlsx` cannot tell which TBE rows were re-checked in this session
+  and which were left as-is from the original workbook.
+
 ## Confidence Rubric & Need-Human-Check Rule (authoritative for `Reason TBD = True` rows)
 
 Every row with `Reason TBD = True` MUST have its `DetailReason` prefixed with a confidence
@@ -487,6 +601,10 @@ DO NOT use `Need human check` when:
 - For LOW rows, `Reason` becomes `Need human check` and the original best-guess (if any) is
   preserved in `DetailReason` after the `[Confidence: LOW]` prefix, so a human reviewer can see
   what was considered.
+- `TBE_Reverify` is independent of `Reason TBD`. The re-verification pass (see the
+  **TBE Re-verification Rule**) does not flip `Reason TBD`; rows reverified as part of that
+  pass remain `Reason TBD = False` and therefore do not require a confidence prefix. They
+  do require a `[Reverified: YYYY-MM-DD]` marker in `DetailReason`.
 
 ### `Confidence` column (workbook schema)
 
@@ -514,6 +632,9 @@ Schema check before saving:
 header = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
 assert header[23] == "Reason TBD" and header[24] == "Confidence", \
     f"Confidence column missing or misplaced: got {header[23:25]}"
+# TBE_Reverify is opt-in; assert it exists when reverification is being performed this session.
+if any_tbe_reverify_true(ws):
+    assert "TBE_Reverify" in header, "TBE_Reverify column required when reverifying TBE rows"
 ```
 
 ## Deep Analysis Requirements (CRITICAL)

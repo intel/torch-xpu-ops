@@ -1,6 +1,8 @@
 # classify_ut — Workflow Chart
 
-End-to-end flow for classifying blank-`Reason` rows in XPU UT status workbooks.
+End-to-end flow for classifying blank-`Reason` rows in XPU UT status workbooks, and for
+the optional opt-in **TBE re-verification pass** that re-checks existing `To be enabled`
+verdicts (see the **TBE Re-verification Rule** in `classify_ut/RULES.md`).
 
 ## High-level pipeline
 
@@ -109,4 +111,27 @@ flowchart TD
     F --> Cluster["Same skipped-issue -> same verdict for all siblings in scope"]
     Fg --> Cluster
     Te --> Cluster
+```
+
+## TBE re-verification pass (opt-in per row, post-classification)
+
+Runs after the main classification pass when the workbook owner has flagged at least one
+`To be enabled` row via `TBE_Reverify = True`. The recheck re-uses the status-specific
+subskills and produces an updated `DetailReason` (and possibly `Reason`). `Reason TBD`
+is **never** modified.
+
+```mermaid
+flowchart TD
+    Flag(["TBE_Reverify = True<br/>(row was Reason='To be enabled' in original,<br/>agent opted in)"]) --> ReadCite["Re-read cited source state<br/>(file:line, issue URL, wrapper)"]
+    ReadCite --> Changes{gap still present?<br/>git log + gh issue view + decorators}
+    Changes -- "Yes, unchanged" --> Confirm["Keep Reason='To be enabled'<br/>DetailReason refreshed + [Reverified: YYYY-MM-DD]"]
+    Changes -- "No, gap closed (wrapper added, allow_xpu=True, skip removed)" --> RouteSub["Route by status_xpu to<br/>blank/ | failed/ | skipped/ subskill"]
+    Changes -- "Issue reopened / signal ambiguous" --> Low["Flag Need human check<br/>[Reverified: YYYY-MM-DD] [Confidence: LOW]"]
+    RouteSub --> SubVerdict{Sub-skill verdict}
+    SubVerdict -- "To be enabled" --> Confirm
+    SubVerdict -- "Local Passed / Failures / Feature gap / Not applicable / Community Change" --> NewVerdict["Write new Reason + DetailReason<br/>prefix [Reverified: YYYY-MM-DD]"]
+    Confirm --> Save
+    Low --> Save
+    NewVerdict --> Save
+    Save["Mark cells blue · Reason TBD unchanged<br/>save evidence to /tmp/opencode/<workbook>_local_verify/"] --> SaveWB["Save as .agent.xlsx"]
 ```

@@ -15,7 +15,9 @@ This skill applies to any workbook/sheet with these columns:
 - Test identification: `testfile_cuda`, `classname_cuda`, `name_cuda`
 - XPU status: `status_xpu`, `message_xpu`
 - Classification: `Reason`, `DetailReason`
-- Tracking: `Reason TBD`
+- Tracking: `Reason TBD`, `Confidence` (added by this skill; see RULES.md)
+- Re-verification: `TBE_Reverify` (added by this skill; see **TBE Re-verification Rule** in
+  `RULES.md`). Only required in sessions that opt rows into the `To be enabled` recheck pass.
 
 Known sheets:
 - `Non-Inductor XPU Skip` in `Non_inductor_ut_status_ww*.xlsx`
@@ -109,11 +111,12 @@ rule there before assigning a `Reason`. The status-specific subskills (`blank/`,
 |----------------------------------|-----------|
 | **User-Issued Policy Overrides** (P1 Local-Retest Mandate) | Every row |
 | **Sibling-Class Verdict Mapping** (`instantiate_device_type_tests`) | Rows referencing a CUDA-suffix class |
-| **Column Definitions** (canonical `Reason` labels, `DetailReason`, `Reason TBD`) | Every row |
+| **Column Definitions** (canonical `Reason` labels, `DetailReason`, `Reason TBD`, `Confidence`, `TBE_Reverify`) | Every row |
 | **CUDA-Only Judgement Rule** | `Not applicable` candidates |
 | **Workbook Precedent Rule** | Non-Inductor `Not applicable` clusters |
 | **Dynamic-Skip Rule** | `skipped`-labeled issues |
 | **Local Verification via XPU Port** | `To be enabled` / `skipped`-label local runs |
+| **TBE Re-verification Rule** | Rows with `TBE_Reverify = True` (re-checking existing `To be enabled` verdicts) |
 | **Confidence Rubric & Need-Human-Check Rule** | Every `Reason TBD = True` row |
 | **Deep Analysis Requirements** (Case Existence, Community Change detection, disabled-test, Failures issue-link) | Every blank-Reason row |
 | **Local Verification Evidence** (MANDATORY for `Local Passed`) | `Local Passed` rows |
@@ -129,6 +132,9 @@ rule there before assigning a `Reason`. The status-specific subskills (`blank/`,
 | `openpyxl` | Read/write workbook cells |
 | `pytest --collect-only` | Check if test exists without running it |
 | `python <test_file> -k <pattern> -v` | Run specific tests with PyTorch test runner |
+| `scripts/extract_target_sheet.py` | Sheet-level extract (MANDATORY first step) |
+| `scripts/filter_target_rows.py` | OPTIONAL row-level filter when the user names a subset |
+| `scripts/apply_filtered_changes.py` | OPTIONAL write-back when the row filter was used |
 
 ## Environment Setup (OPTIONAL — see preparation skill)
 
@@ -138,6 +144,53 @@ aid, NOT a mandatory step, and is NOT run by default. The full recipe — both t
 `classify_ut/preparation/SKILL.md`. Run it only when the user explicitly asks to refresh the
 environment, or when a verdict depends on a fresh, source-aligned local run.
 
+## Row-Level Filter (OPTIONAL — only when the user names a subset)
+
+When the user asks to classify a specific subset of rows (e.g. "classify rows where
+`Reason='To be enabled' AND DetailReason='Daisy'`"), filter the extracted sheet to that
+subset before classification. This keeps the per-row working set small and the agent
+context lean.
+
+```bash
+# Filter the extracted sheet to the rows the user cares about.
+python3 scripts/filter_target_rows.py <stem>.<sheet_slug>.xlsx \
+    --where "Reason=To be enabled" "DetailReason=Daisy" \
+    --out <stem>.<sheet_slug>.subset.xlsx
+```
+
+The filter script:
+
+- Accepts one or more `--where "Column=value"` (or `"Column!=value"`) tokens, AND-ed.
+- An empty value (`Reason=`) matches blank cells — use this for the typical
+  "classify blank-Reason rows" workflow.
+- Writes the matching rows to a new small workbook with a `_source_row` column
+  appended at the end (1-based row number in the extracted file, used for
+  write-back).
+- Prints `matched rows` and `columns` on success; exits 1 with no output file
+  when 0 rows match.
+
+Run all subsequent classification steps (steps 4-11 in the **Workflow** below) on
+the filtered subset instead of the full extracted file. To write the agent's edits
+back to the full extracted file (or to a new `.agent.xlsx`), use the apply script:
+
+```bash
+python3 scripts/apply_filtered_changes.py <stem>.<sheet_slug>.xlsx \
+    <stem>.<sheet_slug>.subset.xlsx \
+    --write-columns Reason DetailReason Confidence \
+    --out <stem>.<sheet_slug>.agent.xlsx
+```
+
+The apply script:
+
+- Reads `_source_row` from the filtered file to find each row in the target.
+- Copies the values of the named `--write-columns` from filtered -> target.
+- Marks each updated cell blue (`ADD8E6`, override with `--blue`).
+- Saves the target in place by default; use `--out` to write a new file
+  (e.g. `.agent.xlsx`) without touching the source.
+
+If the user did NOT name a subset, skip both scripts and follow the default
+**Workflow** below end-to-end against the full extracted sheet.
+
 ## Workflow
 
 1. **Extract the target sheet** (MANDATORY — always run first): run
@@ -145,6 +198,10 @@ environment, or when a verdict depends on a fresh, source-aligned local run.
    small single-sheet `<stem>.<sheet_slug>.xlsx`. Use that extracted file as the working
    target for every step below; leave the original large workbook untouched. See
    `classify_ut/preparation/SKILL.md`.
+   If the user named a subset, follow it with a `scripts/filter_target_rows.py`
+   call (see **Row-Level Filter** above) and treat the filtered file as the
+   working target for steps 3-11. Step 13 (save) becomes the apply script's
+   `--out` argument.
 2. (Optional) Run the remaining preparation only if requested or needed: environment setup
    and/or local pre-screen against the extracted file, per `classify_ut/preparation/SKILL.md`.
    Not run by default.
@@ -158,21 +215,54 @@ environment, or when a verdict depends on a fresh, source-aligned local run.
    - `classname_cuda` ending with `CUDA` -> replace with `XPU`
    - `name_cuda` ending with `_cuda` -> replace with `_xpu`
    - `testfile_xpu` defaults to `testfile_cuda` when blank
-7. For each blank-Reason row, choose the status-specific skill:
+7. **Initialize the re-verification opt-in `TBE_Reverify` column** (only when the workbook
+   owner wants a `To be enabled` recheck pass this session; see the **TBE Re-verification
+   Rule** in `classify_ut/RULES.md`):
+   - Add the column immediately after `Confidence` (or after the last existing column if
+     `Confidence` is not present).
+   - For every row in the ORIGINAL workbook where `Reason = "To be enabled"`, default to
+     `TBE_Reverify = False`. The agent flips individual rows to `True` to opt them in.
+   - For every other row (blank Reason or any other filled Reason), set
+     `TBE_Reverify = False`.
+   - Once set, NEVER clear `TBE_Reverify` back to `False` for a row that was flipped to
+     `True` and processed. The flag is a permanent record that reverification happened.
+8. For each blank-Reason row, choose the status-specific skill:
    - blank `status_xpu` -> `classify_ut/blank/SKILL.md`
    - `status_xpu = failed` -> `classify_ut/failed/SKILL.md`
    - `status_xpu = skipped` or `xfail` -> `classify_ut/skipped/SKILL.md`
-8. Execute the selected skill's deep analysis workflow. While classifying, also apply the
+9. Execute the selected skill's deep analysis workflow. While classifying, also apply the
    cross-cutting rules defined in `classify_ut/RULES.md` whenever they are in scope: the
    **Sibling-Class Verdict Mapping**, **CUDA-Only Judgement Rule**, **Dynamic-Skip Rule**, and the
    **Workbook Precedent Rule** (authoritative override for non-Inductor `Not applicable`).
-9. Fill `Reason` and `DetailReason`. Mark cells blue.
-10. Save local verification results to `/tmp/opencode/<workbook>_local_verify/`
-11. Save output workbook as `.agent.xlsx` (do not modify original).
-12. Verify: 0 blank Reason rows remaining, ZIP integrity OK, reason counts match.
+10. Fill `Reason` and `DetailReason`. Mark cells blue.
+11. **Re-verification pass for `TBE_Reverify = True` rows** (only when the column exists
+    and at least one row is flagged; see the **TBE Re-verification Rule**):
+    - For each `TBE_Reverify = True` row, route by `status_xpu` to the same
+      status-specific subskill as in step 8.
+    - Re-read the cited source state (file:line, issue URL, wrapper) and check for
+      changes since the prior verdict (commits, issue state, decorators).
+    - Let the subskill's deep-analysis workflow produce a fresh verdict. The verdict may
+      confirm `To be enabled`, change the label, or flag `Need human check`.
+    - Update `DetailReason` and prepend `[Reverified: YYYY-MM-DD]`. `Reason TBD` is NOT
+      modified. Mark updated cells blue.
+12. Save local verification results to `/tmp/opencode/<workbook>_local_verify/`
+13. **Save the output workbook as `.agent.xlsx`** (do not modify the original
+    large workbook). If a row filter was used in step 1, run
+    `scripts/apply_filtered_changes.py <extracted.xlsx> <subset.xlsx>
+    --write-columns Reason DetailReason Confidence --out <stem>.agent.xlsx`
+    to materialize the filtered edits into the official output. Otherwise, copy
+    the extracted workbook to `<stem>.agent.xlsx`.
+14. Verify: 0 blank Reason rows remaining, ZIP integrity OK, reason counts match. If the
+    re-verification pass ran, also confirm that every `TBE_Reverify = True` row has a
+    `[Reverified: ...]` marker in its updated `DetailReason` (or, if reverification
+    produced no change, the prior `DetailReason` was left untouched and the cell fill
+    is unchanged).
 
 ## Notes
 
 - Save output as `.agent.xlsx`; do not modify original workbook.
 - Preserve existing `Reason` and `DetailReason` unless deep analysis justifies an update.
+- The re-verification pass is opt-in per row via `TBE_Reverify = True`. The agent should
+  not mass-flip the column; flipping a row to `True` is a deliberate signal that the
+  existing `To be enabled` verdict deserves a fresh recheck.
 - Mark updated cells blue using `PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')`.

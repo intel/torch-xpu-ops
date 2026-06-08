@@ -10,6 +10,39 @@ Classify rows in any XPU UT status workbook whose `Reason` is blank and whose
 base workbook preparation has initialized `Reason TBD`, filled missing XPU metadata, and
 preserved the original workbook.
 
+This subskill is also invoked for the **TBE re-verification pass**: rows where
+`TBE_Reverify = True` in the `.agent.xlsx` (originally classified as `To be enabled`,
+opt-in recheck) get routed here by `status_xpu`. The deep-analysis workflow is the same;
+the only difference is the input row set and the `DetailReason` marker convention. See
+**TBE Re-verification Context** below and the **TBE Re-verification Rule** in
+`classify_ut/RULES.md`.
+
+## TBE Re-verification Context
+
+When the parent workflow runs the re-verification pass, it routes a row with
+`TBE_Reverify = True` and `status_xpu = failed` to THIS subskill. The invocation is
+identical to the failed-Reason case with one exception: the row is being re-checked, not
+classified from scratch.
+
+- The existing `DetailReason` was written by a prior pass that landed on
+  `To be enabled`. The agent MUST re-read the cited source state (typically a closed
+  `intel/torch-xpu-ops` or `pytorch/pytorch` issue, a stale skip, a missing wrapper, or
+  a missing `allow_xpu=True`) and check whether it has changed since the prior verdict.
+- The verdict may stay `To be enabled`, change to another canonical label (e.g. the
+  wrapper was added and the case now runs and crashes -> `Failures (xpu broken)`), or
+  be flagged `Need human check` (LOW) when the cited signal is no longer clear. Each
+  outcome is written to `Reason` and `DetailReason` per the **TBE Re-verification Rule**.
+- `Reason TBD` is **never** flipped to `True` for a re-verified row. A re-verified row
+  stays `Reason TBD = False`.
+- The updated `DetailReason` MUST start with `[Reverified: YYYY-MM-DD]` so a human
+  reviewer can distinguish a row that was re-checked in this session from one that was
+  left as-is from the original workbook. If the row also flips to `Need human check`,
+  the LOW confidence prefix is required by the existing rubric:
+  `[Reverified: YYYY-MM-DD] [Confidence: LOW] Need human check. ...`
+- The `Confidence` workbook column is NOT populated for re-verified rows (it is reserved
+  for `Reason TBD = True` rows; see the **Confidence Rubric & Need-Human-Check Rule** in
+  `RULES.md`).
+
 ## Required Inputs
 
 - Workbook row fields: `testfile_cuda`, `classname_cuda`, `name_cuda`, `testfile_xpu`,
@@ -194,3 +227,13 @@ When `status_xpu = failed` but the test PASSES locally in `pytorch_opencode_env`
 - Confirm `Reason TBD` values were not flipped after classification.
 - Confirm updated cells are blue.
 - Spot-check at least one known-issue row and one `[Issue_TBD]` row against source/issue evidence.
+
+## Working File
+
+This subskill operates on the working file produced by the parent's extract +
+optional filter steps. If a row filter was applied (e.g. the user said
+"classify rows where `status_xpu=failed AND DetailReason=Daisy`"), the
+working file is a subset with a `_source_row` column. Edit only the subset's
+`Reason` and `DetailReason`; write the verdicts back to the extracted file
+(or to `.agent.xlsx`) via `classify_ut/scripts/apply_filtered_changes.py`.
+See parent `classify_ut/SKILL.md` "Row-Level Filter" section.

@@ -8,6 +8,43 @@ Classify rows whose `Reason` is blank and `status_xpu` is `skipped` or `xfail`.
 Skipped does **not** automatically mean a test environment limitation. Every skipped row requires
 semantic analysis of `message_xpu`, linked issues, local source, and targeted local runs.
 
+This subskill is also invoked for the **TBE re-verification pass**: rows where
+`TBE_Reverify = True` in the `.agent.xlsx` (originally classified as `To be enabled`,
+opt-in recheck) get routed here by `status_xpu`. The deep-analysis workflow is the same;
+the only difference is the input row set and the `DetailReason` marker convention. See
+**TBE Re-verification Context** below and the **TBE Re-verification Rule** in
+`classify_ut/RULES.md`.
+
+## TBE Re-verification Context
+
+When the parent workflow runs the re-verification pass, it routes a row with
+`TBE_Reverify = True` and `status_xpu` in {`skipped`, `xfail`} to THIS subskill. The
+invocation is identical to the skipped/xfail-Reason case with one exception: the row is
+being re-checked, not classified from scratch.
+
+- The existing `DetailReason` was written by a prior pass that landed on
+  `To be enabled`. The agent MUST re-read the cited source state — typically a stale
+  `skipIfXpu` decorator, a closed `skipped`-labeled issue whose decorator is still in
+  place, a missing `allow_xpu=True`, or a stale `inductor_skips["xpu"][...]` entry —
+  and check whether it has changed since the prior verdict.
+- For `skipped`-label citations specifically: re-run `gh issue view` on the cited
+  closed issue to confirm it is still CLOSED. If it has been reopened, the prior TBE
+  rationale no longer holds and the verdict may change.
+- The verdict may stay `To be enabled`, change to another canonical label (e.g. the
+  decorator was removed and the case now runs but crashes -> `Failures (xpu broken)`),
+  or be flagged `Need human check` (LOW) when the cited signal is no longer clear. Each
+  outcome is written to `Reason` and `DetailReason` per the **TBE Re-verification Rule**.
+- `Reason TBD` is **never** flipped to `True` for a re-verified row. A re-verified row
+  stays `Reason TBD = False`.
+- The updated `DetailReason` MUST start with `[Reverified: YYYY-MM-DD]` so a human
+  reviewer can distinguish a row that was re-checked in this session from one that was
+  left as-is from the original workbook. If the row also flips to `Need human check`,
+  the LOW confidence prefix is required by the existing rubric:
+  `[Reverified: YYYY-MM-DD] [Confidence: LOW] Need human check. ...`
+- The `Confidence` workbook column is NOT populated for re-verified rows (it is reserved
+  for `Reason TBD = True` rows; see the **Confidence Rubric & Need-Human-Check Rule** in
+  `RULES.md`).
+
 ## Required Tools
 
 | Tool | Purpose | Example |
@@ -389,3 +426,13 @@ Tests skipped due to CUDA compute capability checks (e.g., `@unittest.skipIf(not
 - Confirm `Reason TBD` values unchanged
 - Confirm updated cells are blue
 - Spot-check at least one row from each classification category
+
+## Working File
+
+This subskill operates on the working file produced by the parent's extract +
+optional filter steps. If a row filter was applied (e.g. the user said
+"classify rows where `Reason='To be enabled' AND DetailReason='Daisy'`"), the
+working file is a subset with a `_source_row` column. Edit only the subset's
+`Reason` and `DetailReason`; write the verdicts back to the extracted file
+(or to `.agent.xlsx`) via `classify_ut/scripts/apply_filtered_changes.py`.
+See parent `classify_ut/SKILL.md` "Row-Level Filter" section.

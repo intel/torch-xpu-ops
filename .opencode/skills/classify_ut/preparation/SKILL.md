@@ -56,6 +56,11 @@ The script:
   untouched source of record.
 - The final `.agent.xlsx` output is derived from the extracted file (still "do not modify the
   original"), so it likewise contains only the target sheet.
+- **TBE_Reverify column initialization (when reverification is in scope this session):**
+  the parent workflow's step 7 (see `classify_ut/SKILL.md`) initializes the
+  `TBE_Reverify` column on the extracted workbook from the ORIGINAL workbook's
+  `Reason` values. Preparation does not touch the column itself; the parent workflow
+  does.
 
 ## When to run preparation
 
