@@ -377,7 +377,7 @@ Tensor _fft_c2c_mkl(
   }
 
   if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
-    auto result = out.to(ScalarType::ComplexHalf);
+    Tensor result = out.to(ScalarType::ComplexHalf);
     impl::_fft_apply_normalization(result, normalization, input_sizes, dim);
     return result;
   }
@@ -459,7 +459,7 @@ Tensor _fft_c2r_mkl(
       /*forward=*/false);
 
   if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
-    auto result = out.to(ScalarType::Half);
+    Tensor result = out.to(ScalarType::Half);
     impl::_fft_apply_normalization(result, normalization, out_sizes, dim);
     return result;
   }
