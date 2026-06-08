@@ -974,8 +974,7 @@ template <
     bool IndexIsMajor,
     typename func_t>
 struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto local_range = item.get_local_range(0);
     T identity = (T)0;
 
