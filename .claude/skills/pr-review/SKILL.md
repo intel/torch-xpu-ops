@@ -142,11 +142,21 @@ Before reviewing, build understanding of what the PR touches and why:
 3. Note the scope of changes (files affected, lines changed)
 4. Spawn sub-agents to read the unchanged code surrounding each significantly changed file to understand existing patterns and infrastructure
 
-### Step 2: Deep Review
+### Step 2: Verify Upstream Semantics
+
+For every changed kernel or operator file, fetch and read the corresponding upstream PyTorch implementation BEFORE evaluating correctness:
+
+- `src/ATen/native/xpu/<Op>.cpp` → read `aten/src/ATen/native/<Op>.cpp`
+- `src/ATen/native/xpu/sycl/<Op>Kernels.cpp` → read `aten/src/ATen/native/cuda/<Op>.cu`
+- Shared math utilities (e.g., `MathExtensions.h`) → read `aten/src/ATen/native/Math.h`
+
+Use `gh api` or spawn a sub-agent to fetch the upstream file content. Do NOT proceed to the deep review until upstream code has been read. Quote or summarize relevant upstream patterns in your working notes before continuing.
+
+### Step 3: Deep Review
 
 Go through **every changed line** in the diff and evaluate against the review checklist in [review-checklist.md](references/review-checklist.md).
 
-If the diff includes SKILL.md changes, also evaluate against the Skill in skill-writer's [SKILL.md](../skill-writer/SKILL.md).
+If the diff adds or modifies any agent instruction files (`SKILL.md`, `AGENTS.md`, `claude.md`, `copilot-instructions.md`, or files under `.claude/` / `.github/`), load the skill-writer skill and evaluate those changes against its guidelines. Do NOT skip this — treat it as a blocking gate for those files.
 
 Pay special attention to XPU-specific risks:
 - **Synchronization**: hidden host sync, unnecessary synchronize, stream misuse
@@ -156,15 +166,15 @@ Pay special attention to XPU-specific risks:
 - **Kernel efficiency**: branch divergence, work-group choice, unnecessary copies
 - **Fallback/dispatch**: wrong registration, silent fallback, inconsistent path coverage
 
-### Step 3: Check Backward Compatibility
+### Step 4: Check Backward Compatibility
 
 Evaluate BC implications per [bc-guidelines.md](references/bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
 
-### Step 4: Formulate Review
+### Step 5: Formulate Review
 
 Structure your review with actionable feedback organized by category. Every finding should be traceable to a specific line in the diff.
 
-### Step 5: Fact-Check
+### Step 6: Fact-Check
 
 After drafting the review, spawn a sub-agent per reported issue (in parallel) to independently verify the claim by re-reading the relevant code. Drop invalid issues, reword uncertain ones with a note about confidence level.
 

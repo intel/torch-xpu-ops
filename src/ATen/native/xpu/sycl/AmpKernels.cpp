@@ -27,7 +27,7 @@ struct AmpNonFiniteCheckUnscaleFunctor {
 
   scalar_t operator()(scalar_t val_in) const {
     auto val = static_cast<opmath_t>(val_in);
-    if (std::isinf(val) || std::isnan(val)) {
+    if (sycl::isinf(val) || sycl::isnan(val)) {
       *found_inf_ptr_ = 1.f;
     }
     const auto inv_scale_val = *inv_scale_ptr_;
@@ -69,7 +69,7 @@ void amp_non_finite_check_and_unscale_kernel(
 template <typename opmath_t>
 struct AmpForeachNonFiniteCheckUnscaleFunctor {
   opmath_t operator()(opmath_t val) const {
-    if (std::isinf(val) || std::isnan(val)) {
+    if (sycl::isinf(val) || sycl::isnan(val)) {
       *found_inf_ptr_ = 1.f;
     }
     const auto inv_scale_val = *inv_scale_ptr_;
@@ -130,7 +130,7 @@ struct AmpUpdateScaleKernelFunctor {
       auto successful = (*growth_tracker_) + 1;
       if (successful == growth_interval_) {
         auto new_scale = static_cast<float>((*current_scale_) * growth_factor_);
-        if (!std::isinf(new_scale)) {
+        if (!sycl::isinf(new_scale)) {
           *current_scale_ = new_scale;
         }
         *growth_tracker_ = 0;
