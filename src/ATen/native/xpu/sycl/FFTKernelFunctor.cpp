@@ -730,7 +730,7 @@ void _fft_with_size_sycl(
 }
 
 // Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
-Tensor& _exec_fft(
+Tensor& _exec_fft_sycl(
     Tensor& out,
     Tensor self,
     IntArrayRef out_sizes,
@@ -1004,7 +1004,7 @@ Tensor _fft_c2c_sycl(
   auto out = at::empty(out_sizes, self.options());
   auto input_sizes = self.sizes();
 
-  impl::_exec_fft(
+  impl::_exec_fft_sycl(
       out,
       self,
       out_sizes,

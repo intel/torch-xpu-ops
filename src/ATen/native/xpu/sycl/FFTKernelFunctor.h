@@ -33,6 +33,23 @@ void _fft_conjugate_copy_kernel(
 
 void _fft_fill_with_conjugate_symmetry_(const Tensor& input, IntArrayRef dim_);
 
+namespace impl {
+
+double _dft_scale(
+    IntArrayRef dim,
+    IntArrayRef norm_sizes,
+    int64_t normalization);
+
+const Tensor& _fft_apply_normalization(
+    const Tensor& self,
+    int64_t normalization,
+    IntArrayRef norm_sizes,
+    IntArrayRef dims);
+
+Tensor promote_fft_input(const Tensor& input);
+
+} // namespace impl
+
 TORCH_XPU_API bool _is_fft_size_supported_sycl(
     const Tensor& orig_self,
     IntArrayRef dim);
