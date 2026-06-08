@@ -20,7 +20,6 @@ import inspect
 import io
 import itertools
 import math
-import os
 import pickle
 import random
 import re
@@ -223,44 +222,6 @@ torch.testing._internal.common_utils.TestCase._should_stop_test_suite = (
     my_should_stop_test_suite
 )
 
-
-def my_wrap_with_cuda_policy(self, method_name, policy):
-    test_method = getattr(self, method_name)
-    # the import below may initialize CUDA context, so we do it only if
-    # self._do_cuda_memory_leak_check or self._do_cuda_non_default_stream
-    # is True.
-    # TODO: sure looks like we unconditionally initialize the context here
-    # -- ezyang
-    from torch.testing._internal.common_cuda import TEST_CUDA
-    from torch.testing._internal.common_utils import TEST_XPU
-
-    fullname = self.id().lower()  # class_name.method_name
-    if (TEST_CUDA and ("gpu" in fullname or "cuda" in fullname)) or (
-        TEST_XPU and ("gpu" in fullname or "cuda" in fullname)
-    ):
-        setattr(self, method_name, self.wrap_method_with_policy(test_method, policy))
-
-
-torch.testing._internal.common_utils.TestCase.wrap_with_cuda_policy = (
-    my_wrap_with_cuda_policy
-)
-
-if TEST_WITH_TORCHINDUCTOR:
-    from torch._inductor.test_case import TestCase
-else:
-    from torch.testing._internal.common_utils import (  # type: ignore[assignment]
-        TestCase,
-    )
-
-
-# Protects against includes accidentally setting the default dtype
-assert torch.get_default_dtype() is torch.float32
-
-# load_tests from torch.testing._internal.common_utils is used to automatically filter tests for
-# sharding on sandcastle. This line silences flake warnings
-load_tests = load_tests
-
-AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
     8,
