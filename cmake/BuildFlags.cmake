@@ -44,7 +44,6 @@ macro(set_build_flags)
     # # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-      list(APPEND SYCL_HOST_FLAGS /MD)
       list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
@@ -75,6 +74,8 @@ macro(set_build_flags)
         list(APPEND SYCL_HOST_FLAGS /MDd /Z7 /Od)
       elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
         list(APPEND SYCL_HOST_FLAGS /MD /Z7 /O2)
+      else()
+        list(APPEND SYCL_HOST_FLAGS /MD)
       endif()
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       if(CMAKE_BUILD_TYPE MATCHES Debug)
