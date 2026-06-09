@@ -239,7 +239,11 @@ def run_all(
             elif exit_code == 0:
                 log(f"{progress} FAIL  {model_info} ({elapsed}) → {test_result}", level="WARN", worker=worker_id)
             else:
-                log(f"{progress} FAIL  {model_info} ({elapsed}) → exit code {exit_code}", level="ERROR", worker=worker_id)
+                log(
+                    f"{progress} FAIL  {model_info} ({elapsed}) → exit code {exit_code}",
+                    level="ERROR",
+                    worker=worker_id,
+                )
 
             results.put((task, success, test_result, kill_reason))
 

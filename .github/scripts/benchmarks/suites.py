@@ -48,6 +48,7 @@ class BenchmarkSuite(ABC):
 
     def prepare(self, task: TestTask) -> None:
         """Optional hook to clean stale state before a run."""
+        return None
 
     def env_overrides(self, task: TestTask) -> dict[str, str]:
         """Optional per-task environment variables for the subprocess."""

@@ -25,10 +25,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run E2E benchmarks with per-GPU job queue and hang detection",
     )
-    parser.add_argument("--suite", default="",
-                        help="Comma- or space-separated suites (huggingface, timm_models, torchbench, pt2e). Empty = all.")
-    parser.add_argument("--dt", "--dtype", default="",
-                        help="Comma- or space-separated dtypes (float32, bfloat16, float16, amp_bf16, amp_fp16, int8). Empty = all.")
+    parser.add_argument(
+        "--suite",
+        default="",
+        help=(
+            "Comma- or space-separated suites "
+            "(huggingface, timm_models, torchbench, pt2e). Empty = all."
+        ),
+    )
+    parser.add_argument(
+        "--dt",
+        "--dtype",
+        default="",
+        help=(
+            "Comma- or space-separated dtypes "
+            "(float32, bfloat16, float16, amp_bf16, amp_fp16, int8). Empty = all."
+        ),
+    )
     parser.add_argument("--mode", default="",
                         help="Comma- or space-separated modes (inference, training). Empty = all.")
     parser.add_argument("--scenario", default="",

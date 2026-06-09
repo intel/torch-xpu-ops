@@ -13,10 +13,6 @@ from .config import (
     INDUCTOR_DT,
     PT2E_DT,
     TestTask,
-    VALID_DT,
-    VALID_MODES,
-    VALID_SCENARIOS,
-    VALID_SUITES,
 )
 from .log import log
 
