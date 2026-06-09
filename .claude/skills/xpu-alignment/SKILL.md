@@ -100,7 +100,7 @@ Fetch all passed candidates' details -> save to `artifacts/details/<id>.json`:
 - **Commits**: fetch commit message + diff (`gh api repos/pytorch/pytorch/commits/<sha>`
   or `git show`). Save the diff summary and affected files.
 
-For each, decide reject or pass-to-repro (update `deep_status`).
+For each, decide reject or pass (update `deep_status`).
 
 **Rejection principle**: reject only when the content confirms the bug is in
 platform-exclusive code with no XPU equivalent (Metal/MPS shaders, HIP driver-level,
@@ -117,7 +117,8 @@ context" and move on.
 
 #### 2b. Batch write reproducers
 
-For all `pass-to-repro` candidates, write `scripts/repro_<id>.py` in one pass. Each
+For all candidates with `deep_status == "pass"`, write `scripts/repro_<id>.py` in
+one pass. Each
 repro must:
 
 1. Print `torch.__version__` and `torch.xpu.is_available()`.
@@ -202,7 +203,7 @@ Artifacts produced under the run directory:
 - `artifacts/raw_candidates.json` — deduplicated candidate metadata
 - `artifacts/candidate_ledger.jsonl` — agent-maintained per-candidate status ledger (resume point)
 - `artifacts/details/<id>.json` — fetched body/diff per passed candidate
-- `scripts/repro_<id>.py` — XPU-adapted reproducer per pass-to-repro candidate
+- `scripts/repro_<id>.py` — XPU-adapted reproducer per `deep_status == pass` candidate
 - `artifacts/output_<id>.log` — captured stdout/stderr per executed repro
 - `artifacts/collect_env.txt` — `collect_env` output for issue Versions section
 - `reports/full_scan.md` — auditable report of all tested candidates

@@ -37,7 +37,7 @@ using this exact body structure:
 ````
 ## Issue 1
 
-**Suggested title:** [cuda_xpu_alignment] <original bug title>
+**Suggested title:** [xpu_alignment] <original bug title>
 **Suggested labels:** xpu-alignment, <upstream-issue|upstream-pr>, <confirmed|related-failure>
 
 **Upstream source:** <upstream URL> (upstream-issue | upstream-pr)

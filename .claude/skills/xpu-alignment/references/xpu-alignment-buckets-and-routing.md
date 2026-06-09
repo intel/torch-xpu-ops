@@ -18,14 +18,13 @@ actually happened when you ran it:
 | `blocked-env` | the repro could not start: a dependency was missing or it needed a distributed/multi-GPU setup |
 | `blocked-platform` | the repro needed a code path XPU does not have at all |
 | `blocked-fetch` | you could not retrieve the issue/PR/commit details to build a repro |
-| `blocked-commit-context` | a commit had too little context to construct a meaningful repro |
 | `blocked-script-error` | the repro failed before producing a verdict: it crashed before the check, or it silently ran on CPU instead of XPU |
 | `needs-performance-harness` | the bug is performance-only and needs a benchmark you do not have |
 
 Candidates rejected before a repro runs do not get a bucket: title rejects are
 recorded with `title_status: reject` (Step 1.1) and deep-filter rejects with
-`deep_status: reject` (Step 2a). Only repros that actually run receive a
-`local_bucket`.
+`deep_status: reject` (Step 2a), including commits with insufficient context.
+Only repros that actually run receive a `local_bucket`.
 
 ## Confirmation criteria
 
