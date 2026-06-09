@@ -1,30 +1,26 @@
 name: Linux E2E Test
+description: Run Linux E2E benchmark suites with the merged benchmark runner.
 
 inputs:
   suite:
     required: true
-    type: string
     default: 'huggingface'
-    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+    description: 'Dynamo benchmark suites. Comma-separated: huggingface,timm_models,torchbench'
   dt:
     required: true
-    type: string
     default: 'float32'
-    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
+    description: 'Data precisions. Comma-separated: float32,bfloat16,float16,amp_bf16,amp_fp16'
   mode:
     required: true
-    type: string
     default: 'inference'
-    description: inference,training. Delimiter is comma
+    description: 'Comma-separated execution modes: inference,training'
   scenario:
     required: true
-    type: string
     default: 'accuracy'
-    description: accuracy,performance. Delimiter is comma
+    description: 'Comma-separated scenarios: accuracy,performance'
   overwrite_model_list:
-    type: string
     default: 'true'
-    description: 'Overwrite pytorch model lists with torch-xpu-ops .ci/benchmarks/ overlay'
+    description: 'Overwrite PyTorch model lists with the torch-xpu-ops .ci/benchmarks overlay'
 
 runs:
   using: composite
@@ -37,18 +33,31 @@ runs:
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
+        set -o pipefail
         cd ./pytorch
-        # prepare for E2E test
-        rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_benchmarks/
-        if [ -n "${MODEL_ONLY_NAME}" ];then
-          model_list_args=" --model-only ${MODEL_ONLY_NAME} "
+        benchmark_runner_dir="./run_benchmarks"
+        benchmark_script_src="${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks"
+        model_list_args=(--model-only None)
+
+        # Stage the merged benchmark runner inside the pytorch checkout so it
+        # can see benchmarks/dynamo and run from the expected working tree.
+        rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_e2e/
+
+        if [ -n "${MODEL_ONLY_NAME:-}" ]; then
+          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
         fi
-        if [ "${{ inputs.overwrite_model_list }}" == "true" ];then
+
+        if [ "${{ inputs.overwrite_model_list }}" == "true" ]; then
           # overlay torch-xpu-ops model lists for nightly / PR tests
-          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmarks/ benchmarks/dynamo/
-          model_list_args=" --model-only benchmarks/dynamo/model_list.csv "
+          rsync -avz "${GITHUB_WORKSPACE}/.ci/benchmarks/" benchmarks/dynamo/
+          model_list_args=(--model-only benchmarks/dynamo/model_list.csv)
         fi
-        rm -rf inductor_log torch
-        python -m run_benchmarks --suite ${{ inputs.suite }} --dtype ${{ inputs.dt }} \
-            --mode ${{ inputs.mode }} --scenario ${{ inputs.scenario }} ${model_list_args} \
-            2>&1 |tee inductor_log/e2e_test.log || true
+
+        rm -rf inductor_log torch && mkdir -p inductor_log
+        python -m run_e2e \
+            --suite "${{ inputs.suite }}" \
+            --dtype "${{ inputs.dt }}" \
+            --mode "${{ inputs.mode }}" \
+            --scenario "${{ inputs.scenario }}" \
+            "${model_list_args[@]}" \
+            2>&1 | tee inductor_log/run_e2e.log || true

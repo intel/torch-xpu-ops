@@ -1,21 +1,19 @@
 name: inductor-xpu-pt2e-test
+description: Run PT2E accuracy and performance benchmarks with the merged benchmark runner.
 
 inputs:
   dt:
     required: true
-    type: string
     default: 'float32'
-    description: Data precision of the test.float32,int8. Delimiter is comma
+    description: 'Data precisions. Comma-separated: float32,int8'
   scenario:
     required: true
-    type: string
     default: 'accuracy'
-    description: accuracy,performance. Delimiter is comma
+    description: 'Comma-separated scenarios: accuracy,performance'
   pytorch:
     required: false
-    type: string
     default: 'main'
-    description: Pytorch branch/commit
+    description: PyTorch branch or commit
 
 runs:
   using: composite
@@ -28,30 +26,35 @@ runs:
     - name: Prepare dataset
       shell: bash -xe {0}
       run: |
-        # dataset
         dataset_dir="${RUNNER_TEMP}/_datasets/imagenet"
-        if [ ! -d ${dataset_dir} ];then
-          rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
+        if [ ! -d "${dataset_dir}" ]; then
+          rm -rf "${dataset_dir}"
+          mkdir -p "${dataset_dir}"
+          cd "${dataset_dir}"
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
           wget -q https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
           tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
-        echo "dataset_dir=${dataset_dir}" >> ${GITHUB_ENV}
+        echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
-        # prepare for PT2E test
-        rm -rf inductor_log
+        set -o pipefail
+
+        # Run from the workspace root so pt2e-accuracy/ and pt2e-performance/
+        # relative paths resolve correctly.
+        rm -rf inductor_log && mkdir -p inductor_log
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_pt2e/
-        cd ./run_pt2e
-        if [ -n "${MODEL_ONLY_NAME}" ];then
-          model_list_args=" --model-only ${MODEL_ONLY_NAME} "
+
+        if [ -n "${MODEL_ONLY_NAME:-}" ]; then
+          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
         else
-          model_list_args=" --model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/model_list.csv "
+          model_list_args=(--model-only "${GITHUB_WORKSPACE}/.ci/benchmarks/model_list.csv")
         fi
+
         python -m run_pt2e --suite pt2e --mode inference \
-            --dtype ${{ inputs.dt }} --scenario ${{ inputs.scenario }} \
-            --dataset-dir ${dataset_dir} ${model_list_args} \
-            2>&1 |tee inductor_log/run_pt2e.log || true
-        rsync -avz --delete inductor_log/ ${GITHUB_WORKSPACE}/pytorch/inductor_log/
+            --dtype "${{ inputs.dt }}" --scenario "${{ inputs.scenario }}" \
+            --dataset-dir "${dataset_dir}" "${model_list_args[@]}" \
+            2>&1 | tee inductor_log/run_pt2e.log || true
+        rsync -avz --delete inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"
