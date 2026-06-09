@@ -96,7 +96,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
 
     Supports two formats:
     1. Legacy: suite, dtype, mode, model, result (5 cols)
-    2. Output CSV: dev, suite, name, dtype, mode, scenario, batch_size, result[, extra] (7+ cols)
+    2. Output CSV: dev, elapsed, suite, dtype, mode, name, scenario, batch_size, result[, extra] (8+ cols)
 
     Format is auto-detected from the header row or column count.
     """
@@ -120,15 +120,15 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
                 continue  # skip header
 
             if output_format is None:
-                output_format = len(fields) >= 7
+                output_format = len(fields) >= 8
 
             if output_format:
-                # Output CSV: dev, suite, name, dtype, mode, scenario, batch_size, ...
-                if len(fields) < 7:
-                    log(f"Skipping line {lineno}: expected 7+ fields, got {len(fields)}: {line!r}", level="WARN")
+                # Output CSV: dev, elapsed, suite, dtype, mode, name, scenario, batch_size, ...
+                if len(fields) < 8:
+                    log(f"Skipping line {lineno}: expected 8+ fields, got {len(fields)}: {line!r}", level="WARN")
                     continue
-                suite, model, dt, mode, scenario = fields[1], fields[2], fields[3], fields[4], fields[5]
-                quant = fields[8] if len(fields) >= 9 else ""
+                suite, dt, mode, model, scenario = fields[2], fields[3], fields[4], fields[5], fields[6]
+                quant = fields[9] if len(fields) >= 10 else ""
                 tasks.append(TestTask(suite, dt, mode, scenario, model, quant))
             else:
                 # Legacy: suite, dtype, mode, model, result
