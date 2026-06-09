@@ -64,12 +64,9 @@ class BenchmarkSuite(ABC):
     def collect_results(
         self, log_csv: Path, log_file: Path, tmp_csv: str | None,
         device: str, task: TestTask, kill_reason: str | None, elapsed: float,
-    ) -> None:
-        """Parse the run output and append one row to *log_csv*."""
-
-    @abstractmethod
-    def check_success(self, log_file: Path, task: TestTask) -> tuple[str, bool]:
-        """Return ``(test_result, success)`` for a finished run."""
+    ) -> tuple[str, bool]:
+        """Parse the run output, append one row to *log_csv*, and return
+        ``(test_result, success)``."""
 
 
 class InductorSuite(BenchmarkSuite):
@@ -111,7 +108,8 @@ class InductorSuite(BenchmarkSuite):
         ]
         return " ".join(p for p in parts if p)
 
-    def check_success(self, log_file, task):
+    @staticmethod
+    def _check_status(log_file) -> tuple[str, bool]:
         """Pass when the last log token is 'pass', 'pass_due_to_skip', or a speedup."""
         if not log_file.exists():
             return "None", False
@@ -136,6 +134,8 @@ class InductorSuite(BenchmarkSuite):
             final_header = CSV_PREFIX + header[3:]
             final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
         _append_row(log_csv, final_header, final_row)
+        # Success is judged from the run log's final line, independent of the CSV.
+        return self._check_status(log_file)
 
     @staticmethod
     def _read_last_matching_row(tmp_csv, device):
@@ -192,10 +192,13 @@ class PT2ESuite(BenchmarkSuite):
             if task.dt == "float32":
                 parts.append("--is_fp32")
         else:  # performance
-            # Each run writes metrics to its own directory so parallel workers
-            # never clobber one another's results.
-            output_dir = tempfile.mkdtemp(prefix="pt2e-perf-")
-            setattr(task, self._OUTPUT_ATTR, output_dir)
+            # Each run gets its own scratch dir so parallel workers never clobber
+            # one another. run_benchmark.py writes the aggregated metrics JSON to
+            # the *parent* of --output, so point --output at a nested subdir to
+            # keep that file inside our scratch dir (where _parse_throughput looks).
+            base_dir = tempfile.mkdtemp(prefix="pt2e-perf-")
+            setattr(task, self._OUTPUT_ATTR, base_dir)
+            output_dir = os.path.join(base_dir, "run")
             parts = [
                 "python pt2e-performance/run_benchmark.py",
                 device,
@@ -215,6 +218,7 @@ class PT2ESuite(BenchmarkSuite):
             acc1, acc5 = ("failed", "failed") if kill_reason else self._parse_accuracy(log_file)
             header = CSV_PREFIX + ["top1", "top5"]
             row = _prefix_row(device, task, elapsed=elapsed) + [acc1, acc5]
+            result = (f"acc1={acc1}", True) if acc1 != "failed" else ("failed", False)
         else:  # performance
             output_dir = getattr(task, self._OUTPUT_ATTR, None)
             try:
@@ -224,14 +228,9 @@ class PT2ESuite(BenchmarkSuite):
                     shutil.rmtree(output_dir, ignore_errors=True)
             header = CSV_PREFIX + ["throughput", "quantization"]
             row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
+            result = (throughput, True) if throughput != "failed" else ("failed", False)
         _append_row(log_csv, header, row)
-
-    def check_success(self, log_file, task):
-        if task.scenario == "accuracy":
-            acc1, _ = self._parse_accuracy(log_file)
-            return (f"acc1={acc1}", True) if acc1 != "failed" else ("failed", False)
-        throughput = self._parse_throughput(getattr(task, self._OUTPUT_ATTR, None))
-        return (throughput, True) if throughput != "failed" else ("failed", False)
+        return result
 
     @staticmethod
     def _parse_accuracy(log_file: Path) -> tuple[str, str]:
@@ -248,7 +247,12 @@ class PT2ESuite(BenchmarkSuite):
 
     @staticmethod
     def _parse_throughput(output_dir: str | None) -> str:
-        """Extract eval_throughput from the run's ``--output`` directory."""
+        """Extract the ``*_throughput`` metric from the run's scratch dir.
+
+        ``run_benchmark.py`` aggregates results into a ``metrics-*.json`` file
+        whose keys look like ``<model>-eval_throughput``; the value is the last
+        whitespace-separated token on that line.
+        """
         if not output_dir:
             return "failed"
         try:
@@ -257,7 +261,7 @@ class PT2ESuite(BenchmarkSuite):
                     content = (Path(root) / fname).read_text(encoding="utf-8", errors="ignore")
                     for line in content.splitlines():
                         if "eval_throughput" in line:
-                            return line.strip().split()[-1]
+                            return line.strip().split()[-1].rstrip(",")
         except Exception:
             pass
         return "failed"

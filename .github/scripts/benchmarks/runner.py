@@ -171,8 +171,10 @@ def run_single(
 
     with kill_reason_lock:
         matched_pattern = kill_reason[0]
+    test_result, success = "exception", False
     try:
-        suite.collect_results(log_csv, log_file, tmp_log_csv, device, task, matched_pattern, elapsed)
+        test_result, success = suite.collect_results(
+            log_csv, log_file, tmp_log_csv, device, task, matched_pattern, elapsed)
     except Exception as e:
         log(f"CSV collection error for {task.model}: {e}", level="ERROR", worker=worker_id)
     finally:
@@ -180,7 +182,6 @@ def run_single(
             with suppress(OSError):
                 os.unlink(tmp_log_csv)
 
-    test_result, success = suite.check_success(log_file, task)
     return exit_code, success, test_result, matched_pattern
 
 
