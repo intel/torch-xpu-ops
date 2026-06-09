@@ -89,8 +89,7 @@ struct DistsLtTwo {
                   static_cast<opmath_t>(p - 1)) *
               grad /
               sycl::pow(
-                  static_cast<opmath_t>(dist),
-                  static_cast<opmath_t>(p - 1)));
+                  static_cast<opmath_t>(dist), static_cast<opmath_t>(p - 1)));
   }
 };
 
@@ -120,8 +119,8 @@ template <typename scalar_t>
 struct DistsP {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
     using opmath_t = at::opmath_type<scalar_t>;
-    agg += static_cast<scalar_t>(sycl::pow(
-        static_cast<opmath_t>(diff), static_cast<opmath_t>(p)));
+    agg += static_cast<scalar_t>(
+        sycl::pow(static_cast<opmath_t>(diff), static_cast<opmath_t>(p)));
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
     using opmath_t = at::opmath_type<scalar_t>;
@@ -147,8 +146,7 @@ struct DistsP {
                   static_cast<opmath_t>(p - 2)) *
               grad /
               sycl::pow(
-                  static_cast<opmath_t>(dist),
-                  static_cast<opmath_t>(p - 1)));
+                  static_cast<opmath_t>(dist), static_cast<opmath_t>(p - 1)));
   }
 };
 
