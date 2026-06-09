@@ -140,7 +140,7 @@ Analyze why the test fails for XPU and provide the engineer with options:
    - Fix test assumptions to work on XPU (in pytorch repo)
    - Estimated effort: [your assessment]
    - Benefits: Full XPU feature parity
-   
+
    **Option B: Skip the test (with proper justification)**
    - Use appropriate skip decorator with clear reason
    - File a tracking issue in `intel/torch-xpu-ops` with:
@@ -154,7 +154,7 @@ Analyze why the test fails for XPU and provide the engineer with options:
      def test_conv3d_groups(self):
          ...
      ```
-   
+
    **Recommendation:** [Your analysis of which option makes sense for this specific case]
 
 3. **Let the engineer decide** based on:
@@ -183,13 +183,13 @@ Analyze why the test fails for XPU and provide the engineer with options:
    - Apply XPU-specific fix that **aligns with CUDA implementation** logic, tolerances, and dtypes
    - If XPU must diverge from CUDA, document the reason in code comments
    - Estimated effort: [your assessment]
-   
+
    **Option B: Temporarily skip while investigating**
    - If root cause is unclear or fix is complex
    - Add skip decorator with issue reference
    - File tracking issue with regression details
    - Commit just the skip to unblock nightly, investigate separately
-   
+
    **Recommendation:** [Your analysis - usually prefer Option A for regressions unless very complex]
 
 ### General Analysis
