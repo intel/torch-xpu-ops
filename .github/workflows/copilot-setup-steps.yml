@@ -1,0 +1,28 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+
+      - name: Clone PyTorch
+        run: |
+          PYTORCH_REPO="${{ vars.PYTORCH_REPO || 'pytorch/pytorch' }}"
+          PYTORCH_BRANCH="${{ vars.PYTORCH_BRANCH || 'main' }}"
+          echo "Cloning ${PYTORCH_REPO} @ ${PYTORCH_BRANCH}"
+          git clone --depth=1 --branch "${PYTORCH_BRANCH}" \
+            "https://github.com/${PYTORCH_REPO}.git" /home/runner/work/pytorch
