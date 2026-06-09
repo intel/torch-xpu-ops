@@ -5,7 +5,7 @@ description: oneAPI/python activation, build commands, and the torch-xpu-ops xpu
 
 # Environment Setup
 
-This doc contains the env settings and build commands for PyTorch Development. 
+This doc contains the env settings and build commands for PyTorch Development.
 All paths and flags below are **environment-dependent placeholders** — adapt them to the local machine (oneAPI install location, target GPU arch, the PyTorch checkout's Python
 environment). `$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`).
 
@@ -14,7 +14,7 @@ environment). `$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`).
 Run these before ANY test or import of `torch`. Without them
 `torch.xpu.is_available()` returns False and XPU tests collect 0 items:
 ```bash
-# Source oneAPI if the pytorch is locally built. 
+# Source oneAPI if the pytorch is locally built.
 # If it is installed via pip, this step is not needed.
 source ~/intel/oneapi/setvars.sh --force 2>/dev/null
 # Activate the Python environment (adjust the path to your local setup)
