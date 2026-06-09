@@ -1,8 +1,12 @@
-# oneCCL Allreduce 性能与 GEMM-Prefill 重叠分析
+# oneCCL Allreduce Performance Benchmark
 
-测试平台：BMG ×4 (`ZE_AFFINITY_MASK=0,1,2,3`)，oneCCL native (oneAPI 2025.3)
-数据类型：bfloat16，world_size = 4，transport = MPI
+测试平台：BMG ×4 (`ZE_AFFINITY_MASK=0,1,2,3`)，oneCCL native (oneAPI 2026.0)
+数据类型：bfloat16，world_size = 4
 Benchmark：`symm/bench_native/bench_ccl_prefill.cpp`（fire-and-forget，SYCL event profiling）
+
+NEOReadDebugKeys=1
+OverrideL1CachePolicyInSurfaceStateAndStateless=2
+NEO_CACHE_PERSISTENT=0
 
 ---
 
@@ -10,7 +14,13 @@ Benchmark：`symm/bench_native/bench_ccl_prefill.cpp`（fire-and-forget，SYCL e
 
 ### 组 1：≤ 2MB（小消息，延迟受限区）
 
-| Size | min_us | span_us | algBW (GB/s) | busBW (GB/s) |
+rank0: iter0, iter1 ...
+rank1: iter0, iter1, ...
+
+various = average((max(iter)-min(iter)), ...)
+avg(us) = average( min(iter0,iter0), min(iter1, iter1), ...)
+
+| Size | avg_us | span_us | algBW (GB/s) | busBW (GB/s) |
 |---------:|--------:|--------:|-------------:|-------------:|
 | 256 B    |    8.63 |   30.74 |        0.030 |        0.044 |
 | 512 B    |    8.63 |   22.11 |        0.059 |        0.089 |
@@ -70,20 +80,6 @@ unitrace 设备时间与程序内 SYCL event 测量一致 —— 二者同源于
 
 ---
 
-## 3. GEMM / CCL 重叠对比（loop = 1，allreduce 2MB）
-
-prefill = 64M × 200 reps，warmup = 5：
-
-| 指标 | 值 |
-|------|----:|
-| prefill_ms (GEMM-like kernel GPU 时间) | 18.0 ms |
-| ccl_tot_ms (CCL allreduce GPU span) | 2.4 ms |
-| **GEMM / CCL** | **7.63×** |
-
-**结论**：在小迭代数（loop=1）下，prefill GEMM 的 GPU 执行时间约为 CCL allreduce 的 **7.6 倍**，GEMM 完全主导 GPU timeline，CCL 通信可被 GEMM 计算完全掩盖。
-
----
-
 ## 复现命令
 
 ```bash
@@ -103,9 +99,4 @@ ZE_AFFINITY_MASK=0,1,2,3 CCL_ATL_TRANSPORT=mpi mpirun -n 4 \
 # Prefill kernel 的 unitrace device-timing
 UNITRACE=/root/hanchao/applications.analyzers.profilingtoolsinterfaces.sdk/tools/unitrace/build/unitrace
 ZE_AFFINITY_MASK=0 $UNITRACE --device-timing -v ./prefill_only_trace 67108864 200
-
-# GEMM/CCL 重叠 (loop=1)
-ZE_AFFINITY_MASK=0,1,2,3 CCL_ATL_TRANSPORT=mpi mpirun -n 4 \
-  ./bench_ccl_prefill --op ar --min 20 --max 20 --warmup 5 --loop 1 \
-  --prefill-n 67108864 --prefill-reps 200
 ```
