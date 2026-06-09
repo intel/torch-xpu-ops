@@ -73,6 +73,43 @@ Recommended fields:
 6. compile mode
 7. pass completeness information
 
+### Example Schema
+
+```json
+{
+  "session_dir": "raw_logs/my_session",
+  "passes": {
+    "xpu_t2": { "trigger_job_id": 12345, "result": "SUCCESS" },
+    "cuda_t2": { "trigger_job_id": 12346, "result": "SUCCESS" },
+    "xpu_profiler": { "trigger_job_id": 12347, "result": "SUCCESS" },
+    "cuda_profiler": { "trigger_job_id": 12348, "result": "SUCCESS" },
+    "unitrace": { "trigger_job_id": 12349, "result": "SUCCESS" },
+    "t1": { "trigger_job_id": 12350, "result": "SUCCESS" }
+  },
+  "models": [
+    {
+      "model_name": "timm_vision_transformer",
+      "short_name": "vit",
+      "batch_size": 64,
+      "precision": "amp",
+      "mode": "inference",
+      "compile_mode": "eager",
+      "complete": true,
+      "sub_jobs": {
+        "xpu_t2": 22001,
+        "cuda_t2": 22002,
+        "xpu_profiler": 22003,
+        "cuda_profiler": 22004,
+        "unitrace": 22005,
+        "t1": 22006
+      }
+    }
+  ]
+}
+```
+
+Fields may vary per session; the schema above is representative, not exhaustive.
+
 ## Model Directory Contract
 
 Each model directory represents one model at one batch size inside the session.
@@ -186,6 +223,8 @@ A model is complete for B70 vs 4080S eager comparison when it has:
 4. `xpu_t2/rcpi1-ins0.log`
 5. `cuda_t2/rcpi1-ins0.log`
 6. `unitrace/python.<pid>.json` for the XPU side when unitrace is expected
+
+The same pattern applies to B580 vs 4080S comparisons. The platform pair is determined by the session configuration; the file layout is identical regardless of which XPU platform is used.
 
 ### Incomplete Model Handling
 

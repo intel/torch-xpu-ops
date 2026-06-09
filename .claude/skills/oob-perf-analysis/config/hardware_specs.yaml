@@ -1,13 +1,22 @@
+# Platform keys are canonical lowercase identifiers used in code paths.
+# The "label" field is the user-facing display name used in reports.
+# Ridge point (ops:byte ratio) = peak_tflops * 1e3 / bandwidth_gbs.
 platforms:
   b70:
     label: B70 (G31)
+    internal_id: G31
     peak_tflops_fp16: 154.0
     bandwidth_gbs: 532.0
+    ridge_point_ops_per_byte: 289.5
   b580:
     label: B580
+    internal_id: B580
     peak_tflops_fp16: 93.0
     bandwidth_gbs: 410.0
+    ridge_point_ops_per_byte: 226.8
   4080s:
     label: RTX 4080 SUPER
+    internal_id: "4080"
     peak_tflops_fp16: 100.96
     bandwidth_gbs: 716.8
+    ridge_point_ops_per_byte: 140.8

@@ -49,7 +49,7 @@ If these differ, the cause is graph or dispatch divergence, not hardware speed.
 
 Before comparing, normalize op names consistently.
 
-Required examples:
+Representative normalization examples (not exhaustive; add entries as new backend differences are discovered):
 
 1. `aten::copy_` -> `aten::clone`
 2. `aten::convolution_overrideable` -> `aten::convolution`
@@ -100,10 +100,12 @@ For each model pair, compute:
 
 1. total FLOPs on CUDA and XPU
 2. total memory on CUDA and XPU
-3. common ops
-4. CUDA-only ops
-5. XPU-only ops
+3. common ops (matched by exact normalized op name)
+4. CUDA-only ops (present in CUDA but absent in XPU after normalization)
+5. XPU-only ops (present in XPU but absent in CUDA after normalization)
 6. common ops with mismatched FLOPs or memory
+
+Op matching rule: ops are matched by exact normalized op name string after applying the normalization rules above. No fuzzy matching is used.
 
 ### Step 4: Classify The Difference
 
@@ -117,6 +119,10 @@ Each model should be classified into one of these buckets:
    - max(FLOPs diff %, memory diff %) > 1%
 4. `Minor`
    - mismatch exists but stays below the significant threshold
+
+Threshold rationale:
+
+The 1% threshold separates numerical noise from meaningful graph divergence. In practice, identical graphs may show sub-0.1% differences due to floating-point accumulation order. True dispatch divergence (e.g., decomposition differences, missing fusions) typically shows 5-50% FLOPs differences. The 1% line provides a conservative boundary that catches real divergence while filtering out rounding artifacts. If this threshold proves too sensitive for a specific workload class, it can be adjusted per-session with documentation.
 
 ## Output Structure
 

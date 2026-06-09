@@ -48,6 +48,31 @@ Compute:
 2. geomean `T2` ratios for XPU vs CUDA
 3. suite-level geomean breakdowns when suite metadata is available
 
+#### Geomean Calculation
+
+Use the geometric mean (equal weight per model):
+
+```text
+geomean(R) = exp( (1/N) * sum(ln(R_i)) )
+```
+
+All models are weighted equally. Do not weight by model size or iteration count.
+
+For T2 ratio geomean:
+
+```text
+geomean(T2_xpu / T2_cuda) = exp( (1/N) * sum(ln(T2_xpu_i / T2_cuda_i)) )
+```
+
+When estimating fleet-level improvement from fixing one op:
+
+```text
+new_geomean = exp( (1/N) * sum(ln(R_i_adjusted)) )
+delta = new_geomean - current_geomean
+```
+
+Where `R_i_adjusted` uses the corrected per-op time for affected models and keeps R unchanged for unaffected models.
+
 ### Step 3: Build Model Ranking
 
 Build a scorecard that sorts models by the primary XPU-vs-CUDA R ratio, worst first.

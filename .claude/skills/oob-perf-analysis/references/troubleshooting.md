@@ -109,8 +109,9 @@ sum(unitrace kernels) ~= T2
 
 Interpretation:
 
-1. if kernel sum is significantly greater than T2, the collection window is wrong or multiple iterations leaked in
-2. if kernel sum is moderately smaller than T2, there may be host overhead between kernel launches
+1. if kernel sum is more than ~20% greater than T2, the collection window is wrong or multiple iterations leaked in
+2. if kernel sum is 5-20% smaller than T2, there may be host overhead between kernel launches (often acceptable)
+3. if kernel sum is within ±5% of T2, the collection is healthy
 
 ### Check 2: Unitrace kernel sum vs profiler kernel sum
 
@@ -193,6 +194,8 @@ Interpretation rule:
 
 1. do not immediately treat large `copy_` device time as the top optimization target
 2. check whether it overlaps with compute and whether it is absent from calcflops modeling
+3. to check for overlap: compare `T2_device` (kernel sum) against T2 (wall clock); if `T2_device` significantly exceeds T2, some ops likely overlap and their individual device times are not purely additive to wall time
+4. if `copy_` does not appear in calcflops and its time is large, it may represent data movement that is overlapped with compute kernels at the hardware level
 
 ## Symptom: Session Has Partial Pass Success
 

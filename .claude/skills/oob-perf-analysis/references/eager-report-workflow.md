@@ -23,13 +23,15 @@ Minimum useful inputs per platform:
 
 Keep platform naming consistent with the existing methodology:
 
-| User-facing name | Internal ID | Notes |
-|-----------------|-------------|-------|
-| B580 | B580 | XPU platform with unitrace |
-| B70 | G31 | XPU platform with unitrace |
-| 4080S | 4080 | CUDA platform, no unitrace |
+| User-facing name | Internal ID | Config key | Notes |
+|-----------------|-------------|------------|-------|
+| B580 | B580 | b580 | XPU platform with unitrace |
+| B70 | G31 | b70 | XPU platform with unitrace |
+| 4080S | 4080 | 4080s | CUDA platform, no unitrace |
 
 Output can display internal ids (`G31`, `B580`, `4080`), but user-facing descriptions should remain understandable.
+
+See `config/hardware_specs.yaml` for the canonical platform configuration including peak compute, bandwidth, and ridge point values. Config keys are lowercase; use the `label` or `internal_id` fields for display.
 
 ## Required Inputs Per Model
 
@@ -68,6 +70,29 @@ Reason:
 
 1. unitrace avoids profiler overhead inflation
 2. it is the preferred source for XPU per-op actual timing
+
+#### Unitrace-to-Op Mapping Algorithm
+
+The profiler trace serves as the bridge between unitrace kernel timings and aten-level ops:
+
+1. Parse the profiler trace to build an op-to-kernel mapping:
+   - Each aten op in the trace has child kernel events (GPU kernel launches)
+   - Record the mapping: `aten_op → [kernel_name_1, kernel_name_2, ...]`
+
+2. Parse unitrace output to get per-kernel timings:
+   - Each unitrace entry has a kernel name and wall-clock duration without profiler overhead
+   - Sum durations for duplicate kernel invocations of the same name within one iteration
+
+3. Bridge the two:
+   - For each aten op, look up its associated kernel names from step 1
+   - Sum the unitrace timings for those kernel names to get the op-level actual time
+   - If a kernel is shared across multiple aten ops, distribute proportionally by profiler-reported sub-durations
+
+4. Validate:
+   - `sum(all attributed kernel times) ≈ sum(all unitrace kernels)`
+   - If total attributed time exceeds T2 by more than ~10%, suspect multi-iteration leakage
+
+This produces per-op actual times that avoid profiler overhead while retaining aten-level attribution.
 
 ### CUDA
 

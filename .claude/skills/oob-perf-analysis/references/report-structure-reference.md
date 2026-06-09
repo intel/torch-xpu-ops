@@ -151,6 +151,17 @@ Required issue classes:
 3. `Projection undercounts`
 4. `Undercounts or slow`
 
+Issue classification decision logic:
+
+1. If `R_op > 1.05`: classify as `Overcounting`
+   - Projection overestimates actual work; likely fusion or calcflops including removed ops
+2. If `R_op < 0.80` and CUDA `R_op >= 0.80` for the same op: classify as `Kernel slow`
+   - XPU kernel is genuinely slower relative to its roofline; CUDA achieves expected efficiency
+3. If `R_op < 0.80` and CUDA `R_op < 0.80` for the same op: classify as `Projection undercounts`
+   - Both platforms miss projection; the issue is in the calcflops model, not the kernel
+4. If `R_op < 0.80` and no CUDA comparison is available: classify as `Undercounts or slow`
+   - Cannot disambiguate without cross-platform evidence
+
 ### T2 Coverage By T1
 
 Must include a subsection for ops that appear in actual traces but have no calcflops entry.
