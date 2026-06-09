@@ -146,6 +146,7 @@ static void print_table_row(const char* op, double bytes,
 struct BenchResult {
     std::vector<double> per_us;   // per_us[i] = event time for iteration i (µs)
     double span_us;               // (post[loop-1].start - pre[0].end) / loop (µs)
+    double prefill_us;            // GPU execution time of the prefill kernel (µs)
 };
 
 // ---------------------------------------------------------------------------
@@ -170,10 +171,11 @@ static BenchResult bench_op(sycl::queue& q,
     std::vector<sycl::event> pre_evs(loop), post_evs(loop);
 
     // ── prefill kernel: keeps GPU busy during host loop dispatch ──────────
+    sycl::event prefill_ev;
     {
         auto* p = prefill;
         int   reps = prefill_reps;
-        q.submit([&](sycl::handler& h) {
+        prefill_ev = q.submit([&](sycl::handler& h) {
             h.parallel_for(sycl::range<1>{prefill_n}, [=](sycl::id<1> id) {
                 bf16 v = p[id[0]];
                 for (int r = 0; r < reps; ++r)
@@ -204,8 +206,6 @@ static BenchResult bench_op(sycl::queue& q,
     }
 
     // ── span (ns → µs): pipeline-throughput latency ────────────────────────
-    // span_us = (GPU time from start of iter-0 to end of iter-(loop-1)) / loop
-    // = average interval when all ops are queued back-to-back with no host gap
     uint64_t t_first = pre_evs[0].get_profiling_info<
         sycl::info::event_profiling::command_end>();
     uint64_t t_last  = post_evs[loop-1].get_profiling_info<
@@ -214,7 +214,14 @@ static BenchResult bench_op(sycl::queue& q,
                      ? static_cast<double>(t_last - t_first) / 1e3 / loop
                      : 0.0;
 
-    return {per_us, span_us};
+    // ── prefill GPU time ───────────────────────────────────────────────────
+    uint64_t pf0 = prefill_ev.get_profiling_info<
+        sycl::info::event_profiling::command_start>();
+    uint64_t pf1 = prefill_ev.get_profiling_info<
+        sycl::info::event_profiling::command_end>();
+    double prefill_us = (pf1 >= pf0) ? static_cast<double>(pf1 - pf0) / 1e3 : 0.0;
+
+    return {per_us, span_us, prefill_us};
 }
 
 // ---------------------------------------------------------------------------
@@ -290,8 +297,8 @@ int main(int argc, char** argv) {
     q.memset(prefill,   0, prefill_n * sizeof(bf16));
     q.wait();
 
-    // Gather buffers: [loop per-iter ms + 1 span] per rank
-    const int kFields = loop + 1;
+    // Gather buffers: [loop per-iter us + span_us + prefill_us] per rank
+    const int kFields = loop + 2;
     std::vector<double> gbuf(rank == 0 ? ws * kFields : 1, 0.0);
     std::vector<double> my_g(kFields, 0.0);
 
@@ -314,6 +321,9 @@ int main(int argc, char** argv) {
         std::printf("\n");
         std::printf("  per_iter_us = SYCL event time per iteration (µs)  "
                     "span_us = (GPU total span) / loop (µs, pipeline throughput)\n");
+        std::printf("  prefill_us  = GPU execution time of the prefill (GEMM-like) kernel\n");
+        std::printf("  ccl_tot_us  = span_us × loop  (total CCL GPU time covered)\n");
+        std::printf("  GEMM/CCL    = prefill_us / ccl_tot_us  (>1 means GEMM dominates)\n");
         std::printf("%s\n", sep.c_str());
         std::fflush(stdout);
     }
@@ -323,8 +333,10 @@ int main(int argc, char** argv) {
         if (!(ops & od.bit)) continue;
 
         // Table rows accumulated for the clean summary at the end
-        struct RowData { double bytes; std::string size_str;
-                         double global_min; double avg_span; };
+        struct RowData {
+            double bytes; std::string size_str;
+            double global_min; double avg_span; double avg_prefill;
+        };
         std::vector<RowData> table_rows;
 
         if (rank == 0) {
@@ -375,9 +387,10 @@ int main(int argc, char** argv) {
                     });
             }
 
-            // Pack: [per_us[0..loop-1], span_us]
+            // Pack: [per_us[0..loop-1], span_us, prefill_us]
             for (int i = 0; i < loop; ++i) my_g[i] = res.per_us[i];
-            my_g[loop] = res.span_us;
+            my_g[loop]   = res.span_us;
+            my_g[loop+1] = res.prefill_us;
 
             MPI_Gather(my_g.data(), kFields, MPI_DOUBLE,
                        (rank == 0) ? gbuf.data() : nullptr, kFields, MPI_DOUBLE,
@@ -387,23 +400,28 @@ int main(int argc, char** argv) {
                 std::string sz = fmt_size(bytes);
                 std::printf("\n  [%-14s %12s]\n", od.name, sz.c_str());
 
-                double global_min = 1e18;
-                double sum_span   = 0.0;
+                double global_min    = 1e18;
+                double sum_span      = 0.0;
+                double sum_prefill   = 0.0;
                 for (int r = 0; r < ws; ++r) {
-                    const double* rv = gbuf.data() + r * kFields;
-                    double r_min  = rv[0];
-                    double r_span = rv[loop];
+                    const double* rv    = gbuf.data() + r * kFields;
+                    double r_min        = rv[0];
+                    double r_span       = rv[loop];
+                    double r_prefill    = rv[loop+1];
                     std::printf("    r%d: [", r);
                     for (int i = 0; i < loop; ++i) {
                         std::printf("%.2f", rv[i]);
                         if (i < loop-1) std::printf("  ");
                         r_min = std::min(r_min, rv[i]);
                     }
-                    std::printf("]  min=%.2f  span=%.2f  (µs)\n", r_min, r_span);
-                    global_min = std::min(global_min, r_min);
-                    sum_span  += r_span;
+                    std::printf("]  min=%.2f  span=%.2f  prefill=%.1f  (µs)\n",
+                                r_min, r_span, r_prefill);
+                    global_min  = std::min(global_min, r_min);
+                    sum_span   += r_span;
+                    sum_prefill += r_prefill;
                 }
-                table_rows.push_back({bytes, sz, global_min, sum_span / ws});
+                table_rows.push_back({bytes, sz, global_min,
+                                      sum_span / ws, sum_prefill / ws});
                 std::fflush(stdout);
             }
         }  // sizes
@@ -412,10 +430,22 @@ int main(int argc, char** argv) {
         if (rank == 0) {
             std::printf("\n  -- %s  summary table --\n\n", od.name);
             print_table_header();
-            for (const auto& row : table_rows)
+            // extended header for GEMM/CCL breakdown
+            std::printf("  %-22s %12s  %10s %10s  %14s %14s  %12s %12s %8s\n",
+                "","","","","","","prefill_ms","ccl_tot_ms","GEMM/CCL");
+            for (const auto& row : table_rows) {
                 print_table_row(od.name, row.bytes,
                                 row.global_min, row.avg_span,
                                 od.bit, ws);
+                // Append prefill/ccl breakdown on the same row
+                double ccl_tot_us = row.avg_span * loop;
+                double ratio      = ccl_tot_us > 0 ? row.avg_prefill / ccl_tot_us : 0.0;
+                std::printf("  %-22s %12s  %10s %10s  %14s %14s  %12.3f %12.3f %8.2f\n",
+                    "","","","","","",
+                    row.avg_prefill / 1e3,   // µs → ms
+                    ccl_tot_us / 1e3,        // µs → ms
+                    ratio);
+            }
             std::printf("\n");
             std::fflush(stdout);
         }
