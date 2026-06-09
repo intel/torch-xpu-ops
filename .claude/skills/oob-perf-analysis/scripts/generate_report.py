@@ -34,8 +34,6 @@ from compare_projection_vs_actual import (
     aggregate_comparison,
 )
 from compare_graphs import (
-    parse_calcflops_raw,
-    aggregate_ops,
     compare_model as compare_graphs_model,
     _fmt_flops,
     _fmt_mem,
@@ -160,10 +158,10 @@ def generate_summary_table(plat_data_list, model_info):
                 ratio = xpu["r"] / cuda_plat["r"]
                 xpu_short = xpu["platform"]
                 if ratio >= 1:
-                    interp = (f"{xpu_short} has {(ratio-1)*100:.1f}% "
+                    interp = (f"{xpu_short} has {(ratio - 1) * 100:.1f}% "
                               f"better roofline efficiency")
                 else:
-                    interp = (f"{xpu_short} has {(1-ratio)*100:.1f}% "
+                    interp = (f"{xpu_short} has {(1 - ratio) * 100:.1f}% "
                               f"worse roofline efficiency")
                 lines.append(f"| R_{xpu_short} / R_4080S | {ratio:.3f} | {interp} |")
         lines.append("")
@@ -179,8 +177,8 @@ def generate_summary_table(plat_data_list, model_info):
     lines.append(sep)
 
     hw_rows = [
-        ("Peak FP16 (TFLOPS)", lambda d: f"{d['spec']['peak_tflops']/1e12:.2f}"),
-        ("DRAM BW (GB/s)", lambda d: f"{d['spec']['bandwidth']/1e9:.1f}"),
+        ("Peak FP16 (TFLOPS)", lambda d: f"{d['spec']['peak_tflops'] / 1e12:.2f}"),
+        ("DRAM BW (GB/s)", lambda d: f"{d['spec']['bandwidth'] / 1e9:.1f}"),
         ("Ridge point (OPs/B)", lambda d: f"{d['spec']['roofline_ratio']:.1f}"),
     ]
     for label, fn in hw_rows:
@@ -345,7 +343,7 @@ def generate_action_items(plat_data_list):
     if not sorted_actions:
         lines.append("### Action Items\n")
         lines.append("No action items identified. All ops are performing "
-                      "at or near roofline.\n")
+                     "at or near roofline.\n")
     else:
         lines.append("### Action Items\n")
         header = ("| # | Action | Target | Op | Shape | Stride "
@@ -766,9 +764,9 @@ def generate_section_optimization_targets(plat_data_list):
         n_kernel = sum(1 for t in targets if t["action"] == "Optimize kernel")
         n_proj = sum(1 for t in targets if t["action"] == "Fix projection")
         if n_kernel == 0 and n_proj > 0:
-            lines.append(f"All gaps are projection issues — no kernel optimization needed. "
-                         f"Fixing projection in context_func.py would improve R accuracy "
-                         f"but not actual performance.\n")
+            lines.append("All gaps are projection issues — no kernel optimization needed. "
+                         "Fixing projection in context_func.py would improve R accuracy "
+                         "but not actual performance.\n")
         elif n_kernel > 0:
             kernel_saving = sum(t["saving"] for t in targets
                                 if t["action"] == "Optimize kernel")
@@ -813,8 +811,8 @@ def generate_section_xpu_cuda_consistency(plat_data_list):
                              "FLOPs/memory. Differences reveal dispatch divergence.\n")
 
                 status = "MATCH" if gc["match"] else "DIFF"
-                lines.append(f"| Metric | Value |")
-                lines.append(f"|--------|------:|")
+                lines.append("| Metric | Value |")
+                lines.append("|--------|------:|")
                 lines.append(f"| Status | **{status}** |")
                 lines.append(f"| Total FLOPs ({cuda_label}) | "
                              f"{_fmt_flops(gc['total_flops_a'])} |")
@@ -941,7 +939,7 @@ def generate_section_xpu_cuda_consistency(plat_data_list):
 
         if shape_diffs:
             shape_diffs.sort(key=lambda x: max(x["cuda_actual"],
-                                                x["xpu_actual"]),
+                                               x["xpu_actual"]),
                              reverse=True)
             lines.append("**Shape set differences** (ops where XPU and CUDA "
                          "see different input shapes):\n")

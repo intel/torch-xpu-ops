@@ -40,9 +40,9 @@ except ImportError:
     HAS_YAML = False
 
 from compare_projection_vs_actual import load_platform_specs
-from compare_graphs import compare_model as compare_graphs_model, _fmt_flops
-from generate_report import collect_platform_data, _fmt
-from generate_all_reports import discover_models as discover_models_eager, _extract_t2
+from compare_graphs import compare_model as compare_graphs_model
+from generate_report import collect_platform_data
+from generate_all_reports import discover_models as discover_models_eager
 
 
 def _extract_t2_compile(t2_path):
@@ -255,7 +255,7 @@ def collect_all_models(platform_dirs, config_path, suite_map, mode="eager"):
 
         # Find top gap op (largest |actual - proj| on first XPU platform)
         xpu_d = next((d for d in plat_data_list
-                       if d["actual_source"] == "unitrace"), None)
+                      if d["actual_source"] == "unitrace"), None)
         if xpu_d:
             top_gap_op = max(xpu_d["agg"].items(),
                              key=lambda x: abs(x[1]["diff_ms"]),
@@ -318,7 +318,7 @@ def generate_fleet_report(results, platform_ids, precision="fp16",
     lines.append(header)
     lines.append(sep)
 
-    lines.append(f"| Models profiled | " +
+    lines.append("| Models profiled | " +
                  " | ".join(str(len(r_per_plat[p])) for p in platform_ids) + " |")
 
     gm_row = "| Geomean R |"
@@ -348,7 +348,7 @@ def generate_fleet_report(results, platform_ids, precision="fp16",
     # -----------------------------------------------------------------------
     lines.append("## 2. Per-Suite Geomean\n")
 
-    suites = sorted(set(r["suite"] for r in results))
+    suites = sorted({r["suite"] for r in results})
     header = "| Suite | # Models |"
     sep = "|-------|--------:|"
     for p in platform_ids:
@@ -460,7 +460,7 @@ def generate_fleet_report(results, platform_ids, precision="fp16",
                 xt = r.get(f"{xp}_t2")
                 ct = r.get(f"{cuda_plat}_t2")
                 if xt and ct and ct > 0:
-                    row += f" {xt/ct:.2f}x |"
+                    row += f" {xt / ct:.2f}x |"
                 else:
                     row += " — |"
         row += f" {r.get('top_gap_op', '—')} |"
@@ -880,13 +880,13 @@ def generate_fleet_report(results, platform_ids, precision="fp16",
         n_match = sum(1 for _, c in comparison_results if c["match"])
         n_diff = n_total - n_match
 
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|------:|")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|------:|")
         lines.append(f"| Models compared | {n_total} |")
         lines.append(f"| Identical graphs | {n_match} "
-                     f"({n_match/n_total*100:.0f}%) |")
+                     f"({n_match / n_total * 100:.0f}%) |")
         lines.append(f"| Different graphs | {n_diff} "
-                     f"({n_diff/n_total*100:.0f}%) |")
+                     f"({n_diff / n_total * 100:.0f}%) |")
         lines.append("")
 
         if n_diff == 0:
@@ -1029,8 +1029,8 @@ def main():
     print(f"\nCollected data for {len(results)} models")
 
     report_lines = generate_fleet_report(results, platform_ids,
-                                          precision=args.precision,
-                                          test_mode=args.test_mode)
+                                         precision=args.precision,
+                                         test_mode=args.test_mode)
     report_text = "\n".join(report_lines) + "\n"
 
     if args.output:

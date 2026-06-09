@@ -480,13 +480,13 @@ def main():
                 triggered[pass_type] = build_num
                 print(f"    Build #{build_num} started")
             else:
-                print(f"    WARNING: Could not get build number from queue")
+                print("    WARNING: Could not get build number from queue")
                 # Estimate based on next_build
                 triggered[pass_type] = next_build
                 next_build += 1
                 print(f"    Estimated: #{triggered[pass_type]}")
         else:
-            print(f"    FAILED to trigger")
+            print("    FAILED to trigger")
 
     if not triggered:
         print("\nERROR: No builds triggered", file=sys.stderr)
@@ -544,10 +544,10 @@ def main():
 def _save_session_yaml(path, model_list, triggered, server, mode):
     """Save session state as YAML (with both model list and job URLs)."""
     lines = [
-        f"# Auto-generated session config",
+        "# Auto-generated session config",
         f"# Triggered: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"",
-        f"models:",
+        "",
+        "models:",
     ]
     for m in model_list:
         lines.append(f"  - {m}")

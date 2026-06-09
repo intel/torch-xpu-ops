@@ -92,7 +92,7 @@ def main():
         else:
             print(f"  4080: {key} SKIP (missing trace or T2)")
 
-    print(f"\nFlat views created:")
+    print("\nFlat views created:")
     print(f"  B70:  {b70_dir}/ ({len(os.listdir(b70_dir))} files)")
     print(f"  4080: {cuda_dir}/ ({len(os.listdir(cuda_dir))} files)")
 

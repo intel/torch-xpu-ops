@@ -14,7 +14,6 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -97,7 +96,7 @@ def main():
         # Check required files
         t1_file = os.path.join(model_dir, "t1", "rcpi1-ins0.log")
         if not os.path.exists(t1_file):
-            print(f"  SKIP: No T1 file")
+            print("  SKIP: No T1 file")
             continue
 
         # Build command
@@ -139,9 +138,9 @@ def main():
                         cmd.extend(["--b70-unitrace", unitrace_file])
                 print(f"  B70: T2={b70_t2:.3f}ms, trace=OK, unitrace={'OK' if '--b70-unitrace' in cmd else 'N/A'}")
             else:
-                print(f"  B70: SKIP (no T2 value in log)")
+                print("  B70: SKIP (no T2 value in log)")
         else:
-            print(f"  B70: SKIP (missing trace or T2 log)")
+            print("  B70: SKIP (missing trace or T2 log)")
 
         # 4080S data
         cuda_trace = os.path.join(model_dir, "cuda_profiler", "timeline", "trace.json")
@@ -160,20 +159,20 @@ def main():
                 ])
                 print(f"  4080S: T2={cuda_t2:.3f}ms, trace=OK")
             else:
-                print(f"  4080S: SKIP (no T2 value in log)")
+                print("  4080S: SKIP (no T2 value in log)")
         else:
-            print(f"  4080S: SKIP (missing trace or T2 log)")
+            print("  4080S: SKIP (missing trace or T2 log)")
 
         # Run generate_report.py
-        print(f"  Running report generation...")
+        print("  Running report generation...")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             # Parse R values from output
             r_values = {}
+            prev_line = ""
             for line in result.stdout.split("\n"):
                 if "T1=" in line and "R=" in line:
                     r_match = re.search(r"R=([\d.]+)", line)
-                    platform_match = re.search(r"Processing (\w+)", prev_line) if 'prev_line' in dir() else None
                     if r_match:
                         r_val = float(r_match.group(1))
                         if "4080" in line or (prev_line and "4080" in prev_line):

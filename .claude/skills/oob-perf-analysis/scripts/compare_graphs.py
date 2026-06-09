@@ -25,7 +25,6 @@ Usage:
 
 import argparse
 import os
-import re
 import sys
 from collections import defaultdict
 
@@ -371,11 +370,11 @@ def generate_report(results, label_a, label_b, precision, test):
     n_diff = len(results) - n_match
 
     lines.append("## Fleet Summary\n")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|------:|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|------:|")
     lines.append(f"| Total models | {len(results)} |")
-    lines.append(f"| Identical graphs | {n_match} ({n_match/len(results)*100:.0f}%) |")
-    lines.append(f"| Different graphs | {n_diff} ({n_diff/len(results)*100:.0f}%) |")
+    lines.append(f"| Identical graphs | {n_match} ({n_match / len(results) * 100:.0f}%) |")
+    lines.append(f"| Different graphs | {n_diff} ({n_diff / len(results) * 100:.0f}%) |")
     lines.append("")
 
     if n_diff == 0:
@@ -409,8 +408,8 @@ def generate_report(results, label_a, label_b, precision, test):
             minor.append((key, r))
 
     lines.append("### Difference Categories\n")
-    lines.append(f"| Category | Count | Description |")
-    lines.append(f"|----------|------:|-------------|")
+    lines.append("| Category | Count | Description |")
+    lines.append("|----------|------:|-------------|")
     lines.append(f"| SDPA-only | {len(sdpa_only)} | "
                  f"Only SDPA dispatch differs ({label_a} flash vs {label_b} fused) |")
     lines.append(f"| Significant | {len(significant)} | "
@@ -427,7 +426,7 @@ def generate_report(results, label_a, label_b, precision, test):
     lines.append(f"| Model | FLOPs Diff (%) | Mem Diff (%) | "
                  f"{label_a}-only Ops | {label_b}-only Ops | "
                  f"Mismatched Ops | Category |")
-    lines.append(f"|-------|------:|------:|------:|------:|------:|----------|")
+    lines.append("|-------|------:|------:|------:|------:|------:|----------|")
 
     for key, r in diff_results:
         diff_names = set()
@@ -466,8 +465,8 @@ def generate_report(results, label_a, label_b, precision, test):
 
             if r["only_a"]:
                 lines.append(f"**{label_a}-only ops:**\n")
-                lines.append(f"| Op | FLOPs | Memory | Count |")
-                lines.append(f"|-----|------:|------:|------:|")
+                lines.append("| Op | FLOPs | Memory | Count |")
+                lines.append("|-----|------:|------:|------:|")
                 for o in r["only_a"]:
                     raw = ", ".join(sorted(o["raw_names"]))
                     lines.append(f"| {raw} | {_fmt_flops(o['flops'])} | "
@@ -476,8 +475,8 @@ def generate_report(results, label_a, label_b, precision, test):
 
             if r["only_b"]:
                 lines.append(f"**{label_b}-only ops:**\n")
-                lines.append(f"| Op | FLOPs | Memory | Count |")
-                lines.append(f"|-----|------:|------:|------:|")
+                lines.append("| Op | FLOPs | Memory | Count |")
+                lines.append("|-----|------:|------:|------:|")
                 for o in r["only_b"]:
                     raw = ", ".join(sorted(o["raw_names"]))
                     lines.append(f"| {raw} | {_fmt_flops(o['flops'])} | "
@@ -485,10 +484,10 @@ def generate_report(results, label_a, label_b, precision, test):
                 lines.append("")
 
             if r["diff_ops"]:
-                lines.append(f"**Ops with different FLOPs/memory:**\n")
+                lines.append("**Ops with different FLOPs/memory:**\n")
                 lines.append(f"| Op | {label_a} FLOPs | {label_b} FLOPs | "
                              f"FLOPs Diff | {label_a} Mem | {label_b} Mem |")
-                lines.append(f"|-----|------:|------:|------:|------:|------:|")
+                lines.append("|-----|------:|------:|------:|------:|------:|")
                 for d in r["diff_ops"]:
                     fdiff = d["flops_b"] - d["flops_a"]
                     sign = "+" if fdiff >= 0 else ""
@@ -522,8 +521,8 @@ def generate_report(results, label_a, label_b, precision, test):
     if op_diff_count:
         sorted_ops = sorted(op_diff_count.items(),
                             key=lambda x: x[1]["count"], reverse=True)
-        lines.append(f"| Op | # Models | Top Models |")
-        lines.append(f"|-----|------:|------|")
+        lines.append("| Op | # Models | Top Models |")
+        lines.append("|-----|------:|------|")
         for op_name, info in sorted_ops:
             top3 = ", ".join(info["models"][:3])
             lines.append(f"| {op_name} | {info['count']} | {top3} |")
