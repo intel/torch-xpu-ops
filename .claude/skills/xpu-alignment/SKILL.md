@@ -24,22 +24,24 @@ The caller (user or orchestrator) provides:
 
 1. **Scan window**: a start/end date pair (`YYYY-MM-DD` to `YYYY-MM-DD`). If none is
    given, default to "yesterday" (a single-day window ending today).
-2. **Run directory**: a working directory for all artifacts, conventionally
-   `runs/<date-or-range>/`. Create these subdirectories under it: `artifacts/`
-   (with `artifacts/details/`), `scripts/`, `reports/`. All paths in this skill are
-   relative to the run directory unless noted.
+2. **Run directory**: the working directory for all artifacts,
+   `runs/<scan-window>/` under the workspace root (e.g.
+   `runs/2026-06-01-to-2026-06-07/`). Its subpath layout and the rule that all
+   paths are relative to it are defined in Rules #1 below.
 3. **Workspace-local XPU interpreter** and **GitHub access** — see
    [references/xpu-alignment-environment-setup.md](references/xpu-alignment-environment-setup.md).
 
 ## Rules
 
-1. All output files go under the run directory (`runs/<date-or-range>/`, default
-   `runs/<scan-window>/` under the workspace root). Never write outputs elsewhere.
-   Use these fixed subpaths: `artifacts/` (with `artifacts/details/`) for raw data,
-   ledger, fetched details, repro logs, and `collect_env.txt`; `scripts/` for
-   `repro_<id>.py` reproducers; `reports/` for `full_scan.md` and
-   `issue_drafts.md`. Create any missing directory before writing. All paths in
-   this skill are relative to the run directory unless noted.
+1. **Output location.** All output files go under the run directory
+   `runs/<scan-window>/` (under the workspace root); never write outputs
+   elsewhere. Paths in this skill are relative to the run directory unless
+   noted. Fixed subpaths, created before writing:
+   - `artifacts/` — raw candidates, ledger, and `collect_env.txt`;
+     `artifacts/details/` for fetched per-candidate details; `output_<id>.log`
+     for repro logs
+   - `scripts/` — `repro_<id>.py` reproducers
+   - `reports/` — `full_scan.md` and `issue_drafts.md`
 2. Never file issues automatically. Write local drafts, then ask the user before
    filing on GitHub.
 

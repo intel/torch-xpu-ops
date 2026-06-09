@@ -14,14 +14,15 @@ is performed inline with the workspace XPU interpreter and the GitHub MCP server
 - Look for `.venv/bin/python` or `.conda*/bin/python` inside the workspace.
   Never use an interpreter outside the workspace.
 - If no workspace venv exists, create one in-workspace: `python -m venv .venv`.
-- Check the installed torch build date / version. If torch is missing or the
-  nightly is stale (older than the latest available), reinstall:
+- Ensure the latest XPU nightly is installed by running the upgrade install
+  below. `pip` resolves to the newest nightly and no-ops if the workspace is
+  already current, so there is no separate "is it stale?" judgment to make:
 
   ```bash
-  python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/xpu
+  python -m pip install --pre --upgrade torch --index-url https://download.pytorch.org/whl/nightly/xpu
   ```
 
-  Run this freshness check inline with the workspace interpreter.
+  Run this inline with the workspace interpreter.
 
 ## GitHub access
 
@@ -31,7 +32,7 @@ rely on the ambient `gh auth` / MCP credentials.
 ## Step 0 preflight checklist
 
 1. Verify XPU torch import and `torch.xpu.is_available()`.
-2. Run the freshness check above; reinstall the nightly if stale or missing.
+2. Run the upgrade install above so the workspace holds the latest nightly.
 3. Verify GitHub access.
 4. Create output directories: `artifacts/details`, `reports`, `scripts`.
 5. Save `collect_env` output to `artifacts/collect_env.txt`.

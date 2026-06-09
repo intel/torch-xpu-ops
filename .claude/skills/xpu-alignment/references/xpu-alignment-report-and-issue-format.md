@@ -34,7 +34,7 @@ Requirements:
 Write this file directly for all `confirmed` and `related-failure` candidates,
 using this exact body structure:
 
-```
+````
 ## Issue 1
 
 **Suggested title:** [cuda_xpu_alignment] <original bug title>
@@ -70,7 +70,7 @@ using this exact body structure:
 
 ## Issue 2
 ...
-```
+````
 
 ### Label selection rules
 
@@ -91,6 +91,11 @@ This skill never files issues automatically. After writing the local drafts:
    `confirmed` / `related-failure` candidates were found.
 2. Ask whether they want any of them filed on GitHub, and into which repo (the
    routing rules suggest a default).
-3. Only on explicit confirmation, file the approved drafts via the GitHub MCP server
-   (or `gh issue create`) into the routed repository, applying the labels above.
-4. Report back the URLs of any issues created.
+3. Before filing each approved draft, search the target repo for an existing issue
+   covering the same bug (search the upstream URL and the op/error keywords, e.g.
+   `gh issue search --repo <repo> "<keywords>"`). If a likely duplicate exists,
+   skip filing, link the existing issue in the report, and tell the user.
+4. Only on explicit confirmation and once de-duplicated, file the approved drafts
+   via the GitHub MCP server (or `gh issue create`) into the routed repository,
+   applying the labels above.
+5. Report back the URLs of any issues created or matched.

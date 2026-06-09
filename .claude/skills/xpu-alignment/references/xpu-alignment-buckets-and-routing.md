@@ -21,7 +21,11 @@ actually happened when you ran it:
 | `blocked-commit-context` | a commit had too little context to construct a meaningful repro |
 | `blocked-script-error` | the repro crashed before reaching the check (e.g. it ran on CPU instead of XPU) |
 | `needs-performance-harness` | the bug is performance-only and needs a benchmark you do not have |
-| `not-applicable` | the candidate was rejected before running anything (title or deep-filter) |
+
+Candidates rejected before a repro runs do not get a bucket: title rejects are
+recorded with `title_status: reject` (Step 1.1) and deep-filter rejects with
+`deep_status: reject` (Step 2a). Only repros that actually run receive a
+`local_bucket`.
 
 ## Confirmation criteria
 
