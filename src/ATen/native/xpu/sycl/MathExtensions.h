@@ -101,7 +101,8 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   if (x == accscalar_t(0)) {
     // As per C++ standard for gamma related functions and SciPy,
     // If the argument is ±0, ±∞ is returned
-    return std::copysign(static_cast<scalar_t>(INFINITY), -x);
+    return static_cast<scalar_t>(
+        sycl::copysign(static_cast<accscalar_t>(INFINITY), -x));
   }
 
   bool x_is_integer = x == sycl::trunc(x);
@@ -392,7 +393,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   }
 
   logx = std::log(x);
-  term = -std::expm1(a * logx - sycl::lgamma(1 + a));
+  term = -sycl::expm1(a * logx - sycl::lgamma(1 + a));
   return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
 

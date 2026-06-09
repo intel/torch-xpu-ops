@@ -307,6 +307,64 @@ int subgroup_size = 16;
 int xecore_count = zeDeviceGetSubsliceCount(device);  // legacy API name
 ```
 
+## Subgroup Reduction Anti-Pattern
+
+**Principle: Never use `sycl::shift_group_left` in a loop to perform subgroup reductions (sum, min, max, mean). Always use `sycl::reduce_over_group` instead.**
+
+This is a **🔴 Must Fix** category.
+
+### The Problem
+
+The following pattern manually implements subgroup reduction using shift operations:
+
+```cpp
+// 🔴 Bad — shift_group_left generates massive int-related instructions,
+// causing ALU-INT pipe stall
+for (int offset = 1; offset < sg_size; offset <<= 1) {
+  arg_t other = sycl::shift_group_left(sg, value[i], offset);
+  value[i] = combine(value[i], other);  // combine = add/min/max
+}
+```
+
+`sycl::shift_group_left` produces excessive integer ALU instructions for index manipulation, which stalls the ALU-INT pipeline and degrades performance. The SYCL runtime's built-in `reduce_over_group` can use hardware-optimized reduction paths.
+
+### The Fix
+
+Replace with `sycl::reduce_over_group` using the appropriate SYCL binary operation:
+
+```cpp
+// ✅ Good — uses hardware-optimized reduction
+value[i] = sycl::reduce_over_group(sg, value[i], sycl::plus<arg_t>());    // for sum/mean
+value[i] = sycl::reduce_over_group(sg, value[i], sycl::minimum<arg_t>()); // for min
+value[i] = sycl::reduce_over_group(sg, value[i], sycl::maximum<arg_t>()); // for max
+```
+
+### Variants to Flag
+
+All of these are the same anti-pattern regardless of loop direction:
+
+```cpp
+// 🔴 Bad — ascending offset
+for (int offset = 1; offset < sg_size; offset <<= 1) { ... shift_group_left ... }
+
+// 🔴 Bad — descending offset
+for (int offset = (sg_size >> 1); offset > 0; offset >>= 1) { ... shift_group_left ... }
+
+// 🔴 Bad — with vectorized inner loop
+for (int offset = 1; offset < sg_size; offset <<= 1) {
+  for (int i = 0; i < out_vec_sz; ++i) {
+    arg_t other = sycl::shift_group_left(sg, value[i], offset);
+    value[i] = combine(value[i], other);
+  }
+}
+```
+
+### Where to Check
+
+- `src/ATen/native/xpu/sycl/` — All SYCL kernel files
+- Any file using `sycl::shift_group_left` in combination with arithmetic/comparison operators
+- Reduction kernels, softmax, norm, and scan operations are common locations
+
 ## Files to Reference
 
 When reviewing, consult these for context:
