@@ -291,6 +291,7 @@ skip_dict = {
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_export_strict_xpu.py": None,
+    # Skipped due to lack of _TorchScriptTesting::queue_push implementation
     "export/test_torchbind_xpu.py": (
         "test_export_obj_torchbind_op_with_autocast_device_xpu",
         "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
