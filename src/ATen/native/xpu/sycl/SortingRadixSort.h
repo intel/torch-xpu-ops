@@ -700,8 +700,12 @@ class RadixSortUpsweep {
   }
 
   inline void process_partial_tile(int group_offset, int group_end) {
-    for (int offset = group_offset + lid_; offset < group_end;
-         offset += GROUP_THREADS) {
+    // Use a relative loop variable to avoid int32 overflow: when group_offset
+    // is near INT_MAX, `group_offset + lid_ + k*GROUP_THREADS` wraps to INT_MIN
+    // on the next iteration, making the loop condition false-positive.
+    int remaining = group_end - group_offset;
+    for (int rel = lid_; rel < remaining; rel += GROUP_THREADS) {
+      int offset = group_offset + rel;
       KeyTraitsT key = KeyTraits<KeyT>::convert(c10::load(&keys_in_[offset]));
       auto digit = extract_digit(key);
       auto sub_counter = digit & (PACKING_RATIO - 1);
@@ -784,9 +788,11 @@ class RadixSortUpsweep {
     reset_unpacked_counters();
 
     // Unroll batches of full tiles
+    // Use subtraction form (a <= c - b) instead of addition (a + b <= c) to
+    // avoid int32 overflow when group_offset is close to INT_MAX.
     int UNROLL_COUNT = 255 / 4; // the largest value for counter
     int UNROLLED_ELEMENTS = UNROLL_COUNT * PROCESSING_LENGTH;
-    while (group_offset + UNROLLED_ELEMENTS <= group_end) {
+    while (group_offset <= group_end - UNROLLED_ELEMENTS) {
       for (int i = 0; i < UNROLL_COUNT; ++i) {
         process_full_tile(group_offset);
         group_offset += PROCESSING_LENGTH;
@@ -797,7 +803,7 @@ class RadixSortUpsweep {
       reset_digit_counters();
     }
 
-    while (group_offset + PROCESSING_LENGTH <= group_end) {
+    while (group_offset <= group_end - PROCESSING_LENGTH) {
       process_full_tile(group_offset);
       group_offset += PROCESSING_LENGTH;
     }
