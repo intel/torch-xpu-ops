@@ -1,0 +1,65 @@
+# Agent issue body template — non-bug issues (suffix appended after the
+# normalized original body). Used for: enhancement, performance, feature-gap,
+# task, question.
+#
+# CANONICAL SOURCE. The legacy Python pipeline keeps a copy of these markers in
+# its own config; if you change the <!-- agent:* --> markers or canonical
+# headings here, keep that copy in sync to avoid backward-compat drift.
+#
+# NOTE: This file lives in a subdirectory of .github/ISSUE_TEMPLATE/ on purpose
+# (see agent-issue-body.yml for why). It is a body template, not a GitHub form.
+#
+# Placeholders use Python str.format() syntax: {field_name}. Keep the
+# <!-- agent:* --> markers intact for backward compatibility.
+#
+# Canonical headings for non-bug issues (the format step normalizes the
+# original body's headings to these): Description, Objective, Current Status
+
+name: "Agent Non-Bug Issue Body"
+description: "Suffix appended to non-bug issues (enhancement, task, feature-gap, performance, question)"
+
+canonical_headings:
+  - Description
+  - Objective
+  - Current Status
+
+body: |
+  ---
+
+  ## Type
+  - **Category:** {category}
+  - **Platform:** {platform}
+  - **Related Components:** {related_components}
+
+  ## Action Items
+  - [ ] 🔍 Issue formatted (Discovery Agent)
+    <details><summary>Discovery log</summary>
+    <!-- agent:discovery-log -->
+    </details>
+  - [ ] 🧠 Root cause identified (Triage Agent)
+    <details><summary>Triage log</summary>
+    <!-- agent:triage-log -->
+    </details>
+  - [ ] 🎯 Triage complete — routed to fix agent (agent:triaged)
+  - [ ] 🔧 Fix implemented (Fix Agent)
+    <details><summary>Fix log</summary>
+    <!-- agent:fix-log -->
+    </details>
+  - [ ] ✅ Fix verified locally
+  <details><summary>Verification log</summary>
+
+  <!-- agent:verification-log -->
+  </details>
+  - [ ] 📋 PR proposed
+  - [ ] 👀 Human review
+  - [ ] 🎉 PR merged
+
+  ## Context
+  {context}
+
+  ## Original Issue
+  <details><summary>Original issue body</summary>
+
+  {original_issue}
+
+  </details>

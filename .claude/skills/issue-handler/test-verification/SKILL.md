@@ -164,3 +164,13 @@ No text after the JSON block.
 - If all tests are xfailed, report FAILED (xfail = bug still exists).
 - If all tests are skipped by `@skipIfXpu`, remove the decorator and re-run. You MAY modify test files ONLY to remove skip/xfail decorators — revert after running.
 - TIME BUDGET: Complete within 3 minutes. If stuck, report CANNOT_VERIFY.
+
+## Issue-body status (backward compatible)
+
+This skill runs at two points: verifying the failure reproduces (before triage)
+and confirming the fix (after `issue-fix`). The JSON above was formerly consumed
+by a Python driver script; now the agent applies it directly. When updating the
+issue body, this stage owns the `<!-- agent:verification-log -->` slot and the
+"Fix verified locally" Action Item (check it only on a post-fix `PASSED`). See
+`issue-handler/SKILL.md` and the templates under `.github/ISSUE_TEMPLATE/agent/`
+for the full status/label contract.

@@ -2,9 +2,9 @@
 name: issue-format
 description: >
   Classify a GitHub issue as bug or nonbug and extract metadata
-  (test_type, category, dependency, platform, context). Use when
-  triaging an issue and you need a structured classification of its
-  type and key attributes returned as JSON.
+  (test_type, category, dependency, platform, context). Use as the first
+  stage of issue handling, when you need a structured classification of an
+  issue's type and key attributes returned as JSON.
 ---
 
 # Issue Format — Classify & Extract Metadata
@@ -63,3 +63,20 @@ Return ONLY this JSON object, no markdown fences, no explanation:
 6. **Labels are authoritative** — if labels say `agent_test: ut`, test_type is `ut`.
 7. **Do NOT hallucinate** — if info isn't in the issue, use `""`.
 8. Keep the output small. Do NOT echo back the issue body.
+
+## Issue-body status (backward compatible)
+
+This is the first pipeline stage (legacy status `DISCOVERED`). The JSON above
+was formerly consumed by a Python driver script; now the agent applies it
+directly when building the issue body from the templates under
+`.github/ISSUE_TEMPLATE/agent/` (`agent-issue-body.yml` for bug,
+`agent-issue-body-nonbug.yml` for non-bug).
+
+When you write the formatted body, this stage owns:
+- the top status marker `<!-- agent:status:DISCOVERED -->`,
+- the canonical section headings (`Description, Reproducer, Error Log,
+  Environment` for bug; `Description, Objective, Current Status` for non-bug),
+- the `<!-- agent:discovery-log -->` slot,
+- checking the "Issue formatted" Action Item.
+
+The overall stage sequencing is owned by `issue-handler/SKILL.md`.

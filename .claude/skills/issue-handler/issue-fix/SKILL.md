@@ -139,6 +139,14 @@ After fixing, update the issue body with:
 - What was changed and why
 - Test results (pass/fail)
 
+### Issue-body status (backward compatible)
+This stage corresponds to legacy status `IMPLEMENTING`. A Python driver script
+formerly wrote this status; now the agent does it directly. This stage owns the
+`<!-- agent:fix-log -->` slot and the "Fix implemented" Action Item, and
+advances `<!-- agent:status:IMPLEMENTING -->`. Keep the markers from the
+templates under `.github/ISSUE_TEMPLATE/agent/` intact. See
+`issue-handler/SKILL.md` for the overall stage/label contract.
+
 ## Step 6: Open the PR
 To open the PR (branch naming, reproducer test, PR body, lint, push), use the
 `xpu-ops-pr-creation` skill. Do not duplicate that workflow here.
