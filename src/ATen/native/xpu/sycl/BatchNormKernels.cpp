@@ -5107,7 +5107,8 @@ struct BatchNormReduceStatisticsKernelFunctor {
         n += count;
       }
       mean[i] = avg;
-      invstd[i] = static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
+      invstd[i] =
+          static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
       if (running_mean.data() != NULL) {
         running_mean[i] = static_cast<scalar_t>(
             (1 - momentum_) * running_mean[i] + momentum_ * avg);
