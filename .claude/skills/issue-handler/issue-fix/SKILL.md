@@ -13,6 +13,12 @@ description: >
 This skill takes a triaged issue and turns it into a verified code fix. It does
 not open the PR itself — see the cross-references at the end.
 
+> **Execution mode:** this skill behaves differently in interactive (default)
+> vs pipeline mode. See [../references/execution-modes.md](../references/execution-modes.md).
+> For environment activation, build commands, the torch-xpu-ops `xpu.txt` pin,
+> and rebuild pitfalls, see
+> [../references/environment-setup.md](../references/environment-setup.md).
+
 ## Inputs
 
 You need:
@@ -42,33 +48,11 @@ Extract the reproducer command from the issue description. It may be:
 Run it exactly as specified. If the issue has no reproducer, construct one
 from the failed test name and error context.
 
-If you modified C++/CUDA/SYCL code (not just Python), rebuild first. The commands
-below are concrete examples; **the paths and flags are environment-dependent
-placeholders — adjust them to your environment** (oneAPI location, target arch,
-Python venv, etc.):
-- **pytorch repo**: `source ~/intel/oneapi/setvars.sh --force 2>/dev/null && git submodule sync && git submodule update --init --recursive && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation 2>&1 | tail -20`
-  - `~/intel/oneapi/setvars.sh` (oneAPI install path), `TORCH_XPU_ARCH_LIST=pvc`
-    (target GPU arch), and any active `.venv` are environment-specific — change
-    them to match your machine.
-- **torch-xpu-ops repo**: No separate build step needed (built as part of pytorch)
-
-### torch-xpu-ops submodule pin (xpu.txt)
-pytorch pins torch-xpu-ops at a specific commit via `third_party/xpu.txt`.
-During CMake build, pytorch reads this SHA, fetches the torch-xpu-ops repo,
-and checks out that exact commit into `third_party/torch-xpu-ops/`.
-
-**To test a torch-xpu-ops fix inside pytorch** (replace `$PYTORCH_DIR` with your
-pytorch checkout path):
-1. Copy only the changed files into `$PYTORCH_DIR/third_party/torch-xpu-ops/`
-2. Run `ninja -C $PYTORCH_DIR/build` for an incremental rebuild (only recompiles changed files)
-3. Run tests from the pytorch root directory
-4. After testing, restore: `cd $PYTORCH_DIR/third_party/torch-xpu-ops && git checkout .`
-
-**Do NOT** do a full `git checkout <branch>` in `third_party/torch-xpu-ops/` —
-this changes mtimes on all files and triggers a massive ninja rebuild.
-Copy only the changed files to keep incremental builds fast.
-**Do NOT** modify `third_party/xpu.txt` — changing the pin triggers CMake
-reconfiguration and a full rebuild from scratch (~hours).
+If you modified C++/CUDA/SYCL code (not just Python), rebuild first. See
+[../references/environment-setup.md](../references/environment-setup.md) for the
+environment activation, build commands, and the torch-xpu-ops `xpu.txt`
+submodule-pin workflow (how to test a torch-xpu-ops fix inside pytorch without
+triggering a full rebuild).
 
 ## Step 2: Implement the Fix
 
@@ -87,7 +71,7 @@ reconfiguration and a full rebuild from scratch (~hours).
 
 ### Fix Strategies by Category
 - **Unit tests (non-E2E):** For UT failures (not end-to-end models), see the **UT Skip Removal** section below.
-- **Newly added test:** Try to enable it for XPU. If XPU support is genuinely missing and out of scope for this fix, do NOT add skip decorators — instead, add comments in the issue body and report `NEEDS_HUMAN` with reason "Requires new feature support, cannot fix in current scope".
+- **Newly added test:** Try to enable it for XPU. If XPU support is genuinely missing and out of scope for this fix, do NOT add skip decorators — instead report `NEEDS_HUMAN` with reason "Requires new feature support, cannot fix in current scope". In **interactive mode** (default), tell the user; in **pipeline mode**, add the explanation as a comment in the issue body. (See `issue-handler/SKILL.md` "Execution modes".)
 - **Regression:** Find the guilty commit by reviewing recent commit history. Apply an XPU-specific fix if necessary. If you can't identify the guilty commit, compare with cuda/rocm backend to find the root cause.
 - **Tolerance:** Match upstream CUDA tolerances when adjusting XPU tolerances.
 - **Skip decorator stale:** See the **UT Skip Removal** section below.
@@ -135,17 +119,18 @@ git diff --cached --stat  # verify only intended files
 ```
 
 ## Step 5: Update Issue Description
-After fixing, update the issue body with:
-- What was changed and why
-- Test results (pass/fail)
+After fixing, summarize what was changed and why, plus the test results
+(pass/fail). In **interactive mode** (default), report this to the user. In
+**pipeline mode**, write it into the issue body (see below).
 
 ### Issue-body status (backward compatible)
-This stage corresponds to legacy status `IMPLEMENTING`. A Python driver script
-formerly wrote this status; now the agent does it directly. This stage owns the
-`<!-- agent:fix-log -->` slot and the "Fix implemented" Action Item, and
-advances `<!-- agent:status:IMPLEMENTING -->`. Keep the markers from the
-templates under `.github/ISSUE_TEMPLATE/agent/` intact. See
-`issue-handler/SKILL.md` for the overall stage/label contract.
+**Pipeline mode only.** This stage corresponds to legacy status `IMPLEMENTING`.
+A Python driver script formerly wrote this status; in pipeline mode the agent
+does it directly. This stage owns the `<!-- agent:fix-log -->` slot and the
+"Fix implemented" Action Item, and advances `<!-- agent:status:IMPLEMENTING -->`.
+Keep the markers from the templates under `.github/ISSUE_TEMPLATE/agent/` intact.
+In interactive mode, report to the user instead. See `issue-handler/SKILL.md`
+for the overall stage/label contract and "Execution modes".
 
 ## Step 6: Open the PR
 To open the PR (branch naming, reproducer test, PR body, lint, push), use the
@@ -165,9 +150,7 @@ To open the PR (branch naming, reproducer test, PR body, lint, push), use the
 - Remove unused imports when removing skip decorators.
 - Keep commits focused: one fix per commit.
 - **Never cherry-pick** upstream fixes. If a fix already landed on trunk, rebase (`git rebase origin/main`) instead.
-- **Always rebuild after rebase or branch switch.** After `git rebase`, `git checkout`, or any operation that changes the commit base, rebuild before running tests (see Step 1 for the build command; adjust the oneAPI path and arch list to your environment). Without rebuilding, C++ extensions are stale and results are unreliable.
-- Editable installs resolve Python from source but C++ headers from the installed location (`torch/include/`). After editing a C++ header, **manually copy** it to the installed include path.
-- Delete the PCH cache (`/tmp/torchinductor_<user>/precompiled_headers/`) after modifying any header under `torch/csrc/inductor/cpp_wrapper/` — stale precompiled headers mask the fix.
+- **Rebuild pitfalls** (rebuild after rebase/branch switch, manual C++ header copy for editable installs, PCH cache deletion): see [../references/environment-setup.md](../references/environment-setup.md).
 - For C++ compile errors in AOT Inductor generated code (`CppCompileError`), the root cause is usually in the **codegen ordering** in `cpp_wrapper_cpu.py` (e.g., a function used before its definition is emitted). Check `write_wrapper_decl()` and `generate_input_output_runtime_checks()` ordering.
 
 ## Output

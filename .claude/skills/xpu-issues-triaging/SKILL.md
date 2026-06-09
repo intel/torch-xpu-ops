@@ -1,41 +1,34 @@
 ---
 name: xpu-issues-triaging
 description: >
-  Canonical triage skill for a single pytorch or torch-xpu-ops issue. Use to
-  determine root cause, fix strategy, target repo, and a verdict on whether an
-  agent can implement the fix (IMPLEMENTING) or it needs a human (NEEDS_HUMAN).
-  Works for both UT and E2E failures, XPU kernel/operator bugs, PyTorch core
-  bugs, and CUDA-UT-porting issues. Read-only analysis; emits a JSON verdict.
+  Triaging the pytorch or torch-xpu-ops issue. Use to determine root cause and fix strategy.
 ---
 
 # Triage XPU / PyTorch Issue
 
-This is the canonical triage skill (it absorbs the former `issue-triage`).
+> **Execution mode:** this skill behaves differently in interactive (default)
+> vs pipeline mode (e.g. whether it comments on the issue). See
+> [../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md).
+
 You **analyze**; you do not execute code or edit files. Implementation belongs
 to the `issue-fix` skill.
 
 ## Inputs
 
-One GitHub issue — structured or raw — including its error log, reproducer (if
+- One GitHub issue — structured or raw — including its error log, reproducer (if
 any), surrounding context, and labels. You have read-only access to the
 codebase (`read`/`grep`).
+- If user offered the raw test command, you have to run the test and confirm before triaging.
+
 
 ## Your Task
 
 Determine:
 1. **Root cause** — what exactly is failing and why.
 2. **Fix strategy** — what files/functions to change.
-3. **Target repo** — `pytorch` or `torch-xpu-ops`.
+3. **Target repo** —  The bug belongs to `pytorch` or `torch-xpu-ops`.
 4. **Verdict** — can an agent fix this (`IMPLEMENTING`) or does it need a human
    (`NEEDS_HUMAN`).
-
-## Guardrails (keep triage cheap)
-
-- **Stay time-boxed.** Aim to produce the JSON verdict within ~5 minutes. If
-  unsure, output `IMPLEMENTING` with your best guess rather than searching
-  indefinitely.
-- **Do the analysis yourself.** Do NOT use the `task` tool or spawn subagents —
-  use `read` and `grep` only. Subagents hang in large repos.
 
 ## Step 0: Quick classification (BEFORE deep analysis)
 
@@ -44,8 +37,10 @@ Determine:
   existing verdict and stop.
 - If labeled `task` / `[Task]` / `[Feature]`, or it describes broad
   alignment/enablement work -> `NEEDS_HUMAN`, reason "Umbrella/task issue, not a
-  single fixable bug". Do NOT make code changes for `task`-labeled issues; if
-  acting on the issue directly, leave a comment explaining why you stopped.
+  single fixable bug". Do NOT make code changes for `task`-labeled issues. In
+  **interactive mode** (default) tell the user why you stopped; in **pipeline
+  mode** leave a comment on the issue explaining why you stopped. (See
+  `issue-handler/SKILL.md` "Execution modes".)
 - If it describes a "feature gap" or "blocked by missing feature" ->
   `NEEDS_HUMAN`.
 - If category is "performance" with no specific failing test -> `NEEDS_HUMAN`,
@@ -148,8 +143,8 @@ If the failure is a CUDA unit test ported to XPU:
 
 - Root cause in **device-agnostic/framework code** (`torch/`,
   `aten/src/ATen/`, `c10/`) -> fix belongs in **pytorch**. Do NOT submit a
-  torch-xpu-ops PR; comment on the issue explaining the root cause and where the
-  fix belongs.
+  torch-xpu-ops PR. Surface the root cause and where the fix belongs: tell the
+  user in interactive mode, or comment on the issue in pipeline mode.
 - Root cause in **XPU-specific kernel/dispatch code**
   (`src/ATen/native/xpu/`, or `third_party/torch-xpu-ops/` inside the pytorch
   tree) -> fix belongs in **torch-xpu-ops**.
@@ -196,14 +191,18 @@ it to see if XPU support is expected — this affects the fix strategy.
 
 ## Issue-body status (backward compatible)
 
-This stage corresponds to legacy status stages `TRIAGING` -> `TRIAGED`. This
-stage produces the Root Cause Analysis / Proposed Fix Strategy / Target
-Repository content and the `<!-- agent:upstream-log -->` /
-`<!-- agent:triage-log -->` log text. The `issue-handler` orchestrator writes
-that content into the issue body, advances `<!-- agent:status:... -->`, and sets
-the label (`agent:active` while triaging, `agent:triaged` when done,
-`agent:needs-human` on a `NEEDS_HUMAN` verdict). See `issue-handler/SKILL.md`
-and the templates under `.github/ISSUE_TEMPLATE/agent/` for the full contract.
+**Pipeline mode only.** In interactive mode (default), return the triage result
+to the user/orchestrator and do not write to the issue body. See
+[../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md)
+for the full contract.
+
+This stage corresponds to legacy status stages `TRIAGING` -> `TRIAGED`. It
+produces the Root Cause Analysis / Proposed Fix Strategy / Target Repository
+content and the `<!-- agent:upstream-log -->` / `<!-- agent:triage-log -->` log
+text. In pipeline mode the `issue-handler` orchestrator writes that content into
+the issue body, advances `<!-- agent:status:... -->`, and sets the label
+(`agent:active` while triaging, `agent:triaged` when done, `agent:needs-human`
+on a `NEEDS_HUMAN` verdict).
 
 ## Output
 

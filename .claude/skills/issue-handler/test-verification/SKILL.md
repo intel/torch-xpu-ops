@@ -9,6 +9,11 @@ description: >
 
 # Test Verification
 
+> **Execution mode:** this skill behaves differently in interactive (default)
+> vs pipeline mode. See [../references/execution-modes.md](../references/execution-modes.md).
+> For environment activation and build commands, see
+> [../references/environment-setup.md](../references/environment-setup.md).
+
 ## Your Task
 Given a raw test reference from a CI failure issue, resolve it to a correct
 local command, run it, and report whether the bug still reproduces.
@@ -102,16 +107,11 @@ If `0 items / no tests collected` → the filter matches nothing → report `CAN
 ## Step 4: Build and Run the Command
 
 ### Environment Setup
-**MANDATORY** — run these before ANY test or import of torch. The exact paths
-are placeholders; adapt them to the local environment (oneAPI install location
-and the PyTorch checkout's Python environment):
-```bash
-source ~/intel/oneapi/setvars.sh --force 2>/dev/null
-source $PYTORCH_DIR/.venv/bin/activate
-```
-Without this, `torch.xpu.is_available()` returns False and XPU tests collect 0 items.
-
-All commands run from `$PYTORCH_DIR/`.
+**MANDATORY** — activate oneAPI and the PyTorch venv before ANY test or import
+of torch (without it `torch.xpu.is_available()` returns False and XPU tests
+collect 0 items). See
+[../references/environment-setup.md](../references/environment-setup.md) for the exact
+commands. All commands run from `$PYTORCH_DIR/`.
 
 ### Command Formats
 - **pytest**: `pytest -xvs "<resolved_path>::Class::method"`
@@ -167,10 +167,12 @@ No text after the JSON block.
 
 ## Issue-body status (backward compatible)
 
+**Pipeline mode only.** In interactive mode (default), report the verification
+result to the user/orchestrator and do not write to the issue body. See
+[../references/execution-modes.md](../references/execution-modes.md) for the full
+contract.
+
 This skill runs at two points: verifying the failure reproduces (before triage)
-and confirming the fix (after `issue-fix`). The JSON above was formerly consumed
-by a Python driver script; now the agent applies it directly. When updating the
-issue body, this stage owns the `<!-- agent:verification-log -->` slot and the
-"Fix verified locally" Action Item (check it only on a post-fix `PASSED`). See
-`issue-handler/SKILL.md` and the templates under `.github/ISSUE_TEMPLATE/agent/`
-for the full status/label contract.
+and confirming the fix (after `issue-fix`). In pipeline mode this stage owns the
+`<!-- agent:verification-log -->` slot and the "Fix verified locally" Action
+Item (check it only on a post-fix `PASSED`).

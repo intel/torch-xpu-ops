@@ -2,8 +2,7 @@
 name: issue-handler
 description: >
   End-to-end orchestrator for handling a single GitHub issue on pytorch or
-  torch-xpu-ops. Use when asked to "handle", "process", "work through", or
-  "drive" an issue from raw report to a proposed fix — formatting the issue,
+  torch-xpu-ops. Use when asked to fix the issue — formatting the issue,
   verifying it reproduces, triaging the root cause, proposing and verifying a
   fix, and reporting back to the user. Coordinates the issue-format,
   test-verification, xpu-issues-triaging, and issue-fix sub-skills.
@@ -14,7 +13,7 @@ description: >
 This is the **high-level scenario skill**. It does not do the detailed work
 itself; it sequences four leaf skills into one iterative pipeline and reports
 the result to the user. Each stage's mechanics live in its own skill — read and
-follow that skill when you reach the stage.
+follow that skill when you reach the stage or you are asked to do one specific task.
 
 ## Pipeline overview
 
@@ -37,11 +36,23 @@ format  ->  verify-exists  ->  triage  ->  propose-fix  ->  verify-fix  ->  repo
 - For local reproduction/fix stages: a local checkout and Python environment
   (see `test-verification` and `issue-fix` for environment setup).
 
+## Execution modes
+
+This pipeline runs in one of two modes — **interactive (default)** or
+**pipeline** — which changes how every stage reports results and whether it
+writes to the GitHub issue. Decide the mode at the start of the run and pass it
+down to every leaf skill. See the shared reference for the full rules:
+[references/execution-modes.md](references/execution-modes.md).
+
+- **Interactive (default):** ask the user when blocked; report conversationally;
+  do not touch the issue body/labels unless asked.
+- **Pipeline (explicit):** no human to ask — write status into the issue body,
+  advance the `agent:status` marker and labels, leave a comment, and stop.
+
 ## How to run the pipeline
 
 Work the stages in order. After each stage, decide whether to continue, loop,
-or stop based on that stage's output. Do **not** spawn subagents for triage
-(see `xpu-issues-triaging`) — it can hang on large repos.
+or stop based on that stage's output.
 
 ### Stage 1 — Format (`issue-format`)
 Classify the issue and extract metadata. If `issue_type` is `nonbug` (task,
@@ -92,55 +103,20 @@ report `NEEDS_HUMAN` with the blocker.
 
 ## Issue-body status (backward compatible)
 
-Formerly a Python driver script advanced the issue through stages and wrote
-status into the GitHub issue body. That orchestration is now done by **this
-skill** directly — no script. To stay compatible with any tooling that still
-parses issue bodies, preserve the markers defined in the agent body templates:
+**Pipeline mode only.** In interactive mode (default), do not touch the issue
+body, markers, or labels unless the user asks — report to the user instead.
 
-- Bug issues: `.github/ISSUE_TEMPLATE/agent/agent-issue-body.yml`
-- Non-bug issues: `.github/ISSUE_TEMPLATE/agent/agent-issue-body-nonbug.yml`
-
-When you update an issue body, keep these contracts intact:
-
-1. **Status marker** at the top of the body:
-   `<!-- agent:status:STAGE -->`. Advance `STAGE` through:
-   `DISCOVERED -> UPSTREAM_VERIFYING -> WAITING_UPSTREAM -> TRIAGING ->
-   TRIAGED -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED`,
-   with terminal stages `DONE`, `SKIPPED`, or `NEEDS_HUMAN`.
-
-2. **Stage -> label mapping** (apply the matching GitHub label when you can):
-
-   | Stage(s) | Label |
-   |----------|-------|
-   | DISCOVERED, UPSTREAM_VERIFYING, TRIAGING, IMPLEMENTING, IN_REVIEW, PUBLIC_PR, CI_WATCH, MERGED | `agent:active` |
-   | WAITING_UPSTREAM | `agent:waiting-upstream` |
-   | TRIAGED | `agent:triaged` |
-   | DONE, SKIPPED | `agent:done` |
-   | NEEDS_HUMAN | `agent:needs-human` |
-
-3. **Action Items checklist** — check off `- [ ]` items as stages complete and
-   fill the matching log placeholders in the template:
-   `<!-- agent:discovery-log -->` (format),
-   `<!-- agent:env-log -->` (environment setup),
-   `<!-- agent:upstream-log -->` and `<!-- agent:triage-log -->` (triage),
-   `<!-- agent:fix-log -->` (fix),
-   `<!-- agent:verification-log -->` (verification).
-
-4. **Canonical section headings** — the format stage lays out the skeleton
-   headings; their content is filled across later stages. Bug issues use
-   exactly: `Description, Reproducer, Error Log, Environment, Test Info,
-   Root Cause Analysis, Proposed Fix Strategy, Target Repository,
-   Additional Context` — where `Root Cause Analysis`, `Proposed Fix Strategy`,
-   and `Target Repository` are filled at the **triage** stage, not by format.
-   Non-bug issues use: `Description, Objective, Current Status`.
-
-Each leaf skill notes which marker/label/log slot it owns; this skill owns
-advancing the overall `agent:status` stage and the checklist.
+The full backward-compatible contract (status markers, stage->label map, Action
+Items checklist, canonical headings) lives in the shared reference:
+[references/execution-modes.md](references/execution-modes.md). This orchestrator owns
+advancing the overall `agent:status` stage and the checklist; each leaf skill
+owns its own marker/log slot.
 
 ## Reporting to the user
 
-At the end of every run, summarize the outcome for the user in plain language.
-Always include:
+At the end of every run, summarize the outcome. In **interactive mode** present
+this to the user in plain language; in **pipeline mode** write the same summary
+into the GitHub issue (comment + body) and stop. Always include:
 
 - **Issue:** link/number and one-line title.
 - **Classification:** bug / nonbug (+ category).

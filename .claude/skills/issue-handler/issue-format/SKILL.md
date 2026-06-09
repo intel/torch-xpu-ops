@@ -9,6 +9,9 @@ description: >
 
 # Issue Format — Classify & Extract Metadata
 
+> **Execution mode:** this skill behaves differently in interactive (default)
+> vs pipeline mode. See [../references/execution-modes.md](../references/execution-modes.md).
+
 ## Inputs
 
 You receive a GitHub issue: its title, body, and labels.
@@ -66,17 +69,17 @@ Return ONLY this JSON object, no markdown fences, no explanation:
 
 ## Issue-body status (backward compatible)
 
-This is the first pipeline stage (legacy status `DISCOVERED`). The JSON above
-was formerly consumed by a Python driver script; now the agent applies it
-directly when building the issue body from the templates under
-`.github/ISSUE_TEMPLATE/agent/` (`agent-issue-body.yml` for bug,
-`agent-issue-body-nonbug.yml` for non-bug).
+**Pipeline mode only.** In interactive mode (default), return the
+classification JSON to the user/orchestrator and do not write to the issue body.
+See [../references/execution-modes.md](../references/execution-modes.md) for the full
+contract.
 
-When you write the formatted body, this stage owns:
+This is the first pipeline stage (legacy status `DISCOVERED`). When building the
+issue body from the templates under `.github/ISSUE_TEMPLATE/agent/`
+(`agent-issue-body.yml` for bug, `agent-issue-body-nonbug.yml` for non-bug),
+this stage owns:
 - the top status marker `<!-- agent:status:DISCOVERED -->`,
 - the canonical section headings (`Description, Reproducer, Error Log,
   Environment` for bug; `Description, Objective, Current Status` for non-bug),
 - the `<!-- agent:discovery-log -->` slot,
 - checking the "Issue formatted" Action Item.
-
-The overall stage sequencing is owned by `issue-handler/SKILL.md`.
