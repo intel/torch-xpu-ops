@@ -1,0 +1,102 @@
+name: pull dpclang
+
+on:
+  pull_request:
+    branches:
+      - main
+      - release/*
+    paths:
+      - .github/workflows/pull_dpclang.yml
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-prereq:
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: build
+    container:
+      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      env:
+        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+    steps:
+      - name: Checkout intel-llvm
+        uses: actions/checkout@v6
+        with:
+          repository: intel/llvm
+          # WA for https://github.com/intel/llvm/issues/22308
+          ref: 8c9609e0723795c0c82b7d2d097eed406e71156b # sycl-rel-7_0
+          path: intel-llvm
+      - name: Install prerequisites
+        run: |
+          rm -rf /tmp/xpu-tool/myvenv
+          /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
+          pip install cmake ninja
+          dnf install -y libtool libzstd-devel
+      - name: Build intel-llvm
+        run: |
+          source /opt/rh/gcc-toolset-13/enable
+          # WA for https://github.com/intel/llvm/pull/22294
+          sed -i 's/\${zstd_STATIC_LIBRARY}/zstd::libzstd_shared/' sycl/source/CMakeLists.txt
+          cmake -B build -S llvm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+            -DBUILD_SHARED_LIBS=ON \
+            -DLLVM_BUILD_TOOLS=ON \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_DOXYGEN=OFF \
+            -DLLVM_ENABLE_LLD=OFF \
+            -DLLVM_ENABLE_PROJECTS='clang;sycl;llvm-spirv;opencl;xpti;xptifw;compiler-rt;libdevice;sycl-jit' \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DLLVM_ENABLE_SPHINX=OFF \
+            -DLLVM_ENABLE_ZSTD=ON \
+            -DLLVM_EXTERNAL_PROJECTS='sycl;llvm-spirv;opencl;xpti;xptifw;compiler-rt;libdevice;sycl-jit' \
+            -DLLVM_SPIRV_ENABLE_LIBSPIRV_DIS=OFF \
+            -DLLVM_TARGETS_TO_BUILD='host;SPIRV' \
+            -DSYCL_ENABLE_EXTENSION_JIT=ON \
+            -DSYCL_ENABLE_MAJOR_RELEASE_PREVIEW_LIB=OFF \
+            -DSYCL_ENABLE_WERROR=OFF \
+            -DSYCL_ENABLE_XPTI_TRACING=ON \
+            -DLLVM_EXTERNAL_LIBDEVICE_SOURCE_DIR=$(pwd)/libdevice \
+            -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=$(pwd)/llvm-spirv \
+            -DLLVM_EXTERNAL_SYCL_JIT_SOURCE_DIR=$(pwd)/sycl-jit \
+            -DLLVM_EXTERNAL_SYCL_SOURCE_DIR=$(pwd)/sycl \
+            -DLLVM_EXTERNAL_XPTI_SOURCE_DIR=$(pwd)/xpti \
+            -DLLVM_EXTERNAL_XPTIFW_SOURCE_DIR=$(pwd)/xptifw \
+            -DSYCL_INCLUDE_TESTS=OFF \
+            -DXPTI_ENABLE_WERROR=OFF
+          cmake --build build
+          cmake --install build
+        working-directory: ./intel-llvm
+      - name:
+        run: |
+          # WA for https://github.cim/intel/llvm/issues/21511
+          ln -s clang dpclang
+          ln -s clang++ dpclang++
+        working-directory: ./intel-llvm/install/bin
+      - name: Compress output
+        run: |
+          # Compressing manually to preserve access permissions for executables
+          tar czvf install-dpclang.tgz -C intel-llvm/install .
+      - name: Upload dpclang
+        uses: actions/upload-artifact@v7
+        with:
+          name: dpclang
+          path: install-dpclang.tgz
+
+  build-wheels:
+    needs: build-prereq
+    if: ${{ github.repository_owner == 'intel' }}
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      category: dpclang
+      runner: build
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}

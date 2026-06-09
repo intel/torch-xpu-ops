@@ -95,6 +95,34 @@ jobs:
           path: |
             known_issue_static.log
             issues_snapshot.log
+      - name: Download dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: dpclang
+      - name: Setup dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        run: |
+          rm -rf install-dpclang && mkdir install-dpclang
+          tar xzvf install-dpclang.tgz -C install-dpclang
+          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
+          echo "USE_DPCLANG=yes" >> $GITHUB_ENV
+      - name: Setup dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        run: |
+          dnf install -y tree libzstd-devel
+          tree install-dpclang
+          echo "aaa"
+          find install-dpclang -name clang
+          ls -al install-dpclang/bin/
+          which clang
+          which dpclang
+          which pkg-config
+          pkg-config --cflags sycl-dpcpp-7
+          #false
       - name: Build Pytorch
         run: |
           export USE_XCCL=1
@@ -119,7 +147,9 @@ jobs:
           fi
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          if [ "${{inputs.category}}" != "dpclang" ]; then
+            source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          fi
           export ONEDNN_COMMIT='${{ inputs.onednn }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
