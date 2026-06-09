@@ -393,7 +393,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   }
 
   logx = std::log(x);
-  term = -std::expm1(a * logx - sycl::lgamma(1 + a));
+  term = -sycl::expm1(a * logx - sycl::lgamma(1 + a));
   return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
 
