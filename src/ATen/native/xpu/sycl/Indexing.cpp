@@ -13,6 +13,8 @@
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 
+#include <type_traits>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -921,7 +923,12 @@ struct IndexFuncSmallIndexFunctor {
             IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src_);
         srcOffset += srcIndex * src_.strides[srcAddDim_];
 
-        T val = src_.data[srcOffset] * alpha_;
+        T val;
+        if constexpr (std::is_same_v<T, bool>) {
+          val = src_.data[srcOffset] && alpha_;
+        } else {
+          val = src_.data[srcOffset] * alpha_;
+        }
         op_(dst_.data, dstOffset, dstNumel_, &val);
       }
     }
@@ -1013,7 +1020,12 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src_);
       srcOffset += srcIndex * src_.strides[srcAddDim_];
 
-      T val = src_.data[srcOffset] * alpha_;
+      T val;
+      if constexpr (std::is_same_v<T, bool>) {
+        val = src_.data[srcOffset] && alpha_;
+      } else {
+        val = src_.data[srcOffset] * alpha_;
+      }
       const int smem_idx = dstOffset & (SMEM_SIZE - 1);
       IndexType current_offset = smem_offsets[smem_idx];
 
