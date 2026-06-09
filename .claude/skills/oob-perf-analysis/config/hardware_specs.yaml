@@ -1,0 +1,13 @@
+platforms:
+  b70:
+    label: B70 (G31)
+    peak_tflops_fp16: 154.0
+    bandwidth_gbs: 532.0
+  b580:
+    label: B580
+    peak_tflops_fp16: 93.0
+    bandwidth_gbs: 410.0
+  4080s:
+    label: RTX 4080 SUPER
+    peak_tflops_fp16: 100.96
+    bandwidth_gbs: 716.8

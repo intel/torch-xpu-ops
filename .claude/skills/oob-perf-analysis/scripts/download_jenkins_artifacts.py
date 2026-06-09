@@ -354,7 +354,7 @@ def main():
     for pass_type, build_num in passes.items():
         print(f"\n  [{pass_type}] Querying trigger job #{build_num}...")
         try:
-            job_data = query_trigger_job(args.server, build_num, auth=auth)
+            job_data = query_trigger_job(server, build_num, auth=auth)
             result = job_data.get("result")
             if result is None:
                 print(f"    WARNING: Job still RUNNING. Skipping.")
@@ -378,7 +378,7 @@ def main():
             }
 
             # Download summary.log
-            models = download_summary_log(args.server, build_num, auth=auth)
+            models = download_summary_log(server, build_num, auth=auth)
             all_pass_models[pass_type] = models
             print(f"    Result: {result}")
             print(f"    Device: {params.get('OOB_DEVICE')} ({params.get('NODE_LABEL')})")
@@ -423,7 +423,7 @@ def main():
         for pass_type, model in download_tasks:
             future = executor.submit(
                 download_model_pass,
-                args.server, model, pass_type, output_base, auth=auth
+                server, model, pass_type, output_base, auth=auth
             )
             futures[future] = (pass_type, model["model_name"])
 

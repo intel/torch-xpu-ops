@@ -5,8 +5,7 @@ Generate eager-mode T1/T2/R reports for all models in a session.
 Usage:
     python scripts/generate_all_eager_reports.py \
         --session raw_logs/b70_vs_4080s_fp16_eager \
-        --output reports/b70_vs_4080s_fp16_eager \
-        --config config/hardware_specs.yaml
+        --output reports/b70_vs_4080s_fp16_eager
 """
 
 import argparse
@@ -16,6 +15,12 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_CONFIG = os.path.join(
+    os.path.dirname(SCRIPTS_DIR), "config", "hardware_specs.yaml"
+)
 
 
 def extract_t2(log_path):
@@ -53,9 +58,9 @@ def main():
                         help="Session directory containing model subdirs (e.g. raw_logs/b70_vs_4080s_fp16_eager)")
     parser.add_argument("--output", type=str,
                         help="Output directory for reports (default: reports/<session_name>)")
-    parser.add_argument("--config", type=str, default="config/hardware_specs.yaml",
+    parser.add_argument("--config", type=str, default=DEFAULT_CONFIG,
                         help="Path to hardware_specs.yaml")
-    parser.add_argument("--scripts-dir", type=str, default="scripts",
+    parser.add_argument("--scripts-dir", type=str, default=SCRIPTS_DIR,
                         help="Directory containing generate_report.py")
     args = parser.parse_args()
 

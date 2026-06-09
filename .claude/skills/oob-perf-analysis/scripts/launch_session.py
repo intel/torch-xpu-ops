@@ -7,7 +7,7 @@ waits for all to complete, downloads artifacts, and generates reports.
 
 Usage:
     # From a YAML session file (just model list):
-    python scripts/launch_session.py --session config/sessions/my_session.yaml
+    python scripts/launch_session.py --session my_session.yaml
 
     # Directly from CLI:
     python scripts/launch_session.py \
@@ -15,7 +15,7 @@ Usage:
         --name my_session
 
     # Dry run (show what would be triggered):
-    python scripts/launch_session.py --session config/sessions/my_session.yaml --dry-run
+    python scripts/launch_session.py --session my_session.yaml --dry-run
 
     # Skip launch, only download + report (if jobs already ran):
     python scripts/launch_session.py --session config/sessions/my_session.yaml --download-only
@@ -493,8 +493,8 @@ def main():
         sys.exit(1)
 
     # Save triggered build info to YAML for resume
-    session_yaml_path = f"config/sessions/{session_name}.yaml"
-    os.makedirs(os.path.dirname(session_yaml_path), exist_ok=True)
+    session_yaml_path = os.path.join(output_dir, "session.yaml")
+    os.makedirs(output_dir, exist_ok=True)
     _save_session_yaml(session_yaml_path, model_list, triggered, server, mode)
     print(f"\n  Session saved: {session_yaml_path}")
     print(f"  (Can resume with: --session {session_yaml_path} --download-only)")
@@ -590,7 +590,6 @@ def _run_download(job_info, server, output_dir, session_name):
         os.path.join(scripts_dir, "generate_all_eager_reports.py"),
         "--session", output_dir,
         "--output", f"reports/{session_name}/per_model/eager",
-        "--config", "config/hardware_specs.yaml",
     ]
     print(f"  Running: {' '.join(report_cmd[:4])} ...")
     subprocess.run(report_cmd)

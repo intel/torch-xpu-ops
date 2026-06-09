@@ -9,7 +9,7 @@ Supports two "actual" sources:
   - torch profiler trace.json (default, works for both XPU and CUDA)
   - unitrace via map_kernels_to_ops.py (XPU only, more accurate — no profiler overhead)
 
-Hardware specs are loaded from config/hardware_specs.yaml (single source of truth).
+Hardware specs are loaded from a nearby hardware_specs.yaml when available.
 
 Usage:
     # Using profiler trace as actual source
@@ -54,9 +54,10 @@ _PLATFORM_CONFIG_MAP = {"G31": "b70", "B580": "b580", "4080": "4080s"}
 
 
 def _find_config_path():
-    """Search for config/hardware_specs.yaml relative to this script."""
+    """Search for hardware_specs.yaml relative to this script."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        os.path.join(script_dir, "..", "config", "hardware_specs.yaml"),
         os.path.join(script_dir, "..", "..", "config", "hardware_specs.yaml"),
         os.path.join(script_dir, "config", "hardware_specs.yaml"),
     ]
@@ -106,7 +107,7 @@ def load_platform_specs(platform, config_path=None):
         if not HAS_YAML:
             print("WARNING: PyYAML not installed, using fallback hardware specs")
         else:
-            print(f"WARNING: config/hardware_specs.yaml not found, using fallback specs")
+            print("WARNING: hardware_specs.yaml not found, using fallback specs")
 
     return {
         "peak_tflops": peak,

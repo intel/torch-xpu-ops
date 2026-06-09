@@ -41,24 +41,30 @@ cuda_t2: https://your-jenkins-server.example.com/job/newOOB_launch_benchmark_tri
 ```bash
 SESSION_YAML="<yaml file path>"
 SESSION_NAME="<filename without .yaml>"
+SKILL_ROOT=".claude/skills/oob-perf-analysis"
 
 # 1. Download all artifacts
-python scripts/download_jenkins_artifacts.py --session "$SESSION_YAML"
+python "$SKILL_ROOT/scripts/download_jenkins_artifacts.py" --session "$SESSION_YAML"
 
 # 2. Create flat symlink views
-python scripts/prepare_flat_views.py raw_logs/$SESSION_NAME flat_views/$SESSION_NAME
+python "$SKILL_ROOT/scripts/prepare_flat_views.py" raw_logs/$SESSION_NAME flat_views/$SESSION_NAME
 
 # 3. Generate per-model reports (output to models/ subdir)
-python scripts/generate_all_eager_reports.py --session raw_logs/$SESSION_NAME
+python "$SKILL_ROOT/scripts/generate_all_eager_reports.py" \
+  --session raw_logs/$SESSION_NAME
 
 # 4. Generate fleet summary
-python scripts/generate_fleet_summary.py \
+# --suite-dir is optional and only needed if you have external OOB suite YAMLs.
+python "$SKILL_ROOT/scripts/generate_fleet_summary.py" \
   --b70-dir flat_views/$SESSION_NAME/b70 \
   --4080s-dir flat_views/$SESSION_NAME/4080s \
-  --config config/hardware_specs.yaml \
-  --suite-dir benchmark/oob300 \
   -o reports/$SESSION_NAME/summary_eager_inference.md
 ```
+
+The skill ships its own hardware spec config at
+`.claude/skills/oob-perf-analysis/config/hardware_specs.yaml`.
+The report scripts auto-detect it, so `--config` is only needed if you want to
+override those defaults.
 
 ---
 
@@ -89,6 +95,15 @@ python scripts/generate_fleet_summary.py \
 | B70 (G31) | 154.0 | 532.0 |
 | RTX 4080 SUPER | 100.96 | 716.8 |
 | B580 | 93.0 | 410.0 |
+
+## Repository Layout Expectations
+
+- Run the helper scripts from this repository root, or use absolute paths.
+- The scripts live under `.claude/skills/oob-perf-analysis/scripts/`, not a
+  repo-level `scripts/` directory.
+- `--suite-dir` is optional and should point to an external directory that
+  contains OOB suite YAML files if you want per-suite grouping in the fleet
+  summary.
 
 ## Key Scripts
 

@@ -18,8 +18,8 @@ Usage:
         --b580-dir /path/to/b580/results \
         --4080s-dir /path/to/4080s/results \
         --b70-dir /path/to/b70/results \
-        --config config/hardware_specs.yaml \
-        --suite-dir benchmark/oob300 \
+        [--config /path/to/hardware_specs.yaml] \
+        [--suite-dir /path/to/oob_suite_yamls] \
         -o reports/oob300/summary_eager_inference.md
 """
 
@@ -992,8 +992,8 @@ def main():
     parser.add_argument("--4080s-dir", help="4080S result directory")
     parser.add_argument("--b70-dir", help="B70 result directory")
     parser.add_argument("--config", help="Path to hardware_specs.yaml")
-    parser.add_argument("--suite-dir", default="benchmark/oob300",
-                        help="Directory with suite YAML files")
+    parser.add_argument("--suite-dir",
+                        help="Optional directory with suite YAML files")
     parser.add_argument("-o", "--output", help="Output markdown file")
     parser.add_argument("--precision", default="fp16",
                         help="Precision tag (default: fp16)")
@@ -1019,7 +1019,10 @@ def main():
 
     suite_mode = "training" if args.test_mode == "train" else "inference"
     suite_map = load_suite_map(args.suite_dir, test_mode=suite_mode)
-    print(f"Loaded {len(suite_map)} models in suite map")
+    if args.suite_dir:
+        print(f"Loaded {len(suite_map)} models in suite map")
+    else:
+        print("No suite map provided; models will be reported as 'unknown'")
 
     mode = "compile" if args.test_mode == "compile" else "eager"
     results = collect_all_models(platform_dirs, args.config, suite_map, mode=mode)
