@@ -19,6 +19,7 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wchanges-meaning"
+#pragma GCC diagnostic ignored "-Wtemplate-id-cdtor"
 
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
