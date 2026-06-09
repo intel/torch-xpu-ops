@@ -160,15 +160,14 @@ static BenchResult bench_op(sycl::queue& q,
                              int prefill_reps,
                              SubmitFn submit) {
     // ── warmup (fully synchronous) ─────────────────────────────────────────
-    for (int i = 0; i < warmup; ++i) submit().wait();
+    for (int i = 0; i < warmup; ++i) {
+        submit().wait();
+    }
     q.wait();
     MPI_Barrier(comm);
 
     // ── allocate bookend event storage ────────────────────────────────────
     std::vector<sycl::event> pre_evs(loop), post_evs(loop);
-    // Keep CCL events alive until q.wait() to avoid any early teardown
-    std::vector<ccl::event> ccl_evs;
-    ccl_evs.reserve(loop);
 
     // ── prefill kernel: keeps GPU busy during host loop dispatch ──────────
     {
@@ -187,15 +186,12 @@ static BenchResult bench_op(sycl::queue& q,
     // ── fire-and-forget timed loop ─────────────────────────────────────────
     for (int i = 0; i < loop; ++i) {
         pre_evs[i]  = q.single_task<PrefillPre>(PrefillPre{});
-        ccl_evs.push_back(submit());              // enqueue CCL, do NOT wait
+        static_cast<void>(submit());   // enqueue CCL; discard event handle
         post_evs[i] = q.single_task<PrefillPost>(PrefillPost{});
     }
 
     // ── single synchronize ────────────────────────────────────────────────
     q.wait();
-
-    // Drain CCL events so they release internal state cleanly before destruction
-    for (auto& ev : ccl_evs) ev.wait();
 
     // ── read timestamps (ns → µs) ──────────────────────────────────────────
     std::vector<double> per_us(loop);
@@ -245,24 +241,41 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i],"--prefill-reps")&& i+1<argc) prefill_reps= std::atoi(argv[++i]);
     }
 
-    MPI_Init(&argc, &argv);
+    // CCL's fire-and-forget mode uses background threads that call MPI
+    // concurrently → MPI_THREAD_MULTIPLE is required.
+    int mpi_provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_provided);
     int rank, ws;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &ws);
 
-    // SYCL queue with profiling enabled
-    sycl::queue q{sycl::gpu_selector_v,
+    // Select one GPU per rank
+    auto devs = sycl::platform{sycl::gpu_selector_v}.get_devices();
+    if ((int)devs.size() < ws) {
+        if (rank == 0)
+            std::fprintf(stderr, "bench_ccl_prefill: need %d GPUs visible, found %zu\n",
+                         ws, devs.size());
+        MPI_Finalize();
+        return 1;
+    }
+    sycl::device  dev = devs[rank];
+    sycl::context ctx(dev);
+
+    // SYCL queue with profiling enabled (explicit device + context)
+    sycl::queue q{ctx, dev,
                   {sycl::property::queue::in_order{},
                    sycl::property::queue::enable_profiling{}}};
 
     // oneCCL init
     ccl::init();
     ccl::shared_ptr_class<ccl::kvs> kvs;
-    ccl::kvs::address_type kvs_addr;
+    ccl::kvs::address_type kvs_addr{};
     if (rank == 0) { kvs = ccl::create_main_kvs(); kvs_addr = kvs->get_address(); }
-    MPI_Bcast(&kvs_addr, sizeof(kvs_addr), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(kvs_addr.data(), kvs_addr.size(), MPI_BYTE, 0, MPI_COMM_WORLD);
     if (rank != 0) kvs = ccl::create_kvs(kvs_addr);
-    auto ccl_comm   = ccl::create_communicator(ws, rank, kvs);
+    auto ccl_dev    = ccl::create_device(dev);
+    auto ccl_ctx    = ccl::create_context(ctx);
+    auto ccl_comm   = ccl::create_communicator(ws, rank, ccl_dev, ccl_ctx, kvs);
     auto ccl_stream = ccl::create_stream(q);
 
     // Shared buffers (max size: numel = 2^max_log2)
