@@ -1,20 +1,3 @@
-# Agent issue body template — non-bug issues (suffix appended after the
-# normalized original body). Used for: enhancement, performance, feature-gap,
-# task, question.
-#
-# CANONICAL SOURCE. The legacy Python pipeline keeps a copy of these markers in
-# its own config; if you change the <!-- agent:* --> markers or canonical
-# headings here, keep that copy in sync to avoid backward-compat drift.
-#
-# NOTE: This file lives in a subdirectory of .github/ISSUE_TEMPLATE/ on purpose
-# (see agent-issue-body.yml for why). It is a body template, not a GitHub form.
-#
-# Placeholders use Python str.format() syntax: {field_name}. Keep the
-# <!-- agent:* --> markers intact for backward compatibility.
-#
-# Canonical headings for non-bug issues (the format step normalizes the
-# original body's headings to these): Description, Objective, Current Status
-
 name: "Agent Non-Bug Issue Body"
 description: "Suffix appended to non-bug issues (enhancement, task, feature-gap, performance, question)"
 

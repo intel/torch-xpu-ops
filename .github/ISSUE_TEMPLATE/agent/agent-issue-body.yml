@@ -1,14 +1,3 @@
-# Agent issue body template — bug issues (full body).
-#
-# CANONICAL SOURCE. The legacy Python pipeline keeps a copy of these markers in
-# its own config; if you change the <!-- agent:* --> markers or canonical
-# headings here, keep that copy in sync to avoid backward-compat drift.
-#
-# NOTE: This file lives in a subdirectory of .github/ISSUE_TEMPLATE/ on purpose.
-# GitHub only auto-discovers issue *forms* from the top level of ISSUE_TEMPLATE/,
-# so files under agent/ are ignored by the new-issue UI. This is a body
-# template, not a GitHub issue form.
-#
 # The issue-handler skills (issue-format, xpu-issues-triaging, test-verification,
 # issue-fix) fill this template directly. Placeholders use Python str.format()
 # syntax: {field_name}. The HTML comment markers (<!-- agent:* -->) are the
