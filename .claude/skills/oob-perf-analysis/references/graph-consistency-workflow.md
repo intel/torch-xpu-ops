@@ -49,7 +49,7 @@ If these differ, the cause is graph or dispatch divergence, not hardware speed.
 
 Before comparing, normalize op names consistently.
 
-Representative normalization examples (not exhaustive; add entries as new backend differences are discovered):
+Representative normalization examples (not exhaustive; add entries to this list in this document as new backend differences are discovered):
 
 1. `aten::copy_` -> `aten::clone`
 2. `aten::convolution_overrideable` -> `aten::convolution`

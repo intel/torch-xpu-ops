@@ -1,6 +1,6 @@
 # Platform keys are canonical lowercase identifiers used in code paths.
 # The "label" field is the user-facing display name used in reports.
-# Ridge point (ops:byte ratio) = peak_tflops * 1e3 / bandwidth_gbs.
+# Ridge point (ops:byte ratio) = peak_tflops * 1e3 / bandwidth_gbs, rounded to 1 decimal.
 platforms:
   b70:
     label: B70 (G31)

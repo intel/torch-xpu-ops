@@ -151,7 +151,7 @@ Required issue classes:
 3. `Projection undercounts`
 4. `Undercounts or slow`
 
-Issue classification decision logic:
+Issue classification decision logic (R_op thresholds use 0.80 as the boundary because 20% underperformance relative to roofline is the empirically observed point where per-op issues become actionable optimization targets; ops between 0.80 and 1.0 are usually acceptable overheads):
 
 1. If `R_op > 1.05`: classify as `Overcounting`
    - Projection overestimates actual work; likely fusion or calcflops including removed ops

@@ -87,6 +87,7 @@ The profiler trace serves as the bridge between unitrace kernel timings and aten
    - For each aten op, look up its associated kernel names from step 1
    - Sum the unitrace timings for those kernel names to get the op-level actual time
    - If a kernel is shared across multiple aten ops, distribute proportionally by profiler-reported sub-durations
+   - Fallback: if profiler sub-durations are zero or missing for a shared kernel, distribute equally among the sharing ops and flag the attribution as approximate
 
 4. Validate:
    - `sum(all attributed kernel times) ≈ sum(all unitrace kernels)`

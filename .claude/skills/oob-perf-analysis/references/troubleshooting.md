@@ -110,8 +110,9 @@ sum(unitrace kernels) ~= T2
 Interpretation:
 
 1. if kernel sum is more than ~20% greater than T2, the collection window is wrong or multiple iterations leaked in
-2. if kernel sum is 5-20% smaller than T2, there may be host overhead between kernel launches (often acceptable)
-3. if kernel sum is within ±5% of T2, the collection is healthy
+2. if kernel sum is 5-20% greater than T2, suspect partial multi-iteration leakage or background work; investigate before trusting per-op attribution
+3. if kernel sum is 5-20% smaller than T2, there may be host overhead between kernel launches (often acceptable)
+4. if kernel sum is within ±5% of T2, the collection is healthy
 
 ### Check 2: Unitrace kernel sum vs profiler kernel sum
 

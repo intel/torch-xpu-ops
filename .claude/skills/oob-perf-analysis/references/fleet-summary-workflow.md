@@ -50,7 +50,7 @@ Compute:
 
 #### Geomean Calculation
 
-Use the geometric mean (equal weight per model):
+Use the geometric mean (equal weight per model, natural logarithm):
 
 ```text
 geomean(R) = exp( (1/N) * sum(ln(R_i)) )
