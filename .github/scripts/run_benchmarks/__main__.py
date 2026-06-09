@@ -60,7 +60,7 @@ def main() -> None:
                         help="Path to ImageNet dataset directory (required for pt2e accuracy)")
     parser.add_argument("--gpu-memory-threshold", type=float, default=None,
                         help="GPU memory utilisation threshold (0.0-1.0) to kill a process. "
-                             "Default: 0.8 on Windows, 0.9 on Linux.")
+                             "Default: 0.90 on Windows, 0.95 on Linux.")
     parser.add_argument("--no-gpu-memory-monitor", action="store_true", default=False,
                         help="Disable GPU memory monitoring (enabled by default).")
     args = parser.parse_args()
