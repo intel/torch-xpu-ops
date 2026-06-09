@@ -39,39 +39,29 @@ You need:
 3. Start from a clean base: checkout the main branch (or your reproducer branch)
 
 ## Step 1: Reproduce
-Extract the reproducer command from the issue description. It may be:
-- A pytest command
-- A python script
-- A bash command
-- Any other test invocation
+Reproduce the failure with the `test-verification` skill — pass it the
+reproducer command from the issue (it activates the env and runs it). If the
+issue has no command, construct one from the failed test name and error context
+first. Confirm the bug actually reproduces before changing any code.
 
-Run it exactly as specified. If the issue has no reproducer, construct one
-from the failed test name and error context.
-
-If you modified C++/CUDA/SYCL code (not just Python), rebuild first. See
-[../references/environment-setup.md](../references/environment-setup.md) for the
-environment activation, build commands, and the torch-xpu-ops `xpu.txt`
+If you modified C++/CUDA/SYCL code (not just Python), rebuild before re-running.
+See [../references/environment-setup.md](../references/environment-setup.md) for
+the environment activation, build commands, and the torch-xpu-ops `xpu.txt`
 submodule-pin workflow (how to test a torch-xpu-ops fix inside pytorch without
 triggering a full rebuild).
 
 ## Step 2: Implement the Fix
-
-### Coding Principles
-
-1. **Think Before Coding** — State assumptions explicitly. If multiple interpretations exist, present them. If something is unclear, stop and ask.
-2. **Simplicity First** — Minimum code that solves the problem. No speculative features, no abstractions for single-use code, no "flexibility" that wasn't requested.
-3. **Surgical Changes** — Touch only what you must. Don't "improve" adjacent code, comments, or formatting. Match existing style. Remove imports/variables that YOUR changes made unused, but don't clean up pre-existing dead code.
-4. **Goal-Driven Execution** — Define verifiable success criteria. Loop until verified.
 
 ### Key Rules
 - **Minimal changes** — fix only what's broken
 - **Never skip tests** — no `@skipIfXpu`, `@skip`, `unittest.skip`.
 - **Stay in your repo** — if in pytorch, don't modify `third_party/*` (exception: you may edit `third_party/torch-xpu-ops/` files when the issue targets torch-xpu-ops sources — see HARD RULES).
 - **Never modify unrelated files**
+- **Never cherry-pick** upstream fixes. If a fix already landed on trunk, rebase (`git rebase origin/main`) instead.
 
 ### Fix Strategies by Category
 - **Unit tests (non-E2E):** For UT failures (not end-to-end models), see the **UT Skip Removal** section below.
-- **Newly added test:** Try to enable it for XPU. If XPU support is genuinely missing and out of scope for this fix, do NOT add skip decorators — instead report `NEEDS_HUMAN` with reason "Requires new feature support, cannot fix in current scope". In **interactive mode** (default), tell the user; in **pipeline mode**, add the explanation as a comment in the issue body. (See `issue-handler/SKILL.md` "Execution modes".)
+- **Newly added test:** Try to enable it for XPU. If XPU support is genuinely missing and out of scope for this fix, do NOT add skip decorators — instead, try to loop and fix, only add "NEEDS_HUMAN" or report to the user if you really can't solve.
 - **Regression:** Find the guilty commit by reviewing recent commit history. Apply an XPU-specific fix if necessary. If you can't identify the guilty commit, compare with cuda/rocm backend to find the root cause.
 - **Tolerance:** Match upstream CUDA tolerances when adjusting XPU tolerances.
 - **Skip decorator stale:** See the **UT Skip Removal** section below.
@@ -81,8 +71,7 @@ kernel/test, diffing CUDA vs XPU behavior, deciding pytorch vs torch-xpu-ops as
 the fix repo), use the `xpu-issues-triaging` skill.
 
 ### UT Skip Removal
-
-When the fix is removing a stale `@skipIfXpu` / `@xfailIfXPU` / `@expectedFailureXPU` decorator:
+This section states about how to remove the `@skipIfXpu` / `@xfailIfXPU` / `@expectedFailureXPU` decorator in unit-tests. If not needed, directly go to the next section.
 
 **1. Find skip markers** — scan for these patterns:
 
@@ -101,13 +90,15 @@ grep -n -A2 "DecorateInfo.*skip.*xpu" torch/testing/_internal/common_methods_inv
 
 **2. Remove the marker** — delete the decorator/entry. Clean up unused imports if the decorator was the last usage. For `OpInfo` `DecorateInfo` entries, remove the entry from the `decorators` list.
 
-**3. Verify locally** — run the test on XPU. If it **FAILS**, the underlying bug is not fixed — do NOT remove the skip. If it **PASSES**, proceed.
 
-**4. Dynamic test names** — many test classes are dynamically generated via `instantiate_device_type_tests` (e.g., `TestCommonXPU` from `TestCommon`). If simple search fails, check for the base class + device suffix pattern.
+**3. Dynamic test names** — many test classes are dynamically generated via `instantiate_device_type_tests` (e.g., `TestCommonXPU` from `TestCommon`). If simple search fails, check for the base class + device suffix pattern.
 
 ## Step 3: Verify
-Run the reproducer command again to confirm the fix works.
-Also run related tests to check for regressions.
+After the fix is proposed, re-run via the `test-verification` skill to confirm
+the fix works, and run related tests to check for regressions.
+
+**Run EVERY failing test case from the report individually.** Do not skip any
+case or assume verifying one representative case is sufficient.
 
 If you modified C++/CUDA/SYCL code, rebuild pytorch before verifying (see Step 1).
 
@@ -123,7 +114,7 @@ After fixing, summarize what was changed and why, plus the test results
 (pass/fail). In **interactive mode** (default), report this to the user. In
 **pipeline mode**, write it into the issue body (see below).
 
-### Issue-body status (backward compatible)
+### Issue-body status (Pipeline mode only)
 **Pipeline mode only.** This stage corresponds to legacy status `IMPLEMENTING`.
 A Python driver script formerly wrote this status; in pipeline mode the agent
 does it directly. This stage owns the `<!-- agent:fix-log -->` slot and the
@@ -135,23 +126,6 @@ for the overall stage/label contract and "Execution modes".
 ## Step 6: Open the PR
 To open the PR (branch naming, reproducer test, PR body, lint, push), use the
 `xpu-ops-pr-creation` skill. Do not duplicate that workflow here.
-
-## HARD RULES
-- NEVER add skip decorators. FIX the test.
-- NEVER modify files outside your repo scope. Exception: if you're in the pytorch repo and the issue targets `third_party/torch-xpu-ops/` files, you may edit those (they are torch-xpu-ops source files bundled as a submodule). Do NOT modify other `third_party/*` submodules. If the fix is in `torch-xpu-ops`, you are supposed to add in the issue body of the instructions of the fix.
-- NEVER modify unrelated files.
-- NEVER force-push. This makes commits un-trackable.
-- Use `git add` on specific files only.
-
-## Best Practices & Pitfalls
-- Always reproduce before fixing.
-- **After fixing, run EVERY failing test case from the report individually.** Do not skip any case or assume verifying one representative case is sufficient.
-- Match upstream CUDA tolerances when adjusting XPU tolerances.
-- Remove unused imports when removing skip decorators.
-- Keep commits focused: one fix per commit.
-- **Never cherry-pick** upstream fixes. If a fix already landed on trunk, rebase (`git rebase origin/main`) instead.
-- **Rebuild pitfalls** (rebuild after rebase/branch switch, manual C++ header copy for editable installs, PCH cache deletion): see [../references/environment-setup.md](../references/environment-setup.md).
-- For C++ compile errors in AOT Inductor generated code (`CppCompileError`), the root cause is usually in the **codegen ordering** in `cpp_wrapper_cpu.py` (e.g., a function used before its definition is emitted). Check `write_wrapper_decl()` and `generate_input_output_runtime_checks()` ordering.
 
 ## Output
 At the end, output:

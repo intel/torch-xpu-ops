@@ -1,11 +1,11 @@
 ---
 name: execution-modes
-description: Interactive vs pipeline execution modes and the backward-compatible issue-body status contract.
+description: Explains interactive vs pipeline execution modes when using `issue-format`, `test-verification`, `xpu-issues-triaging`, `issue-fix` skills.
 ---
 
 # Execution Modes (shared reference)
 
-Shared contract for the `issue-handler` pipeline and its leaf skills
+This doc applies to shared contract for the `issue-handler` pipeline and its leaf skills
 (`issue-format`, `test-verification`, `xpu-issues-triaging`, `issue-fix`).
 Every skill that reports results or touches a GitHub issue follows the mode
 rules below. Decide the mode once at the start of a run and keep it for every
@@ -14,12 +14,13 @@ stage.
 ## The two modes
 
 - **Interactive mode (default).** The skill is loaded in a chat session with a
-  human present. When a stage hits a blocker, a `NEEDS_HUMAN` verdict, an
+  human present. In this mode, human could be looped in to give hints.
+  When a stage hits a blocker, a `NEEDS_HUMAN` verdict, an
   ambiguous classification, a failure you cannot reproduce, or a fix that will
   not verify, **ask the user and wait for their input** instead of stopping
-  silently. Report progress and results conversationally. Do **not** write
-  status markers/labels into the GitHub issue body or leave GitHub comments
-  unless the user explicitly asks you to.
+  silently. Report progress and results conversationally. 
+  Do **not** write   status markers/labels into the GitHub issue body or 
+  leave GitHub comments unless the user explicitly asks you to.
 - **Pipeline mode (explicit).** Selected only when the caller states the run is
   automated / non-interactive / "in the pipeline". There is no human to ask, so
   follow the legacy behavior: write status into the issue body, advance the
@@ -35,11 +36,7 @@ surface the same information to the user and ask how to proceed.
 In interactive mode, do not touch the issue body, markers, or labels unless the
 user asks — report to the user instead.
 
-Formerly a Python driver script advanced the issue through stages and wrote
-status into the GitHub issue body. In pipeline mode the `issue-handler`
-orchestrator does this directly — no script. To stay compatible with any tooling
-that still parses issue bodies, preserve the markers defined in the agent body
-templates:
+In pipeline mode the `issue-handler` orchestrator does this directly — no script. To stay compatible with any tooling that still parses issue bodies, preserve the markers defined in the agent body templates:
 
 - Bug issues: `.github/ISSUE_TEMPLATE/agent/agent-issue-body.yml`
 - Non-bug issues: `.github/ISSUE_TEMPLATE/agent/agent-issue-body-nonbug.yml`

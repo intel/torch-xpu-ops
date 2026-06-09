@@ -1,10 +1,10 @@
 ---
 name: test-verification
 description: >
-  Verify whether a CI failure still reproduces locally. Given a raw test
-  reference from a CI-failure issue, resolve it to a correct local path and
-  command, run it against a local PyTorch checkout, and report whether the bug
-  still reproduces.
+  Run a test and report whether a bug still reproduces (before a fix) or is
+  resolved (after a fix). In interactive mode you usually already have the
+  command and just run it; in pipeline mode you resolve a raw CI reference to a
+  local command first.
 ---
 
 # Test Verification
@@ -14,114 +14,118 @@ description: >
 > For environment activation and build commands, see
 > [../references/environment-setup.md](../references/environment-setup.md).
 
-## Your Task
-Given a raw test reference from a CI failure issue, resolve it to a correct
-local command, run it, and report whether the bug still reproduces.
+## When to use this skill
 
-## Inputs
-This skill needs two things from the caller or environment:
+Run a test command and report whether the bug still reproduces (before a fix) or
+is resolved (after a fix). How much work you do depends on the mode:
 
-1. **A raw test reference** — extracted from a CI-failure issue body
-   (Reproducer section, Failed Tests section, or CI metadata). You extract this
-   yourself from the issue text in Step 1.
-2. **A local PyTorch checkout** and its Python environment — referred to below
-   as `$PYTORCH_DIR` (e.g. `~/pytorch`). All test paths and commands are
-   relative to this directory.
+- **Interactive mode (default):** you already have a concrete command (the user
+  or the issue gave it to you, or `issue-fix` is calling you with one). Skip
+  path resolution and go straight to the [Quick path](#quick-path-interactive).
+- **Pipeline mode:** you only have a raw CI reference (CI metadata, a bare
+  filename, or a `test/xpu/...` path) that must be resolved to a real local path
+  and selector first. Follow [Full resolution](#full-resolution-pipeline).
 
-`$PYTORCH_DIR` and the Python environment are provided by the caller or the
-local environment. If either is missing, ask for it or derive it (e.g. locate a
-PyTorch checkout) before proceeding. `$PYTORCH_DIR`, the oneAPI `setvars.sh`
-path, and the `.venv` activation below are environment-dependent placeholders —
-adapt them to the local setup.
+`$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`); all test paths
+are relative to it. If it or the Python environment is missing, ask for it or
+derive it before proceeding.
 
-## Step 1: Read the Issue
+## Quick path (interactive)
 
-Read the issue body. Extract the test reference yourself from one of:
+When you already have a runnable command:
+
+1. **Activate the environment** — see
+   [../references/environment-setup.md](../references/environment-setup.md)
+   (MANDATORY; without it XPU tests collect 0 items).
+2. **Run the command as given**, from `$PYTORCH_DIR/`. Fix only obvious path
+   typos; do not redesign it. If you changed C++/SYCL code, rebuild first
+   (see environment-setup).
+3. **Interpret and report** — see [Interpreting results](#interpreting-results)
+   and tell the user/caller in plain language. No JSON required.
+
+If the given command turns out to be a raw/unresolved CI reference, drop into
+[Full resolution](#full-resolution-pipeline) for just the resolution you need.
+
+## HARD RULES
+- NEVER commit or push anything. Only do verification.
+- NEVER skip the file existence check (full-resolution path).
+- If you cannot resolve the path, report CANNOT_VERIFY. Do NOT guess.
+- If 0 tests are collected, report CANNOT_VERIFY, NEVER report PASSED.
+- If all tests are xfailed, report FAILED (xfail = bug still exists).
+- If all tests are skipped by `@skipIfXpu`, remove the decorator and re-run. You MAY modify test files ONLY to remove skip/xfail decorators — revert after running.
+- TIME BUDGET: Complete within 5 minutes. If stuck, report CANNOT_VERIFY.
+
+<!-- Below are pipeline mode only -->
+
+## Full resolution (pipeline)
+
+Use this when the input is a raw CI reference rather than a runnable command.
+
+### Step 1: Read the issue
+
+Extract the test reference from one of:
 - **Reproducer** section — a bash/pytest/python command
 - **Failed Tests** section — test paths like `file.py::Class::method`
-- **CI metadata** — format like `op_ut,third_party.torch-xpu-ops.test.xpu.test_ops_xpu.TestCommonXPU,test_method`
+- **CI metadata** — e.g. `op_ut,third_party.torch-xpu-ops.test.xpu.test_ops_xpu.TestCommonXPU,test_method`
 
 Identify the **raw test file path** and the **test selector** (class, method, `-k` filter).
 
-## Step 2: Resolve the Path
+### Step 2: Resolve the path
 
 The working directory is always `$PYTORCH_DIR/`. All test paths must be relative to it.
 
-### Path Mapping Rules
-
-1. **`test/xpu/*.py`** → The actual file is at `third_party/torch-xpu-ops/test/xpu/*.py`
+1. **`test/xpu/*.py`** → actual file is `third_party/torch-xpu-ops/test/xpu/*.py`
    - Example: `test/xpu/test_sparse_xpu.py` → `third_party/torch-xpu-ops/test/xpu/test_sparse_xpu.py`
-
-2. **Bare filename** (e.g., `test_ops.py` with no directory) → Search the filesystem:
+2. **Bare filename** (e.g. `test_ops.py`) → search the filesystem:
    ```bash
    find $PYTORCH_DIR/ -name "test_ops.py" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/.venv/*" -not -path "*__pycache__*" | head -20
    ```
-   - If the issue is about XPU and multiple matches exist, prefer files under `third_party/torch-xpu-ops/` or `test/xpu/`
-   - If only one match → use it
-
-3. **Upstream pytorch test paths** (e.g., `test/nn/test_embedding.py`, `test/inductor/test_cuda_repro.py`) → Use as-is, they are relative to `$PYTORCH_DIR/`
-
-4. **CI metadata format** — convert dots to slashes:
+   - For XPU issues with multiple matches, prefer files under `third_party/torch-xpu-ops/` or `test/xpu/`; if only one match → use it.
+3. **Upstream pytorch paths** (e.g. `test/nn/test_embedding.py`) → use as-is, relative to `$PYTORCH_DIR/`.
+4. **CI metadata** — convert dots to slashes:
    - `third_party.torch-xpu-ops.test.xpu.test_ops_xpu` → `third_party/torch-xpu-ops/test/xpu/test_ops_xpu.py`
-   - The class and method after the last module component become the test selector
+   - The class and method after the last module component become the test selector.
+5. **Paths starting with `third_party/torch-xpu-ops/`** → use as-is.
 
-5. **Paths starting with `third_party/torch-xpu-ops/`** → Use as-is
-
-### Validation
-After resolving, **verify the file exists**:
+**Validate the file exists:**
 ```bash
 ls -la $PYTORCH_DIR/<resolved_path>
 ```
-If the file does not exist, report `CANNOT_VERIFY` with reason.
+If it does not exist, report `CANNOT_VERIFY` with a reason.
 
-## Step 3: Validate the Test Selector
+### Step 3: Validate the test selector
 
-If the command has a test class or method selector (e.g., `::TestSparseAnyXPU::test_gradcheck_mm_...`):
+For a class/method selector (e.g. `::TestSparseAnyXPU::test_gradcheck_mm_...`):
 
-### Dynamic Test Classes (PyTorch convention)
-Many XPU/CUDA/CPU test classes are **dynamically generated** via `instantiate_device_type_tests`.
-- `TestSparseAnyXPU` is generated from base class `TestSparseAny`
-- `TestCommonXPU` is generated from `TestCommon`
-- The pattern: `<BaseClass>` + device suffix (`XPU`, `CUDA`, `CPU`)
-
-To validate:
+**Dynamic test classes** — many XPU/CUDA/CPU classes are generated via
+`instantiate_device_type_tests` (`<BaseClass>` + device suffix; e.g.
+`TestSparseAnyXPU` from `TestSparseAny`). Validate with:
 ```bash
-# Check if the base class exists in the file
 grep "class TestSparseAny" $PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/test_sparse_xpu.py
-# Check if instantiate_device_type_tests is called
 grep "instantiate_device_type_tests" $PYTORCH_DIR/third_party/torch-xpu-ops/test/xpu/test_sparse_xpu.py
 ```
-If the base class exists AND `instantiate_device_type_tests` is present, the dynamic class is valid.
+If the base class exists AND `instantiate_device_type_tests` is present, the
+dynamic class is valid. For static classes, grep the class name directly.
 
-### Static Test Classes
-For non-dynamic classes, just grep for the class name directly.
-
-### `-k` Filters
-For `-k` filters with specific test names, you cannot easily validate without running.
-Use `--collect-only` to check:
+**`-k` filters** — you cannot easily validate without running. Use
+`--collect-only`:
 ```bash
 cd $PYTORCH_DIR && pytest --collect-only -q "<file>" -k "<filter>" 2>&1 | tail -5
 ```
-If `0 items / no tests collected` → the filter matches nothing → report `CANNOT_VERIFY`.
-
-## Step 4: Build and Run the Command
-
-### Environment Setup
-**MANDATORY** — activate oneAPI and the PyTorch venv before ANY test or import
-of torch (without it `torch.xpu.is_available()` returns False and XPU tests
-collect 0 items). See
-[../references/environment-setup.md](../references/environment-setup.md) for the exact
-commands. All commands run from `$PYTORCH_DIR/`.
-
-### Command Formats
-- **pytest**: `pytest -xvs "<resolved_path>::Class::method"`
-- **python unittest**: `python <resolved_path> Class.method`
-- Keep the original command format (pytest vs python) — just fix the paths
+If `0 items / no tests collected` → the filter matches nothing → `CANNOT_VERIFY`.
 
 ### Run
-Execute the resolved command. Timeout: 10 minutes.
 
-## Step 5: Interpret Results
+Activate the environment (see
+[../references/environment-setup.md](../references/environment-setup.md)), then
+run from `$PYTORCH_DIR/`:
+- **pytest**: `pytest -xvs "<resolved_path>::Class::method"`
+- **python unittest**: `python <resolved_path> Class.method`
+
+Keep the original command format (pytest vs python) — just fix the paths.
+Timeout: 10 minutes.
+
+## Interpreting results
 
 ### PASSED (bug is fixed)
 - pytest exit code 0 with `N passed` and NO `xfailed`, NO `all skipped`
@@ -139,12 +143,18 @@ Execute the resolved command. Timeout: 10 minutes.
 - All tests xfailed (expected failure = bug still present, report as FAILED)
 - Timeout
 
-**Important: @skipIfXpu / @xfailIfXpu decorators.** If ALL tests are skipped because of `@skipIfXpu` or similar decorators, first **remove the skip decorator** from the test, then re-run. The skip decorator is often the bug itself — the issue wants to make the test pass on XPU, not keep it skipped. After removing the skip, report the actual test result (PASSED or FAILED). Only report CANNOT_VERIFY if you cannot run the test for other reasons (file not found, 0 collected, timeout).
+**`@skipIfXpu` / `@xfailIfXpu` decorators.** If ALL tests are skipped because of
+`@skipIfXpu` or similar, first **remove the skip decorator** and re-run — the
+skip is often the bug itself (the issue wants the test to pass on XPU). Report
+the actual result afterward. Only report `CANNOT_VERIFY` for other reasons
+(file not found, 0 collected, timeout).
 
-## Output
+## Output (pipeline mode)
 
-You MUST output EXACTLY this JSON block as the LAST thing in your response.
-No text after the JSON block.
+In **interactive mode**, report the result conversationally — no JSON needed.
+
+In **pipeline mode**, output EXACTLY this JSON block as the LAST thing in your
+response, with no text after it:
 
 ```json
 {
@@ -156,19 +166,10 @@ No text after the JSON block.
 }
 ```
 
-## HARD RULES
-- NEVER commit or push anything. Only do verification.
-- NEVER skip the file existence check.
-- If you cannot resolve the path, report CANNOT_VERIFY. Do NOT guess.
-- If 0 tests are collected, report CANNOT_VERIFY, NEVER report PASSED.
-- If all tests are xfailed, report FAILED (xfail = bug still exists).
-- If all tests are skipped by `@skipIfXpu`, remove the decorator and re-run. You MAY modify test files ONLY to remove skip/xfail decorators — revert after running.
-- TIME BUDGET: Complete within 3 minutes. If stuck, report CANNOT_VERIFY.
+## Issue-body status (pipeline mode only)
 
-## Issue-body status (backward compatible)
-
-**Pipeline mode only.** In interactive mode (default), report the verification
-result to the user/orchestrator and do not write to the issue body. See
+In interactive mode (default), report the verification result to the
+user/orchestrator and do not write to the issue body. See
 [../references/execution-modes.md](../references/execution-modes.md) for the full
 contract.
 

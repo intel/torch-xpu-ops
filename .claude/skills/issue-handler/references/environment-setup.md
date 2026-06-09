@@ -1,14 +1,12 @@
 ---
 name: environment-setup
-description: oneAPI/venv activation, build commands, and the torch-xpu-ops xpu.txt pin workflow.
+description: oneAPI/python activation, build commands, and the torch-xpu-ops xpu.txt pin workflow.
 ---
 
-# Environment Setup (shared reference)
+# Environment Setup
 
-Shared environment setup for the `issue-handler` leaf skills that reproduce
-tests or build (`test-verification`, `issue-fix`). All paths and flags below are
-**environment-dependent placeholders** — adapt them to the local machine
-(oneAPI install location, target GPU arch, the PyTorch checkout's Python
+This doc contains the env settings and build commands for PyTorch Development. 
+All paths and flags below are **environment-dependent placeholders** — adapt them to the local machine (oneAPI install location, target GPU arch, the PyTorch checkout's Python
 environment). `$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`).
 
 ## Activate the environment (MANDATORY)
@@ -16,15 +14,19 @@ environment). `$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`).
 Run these before ANY test or import of `torch`. Without them
 `torch.xpu.is_available()` returns False and XPU tests collect 0 items:
 ```bash
+# Source oneAPI if the pytorch is locally built. 
+# If it is installed via pip, this step is not needed.
 source ~/intel/oneapi/setvars.sh --force 2>/dev/null
+# Activate the Python environment (adjust the path to your local setup)
+# For example, if it is the conda env, source the conda env instead.
 source $PYTORCH_DIR/.venv/bin/activate
 ```
 All test/build commands run from `$PYTORCH_DIR/`.
 
 ## Build (only if you changed C++/CUDA/SYCL code)
 
-Python-only changes need no rebuild. After editing C++/SYCL, rebuild before
-verifying:
+Python-only changes need no rebuild.
+After editing C++/SYCL, rebuild before verifying:
 
 - **pytorch repo:**
   ```bash
@@ -34,6 +36,8 @@ verifying:
   ```
   (`TORCH_XPU_ARCH_LIST=pvc` is the target GPU arch — change to match yours.)
 - **torch-xpu-ops repo:** no separate build step (it builds as part of pytorch).
+
+If after build and the `torch.xpu.is_available()` return False, it is highly likely the oneAPI not sourcede correctly, will need a clean rebuild.
 
 ## torch-xpu-ops submodule pin (xpu.txt)
 

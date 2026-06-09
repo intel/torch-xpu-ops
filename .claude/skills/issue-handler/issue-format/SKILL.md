@@ -12,6 +12,9 @@ description: >
 > **Execution mode:** this skill behaves differently in interactive (default)
 > vs pipeline mode. See [../references/execution-modes.md](../references/execution-modes.md).
 
+Only the pipeline mode needs to format the issue body. If you are in interactive mode, ask the 
+user whether to format the issue body or just directly go to next `xpu-issues-triaging` stage.
+
 ## Inputs
 
 You receive a GitHub issue: its title, body, and labels.
@@ -26,6 +29,7 @@ before classifying.
 1. **Classify** the issue as `"bug"` or `"nonbug"`.
 2. **Extract** metadata fields.
 3. Return a JSON object.
+4. Format the issue body according to the template.
 
 ## Classification Rules
 
@@ -42,18 +46,7 @@ no failing tests, discussion-style content.
 ## Output Format
 Return ONLY this JSON object, no markdown fences, no explanation:
 
-```json
-{
-  "metadata": {
-    "test_type": "ut | e2e | ...",
-    "category": "category if identifiable",
-    "dependency": "upstream | ...",
-    "platform": "xpu | BMG | ...",
-    "context": "upstream links, version info, brief notes"
-  },
-  "issue_type": "bug"
-}
-```
+Follow the template in the `agent-issue-body.yml` and `agent-issue-body-nonbug.yml` templates under `.github/ISSUE_TEMPLATE/agent/` for the issue body formatting rules.
 
 ## Rules
 
