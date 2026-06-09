@@ -19,7 +19,7 @@ actually happened when you ran it:
 | `blocked-platform` | the repro needed a code path XPU does not have at all |
 | `blocked-fetch` | you could not retrieve the issue/PR/commit details to build a repro |
 | `blocked-commit-context` | a commit had too little context to construct a meaningful repro |
-| `blocked-script-error` | the repro crashed before reaching the check (e.g. it ran on CPU instead of XPU) |
+| `blocked-script-error` | the repro failed before producing a verdict: it crashed before the check, or it silently ran on CPU instead of XPU |
 | `needs-performance-harness` | the bug is performance-only and needs a benchmark you do not have |
 
 Candidates rejected before a repro runs do not get a bucket: title rejects are
@@ -82,7 +82,7 @@ Each row tracks at least:
 | `title_status` | `pass` / `reject` | Step 1.1 |
 | `deep_status` | `pending` / `pass` / `reject` | Step 2a |
 | `local_status` | `pending` / `done` | Step 2c |
-| `local_bucket` | a Bucket Vocabulary value | Step 2c |
+| `local_bucket` | a bucket vocabulary value | Step 2c |
 
 An actionable-pending row is one with `title_status == pass` AND
 `deep_status != reject` AND `local_status == pending`.

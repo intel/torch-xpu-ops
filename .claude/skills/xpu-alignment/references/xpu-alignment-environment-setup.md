@@ -1,6 +1,6 @@
 ---
 name: xpu-alignment-environment-setup
-description: How to set up the run environment before scanning. Covers finding or creating the workspace XPU Python interpreter, installing or refreshing the XPU nightly, checking GitHub access, and fixing common preflight failures.
+description: How to set up the run environment before scanning. Covers finding or creating the workspace XPU Python interpreter, installing or refreshing the XPU nightly, checking GitHub access, and fixing common preflight failures. Read this for Step 0.
 ---
 
 # Environment & Preflight
@@ -35,7 +35,11 @@ rely on the ambient `gh auth` / MCP credentials.
 2. Run the upgrade install above so the workspace holds the latest nightly.
 3. Verify GitHub access.
 4. Create output directories: `artifacts/details`, `reports`, `scripts`.
-5. Save `collect_env` output to `artifacts/collect_env.txt`.
+5. Save `collect_env` output to `artifacts/collect_env.txt`:
+
+   ```bash
+   python -m torch.utils.collect_env > artifacts/collect_env.txt
+   ```
 
 ## Preflight failure remedies
 
