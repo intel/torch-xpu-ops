@@ -27,7 +27,7 @@ struct AddcmulFunctor {
     auto t1 = static_cast<accscalar_t>(b);
     auto t2 = static_cast<accscalar_t>(c);
     return static_cast<scalar_t>(pointwise_op_impl(
-        input, t1, t2, alpha_, sycl::multiplies<accscalar_t>{}));
+        input, t1, t2, alpha_, std::multiplies<accscalar_t>{}));
   }
 
   AddcmulFunctor(accscalar_t alpha) : alpha_(alpha) {}

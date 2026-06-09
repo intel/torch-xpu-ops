@@ -11,7 +11,6 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <cmath>
 #include <functional>
 #include <type_traits>
 
