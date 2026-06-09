@@ -124,7 +124,7 @@ static double algbw_gbs(double bytes, double us) {
 
 static void print_table_header() {
     std::printf("  %-22s %12s  %10s %10s  %14s %14s\n",
-        "Op","Size","min_us","span_us","algBW(GB/s)","busBW(GB/s)");
+        "Op","Size","avg_us","var_us","algBW(GB/s)","busBW(GB/s)");
     std::printf("  %-22s %12s  %10s %10s  %14s %14s\n",
         "----------------------","------------",
         "----------","----------",
@@ -132,12 +132,12 @@ static void print_table_header() {
 }
 
 static void print_table_row(const char* op, double bytes,
-                            double min_us, double span_us,
+                            double avg_us, double var_us,
                             int op_bit, int ws) {
-    double alg = algbw_gbs(bytes, min_us);
+    double alg = algbw_gbs(bytes, avg_us);
     double bus = alg * busbw_factor(op_bit, ws);
     std::printf("  %-22s %12s  %10.2f %10.2f  %14.3f %14.3f\n",
-        op, fmt_size(bytes).c_str(), min_us, span_us, alg, bus);
+        op, fmt_size(bytes).c_str(), avg_us, var_us, alg, bus);
 }
 
 // ---------------------------------------------------------------------------
@@ -319,10 +319,10 @@ int main(int argc, char** argv) {
         std::printf("  ops:");
         for (const auto& od : kOpDefs) if (ops & od.bit) std::printf(" %s", od.name);
         std::printf("\n");
-        std::printf("  per_iter_us = SYCL event time per iteration (µs)  "
-                    "span_us = (GPU total span) / loop (µs, pipeline throughput)\n");
+        std::printf("  avg_us  = average of per-rank min iteration times (µs)\n");
+        std::printf("  var_us  = average of per-rank (max-min) jitter (µs)\n");
         std::printf("  prefill_us  = GPU execution time of the prefill (GEMM-like) kernel\n");
-        std::printf("  ccl_tot_us  = span_us × loop  (total CCL GPU time covered)\n");
+        std::printf("  ccl_tot_us  = avg_us × loop  (total CCL GPU time covered)\n");
         std::printf("  GEMM/CCL    = prefill_us / ccl_tot_us  (>1 means GEMM dominates)\n");
         std::printf("%s\n", sep.c_str());
         std::fflush(stdout);
@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
         // Table rows accumulated for the clean summary at the end
         struct RowData {
             double bytes; std::string size_str;
-            double global_min; double avg_span; double avg_prefill;
+            double avg_us; double var_us; double avg_prefill;
         };
         std::vector<RowData> table_rows;
 
@@ -400,28 +400,31 @@ int main(int argc, char** argv) {
                 std::string sz = fmt_size(bytes);
                 std::printf("\n  [%-14s %12s]\n", od.name, sz.c_str());
 
-                double global_min    = 1e18;
-                double sum_span      = 0.0;
+                double sum_rmin      = 0.0;  // sum of per-rank min
+                double sum_range     = 0.0;  // sum of per-rank (max-min)
                 double sum_prefill   = 0.0;
                 for (int r = 0; r < ws; ++r) {
                     const double* rv    = gbuf.data() + r * kFields;
                     double r_min        = rv[0];
-                    double r_span       = rv[loop];
+                    double r_max        = rv[0];
                     double r_prefill    = rv[loop+1];
                     std::printf("    r%d: [", r);
                     for (int i = 0; i < loop; ++i) {
                         std::printf("%.2f", rv[i]);
                         if (i < loop-1) std::printf("  ");
                         r_min = std::min(r_min, rv[i]);
+                        r_max = std::max(r_max, rv[i]);
                     }
-                    std::printf("]  min=%.2f  span=%.2f  prefill=%.1f  (µs)\n",
-                                r_min, r_span, r_prefill);
-                    global_min  = std::min(global_min, r_min);
-                    sum_span   += r_span;
+                    std::printf("]  min=%.2f  max=%.2f  prefill=%.1f  (µs)\n",
+                                r_min, r_max, r_prefill);
+                    sum_rmin    += r_min;
+                    sum_range   += (r_max - r_min);
                     sum_prefill += r_prefill;
                 }
-                table_rows.push_back({bytes, sz, global_min,
-                                      sum_span / ws, sum_prefill / ws});
+                double avg_us = sum_rmin / ws;
+                double var_us = sum_range / ws;
+                table_rows.push_back({bytes, sz, avg_us,
+                                      var_us, sum_prefill / ws});
                 std::fflush(stdout);
             }
         }  // sizes
@@ -435,10 +438,10 @@ int main(int argc, char** argv) {
                 "","","","","","","prefill_ms","ccl_tot_ms","GEMM/CCL");
             for (const auto& row : table_rows) {
                 print_table_row(od.name, row.bytes,
-                                row.global_min, row.avg_span,
+                                row.avg_us, row.var_us,
                                 od.bit, ws);
                 // Append prefill/ccl breakdown on the same row
-                double ccl_tot_us = row.avg_span * loop;
+                double ccl_tot_us = row.avg_us * loop;
                 double ratio      = ccl_tot_us > 0 ? row.avg_prefill / ccl_tot_us : 0.0;
                 std::printf("  %-22s %12s  %10s %10s  %14s %14s  %12.3f %12.3f %8.2f\n",
                     "","","","","","",

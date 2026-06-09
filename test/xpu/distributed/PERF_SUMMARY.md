@@ -3,10 +3,7 @@
 测试平台：BMG ×4 (`ZE_AFFINITY_MASK=0,1,2,3`)，oneCCL native (oneAPI 2026.0)
 数据类型：bfloat16，world_size = 4
 Benchmark：`symm/bench_native/bench_ccl_prefill.cpp`（fire-and-forget，SYCL event profiling）
-
-NEOReadDebugKeys=1
-OverrideL1CachePolicyInSurfaceStateAndStateless=2
-NEO_CACHE_PERSISTENT=0
+环境变量：`NEOReadDebugKeys=1 OverrideL1CachePolicyInSurfaceStateAndStateless=2 NEO_CACHE_PERSISTENT=0`
 
 ---
 
@@ -14,49 +11,43 @@ NEO_CACHE_PERSISTENT=0
 
 ### 组 1：≤ 2MB（小消息，延迟受限区）
 
-rank0: iter0, iter1 ...
-rank1: iter0, iter1, ...
-
-various = average((max(iter)-min(iter)), ...)
-avg(us) = average( min(iter0,iter0), min(iter1, iter1), ...)
-
-| Size | avg_us | span_us | algBW (GB/s) | busBW (GB/s) |
+| Size | avg_us | var_us | algBW (GB/s) | busBW (GB/s) |
 |---------:|--------:|--------:|-------------:|-------------:|
-| 256 B    |    8.63 |   30.74 |        0.030 |        0.044 |
-| 512 B    |    8.63 |   22.11 |        0.059 |        0.089 |
-| 1.00 KB  |    8.84 |   15.52 |        0.116 |        0.174 |
-| 2.00 KB  |    8.53 |   17.71 |        0.240 |        0.360 |
-| 4.00 KB  |    8.11 |   15.65 |        0.505 |        0.757 |
-| 8.00 KB  |   13.62 |   18.86 |        0.601 |        0.902 |
-| 16.00 KB |   12.79 |   16.26 |        1.281 |        1.921 |
-| 32.00 KB |   13.52 |   17.11 |        2.424 |        3.636 |
-| 64.00 KB |   14.46 |   17.43 |        4.533 |        6.800 |
-| 128.00 KB|   15.29 |   18.06 |        8.574 |       12.860 |
-| 256.00 KB|   21.63 |   27.26 |       12.118 |       18.178 |
-| 512.00 KB|   40.35 |   46.31 |       12.993 |       19.489 |
-| 1.00 MB  |   78.21 |   83.15 |       13.408 |       20.111 |
-| 2.00 MB  |  153.82 |  161.70 |       13.634 |       20.451 |
+| 256 B    |   20.10 |  149.19 |        0.013 |        0.019 |
+| 512 B    |   19.48 |   32.37 |        0.026 |        0.039 |
+| 1.00 KB  |   19.32 |   38.00 |        0.053 |        0.079 |
+| 2.00 KB  |   19.56 |   33.98 |        0.105 |        0.157 |
+| 4.00 KB  |   19.71 |   34.92 |        0.208 |        0.312 |
+| 8.00 KB  |   23.80 |   44.38 |        0.344 |        0.516 |
+| 16.00 KB |   25.16 |   25.00 |        0.651 |        0.977 |
+| 32.00 KB |   27.50 |   29.01 |        1.192 |        1.787 |
+| 64.00 KB |   32.11 |   28.70 |        2.041 |        3.062 |
+| 128.00 KB|   32.24 |   28.88 |        4.066 |        6.098 |
+| 256.00 KB|   32.42 |   47.06 |        8.085 |       12.128 |
+| 512.00 KB|   46.87 |   55.05 |       11.185 |       16.777 |
+| 1.00 MB  |   83.91 |   29.69 |       12.497 |       18.745 |
+| 2.00 MB  |  157.66 |   49.43 |       13.302 |       19.953 |
 
-**观察**：≤16KB 几乎是固定延迟 ~8–14 µs（launch/同步开销主导）。从 256KB 开始带宽接近饱和 (~12–13 GB/s algBW)。
+**观察**：≤4KB 几乎是固定延迟 ~19–20 µs（launch/同步开销主导）。从 512KB 开始带宽接近饱和（~11–13 GB/s algBW）。var_us 反映 iteration 间抖动，大多在 25–55 µs 范围。
 
 ### 组 2：> 2MB ～ 256MB（大消息，带宽受限区）
 
-| Size | min_us | span_us | algBW (GB/s) | busBW (GB/s) |
+| Size | avg_us | var_us | algBW (GB/s) | busBW (GB/s) |
 |---------:|---------:|---------:|-------------:|-------------:|
-| 4.00 MB   |   304.72 |   312.53 |       13.764 |       20.647 |
-| 8.00 MB   |   605.28 |   618.23 |       13.859 |       20.789 |
-| 16.00 MB  |  1206.30 |  1211.60 |       13.908 |       20.862 |
-| 32.00 MB  |  2407.29 |  2415.09 |       13.939 |       20.908 |
-| 64.00 MB  |  4809.79 |  4819.69 |       13.953 |       20.929 |
-| 128.00 MB |  9613.86 |  9627.22 |       13.961 |       20.941 |
-| 256.00 MB | 19219.82 | 19236.66 |       13.967 |       20.950 |
+| 4.00 MB   |   312.06 |    48.12 |       13.441 |       20.161 |
+| 8.00 MB   |   505.65 |   108.52 |       16.590 |       24.885 |
+| 16.00 MB  |   968.96 |   102.27 |       17.315 |       25.972 |
+| 32.00 MB  |  1875.21 |     6.04 |       17.894 |       26.841 |
+| 64.00 MB  |  3675.42 |    11.09 |       18.259 |       27.388 |
+| 128.00 MB |  7265.78 |    16.51 |       18.473 |       27.709 |
+| 256.00 MB | 14449.51 |    73.52 |       18.577 |       27.866 |
 
-**观察**：带宽完全饱和，algBW 稳定在 ~13.96 GB/s，busBW ~20.95 GB/s。延迟随 size 线性增长，对每翻倍 size 时间近似翻倍。
+**观察**：8MB 以上进入高带宽区，algBW 从 ~16.6 GB/s 逐步爬升到 ~18.58 GB/s，busBW 稳定在 ~24.9–27.9 GB/s。≥32MB 时抖动极小（var_us < 100 µs），性能非常稳定。
 
 > 列含义：
-> - `min_us` = 各 rank 各 iteration 中最小的 SYCL event 时间（µs）
-> - `span_us` = (GPU total span)/loop，pipeline 吞吐延迟（µs）
-> - `algBW`  = bytes / min_us
+> - `avg_us` = average(per-rank min iteration time)，即每个 rank 取其所有 iteration 中的最小值，再跨 rank 取平均（µs）
+> - `var_us` = average(per-rank (max−min) iteration time)，即每个 rank 的 iteration 中最大值减最小值，再跨 rank 取平均（µs），反映抖动
+> - `algBW`  = bytes / avg_us
 > - `busBW`  = algBW × 2(n−1)/n（allreduce bus 因子，n=4）
 
 ---
@@ -72,9 +63,9 @@ unitrace 报告的 kernel 名：
 
 | 配置 (prefill_n × reps) | unitrace device time | SYCL event span |
 |------------------------:|---------------------:|----------------:|
-| 64M × 200 | ~13.0–14.0 ms | 13.8 ms |
-| 1M  × 200 | ~216–218 µs   | 1.13 ms |
-| 64M × 10  | ~2.1–2.5 ms   | 3.4 ms |
+| 64M × 200 | ~12.6–19.1 ms | 13.4 ms |
+| 1M  × 200 | ~234–237 µs   | 0.97 ms |
+| 64M × 10  | ~2.0–2.4 ms   | 3.25 ms |
 
 unitrace 设备时间与程序内 SYCL event 测量一致 —— 二者同源于 GPU timestamp counter。
 
@@ -83,8 +74,11 @@ unitrace 设备时间与程序内 SYCL event 测量一致 —— 二者同源于
 ## 复现命令
 
 ```bash
-source ~/hanchao/intel/oneapi/setvars.sh --force
+source /root/hanchao/2026.0/intel/oneapi/setvars.sh --force
 cd /root/hanchao/symm/bench_native
+export NEOReadDebugKeys=1
+export OverrideL1CachePolicyInSurfaceStateAndStateless=2
+export NEO_CACHE_PERSISTENT=0
 
 # 组 1：<= 2MB
 ZE_AFFINITY_MASK=0,1,2,3 CCL_ATL_TRANSPORT=mpi mpirun -n 4 \
@@ -99,4 +93,5 @@ ZE_AFFINITY_MASK=0,1,2,3 CCL_ATL_TRANSPORT=mpi mpirun -n 4 \
 # Prefill kernel 的 unitrace device-timing
 UNITRACE=/root/hanchao/applications.analyzers.profilingtoolsinterfaces.sdk/tools/unitrace/build/unitrace
 ZE_AFFINITY_MASK=0 $UNITRACE --device-timing -v ./prefill_only_trace 67108864 200
+
 ```
