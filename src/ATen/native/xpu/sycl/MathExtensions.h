@@ -101,7 +101,8 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   if (x == accscalar_t(0)) {
     // As per C++ standard for gamma related functions and SciPy,
     // If the argument is ±0, ±∞ is returned
-    return std::copysign(static_cast<scalar_t>(INFINITY), -x);
+    return static_cast<scalar_t>(
+        sycl::copysign(static_cast<accscalar_t>(INFINITY), -x));
   }
 
   bool x_is_integer = x == sycl::trunc(x);
