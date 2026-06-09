@@ -37,7 +37,7 @@ After editing C++/SYCL, rebuild before verifying:
   (`TORCH_XPU_ARCH_LIST=pvc` is the target GPU arch — change to match yours.)
 - **torch-xpu-ops repo:** no separate build step (it builds as part of pytorch).
 
-If after build and the `torch.xpu.is_available()` return False, it is highly likely the oneAPI not sourcede correctly, will need a clean rebuild.
+If after build `torch.xpu.is_available()` returns False, it is highly likely the oneAPI was not sourced correctly; a clean rebuild is needed.
 
 ## torch-xpu-ops submodule pin (xpu.txt)
 

@@ -46,7 +46,20 @@ no failing tests, discussion-style content.
 ## Output Format
 Return ONLY this JSON object, no markdown fences, no explanation:
 
-Follow the template in the `agent-issue-body.yml` and `agent-issue-body-nonbug.yml` templates under `.github/ISSUE_TEMPLATE/agent/` for the issue body formatting rules.
+```json
+{
+  "issue_type": "bug | nonbug",
+  "test_type": "ut | e2e | \"\"",
+  "dependency": "upstream | \"\"",
+  "platform": "xpu | <specific GPU model>",
+  "category": "<category string>",
+  "related_components": "<components string>",
+  "context": "<one-line summary>",
+  "formatted_body": "<full formatted issue body as a string, pipeline mode only; empty string in interactive mode>"
+}
+```
+
+Follow the template in the `agent-issue-body.yml` and `agent-issue-body-nonbug.yml` templates under `.github/ISSUE_TEMPLATE/agent/` for the issue body formatting rules (`formatted_body` field, pipeline mode only).
 
 ## Rules
 

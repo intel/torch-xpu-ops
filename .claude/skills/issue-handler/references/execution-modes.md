@@ -19,7 +19,7 @@ stage.
   ambiguous classification, a failure you cannot reproduce, or a fix that will
   not verify, **ask the user and wait for their input** instead of stopping
   silently. Report progress and results conversationally.
-  Do **not** write   status markers/labels into the GitHub issue body or
+  Do **not** write status markers/labels into the GitHub issue body or
   leave GitHub comments unless the user explicitly asks you to.
 - **Pipeline mode (explicit).** Selected only when the caller states the run is
   automated / non-interactive / "in the pipeline". There is no human to ask, so

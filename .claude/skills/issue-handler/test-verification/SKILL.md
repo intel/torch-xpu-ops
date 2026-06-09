@@ -53,7 +53,7 @@ If the given command turns out to be a raw/unresolved CI reference, drop into
 - If 0 tests are collected, report CANNOT_VERIFY, NEVER report PASSED.
 - If all tests are xfailed, report FAILED (xfail = bug still exists).
 - If all tests are skipped by `@skipIfXpu`, remove the decorator and re-run. You MAY modify test files ONLY to remove skip/xfail decorators — revert after running.
-- TIME BUDGET: Complete within 5 minutes. If stuck, report CANNOT_VERIFY.
+- TIME BUDGET: Complete within 10 minutes. If stuck, report CANNOT_VERIFY.
 
 <!-- Below are pipeline mode only -->
 
@@ -158,13 +158,15 @@ response, with no text after it:
 
 ```json
 {
-  "status": "PASSED" | "FAILED" | "CANNOT_VERIFY",
+  "status": "PASSED",
   "refined_command": "the exact command that was run (with corrected paths)",
   "original_command": "the raw test reference from the issue",
   "reason": "one sentence explaining the result",
   "output_tail": "last 30 lines of test output"
 }
 ```
+
+Valid values for `status`: `"PASSED"`, `"FAILED"`, or `"CANNOT_VERIFY"`.
 
 ## Issue-body status (pipeline mode only)
 

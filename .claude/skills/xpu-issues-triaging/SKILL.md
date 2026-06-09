@@ -18,7 +18,8 @@ to the `issue-fix` skill.
 - One GitHub issue — structured or raw — including its error log, reproducer (if
 any), surrounding context, and labels. You have read-only access to the
 codebase (`read`/`grep`).
-- If user offered the raw test command, you have to run the test and confirm before triaging.
+- If user offered the raw test command, delegate to the `test-verification` skill
+to run it and confirm the failure before triaging; do NOT run it yourself.
 
 
 ## Your Task
@@ -206,9 +207,9 @@ on a `NEEDS_HUMAN` verdict).
 
 ## Output
 
-Return this JSON (formerly consumed by the driver script). Emit it as your
-result; the `issue-handler` orchestrator is responsible for writing it into the
-issue body and advancing the status marker.
+**Pipeline mode:** Return ONLY this JSON block as the LAST thing in your
+response, with no text after it. The `issue-handler` orchestrator is responsible
+for writing it into the issue body and advancing the status marker.
 ```json
 {
   "root_cause": "detailed analysis (2-3 sentences)",
@@ -219,7 +220,8 @@ issue body and advancing the status marker.
 }
 ```
 
-Then also emit the human-readable summary:
+**Interactive mode:** Return the JSON above followed by the human-readable
+summary below (no JSON-last constraint applies in interactive mode):
 ```
 ### Agent Summary
 - **Issue type:** <kernel bug / pytorch core bug / CUDA UT porting / task>
