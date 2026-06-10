@@ -77,10 +77,14 @@ from torch.testing._internal.common_dtype import (
     floating_and_complex_types,
     floating_types,
     floating_types_and,
-    get_all_math_dtypes,
+    get_all_complex_dtypes,
+    get_all_fp_dtypes,
+    get_all_int_dtypes,
     get_all_qint_dtypes,
     integral_types_and,
 )
+
+
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_optimizers import (
     _get_optim_inputs_including_global_cliquey_kwargs,
@@ -148,6 +152,16 @@ load_tests = load_tests  # noqa: PLW0127
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
+# Extend get_all_math_dtypes to include torch.float16 if XPU is available
+def _get_all_math_dtypes(device) -> list[torch.dtype]:
+    return (
+        get_all_int_dtypes()
+        + get_all_fp_dtypes(
+            include_half=device.startswith(("cuda", "xpu")), include_bfloat16=False
+        )
+        + get_all_complex_dtypes()
+    )
+get_all_math_dtypes = _get_all_math_dtypes  # type: ignore[assignment]
 
 # Extend get_all_device_types to include 'xpu' if available
 def my_get_all_device_types_xpu() -> list[str]:
@@ -4898,7 +4912,7 @@ class TestTorchDeviceType(TestCase):
     # FIXME: move to elementwise ternary test suite
     @onlyNativeDeviceTypes
     @dtypesIfCUDA(*set(get_all_math_dtypes("cuda")))
-    @dtypesIfXPU(*set(get_all_math_dtypes("xpu")), torch.half)
+    @dtypesIfXPU(*set(get_all_math_dtypes("xpu")))
     @dtypes(*set(get_all_math_dtypes("cpu")))
     def test_addcdiv(self, device, dtype):
         # Returns floating or integral scalar corresponding to dtype
