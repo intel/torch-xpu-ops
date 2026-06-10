@@ -9,7 +9,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
-import upnittest
+import unittest
 from torch.nn.functional import ScalingType
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import parametrize, run_tests
@@ -24,9 +24,12 @@ with XPUPatchForImport(False):
     from test_scaled_matmul_cuda import (
         e4m3_type,
         e5m2_type,
+        mm_float8_emulated,
         scaled_mm_wrap,
         tensor_to_scale_block,
+        tensor_to_scale,
         TestFP8Matmul,
+        to_fp8_saturated,
     )
 
 
@@ -148,8 +151,10 @@ TestFP8Matmul.test_scaled_mm_deepseek_error_messages = (
 )
 
 
-### Override test_scaled_mm_vs_emulated: upstream only enable cuda but the test is valid on XPU and we want to track it. 
-#  Note that the test is still parameterized by base_dtype, which may be fp16/bf16 even if fp8 isn't supported, 
+# Override test_scaled_mm_vs_emulated: upstream only enable cuda but the test is
+# valid on XPU and we want to track it.
+# Note that the test is still parameterized by base_dtype, which may be
+# fp16/bf16 even if fp8 isn't supported,
 # so we check FP8 support at runtime rather than gating the entire test with @skipIfXpu.
 
 f8_msg = "FP8 is only supported on H100+, SM 8.9 and MI300+ and XPU devices"
