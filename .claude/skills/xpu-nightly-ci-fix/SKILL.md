@@ -2,7 +2,9 @@
 name: xpu-nightly-ci-fix
 description: Analyze nightly CI test failures and fix XPU test cases. Use when the user provides CI failure reports, nightly status emails, failing test names, or asks to "fix nightly failures", "analyze CI failures", or "debug XPU tests". Handles triaging, reproducing, root cause analysis, and applying fixes with verification.
 ---
-> Please also read and refer to `AGENTS.md` at the repository root for general behavioral guidelines before proceeding.
+> **Before starting:** Read the `## Working Principles` section of `AGENTS.md` at the repository root.
+> Then explicitly state which principles apply to this task and how you will follow them.
+> Do not proceed until you have done this.
 
 # Nightly CI Test Fixing for XPU
 
@@ -177,6 +179,18 @@ Write to `agent_space_xpu/summary_<report_date>.md`:
 
 PyTorch commit: abc123def
 Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
+
+## Status at a Glance
+
+| Failure | Local fix | PR submitted | CI unblocked |
+|---------|-----------|--------------|--------------|
+| test_ops_xpu.py::...::test_add_xpu | YES (commit abc1234) | NO | NO |
+| test_nn_xpu.py::...::test_conv3d_groups | YES (commit def5678) | NO | NO |
+| Windows wheel-py3_*-xpu-test | N/A (infra) | N/A | NO — needs manual log investigation |
+
+**<one-line summary of overall status, e.g. "Nothing pushed to pytorch/pytorch yet.">**
+
+---
 
 ## Fixed Tests
 
