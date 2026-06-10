@@ -269,46 +269,11 @@ if trace_log.handlers:
 
 This project builds only as part of PyTorch. No standalone build exists.
 
-Always check local memory for build configuration (env vars, incremental-build shortcuts, etc.) before running the build, and apply what you find. If nothing applicable is in memory, ask the user.
+All build is done via `pip install -e . -v --no-build-isolation`.
+**Never run any other command to build PyTorch.**
 
-All build (both codegen, C++ and python) is done via `pip install -e . -v --no-build-isolation`.
-You should NEVER run any other command to build PyTorch.
-
-```bash
-# Full build (from PyTorch root, with torch-xpu-ops as third_party/torch-xpu-ops)
-cd <pytorch_root>
-pip install -e . -v --no-build-isolation
-# Or: WERROR=1 python setup.py bdist_wheel
-
-# Debug/RelWithDebInfo builds auto-enable BUILD_SEPARATE_OPS for faster iteration.
-# Set BUILD_SEPARATE_OPS=1 manually to shrink translation unit scope during dev.
-```
-
-### Commit Pin & Development Override
-
-PyTorch pins torch-xpu-ops to a specific commit via `third_party/xpu.txt`.
-During build, CMake reads this file, clones `intel/torch-xpu-ops` into
-`third_party/torch-xpu-ops/`, fetches, and checks out the pinned commit
-(see `caffe2/CMakeLists.txt`).
-
-When developing a torch-xpu-ops PR, you need your PR branch — not the pinned
-commit. Manually clone into the expected path before building so CMake skips
-its own clone, then update the pin to match your HEAD so the checkout is a
-no-op:
-
-```bash
-# 1. Clone your fork into the path CMake expects
-cd <pytorch_root>/third_party
-git clone <your-fork-url> torch-xpu-ops
-cd torch-xpu-ops
-git checkout <your-pr-branch>
-
-# 2. Update the pin to your HEAD so CMake's checkout becomes a no-op
-git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
-```
-
-Do not commit the `xpu.txt` change. This is a local-only override for
-development builds.
+For full XPU build setup — oneAPI environment, XPU configuration, xpu.txt pin
+override, and build verification — use the `/xpu-build-pytorch` skill.
 
 ## Lint Commands
 
