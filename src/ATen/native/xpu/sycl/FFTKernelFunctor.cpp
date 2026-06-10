@@ -9,9 +9,9 @@
  */
 
 #include <ATen/WrapDimUtils.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
-#include <ATen/native/Resize.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -38,10 +38,13 @@ struct fft_descriptor {
   bool external_workspace = false;
   std::int64_t external_workspace_size = 0;
   std::int64_t twidl_table_size[3] = {0, 0, 0};
-  const void *twidl_table[3][2] = {{nullptr}}; // [dimension][direction]
-  std::array<std::array<size_t, 3>, 3> local_work_size{{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
-  std::array<std::array<size_t, 3>, 3> global_work_size{{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
-  sycl::kernel_bundle<sycl::bundle_state::executable> *exe_bundle[3][2] = {{nullptr}}; // [dimension][direction]
+  const void* twidl_table[3][2] = {{nullptr}}; // [dimension][direction]
+  std::array<std::array<size_t, 3>, 3> local_work_size{
+      {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
+  std::array<std::array<size_t, 3>, 3> global_work_size{
+      {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
+  sycl::kernel_bundle<sycl::bundle_state::executable>* exe_bundle[3][2] = {
+      {nullptr}}; // [dimension][direction]
 };
 
 // Sort transform dimensions by input layout, for best performance
@@ -344,18 +347,16 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
 
 )""";
 
+constexpr int supported_sizes[][3] = {{512, 32, 16}, {768, 32, 24}};
 
-constexpr int supported_sizes[][3] = { {512, 32, 16},
-                                       {768, 32, 24}};
-
-template<typename T>
+template <typename T>
 struct TwiddleTableKernel2FactsFunctor {
   void operator()(sycl::item<2> item) const {
     const int row = item.get_id(0);
     const int col = item.get_id(1);
-    const T theta = (2.0*row*col) / (fact0_*fact1_);
-    T * cosPtr = twidl_buf_ + row*fact1_*2 + col*2;
-    T * sinPtr = twidl_buf_ + row*fact1_*2 + col*2 + 1;
+    const T theta = (2.0 * row * col) / (fact0_ * fact1_);
+    T* cosPtr = twidl_buf_ + row * fact1_ * 2 + col * 2;
+    T* sinPtr = twidl_buf_ + row * fact1_ * 2 + col * 2 + 1;
     *cosPtr = scale_ * sycl::cospi(theta);
     *sinPtr = scale_ * sycl::sinpi(theta);
   }
@@ -365,10 +366,7 @@ struct TwiddleTableKernel2FactsFunctor {
       std::int64_t fact1,
       T* twidl_buf,
       T scale)
-      : fact0_(fact0),
-        fact1_(fact1),
-        twidl_buf_(twidl_buf),
-        scale_(scale) {}
+      : fact0_(fact0), fact1_(fact1), twidl_buf_(twidl_buf), scale_(scale) {}
 
  private:
   std::int64_t fact0_;
@@ -377,51 +375,55 @@ struct TwiddleTableKernel2FactsFunctor {
   T scale_;
 };
 
-template<typename T>
-void calculate_twiddle_factors(sycl::queue &q, fft_descriptor &desc) {
-  for(size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
+template <typename T>
+void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
+  for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
     auto fact0 = desc.facts[dim][0];
     auto fact1 = desc.facts[dim][1];
-    for(int i = 0; i < 2; ++i) {
-      if(desc.which_dir !=2 && i != desc.which_dir) continue;
+    for (int i = 0; i < 2; ++i) {
+      if (desc.which_dir != 2 && i != desc.which_dir)
+        continue;
 
       T scale = static_cast<T>(1.0);
-      if(dim == 0)
-        scale = (i == 0) ? static_cast<T>(desc.fwd_scale) : static_cast<T>(desc.bwd_scale);
+      if (dim == 0)
+        scale = (i == 0) ? static_cast<T>(desc.fwd_scale)
+                         : static_cast<T>(desc.bwd_scale);
 
-      T *twidl_buf = nullptr;
-      if(!desc.external_workspace) {
-        twidl_buf = (T *)malloc_device(2 * fact0 * fact1 * sizeof(T), q);
-        if(twidl_buf == nullptr) {
-          throw std::runtime_error("Failed to allocate device memory for twiddle factors");
+      T* twidl_buf = nullptr;
+      if (!desc.external_workspace) {
+        twidl_buf = (T*)malloc_device(2 * fact0 * fact1 * sizeof(T), q);
+        if (twidl_buf == nullptr) {
+          throw std::runtime_error(
+              "Failed to allocate device memory for twiddle factors");
         }
-        desc.twidl_table[dim][i] = static_cast<const void *>(twidl_buf);
+        desc.twidl_table[dim][i] = static_cast<const void*>(twidl_buf);
       } else {
-        twidl_buf = (T *)desc.twidl_table[dim][i];
+        twidl_buf = (T*)desc.twidl_table[dim][i];
       }
 
-      auto ker = TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
-      q.submit([&](sycl::handler &h) {
-        h.parallel_for(sycl::range<2>(fact0, fact1), ker);
-      }).wait();
+      auto ker =
+          TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
+      q.submit([&](sycl::handler& h) {
+         h.parallel_for(sycl::range<2>(fact0, fact1), ker);
+       }).wait();
     }
   }
 }
 
-template<typename T>
-void commit(sycl::queue &q, fft_descriptor &desc) {
-  if(!q.get_device().is_gpu()) {
+template <typename T>
+void commit(sycl::queue& q, fft_descriptor& desc) {
+  if (!q.get_device().is_gpu()) {
     throw std::runtime_error("Device is not a GPU");
   }
 
-  if(desc.fft_len.size() < 1 || desc.fft_len.size() > 3) {
+  if (desc.fft_len.size() < 1 || desc.fft_len.size() > 3) {
     throw std::runtime_error("Unsupported number of dimensions");
   }
   std::reverse(desc.fft_len.begin(), desc.fft_len.end());
 
   desc.fwd_strides.erase(desc.fwd_strides.begin());
   desc.bwd_strides.erase(desc.bwd_strides.begin());
-  if(desc.fwd_strides.size() > 0 && desc.bwd_strides.size() > 0) {
+  if (desc.fwd_strides.size() > 0 && desc.bwd_strides.size() > 0) {
     std::reverse(desc.fwd_strides.begin(), desc.fwd_strides.end());
     std::reverse(desc.bwd_strides.begin(), desc.bwd_strides.end());
   } else {
@@ -430,11 +432,13 @@ void commit(sycl::queue &q, fft_descriptor &desc) {
     desc.bwd_strides = {1, desc.fft_len[0]};
   }
 
-  auto src_bundle = syclexp::create_kernel_bundle_from_source(q.get_context(), syclexp::source_language::sycl, kernel_src);
+  auto src_bundle = syclexp::create_kernel_bundle_from_source(
+      q.get_context(), syclexp::source_language::sycl, kernel_src);
 
-  for(size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
-    for(int i = 0; i < sizeof(supported_sizes)/sizeof(supported_sizes[0]); ++i) {
-      if(desc.fft_len[dim] == supported_sizes[i][0]) {
+  for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
+    for (int i = 0; i < sizeof(supported_sizes) / sizeof(supported_sizes[0]);
+         ++i) {
+      if (desc.fft_len[dim] == supported_sizes[i][0]) {
         desc.facts.push_back({supported_sizes[i][1], supported_sizes[i][2]});
         break;
       }
@@ -443,20 +447,21 @@ void commit(sycl::queue &q, fft_descriptor &desc) {
     auto fact0 = desc.facts[dim][0];
     auto fact1 = desc.facts[dim][1];
     int slm_size = fact0 * fact1 * 2 * sizeof(T);
-    if(slm_size > q.get_device().get_info<sycl::info::device::local_mem_size>()) {
+    if (slm_size >
+        q.get_device().get_info<sycl::info::device::local_mem_size>()) {
       throw std::runtime_error("Required SLM size exceeds device limits");
     }
     desc.slm_size[dim] = slm_size;
     desc.twidl_table_size[dim] = fact0 * fact1 * 2;
     desc.external_workspace_size += desc.twidl_table_size[dim] * sizeof(T) *
-                                    ((desc.which_dir == 2) ? 2 : 1);
+        ((desc.which_dir == 2) ? 2 : 1);
 
-    if(fact0 == 0 || fact1 == 0) {
+    if (fact0 == 0 || fact1 == 0) {
       throw std::runtime_error("Unsupported FFT length");
     }
 
     desc.local_work_size[dim][0] = fact1;
-    if(fact0 % fact1 != 0)
+    if (fact0 % fact1 != 0)
       desc.local_work_size[dim][0] = std::max(fact0, fact1);
     desc.global_work_size[dim][0] = desc.local_work_size[dim][0] * desc.batch;
 
@@ -477,24 +482,26 @@ void commit(sycl::queue &q, fft_descriptor &desc) {
     auto outer_batch_fwd_dist = 0;
     auto outer_batch_bwd_dist = 0;
     auto dist_to_next_thread = desc.fwd_strides[dim];
-    if(desc.fft_len.size() > 1) {
-      if(dim == 0) {
+    if (desc.fft_len.size() > 1) {
+      if (dim == 0) {
         fwd_dist = desc.fwd_strides[0] * desc.fft_len[0];
         bwd_dist = desc.bwd_strides[0] * desc.fft_len[0];
         batch = desc.fft_len[1] * desc.batch;
-        if(desc.fft_len.size() == 3)
+        if (desc.fft_len.size() == 3)
           batch *= desc.fft_len[2];
-        desc.global_work_size[dim][0] = desc.local_work_size[dim][0] * desc.batch * desc.fft_len[1];
-      } else if(dim == 1) {
+        desc.global_work_size[dim][0] =
+            desc.local_work_size[dim][0] * desc.batch * desc.fft_len[1];
+      } else if (dim == 1) {
         fwd_dist = desc.fwd_strides[0];
         bwd_dist = desc.bwd_strides[0];
         batch = desc.fft_len[0];
         inner_batch_fwd_dist = desc.fwd_strides[1] * desc.fft_len[1];
         inner_batch_bwd_dist = desc.bwd_strides[1] * desc.fft_len[1];
         dist_to_next_thread = desc.fwd_strides[1];
-        desc.global_work_size[dim][0] = desc.local_work_size[dim][0] * desc.fft_len[0];
+        desc.global_work_size[dim][0] =
+            desc.local_work_size[dim][0] * desc.fft_len[0];
         desc.global_work_size[dim][1] = desc.batch;
-        if(desc.fft_len.size() == 3) {
+        if (desc.fft_len.size() == 3) {
           outer_batch_fwd_dist = desc.fwd_dist;
           outer_batch_bwd_dist = desc.bwd_dist;
           desc.global_work_size[dim][1] = desc.fft_len[2];
@@ -514,31 +521,37 @@ void commit(sycl::queue &q, fft_descriptor &desc) {
       }
     }
 
-    for(dir_val = 0; dir_val < 2; ++dir_val) {
-      if(desc.which_dir != 2 && dir_val != desc.which_dir) continue;
+    for (dir_val = 0; dir_val < 2; ++dir_val) {
+      if (desc.which_dir != 2 && dir_val != desc.which_dir)
+        continue;
       auto kernel_name_dir = kernel_name + ((dir_val == 0) ? "_fwd" : "_bwd");
       char scale_buf[64];
-      std::snprintf(scale_buf, sizeof(scale_buf), "%a", dir_val == 0 ? desc.fwd_scale :
-                                                                       dim == 0 ? desc.bwd_scale : 1.0);
-      std::vector<std::string> fft_build_opts = { "-DKERNEL_NAME=" + kernel_name_dir,
-                                  "-DREGSIZE=" + std::to_string(num_regs),
-                                  "-DFFT_LEN=" + std::to_string(desc.fft_len[dim]),
-                                  "-DFACT0=" + std::to_string(fact0),
-                                  "-DFACT1=" + std::to_string(fact1),
-                                  "-DBATCH=" + std::to_string(batch),
-                                  "-DFWD_DIST=" + std::to_string(fwd_dist),
-                                  "-DBWD_DIST=" + std::to_string(bwd_dist),
-                                  "-DNUM_FACT1S=" + std::to_string(num_fact1s),
-                                  "-DDIR_VAL=" + std::to_string(dir_val),
-                                  "-DSCALE=" + std::string(scale_buf),
-                                  "-DFFT_FACT0=" + fact0_fn,
-                                  "-DFFT_FACT1=" + fact1_fn,
-                                  "-DDIST_TO_NEXT_THREAD=" + std::to_string(dist_to_next_thread),
-                                  "-DOUTER_BATCH_FWD_DIST=" + std::to_string(outer_batch_fwd_dist),
-                                  "-DINNER_BATCH_FWD_DIST=" + std::to_string(inner_batch_fwd_dist),
-                                  "-DOUTER_BATCH_BWD_DIST=" + std::to_string(outer_batch_bwd_dist),
-                                  "-DINNER_BATCH_BWD_DIST=" + std::to_string(inner_batch_bwd_dist)
-                                  };
+      std::snprintf(
+          scale_buf,
+          sizeof(scale_buf),
+          "%a",
+          dir_val == 0   ? desc.fwd_scale
+              : dim == 0 ? desc.bwd_scale
+                         : 1.0);
+      std::vector<std::string> fft_build_opts = {
+          "-DKERNEL_NAME=" + kernel_name_dir,
+          "-DREGSIZE=" + std::to_string(num_regs),
+          "-DFFT_LEN=" + std::to_string(desc.fft_len[dim]),
+          "-DFACT0=" + std::to_string(fact0),
+          "-DFACT1=" + std::to_string(fact1),
+          "-DBATCH=" + std::to_string(batch),
+          "-DFWD_DIST=" + std::to_string(fwd_dist),
+          "-DBWD_DIST=" + std::to_string(bwd_dist),
+          "-DNUM_FACT1S=" + std::to_string(num_fact1s),
+          "-DDIR_VAL=" + std::to_string(dir_val),
+          "-DSCALE=" + std::string(scale_buf),
+          "-DFFT_FACT0=" + fact0_fn,
+          "-DFFT_FACT1=" + fact1_fn,
+          "-DDIST_TO_NEXT_THREAD=" + std::to_string(dist_to_next_thread),
+          "-DOUTER_BATCH_FWD_DIST=" + std::to_string(outer_batch_fwd_dist),
+          "-DINNER_BATCH_FWD_DIST=" + std::to_string(inner_batch_fwd_dist),
+          "-DOUTER_BATCH_BWD_DIST=" + std::to_string(outer_batch_bwd_dist),
+          "-DINNER_BATCH_BWD_DIST=" + std::to_string(inner_batch_bwd_dist)};
       if constexpr (std::is_same_v<T, float>) {
         fft_build_opts.push_back("-DDFT_SINGLE_PRECISION");
       } else if constexpr (std::is_same_v<T, double>) {
@@ -547,27 +560,30 @@ void commit(sycl::queue &q, fft_descriptor &desc) {
         throw std::runtime_error("Unsupported data type");
       };
 
-      auto exe_bundle = syclexp::build(src_bundle, syclexp::properties{syclexp::build_options{fft_build_opts}});
+      auto exe_bundle = syclexp::build(
+          src_bundle,
+          syclexp::properties{syclexp::build_options{fft_build_opts}});
       desc.exe_bundle[dim][dir_val] = new decltype(exe_bundle)(exe_bundle);
     }
   }
-  if(!desc.external_workspace) {
+  if (!desc.external_workspace) {
     calculate_twiddle_factors<T>(q, desc);
   }
 }
 
-template<typename T>
-void set_workspace(T *workspace, sycl::queue &q, fft_descriptor &desc) {
-  if(workspace == nullptr) {
+template <typename T>
+void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
+  if (workspace == nullptr) {
     throw std::runtime_error("Workspace pointer is null");
   }
 
-  // Delete any previously allocated twiddle factor buffers if this overrides workspace from internal to external.
-  if(!desc.external_workspace) {
-    for(int dim = 0; dim < 3; ++dim) {
-      for(int dir = 0; dir < 2; ++dir) {
-        if(desc.twidl_table[dim][dir]) {
-          sycl::free(const_cast<void *>(desc.twidl_table[dim][dir]), q);
+  // Delete any previously allocated twiddle factor buffers if this overrides
+  // workspace from internal to external.
+  if (!desc.external_workspace) {
+    for (int dim = 0; dim < 3; ++dim) {
+      for (int dir = 0; dir < 2; ++dir) {
+        if (desc.twidl_table[dim][dir]) {
+          sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), q);
           desc.twidl_table[dim][dir] = nullptr;
         }
       }
@@ -575,10 +591,11 @@ void set_workspace(T *workspace, sycl::queue &q, fft_descriptor &desc) {
   }
 
   desc.external_workspace = true;
-  for(auto i = 0; i < desc.fft_len.size(); ++i) {
-    for(int dir = 0; dir < 2; ++dir) {
-      if(desc.which_dir != 2 && dir != desc.which_dir) continue;
-      desc.twidl_table[i][dir] = static_cast<const void *>(workspace);
+  for (auto i = 0; i < desc.fft_len.size(); ++i) {
+    for (int dir = 0; dir < 2; ++dir) {
+      if (desc.which_dir != 2 && dir != desc.which_dir)
+        continue;
+      desc.twidl_table[i][dir] = static_cast<const void*>(workspace);
       workspace += desc.twidl_table_size[i];
     }
   }
@@ -586,14 +603,14 @@ void set_workspace(T *workspace, sycl::queue &q, fft_descriptor &desc) {
   calculate_twiddle_factors<T>(q, desc);
 }
 
-void free_descriptor(sycl::queue &q, fft_descriptor &desc) {
-  for(int dim = 0; dim < 3; ++dim) {
-    for(int dir = 0; dir < 2; ++dir) {
-      if(desc.twidl_table[dim][dir] && !desc.external_workspace) {
-        sycl::free(const_cast<void *>(desc.twidl_table[dim][dir]), q);
+void free_descriptor(sycl::queue& q, fft_descriptor& desc) {
+  for (int dim = 0; dim < 3; ++dim) {
+    for (int dir = 0; dir < 2; ++dir) {
+      if (desc.twidl_table[dim][dir] && !desc.external_workspace) {
+        sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), q);
         desc.twidl_table[dim][dir] = nullptr;
       }
-      if(desc.exe_bundle[dim][dir]) {
+      if (desc.exe_bundle[dim][dir]) {
         delete desc.exe_bundle[dim][dir];
         desc.exe_bundle[dim][dir] = nullptr;
       }
@@ -602,28 +619,44 @@ void free_descriptor(sycl::queue &q, fft_descriptor &desc) {
 }
 
 template <typename T>
-static sycl::event compute(sycl::queue &q, fft_descriptor &desc, const T *in, T *out, int dir) {
-  const char *dir_suffix = (dir == 0) ? "_fwd" : "_bwd";
+static sycl::event compute(
+    sycl::queue& q,
+    fft_descriptor& desc,
+    const T* in,
+    T* out,
+    int dir) {
+  const char* dir_suffix = (dir == 0) ? "_fwd" : "_bwd";
   sycl::event prev_ev;
-  for(auto dim = 0; dim < desc.fft_len.size(); ++dim) {
-    if(desc.external_workspace && desc.twidl_table[dim][dir] == nullptr) {
-      throw std::runtime_error("set_workspace must be called with a valid workspace before compute");
+  for (auto dim = 0; dim < desc.fft_len.size(); ++dim) {
+    if (desc.external_workspace && desc.twidl_table[dim][dir] == nullptr) {
+      throw std::runtime_error(
+          "set_workspace must be called with a valid workspace before compute");
     }
-    auto &bundle = *(desc.exe_bundle[dim][dir]);
-    std::string kernel_name = "dft_2_facts_kernel_" + std::to_string(dim) + dir_suffix;
+    auto& bundle = *(desc.exe_bundle[dim][dir]);
+    std::string kernel_name =
+        "dft_2_facts_kernel_" + std::to_string(dim) + dir_suffix;
     auto kernel = bundle.ext_oneapi_get_kernel(kernel_name);
 
-    sycl::range<3> global_range{desc.global_work_size[dim][0], desc.global_work_size[dim][1], desc.global_work_size[dim][2]};
-    sycl::range<3> local_range{desc.local_work_size[dim][0], desc.local_work_size[dim][1], desc.local_work_size[dim][2]};
+    sycl::range<3> global_range{
+        desc.global_work_size[dim][0],
+        desc.global_work_size[dim][1],
+        desc.global_work_size[dim][2]};
+    sycl::range<3> local_range{
+        desc.local_work_size[dim][0],
+        desc.local_work_size[dim][1],
+        desc.local_work_size[dim][2]};
     sycl::nd_range<3> ndrange(global_range, local_range);
 
-    const T *input = (dim == 0) ? in : out;
-    prev_ev = q.submit([&](sycl::handler &h) {
+    const T* input = (dim == 0) ? in : out;
+    prev_ev = q.submit([&](sycl::handler& h) {
       h.depends_on(prev_ev);
       h.set_arg(0, input);
       h.set_arg(1, out);
-      h.set_arg(2, sycl::local_accessor<T, 1>(desc.facts[dim][0] * desc.facts[dim][1] * 2, h));
-      h.set_arg(3, static_cast<const T *>(desc.twidl_table[dim][dir]));
+      h.set_arg(
+          2,
+          sycl::local_accessor<T, 1>(
+              desc.facts[dim][0] * desc.facts[dim][1] * 2, h));
+      h.set_arg(3, static_cast<const T*>(desc.twidl_table[dim][dir]));
 
       h.parallel_for(ndrange, kernel);
     });
@@ -707,9 +740,9 @@ void _fft_with_size_sycl(
 
     // Allocate USM workspace and provide it to the descriptor.
     Tensor workspaceBuf = at::empty(
-      {(long)(workspaceSizeBytes)},
-      input.options().dtype(at::kChar),
-      std::nullopt);
+        {(long)(workspaceSizeBytes)},
+        input.options().dtype(at::kChar),
+        std::nullopt);
     set_workspace((T*)workspaceBuf.mutable_data_ptr(), queue, desc);
 
     auto in_data = (T*)input.const_data_ptr();
@@ -805,7 +838,7 @@ Tensor& _exec_fft_sycl(
       out.is_complex(),
       !forward,
       signal_size,
-      onesided);  
+      onesided);
 
   // Inplace reshaping to original batch shape and inverting the dimension
   // permutation
@@ -959,9 +992,7 @@ void _fft_fill_with_conjugate_symmetry_xpu(
   });
 }
 
-bool _is_fft_size_supported_sycl(
-    const Tensor& orig_self,
-    IntArrayRef dim) {
+bool _is_fft_size_supported_sycl(const Tensor& orig_self, IntArrayRef dim) {
   if (dim.size() != 2) {
     return false;
   }
