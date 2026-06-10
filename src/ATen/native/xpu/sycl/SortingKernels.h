@@ -115,14 +115,9 @@ struct SegmentedRadixSortPairsUpsweepFunctor
     auto keys_in_seg = keys_in_ + seg_idx * num_elements_;
     auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles_;
     int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
-    // Compute tile_end without int32 overflow: tile_offset + PROCESSING_LENGTH
-    // can wrap to INT_MIN when tile_offset is near INT_MAX (e.g. n = INT_MAX),
-    // which would cause process_full_tile() to be called without bounds checks,
-    // reading one element past the end of the input buffer.
     int tile_end = (num_elements_ - tile_offset < method_t::PROCESSING_LENGTH)
         ? num_elements_
         : tile_offset + method_t::PROCESSING_LENGTH;
-    tile_end = tile_end > num_elements_ ? num_elements_ : tile_end;
     auto method = method_t(
         item,
         keys_in_seg,

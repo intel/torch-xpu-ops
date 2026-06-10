@@ -43,11 +43,8 @@ class TestNNMethod(TestCase):
 
     @largeTensorTest("48GB", device="xpu")
     def test_topk_num_tiles_no_overflow(self):
-        # INT_MAX:
-        # triggers overflow in the unfixed int32 computation
         n = 2**31 - 1
-        # k > 256 routes through
-        # topk_out_with_sort -> segmented_radix_sort
+        # k > 256 routes through topk_out_with_sort -> segmented_radix_sort
         k = 300
         data = torch.zeros((1, n), device="xpu", dtype=torch.float16)
         values, indices = torch.topk(data, k, dim=1, largest=True, sorted=False)
