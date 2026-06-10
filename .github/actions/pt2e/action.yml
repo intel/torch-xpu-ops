@@ -24,6 +24,7 @@ runs:
         which python && python -V
         which pip && pip list
     - name: Prepare dataset
+      if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}
       run: |
         dataset_dir="${RUNNER_TEMP}/_datasets/imagenet"

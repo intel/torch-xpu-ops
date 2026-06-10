@@ -46,8 +46,8 @@ def run_single(
 ) -> tuple[int, bool, str, str | None]:
     """Run a single benchmark and return (exit_code, success, test_result, kill_reason)."""
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"inductor-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
-    log_csv = log_dir / f"inductor-results-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
+    log_file = log_dir / f"logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
+    log_csv = log_dir / f"inductor-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
 
     suite = get_suite(task)
     tmp_log_csv = None
