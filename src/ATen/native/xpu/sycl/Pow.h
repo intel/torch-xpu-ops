@@ -64,7 +64,8 @@ pow_(Base_type base, Exp_type exp) {
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
   using opmath_t = at::opmath_type<Base_type>;
-  if constexpr (std::is_integral<Exp_type>::value) {
+  if constexpr (
+      std::is_integral<Exp_type>::value && sizeof(Exp_type) <= sizeof(int)) {
     return sycl::pown(static_cast<opmath_t>(base), static_cast<int>(exp));
   } else {
     return sycl::pow(static_cast<opmath_t>(base), static_cast<opmath_t>(exp));
