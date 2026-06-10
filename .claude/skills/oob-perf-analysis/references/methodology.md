@@ -12,7 +12,7 @@
 
 ## T1 Calculation
 
-Parse `t1/calcflops.txt` and use the last benchmark iteration only.
+Parse the calcflops file (see `inputs.md` for exact column layout and file path) and use the last benchmark iteration only.
 
 Per op:
 
@@ -22,6 +22,11 @@ T1_memory  = bytes / bandwidth_GBps
 T1_op      = max(T1_compute, T1_memory)
 ```
 
+Where:
+- `FLOPs` = delta of `cum_flops` (col 1) between consecutive rows
+- `bytes` = delta of the **platform-specific cache-adjusted memory column** (col 5 for B580, col 6 for 4080S/CUDA, col 7 for B70/G31) — never use raw memory (col 2)
+- For ops in `VECTOR_ENGINE_OPS` (see `inputs.md`), force `FLOPs = 0` so T1 uses memory only
+
 Fleet total:
 
 ```
@@ -29,8 +34,6 @@ T1 = sum(T1_op) over all ops
 ```
 
 An op is compute-bound when `T1_compute > T1_memory`, memory-bound otherwise.
-
-Hardware peak and bandwidth values come from `config/hardware_specs.yaml`.
 
 ## T2 Extraction
 
