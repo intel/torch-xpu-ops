@@ -5,18 +5,7 @@ description: Build PyTorch from source with Intel XPU (GPU) support. Use when th
 
 # Build PyTorch with XPU Support
 
-This project builds only as part of PyTorch. No standalone build exists.
 The only build command is `pip install -e . -v --no-build-isolation`. Never use any other command.
-
-## Quick start
-
-With `build_pytorch.env` already configured (see Instructions):
-
-```bash
-source build_pytorch.env
-pip install -e . -v --no-build-isolation
-python -c "import torch; print('XPU available:', torch.xpu.is_available())"
-```
 
 ## Instructions
 
@@ -53,9 +42,12 @@ source /opt/intel/oneapi/compiler/latest/env/vars.sh
 
 ### 3. Build
 
+Always redirect build output to a log file so failures can be diagnosed:
+
 ```bash
 source build_pytorch.env
-pip install -e . -v --no-build-isolation
+pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+echo "Build log saved to /tmp/pytorch_build_*.log"
 ```
 
 ### 4. Verify
@@ -66,22 +58,6 @@ python -c "import torch; print('XPU available:', torch.xpu.is_available())"
 ```
 
 Expected: `XPU available: True`
-
-## Examples
-
-**Debug / faster iteration build** (shrinks translation unit scope):
-
-```bash
-source build_pytorch.env
-BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation
-```
-
-**Verify device count after build:**
-
-```bash
-source build_pytorch.env
-python -c "import torch; print(torch.xpu.device_count(), 'XPU device(s) found')"
-```
 
 ## Best practices
 

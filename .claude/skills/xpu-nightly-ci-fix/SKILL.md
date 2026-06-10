@@ -25,24 +25,77 @@ I have a nightly CI failure report from 2026-06-08. Here are the failing tests:
 PyTorch commit: abc123def
 ```
 
+## Required: Initialize Todo List Before Starting
+
+**Immediately after reading this skill and parsing the failure report, use TodoWrite to create the
+following items before doing any other work.** Do not skip or merge steps. Each failing test group
+gets its own reproduce/fix/verify trio.
+
+```
+- [ ] Step 0: Ensure PyTorch checkout exists and is up to date
+- [ ] Step 1: Parse report — extract commit, date, failing test list
+- [ ] Step 2a: Checkout origin/main and rebuild PyTorch
+- [ ] Step 2b: Reproduce <test_group_1> — confirm failure
+- [ ] Step 2b: Reproduce <test_group_2> — confirm failure
+      ... (one entry per distinct failing test or group)
+- [ ] Step 3: Analyze root cause for each failure
+- [ ] Step 4+5: Fix + verify <test_group_1> (run test, confirm pass, lint, commit)
+- [ ] Step 4+5: Fix + verify <test_group_2> (run test, confirm pass, lint, commit)
+      ... (one entry per fix)
+- [ ] Step 6: Generate summary report
+```
+
+Only mark a fix item `completed` after the test actually passes. Never skip directly to Step 6.
+
 ## Prerequisites
 
-- PyTorch built from source with XPU support (see `AGENTS.md` Build section)
+- XPU hardware available and oneAPI environment configured
+- A local PyTorch checkout at `agent_space_xpu/pytorch/` (see Step 0 below)
+- PyTorch built from source with XPU support (see `AGENTS.md` Build section and `/xpu-build-pytorch` skill)
+
+## Step 0: Ensure PyTorch Checkout Exists
+
+Check whether `agent_space_xpu/pytorch/` already exists. If not, clone it before proceeding.
+
+```bash
+ls agent_space_xpu/pytorch/ 2>/dev/null || echo "NOT FOUND"
+```
+
+If **not found**, clone with a partial (blobless) clone to save time and disk space:
+
+```bash
+git clone --filter=blob:none https://github.com/pytorch/pytorch.git agent_space_xpu/pytorch
+cd agent_space_xpu/pytorch
+git submodule update --init --recursive
+```
+
+If **already found**, verify the remote is correct and fetch latest:
+
+```bash
+git -C agent_space_xpu/pytorch remote get-url origin  # should be pytorch/pytorch
+git -C agent_space_xpu/pytorch fetch origin
+```
+
+All subsequent steps run from `agent_space_xpu/pytorch/` as the working directory.
 
 ## Step 1: Parse the Failure Report
 
-- Extract `commit_id` and `report_date` from the report
+- Extract `report_date` from the report
+- Extract `commit_id` if present; otherwise use `origin/main`
 - Extract failing tests (test file, class, method name)
 - Group failures by test file / module
 
 ## Step 2: Reproduce Locally
 
-Work from the PyTorch root directory.
+All commands below run from `agent_space_xpu/pytorch/`.
 
-1. **Fetch and checkout the target commit:**
+1. **Checkout the target commit:**
+
+   Always use `origin/main` by default, even if the report includes a commit ID.
+   Only use a specific commit if the user explicitly requests it.
    ```bash
    git fetch origin main
-   git checkout <commit_id>  # use origin/main if no commit_id in report
+   git checkout origin/main
    ```
 
 2. **Create a fix branch:**
@@ -55,7 +108,7 @@ Work from the PyTorch root directory.
    python setup.py clean
    pip install -e . -v --no-build-isolation
    ```
-   For environment setup and building PyTorch, see `AGENTS.md` Build section.
+   For environment setup and building PyTorch, see `AGENTS.md` Build section and the `/xpu-build-pytorch` skill.
 
 4. **Run each failing test:**
    ```bash
@@ -117,7 +170,7 @@ Read the corresponding CUDA implementation in `pytorch/aten/src/ATen/native/cuda
 
 ## Step 6: Generate Summary Report
 
-Write to `agent_space/summary_<report_date>.md`:
+Write to `agent_space_xpu/summary_<report_date>.md`:
 
 ```markdown
 # Nightly CI Fix Summary — 2026-06-08
@@ -173,7 +226,7 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 - Match upstream CUDA tolerances when adjusting XPU tolerances
 - Remove unused imports when removing skip decorators
 - Keep commits focused: one fix per commit
-- Scratch files go in `agent_space/` (git-ignored)
+- Scratch files go in `agent_space_xpu/` (git-ignored)
 
 ## Advanced Usage
 
