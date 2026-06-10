@@ -1,4 +1,4 @@
-# Review Test Cases
+# Review SKILL Test Cases
 
 Review the files under `test/agentic/pr-review` to validate the pr-review skill.
 
