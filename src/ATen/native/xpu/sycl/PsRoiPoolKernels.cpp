@@ -54,11 +54,12 @@ struct PsRoiPoolForwardKernel {
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
 
-      int hstart =
-          static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
-      int wstart =
-          static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
       using opmath_t = at::opmath_type<T>;
+
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
       int hend = static_cast<int>(sycl::ceil(
           static_cast<opmath_t>(ph + 1) * static_cast<opmath_t>(bin_size_h)));
       int wend = static_cast<int>(sycl::ceil(
@@ -207,11 +208,12 @@ struct PsRoiPoolBackwardKernel {
           static_cast<T>(roi_height) / static_cast<T>(pooled_height_);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
 
-      int hstart =
-          static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
-      int wstart =
-          static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
       using opmath_t = at::opmath_type<T>;
+
+      int hstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(ph) * bin_size_h)));
+      int wstart = static_cast<int>(
+          sycl::floor(static_cast<opmath_t>(static_cast<T>(pw) * bin_size_w)));
       int hend = static_cast<int>(sycl::ceil(
           static_cast<opmath_t>(ph + 1) * static_cast<opmath_t>(bin_size_h)));
       int wend = static_cast<int>(sycl::ceil(

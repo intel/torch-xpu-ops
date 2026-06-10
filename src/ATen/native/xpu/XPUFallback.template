@@ -6,20 +6,21 @@ namespace at {
 static bool DEBUG_XPU_FALLBACK = false;
 
 /*
- * Verifies that all input tensors reside on the same device type.
+ * Verifies that all input tensors reside on the same device
+ * (including device index, e.g., xpu:0 vs xpu:1).
  * The first defined tensor establishes the reference device;
  * all subsequent tensors must match it.
- * Raises an error if a mismatch (e.g., CPU vs. XPU) is detected.
+ * Raises an error if a mismatch (e.g., CPU vs. XPU, or xpu:0 vs. xpu:1) is detected.
  */
 static void check_device_consistency(
     const torch::jit::Stack* stack,
     const c10::OperatorHandle& op) {
-  std::optional<c10::DeviceType> reference_device;
+  std::optional<c10::Device> reference_device;
 
   auto check_tensor = [&](const at::Tensor& t) {
     if (!t.defined()) return;
 
-    auto cur_device = t.device().type();
+    auto cur_device = t.device();
     if (!reference_device) {
       reference_device = cur_device;
       return;
