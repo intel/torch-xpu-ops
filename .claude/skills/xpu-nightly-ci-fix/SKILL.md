@@ -8,6 +8,8 @@ description: Analyze nightly CI test failures and fix XPU test cases. Use when t
 
 # Nightly CI Test Fixing for XPU
 
+Analyze CI nightly test failure reports and fix failing XPU test cases on PyTorch.
+
 ## Quick Start
 
 Provide a nightly failure report (email, test list, or log snippet). The skill will:
@@ -25,15 +27,21 @@ I have a nightly CI failure report from 2026-06-08. Here are the failing tests:
 PyTorch commit: abc123def
 ```
 
+## Prerequisites
+
+- PyTorch built from source with XPU support (see `AGENTS.md` Build section)
+- `.env` configured for the oneAPI environment
+- **Always `source .env` before any Python/torch command**
+
 ## Step 1: Parse the Failure Report
 
-- Extract PyTorch commit_id and report_date
+- Extract `commit_id` and `report_date` from the report
 - Extract failing tests (test file, class, method name)
 - Group failures by test file / module
 
 ## Step 2: Reproduce Locally
 
-Work from the PyTorch root directory. `.env` must be configured for the local oneAPI environment (see `AGENTS.md` Build section).
+Work from the PyTorch root directory.
 
 1. **Fetch and checkout the target commit:**
    ```bash
@@ -60,96 +68,62 @@ Work from the PyTorch root directory. `.env` must be configured for the local on
 
 5. **Confirm the failure reproduces** before proceeding to Step 3.
 
-**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 7 tracks which fix maps to which PR.
+**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 6 tracks which fix maps to which PR.
 
 ## Step 3: Analyze and Categorize
 
-For each failure, determine root cause by answering:
+**First:** Use `git log` to check when the test was added. If recently added, check the introducing commit/PR to see if XPU support is required — then skip to Step 4.
 
-1. **When was the test added?** `git log --diff-filter=A --oneline -- path/to/test_file.py` — recent (< 7 days) → likely new feature needing XPU support
-2. **Does CUDA have this test?** `rg "def test_<name>" test/` — if yes, compare CUDA vs XPU behavior
-3. **What's the error type?**
-   - `NotImplementedError` / `RuntimeError: not implemented` → missing XPU kernel
-   - `AssertionError` with tolerance → precision/tolerance mismatch
-   - `AttributeError` / `ImportError` → test infrastructure issue
-   - Numerical mismatch → compare with CUDA kernel logic
+**Otherwise**, categorize the root cause:
 
-### Root Cause Categories
+| Category | Description | Typical Fix Location |
+|----------|-------------|---------------------|
+| XPU backend bug | Backend implementation issue | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
+| Tolerance too tight | Numeric precision mismatch | Increase atol/rtol to match CUDA |
+| Skip decorator stale | Test now passes on XPU | Remove `@skipIfXpu` or `@expectedFailure` |
+| Upstream regression | New upstream code changed behavior XPU relied on | XPU-side fix aligned with upstream intent; skip only if upstream itself is buggy (see Critical Rules) |
+| Test infrastructure | Environment, import, or setup issue | Test setup/config files |
 
-All categories below are grounded in real observed nightly failures. A single failure may map to more than one category.
-
-1. **XPU backend bug** — Fix in `torch/_inductor/` or `third_party/torch-xpu-ops/`
-2. **Tolerance too tight** — Increase atol/rtol to match CUDA tolerances
-3. **Skip decorator stale** — Remove `@skipIfXpu` or `@expectedFailure` if test now passes
-4. **New feature needs XPU support** — Implement XPU kernel aligned with CUDA
-5. **Upstream regression** — A recent PyTorch commit changed behavior XPU relied on. Preferred response: apply an **XPU-side fix** to align with the upstream change's intent, using the CUDA implementation as reference (e.g., `intel/torch-xpu-ops#3809`). If the upstream commit is itself a bug (CUDA also broken), file an issue in `pytorch/pytorch` and add a temporary `@skipIfXpu` with a tracking issue. Do not add bypasses that deviate from CUDA behavior without justification.
-6. **Test infrastructure** — Environment, import, or setup issue
+All categories are grounded in real observed nightly failures. A single failure may map to more than one category.
 
 ## Step 4: Fix
 
-For each failure, read the corresponding CUDA implementation in `pytorch/aten/src/ATen/native/cuda/` to understand expected behavior, then present options:
+Read the corresponding CUDA implementation in `pytorch/aten/src/ATen/native/cuda/` to understand expected behavior.
 
-**Option A — Fix/implement:**
-- Newly added test: implement XPU kernel in `third_party/torch-xpu-ops/src/` aligned with CUDA logic, or fix CUDA-specific test assumptions
-- Regression: apply XPU-side fix aligned with the upstream change's intent; if XPU must diverge from CUDA, document why in comments
+- **Newly added test:** Try to enable XPU support. If not feasible (missing kernel, blocked feature), skip with `@skipIfXpu` and a tracking issue.
+- **Regression:** Find the guilty commit (`git log --oneline -20 -- <file>`). Apply an XPU-side fix aligned with upstream intent; document any CUDA divergence in comments.
+- **Unknown root cause:** Compare with CUDA/ROCm backend behavior to identify the issue.
 
-**Option B — Skip with justification:**
-- Add skip decorator with tracking issue reference
-- File tracking issue with: root cause, missing feature/blocker, estimated effort
-- Example:
-  ```python
-  @skipIfXpu  # TODO(#1234): Missing grouped conv3d kernel for XPU
-  def test_conv3d_groups(self):
-      ...
-  ```
-- Commit just the skip to unblock nightly; investigate separately
+## Step 5: Verify and Commit
 
-**Recommendation:** Provide your assessment of which option fits. Prefer Option A when effort is reasonable. For regressions, prefer Option A unless the root cause is unclear. Let the engineer decide.
-
-If you cannot identify the guilty commit: compare with CUDA/ROCm backend, read upstream PyTorch code, check recent commits for related changes.
-
-## Step 5: Verify (CRITICAL — Do Not Skip)
-
-For **every** test in the initial failure report:
-
-1. Run the individual test:
+1. Run the fixed test and confirm it passes:
    ```bash
-   source .env && python path/to/test_file.py -k test_method 2>&1 | tail -80
+   source .env && python <test_file> -k <test_name> 2>&1 | tail -80
    ```
-2. Confirm it passes (exit code 0)
-3. Run related tests in the same class:
-   ```bash
-   pytest path/to/test_file.py::TestClass -xvs
-   ```
-4. Run linter:
+2. Run the full test file to check for regressions
+3. Lint:
    ```bash
    spin fixlint
    ```
+4. Commit (one fix per commit):
+   ```
+   [xpu][fix] <short description>
 
-Run each test individually. Do not batch or skip any test — verifying one representative test is not sufficient.
+   ## Motivation
+   <why this fix is needed>
 
-## Step 6: Commit Changes
+   ## Solution
+   <what was changed and CUDA alignment if applicable>
 
-One focused commit per fix. Commit message template:
+   ## Test plan
+   <how it was verified>
 
-```
-[xpu][fix] <one line summary (max 72 chars)>
+   Note: This commit was authored with AI assistance.
+   ```
 
-## Motivation
-<why this fix is needed — link to nightly failure or issue>
+## Step 6: Generate Summary Report
 
-## Solution
-<how the fix works — mention CUDA alignment if applicable>
-
-## Test Plan
-pytest test/xpu/test_foo_xpu.py::test_bar -xvs
-
-Note: This commit was authored with AI assistance.
-```
-
-## Step 7: Generate Summary Report
-
-Write to `agent_space/summary_YYYYMMDD.md`:
+Write to `agent_space/summary_<report_date>.md`:
 
 ```markdown
 # Nightly CI Fix Summary — 2026-06-08
@@ -160,7 +134,7 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 ## Fixed Tests
 
 ### test_ops_xpu.py::TestBinaryUfuncsXPU::test_add_xpu
-- Root cause: Tolerance too tight (Category 2)
+- Root cause: Tolerance too tight
 - Fix: Increased atol 1e-5 → 1e-4 to match CUDA
 - Commit: fix-add-tolerance-20260608
 - AR: Submit PR to pytorch/pytorch
@@ -170,7 +144,7 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 ## Skipped Tests (with tracking issues)
 
 ### test_nn_xpu.py::TestNNXPU::test_conv3d_groups
-- Root cause: Missing XPU kernel for grouped conv3d (Category 4)
+- Root cause: Missing XPU kernel for grouped conv3d
 - Decision: Skip — implementation ~3-5 days, beyond nightly scope
 - Fix: Added @skipIfXpu with issue reference
 - Tracking issue: intel/torch-xpu-ops#1234
@@ -179,26 +153,14 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 
 ## Examples
 
-See Step 7 above for a complete summary report example. For advanced build safety and AOT Inductor debug tips, see [reference.md](reference.md).
+See Step 6 above for a complete summary report example. For AOT Inductor C++ compile error diagnosis, see [reference.md](reference.md).
 
-## Best Practices
+## Critical Rules
 
-### Decision Making
-- Present both options (implement / skip) with effort estimates; let the engineer decide
-- Prefer fixing over skipping when effort is reasonable
-- When skipping: always file a tracking issue and document effort estimate
+### Build Discipline
 
-### Verification
-- Always reproduce before fixing
-- Match upstream CUDA tolerances when adjusting XPU tolerances
-- Remove unused imports when removing skip decorators
-
-### Commit Hygiene
-- One fix per commit
-- **Never cherry-pick** upstream fixes into the fix branch — rebase onto latest trunk instead (`git rebase origin/main`)
-
-### Build Safety
-- **Always rebuild after `git rebase` or `git checkout`** — stale C++ extensions produce unreliable test results
+- **Always rebuild after rebase or branch switch.** After `git rebase`, `git checkout`, or any commit-base change, rebuild before running tests. Without rebuilding, C++ extensions and generated code are stale — test results will be completely unreliable (segfaults, wrong pass/fail, masked issues).
+- **Never cherry-pick** upstream fixes. If a fix already landed on trunk after the CI commit, rebase onto latest trunk (`git rebase origin/main`) instead.
 - **Fix in `torch-xpu-ops`?** Update `xpu.txt` to your local HEAD **before rebuilding** so CMake's checkout becomes a no-op:
   ```bash
   git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
@@ -206,6 +168,30 @@ See Step 7 above for a complete summary report example. For advanced build safet
   source .env && pip install -e . -v --no-build-isolation
   ```
   After verification, submit PR to `intel/torch-xpu-ops`, then update the pin in `pytorch/pytorch` once merged.
+
+### Verification
+
+- **Run EVERY failing test case individually** after fixing. Do not skip any case or assume one representative case is sufficient. Run all cases explicitly, batch by batch if needed.
+- Always reproduce before fixing.
+
+### C++ / Header Changes
+
+- Editable installs resolve Python from source but C++ headers from `torch/include/`. After editing a C++ header, **manually copy** it to the installed include path.
+- Delete PCH cache after modifying headers under `torch/csrc/inductor/cpp_wrapper/`:
+  ```bash
+  rm -rf /tmp/torchinductor_$USER/precompiled_headers/
+  ```
+
+### Code Style
+
+- Match upstream CUDA tolerances when adjusting XPU tolerances
+- Remove unused imports when removing skip decorators
+- Keep commits focused: one fix per commit
+- Scratch files go in `agent_space/` (git-ignored)
+
+### Upstream Regression Fix Approach
+
+Apply an **XPU-side fix** to align with the upstream change's intent, using the CUDA implementation as reference (e.g., `intel/torch-xpu-ops#3809`). If the upstream commit is itself a bug (CUDA also broken), file an issue in `pytorch/pytorch` and add a temporary `@skipIfXpu` with a tracking issue. Do not add bypasses that deviate from CUDA behavior without justification.
 
 ## Requirements
 
@@ -215,4 +201,4 @@ See Step 7 above for a complete summary report example. For advanced build safet
 
 ## Advanced Usage
 
-For AOT Inductor C++ compile error diagnosis and other advanced nightly CI debugging patterns, see [reference.md](reference.md).
+For AOT Inductor C++ compile error diagnosis and other advanced debug patterns, see [reference.md](reference.md).
