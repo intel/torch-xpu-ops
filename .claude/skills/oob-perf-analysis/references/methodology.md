@@ -80,7 +80,6 @@ Threshold rationale: 0.80 is the empirically observed point where per-op issues 
 
 | User-facing | Internal ID | Config key | Notes |
 |-------------|-------------|------------|-------|
-| B580 | B580 | b580 | XPU, has unitrace |
 | B70 | G31 | b70 | XPU, has unitrace |
 | 4080S | 4080 | 4080s | CUDA, no unitrace |
 
