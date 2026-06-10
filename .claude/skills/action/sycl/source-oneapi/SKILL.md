@@ -139,13 +139,33 @@ Example:
 source "$HOME/intel/oneapi/setvars.sh"
 ```
 
-For non-interactive shell scripts, use:
+If the oneAPI environment was already partially sourced (e.g., `ONEAPI_ROOT` is set from a prior session), `setvars.sh` may refuse to reinitialize and print:
+
+```text
+oneAPI environment initialized already - ...
+```
+
+Use the `--force` flag to override this:
+
+```bash
+source "$HOME/intel/oneapi/setvars.sh" --force
+```
+
+To suppress the verbose component initialization output, redirect to `/dev/null`:
+
+```bash
+source "$HOME/intel/oneapi/setvars.sh" --force > /dev/null 2>&1
+```
+
+Only suppress output when you do not need to inspect the initialization log. Step 6 verification should still run afterward.
+
+For non-interactive shell scripts, use `--force` to ensure initialization regardless of prior state:
 
 ```bash
 #!/usr/bin/env bash
 set -e
 
-source "$HOME/intel/oneapi/setvars.sh"
+source "$HOME/intel/oneapi/setvars.sh" --force > /dev/null 2>&1
 
 <other commands>
 ```
@@ -200,7 +220,7 @@ After oneAPI is sourced successfully, run all following commands in the same she
 Example:
 
 ```bash
-source "$HOME/intel/oneapi/setvars.sh"
+source "$HOME/intel/oneapi/setvars.sh" --force > /dev/null 2>&1
 export ZE_AFFINITY_MASK=0
 python test.py
 ```

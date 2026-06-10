@@ -90,43 +90,68 @@ Send the long-running command to the dedicated window.
 Use:
 
 ```bash
-tmux send-keys -t <session>:<job_name> 'cd /work/dir && CMD 2>&1 | tee run.log' Enter
+tmux send-keys -t <session>:<job_name> 'cd /work/dir || exit 1; CMD 2>&1 | tee run.log' Enter
 ```
 
 Example:
 
 ```bash
-tmux send-keys -t my_session:train_llama 'cd /work/dir && python train.py 2>&1 | tee run.log' Enter
+tmux send-keys -t my_session:train_llama 'cd /work/dir || exit 1; python train.py 2>&1 | tee run.log' Enter
 ```
+
+Use `cd <dir> || exit 1` instead of `cd <dir> && CMD`. If the directory does not exist or is inaccessible, `|| exit 1` terminates the shell immediately and makes the failure visible in the pane output. With `&&`, the shell stays open silently in the wrong directory.
 
 The command should:
 
-1. Change to the correct working directory.
+1. Change to the correct working directory (abort on failure).
 2. Run the target command.
 3. Redirect both stdout and stderr.
 4. Save logs using `tee`.
 
+### Step 3.1: Verify the job started
+
+After sending the command, wait briefly and check that the job is running:
+
+```bash
+sleep 2
+tmux capture-pane -p -t <session>:<job_name> | tail -5
+```
+
+Look for signs of immediate failure:
+
+- Shell prompt reappeared (command exited immediately)
+- Python traceback or error message visible
+- `No such file or directory` or permission errors
+
+If the job failed immediately, report the error to the user before continuing. Do not assume the job is running without checking.
+
 ### Step 4: Check job progress
 
-To check progress without disturbing the running job, capture the tmux pane output.
+To check progress without disturbing the running job, there are two methods:
 
-Use:
+#### Quick check: tmux pane buffer
 
 ```bash
 tmux capture-pane -p -t <session>:<job_name> | tail -20
 ```
 
-Example:
+Note: `capture-pane` only shows the pane's scrollback buffer (typically the last ~2000 lines). For long-running jobs, early output may no longer be in the buffer.
+
+#### Full history: log file
+
+The log file written by `tee` contains the complete output from the start of the job. Use it for full history or searching past output:
 
 ```bash
-tmux capture-pane -p -t my_session:train_llama | tail -20
+tail -20 /work/dir/run.log
 ```
 
-If a log file is used, also check:
+For searching specific events:
 
 ```bash
-tail -20 run.log
+grep -i "error\|exception\|warning" /work/dir/run.log | tail -10
 ```
+
+Prefer the log file over `capture-pane` when checking for errors or reviewing output from earlier in the run.
 
 ### Step 5: Stop the job cleanly
 
@@ -190,7 +215,7 @@ tmux list-windows -t my_session
 
 tmux new-window -d -n train_llama -t my_session
 
-tmux send-keys -t my_session:train_llama 'cd /work/dir && python train.py 2>&1 | tee run.log' Enter
+tmux send-keys -t my_session:train_llama 'cd /work/dir || exit 1; python train.py 2>&1 | tee run.log' Enter
 
 tmux capture-pane -p -t my_session:train_llama | tail -20
 ```

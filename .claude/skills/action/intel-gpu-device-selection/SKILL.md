@@ -12,6 +12,8 @@ This SKILL is used to determine which Intel GPU device should be used to run a w
 
 Many Intel client CPU platforms include an integrated Intel GPU by default. If the system is also equipped with an Intel discrete GPU, multiple Intel GPU devices may be visible through Level Zero. In this case, the user must explicitly select the target GPU device before running any workload.
 
+This skill selects a single target device. For multi-GPU workloads that require multiple devices simultaneously, `ZE_AFFINITY_MASK` supports comma-separated indices (e.g., `0,1`), but that configuration is outside the scope of this skill.
+
 ## Instructions
 
 ### Step 1: Detect Level Zero devices
@@ -29,6 +31,15 @@ Only consider devices that match the following pattern:
 
 ```text
 [level_zero:gpu][level_zero:<index>]
+```
+
+If `sycl-ls` runs successfully but no lines match this pattern, stop and report:
+
+```text
+sycl-ls completed but no Level Zero GPU devices matching the expected pattern were found.
+The expected pattern is: [level_zero:gpu][level_zero:<index>]
+
+Please verify the oneAPI version and check `sycl-ls` output manually.
 ```
 
 ### Step 2: Branch based on device count

@@ -46,10 +46,12 @@ Before cloning or building anything, check whether `unitrace` is already in the 
 
 ```bash
 # Check if unitrace binary is directly available
-which unitrace 2>/dev/null && unitrace --version 2>/dev/null || echo "UNITRACE_NOT_FOUND"
+which unitrace 2>/dev/null && unitrace --help > /dev/null 2>&1 && echo "UNITRACE_AVAILABLE" || echo "UNITRACE_NOT_FOUND"
 ```
 
-- **If found**: Report the path and version to the user. Ask if they want to use the existing installation or rebuild from source. If they want to use the existing one, skip to Step 5 (verification).
+Note: `unitrace` does not support a `--version` flag. Use `unitrace --help` to verify the binary is functional.
+
+- **If found**: Report the path to the user. Ask if they want to use the existing installation or rebuild from source. If they want to use the existing one, skip to Step 5 (verification).
 - **If NOT found**: Proceed to Step 2.
 
 ### Step 2: Check prerequisites
@@ -86,9 +88,14 @@ If Intel oneAPI is not set up, use the "source-oneapi" skill to source the oneAP
 
 ### Step 3: Clone and build unitrace
 
+The default build location is `$HOME/.local/src/pti-gpu`. This is persistent across reboots, unlike `/tmp`. If the user specifies a different directory, use that instead.
+
+The full build requires approximately 2 GB of disk space (source + build artifacts).
+
 ```bash
-# Clone the pti-gpu repository
-cd /tmp  # or user's preferred directory
+# Clone the pti-gpu repository into a persistent location
+mkdir -p "$HOME/.local/src"
+cd "$HOME/.local/src"
 git clone https://github.com/intel/pti-gpu.git
 cd pti-gpu/tools/unitrace
 
@@ -134,7 +141,7 @@ After a successful build, add unitrace to the user's PATH so it can be used dire
 
 ```bash
 # If built in-tree (no make install):
-export PATH=/tmp/pti-gpu/tools/unitrace/build:$PATH
+export PATH="$HOME/.local/src/pti-gpu/tools/unitrace/build:$PATH"
 
 # If installed to a custom prefix:
 # export PATH=<install_path>/bin:$PATH
@@ -143,10 +150,13 @@ export PATH=/tmp/pti-gpu/tools/unitrace/build:$PATH
 which unitrace
 ```
 
-Suggest the user add this to their `.bashrc` or shell config for persistence:
+For persistence across shell sessions, suggest the user add the export to their shell config:
+
 ```bash
-echo 'export PATH=/tmp/pti-gpu/tools/unitrace/build:$PATH' >> ~/.bashrc
+echo 'export PATH="$HOME/.local/src/pti-gpu/tools/unitrace/build:$PATH"' >> ~/.bashrc
 ```
+
+If the user chose a different build location, adjust the path accordingly.
 
 ### Step 5: Verify installation
 
@@ -155,6 +165,6 @@ echo 'export PATH=/tmp/pti-gpu/tools/unitrace/build:$PATH' >> ~/.bashrc
 unitrace --help
 
 # If a GPU device is available, optionally run the test suite:
-# cd /tmp/pti-gpu/tools/unitrace/build
+# cd "$HOME/.local/src/pti-gpu/tools/unitrace/build"
 # ctest -V
 ```
