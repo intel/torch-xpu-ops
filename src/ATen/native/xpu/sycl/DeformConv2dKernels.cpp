@@ -412,16 +412,18 @@ struct DeformableCol2ImKernel {
 
       const scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
       const scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
+      using opmath_t = at::opmath_type<scalar_t>;
 
       for (index_t dy = -1; dy <= 1; dy++) {
         for (index_t dx = -1; dx <= 1; dx++) {
           index_t yp = (index_t)y + dy;
           index_t xp = (index_t)x + dx;
           if (0 <= yp && yp < height && 0 <= xp && xp < width &&
-              sycl::fabs(y - yp) < 1 && sycl::fabs(x - xp) < 1) {
+              sycl::fabs(static_cast<opmath_t>(y - yp)) < 1 &&
+              sycl::fabs(static_cast<opmath_t>(x - xp)) < 1) {
             index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
-            scalar_t weight =
-                (1 - sycl::fabs(y - yp)) * (1 - sycl::fabs(x - xp));
+            scalar_t weight = (1 - sycl::fabs(static_cast<opmath_t>(y - yp))) *
+                (1 - sycl::fabs(static_cast<opmath_t>(x - xp)));
             atomicAdd(
                 sycl_global_ptr<scalar_t>(grad_im + grad_pos),
                 mask_value * weight * col[index]);
