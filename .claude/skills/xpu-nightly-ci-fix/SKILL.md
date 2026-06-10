@@ -4,8 +4,6 @@ description: Analyze nightly CI test failures and fix XPU test cases. Use when t
 ---
 > Please also read and refer to `AGENTS.md` at the repository root for general behavioral guidelines before proceeding.
 
-> **Planned refactor:** This skill will be split into `xpu-issue-fix` (single-test reproduce/fix/verify) and `xpu-nightly-ci-fix` (report parsing + batch orchestration + summary). The current monolithic structure is intentional for immediate use; refactoring tracked as a follow-up.
-
 # Nightly CI Test Fixing for XPU
 
 Analyze CI nightly test failure reports and fix failing XPU test cases on PyTorch.
@@ -81,10 +79,8 @@ Work from the PyTorch root directory.
 | XPU backend bug | Backend implementation issue | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
 | Tolerance too tight | Numeric precision mismatch | Increase atol/rtol to match CUDA |
 | Skip decorator stale | Test now passes on XPU | Remove `@skipIfXpu` or `@expectedFailure` |
-| Upstream regression | New upstream code changed behavior XPU relied on | XPU-side fix aligned with upstream intent; skip only if upstream itself is buggy (see Critical Rules) |
+| Upstream regression | New upstream code changed behavior XPU relied on. Apply XPU-side fix aligned with upstream intent using CUDA as reference (e.g., `intel/torch-xpu-ops#3809`). If the upstream commit is itself a bug (CUDA also broken), file issue in `pytorch/pytorch` + add temporary `@skipIfXpu` with tracking issue. Do not add bypasses deviating from CUDA behavior. | XPU-side fix in `torch-xpu-ops` or test file |
 | Test infrastructure | Environment, import, or setup issue | Test setup/config files |
-
-All categories are grounded in real observed nightly failures. A single failure may map to more than one category.
 
 ## Step 4: Fix
 
@@ -151,10 +147,6 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 - AR: Prioritize kernel implementation in next sprint
 ```
 
-## Examples
-
-See Step 6 above for a complete summary report example. For AOT Inductor C++ compile error diagnosis, see [reference.md](reference.md).
-
 ## Critical Rules
 
 ### Build Discipline
@@ -184,16 +176,6 @@ See Step 6 above for a complete summary report example. For AOT Inductor C++ com
 - Remove unused imports when removing skip decorators
 - Keep commits focused: one fix per commit
 - Scratch files go in `agent_space/` (git-ignored)
-
-### Upstream Regression Fix Approach
-
-Apply an **XPU-side fix** to align with the upstream change's intent, using the CUDA implementation as reference (e.g., `intel/torch-xpu-ops#3809`). If the upstream commit is itself a bug (CUDA also broken), file an issue in `pytorch/pytorch` and add a temporary `@skipIfXpu` with a tracking issue. Do not add bypasses that deviate from CUDA behavior without justification.
-
-## Requirements
-
-- PyTorch built from source with XPU support (see `AGENTS.md` Build section)
-- Build verified: `torch.xpu.is_available()` returns `True`
-- Scratch files in `agent_space/` (git-ignored)
 
 ## Advanced Usage
 
