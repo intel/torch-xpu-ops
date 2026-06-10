@@ -1,8 +1,8 @@
-"""compare — Compare PyTorch Dynamo Benchmark results (target vs baseline).
+"""summary — Compare PyTorch Dynamo Benchmark results (target vs baseline).
 
 Usage:
-    python -m run_benchmarks.compare -t target/ -b baseline/ -o comparison.xlsx
-    python -m run_benchmarks.compare -t target/ -o out.csv -m report.md
+    python -m run_benchmarks.summary -t target/ -b baseline/ -o comparison.xlsx
+    python -m run_benchmarks.summary -t target/ -o out.csv -m report.md
 """
 
 from .loader import find_result_files, load_results, parse_filename

@@ -56,7 +56,6 @@ def _classify_pt2e_accuracy(row: pd.Series) -> str:
             return "new_failed"
         if bsl_top1 > 0 and (tgt_top1 - bsl_top1) / bsl_top1 > threshold:
             return "new_passed"
-        return "no_changed"
     if tgt_valid and not bsl_valid:
         return "new_case"
     if bsl_valid and not tgt_valid:
@@ -147,7 +146,7 @@ def merge_accuracy(
 
 # ── PT2E Accuracy Merge (pivoted by dtype) ────────────────────────────
 def _pt2e_acc_compare(tgt: float, bsl: float, threshold: float) -> str:
-    """Compare two top1/top5 values with a relative threshold."""
+    """Compare two top1 values with a relative threshold."""
     tgt_valid = pd.notna(tgt) and tgt > 0
     bsl_valid = pd.notna(bsl) and bsl > 0
     if tgt_valid and bsl_valid:
@@ -173,14 +172,14 @@ def merge_pt2e_accuracy(
     tgt = pd.DataFrame(target_records) if target_records else pd.DataFrame()
     bsl = pd.DataFrame(baseline_records) if baseline_records else pd.DataFrame()
 
-    # Build lookup: (mode, model, data_type) -> {top1, top5}
+    # Build lookup: (mode, model, data_type) -> {top1}
     def _build_map(df: pd.DataFrame) -> dict:
         m: dict[tuple, dict] = {}
         if df.empty:
             return m
         for _, row in df.iterrows():
             key = (row["mode"], row["model"], row.get("data_type", ""))
-            m[key] = {"top1": row.get("top1", np.nan), "top5": row.get("top5", np.nan)}
+            m[key] = {"top1": row.get("top1", np.nan)}
         return m
 
     tgt_map = _build_map(tgt)
@@ -193,43 +192,38 @@ def merge_pt2e_accuracy(
 
     rows = []
     for mode, model in sorted(all_keys):
-        # For each metric (top1, top5)
-        for category in ("top1", "top5"):
-            fp32_tgt = tgt_map.get((mode, model, "float32"), {}).get(category, np.nan)
-            int8_tgt = tgt_map.get((mode, model, "int8"), {}).get(category, np.nan)
-            fp32_bsl = bsl_map.get((mode, model, "float32"), {}).get(category, np.nan)
-            int8_bsl = bsl_map.get((mode, model, "int8"), {}).get(category, np.nan)
+        # Only top1 metric
+        fp32_tgt = tgt_map.get((mode, model, "float32"), {}).get("top1", np.nan)
+        int8_tgt = tgt_map.get((mode, model, "int8"), {}).get("top1", np.nan)
+        fp32_bsl = bsl_map.get((mode, model, "float32"), {}).get("top1", np.nan)
+        int8_bsl = bsl_map.get((mode, model, "int8"), {}).get("top1", np.nan)
 
-            # Skip rows where all values are NaN
-            if all(pd.isna(v) for v in [fp32_tgt, int8_tgt, fp32_bsl, int8_bsl]):
-                continue
+        # Skip rows where all values are NaN
+        if all(pd.isna(v) for v in [fp32_tgt, int8_tgt, fp32_bsl, int8_bsl]):
+            continue
 
-            # Compute int8/fp32 ratios
-            int8_fp32_tgt = (int8_tgt / fp32_tgt) if (
-                pd.notna(int8_tgt) and pd.notna(fp32_tgt) and fp32_tgt > 0
-            ) else np.nan
-            int8_fp32_bsl = (int8_bsl / fp32_bsl) if (
-                pd.notna(int8_bsl) and pd.notna(fp32_bsl) and fp32_bsl > 0
-            ) else np.nan
+        # Compute int8/fp32 ratios
+        int8_fp32_tgt = (int8_tgt / fp32_tgt) if (
+            pd.notna(int8_tgt) and pd.notna(fp32_tgt) and fp32_tgt > 0
+        ) else np.nan
+        int8_fp32_bsl = (int8_bsl / fp32_bsl) if (
+            pd.notna(int8_bsl) and pd.notna(fp32_bsl) and fp32_bsl > 0
+        ) else np.nan
 
-            # Per-dtype comparison
-            fp32_thresh = PT2E_ACC_THRESHOLDS.get("float32", 0.0)
-            int8_thresh = PT2E_ACC_THRESHOLDS.get("int8", 0.05)
-            fp32_comp = _pt2e_acc_compare(fp32_tgt, fp32_bsl, fp32_thresh)
-            int8_comp = _pt2e_acc_compare(int8_tgt, int8_bsl, int8_thresh)
+        # Per-dtype comparison
+        int8_thresh = PT2E_ACC_THRESHOLDS.get("int8", 0.05)
+        int8_comp = _pt2e_acc_compare(int8_tgt, int8_bsl, int8_thresh)
 
-            rows.append({
-                "suite": "pt2e", "mode": mode, "model": model,
-                "category": category,
-                "fp32_target": round(fp32_tgt, 3) if pd.notna(fp32_tgt) else np.nan,
-                "int8_target": round(int8_tgt, 3) if pd.notna(int8_tgt) else np.nan,
-                "int8/fp32_target": round(int8_fp32_tgt, 4) if pd.notna(int8_fp32_tgt) else np.nan,
-                "fp32_baseline": round(fp32_bsl, 3) if pd.notna(fp32_bsl) else np.nan,
-                "int8_baseline": round(int8_bsl, 3) if pd.notna(int8_bsl) else np.nan,
-                "int8/fp32_baseline": round(int8_fp32_bsl, 4) if pd.notna(int8_fp32_bsl) else np.nan,
-                "fp32_comparison": fp32_comp,
-                "int8_comparison": int8_comp,
-            })
+        rows.append({
+            "suite": "pt2e", "mode": mode, "model": model,
+            "fp32_target": round(fp32_tgt, 3) if pd.notna(fp32_tgt) else np.nan,
+            "int8_target": round(int8_tgt, 3) if pd.notna(int8_tgt) else np.nan,
+            "int8/fp32_target": round(int8_fp32_tgt, 4) if pd.notna(int8_fp32_tgt) else np.nan,
+            "fp32_baseline": round(fp32_bsl, 3) if pd.notna(fp32_bsl) else np.nan,
+            "int8_baseline": round(int8_bsl, 3) if pd.notna(int8_bsl) else np.nan,
+            "int8/fp32_baseline": round(int8_fp32_bsl, 4) if pd.notna(int8_fp32_bsl) else np.nan,
+            "comparison": int8_comp,
+        })
 
     return pd.DataFrame(rows, columns=PT2E_ACC_OUTPUT_COLS)
 
@@ -406,10 +400,10 @@ def merge_performance(
 
     for col in ("inductor_target", "inductor_baseline", "eager_target", "eager_baseline"):
         if col in merged.columns:
-            merged[col] = merged[col].round(4)
+            merged[col] = pd.to_numeric(merged[col], errors="coerce").round(4)
     for col in ("inductor_ratio", "eager_ratio"):
         if col in merged.columns:
-            merged[col] = merged[col].round(3)
+            merged[col] = pd.to_numeric(merged[col], errors="coerce").round(3)
 
     merged["comparison"] = merged.apply(
         lambda r: _classify_performance(r, threshold), axis=1,

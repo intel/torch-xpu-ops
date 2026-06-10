@@ -30,10 +30,10 @@ PERF_OUTPUT_COLS = [
 ]
 
 PT2E_ACC_OUTPUT_COLS = [
-    "suite", "mode", "model", "category",
+    "suite", "mode", "model",
     "fp32_target", "int8_target", "int8/fp32_target",
     "fp32_baseline", "int8_baseline", "int8/fp32_baseline",
-    "fp32_comparison", "int8_comparison",
+    "comparison",
 ]
 PT2E_PERF_OUTPUT_COLS = [
     "suite", "mode", "model",

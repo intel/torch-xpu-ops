@@ -43,7 +43,7 @@ SKIPPED_MODEL_PATTERNS = (
 )
 
 ACCURACY_CSV_PATTERN = re.compile(
-    r"(inductor[-_]results[-_]|inductor_)?"
+    r"(inductor[-_]results[-_]|inductor[-_])?"
     r"(?P<suite>huggingface|timm_models|torchbench)[-_]"
     r"(?P<dtype>float32|bfloat16|float16|amp_bf16|amp_fp16)[-_]"
     r"(?P<mode>inference|training)[-_]"

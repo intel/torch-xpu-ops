@@ -34,7 +34,8 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
 
     Supported patterns:
         inductor_<suite>_<data_type>_<mode>_xpu_<result_type>.csv
-        inductor-<suite>-<data_type>-<mode>-xpu-<result_type>.csv
+        inductor-<suite>-<data_type>-<mode>-<device>-<result_type>.csv
+        inductor-results-<suite>-<data_type>-<mode>-<device>-<result_type>.csv
 
     Raises ValueError on unrecognised filenames.
     """
@@ -42,15 +43,22 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
         raise ValueError(f"Not a CSV file: {filename}")
 
     # ── Pattern 1: dash-separated ──
+    # Parse from the end so both the runner output
+    # (inductor-<suite>-<dt>-<mode>-<device>-<result>) and the legacy
+    # (inductor-results-<suite>-<dt>-<mode>-<device>-<result>) layouts work.
     if "inductor-" in filename:
-        base = filename.split("inductor-results-")[-1][:-4]
-        parts = base.split("-")
-        if len(parts) < 5:
+        parts = filename[:-4].split("-")
+        if len(parts) < 6:
             raise ValueError(f"Too few dash-separated parts in: {filename}")
-        suite, data_type, mode, _, result_type = parts[:5]
-        # Handle underscore data types like amp_bf16 encoded as amp_bf16
+        result_type = parts[-1]
         if result_type not in ("accuracy", "performance"):
             raise ValueError(f"Unknown result type '{result_type}' in {filename}")
+        device = parts[-2]
+        if device not in ("xpu", "cuda", "cpu"):
+            raise ValueError(f"Unknown device '{device}' in {filename}")
+        mode = parts[-3]
+        data_type = parts[-4]
+        suite = parts[-5]
         return suite, data_type, mode, result_type
 
     # ── Pattern 2: underscore-separated ──
@@ -189,11 +197,9 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
 
             if result_type == "accuracy":
                 if is_pt2e:
-                    # PT2E accuracy: preserve top1/top5 as raw numeric values
+                    # PT2E accuracy: preserve top1 as raw numeric value
                     top1 = pd.to_numeric(row.get("top1"), errors="coerce")
-                    top5 = pd.to_numeric(row.get("top5"), errors="coerce")
                     rec["top1"] = top1 if pd.notna(top1) else np.nan
-                    rec["top5"] = top5 if pd.notna(top5) else np.nan
                     rec["accuracy"] = f"pass_top1={top1:.3f}" if pd.notna(top1) else "fail_to_run"
                 else:
                     rec["accuracy"] = row["accuracy"]

@@ -1,4 +1,4 @@
-"""Entry point for `python -m run_benchmarks.compare`.
+"""Entry point for `python -m run_benchmarks.summary`.
 
 Compare PyTorch Dynamo Benchmark test results (target vs baseline).
 
@@ -10,6 +10,8 @@ import argparse
 import logging
 import os
 import sys
+
+import pandas as pd
 
 from .constants import (
     DEFAULT_PERF_THRESHOLD,
@@ -24,6 +26,7 @@ from .merge import (
     merge_performance,
     merge_pt2e_accuracy,
     merge_pt2e_performance,
+    _geomean,
 )
 from .report import print_report, write_csv, write_excel, write_markdown
 
@@ -32,7 +35,7 @@ log = logging.getLogger(__name__)
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m run_benchmarks.compare",
+        prog="python -m run_benchmarks.summary",
         description="Compare PyTorch Dynamo Benchmark results (target vs baseline).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
@@ -162,17 +165,54 @@ Examples:
         print("\n" + "=" * 60)
         print(" PT2E BENCHMARK COMPARISON")
         print("=" * 60)
+
+        has_baseline = bool(args.baseline_dir)
+
+        def _passrate(df: pd.DataFrame, col: str) -> str:
+            if col not in df.columns:
+                return "n/a"
+            vals = pd.to_numeric(df[col], errors="coerce")
+            total = len(vals)
+            passed = int((vals > 0).sum())
+            pct = (100.0 * passed / total) if total else 0.0
+            return f"{passed}/{total} ({pct:.1f}%)"
+
+        def _geo(df: pd.DataFrame, col: str) -> str:
+            if col not in df.columns:
+                return "n/a"
+            g = _geomean(pd.to_numeric(df[col], errors="coerce"))
+            return f"{g:.4f}" if pd.notna(g) else "n/a"
+
+        def _geo_ratio(df: pd.DataFrame, dtype: str) -> str:
+            tcol, bcol = f"{dtype}_target", f"{dtype}_baseline"
+            if tcol not in df.columns or bcol not in df.columns:
+                return "n/a"
+            tgt = pd.to_numeric(df[tcol], errors="coerce")
+            bsl = pd.to_numeric(df[bcol], errors="coerce")
+            ratio = tgt / bsl
+            ratio = ratio[(bsl > 0) & (tgt > 0)]
+            g = _geomean(ratio)
+            return f"{g:.4f}" if pd.notna(g) else "n/a"
+
         if not acc_pt2e.empty:
             print(f"\n  Accuracy: {len(acc_pt2e)} rows")
-            for col in ("fp32_comparison", "int8_comparison"):
-                if col in acc_pt2e.columns:
-                    counts = acc_pt2e[col].value_counts()
-                    print(f"    {col}: {dict(counts)}")
+            print(f"    passrate target:   {_passrate(acc_pt2e, 'int8_target')}")
+            if has_baseline:
+                print(f"    passrate baseline: {_passrate(acc_pt2e, 'int8_baseline')}")
         if not perf_pt2e.empty:
             print(f"\n  Performance: {len(perf_pt2e)} rows")
-            if "comparison" in perf_pt2e.columns:
-                counts = perf_pt2e["comparison"].value_counts()
-                print(f"    comparison: {dict(counts)}")
+            print(f"    passrate target:   {_passrate(perf_pt2e, 'symm_target')}")
+            if has_baseline:
+                print(f"    passrate baseline: {_passrate(perf_pt2e, 'symm_baseline')}")
+                print("    geomean (target/baseline): "
+                      f"fp32={_geo_ratio(perf_pt2e, 'fp32')}, "
+                      f"symm={_geo_ratio(perf_pt2e, 'symm')}, "
+                      f"asymm={_geo_ratio(perf_pt2e, 'asymm')}")
+            else:
+                print("    geomean target: "
+                      f"fp32={_geo(perf_pt2e, 'fp32_target')}, "
+                      f"symm={_geo(perf_pt2e, 'symm_target')}, "
+                      f"asymm={_geo(perf_pt2e, 'asymm_target')}")
         print()
 
     return 0
