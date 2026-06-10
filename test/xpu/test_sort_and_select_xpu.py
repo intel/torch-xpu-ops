@@ -128,7 +128,8 @@ with XPUPatchForImport(False):
     TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
 
     # XPU variant of upstream test_sort_and_select.py:test_topk_large_k.
-    # Targets the large-k path near INT_MAX where output tensors are large.
+    # Based on /home/bkokoszx/scripts/topk.py and targets the large-k path
+    # near INT_MAX where output tensors are very large.
     @slowTest
     @largeTensorTest("20GB", "xpu")
     def _test_topk_large_k(self, device):
