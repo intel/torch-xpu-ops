@@ -15,10 +15,6 @@ ENV GCC_VERSION=${GCC_VERSION}
 ARG XPU_DRIVER_TYPE
 ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
 
-COPY ./common/install_xpu.sh /tmp/install_xpu.sh
-RUN bash /tmp/install_xpu.sh && \
-    rm -f /tmp/install_xpu.sh
-
 # Base system updates and essential packages
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
@@ -75,16 +71,11 @@ RUN --mount=type=cache,target=/var/cache/apt \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
     update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
-    gcc -v && g++ -v && gcov -v && \
-    # Cleanup
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf \
-        /var/lib/apt/lists/* \
-        /tmp/* \
-        /var/tmp/* \
-        /usr/share/doc/* \
-        /usr/share/man/*
+    gcc -v && g++ -v && gcov -v
+
+COPY ./common/install_xpu.sh /tmp/install_xpu.sh
+RUN bash /tmp/install_xpu.sh && \
+    rm -f /tmp/install_xpu.sh
 
 # Install Conda
 RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh && \
