@@ -177,10 +177,6 @@ See Step 6 above for a complete summary report example. For AOT Inductor C++ com
 ### C++ / Header Changes
 
 - Editable installs resolve Python from source but C++ headers from `torch/include/`. After editing a C++ header, **manually copy** it to the installed include path.
-- Delete PCH cache after modifying headers under `torch/csrc/inductor/cpp_wrapper/`:
-  ```bash
-  rm -rf /tmp/torchinductor_$USER/precompiled_headers/
-  ```
 
 ### Code Style
 
