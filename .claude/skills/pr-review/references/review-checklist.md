@@ -102,8 +102,11 @@ Also flag during review:
 
 ## Dtype, Precision, And Numerics
 
-- [ ] Compute dtype and accumulation dtype are appropriate for FP32, BF16, FP16, and integer paths
-- [ ] Reductions, norms, softmax-style kernels, and atomic accumulation patterns were checked for numerical stability
+- [ ] **dtype choice in SYCL device code** — mirror the matching CUDA kernel
+  - [ ] CUDA uses `at::acc_type<scalar_t, true>` (or `at::acc_type_device<scalar_t, kCUDA>`) for accumulation → XPU uses `at::acc_type_device<scalar_t, kXPU>`. Example sites: reductions, normalization, softmax.
+  - [ ] CUDA uses `at::opmath_type<scalar_t>` for compute → XPU does the same and casts back to `scalar_t` on store. Example sites: element-wise / pointwise.
+  - [ ] No `T_ACC` -> `T` -> `T_ACC` round-trip within one op. If a `T_ACC` value is consumed by another kernel or functor in the same op, route it as `T_ACC` end-to-end — use a separate buffer when the public output must stay `T`.
+- [ ] **Atomic ops go through XPU wrappers** — use `atomicAdd`, `atomicCAS`, etc. from `src/ATen/native/xpu/sycl/Atomics.h`, not raw `sycl::atomic_ref::fetch_add` / `compare_exchange_strong`.
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
@@ -127,6 +130,7 @@ Also flag during review:
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
 - [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
 - [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
+- [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction op (add, min, max, mean, product, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions causing pipeline stalls. The loop may be at a different call site or inside a functor — trace callers if needed
 
 ## Dispatch, Fallback, And Generated Wiring
 
