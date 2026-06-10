@@ -63,6 +63,10 @@ Expected: `XPU available: True`
 
 - **Never skip sourcing `build_pytorch.env`** before running tests — XPU ops are unavailable without the oneAPI runtime.
 - **Always rebuild after `git rebase` or `git checkout`** — stale C++ extensions produce unreliable or silently wrong test results.
+- **Faster iteration builds**: set `BUILD_SEPARATE_OPS=1` to shrink translation unit scope. Debug/RelWithDebInfo builds enable this automatically.
+  ```bash
+  BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+  ```
 - **After editing a C++ header**: manually copy to `torch/include/` — editable installs serve C++ headers from the installed path, not source.
 - **After modifying inductor headers**: delete the PCH cache before rebuilding:
   ```bash
