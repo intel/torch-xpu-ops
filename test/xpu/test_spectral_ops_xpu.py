@@ -131,6 +131,34 @@ def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     xpu_sized = op(t, **kwargs)
     self._compare_xpu_cpu(xpu_sized, cpu_sized, t)
 
+def _test_fft_c2c_sycl_kernel(self, device, dtype=torch.cfloat):
+    """Test 2D complex FFTs that go through the SYCL kernel path."""
+    supported_sizes = [512, 768]
+    norm_modes = (None,)
+    dim = (-2, -1)
+
+    for s0, s1 in product(supported_sizes, supported_sizes):
+        input = torch.randn(s0, s1, device=device, dtype=dtype)
+        for norm in norm_modes:
+            expected = np.fft.fft2(input.cpu().numpy(), norm=norm)
+            actual = torch.fft.fft2(input, norm=norm)
+            self.assertEqual(
+                actual,
+                expected,
+                exact_dtype=False,
+                atol=1e-3,
+                rtol=1e-3,
+            )
+
+            expected_inverse = np.fft.ifft2(input.cpu().numpy(), norm=norm)
+            actual_inverse = torch.fft.ifft2(input, norm=norm)
+            self.assertEqual(
+                actual_inverse,
+                expected_inverse,
+                exact_dtype=False,
+                atol=1e-3,
+                rtol=1e-3,
+            )
 
 def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
     self.assertEqual(xpu_result.device, t.device)
@@ -138,6 +166,7 @@ def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
     self.assertEqual(xpu_result, cpu_result, exact_dtype=False)
 
 
+TestFFT.test_fft_c2c_sycl_kernel = _test_fft_c2c_sycl_kernel
 TestFFT.test_reference_1d = _test_reference_1d
 TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
