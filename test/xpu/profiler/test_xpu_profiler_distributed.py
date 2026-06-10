@@ -112,7 +112,7 @@ class XpuProfilerDistributedTest(MultiProcessTestCase):
                 output = x @ weight
                 dist.all_reduce(output)
                 prof.step()
-            torch.xpu.synchronize()
+                torch.xpu.synchronize()
 
             with TemporaryFileName(mode="w+") as fname:
                 prof.export_chrome_trace(fname)
