@@ -1,5 +1,5 @@
 ---
-name: unitrace-setup
+name: setup
 description: Set up Intel GPU unitrace profiling tool. Use this skill whenever the user mentions unitrace, Intel GPU tracing, pti-gpu tracing tool, GPU profiling with unitrace, or wants to build/install unitrace from source. Also trigger when the user asks about tracing Intel GPU workloads with unitrace, profiling SYCL/Level Zero/OpenCL applications on Intel GPUs using unitrace, or setting up pti-gpu tools. This skill handles checking if unitrace is already available, and if not, cloning and building it from source.
 metadata:
   unitrace: Intel PTI-GPU

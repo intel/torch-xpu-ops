@@ -124,13 +124,13 @@ After selecting the target `setvars.sh`, source it before running any workload.
 Use:
 
 ```bash
-source <selected_oneapi_path>/setvars.sh
+source <selected_setvars_path>
 ```
 
 or:
 
 ```bash
-. <selected_oneapi_path>/setvars.sh
+. <selected_setvars_path>
 ```
 
 Example:

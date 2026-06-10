@@ -14,7 +14,7 @@ Many Intel client CPU platforms include an integrated Intel GPU by default. If t
 
 ## Instructions
 
-### Step 1: Get all Level Zero GPU devices
+### Step 1: Detect Level Zero devices
 
 Use `sycl-ls` to list all available SYCL devices.
 
@@ -31,11 +31,25 @@ Only consider devices that match the following pattern:
 [level_zero:gpu][level_zero:<index>]
 ```
 
-### Step 2: If there are multiple level-zero devices of step 1, you MUST ask the user first and stop.
+### Step 2: Branch based on device count
 
-If more than one Level Zero GPU device is found, you MUST ask the user to select the target device.
+Count the Level Zero GPU devices found in Step 1, then follow exactly ONE of the subsections below.
 
-Do not continue to run any workload until the user provides a valid device index.
+#### No devices found
+
+Stop and report the issue. Do not continue to Step 3.
+
+```text
+No Level Zero GPU device was found. Please check whether the Intel GPU driver, Level Zero runtime, and oneAPI environment are correctly installed and initialized.
+```
+
+#### Exactly one device found
+
+Use its index as the target device. Proceed to Step 3.
+
+#### Multiple devices found
+
+You MUST ask the user to select the target device. Do not proceed to Step 3 until the user provides a valid device index.
 
 Use the following format:
 ```
@@ -55,54 +69,22 @@ There are multiple level-zero devices:
 Please decide which device is the target device.
 Input the Level Zero device index, for example: 0, 1:
 ```
-The user must provide a valid index from the listed devices.
-For example: 0
 
-If the user input is not a valid listed device index, ask again and do not continue.
+The user must provide a valid index from the listed devices (e.g., `0`).
+If the input is not a valid listed device index, ask again and do not continue.
 
-### Step 3: Set ZE_AFFINITY_MASK based on the selected device
-Before running any workload, always set ZE_AFFINITY_MASK to the selected Level Zero device index.
+### Step 3: Set ZE_AFFINITY_MASK
+
+Before running any workload, set ZE_AFFINITY_MASK to the target device index determined in Step 2.
 
 ```bash
 export ZE_FLAT_DEVICE_HIERARCHY=FLAT
-export ZE_AFFINITY_MASK=<N of the user's input>
+export ZE_AFFINITY_MASK=<target device index>
 <other commands>
 ```
 
-For example, if the user selects device 0:
-```bash
-export ZE_FLAT_DEVICE_HIERARCHY=FLAT
-export ZE_AFFINITY_MASK=0
-<other commands>
-```
-
-### Step 4: If only one Level Zero GPU device is found, use it by default
-If only one Level Zero GPU device is found, do not ask the user.
-Set ZE_AFFINITY_MASK to the index of the only available Level Zero GPU device.
-
-Example device list:
-```text
-[level_zero:gpu][level_zero:0] Intel(R) oneAPI Unified Runtime over Level-Zero V2, Intel(R) Arc(TM) B580 Graphics 20.1.0 [1.14.36942]
-```
-In this case, use:
-```bash
-export ZE_FLAT_DEVICE_HIERARCHY=FLAT
-export ZE_AFFINITY_MASK=<detected device index>
-<other commands>
-```
-
-For example, if the only device is `[level_zero:gpu][level_zero:0]`, set ZE_AFFINITY_MASK to 0:
+For example, if the target device is `[level_zero:gpu][level_zero:0]`:
 ```bash
 export ZE_FLAT_DEVICE_HIERARCHY=FLAT
 export ZE_AFFINITY_MASK=0
 ```
-
-### Step 5: If no Level Zero GPU device is found, stop
-
-If no Level Zero GPU device is found, stop the workflow and report the issue.
-
-Use the following message:
-```text
-No Level Zero GPU device was found. Please check whether the Intel GPU driver, Level Zero runtime, and oneAPI environment are correctly installed and initialized.
-```
-Do not continue to run any workload.
