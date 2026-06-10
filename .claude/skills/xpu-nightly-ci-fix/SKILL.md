@@ -33,24 +33,34 @@ PyTorch commit: abc123def
 
 ## Step 2: Reproduce Locally
 
-### Build PyTorch
+Work from the PyTorch root directory. `.env` must be configured for the local oneAPI environment (see `AGENTS.md` Build section).
 
-Follow the **Build** section in `AGENTS.md`. Confirm `torch.xpu.is_available()` returns `True` before proceeding.
+1. **Fetch and checkout the target commit:**
+   ```bash
+   git fetch origin main
+   git checkout <commit_id>  # use origin/main if no commit_id in report
+   ```
 
-### Fetch and Checkout
+2. **Create a fix branch:**
+   ```bash
+   git checkout -b fix-<report_date>  # e.g. fix-20260608
+   ```
 
-- Fetch and checkout the PyTorch commit from the report; if none provided, use origin/main
-- Create a local branch: `fix-YYYYMMDD` (e.g., `fix-20260608`)
+3. **Build PyTorch:**
+   ```bash
+   source .env
+   python setup.py clean
+   pip install -e . -v --no-build-isolation
+   ```
 
-**Branch strategy:** `fix-YYYYMMDD` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 7 tracks which fix maps to which PR.
+4. **Run each failing test:**
+   ```bash
+   source .env && python <test_file> -k <test_name> 2>&1 | tail -80
+   ```
 
-### Run Tests to Reproduce
+5. **Confirm the failure reproduces** before proceeding to Step 3.
 
-```bash
-source build_pytorch.env && pytest <test_file>::<TestClass>::<test_method> -xvs
-```
-
-Confirm each failure reproduces before proceeding.
+**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 7 tracks which fix maps to which PR.
 
 ## Step 3: Analyze and Categorize
 
@@ -104,7 +114,7 @@ For **every** test in the initial failure report:
 
 1. Run the individual test:
    ```bash
-   source build_pytorch.env && pytest path/to/test_file.py::TestClass::test_method -xvs
+   source .env && python path/to/test_file.py -k test_method 2>&1 | tail -80
    ```
 2. Confirm it passes (exit code 0)
 3. Run related tests in the same class:
@@ -193,7 +203,7 @@ See Step 7 above for a complete summary report example. For advanced build safet
   ```bash
   git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
   # Do NOT commit xpu.txt — local-only override
-  source build_pytorch.env && pip install -e . -v --no-build-isolation
+  source .env && pip install -e . -v --no-build-isolation
   ```
   After verification, submit PR to `intel/torch-xpu-ops`, then update the pin in `pytorch/pytorch` once merged.
 
