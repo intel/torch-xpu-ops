@@ -9,6 +9,7 @@
  */
 
 #include <ATen/ATen.h>
+#include <ATen/Context.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
@@ -27,11 +28,12 @@ void topk_out_with_sort(
     int64_t k,
     int64_t dim,
     bool largest,
+    bool stable,
     const Tensor& values,
     const Tensor& indices) {
   Tensor sorted_values, sorted_indices;
   std::tie(sorted_values, sorted_indices) =
-      at::sort(self, /* stable= */ false, dim, largest);
+      at::sort(self, stable, dim, largest);
   values.copy_(sorted_values.narrow(dim, 0, k));
   indices.copy_(sorted_indices.narrow(dim, 0, k));
 }
@@ -75,8 +77,15 @@ void topk_kernel(
   values.resize_(out_sizes);
   indices.resize_(out_sizes);
 
+  if (at::globalContext().deterministicAlgorithms()) {
+    topk_out_with_sort(
+        self.contiguous(), k, dim, largest, /*stable=*/true, values, indices);
+    return;
+  }
+
   if (k > 256) { // The segmented_group_select_pairs supports k<=256
-    topk_out_with_sort(self.contiguous(), k, dim, largest, values, indices);
+    topk_out_with_sort(
+        self.contiguous(), k, dim, largest, /*stable=*/false, values, indices);
     return;
   }
 
