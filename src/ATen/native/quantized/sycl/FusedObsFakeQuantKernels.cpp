@@ -44,13 +44,13 @@ void MovingAverageMinMax(
       scalar_t averaging_const_t = static_cast<scalar_t>(averaging_const);
 
       scalar_t adjusted_min =
-          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_min[i]))
+          sycl::isinf(static_cast<at::opmath_type<scalar_t>>(running_min[i]))
           ? curr_min
           : (running_min[i]) +
               averaging_const_t * (curr_min - (running_min[i]));
 
       scalar_t adjusted_max =
-          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_max[i]))
+          sycl::isinf(static_cast<at::opmath_type<scalar_t>>(running_max[i]))
           ? curr_max
           : (running_max[i]) +
               averaging_const_t * (curr_max - (running_max[i]));
@@ -182,7 +182,7 @@ void ChooseQuantizationParamsKernelImpl(
 
     // Moving this check outside this function would result in extra Device to
     // Host copy of the min and max val which would result in a perf hit.
-    if (scale[i] == 0.0f || std::isinf(1.0f / scale[i])) {
+    if (scale[i] == 0.0f || sycl::isinf(1.0f / scale[i])) {
       scale[i] = 0.1;
     }
 

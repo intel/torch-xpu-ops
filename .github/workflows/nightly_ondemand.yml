@@ -163,7 +163,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc-1100
+      runner: pvc
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -181,7 +181,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc-1100' }}
+      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -206,7 +206,8 @@ jobs:
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     name: linux-microbench
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
+    # if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
+    if: false # Temporarily disabled
     permissions:
       actions: read
       contents: read
@@ -218,7 +219,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc-1100
+      runner: pvc
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
