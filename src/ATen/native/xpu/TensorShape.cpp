@@ -9,8 +9,6 @@
  */
 
 #include <ATen/MemoryOverlap.h>
-#include <ATen/NamedTensorUtils.h>
-#include <ATen/TensorNames.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Resize.h>

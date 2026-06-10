@@ -27,7 +27,7 @@ struct AmpNonFiniteCheckUnscaleFunctor {
 
   scalar_t operator()(scalar_t val_in) const {
     auto val = static_cast<opmath_t>(val_in);
-    if (std::isinf(val) || std::isnan(val)) {
+    if (sycl::isinf(val) || sycl::isnan(val)) {
       *found_inf_ptr_ = 1.f;
     }
     const auto inv_scale_val = *inv_scale_ptr_;
@@ -35,12 +35,14 @@ struct AmpNonFiniteCheckUnscaleFunctor {
         inv_scale_val == 1.f ? val : val * inv_scale_val);
   }
 
-  AmpNonFiniteCheckUnscaleFunctor(float* found_inf_ptr, float* inv_scale_ptr)
+  AmpNonFiniteCheckUnscaleFunctor(
+      float* found_inf_ptr,
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_non_finite_check_and_unscale_kernel(
@@ -56,7 +58,7 @@ void amp_non_finite_check_and_unscale_kernel(
       "amp_non_finite_check_and_unscale_xpu",
       [&iter, &found_inf, &inv_scale] {
         auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         AmpNonFiniteCheckUnscaleFunctor<scalar_t> f(
             found_inf_ptr, inv_scale_ptr);
@@ -67,7 +69,7 @@ void amp_non_finite_check_and_unscale_kernel(
 template <typename opmath_t>
 struct AmpForeachNonFiniteCheckUnscaleFunctor {
   opmath_t operator()(opmath_t val) const {
-    if (std::isinf(val) || std::isnan(val)) {
+    if (sycl::isinf(val) || sycl::isnan(val)) {
       *found_inf_ptr_ = 1.f;
     }
     const auto inv_scale_val = *inv_scale_ptr_;
@@ -77,12 +79,12 @@ struct AmpForeachNonFiniteCheckUnscaleFunctor {
 
   AmpForeachNonFiniteCheckUnscaleFunctor(
       float* found_inf_ptr,
-      float* inv_scale_ptr)
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_foreach_non_finite_check_and_unscale_kernel(
@@ -96,7 +98,7 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
       "amp_foreach_non_finite_check_and_unscale_xpu",
       [&scaled_grads, &found_inf, &inv_scale] {
         auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         using opmath_t = at::opmath_type<scalar_t>;
 
@@ -128,7 +130,7 @@ struct AmpUpdateScaleKernelFunctor {
       auto successful = (*growth_tracker_) + 1;
       if (successful == growth_interval_) {
         auto new_scale = static_cast<float>((*current_scale_) * growth_factor_);
-        if (!std::isinf(new_scale)) {
+        if (!sycl::isinf(new_scale)) {
           *current_scale_ = new_scale;
         }
         *growth_tracker_ = 0;

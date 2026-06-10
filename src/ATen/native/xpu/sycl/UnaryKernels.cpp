@@ -12,9 +12,11 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
+#include <c10/util/complex.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -54,10 +56,14 @@ struct RsqrtFunctor<c10::complex<T>> {
   }
 };
 
-template <typename scalar_t, typename acc_t = scalar_t>
+template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct ExpFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp(static_cast<acc_t>(a));
+    if constexpr (c10::is_complex<acc_t>::value) {
+      return std::exp(static_cast<acc_t>(a));
+    } else {
+      return sycl::exp(static_cast<acc_t>(a));
+    }
   }
 };
 
@@ -240,7 +246,8 @@ void nan_to_num_kernel(
 template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::expm1(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::expm1(static_cast<opmath_t>(a));
   }
 };
 
@@ -248,7 +255,7 @@ template <typename T>
 struct Expm1Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
     auto a = std::sin(T(.5) * x.imag());
-    auto re = std::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
+    auto re = sycl::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
     auto im = std::exp(x.real()) * std::sin(x.imag());
     return c10::complex<T>(re, im);
   }
@@ -266,9 +273,10 @@ void expm1_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FrexpFunctor {
   std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     int32_t exponent;
-    scalar_t mantissa = std::frexp(a, &exponent);
-    return {mantissa, exponent};
+    opmath_t mantissa = sycl::frexp(static_cast<opmath_t>(a), &exponent);
+    return {static_cast<scalar_t>(mantissa), exponent};
   }
 };
 

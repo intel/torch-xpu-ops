@@ -49,6 +49,47 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 
+def _group_quantize_tensor_impl(w, n_bit=4, q_group_size=16):
+    assert w.dim() == 2
+    w = w.transpose(0, 1).contiguous()
+    assert q_group_size > 1
+    assert w.shape[-1] % q_group_size == 0
+
+    to_quant = w.reshape(-1, q_group_size)
+    assert torch.isnan(to_quant).sum() == 0
+
+    max_val = to_quant.amax(dim=1, keepdim=True)
+    min_val = to_quant.amin(dim=1, keepdim=True)
+    max_int = 2**n_bit - 1
+    min_int = 0
+    scales = (max_val - min_val).clamp(min=1e-6) / max_int
+    assert torch.isnan(scales).sum() == 0
+    zeros = min_val + scales * (2 ** (n_bit - 1))
+    assert torch.isnan(zeros).sum() == 0
+
+    out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
+    assert torch.isnan(out).sum() == 0
+
+    out = out.to(dtype=torch.uint8).reshape(w.shape)
+    # The cpu uses big endian while the xpu uses little endian
+    if out.device.type == "xpu":
+        out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
+    elif out.device != torch.device("cpu"):
+        out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
+
+    scales = scales.view(w.shape[0], -1)
+    zeros = zeros.view(w.shape[0], -1)
+    scales_and_zeros = torch.cat(
+        [
+            scales.reshape(scales.size(0), scales.size(1), 1),
+            zeros.reshape(zeros.size(0), zeros.size(1), 1),
+        ],
+        2,
+    )
+    scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
+    return out, scales_and_zeros
+
+
 def large_bmm_mm_backward(self, device):
     A = torch.randn([1024, 2, 1024], device="xpu").mT.contiguous().mT
     B = torch.randn([1024, 65536], device="xpu", requires_grad=True)
@@ -68,9 +109,28 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
-@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    pass
+    m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
+    m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublaslt")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out1 = torch.nn.functional.linear(m1, m2)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublas")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out2 = torch.nn.functional.linear(m1, m2)
+
+    # Although blas preferred flags doesn't affect CPU currently,
+    # we set this to make sure the flag can switch back to default normally.
+    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
+
+    self.assertEqual(out1, out2)
+    self.assertEqual(out_ref, out2.cpu())
 
 
 @dtypes(torch.float, torch.double)
@@ -251,50 +311,12 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 1024])
+@parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
-        assert w.dim() == 2
-        w = w.transpose(0, 1).contiguous()
-        assert q_group_size > 1
-        assert w.shape[-1] % q_group_size == 0
-
-        to_quant = w.reshape(-1, q_group_size)
-        assert torch.isnan(to_quant).sum() == 0
-
-        max_val = to_quant.amax(dim=1, keepdim=True)
-        min_val = to_quant.amin(dim=1, keepdim=True)
-        max_int = 2**n_bit - 1
-        min_int = 0
-        scales = (max_val - min_val).clamp(min=1e-6) / max_int
-        assert torch.isnan(scales).sum() == 0
-        zeros = min_val + scales * (2 ** (n_bit - 1))
-        assert torch.isnan(zeros).sum() == 0
-
-        out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
-        assert torch.isnan(out).sum() == 0
-
-        out = out.to(dtype=torch.uint8).reshape(w.shape)
-        # The cpu uses big endian while the xpu uses little endian
-        if out.device.type == "xpu":
-            out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
-        elif out.device != torch.device("cpu"):
-            out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
-        # Scales and zeros for the same q-group should be contiguous, so we can
-        # load as a 32-bit word
-        scales = scales.view(w.shape[0], -1)
-        zeros = zeros.view(w.shape[0], -1)
-        scales_and_zeros = torch.cat(
-            [
-                scales.reshape(scales.size(0), scales.size(1), 1),
-                zeros.reshape(zeros.size(0), zeros.size(1), 1),
-            ],
-            2,
-        )
-        scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
-        return out, scales_and_zeros
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
 
     def convert_weight_to_int4pack(b):
         b_tmp, b_scales_and_zeros = _group_quantize_tensor(
@@ -352,6 +374,53 @@ def _int4_mm(self, device, m, k, n):
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
+
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+@parametrize("m", [32, 64])
+@parametrize("k", [32, 64])
+@parametrize("n", [48, 64])
+def _compile_int4_mm(self, device, m, k, n):
+    def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
+
+    q_group = 32
+    inner_k_tiles = 2
+
+    torch.manual_seed(1)
+    a = torch.rand((m, k), dtype=torch.bfloat16, device=device)
+    b = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+
+    b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
+
+    if self.device_type == "cpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
+            return torch._weight_int4pack_mm_for_cpu(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
+
+    elif self.device_type == "xpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = b_tmp.view(torch.int32)
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+    else:
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+    res = int4_mm(a, b_tmp, b_scales_and_zeros)
+    ref = torch.mm(a, b)
+
+    mean_err = ((res - ref).abs() / ref).mean()
+    self.assertTrue(mean_err < 0.05)
 
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
@@ -494,6 +563,35 @@ def __tunableop_ctx(self):
                 pass
 
 
+@dtypes(*floating_and_complex_types())
+def matrix_rank_out_errors_and_warnings(self, device, dtype):
+    # dtypes should be safely castable
+    a = torch.eye(2, dtype=dtype, device=device)
+    out = torch.empty(0, dtype=torch.bool, device=device)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Bool"):
+        torch.linalg.matrix_rank(a, out=out)
+
+    # device should match
+    wrong_device = self._get_other_device(dtype=dtype)
+    if wrong_device is not None:
+        out = torch.empty(0, dtype=dtype, device=wrong_device)
+        with self.assertRaisesRegex(RuntimeError, "tensors to be on the same device"):
+            torch.linalg.matrix_rank(a, out=out)
+
+    # if out tensor with wrong shape is passed a warning is given
+    with warnings.catch_warnings(record=True) as w:
+        out = torch.empty(3, dtype=dtype, device=device)
+        # Trigger warning
+        torch.linalg.matrix_rank(a, out=out)
+        # Expect resize warning, and possibly an XPU-to-CPU fallback warning
+        self.assertTrue(len(w) in (1, 2))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[0].message)
+        )
+        if len(w) == 2:
+            self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -564,6 +662,56 @@ def pinv_errors_and_warnings(self, device, dtype):
         RuntimeError, "rtol tensor of complex type is not supported"
     ):
         torch.linalg.pinv(a, rtol=rtol)
+
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+def _int_mm_errors(self, device):
+    def genf_int(x, y):
+        return torch.empty((x, y), dtype=torch.int8, device=device)
+
+    # XPU does not enforce CUDA-specific size constraints (size(0)>16,
+    # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
+    # are omitted here.
+
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"self.size\(1\) needs to match mat2.size\(0\) but got 8 and 7",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(7, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result dtype to be of type kInt but got float",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 32).float()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 15",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(15, 32).int()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 16",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 31).int()
+        ),
+    )
+
+
+TestLinalg.test__int_mm_errors = _int_mm_errors
 
 
 @dtypes(*floating_and_complex_types())
@@ -663,6 +811,7 @@ TestLinalg.test_preferred_linalg_library = preferred_linalg_library
 TestLinalg.test_addbmm = addbmm
 TestLinalg.test__int_mm = _int_mm
 TestLinalg.test__int4_mm = _int4_mm
+TestLinalg.test_compile_int4_mm = _compile_int4_mm
 TestLinalg.test_matmul_small_brute_force_1d_Nd = matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
@@ -672,6 +821,9 @@ TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
+TestLinalg.test_matrix_rank_out_errors_and_warnings = (
+    matrix_rank_out_errors_and_warnings
+)
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)

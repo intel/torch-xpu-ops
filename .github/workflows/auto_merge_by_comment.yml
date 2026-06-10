@@ -6,8 +6,9 @@ on:
 
 permissions:
   checks: read
+  contents: write
   issues: write
-  pull-requests: read
+  pull-requests: write
   statuses: read
 
 jobs:
@@ -18,6 +19,17 @@ jobs:
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       && (startsWith(github.event.comment.body, '/merge -f') || startsWith(github.event.comment.body, '/merge'))
     steps:
+      - name: Acknowledge Command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1'
+            });
+
       - name: Get PR Info
         uses: actions/github-script@v7
         id: prinfo
@@ -40,16 +52,25 @@ jobs:
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
 
-            const reviews = await github.rest.pulls.listReviews({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber
-            });
-            // Deduplicate: keep only the latest review per user
+            // Paginate to get all reviews
+            const reviews = await github.paginate(
+              github.rest.pulls.listReviews,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              }
+            );
+
+            // Deduplicate: keep only the latest non-COMMENTED review per user.
+            // COMMENTED reviews don't change approval state, so we skip them
+            // when determining a user's effective review decision.
             const latestByUser = new Map();
-            for (const r of reviews.data) {
+            for (const r of reviews) {
+              if (r.state === 'COMMENTED') continue;
               latestByUser.set(r.user.login, r);
             }
+
             const approvals = [...latestByUser.values()].filter(r => r.state === 'APPROVED');
             core.setOutput('approval_count', approvals.length);
 
@@ -77,7 +98,8 @@ jobs:
               github.rest.checks.listForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: sha
+                ref: sha,
+                per_page: 100
               }),
               github.rest.repos.getCombinedStatusForRef({
                 owner: context.repo.owner,
@@ -99,8 +121,10 @@ jobs:
               return;
             }
 
+            // 'neutral' and 'skipped' are acceptable conclusions
+            const acceptableConclusions = new Set(['success', 'skipped', 'neutral']);
             const failedChecks = checks.data.check_runs
-              .filter(c => c.conclusion !== 'skipped' && c.conclusion !== 'success');
+              .filter(c => !acceptableConclusions.has(c.conclusion));
             const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
 
             if (failedChecks.length > 0 || statusFailed) {
@@ -125,11 +149,10 @@ jobs:
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const mergeable = '${{ steps.prinfo.outputs.mergeable }}';
-            const mergeableState = '${{ steps.prinfo.outputs.mergeable_state }}';
 
             if (mergeable === 'null') {
               // GitHub hasn't computed mergeability yet — retry after a short delay
-              await new Promise(r => setTimeout(r, 3000));
+              await new Promise(r => setTimeout(r, 5000));
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -160,33 +183,25 @@ jobs:
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
         with:
-          github-token: ${{ secrets.MERGE_TOKEN }}
+          github-token: ${{ secrets.MERGE_TOKEN || github.token }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const forceMerge = process.env.FORCE_MERGE === 'true';
             const author = context.payload.comment.user.login;
 
             if (forceMerge) {
-              // Check if comment author is a maintainer
-              const teamSlug = 'torch-xpu-ops-maintain'; // Adjust to actual team name
-              try {
-                const teamMembers = await github.rest.teams.listMembersInOrg({
-                  org: context.repo.owner,
-                  team_slug: teamSlug
+              // Check if comment author is a maintainer via author_association
+              // (avoids dependency on a specific team slug that may not exist)
+              const authorAssociation = context.payload.comment.author_association;
+              if (!['OWNER', 'MEMBER'].includes(authorAssociation)) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.'
                 });
-                const isMaintainer = teamMembers.data.some(member => member.login === author);
-                if (!isMaintainer) {
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: prNumber,
-                    body: '⛔ Only maintainers can force merge. Please contact a maintainer.'
-                  });
-                  core.setFailed('Force merge not allowed: author is not a maintainer.');
-                  return;
-                }
-              } catch (e) {
-                core.warning(`Could not verify team membership: ${e.message}. Proceeding based on author_association.`);
+                core.setFailed('Force merge not allowed: author is not a maintainer.');
+                return;
               }
             }
 
@@ -208,7 +223,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: `❌ Failed to merge PR: ${e.message}`
+                body: `❌ Failed to merge PR: ${e.message}\n\nPlease ensure the repository has a \`MERGE_TOKEN\` secret configured with \`contents: write\` permission, or that the default GITHUB_TOKEN has sufficient permissions.`
               });
               core.setFailed(`Merge failed: ${e.message}`);
             }
