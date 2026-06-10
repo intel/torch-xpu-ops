@@ -309,24 +309,26 @@ int xecore_count = zeDeviceGetSubsliceCount(device);  // legacy API name
 
 ## Subgroup Reduction Anti-Pattern
 
-**Principle: Never use `sycl::shift_group_left` in a loop to perform subgroup reductions (sum, min, max, mean). Always use `sycl::reduce_over_group` instead.**
+**Principle: Never use `sycl::shift_group_left` combined with a reduction operation to perform subgroup reductions. Always use `sycl::reduce_over_group` instead.**
 
 This is a **🔴 Must Fix** category.
 
+### Detection Criterion
+
+Flag any code where `sycl::shift_group_left` is combined with a reduction combiner (any binary operation that accumulates values: add, min, max, mean, product, bitwise-or/and, etc.). The true signal is the **shift + combine** combination, not the loop itself — the loop may be at a different call site or abstracted behind a helper.
+
 ### The Problem
 
-The following pattern manually implements subgroup reduction using shift operations:
+`sycl::shift_group_left` produces excessive integer ALU instructions for index manipulation, which stalls the ALU-INT pipeline and degrades performance. The SYCL runtime's built-in `reduce_over_group` can use hardware-optimized reduction paths.
 
 ```cpp
 // 🔴 Bad — shift_group_left generates massive int-related instructions,
 // causing ALU-INT pipe stall
 for (int offset = 1; offset < sg_size; offset <<= 1) {
   arg_t other = sycl::shift_group_left(sg, value[i], offset);
-  value[i] = combine(value[i], other);  // combine = add/min/max
+  value[i] = combine(value[i], other);  // combine = any reduction op
 }
 ```
-
-`sycl::shift_group_left` produces excessive integer ALU instructions for index manipulation, which stalls the ALU-INT pipeline and degrades performance. The SYCL runtime's built-in `reduce_over_group` can use hardware-optimized reduction paths.
 
 ### The Fix
 
@@ -341,14 +343,21 @@ value[i] = sycl::reduce_over_group(sg, value[i], sycl::maximum<arg_t>()); // for
 
 ### Variants to Flag
 
-All of these are the same anti-pattern regardless of loop direction:
+All of these are the same anti-pattern:
 
 ```cpp
-// 🔴 Bad — ascending offset
+// 🔴 Bad — inline loop (any direction)
 for (int offset = 1; offset < sg_size; offset <<= 1) { ... shift_group_left ... }
-
-// 🔴 Bad — descending offset
 for (int offset = (sg_size >> 1); offset > 0; offset >>= 1) { ... shift_group_left ... }
+
+// 🔴 Bad — shift+combine split into a functor (loop lives elsewhere)
+struct ShiftAndCombine {
+  arg_t operator()(sycl::sub_group sg, arg_t value, int offset) const {
+    arg_t other = sycl::shift_group_left(sg, value, offset);
+    return combine_(value, other);
+  }
+  BinaryOp combine_;
+};
 
 // 🔴 Bad — with vectorized inner loop
 for (int offset = 1; offset < sg_size; offset <<= 1) {
@@ -362,8 +371,9 @@ for (int offset = 1; offset < sg_size; offset <<= 1) {
 ### Where to Check
 
 - `src/ATen/native/xpu/sycl/` — All SYCL kernel files
-- Any file using `sycl::shift_group_left` in combination with arithmetic/comparison operators
+- Any file using `sycl::shift_group_left` in combination with a reduction combiner
 - Reduction kernels, softmax, norm, and scan operations are common locations
+- Functors or lambdas whose body contains shift+combine — trace callers for the loop
 
 ## Files to Reference
 

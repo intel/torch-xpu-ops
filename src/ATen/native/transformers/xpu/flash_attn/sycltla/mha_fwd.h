@@ -19,7 +19,9 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wchanges-meaning"
+#if __GNUC__ >= 14
 #pragma GCC diagnostic ignored "-Wtemplate-id-cdtor"
+#endif
 
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
