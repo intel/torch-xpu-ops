@@ -27,10 +27,16 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────
-KNOWN_SUITES = {"huggingface", "timm_models", "torchbench"}
-KNOWN_DATA_TYPES = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16"}
+KNOWN_SUITES = {"huggingface", "timm_models", "torchbench", "pt2e"}
+KNOWN_DATA_TYPES = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16", "int8"}
 KNOWN_MODES = {"inference", "training"}
 DEFAULT_PERF_THRESHOLD = 0.1  # 10% change = regression / improvement
+
+# PT2E accuracy thresholds (max allowed top1 drop as fraction)
+PT2E_ACC_THRESHOLDS = {
+    "float32": 0.0,   # 0% tolerance
+    "int8": 0.05,     # 5% tolerance
+}
 
 MERGE_KEYS = ["suite", "data_type", "mode", "model"]
 
@@ -82,7 +88,7 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
 
     # ── Pattern 1: dash-separated ──
     if "inductor-" in filename:
-        base = filename.split("inductor-")[-1][:-4]
+        base = filename.split("inductor-results-")[-1][:-4]
         parts = base.split("-")
         if len(parts) < 5:
             raise ValueError(f"Too few dash-separated parts in: {filename}")
@@ -164,7 +170,7 @@ def _best_performance_record(records: list[dict]) -> dict:
 
 
 # ── CSV Loading ───────────────────────────────────────────────────────
-def _read_csv_safe(path: str, usecols: list[str]) -> pd.DataFrame:
+def _read_csv_safe(path: str, usecols: list[str] | None = None) -> pd.DataFrame:
     """Read a CSV with graceful fallback for older pandas versions."""
     try:
         return pd.read_csv(
@@ -197,8 +203,12 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
         if res_type != result_type:
             continue
 
+        is_pt2e = suite == "pt2e"
         try:
-            df = _read_csv_safe(fpath, usecols)
+            if is_pt2e:
+                df = _read_csv_safe(fpath)
+            else:
+                df = _read_csv_safe(fpath, usecols)
         except Exception as exc:
             log.warning("Failed to read %s: %s", fpath, exc)
             continue
@@ -208,30 +218,56 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
             if pd.isna(dev) or str(dev).strip() not in ("cpu", "xpu", "cuda"):
                 continue
 
-            key = (suite, data_type, mode, row["name"])
+            # For PT2E int8 performance, append quantization type to data_type
+            rec_data_type = data_type
+            if is_pt2e and data_type == "int8" and result_type == "performance":
+                quant = str(row.get("quantization", "")).strip()
+                if quant:
+                    rec_data_type = f"int8_{quant}"
+
+            key = (suite, rec_data_type, mode, row["name"])
             rec = {
-                "suite": suite, "data_type": data_type,
+                "suite": suite, "data_type": rec_data_type,
                 "mode": mode, "model": row["name"],
                 "batch_size": row["batch_size"],
             }
 
             if result_type == "accuracy":
-                rec["accuracy"] = row["accuracy"]
-            else:
-                speedup = pd.to_numeric(row.get("speedup"), errors="coerce")
-                abs_lat = pd.to_numeric(row.get("abs_latency"), errors="coerce")
-                if pd.isna(speedup) or pd.isna(abs_lat):
-                    log.debug(
-                        "Missing speedup/abs_latency for %s in %s",
-                        row.get("name"), fpath,
-                    )
-                    rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
+                if is_pt2e:
+                    # PT2E accuracy: preserve top1/top5 as raw numeric values
+                    top1 = pd.to_numeric(row.get("top1"), errors="coerce")
+                    top5 = pd.to_numeric(row.get("top5"), errors="coerce")
+                    rec["top1"] = top1 if pd.notna(top1) else np.nan
+                    rec["top5"] = top5 if pd.notna(top5) else np.nan
+                    rec["accuracy"] = f"pass_top1={top1:.3f}" if pd.notna(top1) else "fail_to_run"
                 else:
-                    rec.update(
-                        eager=speedup * abs_lat,
-                        inductor=abs_lat,
-                        speedup=speedup,
-                    )
+                    rec["accuracy"] = row["accuracy"]
+            else:
+                if is_pt2e:
+                    # PT2E performance: preserve throughput and quantization
+                    throughput = pd.to_numeric(row.get("throughput"), errors="coerce")
+                    quant = str(row.get("quantization", "")).strip()
+                    rec["throughput"] = throughput if pd.notna(throughput) and throughput > 0 else np.nan
+                    rec["quantization"] = quant
+                    if pd.isna(throughput) or throughput <= 0:
+                        rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
+                    else:
+                        rec.update(eager=np.nan, inductor=throughput, speedup=np.nan)
+                else:
+                    speedup = pd.to_numeric(row.get("speedup"), errors="coerce")
+                    abs_lat = pd.to_numeric(row.get("abs_latency"), errors="coerce")
+                    if pd.isna(speedup) or pd.isna(abs_lat):
+                        log.debug(
+                            "Missing speedup/abs_latency for %s in %s",
+                            row.get("name"), fpath,
+                        )
+                        rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
+                    else:
+                        rec.update(
+                            eager=speedup * abs_lat,
+                            inductor=abs_lat,
+                            speedup=speedup,
+                        )
 
             raw.setdefault(key, []).append(rec)
 
@@ -247,6 +283,47 @@ def _is_acc_pass(val) -> bool:
 
 def _is_acc_fail(val) -> bool:
     return pd.notna(val) and "pass" not in str(val) and str(val).strip() != ""
+
+
+def _extract_pt2e_top1(val) -> float:
+    """Extract numeric top1 value from PT2E accuracy string like 'pass_top1=56.556'."""
+    if pd.isna(val):
+        return np.nan
+    s = str(val)
+    if "top1=" in s:
+        try:
+            return float(s.split("top1=")[1])
+        except (ValueError, IndexError):
+            return np.nan
+    return np.nan
+
+
+def _classify_pt2e_accuracy(row: pd.Series) -> str:
+    """Classify PT2E accuracy by comparing top1 values with dtype-specific thresholds."""
+    tgt, bsl = row.get("accuracy_target"), row.get("accuracy_baseline")
+    tgt_top1 = _extract_pt2e_top1(tgt)
+    bsl_top1 = _extract_pt2e_top1(bsl)
+    data_type = str(row.get("data_type", "float32"))
+
+    # Determine threshold based on dtype (int8 variants all use int8 threshold)
+    dt_key = "int8" if "int8" in data_type else data_type
+    threshold = PT2E_ACC_THRESHOLDS.get(dt_key, 0.0)
+
+    tgt_valid = pd.notna(tgt_top1) and tgt_top1 > 0
+    bsl_valid = pd.notna(bsl_top1) and bsl_top1 > 0
+
+    if tgt_valid and bsl_valid:
+        # Compare: if target drops more than threshold below baseline, it's a regression
+        if bsl_top1 > 0 and (bsl_top1 - tgt_top1) / bsl_top1 > threshold:
+            return "new_failed"
+        if bsl_top1 > 0 and (tgt_top1 - bsl_top1) / bsl_top1 > threshold:
+            return "new_passed"
+        return "no_changed"
+    if tgt_valid and not bsl_valid:
+        return "new_case"
+    if bsl_valid and not tgt_valid:
+        return "not_run"
+    return "no_changed"
 
 
 def _is_positive(val) -> bool:
@@ -316,12 +393,226 @@ def merge_accuracy(
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors="coerce").astype("Int64")
 
-    merged["comparison"] = merged.apply(_classify_accuracy, axis=1)
+    # Use PT2E-specific classifier for pt2e suite (numeric top1 comparison)
+    is_pt2e = merged["suite"] == "pt2e" if "suite" in merged.columns else pd.Series(False, index=merged.index)
+    merged["comparison"] = ""
+    if is_pt2e.any():
+        merged.loc[is_pt2e, "comparison"] = merged[is_pt2e].apply(_classify_pt2e_accuracy, axis=1)
+    if (~is_pt2e).any():
+        merged.loc[~is_pt2e, "comparison"] = merged[~is_pt2e].apply(_classify_accuracy, axis=1)
 
     for c in ACC_OUTPUT_COLS:
         if c not in merged.columns:
             merged[c] = None
     return merged[ACC_OUTPUT_COLS].sort_values(MERGE_KEYS).reset_index(drop=True)
+
+
+# ── PT2E Accuracy Merge (pivoted by dtype) ────────────────────────────
+PT2E_ACC_OUTPUT_COLS = [
+    "suite", "mode", "model", "category",
+    "fp32_target", "int8_target", "int8/fp32_target",
+    "fp32_baseline", "int8_baseline", "int8/fp32_baseline",
+    "fp32_comparison", "int8_comparison",
+]
+
+
+def _pt2e_acc_compare(tgt: float, bsl: float, threshold: float) -> str:
+    """Compare two top1/top5 values with a relative threshold."""
+    tgt_valid = pd.notna(tgt) and tgt > 0
+    bsl_valid = pd.notna(bsl) and bsl > 0
+    if tgt_valid and bsl_valid:
+        if bsl > 0 and (bsl - tgt) / bsl > threshold:
+            return "new_failed"
+        if bsl > 0 and (tgt - bsl) / bsl > threshold:
+            return "new_passed"
+        return "no_changed"
+    if tgt_valid and not bsl_valid:
+        return "new_case"
+    if bsl_valid and not tgt_valid:
+        return "not_run"
+    return "no_changed"
+
+
+def merge_pt2e_accuracy(
+    target_records: list[dict], baseline_records: list[dict],
+) -> pd.DataFrame:
+    """Merge PT2E accuracy records into a pivoted format by dtype (fp32/int8)."""
+    if not target_records and not baseline_records:
+        return pd.DataFrame(columns=PT2E_ACC_OUTPUT_COLS)
+
+    tgt = pd.DataFrame(target_records) if target_records else pd.DataFrame()
+    bsl = pd.DataFrame(baseline_records) if baseline_records else pd.DataFrame()
+
+    # Build lookup: (mode, model, data_type) -> {top1, top5}
+    def _build_map(df: pd.DataFrame) -> dict:
+        m: dict[tuple, dict] = {}
+        if df.empty:
+            return m
+        for _, row in df.iterrows():
+            key = (row["mode"], row["model"], row.get("data_type", ""))
+            m[key] = {"top1": row.get("top1", np.nan), "top5": row.get("top5", np.nan)}
+        return m
+
+    tgt_map = _build_map(tgt)
+    bsl_map = _build_map(bsl)
+
+    # Collect all (mode, model) pairs
+    all_keys: set[tuple[str, str]] = set()
+    for mode, model, _ in list(tgt_map.keys()) + list(bsl_map.keys()):
+        all_keys.add((mode, model))
+
+    rows = []
+    for mode, model in sorted(all_keys):
+        # For each metric (top1, top5)
+        for category in ("top1", "top5"):
+            fp32_tgt = tgt_map.get((mode, model, "float32"), {}).get(category, np.nan)
+            int8_tgt = tgt_map.get((mode, model, "int8"), {}).get(category, np.nan)
+            fp32_bsl = bsl_map.get((mode, model, "float32"), {}).get(category, np.nan)
+            int8_bsl = bsl_map.get((mode, model, "int8"), {}).get(category, np.nan)
+
+            # Skip rows where all values are NaN
+            if all(pd.isna(v) for v in [fp32_tgt, int8_tgt, fp32_bsl, int8_bsl]):
+                continue
+
+            # Compute int8/fp32 ratios
+            int8_fp32_tgt = (int8_tgt / fp32_tgt) if (
+                pd.notna(int8_tgt) and pd.notna(fp32_tgt) and fp32_tgt > 0
+            ) else np.nan
+            int8_fp32_bsl = (int8_bsl / fp32_bsl) if (
+                pd.notna(int8_bsl) and pd.notna(fp32_bsl) and fp32_bsl > 0
+            ) else np.nan
+
+            # Per-dtype comparison
+            fp32_thresh = PT2E_ACC_THRESHOLDS.get("float32", 0.0)
+            int8_thresh = PT2E_ACC_THRESHOLDS.get("int8", 0.05)
+            fp32_comp = _pt2e_acc_compare(fp32_tgt, fp32_bsl, fp32_thresh)
+            int8_comp = _pt2e_acc_compare(int8_tgt, int8_bsl, int8_thresh)
+
+            rows.append({
+                "suite": "pt2e", "mode": mode, "model": model,
+                "category": category,
+                "fp32_target": round(fp32_tgt, 3) if pd.notna(fp32_tgt) else np.nan,
+                "int8_target": round(int8_tgt, 3) if pd.notna(int8_tgt) else np.nan,
+                "int8/fp32_target": round(int8_fp32_tgt, 4) if pd.notna(int8_fp32_tgt) else np.nan,
+                "fp32_baseline": round(fp32_bsl, 3) if pd.notna(fp32_bsl) else np.nan,
+                "int8_baseline": round(int8_bsl, 3) if pd.notna(int8_bsl) else np.nan,
+                "int8/fp32_baseline": round(int8_fp32_bsl, 4) if pd.notna(int8_fp32_bsl) else np.nan,
+                "fp32_comparison": fp32_comp,
+                "int8_comparison": int8_comp,
+            })
+
+    return pd.DataFrame(rows, columns=PT2E_ACC_OUTPUT_COLS)
+
+
+# ── PT2E Performance Merge (pivoted by quantization) ──────────────────
+PT2E_PERF_OUTPUT_COLS = [
+    "suite", "mode", "model",
+    "fp32_target", "symm_target", "asymm_target",
+    "symm/fp32_target", "asymm/fp32_target",
+    "fp32_baseline", "symm_baseline", "asymm_baseline",
+    "symm/fp32_baseline", "asymm/fp32_baseline",
+    "comparison",
+]
+
+
+def merge_pt2e_performance(
+    target_records: list[dict], baseline_records: list[dict],
+    threshold: float,
+) -> pd.DataFrame:
+    """Merge PT2E performance records into a pivoted format by quantization."""
+    if not target_records and not baseline_records:
+        return pd.DataFrame(columns=PT2E_PERF_OUTPUT_COLS)
+
+    tgt = pd.DataFrame(target_records) if target_records else pd.DataFrame()
+    bsl = pd.DataFrame(baseline_records) if baseline_records else pd.DataFrame()
+
+    # Build lookup: (mode, model) -> {fp32: throughput, symm: throughput, asymm: throughput}
+    def _build_map(df: pd.DataFrame) -> dict:
+        m: dict[tuple, dict] = {}
+        if df.empty:
+            return m
+        for _, row in df.iterrows():
+            key = (row["mode"], row["model"])
+            dt = str(row.get("data_type", ""))
+            quant = str(row.get("quantization", "")).strip()
+            throughput = row.get("throughput", np.nan)
+
+            if dt == "float32":
+                slot = "fp32"
+            elif quant in ("symm", "symmetric"):
+                slot = "symm"
+            elif quant in ("asymm", "asymmetric"):
+                slot = "asymm"
+            else:
+                slot = "fp32" if "float32" in dt else "symm"
+
+            m.setdefault(key, {})[slot] = throughput
+        return m
+
+    tgt_map = _build_map(tgt)
+    bsl_map = _build_map(bsl)
+
+    all_keys: set[tuple[str, str]] = set()
+    for k in list(tgt_map.keys()) + list(bsl_map.keys()):
+        all_keys.add(k)
+
+    rows = []
+    for mode, model in sorted(all_keys):
+        tgt_vals = tgt_map.get((mode, model), {})
+        bsl_vals = bsl_map.get((mode, model), {})
+
+        fp32_t = tgt_vals.get("fp32", np.nan)
+        symm_t = tgt_vals.get("symm", np.nan)
+        asymm_t = tgt_vals.get("asymm", np.nan)
+        fp32_b = bsl_vals.get("fp32", np.nan)
+        symm_b = bsl_vals.get("symm", np.nan)
+        asymm_b = bsl_vals.get("asymm", np.nan)
+
+        # Compute ratios (throughput: higher is better, so ratio = target/baseline)
+        def _ratio(val, fp32):
+            if pd.notna(val) and pd.notna(fp32) and fp32 > 0:
+                return round(val / fp32, 4)
+            return np.nan
+
+        symm_fp32_t = _ratio(symm_t, fp32_t)
+        asymm_fp32_t = _ratio(asymm_t, fp32_t)
+        symm_fp32_b = _ratio(symm_b, fp32_b)
+        asymm_fp32_b = _ratio(asymm_b, fp32_b)
+
+        # Overall comparison: check if any throughput regressed
+        comp = "no_changed"
+        for t_val, b_val in [(fp32_t, fp32_b), (symm_t, symm_b), (asymm_t, asymm_b)]:
+            t_ok = pd.notna(t_val) and t_val > 0
+            b_ok = pd.notna(b_val) and b_val > 0
+            if t_ok and b_ok:
+                ratio = t_val / b_val
+                if ratio < 1 - threshold:
+                    comp = "new_dropped"
+                    break
+                if ratio > 1 + threshold:
+                    comp = "new_improved"
+            elif t_ok and not b_ok:
+                comp = "new_passed"
+            elif b_ok and not t_ok:
+                comp = "new_failed"
+                break
+
+        rows.append({
+            "suite": "pt2e", "mode": mode, "model": model,
+            "fp32_target": round(fp32_t, 4) if pd.notna(fp32_t) else np.nan,
+            "symm_target": round(symm_t, 4) if pd.notna(symm_t) else np.nan,
+            "asymm_target": round(asymm_t, 4) if pd.notna(asymm_t) else np.nan,
+            "symm/fp32_target": symm_fp32_t,
+            "asymm/fp32_target": asymm_fp32_t,
+            "fp32_baseline": round(fp32_b, 4) if pd.notna(fp32_b) else np.nan,
+            "symm_baseline": round(symm_b, 4) if pd.notna(symm_b) else np.nan,
+            "asymm_baseline": round(asymm_b, 4) if pd.notna(asymm_b) else np.nan,
+            "symm/fp32_baseline": symm_fp32_b,
+            "asymm/fp32_baseline": asymm_fp32_b,
+            "comparison": comp,
+        })
+
+    return pd.DataFrame(rows, columns=PT2E_PERF_OUTPUT_COLS)
 
 
 # ── Performance Merge ─────────────────────────────────────────────────
@@ -770,7 +1061,7 @@ def print_report(
     target_acc_n: int, target_perf_n: int,
     baseline_acc_n: int, baseline_perf_n: int,
     acc_merged: pd.DataFrame, perf_merged: pd.DataFrame,
-    output_file: str,
+    output_file: str, title: str = "DYNAMO BENCHMARK COMPARISON",
 ) -> None:
     """Print a structured summary to stdout."""
     W = 64
@@ -778,7 +1069,7 @@ def print_report(
     thin = "-" * W
 
     print(f"\n{sep}")
-    print(f"{'DYNAMO BENCHMARK COMPARISON':^{W}}")
+    print(f"{title:^{W}}")
     print(sep)
 
     print(f"  {'Target records:':<28} acc={target_acc_n:<6} perf={target_perf_n}")
@@ -957,8 +1248,22 @@ Examples:
     baseline_perf = _apply_filters(baseline_perf)
 
     # ── Merge & compare ──
-    acc_merged = merge_accuracy(target_acc, baseline_acc)
-    perf_merged = merge_performance(target_perf, baseline_perf, args.threshold)
+    # Separate pt2e from regular suites
+    def _split_pt2e(records: list[dict]) -> tuple[list[dict], list[dict]]:
+        regular = [r for r in records if r["suite"] != "pt2e"]
+        pt2e = [r for r in records if r["suite"] == "pt2e"]
+        return regular, pt2e
+
+    target_acc_reg, target_acc_pt2e = _split_pt2e(target_acc)
+    target_perf_reg, target_perf_pt2e = _split_pt2e(target_perf)
+    baseline_acc_reg, baseline_acc_pt2e = _split_pt2e(baseline_acc)
+    baseline_perf_reg, baseline_perf_pt2e = _split_pt2e(baseline_perf)
+
+    acc_merged = merge_accuracy(target_acc_reg, baseline_acc_reg)
+    perf_merged = merge_performance(target_perf_reg, baseline_perf_reg, args.threshold)
+
+    acc_pt2e = merge_pt2e_accuracy(target_acc_pt2e, baseline_acc_pt2e)
+    perf_pt2e = merge_pt2e_performance(target_perf_pt2e, baseline_perf_pt2e, args.threshold)
 
     # ── Summary ──
     summary = generate_summary(acc_merged, perf_merged)
@@ -969,17 +1274,44 @@ Examples:
     else:
         write_csv(summary, acc_merged, perf_merged, out_base)
 
+    # Write pt2e outputs separately if present
+    has_pt2e = not acc_pt2e.empty or not perf_pt2e.empty
+    if has_pt2e:
+        pt2e_base = f"{out_base}_pt2e"
+        if not acc_pt2e.empty:
+            acc_pt2e.to_csv(f"{pt2e_base}_accuracy.csv", index=False, na_rep="")
+            log.info("Written %s", f"{pt2e_base}_accuracy.csv")
+        if not perf_pt2e.empty:
+            perf_pt2e.to_csv(f"{pt2e_base}_performance.csv", index=False, na_rep="")
+            log.info("Written %s", f"{pt2e_base}_performance.csv")
+
     if args.markdown:
         md_file = args.markdown if args.markdown.endswith(".md") else args.markdown + ".md"
         write_markdown(summary, acc_merged, perf_merged, args.threshold, md_file)
 
     # ── Console report ──
     print_report(
-        len(target_acc), len(target_perf),
-        len(baseline_acc), len(baseline_perf),
+        len(target_acc_reg), len(target_perf_reg),
+        len(baseline_acc_reg), len(baseline_perf_reg),
         acc_merged, perf_merged,
         args.output,
     )
+    if has_pt2e:
+        print("\n" + "=" * 60)
+        print(" PT2E BENCHMARK COMPARISON")
+        print("=" * 60)
+        if not acc_pt2e.empty:
+            print(f"\n  Accuracy: {len(acc_pt2e)} rows")
+            for col in ("fp32_comparison", "int8_comparison"):
+                if col in acc_pt2e.columns:
+                    counts = acc_pt2e[col].value_counts()
+                    print(f"    {col}: {dict(counts)}")
+        if not perf_pt2e.empty:
+            print(f"\n  Performance: {len(perf_pt2e)} rows")
+            if "comparison" in perf_pt2e.columns:
+                counts = perf_pt2e["comparison"].value_counts()
+                print(f"    comparison: {dict(counts)}")
+        print()
 
     return 0
 
