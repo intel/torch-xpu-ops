@@ -9,6 +9,8 @@ This doc contains the env settings and build commands for PyTorch Development.
 All paths and flags below are **environment-dependent placeholders** — adapt them to the local machine (oneAPI install location, target GPU arch, the PyTorch checkout's Python
 environment). `$PYTORCH_DIR` is the local PyTorch checkout (e.g. `~/pytorch`).
 
+Suggest that set the `$PYTORCH_DIR` and `$ONEAPI_PATH` for future use.
+
 ## Activate the environment (MANDATORY)
 
 Run these before ANY test or import of `torch`. Without them
@@ -16,6 +18,7 @@ Run these before ANY test or import of `torch`. Without them
 ```bash
 # Source oneAPI if the pytorch is locally built.
 # If it is installed via pip, this step is not needed.
+# The path and the TORCH_XPU_ARCH_LIST should match your own env
 source ~/intel/oneapi/setvars.sh --force 2>/dev/null
 # Activate the Python environment (adjust the path to your local setup)
 # For example, if it is the conda env, source the conda env instead.
@@ -30,6 +33,7 @@ After editing C++/SYCL, rebuild before verifying:
 
 - **pytorch repo:**
   ```bash
+  # The path and the TORCH_XPU_ARCH_LIST should match your own env
   source ~/intel/oneapi/setvars.sh --force 2>/dev/null \
     && git submodule sync && git submodule update --init --recursive \
     && TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation 2>&1 | tail -20
