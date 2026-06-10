@@ -28,8 +28,6 @@ PyTorch commit: abc123def
 ## Prerequisites
 
 - PyTorch built from source with XPU support (see `AGENTS.md` Build section)
-- `.env` configured for the oneAPI environment
-- **Always `source .env` before any Python/torch command**
 
 ## Step 1: Parse the Failure Report
 
@@ -52,16 +50,16 @@ Work from the PyTorch root directory.
    git checkout -b fix-<report_date>  # e.g. fix-20260608
    ```
 
-3. **Build PyTorch:**
+3. **Build PyTorch** (clean rebuild for accurate reproduction):
    ```bash
-   source .env
    python setup.py clean
    pip install -e . -v --no-build-isolation
    ```
+   For environment setup and building PyTorch, see `AGENTS.md` Build section.
 
 4. **Run each failing test:**
    ```bash
-   source .env && python <test_file> -k <test_name> 2>&1 | tail -80
+   python <test_file> -k <test_name> 2>&1 | tail -80
    ```
 
 5. **Confirm the failure reproduces** before proceeding to Step 3.
@@ -94,7 +92,7 @@ Read the corresponding CUDA implementation in `pytorch/aten/src/ATen/native/cuda
 
 1. Run the fixed test and confirm it passes:
    ```bash
-   source .env && python <test_file> -k <test_name> 2>&1 | tail -80
+   python <test_file> -k <test_name> 2>&1 | tail -80
    ```
 2. Run the full test file to check for regressions
 3. Lint:
@@ -157,7 +155,7 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
   ```bash
   git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
   # Do NOT commit xpu.txt — local-only override
-  source .env && pip install -e . -v --no-build-isolation
+  pip install -e . -v --no-build-isolation
   ```
   After verification, submit PR to `intel/torch-xpu-ops`, then update the pin in `pytorch/pytorch` once merged.
 
