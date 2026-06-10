@@ -239,11 +239,11 @@ jobs:
         run: |
           python -m pip install --quiet pandas numpy openpyxl PyGithub
 
-      - name: E2E comparison (compare-e2e.py)
+      - name: E2E comparison (run_benchmarks.summary)
         id: e2e-cmp
         continue-on-error: true
         run: |
-          # Flatten per-suite artifact directories so compare-e2e.py finds csvs
+          # Flatten per-suite artifact directories so the comparison finds csvs
           for side in target baseline; do
             base="${{ github.workspace }}/results/${side}/e2e"
             if compgen -G "${base}/Inductor-*-LTS2-XPU-E2E-Data-*" > /dev/null; then
@@ -253,7 +253,8 @@ jobs:
             fi
           done
           mkdir -p "${{ github.workspace }}/comparison"
-          python .github/scripts/compare-e2e.py \
+          rsync -avz --delete .github/scripts/run_benchmarks/ ./run_benchmarks/
+          python -m run_benchmarks.summary \
             -t "${{ github.workspace }}/results/target/e2e" \
             -b "${{ github.workspace }}/results/baseline/e2e" \
             -o "${{ github.workspace }}/comparison/e2e_comparison.xlsx" \
@@ -265,7 +266,7 @@ jobs:
             if [ -f "${{ github.workspace }}/comparison/e2e_comparison.md" ]; then
               cat "${{ github.workspace }}/comparison/e2e_comparison.md"
             else
-              echo "_compare-e2e.py produced no markdown report._"
+              echo "_run_benchmarks.summary produced no markdown report._"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
