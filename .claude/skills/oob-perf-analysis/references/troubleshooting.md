@@ -198,16 +198,6 @@ Interpretation rule:
 3. to check for overlap: compare `T2_device` (kernel sum) against T2 (wall clock); if `T2_device` significantly exceeds T2, some ops likely overlap and their individual device times are not purely additive to wall time
 4. if `copy_` does not appear in calcflops and its time is large, it may represent data movement that is overlapped with compute kernels at the hardware level
 
-## Symptom: Session Has Partial Pass Success
-
-This is expected in real Jenkins usage.
-
-Recommended handling:
-
-1. preserve all partial artifacts
-2. record pass-level incompleteness in metadata or workflow notes
-3. allow report generation to skip incomplete models rather than failing the whole session
-
 ## Practical Sanity Checks
 
 Use these rules before trusting the final report:
@@ -227,7 +217,6 @@ Re-run or recollect data when one of these is true:
 2. trace is missing
 3. unitrace collection clearly spans multiple iterations
 4. profiler inflation is severe enough to invalidate per-op timing
-5. artifact download is incomplete or corrupted
 
 ## When Not To Escalate
 

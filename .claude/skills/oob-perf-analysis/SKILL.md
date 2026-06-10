@@ -1,85 +1,67 @@
 ---
 name: oob-perf-analysis
-description: Generate and analyze T1/T2/R roofline reports for PyTorch OOB workloads comparing Intel XPU and NVIDIA CUDA. Use when working with OOB Jenkins sessions, eager profiling artifacts, per-model reports, fleet summaries, graph consistency, or XPU-vs-CUDA software efficiency analysis.
+description: Generate and analyze T1/T2/R roofline reports for PyTorch OOB workloads comparing Intel XPU and NVIDIA CUDA. Use when working with eager profiling artifacts, per-model reports, fleet summaries, graph consistency, or XPU-vs-CUDA software efficiency analysis.
 ---
 
 # OOB Perf Analysis Skill
 
-Use this skill for OOB eager performance analysis workflows centered on T1/T2/R roofline methodology, Jenkins session artifacts, per-model reports, fleet summaries, graph consistency, and developer-facing optimization insights.
+Analyzes OOB eager-mode performance using T1/T2/R roofline methodology to compare XPU and CUDA software efficiency.
 
-Detailed reference:
-- [overview.md](references/overview.md)
-- [eager-session-workflow.md](references/eager-session-workflow.md)
-- [eager-report-workflow.md](references/eager-report-workflow.md)
-- [fleet-summary-workflow.md](references/fleet-summary-workflow.md)
-- [graph-consistency-workflow.md](references/graph-consistency-workflow.md)
-- [insights-workflow.md](references/insights-workflow.md)
-- [data-contracts.md](references/data-contracts.md)
-- [jenkins-pass-reference.md](references/jenkins-pass-reference.md)
-- [report-structure-reference.md](references/report-structure-reference.md)
-- [troubleshooting.md](references/troubleshooting.md)
+Core outputs (all under `agent_space_xpu/`, git-ignored):
+- Per-model markdown reports under `agent_space_xpu/reports/<session>/models/`
+- Fleet summary under `agent_space_xpu/reports/<session>/summary_eager_inference.md`
+- Graph consistency report under `agent_space_xpu/reports/<session>/graph_consistency_eager_inference.md`
+- Insights summary under `agent_space_xpu/reports/<session>/insights_summary.md`
+
+## References
+
+| File | Purpose |
+|------|---------|
+| [methodology.md](references/methodology.md) | T1/T2/R definitions, formulas, classification thresholds |
+| [inputs.md](references/inputs.md) | Input file formats, completeness rules, output paths |
+| [per-model-report.md](references/per-model-report.md) | Per-model analysis steps and 5-section report structure |
+| [fleet-summary.md](references/fleet-summary.md) | Fleet aggregation steps and 7-section report structure |
+| [graph-consistency.md](references/graph-consistency.md) | Graph consistency analysis |
+| [insights.md](references/insights.md) | Developer-facing insights summary |
+| [troubleshooting.md](references/troubleshooting.md) | Diagnosing abnormal R, trace issues, and data problems |
 
 ## Usage Modes
 
-### Jenkins Session Mode
-
-Use when the user provides one of these inputs:
-
-1. A session YAML with Jenkins trigger-job URLs
-2. A request to launch a new OOB eager profiling session
-3. Existing Jenkins build URLs or build numbers that need downloading and reporting
-
-Follow:
-
-- [eager-session-workflow.md](references/eager-session-workflow.md)
-- [jenkins-pass-reference.md](references/jenkins-pass-reference.md)
-- [data-contracts.md](references/data-contracts.md)
-
 ### Per-Model Report Mode
 
-Use when the user already has raw OOB eager artifacts and wants model-level T1/T2/R analysis.
+User has raw artifacts and wants model-level T1/T2/R analysis.
 
-Follow:
-
-- [eager-report-workflow.md](references/eager-report-workflow.md)
-- [report-structure-reference.md](references/report-structure-reference.md)
-- [data-contracts.md](references/data-contracts.md)
+Follow: `methodology.md` → `inputs.md` → `per-model-report.md`
 
 ### Fleet Summary Mode
 
-Use when the user wants fleet-wide comparison, model scorecards, op ranking, or projection-quality aggregation across many models.
+User wants fleet-wide comparison, model scorecards, op ranking, or projection-quality aggregation.
 
-Follow:
+Follow: `fleet-summary.md` (references `graph-consistency.md` for Section 7)
 
-- [fleet-summary-workflow.md](references/fleet-summary-workflow.md)
-- [report-structure-reference.md](references/report-structure-reference.md)
-- [graph-consistency-workflow.md](references/graph-consistency-workflow.md)
+### Graph Consistency Mode
+
+User wants to compare CUDA vs XPU computational graphs.
+
+Follow: `graph-consistency.md`
 
 ### Insights Mode
 
-Use when per-model reports and fleet summary already exist and the user wants a concise developer-facing summary of XPU vs CUDA software efficiency and optimization priorities.
+Per-model reports and fleet summary exist; user wants a concise developer-facing summary.
 
-Follow:
-
-- [insights-workflow.md](references/insights-workflow.md)
+Follow: `insights.md`
 
 ### Troubleshooting Mode
 
-Use when the user asks why R is abnormal, why XPU trails CUDA, why graph consistency fails, or why traces and unitrace do not match expectations.
+User asks why R is abnormal, why traces disagree, or why results look suspicious.
 
-Follow:
-
-- [troubleshooting.md](references/troubleshooting.md)
-- [data-contracts.md](references/data-contracts.md)
-- [jenkins-pass-reference.md](references/jenkins-pass-reference.md)
+Follow: `troubleshooting.md`
 
 ## Operating Rules
 
-1. Do not rely on local helper scripts under `scripts/` as the workflow contract.
-2. Use the canonical session layout defined in `references/data-contracts.md`.
-3. Treat `references/report-structure-reference.md` as the source of truth for report section structure.
-4. Treat `references/jenkins-pass-reference.md` as the source of truth for the six-pass Jenkins workflow.
-5. Prefer direct skill-guided workflow execution over script invocation.
+1. Read `methodology.md` before computing any metric.
+2. Read `inputs.md` before accessing any artifact.
+3. Report structure is deterministic — same inputs produce same section layout.
 
 If a calling workflow explicitly requires a skill marker, append this exact literal final line:
 Custom skills applied: oob-perf-analysis.
