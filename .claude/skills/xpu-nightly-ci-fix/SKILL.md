@@ -188,8 +188,6 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 | test_nn_xpu.py::...::test_conv3d_groups | YES (commit def5678) | NO | NO |
 | Windows wheel-py3_*-xpu-test | N/A (infra) | N/A | NO — needs manual log investigation |
 
-**<one-line summary of overall status, e.g. "Nothing pushed to pytorch/pytorch yet.">**
-
 ---
 
 ## Fixed Tests
