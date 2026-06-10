@@ -13,6 +13,17 @@ file(GLOB xccl_cpp "*.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/Signal.cpp")
 
+# (__INTEL_LLVM_COMPILER >= 20260000). Skip compiling it on older compilers;
+# without this TU the XPU symmetric-memory allocator simply will not be
+# registered (header is still safe to include from other TUs since it does not
+# pull the experimental ipc_memory header).
+if(SYCL_COMPILER_VERSION VERSION_LESS 20260000)
+  message(STATUS
+    "XPU SymmetricMemory disabled: requires oneAPI >= 2026.0 "
+    "(SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})")
+  list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/XPUSymmetricMemory.cpp")
+endif()
+
 list(APPEND ATen_XPU_XCCL_SRCS ${xccl_cpp})
 list(APPEND ATen_XPU_SYCL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 list(APPEND ATen_XPU_SYCL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/Signal.cpp")
