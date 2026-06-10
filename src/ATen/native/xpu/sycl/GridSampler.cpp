@@ -93,8 +93,8 @@ struct GridSampler2dKernelFunctor {
         *out_ptr_NCHW = out_acc;
       }
     } else if (interpolation_mode_ == GridSamplerInterpolation::Nearest) {
-      index_t ix_nearest = static_cast<index_t>(std::nearbyint(ix));
-      index_t iy_nearest = static_cast<index_t>(std::nearbyint(iy));
+      index_t ix_nearest = static_cast<index_t>(sycl::rint(ix));
+      index_t iy_nearest = static_cast<index_t>(sycl::rint(iy));
 
       // assign nearest neighor pixel value to output pixel
       auto inp_ptr_NC = input_.data + n * inp_sN_;
@@ -494,8 +494,10 @@ struct GridSampler2dBackwardKernelFunctor {
       gGrid_ptr_NHW[1] = giy_mult * giy;
     } else if (interpolation_mode_ == GridSamplerInterpolation::Nearest) {
       if (input_requires_grad_) {
-        index_t ix_nearest = static_cast<index_t>(std::nearbyint(ix));
-        index_t iy_nearest = static_cast<index_t>(std::nearbyint(iy));
+        index_t ix_nearest = static_cast<index_t>(
+            sycl::rint(static_cast<at::opmath_type<scalar_t>>(ix)));
+        index_t iy_nearest = static_cast<index_t>(
+            sycl::rint(static_cast<at::opmath_type<scalar_t>>(iy)));
 
         // assign nearest neighor pixel value to output pixel
         const scalar_t* gOut_ptr_NCHW =
@@ -989,9 +991,9 @@ struct GridSampler3dKernelFunctor {
         *out_ptr_NCDHW = out_acc;
       }
     } else if (interpolation_mode_ == GridSamplerInterpolation::Nearest) {
-      index_t ix_nearest = static_cast<index_t>(std::nearbyint(ix));
-      index_t iy_nearest = static_cast<index_t>(std::nearbyint(iy));
-      index_t iz_nearest = static_cast<index_t>(std::nearbyint(iz));
+      index_t ix_nearest = static_cast<index_t>(sycl::rint(ix));
+      index_t iy_nearest = static_cast<index_t>(sycl::rint(iy));
+      index_t iz_nearest = static_cast<index_t>(sycl::rint(iz));
 
       // assign nearest neighor pixel value to output_ pixel
       auto inp_ptr_NC = input_.data + n * inp_sN_;
