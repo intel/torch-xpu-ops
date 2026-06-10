@@ -1,10 +1,10 @@
 # Platform keys are canonical lowercase identifiers used in code paths.
 # The "label" field is the user-facing display name used in reports.
 # Ridge point (ops:byte ratio) = peak_tflops * 1e3 / bandwidth_gbs, rounded to 1 decimal.
-# References:
-#   B580: https://www.intel.com/content/www/us/en/products/sku/243837/intel-arc-b580-graphics/specifications.html
-#   B70 (G31): https://www.intel.com/content/www/us/en/products/sku/237553/intel-arc-b770-graphics/specifications.html
-#   RTX 4080 SUPER: https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4080-super/
+#
+# peak_tflops_fp16 values are empirically calibrated, not spec-sheet peaks.
+# Example: B70 spec sheet is 183.5 TFLOPS FP16 but actual measured peak is ~154 TFLOPS.
+# These values are sourced from pytorch-benchmarking/config/hardware_specs.yaml.
 platforms:
   b70:
     label: B70 (G31)
