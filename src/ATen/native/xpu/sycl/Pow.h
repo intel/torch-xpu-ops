@@ -63,6 +63,10 @@ pow_(Base_type base, Exp_type exp) {
 #else
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
+  // Both base and exp have the same scalar type in all current call paths
+  // They are promoted to opmath_t before entering at::native::xpu::pow_.
+  // Therefore a single opmath_t derived from Base_type.
+  // is sufficient for both operands.
   using opmath_t = at::opmath_type<Base_type>;
   if constexpr (
       std::is_integral<Exp_type>::value && sizeof(Exp_type) <= sizeof(int)) {
