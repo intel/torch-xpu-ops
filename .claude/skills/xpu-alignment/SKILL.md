@@ -25,17 +25,18 @@ The caller (user or orchestrator) provides:
 1. **Scan window**: a start/end date pair (`YYYY-MM-DD` to `YYYY-MM-DD`). If none is
    given, default to "yesterday" (a single-day window ending today).
 2. **Run directory**: the working directory for all artifacts,
-   `runs/<scan-window>/` under the workspace root (e.g.
-   `runs/2026-06-01-to-2026-06-07/`). Its subpath layout and the rule that all
-   paths are relative to it are defined in Rules #1 below.
+   `agent_space_xpu/runs/<scan-window>/` under the workspace root (e.g.
+   `agent_space_xpu/runs/2026-06-01-to-2026-06-07/`). This lives under the
+   git-ignored `agent_space_xpu/` scratch space. Its subpath layout and the rule
+   that all paths are relative to it are defined in Rules #1 below.
 3. **Workspace-local XPU interpreter** and **GitHub access** — see
    [references/xpu-alignment-environment-setup.md](references/xpu-alignment-environment-setup.md).
 
 ## Rules
 
 1. **Output location.** All output files go under the run directory
-   `runs/<scan-window>/` (under the workspace root); never write outputs
-   elsewhere. Paths in this skill are relative to the run directory unless
+   `agent_space_xpu/runs/<scan-window>/` (git-ignored scratch space); never write
+   outputs elsewhere. Paths in this skill are relative to the run directory unless
    noted. Fixed subpaths, created before writing:
    - `artifacts/` — raw candidates, ledger, and `collect_env.txt`;
      `artifacts/details/` for fetched per-candidate details; `output_<id>.log`
@@ -65,6 +66,12 @@ hitting the 1000-result cap.
 
 **Principle**: cast a wide net — prefer over-collecting then filtering, rather than
 missing candidates at the search stage.
+
+**Scale bound**: a single-day window is the expected default. Multi-day windows
+scale roughly linearly in candidate volume; a 7-day window can yield thousands of
+candidates and a correspondingly long repro phase. If the collected candidate count
+is excessive (soft cap ~200 after title-filtering), tell the user the volume is
+high and suggest narrowing the window before proceeding to the repro phase.
 
 **Source types** (do not pre-filter by labels or keywords at this stage):
 
