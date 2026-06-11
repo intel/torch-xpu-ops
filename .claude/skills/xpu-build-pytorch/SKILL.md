@@ -7,6 +7,11 @@ description: Build PyTorch from source with Intel XPU (GPU) support. Use when th
 
 The only build command is `pip install -e . -v --no-build-isolation`. Never use any other command.
 
+The `## Build` section of `AGENTS.md` covers the baseline: the build command, the
+`BUILD_SEPARATE_OPS` flag, and the xpu.txt commit-pin override for local development.
+This skill extends that with XPU-specific prerequisites (oneAPI) and a step-by-step
+verification workflow.
+
 ## Instructions
 
 Always check local memory for build configuration (env vars, paths, incremental-build shortcuts)
