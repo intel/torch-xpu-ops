@@ -270,6 +270,8 @@ Environment: `source /root/hanchao/2026.0/intel/oneapi/setvars.sh`
 
 ### 25.3 oneAPI: `perf_allreduce.md` vs `*-dist.py` (min_us, 8 KB .. 8 MB)
 
+dist perf is measured using the PyTorch Kineto Profiler, and only the OneCCL kernel execution time is extracted for profiler json file. Therefore, the results are expected to be more accurate than those obtained using the event-based methodology.
+
 #### TP=4 (`25.3-TP4-dist.py` vs md/Test1-MethodB)
 
 | Size | md min_us | dist.py min_us | Diff (us) | Ratio (dist.py/md) |
