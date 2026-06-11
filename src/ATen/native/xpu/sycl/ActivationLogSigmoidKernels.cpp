@@ -27,7 +27,7 @@ struct LogSigmoidForwardFunctor {
     const opmath_t in = in_;
     const auto min = std::min(opmath_t(0), in);
     const auto z = sycl::exp(-sycl::fabs(in));
-    return min - std::log1p(z);
+    return min - sycl::log1p(z);
   }
 };
 

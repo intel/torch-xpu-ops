@@ -144,7 +144,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   }
 
   return static_cast<scalar_t>(
-      std::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
+      sycl::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
 }
 
 template <typename scalar_t>
@@ -314,7 +314,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
   if (sycl::fabs(a - x) > 0.4 * sycl::fabs(a)) {
-    ax = a * std::log(x) - x - sycl::lgamma(a);
+    ax = a * sycl::log(x) - x - sycl::lgamma(a);
     if (ax < -MAXLOG) {
       return 0.0;
     }
@@ -330,7 +330,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
     num = x - a - lanczos_g + 0.5;
     numfac = num / fac;
     res *= sycl::exp(
-        a * (std::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
+        a * (sycl::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
   }
   return res;
 }
@@ -392,7 +392,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
     }
   }
 
-  logx = std::log(x);
+  logx = sycl::log(x);
   term = -sycl::expm1(a * logx - sycl::lgamma(1 + a));
   return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
@@ -667,9 +667,9 @@ static const scalar_t _igam_helper_asymptotic_series(
   }
 
   if (lambda > 1) {
-    eta = std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else if (lambda < 1) {
-    eta = -std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = -std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else {
     eta = 0;
   }
@@ -828,7 +828,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
       return _igamc_helper_continued_fraction(a, x);
     }
   } else if (x <= 0.5) {
-    if (-0.4 / std::log(x) < a) {
+    if (-0.4 / sycl::log(x) < a) {
       return 1.0 - _igam_helper_series(a, x);
     } else {
       return _igamc_helper_series(a, x);
@@ -1356,7 +1356,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
 
     return x * (yp / yq) +
         (scalar_t(0.636619772367581343075535053490057448) *
-         (bessel_j1_forward(x) * std::log(x) - scalar_t(1.0) / x));
+         (bessel_j1_forward(x) * sycl::log(x) - scalar_t(1.0) / x));
   }
 
   scalar_t pp = 0.0;
