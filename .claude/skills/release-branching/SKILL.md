@@ -4,8 +4,6 @@ description: >
   Use when setting up a new torch-xpu-ops release branch corresponding to a
   PyTorch release. Covers branch creation, release tracker issue, workflow
   default changes PR, and tracker comment.
-placeholders:
-  - release_branch  # e.g. release/2.12
 ---
 
 # XPU Release Branching
@@ -82,7 +80,7 @@ Type: Task
 ```markdown
 We cut a [release branch](https://github.com/intel/torch-xpu-ops/tree/BRANCH) for the MAJOR_MINOR.0 release.
 
-Our plan from this point from this point is roughly:
+Our plan from this point is roughly:
 
 - Phase 1 (until <PHASE1_DEADLINE>): work on finalizing the release branch
 
