@@ -6,9 +6,12 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import pytest
+# Owner(s): ["module: intel"]
+
+import unittest
 
 import torch
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 def _make_inputs(device):
@@ -22,49 +25,46 @@ def _make_inputs(device):
     return x, observer_on, fake_quant_on, running_min, running_max, scale, zero_point
 
 
-@pytest.mark.skipif(not torch.xpu.is_available(), reason="XPU not available")
-def test_large_negative_ch_axis_raises():
-    """Out-of-range negative ch_axis must raise RuntimeError, not segfault."""
-    args = _make_inputs("xpu")
-    with pytest.raises(RuntimeError, match="out of range"):
+@unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
+class TestFusedObsFakeQuantChAxisBounds(TestCase):
+    def test_large_negative_ch_axis_raises(self):
+        args = _make_inputs("xpu")
+        with self.assertRaisesRegex(RuntimeError, "out of range"):
+            torch._fused_moving_avg_obs_fq_helper(
+                *args,
+                averaging_const=0.01,
+                quant_min=0,
+                quant_max=255,
+                ch_axis=-1250999896764,
+                per_row_fake_quant=True,
+                symmetric_quant=False,
+            )
+
+    def test_negative_one_ch_axis_wraps(self):
+        args = _make_inputs("xpu")
         torch._fused_moving_avg_obs_fq_helper(
             *args,
             averaging_const=0.01,
             quant_min=0,
             quant_max=255,
-            ch_axis=-1250999896764,
+            ch_axis=-1,
             per_row_fake_quant=True,
             symmetric_quant=False,
         )
 
-
-@pytest.mark.skipif(not torch.xpu.is_available(), reason="XPU not available")
-def test_negative_one_ch_axis_wraps():
-    """ch_axis=-1 should wrap to the last dimension without error."""
-    args = _make_inputs("xpu")
-    # Should not raise
-    torch._fused_moving_avg_obs_fq_helper(
-        *args,
-        averaging_const=0.01,
-        quant_min=0,
-        quant_max=255,
-        ch_axis=-1,
-        per_row_fake_quant=True,
-        symmetric_quant=False,
-    )
+    def test_positive_out_of_range_ch_axis_raises(self):
+        args = _make_inputs("xpu")
+        with self.assertRaisesRegex(RuntimeError, "out of range"):
+            torch._fused_moving_avg_obs_fq_helper(
+                *args,
+                averaging_const=0.01,
+                quant_min=0,
+                quant_max=255,
+                ch_axis=3,
+                per_row_fake_quant=True,
+                symmetric_quant=False,
+            )
 
 
-@pytest.mark.skipif(not torch.xpu.is_available(), reason="XPU not available")
-def test_positive_out_of_range_ch_axis_raises():
-    """ch_axis >= x.dim() must raise RuntimeError."""
-    args = _make_inputs("xpu")
-    with pytest.raises(RuntimeError, match="out of range"):
-        torch._fused_moving_avg_obs_fq_helper(
-            *args,
-            averaging_const=0.01,
-            quant_min=0,
-            quant_max=255,
-            ch_axis=3,
-            per_row_fake_quant=True,
-            symmetric_quant=False,
-        )
+if __name__ == "__main__":
+    run_tests()

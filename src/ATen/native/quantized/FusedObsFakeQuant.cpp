@@ -47,8 +47,7 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
       " is out of range for tensor with ",
       x_dim,
       " dimensions");
-  const auto wrapped_ch_axis =
-      ch_axis < 0 ? ch_axis + x_dim : ch_axis;
+  const auto wrapped_ch_axis = ch_axis < 0 ? ch_axis + x_dim : ch_axis;
 
   const auto x_contig = x.contiguous();
   // Calculate the size of the dimension we need to quantize over,
