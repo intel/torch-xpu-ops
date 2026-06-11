@@ -31,7 +31,7 @@ Write one concise markdown summary focused on actionability rather than exhausti
 
 Recommended output path:
 
-1. `reports/<session>/insights_summary.md`
+1. `agent_space_xpu/reports/<session>/insights_summary.md`
 
 ## Required Structure
 
