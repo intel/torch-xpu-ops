@@ -135,13 +135,14 @@ Examples:
 
     # ── Write outputs ──
     if out_ext == ".xlsx":
-        write_excel(summary, acc_merged, perf_merged, args.output)
+        write_excel(summary, acc_merged, perf_merged, args.output,
+                    pt2e_acc=acc_pt2e, pt2e_perf=perf_pt2e)
     else:
         write_csv(summary, acc_merged, perf_merged, out_base)
 
-    # Write pt2e outputs separately if present
+    # Write pt2e CSV outputs separately (xlsx already includes pt2e sheets)
     has_pt2e = not acc_pt2e.empty or not perf_pt2e.empty
-    if has_pt2e:
+    if has_pt2e and out_ext == ".csv":
         pt2e_base = f"{out_base}_pt2e"
         if not acc_pt2e.empty:
             acc_pt2e.to_csv(f"{pt2e_base}_accuracy.csv", index=False, na_rep="")
@@ -214,6 +215,114 @@ Examples:
                       f"symm={_geo(perf_pt2e, 'symm_target')}, "
                       f"asymm={_geo(perf_pt2e, 'asymm_target')}")
         print()
+
+    # ── Regression check (failures the target itself has) ──
+    def _by_label(df: pd.DataFrame, label: str) -> pd.DataFrame:
+        if df.empty or "comparison" not in df.columns:
+            return df.iloc[0:0]
+        return df[df["comparison"] == label]
+
+    def _acc_target_fail(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty or "accuracy_target" not in df.columns:
+            return df.iloc[0:0]
+        tgt = df["accuracy_target"].astype(str)
+        tgt_fail = df["accuracy_target"].notna() & ~tgt.str.contains("pass") & (tgt.str.strip() != "")
+        # ignore cases where baseline also failed (not a regression)
+        if "accuracy_baseline" in df.columns:
+            bsl = df["accuracy_baseline"].astype(str)
+            bsl_fail = df["accuracy_baseline"].notna() & ~bsl.str.contains("pass") & (bsl.str.strip() != "")
+            return df[tgt_fail & ~bsl_fail]
+        return df[tgt_fail]
+
+    def _num_target_fail(df: pd.DataFrame, col: str, bsl_col: str | None = None) -> pd.DataFrame:
+        if df.empty or col not in df.columns:
+            return df.iloc[0:0]
+        vals = pd.to_numeric(df[col], errors="coerce")
+        # present but not positive (ignore target-null cases)
+        tgt_fail = vals.notna() & ~(vals > 0)
+        # ignore cases where baseline also failed (not a regression)
+        if bsl_col and bsl_col in df.columns:
+            bvals = pd.to_numeric(df[bsl_col], errors="coerce")
+            bsl_fail = bvals.notna() & ~(bvals > 0)
+            return df[tgt_fail & ~bsl_fail]
+        return df[tgt_fail]
+
+    def _model_id(row: pd.Series) -> str:
+        parts = [str(row.get(c)) for c in ("suite", "data_type", "mode", "model")
+                 if c in row.index and pd.notna(row.get(c))]
+        return ",".join(parts)
+
+    def _fmt_num(v) -> str:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return "n/a"
+        if pd.isna(f):
+            return "n/a"
+        return f"{f:.4f}".rstrip("0").rstrip(".")
+
+    def _ratio(num, den) -> str:
+        try:
+            n, d = float(num), float(den)
+        except (TypeError, ValueError):
+            return "n/a"
+        if pd.isna(n) or pd.isna(d) or d == 0:
+            return "n/a"
+        return f"{n / d:.3f}"
+
+    def _detail(kind: str, row: pd.Series) -> str:
+        if kind == "acc":
+            return f"accuracy={row.get('accuracy_target')}"
+        if kind == "perf_fail":
+            return (f"target={_fmt_num(row.get('inductor_target'))}, "
+                    f"baseline={_fmt_num(row.get('inductor_baseline'))}")
+        if kind == "perf_drop":
+            return (f"ratio={_fmt_num(row.get('inductor_ratio'))}  "
+                    f"(target={_fmt_num(row.get('inductor_target'))}, "
+                    f"baseline={_fmt_num(row.get('inductor_baseline'))})")
+        if kind == "pt2e_acc":
+            return (f"int8={_fmt_num(row.get('int8_target'))}, "
+                    f"baseline={_fmt_num(row.get('int8_baseline'))}")
+        if kind == "pt2e_perf_fail":
+            return (f"symm_target={_fmt_num(row.get('symm_target'))}, "
+                    f"baseline={_fmt_num(row.get('symm_baseline'))}")
+        if kind == "pt2e_perf_drop":
+            return (f"ratio={_ratio(row.get('symm_target'), row.get('symm_baseline'))}  "
+                    f"(symm_target={_fmt_num(row.get('symm_target'))}, "
+                    f"baseline={_fmt_num(row.get('symm_baseline'))})")
+        return ""
+
+    regressions = [
+        ("New accuracy failures", _acc_target_fail(acc_merged), "acc"),
+        ("New performance failures", _by_label(perf_merged, "new_failed"), "perf_fail"),
+        ("New performance drops", _by_label(perf_merged, "new_dropped"), "perf_drop"),
+        ("New pt2e accuracy failures", _num_target_fail(acc_pt2e, "int8_target", "int8_baseline"), "pt2e_acc"),
+        ("New pt2e performance failures", _by_label(perf_pt2e, "new_failed"), "pt2e_perf_fail"),
+        ("New pt2e performance drops", _by_label(perf_pt2e, "new_dropped"), "pt2e_perf_drop"),
+    ]
+
+    total_regressions = sum(len(df) for _, df, _ in regressions)
+    if total_regressions:
+        # Compute alignment width across all reported models
+        id_width = max(
+            (len(_model_id(row)) for _, df, _ in regressions for _, row in df.iterrows()),
+            default=0,
+        )
+        bar = "=" * 72
+        print("\n" + bar)
+        print(" REGRESSIONS DETECTED")
+        print(bar)
+        for title, df, kind in regressions:
+            if df.empty:
+                continue
+            print(f"\n  {title}: {len(df)}")
+            print(f"    {'Cases':<{id_width}}  Details")
+            print(f"    {'-' * id_width}  {'-' * 6}")
+            for _, row in df.iterrows():
+                print(f"    {_model_id(row):<{id_width}}  {_detail(kind, row)}")
+        print(f"\n  Total regressions: {total_regressions}")
+        print(bar)
+        return 1
 
     return 0
 

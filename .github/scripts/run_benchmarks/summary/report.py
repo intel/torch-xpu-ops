@@ -347,6 +347,7 @@ def print_report(
 # ── File Output (Excel / CSV) ────────────────────────────────────────
 def write_excel(
     summary: pd.DataFrame, acc: pd.DataFrame, perf: pd.DataFrame, path: str,
+    pt2e_acc: pd.DataFrame | None = None, pt2e_perf: pd.DataFrame | None = None,
 ) -> None:
     placeholder = pd.DataFrame({"Info": ["No data available"]})
     with pd.ExcelWriter(path, engine="openpyxl") as w:
@@ -359,6 +360,10 @@ def write_excel(
         (perf if not perf.empty else placeholder).to_excel(
             w, sheet_name="Performance Details", index=False,
         )
+        if pt2e_acc is not None and not pt2e_acc.empty:
+            pt2e_acc.to_excel(w, sheet_name="PT2E Accuracy", index=False)
+        if pt2e_perf is not None and not pt2e_perf.empty:
+            pt2e_perf.to_excel(w, sheet_name="PT2E Performance", index=False)
     log.info("Excel written to %s", path)
 
 

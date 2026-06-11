@@ -208,11 +208,13 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
                     # PT2E performance: preserve throughput and quantization
                     throughput = pd.to_numeric(row.get("throughput"), errors="coerce")
                     quant = str(row.get("quantization", "")).strip()
-                    rec["throughput"] = throughput if pd.notna(throughput) and throughput > 0 else np.nan
                     rec["quantization"] = quant
                     if pd.isna(throughput) or throughput <= 0:
-                        rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
+                        # row exists but failed to produce a result
+                        rec["throughput"] = 0.0
+                        rec.update(eager=0.0, inductor=0.0, speedup=np.nan)
                     else:
+                        rec["throughput"] = throughput
                         rec.update(eager=np.nan, inductor=throughput, speedup=np.nan)
                 else:
                     speedup = pd.to_numeric(row.get("speedup"), errors="coerce")
@@ -222,7 +224,8 @@ def load_results(file_list: list[str], result_type: str) -> list[dict]:
                             "Missing speedup/abs_latency for %s in %s",
                             row.get("name"), fpath,
                         )
-                        rec.update(eager=np.nan, inductor=np.nan, speedup=np.nan)
+                        # row exists but failed to produce a result
+                        rec.update(eager=0.0, inductor=0.0, speedup=np.nan)
                     else:
                         rec.update(
                             eager=speedup * abs_lat,

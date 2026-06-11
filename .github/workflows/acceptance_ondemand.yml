@@ -253,7 +253,7 @@ jobs:
             fi
           done
           mkdir -p "${{ github.workspace }}/comparison"
-          rsync -avz --delete .github/scripts/run_benchmarks/ ./run_benchmarks/
+          export PYTHONPATH=${{ github.workspace }}/.github/scripts
           python -m run_benchmarks.summary \
             -t "${{ github.workspace }}/results/target/e2e" \
             -b "${{ github.workspace }}/results/baseline/e2e" \

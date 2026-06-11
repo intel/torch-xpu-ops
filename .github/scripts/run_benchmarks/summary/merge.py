@@ -308,7 +308,8 @@ def merge_pt2e_performance(
             elif t_ok and not b_ok:
                 comp = "new_passed"
             elif b_ok and not t_ok:
-                comp = "new_failed"
+                # baseline>0, target present but failed (0) vs absent (null)
+                comp = "new_failed" if pd.notna(t_val) else "not_run"
                 break
 
         rows.append({
@@ -339,7 +340,8 @@ def _classify_performance(row: pd.Series, threshold: float) -> str:
         new_dropped   – significantly slower (regression)
         new_improved  – significantly faster (improvement)
         new_passed    – target valid, baseline invalid (fix)
-        new_failed    – baseline valid, target invalid (regression)
+        new_failed    – baseline valid, target present but failed (target=0)
+        not_run       – baseline valid, target absent (target null)
     """
     ind_tgt = row.get("inductor_target")
     ind_bsl = row.get("inductor_baseline")
@@ -358,7 +360,8 @@ def _classify_performance(row: pd.Series, threshold: float) -> str:
     if tgt_ok:
         return "new_passed"
     if bsl_ok:
-        return "new_failed"
+        # baseline>0, target failed (present=0) or absent (null)
+        return "new_failed" if pd.notna(ind_tgt) else "not_run"
     return "no_changed"
 
 
