@@ -569,7 +569,7 @@ static inline unsigned int rand_poisson_gammainc(
   while (true) {
     y = rand_uniform(state);
     x = pgammaincinv(lambda, y);
-    x = floorf(x);
+    x = sycl::floor(x);
     z = rand_uniform(state);
     v = (pgammainc(lambda, x + 1.0f) - pgammainc(lambda, x)) * 1.3f;
     z = z * v;
