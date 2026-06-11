@@ -12,7 +12,7 @@
 
 ## T1 Calculation
 
-Parse the calcflops file (`t1/rcpi1-ins0.log`; see `inputs.md` for exact column layout and file path) and use the last benchmark iteration only.
+Parse the calcflops file (`t1/rcpi1-ins0.log`; see `inputs.md` for exact column layout and file path) and use the last benchmark iteration only (see `inputs.md` Calcflops File Column Format for iteration boundary detection).
 
 Per op:
 
@@ -56,7 +56,7 @@ Preferred source: unitrace mapped to aten ops via the profiler trace as bridge.
 
 Mapping algorithm:
 
-1. Parse `xpu_profiler/trace.json` to build `aten_op -> [kernel_name, ...]`
+1. Parse `xpu_profiler/timeline/trace.json` to build `aten_op -> [kernel_name, ...]`
 2. Parse `unitrace/python.<pid>.json` to get per-kernel wall-clock durations (no profiler overhead)
 3. For each aten op, sum unitrace durations for its associated kernels
 4. If a kernel is shared across multiple ops, distribute proportionally by profiler sub-durations; if sub-durations are zero, distribute equally and flag as approximate
@@ -64,7 +64,7 @@ Mapping algorithm:
 
 ### CUDA
 
-Use `cuda_profiler/trace.json` directly. No unitrace path for CUDA.
+Use `cuda_profiler/timeline/trace.json` directly. No unitrace path for CUDA.
 
 ## Per-Op R Classification
 

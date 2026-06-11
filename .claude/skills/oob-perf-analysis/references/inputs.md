@@ -115,7 +115,7 @@ aten::mul.Scalar → aten::mul
 
 ## Vector Engine Ops: Zero FLOPs for T1
 
-The following ops run on the vector engine, not the matrix engine. Their FLOPs from calcflops are unreliable and will misclassify them as compute-bound. **Force their delta_flops to zero** so T1 uses memory bandwidth only:
+The following ops run on the vector engine, not the matrix engine. Their FLOPs from calcflops are unreliable and will misclassify them as compute-bound. **Force their delta_flops to zero** so T1 uses memory bandwidth only. Extend this list when new vector-engine-only ops are identified:
 
 ```
 aten::_softmax
