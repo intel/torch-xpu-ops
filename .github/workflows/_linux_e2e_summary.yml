@@ -90,4 +90,10 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           export PYTHONPATH=${{ github.workspace }}/.github/scripts
-          python -m run_benchmarks.summary -t ./target -b ./baseline -o e2e_summary.csv
+          python -m run_benchmarks.summary -t ./target -b ./baseline -o e2e_summary.xlsx
+      - name: Upload Inductor E2E Summary
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-E2E-Summary
+          path: e2e_summary.xlsx
