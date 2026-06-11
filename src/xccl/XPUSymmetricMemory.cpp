@@ -6,7 +6,12 @@
 
 // XPU symmetric memory is implemented on top of
 // <sycl/ext/oneapi/experimental/ipc_memory.hpp>, which is provided only by
-// Intel oneAPI DPC++/C++ Compiler >= 2026.0.
+// Intel oneAPI DPC++/C++ Compiler >= 2026.0. We gate on the built-in
+// `__INTEL_LLVM_COMPILER` macro (icpx defines it automatically; this is the
+// same value `cmake/Modules/FindSYCLToolkit.cmake` extracts into the
+// `SYCL_COMPILER_VERSION` CMake variable, e.g. 20260000 for oneAPI 2026.0).
+// Using the compiler-builtin macro avoids having to propagate a CMake
+// `-D` definition into this TU.
 #if defined(__INTEL_LLVM_COMPILER) && __INTEL_LLVM_COMPILER >= 20260000
 #define XPU_SYMM_MEM_AVAILABLE 1
 #else
@@ -23,7 +28,9 @@
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 
-#include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
+// Note: <sycl/ext/oneapi/experimental/ipc_memory.hpp> is included
+// transitively via <sycl/sycl.hpp> (pulled in by the ATen/c10 XPU headers
+// above) on oneAPI >= 2026.0, so no explicit include is needed here.
 
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -500,14 +507,15 @@ namespace {
   TORCH_CHECK(
       false,
       "XPU SymmetricMemory requires Intel oneAPI DPC++/C++ Compiler 2026.0 "
-      "or newer (provides <sycl/ext/oneapi/experimental/ipc_memory.hpp>). "
-      "The current compiler is too old (__INTEL_LLVM_COMPILER="
+      "or newer (which provides "
+      "<sycl/ext/oneapi/experimental/ipc_memory.hpp>). Detected "
+      "__INTEL_LLVM_COMPILER="
 #ifdef __INTEL_LLVM_COMPILER
       XPU_SYMM_MEM_STRINGIZE(__INTEL_LLVM_COMPILER)
 #else
       "<undefined>"
 #endif
-          "). Please upgrade the compiler and rebuild PyTorch / torch-xpu-ops.");
+      ". Please rebuild PyTorch / torch-xpu-ops with oneAPI 2026.0 or newer.");
 }
 
 #undef XPU_SYMM_MEM_STRINGIZE
