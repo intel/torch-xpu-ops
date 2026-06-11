@@ -6,14 +6,7 @@
 
 // XPU symmetric memory is implemented on top of
 // <sycl/ext/oneapi/experimental/ipc_memory.hpp>, which is provided only by
-// Intel oneAPI DPC++/C++ Compiler >= 2026.0. `SYCL_COMPILER_VERSION` is
-// already propagated as a `-D` definition by upstream PyTorch's
-// `cmake/public/xpu.cmake` (it appends
-// `-DSYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION}` to `XPU_HOST_CXX_FLAGS`,
-// which `cmake/Dependencies.cmake` then turns into a global
-// `add_definitions(...)`). The same macro is used elsewhere in PyTorch
-// (e.g. `c10/xpu/XPUFunctions.cpp`), so reusing it here keeps the gating
-// style consistent across the XPU stack.
+// Intel oneAPI DPC++/C++ Compiler >= 2026.0.
 #if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION >= 20260000
 #define XPU_SYMM_MEM_AVAILABLE 1
 #else
@@ -505,9 +498,8 @@ namespace {
       "XPU SymmetricMemory requires Intel oneAPI DPC++/C++ Compiler 2026.0 "
       "or newer (which provides "
       "<sycl/ext/oneapi/experimental/ipc_memory.hpp>). Detected "
-      "SYCL_COMPILER_VERSION="
-      C10_STRINGIZE(SYCL_COMPILER_VERSION)
-      ". Please rebuild PyTorch / torch-xpu-ops with oneAPI 2026.0 or newer.");
+      "SYCL_COMPILER_VERSION=" C10_STRINGIZE(
+          SYCL_COMPILER_VERSION) ". Please rebuild PyTorch / torch-xpu-ops with oneAPI 2026.0 or newer.");
 }
 
 #undef XPU_SYMM_MEM_STRINGIZE
