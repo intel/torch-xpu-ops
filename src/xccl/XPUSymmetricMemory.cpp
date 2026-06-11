@@ -508,11 +508,7 @@ namespace {
       "or newer (which provides "
       "<sycl/ext/oneapi/experimental/ipc_memory.hpp>). Detected "
       "SYCL_COMPILER_VERSION="
-#ifdef SYCL_COMPILER_VERSION
-      XPU_SYMM_MEM_STRINGIZE(SYCL_COMPILER_VERSION)
-#else
-      "<undefined>"
-#endif
+      C10_STRINGIZE(SYCL_COMPILER_VERSION)
       ". Please rebuild PyTorch / torch-xpu-ops with oneAPI 2026.0 or newer.");
 }
 
