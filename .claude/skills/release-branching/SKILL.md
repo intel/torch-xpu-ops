@@ -20,7 +20,6 @@ Given `release/2.12`:
 - `BRANCH` = `release/2.12`
 - `MAJOR_MINOR` = `2.12`
 - `VERSION` = `v.2.12.0`
-- `PREV_MINOR` = `2.11` (previous minor version)
 
 ## Step 1 — Verify PyTorch Release Branch
 
@@ -46,7 +45,8 @@ These dates are needed for the torch-xpu-ops tracker issue.
 ## Step 2 — Create torch-xpu-ops Release Branch
 
 Get the pinned commit from pytorch's release branch and create the
-torch-xpu-ops branch from it:
+torch-xpu-ops branch from it. If the branch already exists (e.g. retrying
+after a partial failure), skip this step and verify the branch directly.
 
 ```bash
 # Get the pinned torch-xpu-ops commit on the pytorch release branch
@@ -65,14 +65,19 @@ gh api repos/intel/torch-xpu-ops/branches/release/MAJOR_MINOR --jq '.name'
 
 ## Step 3 — Create Release Tracker Issue
 
-Create a milestone `PTMAJOR_MINOR` in torch-xpu-ops if it does not exist yet.
+Create a milestone `PTMAJOR_MINOR` in torch-xpu-ops if it does not exist yet:
+
+```bash
+# Check if milestone exists; create if not
+gh api repos/intel/torch-xpu-ops/milestones --jq '.[] | select(.title == "PTMAJOR_MINOR") | .title' \
+  || gh api repos/intel/torch-xpu-ops/milestones -f title="PTMAJOR_MINOR" -f state=open
+```
 
 Open the tracker issue with this exact body template:
 
 ```
 Title: [VERSION] Release Tracker
 Milestone: PTMAJOR_MINOR
-Type: Task
 ```
 
 **Issue body** (replace placeholders):
