@@ -136,8 +136,10 @@ struct FusedAdamMathFunctor {
         [&]() -> std::pair<double, double> {
       auto* step_count = reinterpret_cast<const float*>(
           tlAddress[tensor_loc].state_steps_addresses);
-      const auto bias_correction1 = 1 - std::pow(beta1, *step_count);
-      const auto bias_correction2 = 1 - std::pow(beta2, *step_count);
+      const auto bias_correction1 =
+          1 - sycl::pow(beta1, static_cast<double>(*step_count));
+      const auto bias_correction2 =
+          1 - sycl::pow(beta2, static_cast<double>(*step_count));
       const auto bias_correction2_sqrt = sycl::sqrt(bias_correction2);
       return {bias_correction1, bias_correction2_sqrt};
     }();
