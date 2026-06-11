@@ -12,24 +12,22 @@
 
 #include <sycl/sycl.hpp>
 
-#include <bit>
-
 static inline uint32_t __float_as_int(float val) {
-  return std::bit_cast<uint32_t>(val);
+  return sycl::bit_cast<uint32_t>(val);
 }
 
 static inline float __int_as_float(uint32_t val) {
-  return std::bit_cast<float>(val);
+  return sycl::bit_cast<float>(val);
 }
 
 static inline unsigned long long __double_as_long_long(double val) {
-  return std::bit_cast<unsigned long long>(val);
+  return sycl::bit_cast<unsigned long long>(val);
 }
 
 static inline double __long_long_as_double(unsigned long long val) {
-  return std::bit_cast<double>(val);
+  return sycl::bit_cast<double>(val);
 }
 
 static inline sycl::half __ushort_as_half(unsigned short int val) {
-  return std::bit_cast<sycl::half>(val);
+  return sycl::bit_cast<sycl::half>(val);
 }
