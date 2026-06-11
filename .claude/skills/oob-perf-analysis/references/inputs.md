@@ -33,7 +33,7 @@ agent_space_xpu/raw_logs/<session_name>/
 
 | File | Used for |
 |------|----------|
-| `t1/rcpi1-ins0.log` | T1 projection: cumulative per-op FLOPs and bytes. Use the last benchmark iteration only. |
+| `t1/rcpi1-ins0.log` | T1 projection: cumulative per-op FLOPs and bytes. Use the last benchmark iteration only. (Commonly referred to as the "calcflops file" throughout this skill.) |
 | `xpu_profiler/timeline/trace.json` | XPU per-op actual timing; bridge for unitrace-to-op mapping; graph consistency trace analysis |
 | `cuda_profiler/timeline/trace.json` | CUDA per-op actual timing; graph consistency trace analysis |
 | `unitrace/python.<pid>.json` | XPU kernel-level timing without profiler overhead. Preferred source for XPU per-op time. Single-iteration window. |
@@ -63,6 +63,7 @@ col last: zero:True/False
 - Diff consecutive rows to get per-op delta FLOPs and delta bytes (values are cumulative).
 - Benchmark iterations are delimited by a reset in cumulative values. Detect them by finding rows where `cum_mem_platform[i] < cum_mem_platform[i-1] * 0.5`. Use the last iteration only.
 - Column count may vary; always split on `|` and index from 0. Stop at the `args:` field.
+- When a new platform is added, its cache-adjusted memory column is appended after col 7. Update the column index map above and the platform-specific column references in `methodology.md` accordingly.
 
 ## Op Name Normalization (for trace ↔ calcflops matching)
 
