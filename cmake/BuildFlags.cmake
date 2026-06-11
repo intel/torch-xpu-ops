@@ -101,14 +101,17 @@ macro(set_build_flags)
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      # icx runs in clang-cl mode on Windows and silently ignores GCC-style
+      # -std=; use the MSVC-style spelling so device code is really C++20.
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Qstd=${CPP_STD})
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
       # Suppress warnings about dllexport.
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
       # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
