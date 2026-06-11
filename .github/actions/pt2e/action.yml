@@ -27,7 +27,7 @@ runs:
       if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}
       run: |
-        dataset_dir="${RUNNER_TEMP}/_datasets/imagenet"
+        dataset_dir="/opt/_datasets/imagenet"
         if [ ! -d "${dataset_dir}" ]; then
           rm -rf "${dataset_dir}"
           mkdir -p "${dataset_dir}"
