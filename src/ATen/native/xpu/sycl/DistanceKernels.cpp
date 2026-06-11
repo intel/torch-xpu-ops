@@ -85,7 +85,7 @@ struct DistsLtTwo {
         : static_cast<scalar_t>(
               Dists<scalar_t>::sign(diff) *
               sycl::pow(
-                  sycl::abs(static_cast<opmath_t>(diff)),
+                  sycl::fabs(static_cast<opmath_t>(diff)),
                   static_cast<opmath_t>(p - 1)) *
               grad /
               sycl::pow(
@@ -142,7 +142,7 @@ struct DistsP {
         : static_cast<scalar_t>(
               diff *
               sycl::pow(
-                  sycl::abs(static_cast<opmath_t>(diff)),
+                  sycl::fabs(static_cast<opmath_t>(diff)),
                   static_cast<opmath_t>(p - 2)) *
               grad /
               sycl::pow(
