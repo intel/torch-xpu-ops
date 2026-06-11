@@ -35,9 +35,7 @@ runs:
       run: |
         set -o pipefail
         cd ./pytorch
-        benchmark_runner_dir="./run_benchmarks"
-        benchmark_script_src="${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks"
-        model_list_args=(--model-only None)
+        model_list_args=()
 
         # Stage the merged benchmark runner inside the pytorch checkout so it
         # can see benchmarks/dynamo and run from the expected working tree.

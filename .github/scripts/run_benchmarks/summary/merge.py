@@ -377,9 +377,15 @@ def merge_performance(
         return pd.DataFrame(columns=PERF_OUTPUT_COLS)
 
     if tgt.empty:
-        tgt = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "eager", "inductor", "speedup"])
+        tgt = pd.DataFrame(columns=[
+            "suite", "data_type", "mode", "model",
+            "batch_size", "eager", "inductor", "speedup",
+        ])
     if bsl.empty:
-        bsl = pd.DataFrame(columns=["suite", "data_type", "mode", "model", "batch_size", "eager", "inductor", "speedup"])
+        bsl = pd.DataFrame(columns=[
+            "suite", "data_type", "mode", "model",
+            "batch_size", "eager", "inductor", "speedup",
+        ])
 
     merged = pd.merge(
         tgt, bsl, on=MERGE_KEYS, how="outer", suffixes=("_target", "_baseline"),
@@ -467,7 +473,10 @@ def generate_summary(
             if group_cols:
                 grp = (
                     df.groupby(group_cols, dropna=False)
-                    .apply(lambda g: _group_metrics(g, is_perf), include_groups=False)
+                    .apply(
+                        lambda g, perf=is_perf: _group_metrics(g, perf),
+                        include_groups=False,
+                    )
                     .reset_index()
                 )
                 grp["Category"] = grp[group_cols].astype(str).agg("_".join, axis=1)

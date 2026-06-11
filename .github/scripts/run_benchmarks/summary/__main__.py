@@ -21,12 +21,12 @@ from .constants import (
 )
 from .loader import find_result_files, load_results
 from .merge import (
+    _geomean,
     generate_summary,
     merge_accuracy,
     merge_performance,
     merge_pt2e_accuracy,
     merge_pt2e_performance,
-    _geomean,
 )
 from .report import print_report, write_csv, write_excel, write_markdown
 

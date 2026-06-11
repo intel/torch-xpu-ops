@@ -340,9 +340,9 @@ def print_summary(summary: CheckSummary) -> None:
     print(f"  {'  '.join(cells)}")
 
     sections = [
-        (summary.real_failed, RED,   "** REGRESSIONS",  "{r.actual}"),
-        (summary.new_pass,    GREEN, "++ NEW PASSES",   "{r.actual}"),
-        (summary.new,         CYAN,  "?? NEW MODELS",   "{r.actual}"),
+        (summary.real_failed, RED, "** REGRESSIONS", "{r.actual}"),
+        (summary.new_pass, GREEN, "++ NEW PASSES", "{r.actual}"),
+        (summary.new, CYAN, "?? NEW MODELS", "{r.actual}"),
     ]
     for items, color, title, fmt in sections:
         if items:

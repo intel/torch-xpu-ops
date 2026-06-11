@@ -186,7 +186,7 @@ def write_markdown(
             if not perf_dropped.empty:
                 f.write(
                     f"### Performance Regressions "
-                    f"({len(perf_dropped)} models, ratio < {(1-threshold)*100:.0f}%)\n\n"
+                    f"({len(perf_dropped)} models, ratio < {(1 - threshold) * 100:.0f}%)\n\n"
                 )
                 f.write(_html_table(perf_dropped, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
                 f.write("\n\n")
@@ -235,7 +235,7 @@ def write_markdown(
             if not perf_improved.empty:
                 f.write(
                     f"### Performance Improvements "
-                    f"({len(perf_improved)} models, ratio > {(1+threshold)*100:.0f}%)\n\n"
+                    f"({len(perf_improved)} models, ratio > {(1 + threshold) * 100:.0f}%)\n\n"
                 )
                 f.write(_html_table(perf_improved, perf_cols, "comparison", FAIL_LABELS, PASS_LABELS))
                 f.write("\n\n")
@@ -292,8 +292,8 @@ def print_report(
 
         print(f"  ACCURACY ({total} models)")
         if total:
-            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass/total*100:.1f}%)")
-            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass/total*100:.1f}%)")
+            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass / total * 100:.1f}%)")
+            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass / total * 100:.1f}%)")
 
         for label, emoji in [
             ("new_failed", "❌ New failures"),
@@ -313,8 +313,8 @@ def print_report(
 
         print(f"  PERFORMANCE ({total} models)")
         if total:
-            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass/total*100:.1f}%)")
-            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass/total*100:.1f}%)")
+            print(f"    Target pass rate:    {tgt_pass}/{total} ({tgt_pass / total * 100:.1f}%)")
+            print(f"    Baseline pass rate:  {bsl_pass}/{total} ({bsl_pass / total * 100:.1f}%)")
 
         for label, emoji in [
             ("new_failed", "❌ New failures"),
