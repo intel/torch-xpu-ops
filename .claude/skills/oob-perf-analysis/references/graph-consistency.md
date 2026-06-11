@@ -38,10 +38,12 @@ For a fleet-level graph consistency report:
 
 The comparison is device-independent.
 
-Use only the calcflops columns that should be identical across devices:
+Use only the calcflops columns that should be identical across devices (see `inputs.md`):
 
-1. cumulative FLOPs
-2. cumulative memory bytes
+1. cumulative FLOPs (`cum_flops`, col 1)
+2. cumulative raw memory bytes (`cum_memory_raw`, col 2)
+
+Do not use the cache-adjusted memory columns (cols 5/6/7) for graph comparison — those differ by platform by design and would produce false-positive mismatches.
 
 If these differ, the cause is graph or dispatch divergence, not hardware speed.
 

@@ -17,8 +17,8 @@ Parse the calcflops file (`t1/rcpi1-ins0.log`; see `inputs.md` for exact column 
 Per op:
 
 ```
-T1_compute = FLOPs / peak_TFLOPS
-T1_memory  = bytes / bandwidth_GBps
+T1_compute = FLOPs / (peak_TFLOPS * 1e12)     # seconds
+T1_memory  = bytes / (bandwidth_GBps * 1e9)   # seconds
 T1_op      = max(T1_compute, T1_memory)
 ```
 

@@ -62,7 +62,7 @@ col last: zero:True/False
 - Always use the platform-specific cache-adjusted memory column (col 5/6/7), not raw memory (col 2). Using raw memory will severely overcount T1 for memory-bound ops with high cache reuse (e.g. Longformer, BERT attention ops).
 - Diff consecutive rows to get per-op delta FLOPs and delta bytes (values are cumulative).
 - Benchmark iterations are delimited by a reset in cumulative values. Detect them by finding rows where `cum_mem_platform[i] < cum_mem_platform[i-1] * 0.5`. Use the last iteration only.
-- Column count may vary; always split on `|` and index from 0. Stop at the `args:` field.
+- Column count may vary; always split on `|` and index from 0 for numeric columns (0–7). Treat the `args:` column and any trailing fields (including `zero:`) as non-numeric metadata; ignore them for T1 parsing.
 - When a new platform is added, its cache-adjusted memory column is appended after col 7. Update the column index map above and the platform-specific column references in `methodology.md` accordingly.
 
 ## Op Name Normalization (for trace ↔ calcflops matching)
