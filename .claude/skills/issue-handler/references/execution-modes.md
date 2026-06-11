@@ -1,8 +1,3 @@
----
-name: execution-modes
-description: Explains interactive vs pipeline execution modes when using `issue-format`, `test-verification`, `xpu-issues-triaging`, `issue-fix` skills.
----
-
 # Execution Modes (shared reference)
 
 This doc applies to shared contract for the `issue-handler` pipeline and its leaf skills

@@ -55,7 +55,9 @@ triggering a full rebuild).
 ### Key Rules
 - **Minimal changes** — fix only what's broken
 - **Never skip tests** — no `@skipIfXpu`, `@skip`, `unittest.skip`.
-- **Stay in your repo** — if in pytorch, don't modify `third_party/*` (exception: you may edit `third_party/torch-xpu-ops/` files when the issue targets torch-xpu-ops sources — see HARD RULES).
+- **Stay in your repo** — if in pytorch, don't modify `third_party/*`.
+  - Exception: you may edit `third_party/torch-xpu-ops/` files when the
+    triage output explicitly says `target_repo == "torch-xpu-ops"`.
 - **Never modify unrelated files**
 - **Never cherry-pick** upstream fixes. If a fix already landed on trunk, rebase (`git rebase origin/main`) instead.
 
@@ -126,6 +128,15 @@ for the overall stage/label contract and "Execution modes".
 ## Step 6: Open the PR
 To open the PR (branch naming, reproducer test, PR body, lint, push), use the
 `xpu-ops-pr-creation` skill. Do not duplicate that workflow here.
+
+## HARD RULES
+- NEVER modify files outside your repo scope (`torch-xpu-ops` vs `pytorch`).
+  The only exception is editing `third_party/torch-xpu-ops/` files from inside
+  the pytorch repo when the triage output explicitly says `target_repo == "torch-xpu-ops"`.
+- NEVER modify unrelated files — every changed line must trace directly to the issue.
+- NEVER add skip decorators (`@skipIfXpu`, `@skip`, `unittest.skip`). Fix the test.
+- NEVER submit a torch-xpu-ops PR for a bug whose root cause is in pytorch core.
+- NEVER cherry-pick upstream commits. Rebase instead.
 
 ## Output
 At the end, output:

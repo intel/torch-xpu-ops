@@ -132,6 +132,13 @@ If the outcome is `IMPLEMENTING` and a PR should be opened, hand off to the
 
 ## See also
 
+> **Sub-skill discoverability:** The leaf skills under `issue-handler/` (e.g.
+> `issue-fix`, `issue-format`, `test-verification`) are nested two levels deep
+> under `.claude/skills/` and may not be auto-discovered by the skill system.
+> They are intended to be reached via explicit orchestrator delegation (this
+> skill calls them by name). Load them directly if needed by invoking
+> `issue-handler/issue-fix`, etc.
+
 - `issue-format` — Stage 1 classification + metadata.
 - `test-verification` — Stages 2 and 5 local reproduction.
 - `xpu-issues-triaging` — Stage 3 root cause + verdict (canonical triage skill).

@@ -1,8 +1,3 @@
----
-name: environment-setup
-description: oneAPI/python activation, build commands, and the torch-xpu-ops xpu.txt pin workflow.
----
-
 # Environment Setup
 
 This doc contains the env settings and build commands for PyTorch Development.
