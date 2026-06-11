@@ -102,8 +102,8 @@ macro(set_build_flags)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      # icx runs in clang-cl mode on Windows and silently ignores GCC-style
-      # -std=; use the MSVC-style spelling so device code is really C++20.
+      # On Windows icx uses the clang-cl driver, which ignores -std= with
+      # only a warning; spell it as -Qstd= so device code is really C++20.
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Qstd=${CPP_STD})
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
