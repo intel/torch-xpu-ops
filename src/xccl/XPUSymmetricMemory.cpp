@@ -38,7 +38,6 @@ namespace symmetric_memory {
 
 #if XPU_SYMM_MEM_AVAILABLE
 
-
 namespace {
 
 std::atomic<uint64_t> store_exchange_nonce{0};
@@ -508,7 +507,7 @@ namespace {
 #else
       "<undefined>"
 #endif
-      "). Please upgrade the compiler and rebuild PyTorch / torch-xpu-ops.");
+          "). Please upgrade the compiler and rebuild PyTorch / torch-xpu-ops.");
 }
 
 #undef XPU_SYMM_MEM_STRINGIZE
