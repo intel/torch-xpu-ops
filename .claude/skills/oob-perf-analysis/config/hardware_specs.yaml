@@ -9,7 +9,7 @@
 #   B580:           spec 114.69 TFLOPS FP16 (XMX), empirical 93.0 TFLOPS (-19%)
 #                   https://www.intel.com/content/www/us/en/products/sku/241598/intel-arc-b580-graphics/specifications.html
 #   RTX 4080 SUPER: spec 105.3 TFLOPS FP16 (sparse), empirical 100.96 TFLOPS (-4%)
-#                   https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4080-super/
+#                   https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4080-family/
 platforms:
   b70:
     label: B70 (G31)
