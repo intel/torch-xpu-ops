@@ -105,12 +105,14 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         x_scales = x_scales.t().contiguous().t()
         lhs_recipe = ScalingType.BlockWise1x128
     else:
+        x_scales = x_scales.t().contiguous()
         lhs_recipe = ScalingType.BlockWise128x128
 
     if rhs_block == 1:
         y_scales = y_scales.t().contiguous().t()
         rhs_recipe = ScalingType.BlockWise1x128
     else:
+        y_scales = y_scales.t()
         rhs_recipe = ScalingType.BlockWise128x128
 
     def do_scaled_mm():
@@ -130,9 +132,9 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         expected_error = NotImplementedError
         expected_pattern = "1x128 and 128x128 scaling not available with ROCm"
     elif self.device_type == "xpu":
-        # XPU currently supports the 1x128 RHS path, but still errors on other
-        # DeepSeek-style blockwise combinations.
-        if lhs_block == 1 and rhs_block == 128:
+        # XPU supports three DeepSeek-style blockwise combinations:
+        # (1x128, 1x128), (128x128, 1x128), and (1x128, 128x128).
+        if (lhs_block, rhs_block) in ((1, 1), (128, 1), (1, 128)):
             do_scaled_mm()
             return
         expected_error = ValueError
