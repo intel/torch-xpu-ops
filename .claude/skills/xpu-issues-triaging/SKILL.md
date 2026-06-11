@@ -2,16 +2,11 @@
 name: xpu-issues-triaging
 description: >
   Triaging the pytorch or torch-xpu-ops issue. Use to determine root cause and fix strategy.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
 ---
 
 # Triage XPU / PyTorch Issue
 
-> **Scope change note:** This skill was previously "Triage & Fix XPU Issue" (triage +
-> implementation). It is now **analysis-only**. Implementation has moved to the
+> **Scope note:** This skill is **analysis-only**. Implementation belongs to the
 > `issue-fix` skill. Any existing workflow that expected this skill to produce a
 > code fix should delegate to `issue-fix` after this skill returns a verdict of
 > `IMPLEMENTING`.
@@ -21,7 +16,9 @@ allowed-tools:
 > [../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md).
 
 You **analyze**; you do not execute code or edit files. Implementation belongs
-to the `issue-fix` skill.
+to the `issue-fix` skill. In this triage stage, you could only do modification for
+unskip the `skip` decorator or just do some prints for triaging. DO NOT commit
+any code changes!
 
 ## Inputs
 
