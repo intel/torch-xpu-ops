@@ -7,7 +7,7 @@ See `methodology.md` for T1/T2/R definitions and `inputs.md` for required files.
 ## Steps
 
 1. Scan session layout; skip models missing required files (note why)
-2. Parse `calcflops.txt` (last iteration only) → compute T1
+2. Parse `t1/rcpi1-ins0.log` (last iteration only) → compute T1
 3. Parse traces and unitrace → compute per-op actual times and T2_device
 4. Extract T2 from T2 logs
 5. Compute R and per-op R_op; classify issues

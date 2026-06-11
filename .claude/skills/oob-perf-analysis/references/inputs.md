@@ -14,11 +14,13 @@ Working layout under `agent_space_xpu/raw_logs/<session_name>/`:
 agent_space_xpu/raw_logs/<session_name>/
   <model>/
     t1/
-      calcflops.txt
+      rcpi1-ins0.log
     xpu_profiler/
-      trace.json
+      timeline/
+        trace.json
     cuda_profiler/
-      trace.json
+      timeline/
+        trace.json
     unitrace/
       python.<pid>.json
     xpu_t2/
@@ -31,7 +33,7 @@ agent_space_xpu/raw_logs/<session_name>/
 
 | File | Used for |
 |------|----------|
-| `t1/rcpi1-ins0.log` | T1 projection: cumulative per-op FLOPs and bytes. Use the last benchmark iteration only. (File is named `rcpi1-ins0.log` in the `t1/` subdirectory, not `calcflops.txt`.) |
+| `t1/rcpi1-ins0.log` | T1 projection: cumulative per-op FLOPs and bytes. Use the last benchmark iteration only. |
 | `xpu_profiler/timeline/trace.json` | XPU per-op actual timing; bridge for unitrace-to-op mapping; graph consistency trace analysis |
 | `cuda_profiler/timeline/trace.json` | CUDA per-op actual timing; graph consistency trace analysis |
 | `unitrace/python.<pid>.json` | XPU kernel-level timing without profiler overhead. Preferred source for XPU per-op time. Single-iteration window. |
@@ -127,7 +129,7 @@ aten::max_pool2d_with_indices
 A model is complete for cross-platform comparison when it has all six files above.
 
 A model is minimally usable for single-platform analysis when it has:
-- `t1/calcflops.txt`
+- `t1/rcpi1-ins0.log`
 - platform-specific `trace.json`
 - platform-specific T2 log
 

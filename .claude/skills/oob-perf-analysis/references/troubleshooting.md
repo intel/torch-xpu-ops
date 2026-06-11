@@ -23,9 +23,9 @@ Confirm that the canonical session layout exists and that the expected files are
 
 Minimum useful check list:
 
-1. `t1/calcflops.txt`
-2. `xpu_profiler/trace.json`
-3. `cuda_profiler/trace.json`
+1. `t1/rcpi1-ins0.log`
+2. `xpu_profiler/timeline/trace.json`
+3. `cuda_profiler/timeline/trace.json`
 4. `xpu_t2/rcpi1-ins0.log`
 5. `cuda_t2/rcpi1-ins0.log`
 6. `unitrace/python.<pid>.json` when XPU unitrace is expected

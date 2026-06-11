@@ -225,5 +225,5 @@ The graph consistency workflow is complete when:
 
 ## References
 
-- [data-contracts.md](data-contracts.md)
-- [report-structure-reference.md](report-structure-reference.md)
+- [inputs.md](inputs.md)
+- [methodology.md](methodology.md)

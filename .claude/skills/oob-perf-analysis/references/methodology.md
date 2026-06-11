@@ -12,7 +12,7 @@
 
 ## T1 Calculation
 
-Parse the calcflops file (see `inputs.md` for exact column layout and file path) and use the last benchmark iteration only.
+Parse the calcflops file (`t1/rcpi1-ins0.log`; see `inputs.md` for exact column layout and file path) and use the last benchmark iteration only.
 
 Per op:
 
