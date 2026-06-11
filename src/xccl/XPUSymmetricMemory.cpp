@@ -498,8 +498,6 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
 // surfaces an actionable upgrade message instead of a silent failure or a
 // confusing missing-symbol error.
 namespace {
-#define XPU_SYMM_MEM_STRINGIZE_(x) #x
-#define XPU_SYMM_MEM_STRINGIZE(x) XPU_SYMM_MEM_STRINGIZE_(x)
 
 [[noreturn]] void throw_unsupported_compiler() {
   TORCH_CHECK(
