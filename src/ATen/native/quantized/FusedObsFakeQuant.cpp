@@ -39,10 +39,16 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
     const int64_t ch_axis,
     bool per_row_fq,
     bool symmetric_quant) {
+  const auto x_dim = x.dim();
   TORCH_CHECK(
-      ch_axis < x.dim(),
-      "Error in fused_moving_avg_obs_fq_helper: ch_axis must be < "
-      "self.dim()");
+      ch_axis >= -x_dim && ch_axis < x_dim,
+      "Error in fused_moving_avg_obs_fq_helper: ch_axis ",
+      ch_axis,
+      " is out of range for tensor with ",
+      x_dim,
+      " dimensions");
+  const auto wrapped_ch_axis =
+      ch_axis < 0 ? ch_axis + x_dim : ch_axis;
 
   const auto x_contig = x.contiguous();
   // Calculate the size of the dimension we need to quantize over,
@@ -55,13 +61,13 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
     if (x.dim() != 2) {
       auto res = DimVector(x.sizes());
       std::iota(res.begin(), res.end(), 0);
-      res[ch_axis] = 0;
-      res[0] = ch_axis;
+      res[wrapped_ch_axis] = 0;
+      res[0] = wrapped_ch_axis;
 
       y = x.permute(res);
       y = y.flatten(1);
     }
-    size = x.size(ch_axis);
+    size = x.size(wrapped_ch_axis);
     if (running_min.numel() == 0) {
       running_min.resize_(size).fill_(at::numeric_limits<float>::upper_bound());
       running_max.resize_(size).fill_(at::numeric_limits<float>::lower_bound());
