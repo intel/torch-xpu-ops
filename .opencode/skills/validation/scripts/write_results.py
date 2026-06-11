@@ -12,7 +12,7 @@ Phase 3 of classify_ut workflow:
 5. Fills in classification results for new rows
 
 Usage:
-    python3 write_results.py <excel_path> <results.json> [sheet_name] [--output_sheet=agent]
+    python3 write_results.py <excel_path> <results.json> [sheet_name] [--output_sheet=agent] [--output-excel=output.xlsx]
 """
 
 import json
@@ -46,16 +46,19 @@ def compute_confidence(detail_reason: str) -> str:
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python3 write_results.py <excel_path> <results.json> [sheet_name] [--output_sheet=agent]", file=sys.stderr)
+        print("Usage: python3 write_results.py <excel_path> <results.json> [sheet_name] [--output_sheet=agent] [--output-excel=output.xlsx]", file=sys.stderr)
         sys.exit(1)
 
     excel_path = sys.argv[1]
     results_path = sys.argv[2]
     sheet_name = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else None
     output_sheet = "agent"
+    output_excel = None
     for arg in sys.argv[1:]:
         if arg.startswith("--output_sheet="):
             output_sheet = arg.split("=", 1)[1]
+        if arg.startswith("--output-excel="):
+            output_excel = arg.split("=", 1)[1]
 
     with open(results_path) as f:
         results = json.load(f)
@@ -75,10 +78,15 @@ def main():
 
     output_headers = list(headers) + ["Analyzed", "Reason", "DetailReason", "ReuseSource", "Confidence"]
 
-    if output_sheet in wb.sheetnames:
-        del wb[output_sheet]
-
-    out_ws = wb.create_sheet(title=output_sheet)
+    if output_excel:
+        from openpyxl import Workbook
+        out_wb = Workbook()
+        out_ws = out_wb.active
+        out_ws.title = output_sheet
+    else:
+        if output_sheet in wb.sheetnames:
+            del wb[output_sheet]
+        out_ws = wb.create_sheet(title=output_sheet)
 
     for col_idx, h in enumerate(output_headers, start=1):
         out_ws.cell(row=1, column=col_idx, value=h)
@@ -127,8 +135,12 @@ def main():
             out_ws.cell(row=row_idx, column=rsc, value="")
             out_ws.cell(row=row_idx, column=cc, value="")
 
-    wb.save(excel_path)
-    print(f"Written to sheet '{output_sheet}' in {excel_path}")
+    if output_excel:
+        out_wb.save(output_excel)
+        print(f"Written to '{output_excel}' (sheet '{output_sheet}')")
+    else:
+        wb.save(excel_path)
+        print(f"Written to sheet '{output_sheet}' in {excel_path}")
 
 
 if __name__ == "__main__":

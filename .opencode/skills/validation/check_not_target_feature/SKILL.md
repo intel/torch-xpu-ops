@@ -1,3 +1,8 @@
+---
+name: check-not-target-feature
+description: Check whether a given test case is a "not target" feature for XPU — i.e., whether it should be classified as Not applicable because it tests CUDA-only behavior that is explicitly out of scope for XPU.
+---
+
 # check_not_target_feature
 
 Check whether a given test case is a "not target" feature for XPU — i.e., whether it should be classified as `Not applicable` because it tests CUDA-only behavior that is explicitly out of scope for XPU.
@@ -273,3 +278,5 @@ The subagent then follows the Decision Flow above, using its own tools (`bash`, 
 - Parametrization that omits XPU (`@dtypesIfCUDA` without `@dtypesIfXPU`) is an enablement gap, not a permanent exclusion.
 - When uncertain, default to `Not not-target` (`To be enabled`) rather than `Not applicable`.
 - JIT clusters (`oncall:jit`, `test_jit*`, `torch.jit.*`) are `Not applicable` by owner-team scope — this is a carve-out from the general rule.
+- **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`, `message_xpu`, etc.) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
+- **Analyze from scratch — ignore any pre-existing `Reason` or `DetailReason` in the input task data.** Prior classification results from other gates or earlier runs are irrelevant to this skill's analysis. Base your verdict solely on the test source code, error messages, and scope rules defined here. Never carry forward or reuse another gate's classification.

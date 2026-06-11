@@ -1,6 +1,6 @@
 ---
 name: classify-ut
-description: Batch classify UT test cases from an Excel sheet by running a cascaded decision flow (not_target → community_change → status_xpu → known_issue). Uses scripts/extract_tasks.py for Excel reading + deduplication and scripts/write_results.py for writing the output sheet. Delegates each classification axis to a specialized skill. Outputs results to a new "agent" sheet.
+description: Batch classify UT test cases from an Excel sheet by running a cascaded decision flow (not_target → community_change → status_xpu → known_issue). Delegates each classification axis to a specialized skill. Outputs results to a new "agent" sheet.
 ---
 
 # classify_ut
@@ -24,11 +24,10 @@ The workflow reuses already-analyzed results when possible (same class + similar
 | `excel_path` | **Yes** | Path to the .xlsx file. Expected columns: `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, `status_xpu`. May also have `Reason`, `DetailReason` from prior runs. |
 | `sheet_name` | No | Sheet name to read from. Default: first sheet. |
 | `output_sheet` | No | Output sheet name. Default: `"agent"`. |
-| `PYTORCH_SRC` | No | PyTorch source checkout path. Default: `$HOME/upstream/pytorch`. |
 
 ## Output
 
-The script writes a new sheet (default name `"agent"`) to the same Excel file with all original columns plus:
+The script writes a new sheet (default name `"agent"`) to a standalone Excel file (e.g. `agent_results.xlsx`) with all original columns plus:
 
 | Column | Description |
 |--------|-------------|
@@ -40,27 +39,35 @@ The script writes a new sheet (default name `"agent"`) to the same Excel file wi
 
 Rows where `Analyzed` was already `TRUE` from a prior run are left untouched.
 
-## Workflow
+## Prerequisites
 
-The classification uses two scripts (in `scripts/`) for Excel I/O and deduplication:
-- `scripts/extract_tasks.py` — reads the Excel, deduplicates rows, outputs `tasks.json`
-- `scripts/write_results.py` — takes classification results and writes the `"agent"` sheet
-
-The AI agent processes each unique row requiring classification, running the decision cascade using the specialized skills.
-
-### Phase 0: Setup Conda Environment
+Python 3 with `openpyxl` installed:
 
 ```bash
-bash .opencode/skills/validation/scripts/setup_env.sh
-conda activate classify_ut
+pip install openpyxl
 ```
+
+## Scripts
+
+This skill uses two companion scripts, both located in the sibling `scripts/` directory:
+
+| Script | Purpose | Workspace-relative path |
+|--------|---------|------------------------|
+| `extract_tasks.py` | Reads the Excel, deduplicates rows, outputs `tasks.json` | `.opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py` |
+| `write_results.py` | Takes classification results and writes the `"agent"` sheet | `.opencode/skills/torch-xpu-ops-validation/scripts/write_results.py` |
+
+Run all script commands from the **workspace root** (the repository checkout directory). Do not `cd` into subdirectories.
+
+## Workflow
+
+The classification proceeds in three phases using the scripts for Excel I/O and deduplication.
 
 ### Phase 1: Read and Deduplicate
 
-Run `scripts/extract_tasks.py` to read the Excel, deduplicate, and output `tasks.json`:
+Run `extract_tasks.py` to read the Excel, deduplicate, and output `tasks.json`:
 
 ```bash
-python3 scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json
+python3 .opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json
 ```
 
 The script outputs a JSON object with:
@@ -78,6 +85,14 @@ The script outputs a JSON object with:
 
 For each row in `tasks.json`, run the decision cascade. Each check is a **hard gate** — if the condition is met, classification stops and the result is recorded.
 
+> **IMPORTANT — Cascade is mandatory for every task**: The `Reason` and `DetailReason` fields in the `tasks.json` input may contain pre-populated values from a prior run. **These are NOT valid classification results.** The orchestrator MUST run the full cascade (Gates 1-4 via subagents) for every task in the `tasks` array. Only rows in `already_resolved` (Analyzed=TRUE or deduplicated) may bypass the cascade via Step 0 reuse.
+
+> **IMPORTANT — `--filter-*` flags are post-hoc only**: The `--filter-reason` and `--filter-detailreason` flags on `extract_tasks.py` exist for extracting a subset of already-classified rows for review. They MUST NOT be used as a classification shortcut. If you use them to select rows, you MUST still run the full cascade on those rows. "I already know the result" is not valid — the subagents determine the result.
+
+> **IMPORTANT — Cascade is mandatory for every task**: The `Reason` and `DetailReason` fields in the `tasks.json` input may contain pre-populated values from a prior run. **These are NOT valid classification results.** The orchestrator MUST run the full cascade (Gates 1-4 via subagents) for every task in the `tasks` array. Only rows in `already_resolved` (Analyzed=TRUE or deduplicated) may bypass the cascade via Step 0 reuse.
+
+> **IMPORTANT — `--filter-*` flags are post-hoc only**: The `--filter-reason` and `--filter-detailreason` flags on `extract_tasks.py` exist for extracting a subset of already-classified rows for review. They MUST NOT be used as a classification shortcut. If you use them to select rows, you MUST still run the full cascade on those rows. "I already know the result" is not valid — the subagents determine the result.
+
 > **Confidence**: `Confidence` is auto-computed by `write_results.py` based on whether `DetailReason` contains exact evidence (commit hash, issue/PR URL, PR reference). To produce `High` confidence, include specific, verifiable evidence in every `DetailReason`. Vague statements without references result in `Medium`.
 
 ---
@@ -87,7 +102,7 @@ For each row in `tasks.json`, run the decision cascade. Each check is a **hard g
 Before running the cascade, check if an already-resolved row (from `Phase 1` output's `already_resolved` array) has the **same `classname_cuda`** AND the **identical `message_xpu`** as this task.
 
 **If a match is found**:
-- Copy its `Reason` and `DetailReason`.
+- Copy its `Reason` and `DetailReason`, but prefix both with `[Reused row#XX] ` (using the row number of the matched row if available).
 - Set `ReuseSource` to the matched row's `name_cuda`.
 - Skip the cascade for this row.
 
@@ -114,7 +129,7 @@ task(
 
 **If `is_not_target == True`**:
 - `Reason = "Not Applicable"`
-- `DetailReason = evidence from check_not_target_feature`
+- `DetailReason = "<classification.reasoning> (Evidence: <classification.evidence joined>)"`
 - Stop cascade for this row.
 
 **If `is_not_target == False`** → proceed to Gate 2.
@@ -125,13 +140,15 @@ task(
 
 Check whether the test has a community change (upstream removal/rename).
 
+The `check_community_change` skill requires a `PYTORCH_SRC` path (PyTorch source checkout) to inspect test files and git history. Provide it when available; if omitted, the skill may fall back to less authoritative checks.
+
 ```python
 task(
     subagent_type="explore",
     load_skills=["check_community_change"],
     description=f"Community change check: {name_cuda}",
     prompt=f"Check community change for {name_cuda} in {class_name} (device=cuda). "
-           f"Test file: {test_file}. PYTORCH_SRC={PYTORCH_SRC}. "
+           f"Test file: {test_file}. "
            f"First check if CUDA is available. If yes, use --collect-only (Path A). "
            f"If not, use source inspection (Path B)."
 )
@@ -180,11 +197,11 @@ Examine the matched issues. For the **highest relevance** match:
 
 | Issue State | Labels | `Reason` | `DetailReason` |
 |-------------|--------|----------|----------------|
-| OPEN | `bug` or no label | `Failures (xpu broken)` | Issue title + URL |
-| OPEN | `feature` / `enhancement` | `Feature gap` | Issue title + URL |
-| OPEN | `skipped` | `Failures (xpu broken)` | Issue title + URL (skipped tests are broken) |
-| CLOSED | `not_target` / `wontfix` | `Not Applicable` | Issue title + URL (override Gate 1) |
-| CLOSED | other or no relevant label | `To be enabled` | Issue title + URL (likely fixed) |
+| OPEN | `bug` or no label | `Failures (xpu broken)` | `"Known bug: <Issue Title> - <Issue URL>"` |
+| OPEN | `feature` / `enhancement` | `Feature gap` | `"Missing feature: <Issue Title> - <Issue URL>"` |
+| OPEN | `skipped` | `Failures (xpu broken)` | `"Test skipped due to failure: <Issue Title> - <Issue URL>"` |
+| CLOSED | `not_target` / `wontfix` | `Not Applicable` | `"Not applicable per closed issue: <Issue Title> - <Issue URL>"` |
+| CLOSED | other or no relevant label | `To be enabled` | `"Issue closed, awaiting enablement: <Issue Title> - <Issue URL>"` |
 
 **If `has_known_issue == False`**:
 - `Reason = "Submit Issue"`
@@ -196,10 +213,10 @@ Stop cascade for this row.
 
 ### Phase 3: Write Results to Excel
 
-Run `scripts/write_results.py` to write all classification results to the output sheet:
+Run `write_results.py` to write all classification results to a standalone output file:
 
 ```bash
-python3 scripts/write_results.py <excel_path> results.json [sheet_name] [--output_sheet=agent]
+python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py <excel_path> results.json [sheet_name] --output_sheet=agent --output-excel=agent_results.xlsx
 ```
 
 The script:
@@ -210,39 +227,49 @@ The script:
    - If it was already `Analyzed = TRUE` before → leave untouched.
    - Otherwise → `Analyzed = FALSE`.
 4. **Auto-computes `Confidence`**: `High` if `DetailReason` matches patterns for exact evidence (GitHub issue URL, PR URL, commit hash, `#PR` reference). Else `Medium`.
-5. Writes to a new sheet (default name `"agent"`).
-6. Does **not** modify the original sheet.
-
-
+5. Writes the agent sheet to a **separate** standalone Excel file (e.g. `agent_results.xlsx`) using the `--output-excel` flag.
 
 ## Execution
 
 Load this skill to orchestrate the full classification. The agent follows this workflow directly:
 
-1. Run Phase 1: `python3 .opencode/skills/validation/scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json`. This produces a JSON file with `tasks` (rows needing classification) and `already_resolved` (deduplicated rows).
+1. Run Phase 1:
+   ```
+   python3 .opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json
+   ```
 2. For each task in `tasks.json`, run the decision cascade:
    - **Gate 1**: Delegate to `check_not_target_feature` skill.
-   - **Gate 2**: Delegate to `check_community_change` skill.
+   - **Gate 2**: Delegate to `check_community_change` skill (provide `PYTORCH_SRC` if available).
    - **Gate 3**: Check `status_xpu` value directly from the task data.
    - **Gate 4**: Delegate to `check_known_issue` skill.
 3. Accumulate all results (already_resolved + newly classified tasks) into `results.json`.
-4. Run Phase 3: `python3 .opencode/skills/validation/scripts/write_results.py <excel_path> results.json [sheet_name]`.
+4. Run Phase 3:
+   ```
+   python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py <excel_path> results.json [sheet_name] --output_sheet=agent --output-excel=agent_results.xlsx
+   ```
 5. Report summary statistics: rows total, deduplicated, classified per Reason category.
 
 ## Constraints
 
 1. **Gate order is strict**: Always check `not_target` before `community_change`, and `community_change` before `status_xpu`. Breaking the order can produce wrong classifications.
 2. **Deduplication is a speed optimization, not a classification shortcut**: Only reuse results from rows with the same class AND similar error message. Do not reuse across unrelated tests.
-3. **Scripts handle all Excel I/O**: The agent should never manipulate Excel cells directly. Always use `scripts/extract_tasks.py` and `scripts/write_results.py`. Script paths are relative to `.opencode/skills/validation/`.
+3. **Scripts handle all Excel I/O**: The agent should never manipulate Excel cells directly. Always use `.opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py` and `.opencode/skills/torch-xpu-ops-validation/scripts/write_results.py`.
 4. **Open issues with `skipped` label are treated as failures**: A skipped test is a broken test — classify as `Failures (xpu broken)`, not `To be enabled`.
 5. **Closed issues with `not_target`/`wontfix` override Gate 1**: If Gate 1 said "not not-target" but Gate 4 finds a CLOSED `not_target` issue, the `not_target` label is authoritative. Reclassify as `Not Applicable`.
 6. **`Submit Issue` means manual intervention**: These rows require a human to file a new issue. The agent should not auto-file.
 7. **Never modify the original sheet**: Always write to the output sheet name (default `"agent"`).
+8. **No local system assumptions**: The skill does not depend on any pre-existing conda environment, proxy configuration, or local PyTorch checkout. All dependencies are documented and installable via `pip install openpyxl`.
+9. **All commands run from workspace root**: All script invocations use absolute (workspace-relative) paths. Do not `cd` into subdirectories before running scripts.
+10. **`--filter-reason` and `--filter-detailreason` are post-hoc only**: These flags select rows by their OUTPUT classification columns. They MUST NOT be used as a classification shortcut. If you use them for subset extraction, you MUST still run the cascade via subagents on those rows. The pre-populated Reason/DetailReason values are from a prior run — cascade results override them.
+11. **Ignore pre-populated Reason/DetailReason in task data**: The `tasks` array entries may contain `Reason` and `DetailReason` from a previous run. Do not copy them to the output. Always run the cascade gates (via subagents for Gates 1, 2, 4; directly for Gate 3). The `already_resolved` array handles all legitimate reuses.
+12. **Task data fields not to be read during classification**: During Phase 2 cascade processing, treat `Reason` and `DetailReason` as write-only outputs. Only read `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, and `status_xpu` from each task. Ignore all other fields.
+13. **Mandatory Evidence in DetailReason**: The `DetailReason` MUST contain explicit evidence to support the classification. For `check_known_issue`, this means a valid GitHub Issue URL or number. For `check_community_change`, this means a commit hash or PR number where the change occurred. For `check_not_target_feature`, this means a specific code snippet or API documentation reference. Vague statements without evidence are invalid.
 
 ## Version
 
-- v1.0.0 - 2026-06-09 - Initial classify_ut skill with Python script I/O and cascaded classification.
-- v1.1.0 - 2026-06-09 - Extracted scripts to `scripts/extract_tasks.py` and `scripts/write_results.py`; removed embedded script.
+- v2.1.0 - 2026-06-10 - Added Constraint 10-12: explicit rules against using `--filter-reason`/`--filter-detailreason` as classification shortcut, ignoring pre-populated Reason/DetailReason in tasks, and restricting readable task fields. Added IMPORTANT callouts at Phase 2 entry. Added WARNING stderr messages in `extract_tasks.py` for `--filter-reason`/`--filter-detailreason` to discourage misuse.
+- v2.1.0 - 2026-06-10 - Added Constraint 10-12: explicit rules against using `--filter-reason`/`--filter-detailreason` as classification shortcut, ignoring pre-populated Reason/DetailReason in tasks, and restricting readable task fields. Added IMPORTANT callouts at Phase 2 entry.
+- v2.0.0 - 2026-06-10 - Rewritten: fixed script paths to `.opencode/skills/torch-xpu-ops-validation/scripts/`, removed Phase 0 conda setup (Intel-specific infra), removed `PYTORCH_SRC` default, removed local system dependencies.
 
 ## See Also
 

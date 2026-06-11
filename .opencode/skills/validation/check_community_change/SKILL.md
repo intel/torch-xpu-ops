@@ -109,14 +109,19 @@ If either check reveals that the test was removed, renamed, or refactored upstre
    python3 -c "import torch; print(torch.xpu.is_available())"    # XPU
    ```
 
-### Required Tools
+### Required Tools (whitelist — no other tools may be used)
 
-| Tool | Purpose |
-|------|---------|
+| Tool | Allowed Purpose |
+|------|-----------------|
 | `read` | Read test source files, class/method bodies, OpInfo definitions |
-| `bash` | Run `git log`, `git show`, file lookups, `pytest --collect-only` |
+| `bash` | Run `git log`, `git show`, `git merge-base --is-ancestor`, file lookups, `pytest --collect-only` |
 | `grep` | Find class/method definitions, decorators, `instantiate_device_type_tests` calls, OpInfo entries |
 | `glob` | Find test files when the path may differ from the input |
+
+**Tool restrictions:**
+- `bash` may NOT run `gh`, `curl`, `wget`, or any command that accesses remote servers.
+- `bash` may NOT run `git fetch`, `git pull`, `git remote` — local git only.
+- No web tools (`webfetch`, `websearch`) may be invoked by this skill.
 
 ## Workflow
 
@@ -213,7 +218,16 @@ cd "$PYTORCH_SRC"
 git log --oneline -20 -- "$test_file"
 ```
 
-For each candidate commit, inspect the diff for the method name:
+For each candidate commit, **first verify it is merged into HEAD** (skips open PR branches):
+
+```bash
+# Gate: only proceed if commit is an ancestor of HEAD
+git merge-base --is-ancestor <commit_hash> HEAD && echo "MERGED" || echo "NOT MERGED — skip this commit"
+```
+
+Only proceed with commits that pass the merge-base gate (output `MERGED`). If a commit is NOT an ancestor of HEAD, it comes from an open PR or unmerged branch — discard it as evidence.
+
+For each merged candidate commit, inspect the diff for the method name:
 
 ```bash
 git show <commit_hash> -- "$test_file" | grep -n "test_foo\|$base_method"
@@ -225,9 +239,10 @@ Check specifically for:
 - Method refactored: signature change, parameterization change
 
 **Decision:**
-- Method was renamed → `community_change = True`, `change_type = "base_function_renamed"`, record old/new names
-- Method was removed → `community_change = True`, `change_type = "base_function_removed"`, record removal commit
+- Method was renamed → `community_change = True`, `change_type = "base_function_renamed"`, record old/new names AND the merged commit hash
+- Method was removed → `community_change = True`, `change_type = "base_function_removed"`, record removal commit hash
 - Method not found in git history (never existed) → `community_change = True`, `change_type = "base_function_removed"`, `detail_reason = "Test never existed in this source version"`
+- Method found only in commits that fail the `git merge-base --is-ancestor` gate (i.e., open PR branches) → NOT a community change. The test has not been changed in the merged upstream.
 
 ### Step 2: Check Device Availability and Select Path
 
@@ -527,13 +542,90 @@ task(
     prompt="Check community change for <test_name> in <class_name> (device=<device>). "
            "Test file: <test_file>. PYTORCH_SRC=<path>. "
            "First check if CUDA is available. If yes, use --collect-only (Path A). "
-           "If not, use source inspection (Path B)."
+           "If not, use source inspection (Path B). "
+           "IMPORTANT: Ignore any Reason or DetailReason fields in the input. "
+           "Do NOT read or carry them forward."
 )
 ```
 
-The subagent then follows the Workflow above, using its own tools (`bash`, `read`, `grep`, `glob`) and running independent calls in parallel. The subagent MUST check device availability first (Step 2.1) before deciding which path to follow — never assume the device is available.
+**Input scrubbing protocol (MANDATORY):** Before starting analysis, remove any pre-existing `Reason`, `DetailReason`, `message_xpu`, and `status_xpu` from your working context. If they are present in the task parameters, do not read their values. Base your verdict solely on source code, git history, device availability, and test generation logic.
 
-## Constraints
+The subagent then follows the Workflow above, using only the [Allowed Tools](#allowed-tools-locked) listed in the Enforcement section. The subagent MUST check device availability first (Step 2.1) before deciding which path to follow — never assume the device is available.
+
+After completing the analysis and BEFORE returning the verdict, the subagent MUST run the [Evidence Validation Gate](#evidence-validation-gate-mandatory). If validation fails, redo the analysis — do not return an invalid verdict.
+
+## Enforcement: MUST DO / MUST NOT DO
+
+These are not advisory — they are enforced rules. Violating any MUST NOT DO or skipping any MUST DO invalidates the output.
+
+### Allowed Tools (locked)
+
+Only these tools may be used. Any tool not in this list MUST NOT be used.
+
+| Tool | Allowed Usage |
+|------|---------------|
+| `read` | Read test source files, class/method bodies, OpInfo definitions |
+| `bash` | `git log`, `git show`, `git diff`, `git branch --contains`, `ls`, `grep` (for file text ONLY), `pytest --collect-only` |
+| `grep` | Find class/method definitions, decorators, `instantiate_device_type_tests` calls, OpInfo entries |
+| `glob` | Find test files when path may differ from input |
+
+### FORBIDDEN Tools and Actions (MUST NOT DO)
+
+1. **MUST NOT use `gh` CLI** for any purpose — no `gh search prs`, `gh pr view`, `gh issue list`, `gh api`.
+2. **MUST NOT use `websearch`** or any web search tool to look up test status, PRs, or issues.
+3. **MUST NOT use `webfetch`** to fetch GitHub URLs, PR pages, or any web resource.
+4. **MUST NOT search GitHub.com, GitHub API, or any external web service.** All evidence must come from local source code and local git history only.
+5. **MUST NOT read any `Reason` or `DetailReason` field from the input task data.** You are told the `name_cuda`, `testfile_cuda`, `classname_cuda`, and `device` only. If the task input includes extra fields (e.g. `Reason`, `DetailReason`, `message_xpu`, `status_xpu`), you MUST NOT read, reference, or carry forward their values.
+6. **MUST NOT accept any evidence from an unmerged branch or open PR.** If a commit is not an ancestor of `HEAD` in the local git history, it is not valid evidence. A commit from a remote branch that has not been merged into the base branch is equivalent to an open PR — do not use it.
+7. **MUST NOT cite a GitHub PR URL (e.g. `github.com/pytorch/pytorch/pull/NNNN`) as evidence.** Only commit hashes from `git log` are valid evidence.
+
+### MUST DO Rules
+
+1. **Base-function-first**: Always check base function existence before concluding any other absence reason. If the base function is absent, classify as Community Change regardless of device wrapper status.
+2. **Device availability gate first**: Before running `--collect-only`, check whether the target device is available. If the device is unavailable, `--collect-only` will silently omit device-specific test classes — do NOT use it in that case. Fall back to source inspection.
+3. **`--collect-only` is authoritative (Path A)**: When the target device is available, `--collect-only` output is the single source of truth for whether a test case exists. Source-level analysis (OpInfo dtypes, decorators, parametrization) is NOT needed — `--collect-only` accounts for all of them at runtime.
+4. **Source-inspection fallback must be thorough (Path B)**: When the device is unavailable, ensure the fallback covers all generation paths: `instantiate_device_type_tests` only_for, decorators (dtypesIfDEVICE, skip, only), OpInfo dtype lists, and parametrize. Missing any path can produce a false community-change classification.
+5. **Git history is authoritative**: For removed/renamed tests, `git log` and `git show` evidence takes precedence over any other signal. Only use `git log` (which by default returns only merged/committed history, not open PR branches).
+6. **Name-suffix stripping**: Always strip trailing device/dtype/OpInfo suffixes from `test_name` before searching for the base method. Incorrect suffix stripping is the most common error.
+7. **Device-only parametrization is not a community change**: If `instantiate_device_type_tests(only_for=("xpu",))` explicitly excludes the target device, that is by design — do not flag as community change.
+8. **Device dtype gaps are not community changes**: If `dtypesIfCUDA` excludes the target dtype, that is a CUDA dtype gap, not a community change.
+9. **Do not conflate "device case absent" with "community change"**: A missing device case may be a dtype gap or parametrization exclusion, not an upstream removal.
+10. **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
+
+### Evidence Validation Gate (mandatory)
+
+Before returning a `community_change = True` verdict, you MUST run these checks. If any check fails, the verdict is invalid — go back and fix.
+
+**Gate A — No PR URLs in evidence:**
+```bash
+# If your evidence object contains any string matching github.com/*/pull/,
+# the evidence is INVALID. Remove it and re-run without web lookups.
+```
+
+**Gate B — Every commit hash must be an ancestor of HEAD:**
+```bash
+# For EACH commit_hash cited as CC evidence, run:
+git merge-base --is-ancestor <commit_hash> HEAD
+# If this returns exit code 1 (false), the commit is NOT merged —
+# it is from an open PR or unmerged branch. Discard that evidence.
+```
+
+**Gate C — No old Reason/DetailReason in output:**
+```bash
+# Check that your output's detail_reason does NOT contain the input's
+# Reason or DetailReason values as substrings. If it does, you copied
+# old data — redo the analysis from scratch.
+```
+
+### Output Audit
+
+Every CC verdict must cite **at least one merged commit hash** in its `git_history.commits_removing_method[]` or `git_history.file_deleted_in_commit`. A CC verdict with zero commit hashes is automatically invalid — the evidence is insufficient.
+
+Evidence that cites ONLY an open PR URL (no merged commit hash) → **verdict is invalid**, classifies as NOT community change.
+
+---
+
+## Constraints (Retained for Reference)
 
 1. **Base-function-first**: Always check base function existence before concluding any other absence reason. If the base function is absent, classify as Community Change regardless of device wrapper status.
 2. **Device availability gate first**: Before running `--collect-only`, check whether the target device is available. If the device is unavailable, `--collect-only` will silently omit device-specific test classes — do NOT use it in that case. Fall back to source inspection.
@@ -544,10 +636,11 @@ The subagent then follows the Workflow above, using its own tools (`bash`, `read
 7. **Device-only parametrization is not a community change**: If `instantiate_device_type_tests(only_for=("xpu",))` explicitly excludes the target device, that is by design — do not flag as community change.
 8. **Device dtype gaps are not community changes**: If `dtypesIfCUDA` excludes the target dtype, that is a CUDA dtype gap, not a community change.
 9. **Do not conflate "device case absent" with "community change"**: A missing device case may be a dtype gap or parametrization exclusion, not an upstream removal.
+10. **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`, `message_xpu`, etc.) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
 
 ## Version
 
-- v2.0.0 - 2026-06-09 - Bifurcated approach: --collect-only (Path A) when device available, source inspection (Path B) fallback.
+- v2.1.0 - 2026-06-10 - Added structural enforcement: tool whitelist/blacklist, input scrubbing protocol, `git merge-base --is-ancestor` validation gate, output audit requirements, and FORBIDDEN tools/MUST NOT DO rules to prevent open-PR evidence and stale Reason/DetailReason carry-forward.
 
 ## See Also
 

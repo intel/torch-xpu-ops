@@ -1,6 +1,0 @@
-{
-  "venvPath": "${env:CONDA_ENVS_PATH}",
-  "venv": "pytorch_opencode_env",
-  "pythonVersion": "3.10",
-  "reportMissingModuleSource": "none"
-}

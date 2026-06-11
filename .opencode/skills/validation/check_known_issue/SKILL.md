@@ -1,3 +1,8 @@
+---
+name: check-known-issue
+description: Search both intel/torch-xpu-ops and pytorch/pytorch for known issues related to a test case. Returns matched issues with issue state, labels, and match evidence for downstream classification.
+---
+
 # check_known_issue
 
 Search both `intel/torch-xpu-ops` and `pytorch/pytorch` for known issues related to a test case. Returns matched issues with issue state, labels, and match evidence for downstream classification.
@@ -120,12 +125,12 @@ From traceback:      operator names in stack frames (aten::*), file paths (torch
 Run searches in parallel with keyword variations. The `gh search issues` command targets issues only:
 
 ```bash
-# Run ALL of these in parallel:
-gh search issues "<test_name> xpu" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
-gh search issues "<test_name>" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
-gh search issues "<class_name>" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
-gh search issues "<operator_or_api>" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
-gh search issues "<error_keyword>" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
+# Run ALL of these in parallel (Note: we append `is:issue` to exclude PRs):
+gh search issues "<test_name> xpu is:issue" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
+gh search issues "<test_name> is:issue" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
+gh search issues "<class_name> is:issue" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
+gh search issues "<operator_or_api> is:issue" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
+gh search issues "<error_keyword> is:issue" --repo=intel/torch-xpu-ops --limit=10 --json=number,title,state,labels,url &
 wait
 ```
 
@@ -136,12 +141,12 @@ Collect all unique results. Deduplicate by issue number.
 Same pattern for the upstream repo. These searches are independent of Step 2 and run in parallel with them:
 
 ```bash
-# Run ALL of these in parallel:
-gh search issues "<test_name> xpu" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
-gh search issues "<test_name>" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
-gh search issues "<class_name>" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
-gh search issues "<operator_or_api>" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
-gh search issues "<error_keyword>" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
+# Run ALL of these in parallel (Note: we append `is:issue` to exclude PRs):
+gh search issues "<test_name> xpu is:issue" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
+gh search issues "<test_name> is:issue" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
+gh search issues "<class_name> is:issue" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
+gh search issues "<operator_or_api> is:issue" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
+gh search issues "<error_keyword> is:issue" --repo=pytorch/pytorch --limit=10 --json=number,title,state,labels,url &
 wait
 ```
 
@@ -333,3 +338,5 @@ gh issue view 180324 --repo=pytorch/pytorch --json=state,labels,title,body,close
 - If no results come from keyword-based searches, try reducing keywords to the base test name (strip `_cuda`/`_xpu`/`_cpu` suffix).
 - If still no results, report `has_known_issue = False` with empty matches. Do NOT fabricate or infer issues.
 - For `not_target`/`wontfix` labeled issues, report them at HIGH relevance regardless of match_type — these are authoritative classification signals.
+- **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`, `message_xpu`, etc.) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
+- **Analyze from scratch — ignore any pre-existing `Reason` or `DetailReason` in the input task data.** Prior classification results from other gates or earlier runs are irrelevant to this skill's analysis. Base your verdict solely on GitHub issue search results, issue state/labels, and the match criteria defined here. Never carry forward or reuse another gate's classification.

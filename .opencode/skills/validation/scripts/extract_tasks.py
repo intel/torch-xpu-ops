@@ -7,8 +7,14 @@ Phase 1 of classify_ut workflow:
 2. Deduplicates rows that share the same classname_cuda + similar error message as an already-analyzed row
 3. Outputs tasks.json (rows needing classification) and already_resolved.json (deduplicated rows)
 
+Filter options (applied after dedup — only matching rows appear in the output):
+  --filter-reason PATTERN        Include only rows where Reason matches (substring, case-insensitive)
+  --filter-detailreason PATTERN  Include only rows where DetailReason contains this substring (case-insensitive)
+  --filter-status-xpu VALUE      Include only rows where status_xpu equals this value
+
 Usage:
     python3 extract_tasks.py <excel_path> [sheet_name] > tasks.json
+    python3 extract_tasks.py <excel_path> [sheet_name] --filter-reason "To be enabled" --filter-detailreason "Daisy" --filter-status-xpu "" > tasks.json
 """
 
 import json
@@ -80,13 +86,76 @@ def messages_similar(msg_a: str, msg_b: str, threshold: float = 0.7) -> bool:
     return sim >= threshold
 
 
+def parse_filters(args):
+    filters = {}
+    i = 1
+    while i < len(args):
+        if args[i] == "--filter-reason" and i + 1 < len(args):
+            filters["reason"] = args[i + 1]
+            print("WARNING: --filter-reason filters by the OUTPUT Reason column. "
+                  "This is for post-hoc subset extraction only. "
+                  "Do NOT use it as a classification shortcut — "
+                  "the cascade (Gates 1-4 via subagents) must still be run.",
+                  file=sys.stderr)
+            i += 2
+        elif args[i] == "--filter-detailreason" and i + 1 < len(args):
+            filters["detailreason"] = args[i + 1]
+            print("WARNING: --filter-detailreason filters by the OUTPUT DetailReason column. "
+                  "This is for post-hoc subset extraction only. "
+                  "Do NOT use it as a classification shortcut — "
+                  "the cascade (Gates 1-4 via subagents) must still be run.",
+                  file=sys.stderr)
+            i += 2
+        elif args[i] == "--filter-status-xpu" and i + 1 < len(args):
+            filters["status_xpu"] = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    return filters
+
+
+def row_matches_filters(row: dict, filters: dict) -> bool:
+    if "reason" in filters:
+        val = row.get("Reason", "")
+        pattern = filters["reason"].lower()
+        if pattern not in val.lower():
+            return False
+    if "detailreason" in filters:
+        val = row.get("DetailReason", "")
+        pattern = filters["detailreason"].lower()
+        if pattern not in val.lower():
+            return False
+    if "status_xpu" in filters:
+        val = row.get("status_xpu", "")
+        expected = filters["status_xpu"]
+        if val != expected:
+            return False
+    return True
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 extract_tasks.py <excel_path> [sheet_name]", file=sys.stderr)
+        print("Usage: python3 extract_tasks.py <excel_path> [sheet_name] [--filter-reason PATTERN] [--filter-detailreason PATTERN] [--filter-status-xpu VALUE]", file=sys.stderr)
         sys.exit(1)
 
-    excel_path = sys.argv[1]
-    sheet_name = sys.argv[2] if len(sys.argv) > 2 else None
+    filters = parse_filters(sys.argv)
+
+    # Consume positional args (excel_path, sheet_name) by skipping filter flags
+    positional = []
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i].startswith("--filter-"):
+            i += 2  # skip flag and its value
+        else:
+            positional.append(sys.argv[i])
+            i += 1
+
+    if not positional:
+        print("ERROR: Missing excel_path", file=sys.stderr)
+        sys.exit(1)
+
+    excel_path = positional[0]
+    sheet_name = positional[1] if len(positional) > 1 else None
 
     wb = load_workbook(excel_path, data_only=True)
     ws = wb[sheet_name] if sheet_name else wb.active
@@ -146,8 +215,8 @@ def main():
                     "name_cuda": r.get("name_cuda", ""),
                     "message_xpu": r.get("message_xpu", ""),
                     "Analyzed": True,
-                    "Reason": ar.get("Reason", ""),
-                    "DetailReason": ar.get("DetailReason", ""),
+                    "Reason": f"[Reused row#{ar.get('_row', '??')}] {ar.get('Reason', '')}",
+                    "DetailReason": f"[Reused row#{ar.get('_row', '??')}] {ar.get('DetailReason', '')}",
                     "ReuseSource": ar.get("name_cuda", ""),
                 })
                 reused = True
@@ -156,12 +225,17 @@ def main():
         if reused:
             continue
 
+        if filters and not row_matches_filters(r, filters):
+            continue
+
         tasks.append({
             "testfile_cuda": r.get("testfile_cuda", ""),
             "classname_cuda": r.get("classname_cuda", ""),
             "name_cuda": r.get("name_cuda", ""),
             "message_xpu": r.get("message_xpu", ""),
             "status_xpu": r.get("status_xpu", ""),
+            "Reason": r.get("Reason", ""),
+            "DetailReason": r.get("DetailReason", ""),
         })
 
     output = {
