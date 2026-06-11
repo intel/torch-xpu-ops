@@ -15,7 +15,7 @@ namespace xccl {
 
 void oneccl_group_start() {
   if (isCCLV2EnabledCached()) {
-    onecclGroupStart();
+    C10D_XCCL_CHECK(onecclGroupStart(), "onecclGroupStart");
   } else {
     ccl::group_start();
   }
@@ -23,7 +23,7 @@ void oneccl_group_start() {
 
 void oneccl_group_end() {
   if (isCCLV2EnabledCached()) {
-    onecclGroupEnd();
+    C10D_XCCL_CHECK(onecclGroupEnd(), "onecclGroupEnd");
   } else {
     ccl::group_end();
   }
@@ -40,14 +40,16 @@ void onecclAllReduce(
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp =
         getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclAllReduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclAllReduce(
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            xcclReduceOp,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclAllReduce");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp =
@@ -76,15 +78,17 @@ void onecclReduce(
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp =
         getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclReduce(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        root,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclReduce(
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            xcclReduceOp,
+            root,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclReduce");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp =
@@ -111,14 +115,16 @@ void onecclBroadcast(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclBroadcast(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        root,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclBroadcast(
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            root,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclBroadcast");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::broadcast(
@@ -144,14 +150,16 @@ void onecclReduceScatter(
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp =
         getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
-    onecclReduceScatter(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        xcclReduceOp,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclReduceScatter(
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)output.numel(),
+            xcclDataType,
+            xcclReduceOp,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclReduceScatter");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp =
@@ -176,13 +184,15 @@ void onecclAllGather(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclAllGather(
-        input.data_ptr(),
-        output.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclAllGather(
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclAllGather");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::allgather(
@@ -204,13 +214,15 @@ void onecclSend(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
-    onecclSend(
-        input.data_ptr(),
-        (size_t)input.numel(),
-        xcclDataType,
-        dstRank,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclSend(
+            input.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            dstRank,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclSend");
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::send(
@@ -232,13 +244,15 @@ void onecclRecv(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(output.scalar_type(), false);
-    onecclRecv(
-        output.data_ptr(),
-        (size_t)output.numel(),
-        xcclDataType,
-        srcRank,
-        comm.onecclComm,
-        &stream.queue());
+    C10D_XCCL_CHECK(
+        onecclRecv(
+            output.data_ptr(),
+            (size_t)output.numel(),
+            xcclDataType,
+            srcRank,
+            comm.onecclComm,
+            &stream.queue()),
+        "onecclRecv");
   } else {
     auto xcclDataType = getXcclDataTypeV1(output.scalar_type(), false);
     ccl::recv(
@@ -264,35 +278,41 @@ void onecclGather(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(inputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
-    onecclCommUserRank(comm.onecclComm, &cur_rank);
-    onecclGroupStart();
+    C10D_XCCL_CHECK(
+        onecclCommCount(comm.onecclComm, &numranks), "onecclCommCount");
+    C10D_XCCL_CHECK(
+        onecclCommUserRank(comm.onecclComm, &cur_rank), "onecclCommUserRank");
+    C10D_XCCL_CHECK(onecclGroupStart(), "onecclGroupStart");
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
-          onecclRecv(
-              recvbuff,
-              count,
-              xcclDataType,
-              r,
-              comm.onecclComm,
-              &stream.queue());
+          C10D_XCCL_CHECK(
+              onecclRecv(
+                  recvbuff,
+                  count,
+                  xcclDataType,
+                  r,
+                  comm.onecclComm,
+                  &stream.queue()),
+              "onecclRecv");
         } else {
           // on its own rank, simply copy from the input
           outputs[r].copy_(inputs);
         }
       }
     } else {
-      onecclSend(
-          inputs.data_ptr(),
-          count,
-          xcclDataType,
-          root,
-          comm.onecclComm,
-          &stream.queue());
+      C10D_XCCL_CHECK(
+          onecclSend(
+              inputs.data_ptr(),
+              count,
+              xcclDataType,
+              root,
+              comm.onecclComm,
+              &stream.queue()),
+          "onecclSend");
     }
-    onecclGroupEnd();
+    C10D_XCCL_CHECK(onecclGroupEnd(), "onecclGroupEnd");
   } else {
     auto xcclDataType = getXcclDataTypeV1(inputs.scalar_type(), false);
     int numranks = comm.cclComm->size();
@@ -333,20 +353,24 @@ void onecclScatter(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
-    onecclCommUserRank(comm.onecclComm, &cur_rank);
-    onecclGroupStart();
+    C10D_XCCL_CHECK(
+        onecclCommCount(comm.onecclComm, &numranks), "onecclCommCount");
+    C10D_XCCL_CHECK(
+        onecclCommUserRank(comm.onecclComm, &cur_rank), "onecclCommUserRank");
+    C10D_XCCL_CHECK(onecclGroupStart(), "onecclGroupStart");
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           size_t send_count = inputs[r].numel();
-          onecclSend(
-              inputs[r].data_ptr(),
-              send_count,
-              xcclDataType,
-              r,
-              comm.onecclComm,
-              &stream.queue());
+          C10D_XCCL_CHECK(
+              onecclSend(
+                  inputs[r].data_ptr(),
+                  send_count,
+                  xcclDataType,
+                  r,
+                  comm.onecclComm,
+                  &stream.queue()),
+              "onecclSend");
         } else {
           // on its own rank, simply copy from the input
           outputs.copy_(inputs[r]);
@@ -354,15 +378,17 @@ void onecclScatter(
       }
     } else {
       size_t recv_count = outputs.numel();
-      onecclRecv(
-          outputs.data_ptr(),
-          recv_count,
-          xcclDataType,
-          root,
-          comm.onecclComm,
-          &stream.queue());
+      C10D_XCCL_CHECK(
+          onecclRecv(
+              outputs.data_ptr(),
+              recv_count,
+              xcclDataType,
+              root,
+              comm.onecclComm,
+              &stream.queue()),
+          "onecclRecv");
     }
-    onecclGroupEnd();
+    C10D_XCCL_CHECK(onecclGroupEnd(), "onecclGroupEnd");
   } else {
     auto xcclDataType = getXcclDataTypeV1(outputs.scalar_type(), false);
     int numranks = comm.cclComm->size();
@@ -437,20 +463,23 @@ void onecclAllToAll(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
-    onecclCommCount(comm.onecclComm, &numranks);
+    C10D_XCCL_CHECK(
+        onecclCommCount(comm.onecclComm, &numranks), "onecclCommCount");
 
     auto [isUniform, uniformCount] = checkUniformAllToAll(
         sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
     if (isUniform) {
       // Use native onecclAllToAll for uniform case
-      onecclAllToAll(
-          sendbuff,
-          recvbuff,
-          uniformCount,
-          xcclDataType,
-          comm.onecclComm,
-          &stream.queue());
+      C10D_XCCL_CHECK(
+          onecclAllToAll(
+              sendbuff,
+              recvbuff,
+              uniformCount,
+              xcclDataType,
+              comm.onecclComm,
+              &stream.queue()),
+          "onecclAllToAll");
       return;
     }
 
@@ -458,22 +487,26 @@ void onecclAllToAll(
     xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
-        onecclSend(
-            ((char*)sendbuff) + senddispls[r] * size,
-            sendcounts[r],
-            xcclDataType,
-            r,
-            comm.onecclComm,
-            &stream.queue());
+        C10D_XCCL_CHECK(
+            onecclSend(
+                ((char*)sendbuff) + senddispls[r] * size,
+                sendcounts[r],
+                xcclDataType,
+                r,
+                comm.onecclComm,
+                &stream.queue()),
+            "onecclSend");
       }
       if (recvcounts[r] != 0) {
-        onecclRecv(
-            ((char*)recvbuff) + recvdispls[r] * size,
-            recvcounts[r],
-            xcclDataType,
-            r,
-            comm.onecclComm,
-            &stream.queue());
+        C10D_XCCL_CHECK(
+            onecclRecv(
+                ((char*)recvbuff) + recvdispls[r] * size,
+                recvcounts[r],
+                xcclDataType,
+                r,
+                comm.onecclComm,
+                &stream.queue()),
+            "onecclRecv");
       }
     }
     xccl::oneccl_group_end();

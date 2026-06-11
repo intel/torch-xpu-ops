@@ -116,6 +116,24 @@ inline const std::string& getVersionString() {
   return versionString;
 }
 
+// Throw DistBackendError on a non-success oneCCL v2 (C API) return code.
+// Mirrors C10D_NCCL_CHECK in PyTorch's NCCLUtils.hpp so that bad arguments
+// (e.g. an out-of-range root rank in a broadcast) surface as a Python-side
+// exception instead of being silently dropped by the wrapper layer.
+#define C10D_XCCL_CHECK(cmd, failureReason)                          \
+  do {                                                               \
+    onecclResult_t xccl_result_ = (cmd);                             \
+    if (xccl_result_ != onecclSuccess) {                             \
+      std::string xccl_err_ = std::string("XCCL error in: ") +       \
+          __FILE__ + ":" + std::to_string(__LINE__) +                \
+          ", oneCCL result code=" +                                  \
+          std::to_string(static_cast<int>(xccl_result_)) +           \
+          ", version " + getVersionString() + "\n" +                 \
+          std::string(failureReason);                                \
+      TORCH_CHECK_WITH(DistBackendError, false, xccl_err_);          \
+    }                                                                \
+  } while (0)
+
 namespace c10d {
 
 struct XCCLStream {
@@ -288,12 +306,14 @@ inline xcclRedOpRAIIV2 unpackPreMulSumV2(
       ? preMulSupplement->tensor_factor.const_data_ptr<T>()
       : nullptr;
   T scalar_factor = T(preMulSupplement->double_factor);
-  onecclRedOpCreatePreMulSum(
-      &preMulSum,
-      /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
-      dataType,
-      residence,
-      comm);
+  C10D_XCCL_CHECK(
+      onecclRedOpCreatePreMulSum(
+          &preMulSum,
+          /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
+          dataType,
+          residence,
+          comm),
+      "onecclRedOpCreatePreMulSum");
   return xcclRedOpRAIIV2(preMulSum, comm);
 }
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
@@ -558,7 +578,7 @@ inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     LOG(INFO) << "USE_CCL_V2=1, switch to use oneCCL v2 C API ";
     onecclUniqueId xcclID;
     if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
-      onecclGetUniqueId(&xcclID);
+      C10D_XCCL_CHECK(onecclGetUniqueId(&xcclID), "onecclGetUniqueId");
     }
     broadcastUniqueXCCLID(
         &xcclID,
@@ -569,15 +589,10 @@ inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
         rank_,
         store_);
     onecclComm_t comm = nullptr;
-    onecclResult_t result = onecclSuccess;
-    result = onecclSetDevice(device.index());
-    if (result != onecclSuccess) {
-      std::cerr << "Failed to set device.\n";
-    }
-    result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
-    if (result != onecclSuccess) {
-      std::cerr << "Failed to initialize communicator.\n";
-    }
+    C10D_XCCL_CHECK(onecclSetDevice(device.index()), "onecclSetDevice");
+    C10D_XCCL_CHECK(
+        onecclCommInitRank(&comm, numRanks, xcclID, rank),
+        "onecclCommInitRank");
     return std::make_shared<xcclComm_t>(comm);
   }
 }
