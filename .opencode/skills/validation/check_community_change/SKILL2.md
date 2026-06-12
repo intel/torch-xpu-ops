@@ -37,9 +37,16 @@ Return this JSON object:
 - **Never read the Excel file directly.** 
 
 ### 2. Base Function Existence
-Strip `test_name` suffixes (`_<device>`, `_<dtype>`, OpInfo suffixes) to find the `base_method`.
-```bash
-grep -n "def $base_method" "$PYTORCH_SRC/$test_file"
+Strip `test_name` suffixes (`_<device>`, `_<dtype>`, OpInfo suffixes) to determine the `base_method`.
+
+Delegate the search to the `explore` agent:
+```python
+task(
+    subagent_type="explore",
+    run_in_background=True,
+    description="Find base function definition",
+    prompt="Find the definition of base method '<base_method>' in <test_file>. PYTORCH_SRC=<path>. Look for 'def <base_method>' or decorators like '@ops'. Return the actual method name and line number if found."
+)
 ```
 - **If Found:** Proceed to Step 3.
 - **If NOT Found:**
