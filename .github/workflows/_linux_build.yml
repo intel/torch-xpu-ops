@@ -9,11 +9,11 @@ on:
         description: Runner label for build job
       pytorch:
         type: string
-        default: 'https://github.com/daisyden/pytorch.git@distributed_2.11'
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.13'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'daisyden/distributed_2.11'
+        default: 'daisyden/distributed_2.13'
         description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
@@ -120,10 +120,10 @@ jobs:
           fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
-            PYTORCH_COMMIT="distributed_2.11"
+            PYTORCH_COMMIT="distributed_2.13"
           else
             PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
-            PYTORCH_COMMIT="distributed_2.11"
+            PYTORCH_COMMIT="distributed_2.13"
           fi
           if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
