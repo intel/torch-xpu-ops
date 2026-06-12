@@ -921,16 +921,16 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
       mode == MODE_SUM,
       "embedding_bag_backward: per_sample_weights only supported for mode='sum'");
 
-  AT_ASSERT(grad.dim() == 2);
+  TORCH_INTERNAL_ASSERT(grad.dim() == 2);
   auto embedding_features = grad.size(1);
 
   Tensor indices, offsets;
   std::tie(indices, offsets) = promoteIndicesAndOffsets(indices_, offsets_);
-  AT_ASSERT(indices.dim() == 1);
+  TORCH_INTERNAL_ASSERT(indices.dim() == 1);
   auto num_samples = indices.size(0);
 
-  AT_ASSERT(weight.dim() == 2);
-  AT_ASSERT(weight.size(1) == embedding_features);
+  TORCH_INTERNAL_ASSERT(weight.dim() == 2);
+  TORCH_INTERNAL_ASSERT(weight.size(1) == embedding_features);
 
   auto output = at::empty({num_samples}, grad.options());
 

@@ -180,7 +180,7 @@ void copy_device_to_device(
 }
 
 void _copy_xpu(TensorIterator& iter, bool non_blocking) {
-  AT_ASSERT(iter.ntensors() == 2);
+  TORCH_CHECK(iter.ntensors() == 2);
 
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
