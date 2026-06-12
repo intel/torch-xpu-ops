@@ -1,0 +1,14 @@
+{
+  "traceEvents": [
+    {"ph": "X", "name": "zeCommandListAppendLaunchKernel", "ts": 100, "dur": 5, "pid": 1, "tid": 1},
+    {"ph": "X", "name": "zeCommandListAppendMemoryCopy", "ts": 110, "dur": 3, "pid": 1, "tid": 1},
+    {"ph": "X", "name": "gemm_kernel<float>", "ts": 200, "dur": 5000, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "zeCommandListAppendLaunchKernel", "ts": 5300, "dur": 4, "pid": 1, "tid": 1},
+    {"ph": "X", "name": "SoftMaxForwardKernel<float>", "ts": 5400, "dur": 2000, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "zeCommandListAppendLaunchKernel", "ts": 7500, "dur": 4, "pid": 1, "tid": 1},
+    {"ph": "X", "name": "gemm_kernel<float>", "ts": 7600, "dur": 4000, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "zeCommandListAppendLaunchKernel", "ts": 11700, "dur": 4, "pid": 1, "tid": 1},
+    {"ph": "X", "name": "mul_kernel<float>", "ts": 11800, "dur": 800, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "zeFenceHostSynchronize", "ts": 12700, "dur": 2, "pid": 1, "tid": 1}
+  ]
+}

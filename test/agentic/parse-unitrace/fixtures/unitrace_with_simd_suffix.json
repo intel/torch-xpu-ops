@@ -1,0 +1,10 @@
+{
+  "traceEvents": [
+    {"ph": "X", "name": "gemm_kernel<float>[SIMD32 {64; 1; 1} {16; 16; 1}]", "ts": 200, "dur": 5000, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "gemm_kernel<float>[SIMD32 {64; 1; 1} {16; 16; 1}]", "ts": 5300, "dur": 4500, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "SoftMaxForwardKernel<float>[SIMD16 {128; 1; 1} {32; 1; 1}]", "ts": 9900, "dur": 2000, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "mul_kernel<float>[SIMD32 {32; 1; 1} {16; 1; 1}]", "ts": 12000, "dur": 800, "pid": 1, "tid": 2},
+    {"ph": "M", "name": "process_name", "pid": 1, "args": {"name": "GPU"}},
+    {"ph": "i", "name": "marker", "ts": 0, "pid": 1, "tid": 1, "s": "g"}
+  ]
+}
