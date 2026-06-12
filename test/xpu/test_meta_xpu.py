@@ -1642,6 +1642,12 @@ class TestMeta(TestCase):
     ):
         if "_scaled_mm" in op.name:
             raise unittest.SkipTest("_scaled_mm dose not support meta device")
+        if (
+            torch.device(device).type == "xpu"
+            and dtype == torch.float16
+            and "_flash_attention_forward" in op.name
+        ):
+            raise unittest.SkipTest("aten::_flash_attention_forward is not implemented for XPU")
         if inplace:
             func = op.get_inplace()
             if not func:
