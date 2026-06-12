@@ -105,10 +105,6 @@ def get_platform_specific_sdpa():
 
 PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
 
-# For XPU, add CUDNN_ATTENTION even though it's not supported - tests will fail with known issue
-if TEST_XPU and SDPBackend.CUDNN_ATTENTION not in PLATFORM_SPECIFIC_SDPA:
-    PLATFORM_SPECIFIC_SDPA.append(SDPBackend.CUDNN_ATTENTION)
-
 FALLBACK_REGEX = "There is a performance drop"
 
 

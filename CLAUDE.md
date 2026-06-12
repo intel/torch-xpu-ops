@@ -310,6 +310,9 @@ git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
 Do not commit the `xpu.txt` change. This is a local-only override for
 development builds.
 
+For full XPU build setup — oneAPI environment, XPU configuration, and build
+verification — use the `/xpu-build-pytorch` skill.
+
 ## Lint Commands
 
 Linting uses `lintrunner` (configured in `.lintrunner.toml`):

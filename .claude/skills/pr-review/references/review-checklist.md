@@ -130,6 +130,12 @@ Also flag during review:
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
 - [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
 - [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
+- [ ] **SYCL kernel vectorization** — If the kernel uses vectorized loads/stores, verify it follows the `aligned_vector` pattern:
+  - [ ] Pointer arguments are qualified with `RESTRICT` to enable aliasing optimizations (works on both Linux and Windows)
+  - [ ] Vector type declared as `using vec_t = memory::aligned_vector<scalar_t, vec_size>`
+  - [ ] Loads use reinterpret cast + index: `const vec_t* RESTRICT input_vec = reinterpret_cast<const vec_t*>(input);` then `vec_t data = input_vec[i]`
+  - [ ] Computation operates on the loaded `vec_t` local, not on raw pointer arithmetic
+- [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction op (add, min, max, mean, product, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions causing pipeline stalls. The loop may be at a different call site or inside a functor — trace callers if needed
 
 ## Dispatch, Fallback, And Generated Wiring
 
