@@ -18,6 +18,7 @@ import math
 import unittest
 import warnings
 from functools import partial
+from math import inf
 
 import torch
 from torch.testing import make_tensor
@@ -35,10 +36,12 @@ from torch.testing._internal.common_dtype import (
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_utils import (
     IS_WINDOWS,
+    make_fullrank_matrices_with_distinct_singular_values,
     parametrize,
     run_tests,
     setBlasBackendsToDefaultFinally,
     setLinalgBackendsToDefaultFinally,
+    skipIfTorchDynamo,
     TestCase,
 )
 
@@ -46,6 +49,47 @@ try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+
+def _group_quantize_tensor_impl(w, n_bit=4, q_group_size=16):
+    assert w.dim() == 2
+    w = w.transpose(0, 1).contiguous()
+    assert q_group_size > 1
+    assert w.shape[-1] % q_group_size == 0
+
+    to_quant = w.reshape(-1, q_group_size)
+    assert torch.isnan(to_quant).sum() == 0
+
+    max_val = to_quant.amax(dim=1, keepdim=True)
+    min_val = to_quant.amin(dim=1, keepdim=True)
+    max_int = 2**n_bit - 1
+    min_int = 0
+    scales = (max_val - min_val).clamp(min=1e-6) / max_int
+    assert torch.isnan(scales).sum() == 0
+    zeros = min_val + scales * (2 ** (n_bit - 1))
+    assert torch.isnan(zeros).sum() == 0
+
+    out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
+    assert torch.isnan(out).sum() == 0
+
+    out = out.to(dtype=torch.uint8).reshape(w.shape)
+    # The cpu uses big endian while the xpu uses little endian
+    if out.device.type == "xpu":
+        out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
+    elif out.device != torch.device("cpu"):
+        out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
+
+    scales = scales.view(w.shape[0], -1)
+    zeros = zeros.view(w.shape[0], -1)
+    scales_and_zeros = torch.cat(
+        [
+            scales.reshape(scales.size(0), scales.size(1), 1),
+            zeros.reshape(zeros.size(0), zeros.size(1), 1),
+        ],
+        2,
+    )
+    scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
+    return out, scales_and_zeros
 
 
 def large_bmm_mm_backward(self, device):
@@ -67,9 +111,28 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
-@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    pass
+    m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
+    m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublaslt")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out1 = torch.nn.functional.linear(m1, m2)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublas")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out2 = torch.nn.functional.linear(m1, m2)
+
+    # Although blas preferred flags doesn't affect CPU currently,
+    # we set this to make sure the flag can switch back to default normally.
+    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
+
+    self.assertEqual(out1, out2)
+    self.assertEqual(out_ref, out2.cpu())
 
 
 @dtypes(torch.float, torch.double)
@@ -250,50 +313,12 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 1024])
+@parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
-        assert w.dim() == 2
-        w = w.transpose(0, 1).contiguous()
-        assert q_group_size > 1
-        assert w.shape[-1] % q_group_size == 0
-
-        to_quant = w.reshape(-1, q_group_size)
-        assert torch.isnan(to_quant).sum() == 0
-
-        max_val = to_quant.amax(dim=1, keepdim=True)
-        min_val = to_quant.amin(dim=1, keepdim=True)
-        max_int = 2**n_bit - 1
-        min_int = 0
-        scales = (max_val - min_val).clamp(min=1e-6) / max_int
-        assert torch.isnan(scales).sum() == 0
-        zeros = min_val + scales * (2 ** (n_bit - 1))
-        assert torch.isnan(zeros).sum() == 0
-
-        out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
-        assert torch.isnan(out).sum() == 0
-
-        out = out.to(dtype=torch.uint8).reshape(w.shape)
-        # The cpu uses big endian while the xpu uses little endian
-        if out.device.type == "xpu":
-            out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
-        elif out.device != torch.device("cpu"):
-            out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
-        # Scales and zeros for the same q-group should be contiguous, so we can
-        # load as a 32-bit word
-        scales = scales.view(w.shape[0], -1)
-        zeros = zeros.view(w.shape[0], -1)
-        scales_and_zeros = torch.cat(
-            [
-                scales.reshape(scales.size(0), scales.size(1), 1),
-                zeros.reshape(zeros.size(0), zeros.size(1), 1),
-            ],
-            2,
-        )
-        scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
-        return out, scales_and_zeros
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
 
     def convert_weight_to_int4pack(b):
         b_tmp, b_scales_and_zeros = _group_quantize_tensor(
@@ -351,6 +376,53 @@ def _int4_mm(self, device, m, k, n):
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
+
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+@parametrize("m", [32, 64])
+@parametrize("k", [32, 64])
+@parametrize("n", [48, 64])
+def _compile_int4_mm(self, device, m, k, n):
+    def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
+        return _group_quantize_tensor_impl(w, n_bit=n_bit, q_group_size=q_group_size)
+
+    q_group = 32
+    inner_k_tiles = 2
+
+    torch.manual_seed(1)
+    a = torch.rand((m, k), dtype=torch.bfloat16, device=device)
+    b = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+
+    b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
+
+    if self.device_type == "cpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
+            return torch._weight_int4pack_mm_for_cpu(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
+
+    elif self.device_type == "xpu":
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = b_tmp.view(torch.int32)
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+    else:
+
+        @torch.compile
+        def int4_mm(a, b_tmp, b_scales_and_zeros):
+            b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
+            return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
+
+    res = int4_mm(a, b_tmp, b_scales_and_zeros)
+    ref = torch.mm(a, b)
+
+    mean_err = ((res - ref).abs() / ref).mean()
+    self.assertTrue(mean_err < 0.05)
 
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
@@ -493,6 +565,35 @@ def __tunableop_ctx(self):
                 pass
 
 
+@dtypes(*floating_and_complex_types())
+def matrix_rank_out_errors_and_warnings(self, device, dtype):
+    # dtypes should be safely castable
+    a = torch.eye(2, dtype=dtype, device=device)
+    out = torch.empty(0, dtype=torch.bool, device=device)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Bool"):
+        torch.linalg.matrix_rank(a, out=out)
+
+    # device should match
+    wrong_device = self._get_other_device(dtype=dtype)
+    if wrong_device is not None:
+        out = torch.empty(0, dtype=dtype, device=wrong_device)
+        with self.assertRaisesRegex(RuntimeError, "tensors to be on the same device"):
+            torch.linalg.matrix_rank(a, out=out)
+
+    # if out tensor with wrong shape is passed a warning is given
+    with warnings.catch_warnings(record=True) as w:
+        out = torch.empty(3, dtype=dtype, device=device)
+        # Trigger warning
+        torch.linalg.matrix_rank(a, out=out)
+        # Expect resize warning, and possibly an XPU-to-CPU fallback warning
+        self.assertTrue(len(w) in (1, 2))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[0].message)
+        )
+        if len(w) == 2:
+            self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -565,6 +666,134 @@ def pinv_errors_and_warnings(self, device, dtype):
         torch.linalg.pinv(a, rtol=rtol)
 
 
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+def _int_mm_errors(self, device):
+    def genf_int(x, y):
+        return torch.empty((x, y), dtype=torch.int8, device=device)
+
+    # XPU does not enforce CUDA-specific size constraints (size(0)>16,
+    # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
+    # are omitted here.
+
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"self.size\(1\) needs to match mat2.size\(0\) but got 8 and 7",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(7, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"expected scalar type Char but found Float",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result dtype to be of type kInt but got float",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 32).float()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 15",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(15, 32).int()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 16",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 31).int()
+        ),
+    )
+
+
+TestLinalg.test__int_mm_errors = _int_mm_errors
+
+
+@dtypes(*floating_and_complex_types())
+@precisionOverride({torch.float32: 1e-3})
+def cond_errors_and_warnings(self, device, dtype):
+    norm_types = [1, -1, 2, -2, inf, -inf, "fro", "nuc", None]
+
+    # cond expects the input to be at least 2-dimensional
+    a = torch.ones(3, dtype=dtype, device=device)
+    for p in norm_types:
+        with self.assertRaisesRegex(RuntimeError, r"at least 2 dimensions"):
+            torch.linalg.cond(a, p)
+
+    # for some norm types cond expects the input to be square
+    a = torch.ones(3, 2, dtype=dtype, device=device)
+    norm_types = [1, -1, inf, -inf, "fro", "nuc"]
+    for p in norm_types:
+        with self.assertRaisesRegex(
+            RuntimeError, r"must be batches of square matrices"
+        ):
+            torch.linalg.cond(a, p)
+
+    # if non-empty out tensor with wrong shape is passed a warning is given
+    a = torch.ones((2, 2), dtype=dtype, device=device)
+    for p in ["fro", 2]:
+        real_dtype = a.real.dtype if dtype.is_complex else dtype
+        out = torch.empty(a.shape, dtype=real_dtype, device=device)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*Aten Op fallback from XPU to CPU happends.*",
+                category=UserWarning,
+            )
+            # Trigger warning
+            torch.linalg.cond(a, p, out=out)
+            # Check warning occurs
+            self.assertEqual(len(w), 1)
+            self.assertTrue(
+                "An output with one or more elements was resized" in str(w[-1].message)
+            )
+
+    # dtypes should be safely castable
+    out = torch.empty(0, dtype=torch.int, device=device)
+    for p in ["fro", 2]:
+        with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
+            torch.linalg.cond(a, p, out=out)
+
+    # device should match
+    if torch.xpu.is_available():
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        out = torch.empty(0, dtype=dtype, device=wrong_device)
+        for p in ["fro", 2]:
+            with self.assertRaisesRegex(
+                RuntimeError, "tensors to be on the same device"
+            ):
+                torch.linalg.cond(a, p, out=out)
+
+    # for batched input if at least one matrix in the batch is not invertible,
+    # we can't get the result for all other (possibly) invertible matrices in the batch without an explicit for loop.
+    # this should change when at::inverse works with silent errors
+    # NumPy works fine in this case because it's possible to silence the error and get the inverse matrix results
+    # possibly filled with NANs
+    batch_dim = 3
+    a = torch.eye(3, 3, dtype=dtype, device=device)
+    a = a.reshape((1, 3, 3))
+    a = a.repeat(batch_dim, 1, 1)
+    a[1, -1, -1] = 0  # now a[1] is singular
+    for p in [1, -1, inf, -inf, "fro", "nuc"]:
+        result = torch.linalg.cond(a, p)
+        self.assertEqual(result[1], float("inf"))
+
+    # check invalid norm type
+    a = torch.ones(3, 3, dtype=dtype, device=device)
+    for p in ["wrong_norm", 5]:
+        with self.assertRaisesRegex(
+            RuntimeError, f"linalg.cond got an invalid norm type: {p}"
+        ):
+            torch.linalg.cond(a, p)
+
+
 # Skip Float8_e4m3fnuz rowwise scaled GEMM on XPU: oneDNN lacks FNUZ support.
 # Note: the primary CUDA test is already limited to ROCm (onlyCUDA + skipCUDAIfNotRocm),
 # so this XPU variant is intentionally skipped for the same unsupported dtype.
@@ -573,8 +802,136 @@ if hasattr(TestLinalg, "test_rowwise_scaled_gemm_numerics_tunableop"):
         "XPU/oneDNN does not support Float8_e4m3fnuz (CUDA primary is ROCm-only)"
     )(TestLinalg.test_rowwise_scaled_gemm_numerics_tunableop)
 
+
+@skipIfTorchDynamo("Runtime error with torch._C._linalg.linalg_lu_factor")
+@dtypes(*floating_and_complex_types())
+def linalg_lu_family(self, device, dtype):
+    # Tests torch.lu
+    #       torch.linalg.lu_factor
+    #       torch.linalg.lu_factor_ex
+    #       torch.lu_unpack
+    #       torch.linalg.lu_solve
+    #       torch.linalg.solve
+    make_arg_full = partial(
+        make_fullrank_matrices_with_distinct_singular_values, device=device, dtype=dtype
+    )
+    make_arg = partial(make_tensor, device=device, dtype=dtype)
+
+    def run_test(A, pivot, singular, fn):
+        k = min(A.shape[-2:])
+        batch = A.shape[:-2]
+        check_errors = fn == torch.linalg.lu_factor
+        if singular and check_errors:
+            # It may or may not throw as the LU decomposition without pivoting
+            # may still succeed for singular matrices
+            try:
+                LU, pivots = fn(A, pivot=pivot)
+            except RuntimeError:
+                return
+        else:
+            LU, pivots = fn(A, pivot=pivot)[:2]
+
+        self.assertEqual(LU.size(), A.shape)
+        self.assertEqual(pivots.size(), batch + (k,))
+
+        if not pivot:
+            self.assertEqual(
+                pivots,
+                torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
+                    batch + (k,)
+                ),
+            )
+
+        P, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=pivot)
+
+        self.assertEqual(P @ L @ U if pivot else L @ U, A)
+
+        PLU = torch.linalg.lu(A, pivot=pivot)
+        self.assertEqual(P, PLU.P)
+        self.assertEqual(L, PLU.L)
+        self.assertEqual(U, PLU.U)
+
+        if not singular and A.size(-2) == A.size(-1):
+            nrhs = ((), (1,), (3,))
+            for left, rhs in itertools.product((True, False), nrhs):
+                # Vector case when left = False is not allowed
+                if not left and rhs == ():
+                    continue
+                if left:
+                    shape_B = A.shape[:-1] + rhs
+                else:
+                    shape_B = A.shape[:-2] + rhs + A.shape[-1:]
+                B = make_arg(shape_B)
+
+                # Test linalg.lu_solve. It does not support vectors as rhs
+                # See https://github.com/pytorch/pytorch/pull/74045#issuecomment-1112304913
+                if rhs != ():
+                    for adjoint in (True, False):
+                        X = torch.linalg.lu_solve(
+                            LU, pivots, B, left=left, adjoint=adjoint
+                        )
+                        A_adj = A.mH if adjoint else A
+                        if left:
+                            self.assertEqual(B, A_adj @ X)
+                        else:
+                            self.assertEqual(B, X @ A_adj)
+
+                # Test linalg.solve
+                X = torch.linalg.solve(A, B, left=left)
+                X_ = X.unsqueeze(-1) if rhs == () else X
+                B_ = B.unsqueeze(-1) if rhs == () else B
+                if left:
+                    self.assertEqual(B_, A @ X_)
+                else:
+                    self.assertEqual(B_, X_ @ A)
+
+    sizes = ((3, 3), (5, 5), (4, 2), (3, 4), (0, 0), (0, 1), (1, 0))
+    batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
+    pivots = (True,)
+    fns = (
+        partial(torch.lu, get_infos=True),
+        torch.linalg.lu_factor,
+        torch.linalg.lu_factor_ex,
+    )
+    for ms, batch, pivot, singular, fn in itertools.product(
+        sizes, batches, pivots, (True, False), fns
+    ):
+        shape = batch + ms
+        A = make_arg(shape) if singular else make_arg_full(*shape)
+        # Just do one of them on singular matrices
+        if A.numel() == 0 and not singular:
+            continue
+        run_test(A, pivot, singular, fn)
+
+        # Reproducer of a magma bug,
+        # see https://bitbucket.org/icl/magma/issues/13/getrf_batched-kernel-produces-nans-on
+        # This is also a bug in cuSOLVER < 11.3
+        if dtype == torch.double and singular:
+            A = torch.ones(batch + ms, dtype=dtype, device=device)
+            run_test(A, pivot, singular, fn)
+
+    # Info should be positive for rank deficient matrices
+    A = torch.ones(5, 3, 3, device=device)
+    self.assertTrue((torch.linalg.lu_factor_ex(A, pivot=True).info >= 0).all())
+
+    if self.device_type == "cpu":
+        # Error checking, no pivoting variant on CPU
+        fns = [
+            torch.lu,
+            torch.linalg.lu_factor,
+            torch.linalg.lu_factor_ex,
+            torch.linalg.lu,
+        ]
+        for f in fns:
+            with self.assertRaisesRegex(
+                RuntimeError, "LU without pivoting is not implemented on the CPU"
+            ):
+                f(torch.empty(1, 2, 2), pivot=False)
+
+
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
+TestLinalg.test_linalg_lu_family = linalg_lu_family
 TestLinalg.test_preferred_blas_library = preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
@@ -584,6 +941,7 @@ TestLinalg.test_preferred_linalg_library = preferred_linalg_library
 TestLinalg.test_addbmm = addbmm
 TestLinalg.test__int_mm = _int_mm
 TestLinalg.test__int4_mm = _int4_mm
+TestLinalg.test_compile_int4_mm = _compile_int4_mm
 TestLinalg.test_matmul_small_brute_force_1d_Nd = matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
@@ -591,7 +949,11 @@ TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
+TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
+TestLinalg.test_matrix_rank_out_errors_and_warnings = (
+    matrix_rank_out_errors_and_warnings
+)
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)

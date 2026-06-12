@@ -66,7 +66,6 @@
 #include <comm/Memory.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
-#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -224,7 +223,7 @@ struct SparseCooSoftmaxFunctor {
           auto out_values_row = output_values_acc[i];
 
           if (LogSoftMax) {
-            out_values_row[j] = values_row[j] - mx_row[j] - std::log(exp_sums);
+            out_values_row[j] = values_row[j] - mx_row[j] - sycl::log(exp_sums);
           } else {
             out_values_row[j] *= 1.0 / exp_sums;
           }

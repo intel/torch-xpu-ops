@@ -13,16 +13,13 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
-#include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
-
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 template <typename scalar_t, typename out_t = scalar_t>
-void std_var_template(
+void std_var_kernel_impl(
     TensorIterator& iter,
     double correction_opt,
     bool take_sqrt) {
@@ -42,17 +39,19 @@ void std_var_kernel(
   const auto input_dtype = iter.input_dtype();
   if (input_dtype == kHalf && iter.dtype() == kFloat) {
     // type promotion that does cast and reduction in a single kernel
-    std_var_template<at::Half, float>(iter, correction_opt, take_sqrt);
+    std_var_kernel_impl<at::Half, float>(iter, correction_opt, take_sqrt);
   } else if (input_dtype == kBFloat16 && iter.dtype() == kFloat) {
     // type promotion that does cast and reduction in a single kernel
-    std_var_template<at::BFloat16, float>(iter, correction_opt, take_sqrt);
+    std_var_kernel_impl<at::BFloat16, float>(iter, correction_opt, take_sqrt);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
         iter.dtype(),
         "std_var_xpu",
-        [&]() { std_var_template<scalar_t>(iter, correction_opt, take_sqrt); });
+        [&]() {
+          std_var_kernel_impl<scalar_t>(iter, correction_opt, take_sqrt);
+        });
   }
 }
 
@@ -86,6 +85,4 @@ void mean_kernel(TensorIterator& iter) {
   }
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

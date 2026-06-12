@@ -17,9 +17,6 @@
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
 
-// batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
-using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
-
 namespace cute {
 
 // Primary template declaration -- explicit specializations are provided by
@@ -155,7 +152,7 @@ void compute_o_dot_do(
     stensor(mi, sg_group_id, sg_local_id) = accum;
   }
 
-  sg.barrier();
+  sycl::group_barrier(sg);
 
   if (sg_local_id == 0) {
     CUTLASS_PRAGMA_UNROLL

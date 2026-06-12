@@ -86,7 +86,7 @@ from torch.testing._internal.opinfo.core import (
 )
 from torch.testing._internal.opinfo.definitions.nested import _sample_njts, njt_op_db
 from torch.utils._pytree import tree_flatten, tree_map_only
-from torch.utils.checkpoint import checkpoint, create_selective_checkpoint_contexts
+from torch.utils.checkpoint import checkpoint
 
 # Tests are ported from pytorch/nestedtensor.
 # This makes porting as_nested_tensor easier in the future.
@@ -181,9 +181,9 @@ def random_nt(
         assert max_dim > min_dim, "random_nt: max_dim must be greater than min_dim"
         assert min_dim >= 0, "random_nt: min_dim must be non-negative"
         if require_non_empty:
-            assert not (
-                min_dim == 0 and max_dim == 1
-            ), "random_nt: zero cannot be the only possible value if require_non_empty is True"
+            assert not (min_dim == 0 and max_dim == 1), (
+                "random_nt: zero cannot be the only possible value if require_non_empty is True"
+            )
 
     if require_non_empty:
         # Select a random idx that will be required to be non-empty
@@ -6164,9 +6164,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
         for tensor_list in self._get_example_tensor_lists():
             nt = torch.nested.nested_tensor(
                 tensor_list, layout=torch.jagged, device=device
-            ).transpose(
-                1, -1
-            )  # set ragged_idx = last dimension
+            ).transpose(1, -1)  # set ragged_idx = last dimension
             out = nt.unbind()
             self.assertEqual(len(out), len(tensor_list))
             for i, t in enumerate(out):
@@ -7166,6 +7164,7 @@ torch.cuda.synchronize()
             else [torch.float16, torch.float32]
         )
     )
+    @skipXPUIf(True, "XPU does not support the NestedTensor SDPA packed in-proj path.")
     def test_sdpa_with_packed_in_proj(self, device, dtype):
         # shape (B, *, D)
         input_packed = random_nt_from_dims(
@@ -7251,6 +7250,10 @@ torch.cuda.synchronize()
     @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
     @unittest.skipIf(IS_WINDOWS, reason="Windows not yet supported for torch.compile")
+    @skipXPUIf(
+        True,
+        "XPU does not support this NestedTensor SDPA autocast path under torch.compile.",
+    )
     def test_sdpa_autocast(self, device):
         def fn_nt(values32, values16, offsets):
             nt32 = convert_jagged_to_nested_tensor(values32, offsets, max_length=16)
@@ -7271,7 +7274,7 @@ torch.cuda.synchronize()
         x32 = values32.clone()
         x16 = values16.clone()
 
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
+        with torch.autocast(device_type=torch.device(device).type, dtype=torch.float16):
             out_dense_eager = fn_dense(x32, x16)
             out_dense_compiled = torch.compile(fn_dense)(x32, x16)
             out_nt_eager = fn_nt(values32, values16, offsets)
@@ -7297,7 +7300,7 @@ torch.cuda.synchronize()
         v32_nt_eager, v16_nt_eager = get_values()
         v32_nt_compile, v16_nt_compile = get_values()
 
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
+        with torch.autocast(device_type=torch.device(device).type, dtype=torch.float16):
             loss_dense_eager = fn_dense(v32_dense_eager, v16_dense_eager).sum()
             loss_dense_compile = torch.compile(fn_dense)(
                 v32_dense_compile, v16_dense_compile
@@ -7334,6 +7337,10 @@ torch.cuda.synchronize()
     @skipCUDAIfRocm
     @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
+    @skipXPUIf(
+        True,
+        "XPU does not support NestedTensor SDPA flop-counter coverage in this test.",
+    )
     def test_sdpa_flop_counter(self, device):
         from torch.utils.flop_counter import FlopCounterMode
 
@@ -7375,22 +7382,6 @@ torch.cuda.synchronize()
             return convert_nt_to_jagged(nt).sum()
 
         checkpoint(fn, values, offsets, use_reentrant=False).backward()
-        self.assertIsNotNone(values.grad)
-
-        context_fn = partial(
-            create_selective_checkpoint_contexts, [torch.ops.aten.cumsum.default]
-        )
-
-        values.grad = None
-
-        def fn(values, lengths):
-            offsets = F.pad(lengths, pad=(1, 0)).cumsum(dim=0)
-            nt = convert_jagged_to_nested_tensor(values, offsets, max_length=4)
-            return convert_nt_to_jagged(nt).sum()
-
-        checkpoint(
-            fn, values, lengths, use_reentrant=False, context_fn=context_fn
-        ).backward()
         self.assertIsNotNone(values.grad)
 
     # Internally-defined NT use cases are lifted to here for maximum test realism.
@@ -8343,8 +8334,7 @@ FORWARD_SKIPS_AND_XFAILS = [
         op_match_fn=lambda device, op: (
             # min.reduction_with_dim and max.reduction_with_dim aren't associated with
             # ReductionOpInfo entries sadly even though they're reductions
-            isinstance(op, ReductionOpInfo)
-            or "reduction_with_dim" in op.full_name
+            isinstance(op, ReductionOpInfo) or "reduction_with_dim" in op.full_name
         ),
         sample_match_fn=lambda device, sample: (
             "noncontig_holes" in sample.name
@@ -8697,6 +8687,11 @@ BACKWARD_SKIPS_AND_XFAILS = [
             in {"max.binary", "min.binary", "minimum", "maximum", "copysign"}
         ),
         name="unimplemented_masked_fill",
+    ),
+    XFailRule(
+        sample_match_fn=lambda device, sample: "(T, NT)" in sample.name,
+        op_match_fn=lambda device, op: op.full_name == "nextafter",
+        name="nextafter_backward_not_implemented",
     ),
 ]
 

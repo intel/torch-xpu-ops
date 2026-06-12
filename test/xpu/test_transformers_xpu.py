@@ -1900,6 +1900,7 @@ class TestTransformers(NNTestCase):
         torch.jit.script(mha)
 
     @unittest.skipIf(TEST_WITH_CROSSREF, "Fastpath not available with crossref")
+    @skipIfXpu(msg="MHA fastpath is not available on XPU")
     @torch.no_grad()
     def test_disable_fastpath(self, device):
         def _test_te_fastpath_called(
@@ -5736,7 +5737,6 @@ class TestSDPACudaOnly(NNTestCase):
             fudge_factors=fudge_factors,
         )
 
-    @skipIfXpu(msg="torch-xpu-ops: #3140")
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION,
         "Does not support SDPA or pre-SM80 hardware",
@@ -5746,7 +5746,9 @@ class TestSDPACudaOnly(NNTestCase):
     @parametrize("seq_len_k", [256, 1024])
     @parametrize("head_dim", [32, 64])
     @parametrize("is_causal", [True, False])
-    @parametrize("dropout_p", [0.0, 0.22])
+    @parametrize(
+        "dropout_p", [0.0] if TEST_XPU else [0.0, 0.22]
+    )  # torch-xpu-ops: #3140
     @parametrize("dtype", [torch.float16])
     @parametrize("scale", [None, "l1"])
     @parametrize("fused_kernel", PLATFORM_SPECIFIC_SDPA)

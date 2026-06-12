@@ -28,8 +28,6 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
-#include <ATen/ops/empty.h>
-
 namespace at {
 namespace native {
 namespace xpu {
@@ -472,11 +470,7 @@ void random_from_to_kernel(
       iter.dtype(),
       "random_from_to_kernel_xpu",
       AT_WRAP([&] {
-        if ((std::is_same<scalar_t, int64_t>::value ||
-             std::is_same<scalar_t, double>::value ||
-             std::is_same<scalar_t, float>::value ||
-             std::is_same<scalar_t, at::BFloat16>::value) &&
-            range >= 1ULL << 32) {
+        if (range >= 1ULL << 28) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -865,7 +859,7 @@ struct ExponentialFunctor {
             std::numeric_limits<scalar_t>::epsilon() / 2.f) {
       log = -std::numeric_limits<scalar_t>::epsilon() / 2.f;
     } else {
-      log = std::log(val);
+      log = sycl::log(val);
     }
     return static_cast<accscalar_t>(-1.f) / lambd_ * log;
   }
@@ -976,8 +970,8 @@ void cauchy_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct GeometricFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(std::ceil(
-        std::log(rand) / std::log(static_cast<accscalar_t>(1.0) - p_)));
+    return static_cast<scalar_t>(sycl::ceil(
+        sycl::log(rand) / sycl::log(static_cast<accscalar_t>(1.0) - p_)));
   }
 
   GeometricFunctor(accscalar_t p) : p_(p) {}
@@ -994,7 +988,7 @@ void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
       iter.dtype(),
       "geometric_xpu",
       [&] {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
         auto p_ = static_cast<accscalar_t>(p);
         GeometricFunctor<scalar_t, accscalar_t> geometric_func(p_);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
