@@ -1,520 +1,95 @@
 ---
 name: check-community-change
-description: Check whether a test case is affected by an upstream community change (base function removed, renamed, or refactored in pytorch/pytorch). Verifies test case existence via pytest --collect-only when the target device is available, and falls back to AST-based source inspection otherwise. Use when determining why an XPU/CUDA test case is absent, classifying community_change vs to_be_enabled gaps, or when the base test method or device variant may have been removed/renamed/refactored upstream.
+description: Deep analysis to determine if an upstream community change (removal, rename, refactor) broke a test case. Uses pytest --collect-only or source inspection.
 ---
 
-# check_community_change
+# `check-community-change`
 
-## Purpose
-
-Given a test file path, class name, and test method name (optionally with a device suffix), determine whether a **community change** in upstream PyTorch has affected the test case. A community change is an upstream modification (removal, rename, refactoring) that makes a workbook/generated test case name obsolete or absent.
-
-The skill performs two sequential checks:
-
-1. **Base-function existence**: Does the underlying test method exist in the upstream source file?
-2. **Device-specific case generation**: If the base function exists, is the device-specific test case actually generated?
-
-The device-specific check uses **`pytest --collect-only` as the primary method** — it produces exact, fully-expanded test names including all parametrizations, OpInfo expansions, and dtype variants. When the target device is not available on the system, the skill falls back to AST-based source inspection + name formula reconstruction.
-
-If either check reveals that the test was removed, renamed, or refactored upstream, the skill returns a community-change verdict with evidence.
+## Objective
+Determine if a test failure is due to an upstream **community change** in `pytorch/pytorch` (e.g., base function deleted, renamed, or refactored) vs a local device gap.
 
 ## Inputs
+- `test_file`, `class_name`, `test_name`, `device` (default `"cuda"`), `PYTORCH_SRC`
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `test_file` | **Yes** | Test file path relative to `$PYTORCH_SRC` (e.g. `test/test_ops.py`, `test/dynamo/test_streams.py`) |
-| `class_name` | **Yes** | Test class name (e.g. `TestFooCUDA`, `TestStreams`) |
-| `test_name` | **Yes** | Test method name (e.g. `test_foo_cuda_float32`, `test_local_stream_enter_exit`) |
-| `device` | No | Target device: `"cuda"` or `"xpu"`. Controls which device-specific generation is checked. Default: `"cuda"`. |
-| `PYTORCH_SRC` | No | PyTorch source checkout path. Default: `$HOME/upstream/pytorch`. |
-
-## Output
-
+## Output Format
+Return this JSON object:
 ```python
 {
-    "community_change": bool,               # True if the test is affected by an upstream change
-
-    "evidence": {                            # Source evidence for each check
-        "base_function": {                   # Evidence from Step 1
-            "base_function_found": bool,     # Whether the test method exists in the source file
-            "class_found": bool,             # Whether the class exists in the source file
-            "file_found": bool,              # Whether the test file exists in PYTORCH_SRC
-            "file_path": str or None,        # Resolved path to the test file (or None)
-            "actual_class_name": str or None,# Class name found in source (may differ from input)
-            "actual_method_name": str or None,# Method name found in source (may differ from input)
-            "method_line": int or None,      # Line number of the method definition
-            "search_attempts": [str],        # What was searched (class variants, name variants)
-        },
-        "device_case": {                     # Evidence from Step 2 (only when base function exists)
-            "device_available": bool,        # Whether the target device is available for --collect-only
-            "verification_method": str,      # "collect_only" or "source_inspection"
-            "device_case_generated": bool,   # Whether the device-specific test case IS generated
-            "collect_only_output": [str],    # Full --collect-only output lines for the target class (or None)
-            "similar_names_found": [str],    # Collected test names similar to expected (rename candidates)
-            "generation_blocked": bool,      # True if generation is blocked by decorators/params
-            "blocker": str or None,          # What blocks generation (e.g. "only_for=('xpu',)", "dtypesIfCUDA excludes dtype")
-            "has_ops_decorator": bool,       # Whether @ops decorator is present
-            "ops_name": str or None,         # OpInfo name if @ops decorator found
-            "dtypes_for_device": [str] or None,# dtypes list from OpInfo or decorator for target device
-            "instantiate_device_type_tests": str or None,  # How the class is instantiated
-            "instantiate_device_type_tests_only_for": str or None,  # only_for arg if present
-        },
-        "git_history": {                     # Git history evidence (when base function not found)
-            "commits_touching_file": [       # Recent commits that touched the test file
-                {
-                    "hash": str,
-                    "author": str,
-                    "date": str,
-                    "subject": str,
-                }
-            ],
-            "commits_removing_method": [     # Commits that removed/renamed the method
-                {
-                    "hash": str,
-                    "author": str,
-                    "date": str,
-                    "subject": str,
-                    "diff_summary": str,      # What changed (e.g. "Removed test_foo, renamed to test_bar")
-                }
-            ],
-            "file_deleted_in_commit": str or None,  # Commit that deleted the whole file
-        },
+    "community_change": bool,
+    "evidence": {
+        "base_function": { "found": bool, "actual_method_name": str, "method_line": int },
+        "device_case": { "verification_method": "collect_only|source_inspection", "generated": bool },
+        "git_history": { "commits_removing_method": [{"hash": str, "diff_summary": str}] }
     },
-
     "classification": {
-        "change_type": str,                  # "base_function_removed" | "base_function_renamed" |
-                                             # "device_case_not_generated" | "device_case_renamed" |
-                                             # "not_a_community_change" | "file_deleted"
-        "change_scope": str,                 # "base_test_removed" | "device_removed" | "refactored" |
-                                             # "renamed" | "none"
-        "old_test_name": str,                # The original test name from input
-        "new_test_name": str or None,        # The new test name if renamed (or None)
-        "detail_reason": str,                # Concise summary for case_existence_comments
+        "change_type": "base_function_removed|base_function_renamed|device_case_not_generated|device_case_renamed|not_a_community_change|file_deleted",
+        "change_scope": "base_test_removed|device_removed|refactored|renamed|none",
+        "detail_reason": str  # e.g., "Base test removed: test_foo in test_ops.py (commit <hash>)"
     },
-
-    "verdict": str,                          # "Community Change" or "Not a community change"
+    "verdict": "Community Change" | "Not a community change"
 }
 ```
 
-## Preconditions
+## Deep Analysis Workflow
 
-### Environment
+### 1. Mandatory Input Scrubbing
+- **Ignore** any pre-existing `Reason` or `DetailReason` from the input task. Do not carry them forward. Base your verdict strictly on local source and git history.
+- **Never read the Excel file directly.**
 
-1. PyTorch source checkout at `$PYTORCH_SRC`
-2. `git` available to inspect commit history
-3. `pytest` available to run `--collect-only` (requires built torch)
-4. **Device availability**: The target device (CUDA/XPU) must be available for `--collect-only` to produce device-specific test classes. If the device is unavailable, the skill falls back to source inspection. Check via:
-   ```bash
-   python3 -c "import torch; print(torch.cuda.is_available())"   # CUDA
-   python3 -c "import torch; print(torch.xpu.is_available())"    # XPU
-   ```
+### 2. Base Function Existence
+Strip `test_name` suffixes (`_<device>`, `_<dtype>`, OpInfo suffixes) to determine the `base_method`.
 
-### Required Tools (whitelist — no other tools may be used)
-
-| Tool | Allowed Purpose |
-|------|-----------------|
-| `read` | Read test source files, class/method bodies, OpInfo definitions |
-| `bash` | Run `git log`, `git show`, `git merge-base --is-ancestor`, file lookups, `pytest --collect-only` |
-| `grep` | Find class/method definitions, decorators, `instantiate_device_type_tests` calls, OpInfo entries |
-| `glob` | Find test files when the path may differ from the input |
-
-**Tool restrictions:**
-- `bash` may NOT run `gh`, `curl`, `wget`, or any command that accesses remote servers.
-- `bash` may NOT run `git fetch`, `git pull`, `git remote` — local git only.
-- No web tools (`webfetch`, `websearch`) may be invoked by this skill.
-
-## Workflow
-
-### Step 1: Check Base Function Existence
-
-The base function is the actual test method defined in the upstream PyTorch source file — the method that generates the named test case after decorators, device suffixes, dtype suffixes, and OpInfo expansion are applied.
-
-#### 1.1 Locate the test file
-
-Resolve the file path:
-
-```bash
-test_file_path="$PYTORCH_SRC/$test_file"
-ls -la "$test_file_path"
-```
-
-If the file does not exist, check git history to determine when it was removed:
-
-```bash
-cd "$PYTORCH_SRC"
-git log --oneline -10 -- "$test_file"
-```
-
-**Decision:**
-- File exists → continue to 1.2
-- File deleted → `file_found = False`, record the deletion commit → **community change** (`file_deleted`)
-
-#### 1.2 Locate the class
-
-Search for the class in the test file:
-
-```bash
-grep -n "class $class_name" "$test_file_path"
-```
-
-If `class_name` ends with `CUDA`, also search for the non-device-suffixed version:
-
-```bash
-# If class_name = "TestStreamsCUDA", also search for "TestStreams"
-grep -n "class ${class_name%CUDA}" "$test_file_path"
-```
-
-If the class ends with `XPU`, search for both the XPU variant and the base:
-
-```bash
-grep -n "class $class_name" "$test_file_path"
-grep -n "class ${class_name%XPU}" "$test_file_path"
-```
-
-Also search for `instantiate_device_type_tests` which generates device-specific classes:
-
-```bash
-grep -n "instantiate_device_type_tests" "$test_file_path"
-```
-
-**Decision:**
-- Class found directly → record actual class name, continue to 1.3
-- Class not found but `instantiate_device_type_tests` exists → the class is generated; read the base class from the call, continue to 1.3
-- Class not found, no `instantiate_device_type_tests` → `class_found = False`, check git for class removal
-
-#### 1.3 Locate the method
-
-Strip any device/dtype/OpInfo suffixes from `test_name` to find the base method:
-
-| Generated Name | Strip Pattern | Base Method Name |
-|---|---|---|
-| `test_foo_cuda_float32` | Trailing `_cuda_<dtype>` | `test_foo` |
-| `test_foo_xpu_float16` | Trailing `_xpu_<dtype>` | `test_foo` |
-| `test_foo_cuda` | Trailing `_cuda` | `test_foo` |
-| `test_bar_cuda_float32` | Trailing `_cuda_<dtype>` | `test_bar` |
-| `test_op_abs_cuda_float32` | Remove `_<opname>_cuda_<dtype>` | `test_op` |
-| `test_contig_large_div_xpu_float32` | Remove `_<opname>_xpu_<dtype>` | `test_contig_large_div` |
-
-Search for the base method:
-
-```bash
-grep -n "def $base_method" "$test_file_path"
-```
-
-**Heuristic for OpInfo-based tests:** If the name pattern suggests an OpInfo test (`test_<thing>_<opname>_<device>_<dtype>`), also search for `@ops(` which indicates OpInfo parameterization:
-
-```bash
-grep -n "@ops(" "$test_file_path"
-```
-
-**Decision:**
-- Method found directly → `method_found = True`, record line number, advance to Step 2
-- Method not found → search git history (1.4)
-
-#### 1.4 Check git history for method removal
-
-```bash
-cd "$PYTORCH_SRC"
-git log --oneline -20 -- "$test_file"
-```
-
-For each candidate commit, **first verify it is merged into HEAD** (skips open PR branches):
-
-```bash
-# Gate: only proceed if commit is an ancestor of HEAD
-git merge-base --is-ancestor <commit_hash> HEAD && echo "MERGED" || echo "NOT MERGED — skip this commit"
-```
-
-Only proceed with commits that pass the merge-base gate (output `MERGED`). If a commit is NOT an ancestor of HEAD, it comes from an open PR or unmerged branch — discard it as evidence.
-
-For each merged candidate commit, inspect the diff for the method name:
-
-```bash
-git show <commit_hash> -- "$test_file" | grep -n "test_foo\|$base_method"
-```
-
-Check specifically for:
-- Method renamed: a line like `-    def test_foo` and `+    def test_bar` in the same commit
-- Method removed: `-    def test_foo` without a replacement
-- Method refactored: signature change, parameterization change
-
-**Decision:**
-- Method was renamed → `community_change = True`, `change_type = "base_function_renamed"`, record old/new names AND the merged commit hash
-- Method was removed → `community_change = True`, `change_type = "base_function_removed"`, record removal commit hash
-- Method not found in git history (never existed) → `community_change = True`, `change_type = "base_function_removed"`, `detail_reason = "Test never existed in this source version"`
-- Method found only in commits that fail the `git merge-base --is-ancestor` gate (i.e., open PR branches) → NOT a community change. The test has not been changed in the merged upstream.
-
-### Step 2: Check Device Availability and Select Path
-
-This step runs only if the base function EXISTS. It determines whether the device-specific test case is actually generated from the base function.
-
-> **Key insight**: Device-specific test classes (e.g., `TestFooCUDA`) are only created at module import time if the corresponding device is available on the system. The gate is in `common_device_type.py:845`: `if torch.cuda.is_available(): test_bases.append(CUDATestBase)`. Without the device, `pytest --collect-only` will silently omit those test classes — no error, just no output. A false negative would be indistinguishable from a real removal.
-
-#### 2.1 Check device availability
-
-```bash
-# CUDA
-python3 -c "import torch; print(torch.cuda.is_available())"
-
-# XPU
-python3 -c "import torch; print(torch.xpu.is_available())"
-```
-
-Set `device_available` in the output.
-
-**Decision:**
-- **Device available** → Path A: `pytest --collect-only` (authoritative ground truth)
-- **Device NOT available** → Path B: Source inspection (AST + grep + name formula)
-
----
-
-### Path A: pytest --collect-only (Device Available)
-
-When the target device is available, `--collect-only` produces the exact set of generated test names — including all OpInfo expansions, parametrizations, dtype variants, and instantiate_device_type_tests effects. No need to reconstruct the generation logic.
-
-#### A.1 Run --collect-only
-
-```bash
-cd "$PYTORCH_SRC" && \
-python3 -m pytest "$test_file" --collect-only -q 2>/dev/null
-```
-
-Capture the full output for later evidence. Filter for the target device class:
-
-```bash
-cd "$PYTORCH_SRC" && \
-python3 -m pytest "$test_file" --collect-only -q 2>/dev/null | \
-  grep "::${class_name}::"
-```
-
-#### A.2 Analyze collected names
-
-Parse the filtered output for three signals:
-
-1. **Class existence**: Does `::ClassName::` appear at all? If not, the class wasn't instantiated — check `instantiate_device_type_tests` or the device-class gate.
-2. **Exact match**: Does `::ClassName::$test_name` appear? If yes, the case exists.
-3. **Similar names** (rename detection): Collect all names matching the base method prefix within the class. Compare against the expected name to detect renames.
-
-```bash
-# Collect all test names matching the base method (for rename detection)
-cd "$PYTORCH_SRC" && \
-python3 -m pytest "$test_file" --collect-only -q 2>/dev/null | \
-  grep "::${class_name}::" | grep "$base_method"
-```
-
-#### A.3 Decision matrix
-
-| `--collect-only` evidence | `device_case_generated` | Classification |
-|---|---|---|
-| Class `TestFooCUDA` NOT present | `False` | `device_case_not_generated` — check `instantiate_device_type_tests` only_for |
-| Class present, exact test name found | `True` | `not_a_community_change` |
-| Class present, similar name found (e.g. `test_bar_cuda_float32` vs expected `test_foo_cuda_float32`) | `True` (renamed) | `device_case_renamed` — community change |
-| Class present, no similar names found | `False` | `device_case_not_generated` — check if dtype gap or other blocker |
-
-For rename detection specifically:
-
+Delegate the search to the `explore` agent:
 ```python
-# Compare base method against collected names
-expected_name = test_name
-collected_names = [...]  # from --collect-only filtered for the class
-base_prefix = base_method  # e.g. "test_foo"
+task(
+    subagent_type="explore",
+    run_in_background=True,
+    description="Find base function definition",
+    prompt="Find the definition of base method '<base_method>' in <test_file>. PYTORCH_SRC=<path>. Look for 'def <base_method>' or decorators like '@ops'. Return the actual method name and line number if found."
+)
+```
+- **If Found:** Proceed to Step 3.
+- **If NOT Found:**
+  Search local git history for renaming/removal.
+  ```bash
+  cd "$PYTORCH_SRC" && git log --oneline -20 -- "$test_file"
+  ```
+  **MANDATORY GIT GATE:** Any cited commit MUST be merged into HEAD. Check via:
+  ```bash
+  git merge-base --is-ancestor <commit_hash> HEAD
+  ```
+  If merged, inspect `git show <commit_hash>`. Record the rename/removal. Verdict: **Community Change**.
 
-# Find candidates where the base method changed
-candidates = [n for n in collected_names
-              if n.startswith("test_") and n != expected_name
-              and n.split("_")[0:2] == expected_name.split("_")[0:2]]
-
-# Alternatively, check if any name uses a different method name + same device/dtype
-# Example: expected "test_foo_cuda_float32" but "test_bar_cuda_float32" exists
+### 3. Device Case Generation
+If the base function exists, does it generate the target device case? Check device availability:
+```bash
+python3 -c "import torch; print(torch.<device>.is_available())"
 ```
 
-Set `collect_only_output` to the full filtered list and `similar_names_found` to the candidate list.
-
-#### A.4 Record evidence
-
-```python
-{
-    "device_available": True,
-    "verification_method": "collect_only",
-    "device_case_generated": <bool>,          # From decision matrix
-    "collect_only_output": [<str>],           # Full filtered --collect-only output
-    "similar_names_found": [<str>],           # Rename candidates
-    "generation_blocked": <bool>,             # False when using --collect-only (we know the answer)
-    "blocker": None,                          # Not needed — --collect-only is decisive
-    "has_ops_decorator": <bool>,              # Still populated from source for context
-    "ops_name": <str or None>,
-    "dtypes_for_device": [<str> or None],
-    "instantiate_device_type_tests": <str or None>,
-    "instantiate_device_type_tests_only_for": <str or None>,
-}
+#### Path A: Device Available (`pytest --collect-only`)
+Authoritative ground truth. Run:
+```bash
+cd "$PYTORCH_SRC" && python3 -m pytest "$test_file" --collect-only -q 2>/dev/null | grep "::${class_name}::"
 ```
+- **Exact match found:** Not a community change.
+- **Similar name found:** Renamed -> **Community Change**.
+- **Not found:** Device excluded by design/gap -> **Not a community change** (it's a dtype/device gap).
 
----
-
-### Path B: Source Inspection (Device Unavailable)
-
-When the target device is unavailable, reconstruct test case generation via source analysis. This path covers all the mechanisms that control device-specific test creation.
-
-Delegate this work to the `check-community-change-source-inspection` subskill.
-
+#### Path B: Device Unavailable (Source Inspection)
+Delegate to the subskill:
 ```python
-# Launch the subskill
 task(
     subagent_type="explore",
     load_skills=["check-community-change-source-inspection"],
-    description="Check device case generation via source inspection",
-    prompt="Run source inspection for test_name='<test_name>', base_method='<base_method>', "
-           "class_name='<class_name>', target_device='<device>'. "
-           "Test file: <test_file_path>. PYTORCH_SRC=<path>. "
-           "Return the JSON object with the reconstructed generation state."
+    prompt="Run source inspection for test_name='<test_name>', base_method='<base_method>', class_name='<class_name>', target_device='<device>'. Test file: <test_file_path>. PYTORCH_SRC=<path>."
 )
 ```
+Map its boolean findings: `device_case_renamed` -> **Community Change**. `device_case_not_generated` -> **Not a community change**.
 
-Use the returned JSON to inform the synthesis step.
+## Strict Constraints (ZERO TOLERANCE)
 
-### Step 3: Synthesize Community Change Verdict
-
-Combine findings from Steps 1 and 2 into the final classification:
-
-| Evidence | `change_type` | `change_scope` | `community_change` |
-|----------|---------------|-----------------|--------------------|
-| File deleted upstream | `file_deleted` | `base_test_removed` | `True` |
-| Base method removed | `base_function_removed` | `base_test_removed` | `True` |
-| Base method renamed (old→new) | `base_function_renamed` | `renamed` | `True` |
-| Base method refactored (param change, class merge) | `base_function_renamed` | `refactored` | `True` |
-| Base function exists, device excluded by `only_for` | `device_case_not_generated` | `none` | `False` |
-| Base function exists, device dtype gap | `device_case_not_generated` | `none` | `False` |
-| Base function exists, device variant collected | `not_a_community_change` | `none` | `False` |
-| Base function exists, device variant renamed | `device_case_renamed` | `renamed` | `True` |
-
-### Step 4: Generate Evidence-Based Detail Reason
-
-Format the `detail_reason` string for the `case_existence_comments` column:
-
-| Scenario | `detail_reason` |
-|----------|-----------------|
-| Base method removed | `"Base test removed: $base_method in $test_file (commit <hash>)"` |
-| Base method renamed | `"Base test renamed: $old_name → $new_name (commit <hash>)"` |
-| File deleted | `"Test file deleted: $test_file (commit <hash>)"` |
-| Refactored | `"Base test refactored: $base_method ($summary, commit <hash>)"` |
-| Device excluded by `only_for` | `"$device variant not generated: instantiate_device_type_tests only_for=$only_for"` |
-| Device dtype gap | `"$device variant not generated: $op dtypesIf$DEVICE excludes $dtype"` |
-| Device variant renamed (--collect-only) | `"$device variant renamed: $old_name → $new_name (collected: $similar_names)"` |
-| Not a community change | `"Base function exists, $device variant is generated — no community change"` |
-
-## Execution
-
-This skill is intended to be loaded and executed by a subagent. The orchestrator delegates the entire check as one task:
-
-```python
-task(
-    subagent_type="explore",
-    load_skills=["check_community_change"],
-    description="Check community change for test case",
-    prompt="Check community change for <test_name> in <class_name> (device=<device>). "
-           "Test file: <test_file>. PYTORCH_SRC=<path>. "
-           "First check if CUDA is available. If yes, use --collect-only (Path A). "
-           "If not, use source inspection (Path B). "
-           "IMPORTANT: Ignore any Reason or DetailReason fields in the input. "
-           "Do NOT read or carry them forward."
-)
-```
-
-**Input scrubbing protocol (MANDATORY):** Before starting analysis, remove any pre-existing `Reason`, `DetailReason`, `message_xpu`, and `status_xpu` from your working context. If they are present in the task parameters, do not read their values. Base your verdict solely on source code, git history, device availability, and test generation logic.
-
-The subagent then follows the Workflow above, using only the [Allowed Tools](#allowed-tools-locked) listed in the Enforcement section. The subagent MUST check device availability first (Step 2.1) before deciding which path to follow — never assume the device is available.
-
-After completing the analysis and BEFORE returning the verdict, the subagent MUST run the [Evidence Validation Gate](#evidence-validation-gate-mandatory). If validation fails, redo the analysis — do not return an invalid verdict.
-
-## Enforcement: MUST DO / MUST NOT DO
-
-These are not advisory — they are enforced rules. Violating any MUST NOT DO or skipping any MUST DO invalidates the output.
-
-### Allowed Tools (locked)
-
-Only these tools may be used. Any tool not in this list MUST NOT be used.
-
-| Tool | Allowed Usage |
-|------|---------------|
-| `read` | Read test source files, class/method bodies, OpInfo definitions |
-| `bash` | `git log`, `git show`, `git diff`, `git branch --contains`, `ls`, `grep` (for file text ONLY), `pytest --collect-only` |
-| `grep` | Find class/method definitions, decorators, `instantiate_device_type_tests` calls, OpInfo entries |
-| `glob` | Find test files when path may differ from input |
-
-### FORBIDDEN Tools and Actions (MUST NOT DO)
-
-1. **MUST NOT use `gh` CLI** for any purpose — no `gh search prs`, `gh pr view`, `gh issue list`, `gh api`.
-2. **MUST NOT use `websearch`** or any web search tool to look up test status, PRs, or issues.
-3. **MUST NOT use `webfetch`** to fetch GitHub URLs, PR pages, or any web resource.
-4. **MUST NOT search GitHub.com, GitHub API, or any external web service.** All evidence must come from local source code and local git history only.
-5. **MUST NOT read any `Reason` or `DetailReason` field from the input task data.** You are told the `name_cuda`, `testfile_cuda`, `classname_cuda`, and `device` only. If the task input includes extra fields (e.g. `Reason`, `DetailReason`, `message_xpu`, `status_xpu`), you MUST NOT read, reference, or carry forward their values.
-6. **MUST NOT accept any evidence from an unmerged branch or open PR.** If a commit is not an ancestor of `HEAD` in the local git history, it is not valid evidence. A commit from a remote branch that has not been merged into the base branch is equivalent to an open PR — do not use it.
-7. **MUST NOT cite a GitHub PR URL (e.g. `github.com/pytorch/pytorch/pull/NNNN`) as evidence.** Only commit hashes from `git log` are valid evidence.
-
-### MUST DO Rules
-
-1. **Base-function-first**: Always check base function existence before concluding any other absence reason. If the base function is absent, classify as Community Change regardless of device wrapper status.
-2. **Device availability gate first**: Before running `--collect-only`, check whether the target device is available. If the device is unavailable, `--collect-only` will silently omit device-specific test classes — do NOT use it in that case. Fall back to source inspection.
-3. **`--collect-only` is authoritative (Path A)**: When the target device is available, `--collect-only` output is the single source of truth for whether a test case exists. Source-level analysis (OpInfo dtypes, decorators, parametrization) is NOT needed — `--collect-only` accounts for all of them at runtime.
-4. **Source-inspection fallback must be thorough (Path B)**: When the device is unavailable, ensure the fallback covers all generation paths: `instantiate_device_type_tests` only_for, decorators (dtypesIfDEVICE, skip, only), OpInfo dtype lists, and parametrize. Missing any path can produce a false community-change classification.
-5. **Git history is authoritative**: For removed/renamed tests, `git log` and `git show` evidence takes precedence over any other signal. Only use `git log` (which by default returns only merged/committed history, not open PR branches).
-6. **Name-suffix stripping**: Always strip trailing device/dtype/OpInfo suffixes from `test_name` before searching for the base method. Incorrect suffix stripping is the most common error.
-7. **Device-only parametrization is not a community change**: If `instantiate_device_type_tests(only_for=("xpu",))` explicitly excludes the target device, that is by design — do not flag as community change.
-8. **Device dtype gaps are not community changes**: If `dtypesIfCUDA` excludes the target dtype, that is a CUDA dtype gap, not a community change.
-9. **Do not conflate "device case absent" with "community change"**: A missing device case may be a dtype gap or parametrization exclusion, not an upstream removal.
-10. **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
-
-### Evidence Validation Gate (mandatory)
-
-Before returning a `community_change = True` verdict, you MUST run these checks. If any check fails, the verdict is invalid — go back and fix.
-
-**Gate A — No PR URLs in evidence:**
-```bash
-# If your evidence object contains any string matching github.com/*/pull/,
-# the evidence is INVALID. Remove it and re-run without web lookups.
-```
-
-**Gate B — Every commit hash must be an ancestor of HEAD:**
-```bash
-# For EACH commit_hash cited as CC evidence, run:
-git merge-base --is-ancestor <commit_hash> HEAD
-# If this returns exit code 1 (false), the commit is NOT merged —
-# it is from an open PR or unmerged branch. Discard that evidence.
-```
-
-**Gate C — No old Reason/DetailReason in output:**
-```bash
-# Check that your output's detail_reason does NOT contain the input's
-# Reason or DetailReason values as substrings. If it does, you copied
-# old data — redo the analysis from scratch.
-```
-
-### Output Audit
-
-Every CC verdict must cite **at least one merged commit hash** in its `git_history.commits_removing_method[]` or `git_history.file_deleted_in_commit`. A CC verdict with zero commit hashes is automatically invalid — the evidence is insufficient.
-
-Evidence that cites ONLY an open PR URL (no merged commit hash) → **verdict is invalid**, classifies as NOT community change.
-
----
-
-## Constraints (Retained for Reference)
-
-1. **Base-function-first**: Always check base function existence before concluding any other absence reason. If the base function is absent, classify as Community Change regardless of device wrapper status.
-2. **Device availability gate first**: Before running `--collect-only`, check whether the target device is available. If the device is unavailable, `--collect-only` will silently omit device-specific test classes — do NOT use it in that case. Fall back to source inspection.
-3. **`--collect-only` is authoritative (Path A)**: When the target device is available, `--collect-only` output is the single source of truth for whether a test case exists. Source-level analysis (OpInfo dtypes, decorators, parametrization) is NOT needed — `--collect-only` accounts for all of them at runtime.
-4. **Source-inspection fallback must be thorough (Path B)**: When the device is unavailable, ensure the fallback covers all generation paths: `instantiate_device_type_tests` only_for, decorators (dtypesIfDEVICE, skip, only), OpInfo dtype lists, and parametrize. Missing any path can produce a false community-change classification.
-5. **Git history is authoritative**: For removed/renamed tests, `git log` and `git show` evidence takes precedence over any other signal.
-6. **Name-suffix stripping**: Always strip trailing device/dtype/OpInfo suffixes from `test_name` before searching for the base method. Incorrect suffix stripping is the most common error.
-7. **Device-only parametrization is not a community change**: If `instantiate_device_type_tests(only_for=("xpu",))` explicitly excludes the target device, that is by design — do not flag as community change.
-8. **Device dtype gaps are not community changes**: If `dtypesIfCUDA` excludes the target dtype, that is a CUDA dtype gap, not a community change.
-9. **Do not conflate "device case absent" with "community change"**: A missing device case may be a dtype gap or parametrization exclusion, not an upstream removal.
-10. **Never read the input Excel file directly.** All test metadata (`test_file`, `class_name`, `test_name`, `message_xpu`, etc.) is provided as task parameters by the orchestrator from the extracted `tasks.json`. Reading the Excel yourself wastes tokens and bypasses deduplication.
-
-## Version
-
-- v2.1.0 - 2026-06-10 - Added structural enforcement: tool whitelist/blacklist, input scrubbing protocol, `git merge-base --is-ancestor` validation gate, output audit requirements, and FORBIDDEN tools/MUST NOT DO rules to prevent open-PR evidence and stale Reason/DetailReason carry-forward.
-
-## See Also
-
-- `extract_base_function` — Provides base-function metadata from a broader perspective (used as reference for this skill's design)
-- `check_not_target_feature` — Determines if a test is CUDA-only / not applicable for XPU
+1. **Tool Whitelist**: `read`, `bash` (local `git`, `grep`, `pytest`), `grep`, `glob`.
+2. **Forbidden Tools**: NO `gh` CLI. NO `websearch`. NO `webfetch`. **No external network calls.**
+3. **No Open PRs**: Evidence must be from local merged `git` history. A PR URL or unmerged commit is strictly invalid.
+4. **Git Evidence Audit**: Every `community_change = True` verdict due to removal/rename MUST cite at least one verified ancestor commit hash.
+5. **No Blind Copies**: Output `detail_reason` MUST NOT simply repeat the input's `Reason` or `DetailReason`.
