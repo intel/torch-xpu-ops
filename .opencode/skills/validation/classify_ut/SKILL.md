@@ -129,7 +129,7 @@ task(
 
 **If `is_not_target == True`**:
 - `Reason = "Not Applicable"`
-- `DetailReason = "<classification.reasoning> (Evidence: <classification.evidence joined>)"`
+- `DetailReason = "<reasoning> (Evidence: <evidence joined>)"`
 - Stop cascade for this row.
 
 **If `is_not_target == False`** → proceed to Gate 2.
@@ -156,7 +156,7 @@ task(
 
 **If `community_change == True`**:
 - `Reason = "Community Change"`
-- `DetailReason = evidence from check_community_change (classification.detail_reason)`
+- `DetailReason = classification.detail_reason` (from check_community_change output)
 - Stop cascade for this row.
 
 **If `community_change == False`** → proceed to Gate 3.
@@ -192,16 +192,8 @@ task(
 ```
 
 **If `has_known_issue == True`**:
-
-Examine the matched issues. For the **highest relevance** match:
-
-| Issue State | Labels | `Reason` | `DetailReason` |
-|-------------|--------|----------|----------------|
-| OPEN | `bug` or no label | `Failures (xpu broken)` | `"Known bug: <Issue Title> - <Issue URL>"` |
-| OPEN | `feature` / `enhancement` | `Feature gap` | `"Missing feature: <Issue Title> - <Issue URL>"` |
-| OPEN | `skipped` | `Failures (xpu broken)` | `"Test skipped due to failure: <Issue Title> - <Issue URL>"` |
-| CLOSED | `not_target` / `wontfix` | `Not Applicable` | `"Not applicable per closed issue: <Issue Title> - <Issue URL>"` |
-| CLOSED | other or no relevant label | `To be enabled` | `"Issue closed, awaiting enablement: <Issue Title> - <Issue URL>"` |
+- Use the `Reason` and `DetailReason` provided directly in the subskill's output (`classification.Reason` and `classification.DetailReason`).
+- Stop cascade for this row.
 
 **If `has_known_issue == False`**:
 - `Reason = "Submit Issue"`
