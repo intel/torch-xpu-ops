@@ -16,9 +16,67 @@
 
 #include <ATen/AccumulateType.h>
 #include <c10/macros/Macros.h>
+#include <c10/util/BFloat16.h>
+#include <c10/util/Half.h>
 #include <sycl/sycl.hpp>
 
+#include <limits>
+#include <numbers>
+#include <type_traits>
+
 namespace at::native::xpu {
+
+/*
+ * For licensing information, please refer to the cpu implementation located in
+ * "ATen/native/Math.h".
+ */
+template <typename T>
+inline std::enable_if_t<std::is_floating_point_v<T>, T> calc_erfinv(T y) {
+  /* Function to calculate inverse error function. Rational approximation is
+   * used to generate an initial approximation, which is then improved to full
+   * accuracy by two steps of Newton's method.
+   */
+  constexpr T CENTRAL_RANGE = T(0.7);
+  T x, z, num, dem;
+  T a[4] = {T(0.886226899), T(-1.645349621), T(0.914624893), T(-0.140543331)};
+  T b[4] = {T(-2.118377725), T(1.442710462), T(-0.329097515), T(0.012229801)};
+  T c[4] = {T(-1.970840454), T(-1.624906493), T(3.429567803), T(1.641345311)};
+  T d[2] = {T(3.543889200), T(1.637067800)};
+  T y_abs = sycl::fabs(y);
+  if (y_abs > T(1)) {
+    return std::numeric_limits<T>::quiet_NaN();
+  }
+  if (y_abs == T(1)) {
+    return sycl::copysign(std::numeric_limits<T>::infinity(), y);
+  }
+  if (y_abs <= CENTRAL_RANGE) {
+    z = y * y;
+    num = (((a[3] * z + a[2]) * z + a[1]) * z + a[0]);
+    dem = ((((b[3] * z + b[2]) * z + b[1]) * z + b[0]) * z + T(1));
+    x = y * num / dem;
+  } else {
+    z = sycl::sqrt(-sycl::log((T(1) - y_abs) / T(2)));
+    num = ((c[3] * z + c[2]) * z + c[1]) * z + c[0];
+    dem = (d[1] * z + d[0]) * z + T(1);
+    x = sycl::copysign(num, y) / dem;
+  }
+  /* Two steps of Newton-Raphson correction */
+  x = x -
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
+  x = x -
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
+  return x;
+}
+
+inline c10::BFloat16 calc_erfinv(c10::BFloat16 a) {
+  return calc_erfinv(float(a));
+}
+
+inline c10::Half calc_erfinv(c10::Half a) {
+  return calc_erfinv(float(a));
+}
 
 /*
  * For licensing information, please refer to the cpu implementation located in
@@ -45,10 +103,11 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   if (x == accscalar_t(0)) {
     // As per C++ standard for gamma related functions and SciPy,
     // If the argument is ±0, ±∞ is returned
-    return std::copysign(static_cast<scalar_t>(INFINITY), -x);
+    return static_cast<scalar_t>(
+        sycl::copysign(static_cast<accscalar_t>(INFINITY), -x));
   }
 
-  bool x_is_integer = x == std::trunc(x);
+  bool x_is_integer = x == sycl::trunc(x);
   accscalar_t result = 0;
   if (x < accscalar_t(0)) {
     if (x_is_integer) {
@@ -87,7 +146,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   }
 
   return static_cast<scalar_t>(
-      std::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
+      sycl::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
 }
 
 template <typename scalar_t>
@@ -185,7 +244,7 @@ scalar_t ratevl(
   }
   if (absx > 1) {
     i = N - M;
-    return std::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
+    return sycl::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
   } else {
     return num_ans / denom_ans;
   }
@@ -257,7 +316,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
   if (std::fabs(a - x) > 0.4 * std::fabs(a)) {
-    ax = a * std::log(x) - x - sycl::lgamma(a);
+    ax = a * sycl::log(x) - x - sycl::lgamma(a);
     if (ax < -MAXLOG) {
       return 0.0;
     }
@@ -268,12 +327,12 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   res = std::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
 
   if ((a < 200) && (x < 200)) {
-    res *= sycl::exp(a - x) * std::pow(x / fac, a);
+    res *= sycl::exp(a - x) * sycl::pow(x / fac, a);
   } else {
     num = x - a - lanczos_g + 0.5;
     numfac = num / fac;
     res *= sycl::exp(
-        a * (std::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
+        a * (sycl::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
   }
   return res;
 }
@@ -335,8 +394,8 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
     }
   }
 
-  logx = std::log(x);
-  term = -std::expm1(a * logx - sycl::lgamma(1 + a));
+  logx = sycl::log(x);
+  term = -sycl::expm1(a * logx - sycl::lgamma(1 + a));
   return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
 
@@ -610,13 +669,13 @@ static const scalar_t _igam_helper_asymptotic_series(
   }
 
   if (lambda > 1) {
-    eta = std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else if (lambda < 1) {
-    eta = -std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = -std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else {
     eta = 0;
   }
-  res = 0.5 * std::erfc(sgn * eta * std::sqrt(a / 2));
+  res = 0.5 * sycl::erfc(sgn * eta * std::sqrt(a / 2));
 
   for (k = 0; k < 25; k++) {
     ck = d[k][0];
@@ -734,8 +793,8 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
   static const accscalar_t SMALLRATIO = 0.3;
   static const accscalar_t LARGERATIO = 4.5;
 
-  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
-  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
+  bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
 
   if ((x < 0) || (a < 0)) {
     // out of defined-region of the function
@@ -771,7 +830,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
       return _igamc_helper_continued_fraction(a, x);
     }
   } else if (x <= 0.5) {
-    if (-0.4 / std::log(x) < a) {
+    if (-0.4 / sycl::log(x) < a) {
       return 1.0 - _igam_helper_series(a, x);
     } else {
       return _igamc_helper_series(a, x);
@@ -805,8 +864,8 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   static const accscalar_t SMALLRATIO = 0.3;
   static const accscalar_t LARGERATIO = 4.5;
 
-  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
-  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
+  bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
 
   // boundary values following SciPy
   // note that in SciPy, a and x are non-negative, with exclusive 0s (i.e.,
@@ -1299,7 +1358,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
 
     return x * (yp / yq) +
         (scalar_t(0.636619772367581343075535053490057448) *
-         (bessel_j1_forward(x) * std::log(x) - scalar_t(1.0) / x));
+         (bessel_j1_forward(x) * sycl::log(x) - scalar_t(1.0) / x));
   }
 
   scalar_t pp = 0.0;
@@ -1412,7 +1471,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
 
   T ai;
 
-  if (std::isinf(x)) {
+  if (sycl::isinf(x)) {
     return std::numeric_limits<T>::quiet_NaN();
   }
 
