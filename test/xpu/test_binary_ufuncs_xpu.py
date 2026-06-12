@@ -27,6 +27,7 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     from test_binary_ufuncs import TestBinaryUfuncsDevice
+<<<<<<< dev/jmamzax/2630_add_test_fmod_remainder_by_zero_integral_xpu
 
 
 @dtypes(*integral_types())
@@ -62,6 +63,8 @@ TestBinaryUfuncsDevice.test_fmod_remainder_by_zero_integral = (
     _test_fmod_remainder_by_zero_integral
 )
 
+=======
+>>>>>>> main
 
 instantiate_device_type_tests(
     TestBinaryUfuncsDevice, globals(), only_for="xpu", allow_xpu=True
