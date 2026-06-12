@@ -251,8 +251,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: distributed_2.11
-      torch_xpu_ops: daisyden/distributed_2.11
+      pytorch: distributed_2.13
+      torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
