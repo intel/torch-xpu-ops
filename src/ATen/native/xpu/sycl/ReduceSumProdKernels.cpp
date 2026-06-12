@@ -53,6 +53,7 @@ static void reduce_dispatch(TensorIterator& iter, GeneralDispatcher op) {
 
 template <typename acc_t>
 struct SumFunctor {
+  using native_sycl_op = sycl::plus<acc_t>;
   inline acc_t operator()(acc_t a, acc_t b) const {
     return a + b;
   }
