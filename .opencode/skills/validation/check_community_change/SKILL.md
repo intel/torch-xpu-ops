@@ -355,150 +355,22 @@ Set `collect_only_output` to the full filtered list and `similar_names_found` to
 
 When the target device is unavailable, reconstruct test case generation via source analysis. This path covers all the mechanisms that control device-specific test creation.
 
-#### B.1 Check instantiate_device_type_tests
-
-Read the call site:
-
-```bash
-grep -n "instantiate_device_type_tests" "$test_file_path"
-```
-
-Determine whether the target device is included:
+Delegate this work to the `check-community-change-source-inspection` subskill.
 
 ```python
-# Device IS included
-instantiate_device_type_tests(TestFoo, globals())                       # all devices → device generated
-instantiate_device_type_tests(TestFoo, globals(), only_for=("cuda",))   # CUDA-only → CUDA generated
-instantiate_device_type_tests(TestFoo, globals(), only_for=("cuda", "xpu"))  # both → CUDA generated
-
-# Device is NOT included
-instantiate_device_type_tests(TestFoo, globals(), only_for=("xpu",))    # XPU-only → CUDA NOT generated
-instantiate_device_type_tests(TestFoo, globals(), only_for=("cpu",))    # CPU-only → CUDA NOT generated
+# Launch the subskill
+task(
+    subagent_type="explore",
+    load_skills=["check-community-change-source-inspection"],
+    description="Check device case generation via source inspection",
+    prompt="Run source inspection for test_name='<test_name>', base_method='<base_method>', "
+           "class_name='<class_name>', target_device='<device>'. "
+           "Test file: <test_file_path>. PYTORCH_SRC=<path>. "
+           "Return the JSON object with the reconstructed generation state."
+)
 ```
 
-If `only_for` excludes the target device, mark `generation_blocked = True`.
-
-#### B.2 Check decorators affecting device generation
-
-Read the decorators on the base method:
-
-```bash
-# Read ~15 lines before the method definition
-sed -n '<start-15>,<start+5>p' "$test_file_path"
-```
-
-Key decorators (shown for CUDA; substitute device name for XPU):
-
-| Decorator | Effect on target device |
-|-----------|------------------------|
-| `@onlyCUDA` | CUDA-only test, CUDA IS generated |
-| `@onlyXPU` | XPU-only test, XPU IS generated |
-| `@onlyNativeDeviceTypes` | Runs on CUDA/XPU AND CPU |
-| `@skipCUDA`/`@skipIfCuda` | Test exists but SKIPPED on CUDA |
-| `@dtypesIfCUDA(...)` | Only specified dtypes generate CUDA variants |
-| `@dtypesIfXPU(...)` | Only specified dtypes generate XPU variants |
-| `@dtypes(...)` | All specified dtypes generate device variants |
-| `@ops(...)` | OpInfo-driven; generation depends on OpInfo dtypes for device |
-| `@parametrize("device", ["cpu"])` | Device parametrization WITHOUT target → NOT generated |
-
-**Decision:**
-- Explicit device exclusion → not generated → by design (not a community change)
-- Device decorated but dtype-restricted → generated for subset of dtypes → check if target dtype is included
-
-#### B.3 Check OpInfo parameterization
-
-If the method uses `@ops(<op_name>)`, locate the OpInfo definition:
-
-```bash
-grep -n "OpInfo('<op_name>'\|BinaryUfuncInfo('<op_name>'\|UnaryUfuncInfo('<op_name>')" \
-  $PYTORCH_SRC/torch/testing/_internal/common_methods_invocations.py
-```
-
-Also check in modularized definitions:
-
-```bash
-grep -rn "def.*'<op_name>'\|'<op_name>'" \
-  $PYTORCH_SRC/torch/testing/_internal/opinfo/definitions/ --include="*.py"
-```
-
-Extract device-relevant fields:
-
-```python
-{
-    "dtypes": ...,               # Base dtypes (applied to CPU)
-    "dtypesIfCUDA": ...,         # CUDA-specific dtypes (override for CUDA)
-    "dtypesIfXPU": ...,          # XPU-specific dtypes (override for XPU)
-    "skips": ...,                # SkipInfo entries including device_type='cuda'/'xpu'
-}
-```
-
-**Decision:**
-- If `dtypesIf<DEVICE>` is set and the target dtype is NOT in the list:
-  `device_case_generated = False`, `generation_blocked = True`,
-  `blocker = "dtypesIf<DEVICE> excludes <dtype>"`
-  This is NOT a community change — it's a device dtype gap.
-- If `dtypesIf<DEVICE>` is set and the target dtype IS in the list:
-  `device_case_generated = True`
-- If `dtypesIf<DEVICE>` is not set and base `dtypes` includes the target dtype:
-  `device_case_generated = True`
-- If OpInfo has `skips` with `device_type='<device>'`:
-  Variant IS generated but runtime-skipped → `device_case_generated = True`
-
-#### B.4 Reconstruct expected test name
-
-Use the deterministic name formula from `common_device_type.py` to verify that the expected name matches what the generation logic would produce:
-
-```python
-# For simple device-type tests (instantiate_device_type_tests):
-# Generated name format: {base_method}_{device}_{dtype}
-# e.g. test_foo_cuda_float32
-
-# For OpInfo tests:
-# Generated name format: test_{opinfo_category}_{op_name}_{device}_{dtype}
-# where OpInfo.formatted_name = full_name.replace(".", "_")
-
-# For parametrized tests:
-# Each @parametrize argument is appended to the name
-```
-
-Strip the expected test name and reconstruct it from the source components:
-
-1. Start with `base_method` (from Step 1.3)
-2. Append `_<device>` (e.g. `_cuda`, `_xpu`)
-3. Append `_<dtype>` if dtype is involved
-4. For OpInfo: the name includes the OpInfo `formatted_name` before the device suffix
-5. For parametrize: each parametrized value is appended as `_<value>`
-
-If the reconstructed name differs from the input `test_name`, the test may have been renamed.
-
-#### B.5 Record evidence
-
-```python
-{
-    "device_available": False,
-    "verification_method": "source_inspection",
-    "device_case_generated": <bool>,          # From source analysis
-    "collect_only_output": None,              # Not available
-    "similar_names_found": None,              # Not available
-    "generation_blocked": <bool>,             # True if blocked by decorators/params
-    "blocker": <str or None>,                 # E.g. "only_for=('xpu',)", "dtypesIfCUDA excludes float32"
-    "has_ops_decorator": <bool>,
-    "ops_name": <str or None>,
-    "dtypes_for_device": [<str> or None],
-    "instantiate_device_type_tests": <str or None>,
-    "instantiate_device_type_tests_only_for": <str or None>,
-}
-```
-
-#### B.6 Synthesize device-case verdict (source inspection)
-
-| Scenario | `device_case_generated` | Community Change? |
-|----------|-------------------------|-------------------|
-| Base function exists, device excluded by `only_for` | `False` (by design) | No — other-device-only parametrization |
-| Base function exists, dtype excluded by `dtypesIf<DEVICE>` | `False` (dtype gap) | No — device dtype gap |
-| Base function exists, all generation conditions satisfied | `True` | No — test should work |
-| Base function exists, generation should happen but name formula mismatch | `False` | Yes — investigate (`device_case_not_generated`) |
-| Base function was renamed, and device variant uses new name | `True` (new name) | Yes — old name is obsolete (`device_case_renamed`) |
+Use the returned JSON to inform the synthesis step.
 
 ### Step 3: Synthesize Community Change Verdict
 
