@@ -77,6 +77,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
@@ -101,8 +102,9 @@ scalar_t bilinear_interpolate(
     return 0;
   }
 
-  index_t h_low = std::floor(h);
-  index_t w_low = std::floor(w);
+  using opmath_t = at::opmath_type<scalar_t>;
+  index_t h_low = sycl::floor(static_cast<opmath_t>(h));
+  index_t w_low = sycl::floor(static_cast<opmath_t>(w));
   index_t h_high = h_low + 1;
   index_t w_high = w_low + 1;
 
@@ -609,8 +611,9 @@ scalar_t get_coordinate_weight(
     scalar_t y,
     scalar_t x,
     bool is_y_direction) {
-  index_t y_l = std::floor(y);
-  index_t x_l = std::floor(x);
+  using opmath_t = at::opmath_type<scalar_t>;
+  index_t y_l = sycl::floor(static_cast<opmath_t>(y));
+  index_t x_l = sycl::floor(static_cast<opmath_t>(x));
   index_t y_h = y_l + 1;
   index_t x_h = x_l + 1;
 
