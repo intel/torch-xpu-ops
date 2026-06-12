@@ -306,7 +306,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           [](accscalar_t a, accscalar_t b) { return a + b; });
     }
     if constexpr (LogSoftMax)
-      sum_value = std::log(sum_value);
+      sum_value = sycl::log(sum_value);
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
@@ -593,7 +593,7 @@ struct SoftmaxForwardKernelFunctor {
     sum_value = sycl::reduce_over_group(
         item.get_group(), sum_value, sycl::plus<accscalar_t>());
     if (LogSoftMax)
-      sum_value = std::log(sum_value);
+      sum_value = sycl::log(sum_value);
     else
       sum_value = accscalar_t(1) / sum_value;
 
@@ -800,7 +800,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax)
-          sum_value[j] = std::log(local_data_[0][local_col_id][j]);
+          sum_value[j] = sycl::log(local_data_[0][local_col_id][j]);
         else
           sum_value[j] = accscalar_t(1) / local_data_[0][local_col_id][j];
       }
@@ -808,7 +808,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax)
-          sum_value[j] = std::log(sum_value[j]);
+          sum_value[j] = sycl::log(sum_value[j]);
         else
           sum_value[j] = accscalar_t(1) / sum_value[j];
       }
