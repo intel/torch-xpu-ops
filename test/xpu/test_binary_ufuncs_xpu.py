@@ -50,9 +50,8 @@ def _test_fmod_remainder_by_zero_integral(self, device, dtype):
             # CUDA returns all 1s for negative dividend, half 1s for positive dividend.
             # uint8: 0xff -> 255
             # int32: 0xffffffff -> -1
-            if dtype == torch.int64:
-                self.assertEqual(fn(x, zero) == 4294967295, x >= 0)
-                self.assertEqual(fn(x, zero) == -1, x < 0)
+            self.assertEqual(fn(x, zero) == 4294967295, x >= 0)
+            self.assertEqual(fn(x, zero) == -1, x < 0)
         else:
             value = 255 if dtype == torch.uint8 else -1
             self.assertTrue(torch.all(fn(x, zero) == value))
