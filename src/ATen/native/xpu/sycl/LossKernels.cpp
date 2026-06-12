@@ -9,6 +9,7 @@
  */
 
 #include <ATen/ATen.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Reduction.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -28,8 +29,10 @@ struct BinaryCrossEntropyFunctor {
     SYCL_KERNEL_ASSERT(input_val >= zero && input_val <= one);
     SYCL_KERNEL_ASSERT(target_val >= zero && target_val <= one);
 
-    scalar_t log_input_val = std::log(input_val);
-    scalar_t log_1_minus_input_val = std::log1p(-input_val);
+    using opmath_t = at::opmath_type<scalar_t>;
+    scalar_t log_input_val = sycl::log(static_cast<opmath_t>(input_val));
+    scalar_t log_1_minus_input_val =
+        sycl::log1p(static_cast<opmath_t>(-input_val));
 
     log_input_val = std::max(log_input_val, neg_100);
     log_1_minus_input_val = std::max(log_1_minus_input_val, neg_100);
