@@ -107,24 +107,24 @@ void ceil_kernel(TensorIteratorBase& iter) {
 
 template <typename scalar_t>
 inline scalar_t nearbyint_wrapper(scalar_t a) {
-  return static_cast<scalar_t>(std::nearbyintf(static_cast<float>(a)));
+  return static_cast<scalar_t>(sycl::rint(static_cast<float>(a)));
 }
 
 inline double nearbyint_wrapper(double a) {
-  return std::nearbyint(a);
+  return sycl::rint(a);
 }
 
 #pragma push
 inline c10::complex<float> nearbyint_wrapper(c10::complex<float> a) {
   return c10::complex<float>(
-      std::nearbyintf(static_cast<float>(a.real())),
-      std::nearbyintf(static_cast<float>(a.imag())));
+      sycl::rint(static_cast<float>(a.real())),
+      sycl::rint(static_cast<float>(a.imag())));
 }
 
 inline c10::complex<double> nearbyint_wrapper(c10::complex<double> a) {
   return c10::complex<double>(
-      std::nearbyint(static_cast<double>(a.real())),
-      std::nearbyint(static_cast<double>(a.imag())));
+      sycl::rint(static_cast<double>(a.real())),
+      sycl::rint(static_cast<double>(a.imag())));
 }
 #pragma pop
 
@@ -139,8 +139,12 @@ template <typename scalar_t>
 struct RoundDecimalsFunctor {
   scalar_t operator()(scalar_t a) const {
     return neg_flag_
-        ? std::nearbyint(a / ten_pow_decimals_) * ten_pow_decimals_
-        : std::nearbyint(a * ten_pow_decimals_) / ten_pow_decimals_;
+        ? sycl::rint(
+              static_cast<at::opmath_type<scalar_t>>(a / ten_pow_decimals_)) *
+            ten_pow_decimals_
+        : sycl::rint(
+              static_cast<at::opmath_type<scalar_t>>(a * ten_pow_decimals_)) /
+            ten_pow_decimals_;
   }
   RoundDecimalsFunctor(scalar_t ten_pow_decimals, bool neg_flag)
       : ten_pow_decimals_(ten_pow_decimals), neg_flag_(neg_flag) {}
