@@ -9,12 +9,12 @@ on:
         description: Runner label for build job
       pytorch:
         type: string
-        default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        default: 'release/2.13'
+        description: Pytorch release/2.13 by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
-        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: 'release/2.13'
+        description: Torch-xpu-ops release/2.13 by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
         type: string
@@ -48,7 +48,7 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      image: 'pytorch/manylinux2_28-builder:xpu-v2.13.0-rc1'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
