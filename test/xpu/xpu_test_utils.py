@@ -1294,14 +1294,10 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         )
         test_command += exe_options
     else:
-        cmd_args = [
-            "pytest",
-            f"--junit-xml=./op_ut_with_all.{rename}.xml",
-            test_case,
-        ]
-    # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
-    result = subprocess.run(cmd_args)
-    return result.returncode
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_all.{rename}.xml " + test_case
+        )
+    return os.system(test_command)
 
 
 def ensure_pytorch_test_path(test_dir):
