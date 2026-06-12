@@ -28,9 +28,15 @@ Only consider lines matching `[level_zero:gpu][level_zero:<index>]`.
 
 - **0 devices found**: Stop. Report: "No Level Zero GPU device was found. Check GPU driver, Level Zero runtime, and oneAPI environment."
 - **1 device found**: Use its index. Proceed to Step 3.
-- **Multiple devices found**: Ask the user to select. Do NOT proceed until a valid index is provided.
+- **Multiple devices found**: If the list contains both discrete and integrated GPUs, select the discrete GPU by default. If there are multiple discrete GPUs, ask the user to select. Do NOT proceed until a valid index is determined.
 
-Prompt format for multiple devices:
+To distinguish dGPU from iGPU, run the bundled script:
+```bash
+python3 .claude/skills/action/intel-gpu-device-selection/scripts/l0_igpu_check.py
+```
+Output labels each GPU as `iGPU` or `dGPU` based on the Level Zero `ZE_DEVICE_PROPERTY_FLAG_INTEGRATED` flag.
+
+Prompt format when user selection is needed:
 ```text
 Multiple Level Zero GPU devices found:
 <device list from sycl-ls>
