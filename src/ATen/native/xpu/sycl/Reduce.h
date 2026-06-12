@@ -202,7 +202,18 @@ inline int last_pow2(int n) {
 }
 
 static void reduce_fraction(size_t& numerator, size_t& denominator) {
+#ifdef _MSC_VER
+  // MSVC's std::gcd does runtime ISA dispatch through a global variable and
+  // CPU builtins, which cannot be used in device code; use Euclid's algorithm.
+  size_t gcd = denominator;
+  size_t b = numerator;
+  while (b != 0) {
+    gcd %= b;
+    std::swap(gcd, b);
+  }
+#else
   auto gcd = std::gcd(numerator, denominator);
+#endif
   numerator /= gcd;
   denominator /= gcd;
 }
