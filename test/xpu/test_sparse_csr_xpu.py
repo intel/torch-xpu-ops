@@ -1987,6 +1987,43 @@ class TestSparseCSR(TestCase):
     def test_sparse_csc_to_dense(self, device, dtype):
         self._test_sparse_compressed_to_dense(device, dtype, torch.sparse_csc)
 
+    @onlyOn(["xpu"])
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_sparse_csr_to_dense_implicit_batch(self, device, dtype):
+        # Regression test for https://github.com/intel/torch-xpu-ops/issues/2801
+        # A batched sparse CSR tensor can have index arrays stored without explicit
+        # batch dimensions (implicit broadcast shorthand). XPU's sparse_compressed_to_dense
+        # must expand those dims before delegating to the upstream implementation.
+        crow = torch.tensor([0, 2, 3, 5], dtype=torch.int64, device=device)
+        col = torch.tensor([0, 2, 1, 0, 2], dtype=torch.int64, device=device)
+        vals = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=dtype, device=device)
+
+        expected_2d = torch.tensor(
+            [[1.0, 0.0, 2.0], [0.0, 3.0, 0.0], [4.0, 0.0, 5.0]],
+            dtype=dtype,
+            device=device,
+        )
+
+        # Case 1: batch size = 1
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse1 = torch.sparse_csr_tensor(crow, col, vals, size=(1, 3, 3))
+        self.assertEqual(sparse1.to_dense(), expected_2d.unsqueeze(0))
+
+        # Case 2: batch size = 3
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse3 = torch.sparse_csr_tensor(crow, col, vals, size=(3, 3, 3))
+        self.assertEqual(sparse3.to_dense(), expected_2d.unsqueeze(0).expand(3, 3, 3))
+
+        # Case 3: multi-dimensional batch shape (2, 3) — a 2×3 grid of identical matrices.
+        with torch.sparse.check_sparse_tensor_invariants(enable=False):
+            sparse_2d_batch = torch.sparse_csr_tensor(
+                crow, col, vals, size=(2, 3, 3, 3)
+            )
+        self.assertEqual(
+            sparse_2d_batch.to_dense(),
+            expected_2d.unsqueeze(0).unsqueeze(0).expand(2, 3, 3, 3),
+        )
+
     @skipMeta
     @skipCPUIfNoMklSparse
     @coalescedonoff

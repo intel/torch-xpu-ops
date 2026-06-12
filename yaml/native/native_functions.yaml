@@ -8622,7 +8622,7 @@
   variants: method
   dispatch:
     SparseXPU: sparse_to_dense
-    SparseCsrXPU: sparse_compressed_to_dense
+    SparseCsrXPU: sparse_compressed_to_dense_xpu
   autogen: _to_dense.out
 
 - func: to_dense_backward(Tensor grad, Tensor input, bool? masked_grad=None) -> Tensor
