@@ -42,19 +42,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
-          pip install pandas requests pygithub
+          pip install pandas numpy openpyxl
       - name: Download Target Artifact
         run: |
-          mkdir target/
-          cd target/
+          rm -rf target/ && mkdir target/ && cd target/
           gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-          find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                  while read line; do rsync -az --delete $line/ $(basename $line)/; done
-          rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
         run: |
-          mkdir baseline/
-          cd baseline/
+          rm -rf baseline/ && mkdir baseline/ && cd baseline/
           if [[ "${{ inputs.test_type }}" != *"ly" ]];then
             artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
           else
@@ -64,9 +59,6 @@ jobs:
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
           if [ "${REFERENCE_RUN_ID}" != "" ];then
             gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
-            rm -rf Inductor-*-XPU-E2E-* || true
           fi
       - name: Upload Reference Run ID
         if: ${{ endsWith(inputs.test_type, 'ly') }}
