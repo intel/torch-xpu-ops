@@ -215,7 +215,7 @@ void ChooseQuantizationParamsKernelImpl(
     } else if (initial_zero_point > qmax) {
       nudged_zero_point = qmax;
     } else {
-      nudged_zero_point = std::nearbyint(initial_zero_point);
+      nudged_zero_point = sycl::rint(initial_zero_point);
     }
     zero_point[i] = nudged_zero_point;
   }
