@@ -16,8 +16,7 @@ macro(setup_common_libraries)
     torch_xpu_ops
     STATIC
     ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
+    ${ATen_XPU_NATIVE_CPP_SRCS})
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
   target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
@@ -50,8 +49,7 @@ else()
     torch_xpu_ops
     STATIC
     ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
+    ${ATen_XPU_NATIVE_CPP_SRCS})
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
  # Split SYCL kernels into 2 libraries as categories 1) Common (Unary+Binary+Reduce+Pow+Copy+Activation+Foreach) 2) Others.
   set(ATen_XPU_SYCL_COMMON_SRCS)
@@ -138,7 +136,7 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
   target_link_libraries(${lib} PUBLIC c10_xpu)
   target_link_libraries(${lib} PUBLIC torch_cpu)
-  target_link_libraries(${lib} PRIVATE ATEN_XPU_OPS_FILES_GEN_LIB)
+  target_link_libraries(${lib} PRIVATE ATEN_XPU_FILES_GEN_LIB)
 endforeach()
 
 if(USE_ONEMKL_XPU)

@@ -14,6 +14,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
@@ -32,11 +33,6 @@ using namespace at::xpu::detail;
 
 constexpr int64_t MAX_GROUP_SIZE = 256;
 constexpr int64_t MAX_GRID_SIZE = 65535LL;
-
-template <typename integer>
-inline integer ceil_div(integer n, integer m) {
-  return (n + m - 1) / m;
-}
 
 // Returns 2^(ceil(lg(n)) from Stanford bit twiddling hacks
 inline uint64_t next_highest_power_of_2(uint64_t n) {
@@ -64,11 +60,11 @@ std::tuple<int64_t, int64_t, int64_t> get_workgroup_number_from_tiles(
   int64_t gridZ = 1;
 
   if (gridTiles > MAX_GRID_SIZE) {
-    gridTiles = ceil_div(gridTiles, MAX_GRID_SIZE);
+    gridTiles = at::ceil_div(gridTiles, MAX_GRID_SIZE);
     gridY = gridTiles > MAX_GRID_SIZE ? MAX_GRID_SIZE : gridTiles;
 
     if (gridTiles > MAX_GRID_SIZE) {
-      gridTiles = ceil_div(gridTiles, MAX_GRID_SIZE);
+      gridTiles = at::ceil_div(gridTiles, MAX_GRID_SIZE);
       gridZ = gridTiles > MAX_GRID_SIZE ? MAX_GRID_SIZE : gridTiles;
     }
   }
