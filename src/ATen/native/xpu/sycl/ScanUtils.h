@@ -1403,6 +1403,11 @@ void scan_with_indices(
   auto self = self_.contiguous();
   TORCH_INTERNAL_ASSERT(values.is_contiguous() && indices.is_contiguous());
 
+  // Empty input: values/indices are empty too, nothing to write.
+  if (self.numel() == 0) {
+    return;
+  }
+
   dimension = maybe_wrap_dim(dimension, self.dim());
   TORCH_CHECK(
       dimension >= 0 && dimension < self.dim(),
