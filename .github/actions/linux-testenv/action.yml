@@ -41,6 +41,7 @@ runs:
     - name: Setup python-${{ inputs.python }} with uv
       shell: bash -xe {0}
       run: |
+        curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
         rm -rf /opt/uv-python
         uv python install "${{ inputs.python }}"
         uv venv /opt/uv-python --python "${{ inputs.python }}" --clear
