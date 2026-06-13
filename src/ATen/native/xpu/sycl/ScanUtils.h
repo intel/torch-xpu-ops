@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -20,10 +21,6 @@
 namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
-template <typename T>
-inline T CeilDiv(T a, T b) {
-  return (a + b - 1) / b;
-}
 
 typedef enum {
   EXCLUSIVE_TYPE = 0,
@@ -357,7 +354,7 @@ class LoopScanConfig {
     ;
     const size_t max_work_group_num = target_global_size / wg_size;
     const size_t wg_number =
-        std::min(max_work_group_num, CeilDiv(batch_, wg_range_y_));
+        std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
     glb_range_x_ = wg_range_x_;
     glb_range_y_ = wg_range_y_ * wg_number;
 
