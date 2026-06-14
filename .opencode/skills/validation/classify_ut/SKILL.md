@@ -44,7 +44,7 @@ The script writes a new sheet (default name `"agent"`) to a standalone Excel fil
 | `ReuseSource` | If the result was reused from another row, the `name_cuda` of the source row. Else `""`. |
 | `Confidence` | `High` if `DetailReason` contains exact evidence (commit hash, issue/PR URL), otherwise `Medium`. Auto-computed by the write script. |
 
-Rows where `Analyzed` was already `TRUE` from a prior run are left untouched.
+In MERGE mode (`--merge`), rows already `Analyzed = TRUE` in the output file are preserved and skipped (unless `--force`); only rows present in `results.json` are written. In BUILD mode, rows already `Analyzed = TRUE` in the *input* sheet are carried over. See Phase 3 for mode selection.
 
 ## Prerequisites
 
@@ -214,21 +214,31 @@ Stop cascade for this row.
 
 ### Phase 3: Write Results to Excel
 
-Run `write_results.py` to write all classification results to a standalone output file:
+`write_results.py` has two modes. Choose based on whether the output file already exists.
+
+**BUILD (first run — output file does not exist yet):**
 
 ```bash
 python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py <excel_path> results.json [sheet_name] --output_sheet=agent --output-excel=agent_results.xlsx
 ```
 
-The script:
-1. Reads the original data from the input sheet.
-2. Appends columns: `Analyzed`, `Reason`, `DetailReason`, `ReuseSource`, `Confidence`.
-3. For each row:
-   - If it was classified (from Phase 2 or deduplicated in Phase 1) → fill `Analyzed = TRUE`, fill `Reason`, `DetailReason`, `ReuseSource`.
-   - If it was already `Analyzed = TRUE` before → leave untouched.
-   - Otherwise → `Analyzed = FALSE`.
-4. **Auto-computes `Confidence`**: `High` if `DetailReason` matches patterns for exact evidence (GitHub issue URL, PR URL, commit hash, `#PR` reference). Else `Medium`.
-5. Writes the agent sheet to a **separate** standalone Excel file (e.g. `agent_results.xlsx`) using the `--output-excel` flag.
+Reads the original input sheet, appends columns `Analyzed`, `Reason`, `DetailReason`, `ReuseSource`, `Confidence`, and writes a fresh `agent` sheet to the standalone `--output-excel` file. Per row: classified rows get `Analyzed = TRUE` with their `Reason`/`DetailReason`/`ReuseSource`; rows already `Analyzed = TRUE` in the *input* sheet are carried over; everything else gets `Analyzed = FALSE`.
+
+**MERGE (incremental run — output file already exists, e.g. an accumulator):**
+
+```bash
+python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py --merge results.json --output_sheet=agent --output-excel=agent_results.xlsx
+```
+
+Updates the existing `--output-excel` file in place, touching ONLY the rows present in `results.json` (matched by CUDA identity: `testfile_cuda`/`classname_cuda`/`name_cuda`, falling back to `name_cuda` alone). Every other row — including rows analyzed by previous runs — is left untouched. Rows already `Analyzed = TRUE` are skipped unless `--force` is passed.
+
+Both modes **auto-compute `Confidence`** (`High` if `DetailReason` matches exact-evidence patterns — GitHub issue/PR URL, commit hash, `#PR` reference — else `Medium`).
+
+**Safety:**
+- BUILD refuses to overwrite an existing `--output-excel` whose `agent` sheet contains `Analyzed = TRUE` rows that are NOT in `results.json` (a fresh build would discard them). It exits non-zero and tells you to use `--merge` (preserve prior rows) or `--force` (overwrite anyway).
+- Any in-place write (MERGE, or BUILD `--force` over an existing file) first writes a `<file>.bak` backup.
+- If a `results.json` entry matches multiple sheet rows by name (ambiguous, e.g. `results.json` lacks the full CUDA identity), those rows are NOT written and the script exits non-zero. To avoid this, ensure each `results.json` entry carries `testfile_cuda`, `classname_cuda`, and `name_cuda`.
+
 
 ## Execution
 
@@ -244,9 +254,13 @@ Load this skill to orchestrate the full classification. The agent follows this w
    - **Gate 3**: Check `status_xpu` value directly from the task data.
    - **Gate 4**: Pass XPU identifiers (`name_xpu`, `classname_xpu`, `testfile_xpu`) plus the CUDA source references. Search for known issues related to the XPU failure.
 3. Accumulate all results (already_resolved + newly classified tasks) into `results.json`.
-4. Run Phase 3:
+4. Run Phase 3. If the `--output-excel` accumulator does not exist yet, BUILD it:
    ```
    python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py <excel_path> results.json [sheet_name] --output_sheet=agent --output-excel=agent_results.xlsx
+   ```
+   If it already exists (incremental run adding to a prior accumulator), MERGE in place so earlier rows are preserved:
+   ```
+   python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py --merge results.json --output_sheet=agent --output-excel=agent_results.xlsx
    ```
 5. Report summary statistics: rows total, deduplicated, classified per Reason category.
 
@@ -264,10 +278,13 @@ Load this skill to orchestrate the full classification. The agent follows this w
 10. **`--filter-reason` and `--filter-detailreason` are post-hoc only**: These flags select rows by their OUTPUT classification columns. They MUST NOT be used as a classification shortcut. If you use them for subset extraction, you MUST still run the cascade via subagents on those rows. The pre-populated Reason/DetailReason values are from a prior run — cascade results override them.
 11. **Ignore pre-populated Reason/DetailReason in task data**: The `tasks` array entries may contain `Reason` and `DetailReason` from a previous run. Do not copy them to the output. Always run the cascade gates (via subagents for Gates 1, 2, 4; directly for Gate 3). The `already_resolved` array handles all legitimate reuses.
 12. **Task data fields not to be read during classification**: During Phase 2 cascade processing, treat `Reason` and `DetailReason` as write-only outputs. Read `testfile_cuda`, `classname_cuda`, `name_cuda`, `testfile_xpu`, `classname_xpu`, `name_xpu`, `message_xpu`, and `status_xpu`. Ignore all other fields. Use XPU fields for Gate 1 and Gate 4; use CUDA fields for Gate 2.
-13. **Mandatory Evidence in DetailReason**: The `DetailReason` MUST contain explicit evidence to support the classification. For `check_known_issue`, this means a valid GitHub Issue URL or number. For `check_community_change`, this means a commit hash or PR number where the change occurred. For `check_not_target_feature`, this means a specific code snippet or API documentation reference. Vague statements without evidence are invalid.
+13. **Mandatory Evidence in DetailReason**: The `DetailReason` MUST contain explicit evidence to support the classification. For `check_known_issue`, this means a valid GitHub Issue URL or number. For `check_community_change`, this means a commit hash or PR number where the change occurred. For `check_not_target_feature`, list the corresponding `intel/torch-xpu-ops` `not_target`/`wontfix` issue number (e.g., `intel/torch-xpu-ops#3127`) whenever one exists; otherwise cite a specific code snippet (e.g., an `@onlyCUDA` decorator at `file:line`) or API documentation reference. Vague statements without evidence are invalid.
+14. **Never rebuild over an existing accumulator**: When `--output-excel` already contains analyzed rows from prior runs, use `--merge` (not a plain BUILD) so those rows are preserved. A plain BUILD is only for creating the file the first time. The script enforces this (BUILD aborts rather than discarding prior `Analyzed = TRUE` rows), but choose the correct mode up front. For unambiguous merge matching, every `results.json` entry MUST carry `testfile_cuda`, `classname_cuda`, and `name_cuda`.
 
 ## Version
 
+- v2.3.0 - 2026-06-14 - `check_not_target_feature`: require listing the corresponding `intel/torch-xpu-ops` `not_target`/`wontfix` issue number in `evidence` whenever one exists (new Step 6 "Attach Issue Number" + Strict Constraint 6), even for verdicts reached via the Not-Applicable sheet (Step 3) or implementation analysis (Step 5). Updated Constraint 13 to prefer issue numbers for not_target evidence.
+- v2.2.0 - 2026-06-14 - Added incremental `--merge` mode to `write_results.py` for safely updating an existing accumulator in place (only touches rows in `results.json`, preserves all prior rows). Added a destructive-rebuild guard (BUILD aborts rather than discarding prior `Analyzed = TRUE` rows; override with `--force`), automatic `.bak` backup on in-place writes, and ambiguity detection. Documented BUILD vs MERGE in Phase 3 and added Constraint 14.
 - v2.1.0 - 2026-06-10 - Added Constraint 10-12: explicit rules against using `--filter-reason`/`--filter-detailreason` as classification shortcut, ignoring pre-populated Reason/DetailReason in tasks, and restricting readable task fields. Added IMPORTANT callouts at Phase 2 entry. Added WARNING stderr messages in `extract_tasks.py` for `--filter-reason`/`--filter-detailreason` to discourage misuse.
 - v2.1.0 - 2026-06-10 - Added Constraint 10-12: explicit rules against using `--filter-reason`/`--filter-detailreason` as classification shortcut, ignoring pre-populated Reason/DetailReason in tasks, and restricting readable task fields. Added IMPORTANT callouts at Phase 2 entry.
 - v2.0.0 - 2026-06-10 - Rewritten: fixed script paths to `.opencode/skills/torch-xpu-ops-validation/scripts/`, removed Phase 0 conda setup (Intel-specific infra), removed `PYTORCH_SRC` default, removed local system dependencies.
