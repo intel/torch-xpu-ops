@@ -65,7 +65,9 @@ def main():
 
     result_map = {}
     for r in results:
-        result_map[r.get("name_cuda", "")] = r
+        key = r.get("name_cuda", "") or r.get("name_xpu", "")
+        if key:
+            result_map[key] = r
 
     wb = load_workbook(excel_path)
     ws = wb[sheet_name] if sheet_name else wb.active

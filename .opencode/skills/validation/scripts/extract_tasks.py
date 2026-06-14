@@ -3,9 +3,14 @@
 extract_tasks.py — Extract rows needing classification from an Excel sheet.
 
 Phase 1 of classify_ut workflow:
-1. Reads an Excel sheet with columns: testfile_cuda, classname_cuda, name_cuda, message_xpu, status_xpu
-2. Deduplicates rows that share the same classname_cuda + similar error message as an already-analyzed row
-3. Outputs tasks.json (rows needing classification) and already_resolved.json (deduplicated rows)
+1. Reads an Excel sheet with columns: testfile_cuda, classname_cuda, name_cuda,
+   message_xpu, status_xpu. Optionally also testfile_xpu, classname_xpu, name_xpu.
+2. Computes XPU columns from CUDA columns when XPU columns are absent or blank:
+   - testfile_xpu = testfile_cuda
+   - classname_xpu = classname_cuda with CUDA suffix → XPU (e.g. TestFooCUDA → TestFooXPU)
+   - name_xpu = name_cuda with _cuda → _xpu (e.g. test_foo_cuda_float32 → test_foo_xpu_float32)
+3. Deduplicates rows that share the same classname_xpu + similar error message as an already-analyzed row
+4. Outputs tasks.json (rows needing classification) and already_resolved.json (deduplicated rows)
 
 Filter options (applied after dedup — only matching rows appear in the output):
   --filter-reason PATTERN        Include only rows where Reason matches (substring, case-insensitive)
@@ -84,6 +89,29 @@ def messages_similar(msg_a: str, msg_b: str, threshold: float = 0.7) -> bool:
         return True
     sim = levenshtein_similarity(normalize_message(msg_a), normalize_message(msg_b))
     return sim >= threshold
+
+
+def infer_xpu_fields(row: dict) -> dict:
+    out = dict(row)
+    testfile_cuda = row.get("testfile_cuda", "")
+    classname_cuda = row.get("classname_cuda", "")
+    name_cuda = row.get("name_cuda", "")
+
+    raw = row.get("testfile_xpu", "")
+    out["testfile_xpu"] = raw if raw else testfile_cuda
+
+    raw = row.get("classname_xpu", "")
+    if raw:
+        out["classname_xpu"] = raw
+    elif classname_cuda.endswith("CUDA"):
+        out["classname_xpu"] = classname_cuda[:-4] + "XPU"
+    else:
+        out["classname_xpu"] = classname_cuda
+
+    raw = row.get("name_xpu", "")
+    out["name_xpu"] = raw if raw else name_cuda.replace("_cuda", "_xpu")
+
+    return out
 
 
 def parse_filters(args):
@@ -182,9 +210,21 @@ def main():
         for col_name, col_idx in col_map.items():
             val = row[col_idx] if col_idx < len(row) else None
             entry[col_name] = str(val) if val is not None else ""
+        entry = infer_xpu_fields(entry)
         rows.append(entry)
 
     analyzed_rows = [r for r in rows if has_analyzed and r.get("Analyzed", "").lower() == "true"]
+
+    def make_task_entry(r):
+        return {
+            "testfile_cuda": r.get("testfile_cuda", ""),
+            "classname_cuda": r.get("classname_cuda", ""),
+            "name_cuda": r.get("name_cuda", ""),
+            "testfile_xpu": r.get("testfile_xpu", ""),
+            "classname_xpu": r.get("classname_xpu", ""),
+            "name_xpu": r.get("name_xpu", ""),
+            "message_xpu": r.get("message_xpu", ""),
+        }
 
     tasks = []
     already_resolved = []
@@ -192,33 +232,25 @@ def main():
     for r in rows:
         already_analyzed = has_analyzed and r.get("Analyzed", "").lower() == "true"
         if already_analyzed:
-            already_resolved.append({
-                "testfile_cuda": r.get("testfile_cuda", ""),
-                "classname_cuda": r.get("classname_cuda", ""),
-                "name_cuda": r.get("name_cuda", ""),
-                "message_xpu": r.get("message_xpu", ""),
-                "Analyzed": True,
-                "Reason": r.get("Reason", ""),
-                "DetailReason": r.get("DetailReason", ""),
-                "ReuseSource": "",
-            })
+            e = make_task_entry(r)
+            e["Analyzed"] = True
+            e["Reason"] = r.get("Reason", "")
+            e["DetailReason"] = r.get("DetailReason", "")
+            e["ReuseSource"] = ""
+            already_resolved.append(e)
             continue
 
-        cls = r.get("classname_cuda", "")
+        cls_xpu = r.get("classname_xpu", "")
         msg = r.get("message_xpu", "")
         reused = False
         for ar in analyzed_rows:
-            if ar.get("classname_cuda", "") == cls and messages_similar(ar.get("message_xpu", ""), msg):
-                already_resolved.append({
-                    "testfile_cuda": r.get("testfile_cuda", ""),
-                    "classname_cuda": r.get("classname_cuda", ""),
-                    "name_cuda": r.get("name_cuda", ""),
-                    "message_xpu": r.get("message_xpu", ""),
-                    "Analyzed": True,
-                    "Reason": f"[Reused row#{ar.get('_row', '??')}] {ar.get('Reason', '')}",
-                    "DetailReason": f"[Reused row#{ar.get('_row', '??')}] {ar.get('DetailReason', '')}",
-                    "ReuseSource": ar.get("name_cuda", ""),
-                })
+            if ar.get("classname_xpu", "") == cls_xpu and messages_similar(ar.get("message_xpu", ""), msg):
+                e = make_task_entry(r)
+                e["Analyzed"] = True
+                e["Reason"] = f"[Reused row#{ar.get('_row', '??')}] {ar.get('Reason', '')}"
+                e["DetailReason"] = f"[Reused row#{ar.get('_row', '??')}] {ar.get('DetailReason', '')}"
+                e["ReuseSource"] = ar.get("name_xpu", "")
+                already_resolved.append(e)
                 reused = True
                 break
 
@@ -228,15 +260,11 @@ def main():
         if filters and not row_matches_filters(r, filters):
             continue
 
-        tasks.append({
-            "testfile_cuda": r.get("testfile_cuda", ""),
-            "classname_cuda": r.get("classname_cuda", ""),
-            "name_cuda": r.get("name_cuda", ""),
-            "message_xpu": r.get("message_xpu", ""),
-            "status_xpu": r.get("status_xpu", ""),
-            "Reason": r.get("Reason", ""),
-            "DetailReason": r.get("DetailReason", ""),
-        })
+        e = make_task_entry(r)
+        e["status_xpu"] = r.get("status_xpu", "")
+        e["Reason"] = r.get("Reason", "")
+        e["DetailReason"] = r.get("DetailReason", "")
+        tasks.append(e)
 
     output = {
         "tasks": tasks,

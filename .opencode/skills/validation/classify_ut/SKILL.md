@@ -7,7 +7,14 @@ description: Batch classify UT test cases from an Excel sheet by running a casca
 
 ## Purpose
 
-Given an Excel sheet with columns `testfile_cuda`, `classname_cuda`, `name_cuda`, and `message_xpu`, classify each row by filling in `Reason` and `DetailReason` using a cascaded decision flow.
+Given an Excel sheet with columns `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, and optionally `status_xpu`, classify **XPU test cases** by filling in `Reason` and `DetailReason` using a cascaded decision flow.
+
+**XPU column inference**: The target test is an XPU test, not a CUDA test. The script computes XPU columns from CUDA columns:
+- `testfile_xpu` = `testfile_cuda` (same file)
+- `classname_xpu` = `classname_cuda` with `CUDA` suffix replaced by `XPU` (e.g. `TestStreamsCUDA` → `TestStreamsXPU`)
+- `name_xpu` = `name_cuda` with `_cuda` replaced by `_xpu` (e.g. `test_foo_cuda_float32` → `test_foo_xpu_float32`)
+
+If the spreadsheet already contains `testfile_xpu`, `classname_xpu`, `name_xpu` columns, those values are used as-is (no override).
 
 The workflow reuses already-analyzed results when possible (same class + similar error message), avoiding redundant work. For new rows, it runs a decision cascade:
 
@@ -21,7 +28,7 @@ The workflow reuses already-analyzed results when possible (same class + similar
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `excel_path` | **Yes** | Path to the .xlsx file. Expected columns: `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, `status_xpu`. May also have `Reason`, `DetailReason` from prior runs. |
+| `excel_path` | **Yes** | Path to the .xlsx file. Expected columns: `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, `status_xpu`. May also have `Reason`, `DetailReason` from prior runs. If `testfile_xpu`, `classname_xpu`, `name_xpu` columns exist, they are used directly; otherwise XPU columns are inferred from CUDA columns (see Purpose). |
 | `sheet_name` | No | Sheet name to read from. Default: first sheet. |
 | `output_sheet` | No | Output sheet name. Default: `"agent"`. |
 
@@ -71,14 +78,16 @@ python3 .opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py <exce
 ```
 
 The script outputs a JSON object with:
-- `tasks` — Array of row objects needing classification (each has `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, `status_xpu`)
-- `already_resolved` — Array of row objects that were already analyzed or deduplicated
+- `tasks` — Array of row objects needing classification (each has `testfile_cuda`, `classname_cuda`, `name_cuda`, `testfile_xpu`, `classname_xpu`, `name_xpu`, `message_xpu`, `status_xpu`)
+- `already_resolved` — Array of row objects that were already analyzed or deduplicated (same fields)
 - `summary` — Counts of total, already_analyzed, deduplicated, needs_classification
+
+**XPU column computation**: Every row in the output includes XPU fields. If the Excel already has XPU columns they are used directly; otherwise they are inferred from CUDA columns using the rules in Purpose.
 
 **Deduplication logic** (inside the script):
 
 1. Rows where `Analyzed == TRUE` are carried over as-is.
-2. For remaining rows: if a row shares the same `classname_cuda` AND similar `message_xpu` with an analyzed row, copy its `Reason`/`DetailReason` and mark `ReuseSource`.
+2. For remaining rows: if a row shares the same `classname_xpu` AND similar `message_xpu` with an analyzed row, copy its `Reason`/`DetailReason` and mark `ReuseSource`.
 3. **Similar message**: messages share an operator reference (`aten::\w+`, `torch\.\w+`) OR have Levenshtein similarity > 0.7 after normalization.
 
 ### Phase 2: Classify Each Task
@@ -99,11 +108,11 @@ For each row in `tasks.json`, run the decision cascade. Each check is a **hard g
 
 #### Step 0: Reuse Exact Match
 
-Before running the cascade, check if an already-resolved row (from `Phase 1` output's `already_resolved` array) has the **same `classname_cuda`** AND the **identical `message_xpu`** as this task.
+Before running the cascade, check if an already-resolved row (from `Phase 1` output's `already_resolved` array) has the **same `classname_xpu`** AND the **identical `message_xpu`** as this task.
 
 **If a match is found**:
 - Copy its `Reason` and `DetailReason`, but prefix both with `[Reused row#XX] ` (using the row number of the matched row if available).
-- Set `ReuseSource` to the matched row's `name_cuda`.
+- Set `ReuseSource` to the matched row's `name_xpu`.
 - Skip the cascade for this row.
 
 **If no match is found** → proceed to Gate 1.
@@ -120,8 +129,8 @@ Check whether the test is a not-target feature for XPU.
 task(
     subagent_type="explore",
     load_skills=["check_not_target_feature"],
-    description=f"Not-target check: {name_cuda}",
-    prompt=f"Check if {name_cuda} in {class_name} ({test_file}) is not-target for XPU. "
+    description=f"Not-target check: {name_xpu}",
+    prompt=f"Check if {name_xpu} in {classname_xpu} ({testfile_xpu}) is not-target for XPU. "
            f"Error message: {message_xpu}. "
            f"Return verdict, evidence, and confidence."
 )
@@ -184,9 +193,9 @@ Check whether a known issue exists for this test.
 task(
     subagent_type="explore",
     load_skills=["check_known_issue"],
-    description=f"Known issue check: {name_cuda}",
-    prompt=f"Search known issues for {name_cuda} in {class_name}. "
-           f"Test file: {test_file}. "
+    description=f"Known issue check: {name_xpu}",
+    prompt=f"Search known issues for {name_xpu} in {classname_xpu} ({testfile_xpu}). "
+           f"CUDA source: {name_cuda} in {classname_cuda} ({testfile_cuda}). "
            f"Error message: {message_xpu}."
 )
 ```
@@ -230,10 +239,10 @@ Load this skill to orchestrate the full classification. The agent follows this w
    python3 .opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json
    ```
 2. For each task in `tasks.json`, run the decision cascade:
-   - **Gate 1**: Delegate to `check_not_target_feature` skill.
-   - **Gate 2**: Delegate to `check_community_change` skill (provide `PYTORCH_SRC` if available).
+   - **Gate 1**: Pass XPU identifiers (`name_xpu`, `classname_xpu`, `testfile_xpu`). Determine if the XPU test is a not-target feature.
+   - **Gate 2**: Pass CUDA identifiers (`name_cuda`, `classname_cuda`, `testfile_cuda`). Check if the upstream CUDA test was removed/renamed (which also affects the XPU variant).
    - **Gate 3**: Check `status_xpu` value directly from the task data.
-   - **Gate 4**: Delegate to `check_known_issue` skill.
+   - **Gate 4**: Pass XPU identifiers (`name_xpu`, `classname_xpu`, `testfile_xpu`) plus the CUDA source references. Search for known issues related to the XPU failure.
 3. Accumulate all results (already_resolved + newly classified tasks) into `results.json`.
 4. Run Phase 3:
    ```
@@ -254,7 +263,7 @@ Load this skill to orchestrate the full classification. The agent follows this w
 9. **All commands run from workspace root**: All script invocations use absolute (workspace-relative) paths. Do not `cd` into subdirectories before running scripts.
 10. **`--filter-reason` and `--filter-detailreason` are post-hoc only**: These flags select rows by their OUTPUT classification columns. They MUST NOT be used as a classification shortcut. If you use them for subset extraction, you MUST still run the cascade via subagents on those rows. The pre-populated Reason/DetailReason values are from a prior run — cascade results override them.
 11. **Ignore pre-populated Reason/DetailReason in task data**: The `tasks` array entries may contain `Reason` and `DetailReason` from a previous run. Do not copy them to the output. Always run the cascade gates (via subagents for Gates 1, 2, 4; directly for Gate 3). The `already_resolved` array handles all legitimate reuses.
-12. **Task data fields not to be read during classification**: During Phase 2 cascade processing, treat `Reason` and `DetailReason` as write-only outputs. Only read `testfile_cuda`, `classname_cuda`, `name_cuda`, `message_xpu`, and `status_xpu` from each task. Ignore all other fields.
+12. **Task data fields not to be read during classification**: During Phase 2 cascade processing, treat `Reason` and `DetailReason` as write-only outputs. Read `testfile_cuda`, `classname_cuda`, `name_cuda`, `testfile_xpu`, `classname_xpu`, `name_xpu`, `message_xpu`, and `status_xpu`. Ignore all other fields. Use XPU fields for Gate 1 and Gate 4; use CUDA fields for Gate 2.
 13. **Mandatory Evidence in DetailReason**: The `DetailReason` MUST contain explicit evidence to support the classification. For `check_known_issue`, this means a valid GitHub Issue URL or number. For `check_community_change`, this means a commit hash or PR number where the change occurred. For `check_not_target_feature`, this means a specific code snippet or API documentation reference. Vague statements without evidence are invalid.
 
 ## Version
