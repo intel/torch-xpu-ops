@@ -569,6 +569,10 @@ static inline void index_copy_impl(
   if (sliceSize == 0) {
     return;
   }
+  // No indices: nothing to copy; dst already holds a copy of self.
+  if (indices.numel() == 0) {
+    return;
+  }
 
   TensorInfo<const int64_t, int64_t> indices_info =
       getTensorInfo<const int64_t, int64_t>(indices);
