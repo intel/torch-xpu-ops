@@ -65,7 +65,11 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **Condition:** Changed files include `test/xpu/xpu_test_utils.py` or `test/xpu/run_test_with_skip.py` (test infrastructure used by all test suites).
 
-**Labels:** `none` (run full CI — these files affect all tests).
+**Labels:** `disable_e2e`, `disable_distributed`
+
+**Rationale:** Test infrastructure affects all UT suites across platforms, so UT must run and `disable_win` must NOT be added. E2E and distributed use separate infrastructure.
+
+**Additional:** Always add `disable_build` (test-only changes don't need source build).
 
 ### Rule 5: Test-only changes
 

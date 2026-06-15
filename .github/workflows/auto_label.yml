@@ -144,7 +144,7 @@ jobs:
               src/*|CMakeLists.txt) HAS_SRC=true ;;
               cmake/*|tools/*) HAS_CMAKE=true ;;
               test/agentic/*) HAS_GITHUB_META=true ;;
-              test/xpu/xpu_test_utils.py|test/xpu/run_test_with_skip.py) HAS_TEST_INFRA=true ;;
+              test/xpu/xpu_test_utils.py|test/xpu/run_test_with_skip.py) HAS_TEST=true; HAS_TEST_INFRA=true; ONLY_SKIP_EXPECT=false ;;
               test/xpu/test_ops*.py|test/xpu/core/*|test/xpu/test_nn*.py) HAS_TEST=true; ONLY_SKIP_EXPECT=false; HAS_WIN_TEST=true ;;
               test/*) HAS_TEST=true
                 case "$file" in
@@ -159,10 +159,7 @@ jobs:
             esac
           done <<< "$FILES"
 
-          if [ "$HAS_TEST_INFRA" = true ]; then
-            # Test infrastructure (xpu_test_utils.py etc.) affects all tests — full CI
-            LABELS=""
-          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ] && [ "$HAS_TEST_INFRA" = false ]; then
+          if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
             if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_CI_SCRIPTS" = true ]; then
               # CI workflow/action/script changes — can't determine scope from paths alone, run full CI
               LABELS=""
@@ -176,7 +173,7 @@ jobs:
               LABELS="disable_all"
             else
               LABELS="disable_e2e,disable_distributed,disable_build"
-              if [ "$HAS_WIN_TEST" = false ]; then
+              if [ "$HAS_WIN_TEST" = false ] && [ "$HAS_TEST_INFRA" = false ]; then
                 LABELS="${LABELS},disable_win"
               fi
             fi
