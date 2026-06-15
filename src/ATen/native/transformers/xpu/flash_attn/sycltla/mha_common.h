@@ -83,8 +83,6 @@
     }                                     \
   }()
 
-#define DROPOUT_SWITCH BOOL_SWITCH
-
 struct QKV_params {
   using index_t = int64_t;
   // The QKV matrices.
@@ -242,7 +240,7 @@ inline void set_params_fprop(
   params.is_causal = is_causal;
   params.scale = scale;
   // Set this to probability of keeping an element to simplify things.
-  TORCH_CHECK(p_dropout < 1.0f);
+  TORCH_CHECK(p_dropout >= 0.0f && p_dropout < 1.0f);
   params.p_dropout = 1.f - p_dropout;
   params.p_dropout_in_uint16_t =
       uint16_t(std::floor(params.p_dropout * 65535.0));
