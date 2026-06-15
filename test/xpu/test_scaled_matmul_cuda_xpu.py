@@ -8,12 +8,13 @@
 
 # Owner(s): ["module: intel"]
 
-import torch
 import unittest
+
+import torch
 from torch.nn.functional import ScalingType
+from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FP8
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import parametrize, run_tests
-from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FP8
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -26,8 +27,8 @@ with XPUPatchForImport(False):
         e5m2_type,
         mm_float8_emulated,
         scaled_mm_wrap,
-        tensor_to_scale_block,
         tensor_to_scale,
+        tensor_to_scale_block,
         TestFP8Matmul,
         to_fp8_saturated,
     )
