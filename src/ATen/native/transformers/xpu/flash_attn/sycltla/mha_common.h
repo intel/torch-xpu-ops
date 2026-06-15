@@ -60,27 +60,29 @@
     }                                     \
   }()
 
-#define HEADDIM_SWITCH(HEADDIM, ...)      \
-  [&] {                                   \
-    if (HEADDIM <= 32) {                  \
-      constexpr static int Headdim = 32;  \
-      return __VA_ARGS__();               \
-    } else if (HEADDIM <= 64) {           \
-      constexpr static int Headdim = 64;  \
-      return __VA_ARGS__();               \
-    } else if (HEADDIM <= 96) {           \
-      constexpr static int Headdim = 96;  \
-      return __VA_ARGS__();               \
-    } else if (HEADDIM <= 128) {          \
-      constexpr static int Headdim = 128; \
-      return __VA_ARGS__();               \
-    } else if (HEADDIM <= 192) {          \
-      constexpr static int Headdim = 192; \
-      return __VA_ARGS__();               \
-    } else if (HEADDIM <= 256) {          \
-      constexpr static int Headdim = 256; \
-      return __VA_ARGS__();               \
-    }                                     \
+#define HEADDIM_SWITCH(HEADDIM, ...)                        \
+  [&] {                                                     \
+    if (HEADDIM <= 32) {                                    \
+      constexpr static int Headdim = 32;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 64) {                             \
+      constexpr static int Headdim = 64;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 96) {                             \
+      constexpr static int Headdim = 96;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 128) {                            \
+      constexpr static int Headdim = 128;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 192) {                            \
+      constexpr static int Headdim = 192;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 256) {                            \
+      constexpr static int Headdim = 256;                   \
+      return __VA_ARGS__();                                 \
+    } else {                                                \
+      TORCH_CHECK(false, "Unsupported headdim: ", HEADDIM); \
+    }                                                       \
   }()
 
 struct QKV_params {
