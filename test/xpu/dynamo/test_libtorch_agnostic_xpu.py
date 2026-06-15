@@ -1137,9 +1137,9 @@ class TestLibtorchAgnostic(TestCase):
     def test_my_get_curr_cuda_blas_handle(self, device):
         import libtorch_agn_2_10 as libtorch_agnostic
 
-    res = libtorch_agnostic.ops.my_get_curr_cuda_blas_handle()
-    expected = torch.get_device_module(GPU_TYPE).current_blas_handle()
-    self.assertEqual(res, expected)
+        res = libtorch_agnostic.ops.my_get_curr_cuda_blas_handle()
+        expected = torch.get_device_module(GPU_TYPE).current_blas_handle()
+        self.assertEqual(res, expected)
 
     @skipIfWindows(msg="ValueError: vector too long")
     @skipIfTorchVersionLessThan(2, 10)
@@ -1830,46 +1830,45 @@ except RuntimeError as e:
         """Test for from_blob with custom deleter (2.11 feature)."""
         import libtorch_agn_2_11 as libtorch_agnostic
 
-    is_accelerator = torch.device(device).type == GPU_TYPE
-    if is_accelerator:
-        init_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
+        is_accelerator = torch.device(device).type == GPU_TYPE
+        if is_accelerator:
+            init_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
 
-        def inner():
-            libtorch_agnostic.ops.reset_deleter_call_count()
-            self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 0)
+            def inner():
+                libtorch_agnostic.ops.reset_deleter_call_count()
+                self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 0)
 
-            # We need an original tensor to create the tensor with from_blob.
-            original = torch.rand(2, 3, device=device, dtype=torch.float32)
-            blob_tensor = libtorch_agnostic.ops.my_from_blob_with_deleter(
-                original.data_ptr(),
-                original.size(),
-                original.stride(),
-                device,
-                torch.float32,
-            )
+                # We need an original tensor to create the tensor with from_blob.
+                original = torch.rand(2, 3, device=device, dtype=torch.float32)
+                blob_tensor = libtorch_agnostic.ops.my_from_blob_with_deleter(
+                    original.data_ptr(),
+                    original.size(),
+                    original.stride(),
+                    device,
+                    torch.float32,
+                )
 
-            self.assertEqual(blob_tensor, original)
-            self.assertEqual(blob_tensor.data_ptr(), original.data_ptr())
+                self.assertEqual(blob_tensor, original)
+                self.assertEqual(blob_tensor.data_ptr(), original.data_ptr())
 
-            self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 0)
+                self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 0)
 
-            del blob_tensor
-            gc.collect()
+                del blob_tensor
+                gc.collect()
 
-            # Ensure the deleter was called. The original tensor still exists
-            # and can be used.
-            self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 1)
-            original += 1
-            # original goes out of scope here and its cuda memory should be
-            # freed.
+                # Ensure the deleter was called. The original tensor still exists
+                # and can be used.
+                self.assertEqual(libtorch_agnostic.ops.get_deleter_call_count(), 1)
+                original += 1
+                # original goes out of scope here and its cuda memory should be
+                # freed.
 
-        inner()
+            inner()
 
-    if is_accelerator:
-        # original tensor is out of scope, all the memory should be freed
-        torch.get_device_module(GPU_TYPE).synchronize(device)
-        curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
-        self.assertEqual(curr_mem, init_mem)
+            # original tensor is out of scope, all the memory should be freed
+            torch.get_device_module(GPU_TYPE).synchronize(device)
+            curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
+            self.assertEqual(curr_mem, init_mem)
 
     @skipIfTorchVersionLessThan(2, 11)
     @skipIfTorchDynamo("no data pointer defined for FakeTensor, FunctionalTensor")
@@ -1881,42 +1880,41 @@ except RuntimeError as e:
         get_count = libtorch_agnostic.ops.get_lambda_deleter_call_count
         reset_count = libtorch_agnostic.ops.reset_lambda_deleter_call_count
 
-    is_accelerator = torch.device(device).type == GPU_TYPE
-    if is_accelerator:
-        init_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
-
-        def inner():
-            reset_count()
-            self.assertEqual(get_count(), 0)
-
-            # We need an original tensor to create the tensor with from_blob.
-            original = torch.rand(2, 3, device=device, dtype=torch.float32)
-            blob_tensor = from_blob_fn(
-                original.data_ptr(),
-                original.size(),
-                original.stride(),
-                device,
-                torch.float32,
-            )
-
-            self.assertEqual(blob_tensor, original)
-            self.assertEqual(blob_tensor.data_ptr(), original.data_ptr())
-
-            self.assertEqual(get_count(), 0)
-
-            del blob_tensor
-            gc.collect()
-
-            # Ensure the deleter was called. The original tensor still exists
-            # and can be used.
-            self.assertEqual(get_count(), 1)
-            original += 1
-            # original goes out of scope here and its cuda memory should be
-            # freed.
-
-        inner()
-
+        is_accelerator = torch.device(device).type == GPU_TYPE
         if is_accelerator:
+            init_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
+
+            def inner():
+                reset_count()
+                self.assertEqual(get_count(), 0)
+
+                # We need an original tensor to create the tensor with from_blob.
+                original = torch.rand(2, 3, device=device, dtype=torch.float32)
+                blob_tensor = from_blob_fn(
+                    original.data_ptr(),
+                    original.size(),
+                    original.stride(),
+                    device,
+                    torch.float32,
+                )
+
+                self.assertEqual(blob_tensor, original)
+                self.assertEqual(blob_tensor.data_ptr(), original.data_ptr())
+
+                self.assertEqual(get_count(), 0)
+
+                del blob_tensor
+                gc.collect()
+
+                # Ensure the deleter was called. The original tensor still exists
+                # and can be used.
+                self.assertEqual(get_count(), 1)
+                original += 1
+                # original goes out of scope here and its cuda memory should be
+                # freed.
+
+            inner()
+
             # original tensor is out of scope, all the memory should be freed
             torch.get_device_module(GPU_TYPE).synchronize(device)
             curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
