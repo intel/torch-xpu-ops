@@ -13,7 +13,7 @@ on:
       - release/*
     paths:
       - '.github/workflows/auto_label.yml'
-      - '.claude/skills/xpu-pr-auto-labeling/**'
+      - '.claude/skills/auto-label/**'
 
 permissions:
   contents: read
@@ -28,7 +28,6 @@ jobs:
   auto-label:
     if: >-
       ${{ github.repository_owner == 'intel'
-      && github.event.pull_request.head.repo.full_name == github.repository
       && !contains(github.event.pull_request.labels.*.name, 'disable_auto') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -49,7 +48,7 @@ jobs:
       - name: Checkout repo (for skill file)
         uses: actions/checkout@v4
         with:
-          sparse-checkout: .claude/skills/xpu-pr-auto-labeling
+          sparse-checkout: .claude/skills/auto-label
           sparse-checkout-cone-mode: false
 
       - name: Get changed files
@@ -71,12 +70,12 @@ jobs:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
-          SKILL_CONTENT=$(cat .claude/skills/xpu-pr-auto-labeling/SKILL.md)
+          SKILL_CONTENT=$(cat .claude/skills/auto-label/SKILL.md)
           FILES="$PR_FILES"
           API_SUCCESS=false
 
           # Build the prompt
-          # NOTE: File list comes from PR contributors (internal PRs only per job-level if).
+          # NOTE: File list comes from PR contributors (including forks).
           # The file list is treated as untrusted data by the model prompt framing.
           PROMPT="You are a CI label bot. Based on the labeling rules below, determine which disable_* labels should be applied to this PR.
 
@@ -141,6 +140,7 @@ jobs:
               src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
               src/*|CMakeLists.txt) HAS_SRC=true ;;
               cmake/*|tools/*) HAS_CMAKE=true ;;
+              test/agentic/*) HAS_GITHUB_META=true ;;
               test/xpu/test_ops*.py|test/xpu/core/*|test/xpu/test_nn*.py) HAS_TEST=true; ONLY_SKIP_EXPECT=false; HAS_WIN_TEST=true ;;
               test/*) HAS_TEST=true
                 case "$file" in

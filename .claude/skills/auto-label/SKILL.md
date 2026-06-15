@@ -1,5 +1,5 @@
 ---
-name: xpu-pr-auto-labeling
+name: auto-label
 description: >
   Rules for automatically determining which disable_* labels to apply to a PR
   based on the file paths changed. Used by the auto-label workflow.
@@ -32,7 +32,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 ### Rule 1: Pure CI infrastructure (no functional logic change)
 
-**Condition:** ALL changed files match `.github/workflows/`, `.github/scripts/`, `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.claude/skills/`, or other `.github/` non-workflow metadata files AND the workflow changes do NOT alter job execution logic (only change triggers, permissions, concurrency, comments, labels conditions, yaml formatting).
+**Condition:** ALL changed files match `.github/workflows/`, `.github/scripts/`, `.github/ISSUE_TEMPLATE/`, `.github/copilot-instructions.md`, `.claude/skills/`, `test/agentic/`, or other `.github/`/`.claude/` non-workflow metadata files AND the workflow changes do NOT alter job execution logic (only change triggers, permissions, concurrency, comments, labels conditions, yaml formatting).
 
 **Labels:** `disable_all`
 
