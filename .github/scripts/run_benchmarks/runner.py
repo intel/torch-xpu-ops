@@ -204,6 +204,17 @@ def run_all(
     base_log_dir = Path.cwd().resolve() / "inductor_log"
     wall_start = time.monotonic()
 
+    all_threads: list[threading.Thread] = []
+    threads_lock = threading.Lock()
+
+    def _spawn_worker(worker_id: int, card: int, cmd_prefix: str, env_vars: dict) -> None:
+        t = threading.Thread(
+            target=_worker, args=(worker_id, card, cmd_prefix, env_vars), daemon=True,
+        )
+        with threads_lock:
+            all_threads.append(t)
+        t.start()
+
     def _worker(worker_id: int, card: int, cmd_prefix: str, env_vars: dict) -> None:
         nonlocal completed
         while True:
@@ -247,14 +258,28 @@ def run_all(
 
             results.put((task, success, test_result, kill_reason))
 
-    threads = [
-        threading.Thread(target=_worker, args=(idx, card, pfx, ev), daemon=True)
-        for idx, (card, pfx, ev) in enumerate(workers)
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+            # A kill (error pattern / OOM / timeout) may leave this worker's
+            # device or process state dirty. Retire this worker and start a
+            # fresh replacement with the same id/card to drain remaining tasks.
+            if kill_reason:
+                log(
+                    f"Worker killed on '{kill_reason}' — starting replacement worker",
+                    level="WARN", worker=worker_id,
+                )
+                _spawn_worker(worker_id, card, cmd_prefix, env_vars)
+                return
+
+    for idx, (card, pfx, ev) in enumerate(workers):
+        _spawn_worker(idx, card, pfx, ev)
+
+    # Join all workers, including replacements spawned after a kill.
+    while True:
+        with threads_lock:
+            pending = [t for t in all_threads if t.is_alive()]
+        if not pending:
+            break
+        for t in pending:
+            t.join(timeout=0.5)
 
     # Summary
     from .log import banner
