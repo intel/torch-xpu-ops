@@ -103,7 +103,8 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
 
   // tree reduce in subgroup
-  subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(sg, value, combine);
+  subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
+      sg, value, combine);
 
   if (sg_lid == 0) {
     shared_[sg_gid] = value;
