@@ -36,6 +36,8 @@ skip_dict = {
         "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
         "test_qrelu_xpu",
+        # CPU-only qnnpack backend, not applicable to XPU
+        "test_qsoftmax_qnnpack_xpu",
     ),
     "quantization/core/test_quantized_tensor_xpu.py": (
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
@@ -125,11 +127,17 @@ skip_dict = {
         "narrow_copy",
         "histogramdd",
         "_jiterator_",
+        # https://github.com/intel/torch-xpu-ops/issues/2285
+        "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
     "test_native_functions_xpu.py": None,
     "test_native_mha_xpu.py": None,
-    "test_nn_xpu.py": None,
+    "test_nn_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuDNN CTC test uses CUDA-only backend/device assumptions.
+        "test_ctc_loss_cudnn_tensor_cuda_xpu",
+    ),
     "test_ops_fwd_gradients_xpu.py": None,
     "test_ops_gradients_xpu.py": None,
     "test_ops_xpu.py": (
@@ -162,7 +170,11 @@ skip_dict = {
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,
-    "test_spectral_ops_xpu.py": None,
+    "test_spectral_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuFFT plan cache is CUDA-specific and has no XPU equivalent.
+        "test_cufft_plan_cache_xpu_float64",
+    ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
     "test_torch_xpu.py": (
@@ -188,6 +200,9 @@ skip_dict = {
         "test_storage_error",
         # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
         # under pytest -k substring semantics used by the XPU skip runner.
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # CudaSyncGuard has no XPU counterpart yet.
+        "test_sync_warning_xpu",
         "test_print",
         "test_tensor_storage_type_xpu",
     ),
@@ -250,7 +265,16 @@ skip_dict = {
     "test_compile_benchmark_util_xpu.py": None,
     "test_hub_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
-    "test_custom_ops_xpu.py": None,
+    "test_custom_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/3644
+        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
+        "test_backward_dict_grad_for_nontensor",
+        "test_backward_dict_invalid_keys",
+        "test_backward_dict_requires_keys_for_input_optional_tensors",
+        "test_backward_dict_requires_keys_for_input_tensors",
+        "test_backward_grads_are_tensor_or_none",
+        "test_backward_impl_on_existing_op",
+    ),
     "test_flop_counter_xpu.py": None,
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
@@ -279,6 +303,7 @@ skip_dict = {
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
+    "export/test_export_strict_xpu.py": None,
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
@@ -311,4 +336,5 @@ skip_dict = {
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
+    "test_fx_experimental_xpu.py": None,
 }
