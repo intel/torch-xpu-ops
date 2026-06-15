@@ -119,7 +119,7 @@ All commands below run from `agent_space_xpu/pytorch/`.
 
 5. **Confirm the failure reproduces** before proceeding to Step 3.
 
-**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 6 tracks which fix maps to which PR.
+**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 6 tracks which fix maps to which PR. **Do not submit any PR until the user explicitly confirms** (see PR Creation Gate in Critical Rules).
 
 ## Step 3: Analyze and Categorize
 
@@ -184,8 +184,8 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 
 | Failure | Local fix | PR submitted | CI unblocked |
 |---------|-----------|--------------|--------------|
-| test_ops_xpu.py::...::test_add_xpu | YES (commit abc1234) | NO | NO |
-| test_nn_xpu.py::...::test_conv3d_groups | YES (commit def5678) | NO | NO |
+| test_ops_xpu.py::...::test_add_xpu | YES (commit abc1234) | PENDING USER CONFIRM | NO |
+| test_nn_xpu.py::...::test_conv3d_groups | YES (commit def5678) | PENDING USER CONFIRM | NO |
 | Windows wheel-py3_*-xpu-test | N/A (infra) | N/A | NO — needs manual log investigation |
 
 ---
@@ -211,6 +211,27 @@ Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
 ```
 
 ## Critical Rules
+
+### PR Creation Gate
+
+**Never create a PR to `pytorch/pytorch` or `intel/torch-xpu-ops` automatically.**
+
+After completing a fix and local verification, present a proposal to the user:
+
+```
+## Fix proposal for <test_name>
+
+Root cause: <one sentence>
+Fix: <what was changed>
+Commit: <commit hash> — <commit title>
+Diff summary: <key lines changed>
+
+Ready to submit PR to pytorch/pytorch. Confirm to proceed?
+```
+
+Only create the PR after the user explicitly confirms (e.g. "yes", "go ahead", "submit it").
+If the user does not confirm, stop at the local commit and record the PR as pending in the
+summary report.
 
 ### Build Discipline
 
