@@ -26,6 +26,7 @@ from torch.testing._internal.common_device_type import (
     expectedFailureMeta,
     get_device_type_test_bases,
     instantiate_device_type_tests,
+    onlyAccelerator,
     onlyCPU,
     onlyCUDA,
     onlyNativeDeviceTypes,
@@ -356,7 +357,7 @@ class TestTesting(TestCase):
     # when CUDA assert was thrown. Because all subsequent test will fail if that happens.
     # These tests are slow because it spawn another process to run test suite.
     # See: https://github.com/pytorch/pytorch/issues/49019
-    @onlyCUDA
+    @onlyAccelerator
     @slowTest
     def test_cuda_assert_should_stop_common_utils_test_suite(self, device):
         # test to ensure common_utils.py override has early termination for CUDA.
@@ -365,18 +366,19 @@ class TestTesting(TestCase):
 
 import torch
 from torch.testing._internal.common_utils import (TestCase, run_tests, slowTest)
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 class TestThatContainsCUDAAssertFailure(TestCase):
 
     @slowTest
     def test_throw_unrecoverable_cuda_exception(self):
-        x = torch.rand(10, device='cuda')
+        x = torch.rand(10, device=GPU_TYPE)
         # cause unrecoverable CUDA exception, recoverable on CPU
         y = x[torch.tensor([25])].cpu()
 
     @slowTest
     def test_trivial_passing_test_case_on_cpu_cuda(self):
-        x1 = torch.tensor([0., 1.], device='cuda')
+        x1 = torch.tensor([0., 1.], device=GPU_TYPE)
         x2 = torch.tensor([0., 1.], device='cpu')
         self.assertEqual(x1, x2)
 
@@ -385,19 +387,19 @@ if __name__ == '__main__':
 """)
         # CUDA says "device-side assert triggered"
         # ROCm says "unspecified launch failure" or HSA_STATUS_ERROR_EXCEPTION
-        has_cuda_assert = "CUDA error: device-side assert triggered" in stderr
+        has_acc_assert = "error: device-side assert triggered" in stderr
         has_hip_assert = (
             "launch failure" in stderr or "HSA_STATUS_ERROR_EXCEPTION" in stderr
         )
         self.assertTrue(
-            has_cuda_assert or has_hip_assert,
+            has_acc_assert or has_hip_assert,
             f"Expected device assert error in stderr, got: {stderr}",
         )
-        if torch.version.cuda:
+        if torch.version.cuda or torch.version.xpu:
             # should run only 1 test because it throws unrecoverable error.
             self.assertIn("errors=1", stderr)
 
-    @onlyCUDA
+    @onlyAccelerator
     @slowTest
     def test_cuda_assert_should_stop_common_device_type_test_suite(self, device):
         # test to ensure common_device_type.py override has early termination for CUDA.
@@ -425,7 +427,8 @@ class TestThatContainsCUDAAssertFailure(TestCase):
 instantiate_device_type_tests(
     TestThatContainsCUDAAssertFailure,
     globals(),
-    only_for='cuda'
+    only_for=('cuda', 'xpu'),
+    allow_xpu=True
 )
 
 if __name__ == '__main__':
@@ -433,12 +436,12 @@ if __name__ == '__main__':
 """)
         # CUDA says "device-side assert triggered"
         # ROCm says "unspecified launch failure" or HSA_STATUS_ERROR_EXCEPTION
-        has_cuda_assert = "CUDA error: device-side assert triggered" in stderr
+        has_acc_assert = "error: device-side assert triggered" in stderr
         has_hip_assert = (
             "launch failure" in stderr or "HSA_STATUS_ERROR_EXCEPTION" in stderr
         )
         self.assertTrue(
-            has_cuda_assert or has_hip_assert,
+            has_acc_assert or has_hip_assert,
             f"Expected device assert error in stderr, got: {stderr}",
         )
         if torch.version.cuda:
@@ -446,7 +449,7 @@ if __name__ == '__main__':
             self.assertIn("errors=1", stderr)
 
     @unittest.skipIf(TEST_WITH_ROCM, "ROCm doesn't support device side asserts")
-    @onlyCUDA
+    @onlyAccelerator
     @slowTest
     def test_cuda_assert_should_not_stop_common_distributed_test_suite(self, device):
         # test to ensure common_distributed.py override should not early terminate CUDA.
@@ -475,7 +478,8 @@ class TestThatContainsCUDAAssertFailure(MultiProcessTestCase):
 instantiate_device_type_tests(
     TestThatContainsCUDAAssertFailure,
     globals(),
-    only_for='cuda'
+    only_for=('cuda', 'xpu'),
+    allow_xpu=True
 )
 
 if __name__ == '__main__':
