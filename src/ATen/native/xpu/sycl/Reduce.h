@@ -51,7 +51,7 @@ template <class T>
 using native_sycl_op_t = typename get_native_sycl_op<T>::type;
 
 template <class arg_t, class CombineFunc, class NativeOp, int out_vec_sz>
-void tree_reduce(
+void subgroup_tree_reduce(
     sycl::sub_group sg,
     at::detail::Array<arg_t, out_vec_sz>& value,
     CombineFunc combine) {
@@ -103,7 +103,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
 
   // tree reduce in subgroup
-  tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(sg, value, combine);
+  subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(sg, value, combine);
 
   if (sg_lid == 0) {
     shared_[sg_gid] = value;
