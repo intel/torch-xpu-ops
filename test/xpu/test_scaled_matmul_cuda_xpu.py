@@ -105,26 +105,13 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         x_scales = x_scales.t().contiguous().t()
         lhs_recipe = ScalingType.BlockWise1x128
     else:
-        x_scales = x_scales.t().contiguous()
         lhs_recipe = ScalingType.BlockWise128x128
 
     if rhs_block == 1:
         y_scales = y_scales.t().contiguous().t()
         rhs_recipe = ScalingType.BlockWise1x128
     else:
-        y_scales = y_scales.t()
         rhs_recipe = ScalingType.BlockWise128x128
-
-    def do_scaled_mm():
-        return scaled_mm_wrap(
-            x_fp8,
-            y_fp8.t(),
-            scale_a=x_scales,
-            scale_recipe_a=lhs_recipe,
-            scale_b=y_scales,
-            scale_recipe_b=rhs_recipe,
-            out_dtype=output_dtype,
-        )
 
     # Verify that actual F8 mm raises expected error
     if torch.version.hip:
@@ -132,16 +119,9 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         expected_error = NotImplementedError
         expected_pattern = "1x128 and 128x128 scaling not available with ROCm"
     elif self.device_type == "xpu":
-        # XPU supports three DeepSeek-style blockwise combinations:
-        # (1x128, 1x128), (128x128, 1x128), and (1x128, 128x128).
-        if (lhs_block, rhs_block) in ((1, 1), (128, 1), (1, 128)):
-            do_scaled_mm()
-            return
+        # XPU does not support DeepSeek-style blockwise scaling
         expected_error = ValueError
-        expected_pattern = (
-            "Invalid scaling configuration|"
-            "scale_[ab] must have shape .* Float elements, got \\[.*\\]"
-        )
+        expected_pattern = "Invalid scaling configuration"
     else:
         # CUDA non-SM90 should raise NotImplementedError
         expected_error = NotImplementedError
@@ -150,7 +130,15 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         expected_error,
         expected_pattern,
     ):
-        do_scaled_mm()
+        scaled_mm_wrap(
+            x_fp8,
+            y_fp8.t(),
+            scale_a=x_scales,
+            scale_recipe_a=lhs_recipe,
+            scale_b=y_scales.t(),
+            scale_recipe_b=rhs_recipe,
+            out_dtype=output_dtype,
+        )
 
 
 TestFP8Matmul.test_scaled_mm_deepseek_error_messages = (
