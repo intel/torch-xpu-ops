@@ -83,8 +83,6 @@ from torch.testing._internal.common_dtype import (
     get_all_qint_dtypes,
     integral_types_and,
 )
-
-
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_optimizers import (
     _get_optim_inputs_including_global_cliquey_kwargs,
@@ -152,6 +150,7 @@ load_tests = load_tests  # noqa: PLW0127
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
+
 # Extend get_all_math_dtypes to include torch.float16 if XPU is available
 def _get_all_math_dtypes(device) -> list[torch.dtype]:
     return (
@@ -161,7 +160,10 @@ def _get_all_math_dtypes(device) -> list[torch.dtype]:
         )
         + get_all_complex_dtypes()
     )
+
+
 get_all_math_dtypes = _get_all_math_dtypes  # type: ignore[assignment]
+
 
 # Extend get_all_device_types to include 'xpu' if available
 def my_get_all_device_types_xpu() -> list[str]:
