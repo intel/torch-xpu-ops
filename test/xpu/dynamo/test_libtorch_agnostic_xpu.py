@@ -156,7 +156,7 @@ class TestLibtorchAgnostic(TestCase):
         )
         self.assertEqual(new_param, param)
 
-    @onlyCPU
+    @onlyAccelerator
     def test_identity_does_not_hog_memory(self, device):
         import libtorch_agn_2_9 as libtorch_agnostic
 
