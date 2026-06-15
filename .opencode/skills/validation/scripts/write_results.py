@@ -144,7 +144,8 @@ def do_merge(results_path, opts):
               f"It does not look like a built agent sheet; run a build first.", file=sys.stderr)
         sys.exit(1)
 
-    col = {c: headers.index(c) + 1 for c in RESULT_COLUMNS}
+    # Use the LAST occurrence of the column (to avoid writing into legacy pre-populated Reason columns)
+    col = {c: len(headers) - headers[::-1].index(c) for c in RESULT_COLUMNS}
 
     key_fields = [f for f in IDENTITY_COLUMNS if f in headers]
     if not key_fields:
