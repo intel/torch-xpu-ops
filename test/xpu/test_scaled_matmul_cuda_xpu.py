@@ -8,12 +8,10 @@
 
 # Owner(s): ["module: intel"]
 
-import unittest
-
 import torch
 from torch.nn.functional import ScalingType
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import parametrize, run_tests
+from torch.testing._internal.common_utils import parametrize, run_tests, skipIfXpu
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -88,6 +86,7 @@ TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
 # (0, 0)).  XPU's _scaled_mm_v2 raises ValueError("Invalid scaling configuration...")
 # for unsupported blockwise scales, so we add an XPU branch alongside the existing
 # CUDA / ROCm ones.
+@skipIfXpu(msg="XPU supports DeepSeek blockwise combinations covered by numerics tests")
 @parametrize("output_dtype", [torch.bfloat16])
 @parametrize("lhs_block,rhs_block", [(1, 1), (128, 1), (1, 128)])
 @parametrize("M,N,K", [(256, 256, 256), (256, 256, 512)])
@@ -143,9 +142,9 @@ def _xpu_test_scaled_mm_deepseek_error_messages(
         )
 
 
-TestFP8Matmul.test_scaled_mm_deepseek_error_messages = unittest.skip(
-    "XPU supports DeepSeek blockwise combinations covered by numerics tests"
-)(_xpu_test_scaled_mm_deepseek_error_messages)
+TestFP8Matmul.test_scaled_mm_deepseek_error_messages = (
+    _xpu_test_scaled_mm_deepseek_error_messages
+)
 
 
 instantiate_device_type_tests(TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True)
