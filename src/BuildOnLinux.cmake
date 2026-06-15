@@ -17,7 +17,6 @@ macro(setup_common_libraries)
     STATIC
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS}
     ${ATen_XPU_XCCL_SRCS})
 
   if(USE_C10D_XCCL)
@@ -51,7 +50,7 @@ else()
   sycl_add_library(
     torch_xpu_ops
     STATIC
-    CXX_SOURCES  ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
+    CXX_SOURCES  ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
   if(USE_C10D_XCCL)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
@@ -72,24 +71,20 @@ if(USE_SYCLTLA)
   set_build_flags()
   replace_cmake_build_flags()
 
-  foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
-    set(sycl_lib torch-xpu-ops-sycltla-${name})
-    sycl_add_library(
-      ${sycl_lib}
-      SHARED
-      SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+  set(sycl_lib torch-xpu-ops-sycltla)
+  sycl_add_library(
+    ${sycl_lib}
+    SHARED
+    SYCL_SOURCES ${ATen_XPU_SYCLTLA_SRCS})
+  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
-    # Decouple with PyTorch cmake definition.
-    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
-    # Set Compile options for sycltla kernels
-    target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
-    target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
-    target_include_directories(${sycl_lib} PRIVATE ${ATen_XPU_FLASH_ATTN_DIRS})
-  endforeach()
+  # Set Compile options for sycltla kernels
+  target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
+  target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+  target_include_directories(${sycl_lib} PRIVATE ${ATen_XPU_FLASH_ATTN_DIRS})
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
@@ -109,7 +104,7 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
-  target_link_libraries(${lib} PRIVATE ATEN_XPU_OPS_FILES_GEN_LIB)
+  target_link_libraries(${lib} PRIVATE ATEN_XPU_FILES_GEN_LIB)
 endforeach()
 
 if(USE_ONEMKL_XPU)

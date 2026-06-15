@@ -26,6 +26,7 @@
 #include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
+#include <numeric>
 #include <type_traits>
 #include <utility>
 
@@ -200,23 +201,21 @@ inline int last_pow2(int n) {
   return std::max(1, n - (n >> 1));
 }
 
-// Warning: 64-bit integer loop inside device
 static void reduce_fraction(size_t& numerator, size_t& denominator) {
-  // get GCD of num and denom using Euclid's algorithm.
-  // Can replace this with std::gcd if we ever support c++17.
-  size_t a = denominator;
+#ifdef _MSC_VER
+  // MSVC's std::gcd does runtime ISA dispatch through a global variable and
+  // CPU builtins, which cannot be used in device code; use Euclid's algorithm.
+  size_t gcd = denominator;
   size_t b = numerator;
   while (b != 0) {
-    a %= b;
-    // swap(a, b)
-    size_t tmp = a;
-    a = b;
-    b = tmp;
+    gcd %= b;
+    std::swap(gcd, b);
   }
-
-  // a is now the GCD
-  numerator /= a;
-  denominator /= a;
+#else
+  auto gcd = std::gcd(numerator, denominator);
+#endif
+  numerator /= gcd;
+  denominator /= gcd;
 }
 
 struct ReduceConfig {

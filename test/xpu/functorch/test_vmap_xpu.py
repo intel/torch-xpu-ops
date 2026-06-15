@@ -34,7 +34,6 @@ from common_utils import (
     is_valid_inplace_sample_input,
     opsToleranceOverride,
     skip,
-    skipOps,
     tol1,
     xfail,
     xfailIf,
@@ -61,6 +60,7 @@ from torch.testing._internal.common_device_type import (
     onlyOn,
     OpDTypes,
     ops,
+    skipOps,
     tol,
     toleranceOverride,
 )
@@ -104,10 +104,6 @@ def get_platform_specific_sdpa():
 
 
 PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
-
-# For XPU, add CUDNN_ATTENTION even though it's not supported - tests will fail with known issue
-if TEST_XPU and SDPBackend.CUDNN_ATTENTION not in PLATFORM_SPECIFIC_SDPA:
-    PLATFORM_SPECIFIC_SDPA.append(SDPBackend.CUDNN_ATTENTION)
 
 FALLBACK_REGEX = "There is a performance drop"
 
@@ -3976,6 +3972,15 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
             fail_with_randomness = randomness == "error"
             if backend != SDPBackend.MATH:
                 fail_with_randomness |= randomness == "same"
+            # On XPU, EFFICIENT_ATTENTION currently maps/falls back to the
+            # MATH implementation, so randomness="same" is allowed here.
+            if backend == SDPBackend.EFFICIENT_ATTENTION and randomness == "same":
+                fail_with_randomness = False
+            # On XPU, FLASH_ATTENTION with dropout and randomness="different"
+            # currently has no available kernel, so this path is expected to raise.
+            if backend == SDPBackend.FLASH_ATTENTION and randomness == "different":
+                fail_with_randomness = True
+
             context = (
                 self.assertRaises(RuntimeError)
                 # We currently don't support randomness == "same", and "error" should always error with randomness
@@ -4386,8 +4391,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_exhaustive",
         vmap_fail.union(
             {
                 # RuntimeError: Batch norm got a batched tensor as input while the running_mean or running_var,
@@ -4450,8 +4453,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         }
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_op_has_batch_rule",
         vmap_fail.union(
             {
                 xfail("as_strided", "partial_views"),
@@ -4489,7 +4490,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("tril"),  # Exception not raised on error input
                 xfail("triu"),  # Exception not raised on error input
                 xfail("__getitem__", ""),
-                xfail("count_nonzero"),
                 xfail(
                     "nn.functional.dropout"
                 ),  # works, can't check against for loop because of randomness inconsistency
@@ -5181,8 +5181,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         allowed_dtypes=(torch.float,),
     )
     @skipOps(
-        "TestVmapOperatorsOpInfo",
-        "test_vmap_linalg_failure_1D_input",
         {
             xfail("linalg.vector_norm"),  # can accept vector inputs
             xfail("linalg.norm"),  # can accept vector inputs

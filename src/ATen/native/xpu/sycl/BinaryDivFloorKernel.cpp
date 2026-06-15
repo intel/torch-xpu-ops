@@ -45,22 +45,24 @@ struct DivFloorWithScalarFunctor {
       : b_(b), inv_b_(inv_b) {}
 
   scalar_t operator()(scalar_t a) const {
-    auto mod = std::fmod(a, b_);
-    auto div = (a - mod) * inv_b_;
+    using opmath_t = at::opmath_type<scalar_t>;
+    opmath_t a_ = static_cast<opmath_t>(a);
+    auto mod = sycl::fmod(a_, b_);
+    auto div = (a_ - mod) * inv_b_;
     if ((mod != 0) && (b_ < 0) != (mod < 0)) {
-      div -= scalar_t(1);
+      div -= opmath_t(1);
     }
 
-    scalar_t floordiv;
+    opmath_t floordiv;
     if (div != 0) {
-      floordiv = std::floor(div);
-      if (div - floordiv > scalar_t(0.5)) {
-        floordiv += scalar_t(1.0);
+      floordiv = sycl::floor(div);
+      if (div - floordiv > opmath_t(0.5)) {
+        floordiv += opmath_t(1.0);
       }
     } else {
-      floordiv = std::copysign(scalar_t(0), a * inv_b_);
+      floordiv = sycl::copysign(opmath_t(0), a_ * inv_b_);
     }
-    return floordiv;
+    return static_cast<scalar_t>(floordiv);
   }
 
  private:

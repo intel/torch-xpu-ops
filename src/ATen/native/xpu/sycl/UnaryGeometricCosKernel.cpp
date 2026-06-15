@@ -22,7 +22,12 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct CosFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::cos(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::cos(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::cos(static_cast<opmath_t>(a));
+    }
   }
 };
 
