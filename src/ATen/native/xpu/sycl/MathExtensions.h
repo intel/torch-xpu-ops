@@ -18,10 +18,10 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/BFloat16.h>
 #include <c10/util/Half.h>
-#include <c10/util/MathConstants.h>
 #include <sycl/sycl.hpp>
 
 #include <limits>
+#include <numbers>
 #include <type_traits>
 
 namespace at::native::xpu {
@@ -62,9 +62,11 @@ inline std::enable_if_t<std::is_floating_point_v<T>, T> calc_erfinv(T y) {
   }
   /* Two steps of Newton-Raphson correction */
   x = x -
-      (sycl::erf(x) - y) / ((T(2) * c10::frac_1_sqrt_pi<T>)*sycl::exp(-x * x));
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
   x = x -
-      (sycl::erf(x) - y) / ((T(2) * c10::frac_1_sqrt_pi<T>)*sycl::exp(-x * x));
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
   return x;
 }
 

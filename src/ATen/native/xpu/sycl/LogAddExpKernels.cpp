@@ -15,10 +15,10 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <c10/util/MathConstants.h>
 #include <c10/util/complex.h>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 
@@ -151,7 +151,8 @@ template <typename scalar_t>
 struct LogAddExp2Functor {
   scalar_t operator()(scalar_t a_, scalar_t b_) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    const auto inv_log_2 = static_cast<opmath_t>(1.0 / c10::ln_2<double>);
+    const auto inv_log_2 =
+        static_cast<opmath_t>(1.0 / std::numbers::ln2_v<double>);
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
     if (sycl::isinf(a) && a == b) {
