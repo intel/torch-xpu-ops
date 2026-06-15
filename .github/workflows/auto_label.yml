@@ -141,8 +141,8 @@ jobs:
             case "$file" in
               src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
               src/*.cmake|src/CMakeLists.txt|src/Build*.cmake) HAS_CMAKE=true ;;
-              src/*|CMakeLists.txt) HAS_SRC=true ;;
-              cmake/*|tools/*) HAS_CMAKE=true ;;
+              src/*) HAS_SRC=true ;;
+              CMakeLists.txt|cmake/*|tools/*) HAS_CMAKE=true ;;
               test/agentic/*) HAS_GITHUB_META=true ;;
               test/xpu/xpu_test_utils.py|test/xpu/run_test_with_skip.py) HAS_TEST=true; HAS_TEST_INFRA=true; ONLY_SKIP_EXPECT=false ;;
               test/xpu/test_ops*.py|test/xpu/core/*|test/xpu/test_nn*.py) HAS_TEST=true; ONLY_SKIP_EXPECT=false; HAS_WIN_TEST=true ;;
