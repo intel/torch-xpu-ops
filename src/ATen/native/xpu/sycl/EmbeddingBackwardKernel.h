@@ -11,6 +11,7 @@
 #pragma once
 
 #include <ATen/AccumulateType.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
@@ -19,11 +20,6 @@ namespace at::native::xpu {
 
 using namespace at::xpu;
 constexpr int64_t NROWS_PER_THREAD = 64;
-
-template <typename T, typename V>
-inline auto CeilDiv(T a, V b) {
-  return (a + b - 1) / b;
-}
 
 template <typename index_t>
 struct KrnPartialsPerSegmentKernelFunctor {
@@ -37,7 +33,7 @@ struct KrnPartialsPerSegmentKernelFunctor {
           ? static_cast<index_t>(numel_)
           : offsets_ptr[id + 1];
       const index_t size = idx_end - idx_start;
-      ret_ptr[id] = CeilDiv(size, static_cast<index_t>(NROWS_PER_THREAD));
+      ret_ptr[id] = at::ceil_div(size, static_cast<index_t>(NROWS_PER_THREAD));
     }
   }
   KrnPartialsPerSegmentKernelFunctor(
@@ -263,7 +259,7 @@ void compute_grad_weight_bags(
 
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
-      CeilDiv(stride, max_sub_group_size) * max_sub_group_size;
+      at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
 
   auto kfn = ComputeGradWeightBagsKernelFunctor<scalar_t, index_t>(
       numel,
@@ -285,7 +281,7 @@ void compute_grad_weight_bags(
 
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
@@ -383,7 +379,7 @@ void compute_grad_weight(
 
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
-      CeilDiv(stride, max_sub_group_size) * max_sub_group_size;
+      at::ceil_div(stride, max_sub_group_size) * max_sub_group_size;
 
   auto kfn = ComputeGradWeightKernelFunctor<scalar_t, index_t>(
       numel,
@@ -399,7 +395,7 @@ void compute_grad_weight(
 
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
@@ -511,11 +507,12 @@ void sum_and_scatter(
       segment_sizes_offsets_data);
 
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t stride_warped = CeilDiv(stride, work_group_size) * work_group_size;
+  int64_t stride_warped =
+      at::ceil_div(stride, work_group_size) * work_group_size;
   kfn.set_stride_warped(stride_warped);
 
   int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto num_groups = at::ceil_div(num_of_segments * stride_warped, group_size);
   auto total_items = num_groups * group_size;
   auto global_range = sycl::range<1>((size_t)total_items);
   auto local_range = sycl::range<1>((size_t)group_size);
