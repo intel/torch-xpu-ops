@@ -2585,7 +2585,7 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
             out.backward()
             return act_mem
 
-        x = torch.randn(N, N, device=GPUT_TYPE)
+        x = torch.randn(N, N, device=GPU_TYPE)
 
         torch._dynamo.reset()
         baseline = torch.compile(build(None), backend="aot_eager", fullgraph=True)

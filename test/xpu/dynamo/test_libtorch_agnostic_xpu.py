@@ -1916,7 +1916,7 @@ except RuntimeError as e:
 
         inner()
 
-        if is_accelerator:    
+        if is_accelerator:
             # original tensor is out of scope, all the memory should be freed
             torch.get_device_module(GPU_TYPE).synchronize(device)
             curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
