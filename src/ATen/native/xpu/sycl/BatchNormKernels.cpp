@@ -10,6 +10,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/ReduceOps.h>
@@ -367,10 +368,6 @@ scalar_t plane_reduce(
   return shared[0];
 }
 
-inline int div_up(int a, int b) {
-  return (a + b - 1) / b;
-}
-
 constexpr int ELEMENTS_PER_ITER =
     4; // enables concurrency within each thread to hide latency
 constexpr int ELEMENTS_PER_WORK_ITEM = 4;
@@ -383,14 +380,15 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
     const int loops_per_item = 1) {
   int group_x = std::min(last_pow2(stride), 32);
   int group_y = std::min(
-      last_pow2(div_up(reduction, loops_per_item)), max_wg_size / group_x);
+      last_pow2(at::ceil_div(reduction, loops_per_item)),
+      max_wg_size / group_x);
   if (group_x * group_y != max_wg_size) {
     group_x = std::min(last_pow2(stride), max_wg_size / group_y);
   }
 
-  int nwg_x = div_up(stride, group_x);
+  int nwg_x = at::ceil_div(stride, group_x);
   int nwg_y = std::min(
-      div_up(reduction, group_y * loops_per_item),
+      at::ceil_div(reduction, group_y * loops_per_item),
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_x) / (group_y));
   nwg_y = std::max(nwg_y, 1);
 

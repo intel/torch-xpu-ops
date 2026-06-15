@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/TensorFactories.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <ATen/native/xpu/sycl/TensorFactoriesKernels.h>
@@ -139,7 +140,7 @@ void triu_indices_kernel_template(
   using Kernel = TriuIndicesKernelFunctor<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = triu_size;
-  auto num_groups = CeilDiv(totalElements, group_size);
+  auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;
@@ -217,7 +218,7 @@ void tril_indices_kernel_template(
   using Kernel = TrilIndicesKernelFunctor<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = tril_size;
-  auto num_groups = CeilDiv(totalElements, group_size);
+  auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;
