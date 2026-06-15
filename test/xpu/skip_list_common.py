@@ -85,6 +85,7 @@ skip_dict = {
     "test_complex_xpu.py": None,
     "test_content_store_xpu.py": None,
     "test_dataloader_xpu.py": None,
+    "test_dlpack_xpu.py": None,
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward_baddbmm_xpu_float64",
@@ -335,10 +336,14 @@ skip_dict = {
         # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
         "test_cache_lazy_backward_for_compiled_autograd",
     ),
+    "dynamo/test_activation_checkpointing_xpu.py": None,
     "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_debug_utils_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
+    "dynamo/test_libtorch_agnostic_xpu.py": None,
+    "dynamo/test_repros_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
@@ -356,6 +361,7 @@ skip_dict = {
     "test_scaled_matmul_cuda_xpu.py": None,
     "test_serialization_xpu.py": None,
     "functorch/test_memory_efficient_fusion_xpu.py": None,
+    "functorch/test_ac_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
     "test_fx_experimental_xpu.py": None,
