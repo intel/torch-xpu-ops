@@ -14,7 +14,8 @@ from torch._dynamo.debug_utils import (
 )
 from torch._dynamo.test_case import TestCase
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_device_type import instantiate_device_type_tests, onlyCUDA
+from troch._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 f32 = torch.float32
@@ -246,7 +247,7 @@ class TestNNModuleToStringBufferDevice(TestCase):
         else:
             expected_device = str(torch.empty(1, device=device).device)
             self.assertIn(f'device="{expected_device}"', result)
-            self.assertNotIn(', device="cuda")', result)
+            self.assertNotIn(', device=GPU_TYPE)', result)
 
 
 instantiate_device_type_tests(
@@ -432,6 +433,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         torch._dynamo.reset()
         super().tearDown()
 
+    @onlyCUDA
     def test_config_router_single_graph(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -442,6 +444,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         )
         self.assertIsNone(router.get_value_for_graph(1))
 
+    @onlyCUDA
     def test_config_router_multiple_options(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -453,6 +456,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
             {"triton.cudagraphs": False, "triton.cudagraph_trees": False},
         )
 
+    @onlyCUDA
     def test_config_router_comparison(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -461,6 +465,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         self.assertIsNone(router.get_value_for_graph(1))
         self.assertEqual(router.get_value_for_graph(2), {"triton.cudagraphs": True})
 
+    @onlyCUDA
     def test_config_router_range(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -534,6 +539,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         result = get_inductor_config_override_for_compile_id(None, "")
         self.assertIsNone(result)
 
+    @onlyCUDA
     def test_combined_backend_and_config_override(self, device):
         """
         Test combining backend override with config override.
@@ -620,6 +626,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         )
         self.assertEqual(configs_applied[2], {"triton.cudagraphs": True})
 
+    @onlyCUDA
     def test_multiple_config_overrides_with_backend(self, device):
         """
         Test multiple config overrides applied to different graphs with backend override.
@@ -713,6 +720,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         self.assertIn({"triton.cudagraphs": False}, configs_applied)
         self.assertIn({"triton.cudagraph_skip_dynamic_graphs": False}, configs_applied)
 
+    @onlyCUDA
     def test_config_override_backward_propagation(self, device):
         """
         Verify that inductor config overrides are active at inductor compile
@@ -817,7 +825,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
 
 
 instantiate_device_type_tests(
-    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", "cuda"]
+    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", "cuda", "xpu"], allow_xpu=True
 )
 
 
