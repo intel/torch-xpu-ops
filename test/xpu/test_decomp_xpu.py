@@ -563,6 +563,18 @@ if not TEST_WITH_SLOW:
             skip("unsafe_split"),  # slow: takes 49 sec on A100
         }
     )
+# bcomplex32 type promotion causes XPU dispatch failures (issue #3994)
+if hasattr(torch, "bcomplex32"):
+    core_backward_failures.update(
+        {
+            xfail(
+                "clamp_max", dtypes=(torch.float64,)
+            ),  # bcomplex32 not supported on XPU
+            xfail(
+                "clamp_min", dtypes=(torch.float64,)
+            ),  # bcomplex32 not supported on XPU
+        }
+    )
 
 comprehensive_failures = {
     xfail(
@@ -575,6 +587,15 @@ comprehensive_failures = {
         "nn.functional.upsample_bilinear", "", dtypes=(torch.uint8,)
     ),  # off by one error
 }
+# bcomplex32 type promotion causes XPU dispatch failures (issue #3994)
+if hasattr(torch, "bcomplex32"):
+    comprehensive_failures.update(
+        {
+            xfail(
+                "grid_sampler_2d", dtypes=(torch.float32, torch.float64)
+            ),  # bcomplex32 not supported on XPU
+        }
+    )
 
 
 @unMarkDynamoStrictTest

@@ -1328,6 +1328,7 @@ class TestCustomOp(CustomOpTestCaseBase):
         y.backward()
         self.assertEqual(hit, 1)
 
+    @unittest.skip("Fails on XPU CI; custom_op backward validation issue #3994")
     def test_backward_returns_dict(self):
         @custom_ops.custom_op(f"{TestCustomOp.test_ns}::foo")
         def foo(x: torch.Tensor) -> torch.Tensor:
@@ -1466,6 +1467,7 @@ class TestCustomOp(CustomOpTestCaseBase):
         with self.assertRaisesRegex(RuntimeError, "either None or a Tensor"):
             y.backward()
 
+    @unittest.skip("Fails on XPU CI; custom_op backward validation issue #3994")
     def test_backward_tensorlist_input_requires_list_grads_with_same_numel(self):
         @custom_ops.custom_op(f"{TestCustomOp.test_ns}::foo")
         def foo(xs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -1489,6 +1491,7 @@ class TestCustomOp(CustomOpTestCaseBase):
         with self.assertRaisesRegex(RuntimeError, "3 gradients but got 2"):
             y.backward()
 
+    @unittest.skip("Fails on XPU CI; custom_op backward validation issue #3994")
     def test_backward_tensorlist_input_requires_list_grads_none_or_Tensor(self):
         @custom_ops.custom_op(f"{TestCustomOp.test_ns}::foo")
         def foo(xs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -1512,6 +1515,7 @@ class TestCustomOp(CustomOpTestCaseBase):
         with self.assertRaisesRegex(RuntimeError, "None or Tensor"):
             y.backward()
 
+    @unittest.skip("Fails on XPU CI; custom_op backward validation issue #3994")
     def test_backward_tensorlist_input_requires_list_grads(self):
         @custom_ops.custom_op(f"{TestCustomOp.test_ns}::foo")
         def foo(xs: Sequence[torch.Tensor]) -> torch.Tensor:

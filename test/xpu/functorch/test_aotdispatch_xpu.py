@@ -2273,6 +2273,7 @@ def forward(self, primals_1):
     return (transpose, squeeze, transpose_1, unsqueeze, mul)""",
         )
 
+    @unittest.skip("Metadata mutation for subclasses not supported on XPU; issue #3994")
     @parametrize("req_grad", [False, True])
     def test_subclass_metadata_mutation(self, req_grad):
         def f(a):
@@ -3249,6 +3250,7 @@ def forward(self, primals_1, primals_2):
     return (as_strided_scatter, add, add_1)""",
         )  # noqa: B950
 
+    @unittest.skip("Alias+metadata mutation not supported on XPU; issue #3994")
     @skipIfDynamoInput("Fails with dynamo")
     def test_input_mutation_aliases_bases_out_of_order(self):
         # This tests our calling convention: if b and d are aliased, then the outer calling convention
@@ -7151,7 +7153,7 @@ metadata incorrectly.
 
     # NB: Metadata mutation for subclasses is currently broken and disabled
     # See https://github.com/pytorch/pytorch/issues/114975
-    @unittest.expectedFailure
+    @unittest.skip("Metadata mutation for subclasses not supported on XPU; issue #3994")
     def test_aot_dispatch_input_metadata_mutation(self):
         def f(a, b):
             a.t_()

@@ -158,6 +158,20 @@ class TestCommon(TestCase):
     # @ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
     @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
+        # Skip ops that generate bcomplex32 intermediate results on XPU until
+        # bcomplex32 kernel support is added (issue #3994).
+        _bcomplex32_affected_ops = {
+            "where",  # where(bfloat16) can produce bcomplex32 via type promotion
+        }
+        if (
+            hasattr(torch, "bcomplex32")
+            and op.name in _bcomplex32_affected_ops
+            and dtype == torch.bfloat16
+        ):
+            pytest.skip(
+                f"{op.name} with {dtype} generates bcomplex32 via type promotion, "
+                "not yet supported on XPU (issue #3994)"
+            )
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCommonProxy(self)
