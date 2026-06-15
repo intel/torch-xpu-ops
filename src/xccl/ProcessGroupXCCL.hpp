@@ -167,14 +167,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       int size,
       c10::intrusive_ptr<Options> options = Options::create());
 
-  C10_DEPRECATED ProcessGroupXCCL(
-      const c10::intrusive_ptr<Store>& store,
-      int rank,
-      int size,
-      const std::string& groupName,
-      c10::intrusive_ptr<Options> options = Options::create())
-      : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
-
   ~ProcessGroupXCCL() override;
 
   uint64_t getUid() const noexcept {
