@@ -23,8 +23,7 @@ from torch._dynamo.trace_rules import (
     manual_torch_name_rule_map,
     MOD_INLINELIST,
     torch_c_binding_in_graph_functions,
-    torch_non_c_binding_in_graph_functions,
-    
+    torch_non_c_binding_in_graph_functions,    
 )
 from torch._dynamo.utils import hashable, is_safe_constant, istype
 from torch._dynamo.variables import (
