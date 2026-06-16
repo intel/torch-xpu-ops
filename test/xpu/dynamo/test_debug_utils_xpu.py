@@ -848,7 +848,7 @@ instantiate_device_type_tests(
     TestInductorConfigOverrideIntegration, 
     globals(), 
     only_for=["cpu", "cuda", "xpu"], 
-    allow_xpu=True
+    allow_xpu=True,
 )
 
 
