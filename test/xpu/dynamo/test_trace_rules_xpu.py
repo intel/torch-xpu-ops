@@ -24,6 +24,7 @@ from torch._dynamo.trace_rules import (
     MOD_INLINELIST,
     torch_c_binding_in_graph_functions,
     torch_non_c_binding_in_graph_functions,
+    
 )
 from torch._dynamo.utils import hashable, is_safe_constant, istype
 from torch._dynamo.variables import (
@@ -33,7 +34,6 @@ from torch._dynamo.variables import (
 )
 from torch.testing._internal.common_utils import skipIfWindows
 from torch.testing._internal.inductor_utils import GPU_TYPE
-
 
 try:
     from .utils import create_dummy_module_and_function
