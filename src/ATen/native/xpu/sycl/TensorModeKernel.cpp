@@ -27,27 +27,14 @@
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 
+#include <bit>
+
 namespace at::native::xpu {
 
 using namespace at::xpu::detail;
 
 constexpr int64_t MAX_GROUP_SIZE = 256;
 constexpr int64_t MAX_GRID_SIZE = 65535LL;
-
-// Returns 2^(ceil(lg(n)) from Stanford bit twiddling hacks
-inline uint64_t next_highest_power_of_2(uint64_t n) {
-  n--;
-  n |= n >> 1;
-  n |= n >> 2;
-  n |= n >> 4;
-  n |= n >> 8;
-  n |= n >> 16;
-#ifndef _MSC_VER
-  n |= n >> 32;
-#endif
-  n++;
-  return n;
-}
 
 std::tuple<int64_t, int64_t, int64_t> get_workgroup_number_from_tiles(
     int64_t gridTiles) {
@@ -523,7 +510,7 @@ void fused_mode(
 
   // The groupsize is two elements per thread, rounded up to the nearest power
   // of 2
-  auto ceilPowerOf2 = next_highest_power_of_2(slice_size);
+  auto ceilPowerOf2 = std::bit_ceil(static_cast<uint64_t>(slice_size));
 
   // Tradeoff between compilation time and the number of specializations.
   // Ideally we would have one handle_fused_mode for each power of 2

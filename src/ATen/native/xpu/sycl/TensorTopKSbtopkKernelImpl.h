@@ -23,7 +23,6 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
-#include <c10/util/llvmMathExtras.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLHelpers.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>

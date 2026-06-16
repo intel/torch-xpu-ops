@@ -13,12 +13,10 @@ on:
       - release/*
     paths:
       - '.github/workflows/auto_label.yml'
-      - '.claude/skills/xpu-pr-auto-labeling/**'
+      - '.claude/skills/auto-label/**'
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: auto-label-${{ github.event_name }}-${{ github.event.pull_request.number }}
@@ -28,9 +26,11 @@ jobs:
   auto-label:
     if: >-
       ${{ github.repository_owner == 'intel'
-      && github.event.pull_request.head.repo.full_name == github.repository
       && !contains(github.event.pull_request.labels.*.name, 'disable_auto') }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
     timeout-minutes: 5
     outputs:
       labels_changed: ${{ steps.apply-labels.outputs.labels_changed || 'false' }}
@@ -49,7 +49,7 @@ jobs:
       - name: Checkout repo (for skill file)
         uses: actions/checkout@v4
         with:
-          sparse-checkout: .claude/skills/xpu-pr-auto-labeling
+          sparse-checkout: .claude/skills/auto-label
           sparse-checkout-cone-mode: false
 
       - name: Get changed files
@@ -71,12 +71,12 @@ jobs:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
-          SKILL_CONTENT=$(cat .claude/skills/xpu-pr-auto-labeling/SKILL.md)
+          SKILL_CONTENT=$(cat .claude/skills/auto-label/SKILL.md)
           FILES="$PR_FILES"
           API_SUCCESS=false
 
           # Build the prompt
-          # NOTE: File list comes from PR contributors (internal PRs only per job-level if).
+          # NOTE: File list comes from PR contributors (including forks).
           # The file list is treated as untrusted data by the model prompt framing.
           PROMPT="You are a CI label bot. Based on the labeling rules below, determine which disable_* labels should be applied to this PR.
 
@@ -129,7 +129,9 @@ jobs:
           HAS_XCCL=false
           HAS_CMAKE=false
           HAS_TEST=false
+          HAS_TEST_INFRA=false
           HAS_WORKFLOW=false
+          HAS_CI_SCRIPTS=false
           HAS_GITHUB_META=false
           HAS_YAML=false
           ONLY_SKIP_EXPECT=true
@@ -139,15 +141,19 @@ jobs:
             [ -z "$file" ] && continue
             case "$file" in
               src/xccl/*) HAS_SRC=true; HAS_XCCL=true ;;
-              src/*|CMakeLists.txt) HAS_SRC=true ;;
-              cmake/*|tools/*) HAS_CMAKE=true ;;
+              src/*.cmake|src/CMakeLists.txt|src/Build*.cmake) HAS_CMAKE=true ;;
+              src/*) HAS_SRC=true ;;
+              CMakeLists.txt|cmake/*|tools/*) HAS_CMAKE=true ;;
+              test/agentic/*) HAS_GITHUB_META=true ;;
+              test/xpu/xpu_test_utils.py|test/xpu/run_test_with_skip.py) HAS_TEST=true; HAS_TEST_INFRA=true; ONLY_SKIP_EXPECT=false ;;
               test/xpu/test_ops*.py|test/xpu/core/*|test/xpu/test_nn*.py) HAS_TEST=true; ONLY_SKIP_EXPECT=false; HAS_WIN_TEST=true ;;
               test/*) HAS_TEST=true
                 case "$file" in
-                  test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py) ;;
+                  test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py|test/xpu/extended/skip_list_*.py) ;;
                   *) ONLY_SKIP_EXPECT=false ;;
                 esac ;;
               .github/workflows/*) HAS_WORKFLOW=true ;;
+              .github/actions/*|.github/scripts/*) HAS_CI_SCRIPTS=true ;;
               .github/*) HAS_GITHUB_META=true ;;
               .claude/*) HAS_GITHUB_META=true ;;
               yaml/*) HAS_YAML=true ;;
@@ -155,21 +161,24 @@ jobs:
           done <<< "$FILES"
 
           if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
-            # Only .github/ files changed
-            if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_GITHUB_META" = true ]; then
+            if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_CI_SCRIPTS" = true ]; then
+              # CI workflow/action/script changes — can't determine scope from paths alone, run full CI
+              LABELS=""
+            elif [ "$HAS_GITHUB_META" = true ]; then
+              # Pure metadata (.claude/, .github/ templates, test/agentic/)
               LABELS="disable_all"
             fi
-          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_YAML" = false ] && [ "$HAS_TEST" = true ]; then
+          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ] && [ "$HAS_TEST" = true ]; then
             # Test-only changes
             if [ "$ONLY_SKIP_EXPECT" = true ]; then
               LABELS="disable_all"
             else
               LABELS="disable_e2e,disable_distributed,disable_build"
-              if [ "$HAS_WIN_TEST" = false ]; then
+              if [ "$HAS_WIN_TEST" = false ] && [ "$HAS_TEST_INFRA" = false ]; then
                 LABELS="${LABELS},disable_win"
               fi
             fi
-          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_YAML" = false ]; then
+          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ]; then
             # Source changes (possibly with tests)
             if [ "$HAS_XCCL" = true ]; then
               # xccl is distributed backend — must run distributed tests, Linux-only
@@ -178,10 +187,10 @@ jobs:
               LABELS="disable_e2e,disable_distributed"
             fi
           elif [ "$HAS_CMAKE" = true ] && [ "$HAS_SRC" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
-            # Build system only
+            # Build system only (including src/*.cmake)
             LABELS="disable_e2e,disable_distributed"
           fi
-          # yaml/ changes or mixed → no labels (full CI)
+          # yaml/ changes, CI script changes, or mixed → no labels (full CI)
 
           echo "labels=${LABELS}" >> "$GITHUB_OUTPUT"
           echo "api_success=false" >> "$GITHUB_OUTPUT"
@@ -251,6 +260,9 @@ jobs:
     needs: [auto-label]
     if: ${{ github.event_name == 'pull_request_target' && needs.auto-label.outputs.labels_changed == 'true' }}
     runs-on: ubuntu-24.04
+    # All API calls use MERGE_TOKEN PAT; no GITHUB_TOKEN write permissions needed.
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Cancel in-flight pull workflow and retrigger via draft toggle
