@@ -27,7 +27,7 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
-  if(native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
     return native::xpu::_fft_c2c_sycl(self, dim, normalization, forward);
   }
 #if defined(USE_ONEMKL_XPU)
@@ -47,8 +47,9 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
-  if(native::xpu::_is_fft_size_supported_sycl(self, dim)) {
-    return native::xpu::_fft_c2c_sycl_out(self, dim, normalization, forward, out);
+  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+    return native::xpu::_fft_c2c_sycl_out(
+        self, dim, normalization, forward, out);
   }
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl_out(self, dim, normalization, forward, out);

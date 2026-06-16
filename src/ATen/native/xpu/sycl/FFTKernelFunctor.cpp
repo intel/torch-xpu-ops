@@ -536,7 +536,6 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
       std::vector<std::string> fft_build_opts = {
           "-DKERNEL_NAME=" + kernel_name_dir,
           "-DREGSIZE=" + std::to_string(num_regs),
-          "-DFFT_LEN=" + std::to_string(desc.fft_len[dim]),
           "-DFACT0=" + std::to_string(fact0),
           "-DFACT1=" + std::to_string(fact1),
           "-DBATCH=" + std::to_string(batch),
@@ -553,7 +552,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
           "-DOUTER_BATCH_BWD_DIST=" + std::to_string(outer_batch_bwd_dist),
           "-DINNER_BATCH_BWD_DIST=" + std::to_string(inner_batch_bwd_dist)};
       if constexpr (std::is_same_v<T, float>) {
-        fft_build_opts.push_back("-DDFT_SINGLE_PRECISION");
+        // no define needed - that's default
       } else if constexpr (std::is_same_v<T, double>) {
         fft_build_opts.push_back("-DDFT_DOUBLE_PRECISION");
       } else {
