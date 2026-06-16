@@ -132,3 +132,51 @@ class TestTorchMethod(TestCase):
         y_xpu = x_xpu.index_add(0, idx_xpu, src_xpu)
 
         self.assertEqual(y_xpu.cpu(), y_cpu)
+
+    # Empty inputs below used to divide by zero in BatchKernelConfig (a zero
+    # range bound collapses a launch range to 0). Each checks XPU vs CPU.
+
+    def test_index_copy_empty(self):
+        # dst.size(dim)==0 with non-empty sliceSize and an empty index: nothing
+        # is copied, so the result equals dst.
+        dst = torch.randn(2, 0, 3)
+        index = torch.empty(0, dtype=torch.long)
+        source = torch.randn(2, 0, 3)
+        out_cpu = dst.index_copy(1, index, source)
+        out_xpu = dst.xpu().index_copy(1, index.xpu(), source.xpu())
+        self.assertEqual(out_xpu.cpu(), out_cpu)
+        self.assertEqual(out_xpu.cpu(), dst)
+
+    def test_weight_norm_empty(self):
+        # v empty along the reduced dim, kept dim non-empty: norm of an empty
+        # vector is 0 (forward); grad_g = 0/0 = NaN (backward).
+        def fwd(device):
+            v = torch.randn(4, 0, device=device)
+            g = torch.norm_except_dim(v, 2, 0)
+            return torch._weight_norm_interface(v, g, 0)
+
+        w_cpu, n_cpu = fwd("cpu")
+        w_xpu, n_xpu = fwd("xpu")
+        self.assertEqual(w_xpu.cpu(), w_cpu)
+        self.assertEqual(n_xpu.cpu(), n_cpu)
+        self.assertEqual(n_xpu.cpu(), torch.zeros_like(n_cpu))
+
+        def bwd(device):
+            v = torch.randn(4, 0, device=device, requires_grad=True)
+            g = torch.randn(4, 1, device=device, requires_grad=True)
+            torch._weight_norm(v, g, 0).sum().backward()
+            return v.grad, g.grad
+
+        gv_cpu, gg_cpu = bwd("cpu")
+        gv_xpu, gg_xpu = bwd("xpu")
+        self.assertEqual(gv_xpu.cpu(), gv_cpu)
+        self.assertEqual(gg_xpu.cpu(), gg_cpu)  # assertEqual treats NaN==NaN
+
+    def test_cummax_cummin_empty(self):
+        for op in (torch.cummax, torch.cummin):
+            for shape, dim in (((0,), 0), ((3, 0, 4), 2)):
+                x = torch.randn(shape)
+                v_cpu, i_cpu = op(x, dim)
+                v_xpu, i_xpu = op(x.xpu(), dim)
+                self.assertEqual(v_xpu.cpu(), v_cpu)
+                self.assertEqual(i_xpu.cpu(), i_cpu)

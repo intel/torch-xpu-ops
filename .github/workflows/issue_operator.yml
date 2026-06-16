@@ -5,11 +5,13 @@ on:
     types: [opened, labeled]
 
 permissions:
-  issues: write
+  contents: read
 
 jobs:
   auto-milestone:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     # Only run when the 'skipped' label is present
     if: contains(github.event.issue.labels.*.name, 'skipped')
     steps:

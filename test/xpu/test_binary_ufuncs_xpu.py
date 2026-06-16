@@ -21,10 +21,10 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_binary_ufuncs import TestBinaryUfuncs
+    from test_binary_ufuncs import TestBinaryUfuncsDevice
 
 instantiate_device_type_tests(
-    TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True
+    TestBinaryUfuncsDevice, globals(), only_for="xpu", allow_xpu=True
 )
 
 
