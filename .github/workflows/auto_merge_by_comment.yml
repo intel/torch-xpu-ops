@@ -5,14 +5,16 @@ on:
     types: [created]
 
 permissions:
-  checks: read
-  issues: write
-  pull-requests: write
-  statuses: read
+  contents: read
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      issues: write
+      pull-requests: read
+      statuses: read
     if: >-
       github.event.issue.pull_request
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
