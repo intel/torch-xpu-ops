@@ -1,3 +1,6 @@
+# This workflow intends to verify pytorch built against full open source
+# stack (oneAPI not used).
+
 name: pull dpclang
 
 on:
@@ -7,6 +10,11 @@ on:
       - release/*
     paths:
       - .github/workflows/pull_dpclang.yml
+      - ./.github/workflows/_linux_build.yml
+      - ./.github/workflows/_linux_ut.yml
+  schedule:
+    # 9:00 AM UTC every Sunday
+    - cron: '0 9 * * 0'
 
 permissions: read-all
 
@@ -99,7 +107,7 @@ jobs:
     with:
       category: dpclang
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.base_ref }}
 
   linux-ut:
     needs: build-wheels
@@ -116,6 +124,6 @@ jobs:
     with:
       category: dpclang
       runner: pvc
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      pytorch: ${{ github.base_ref }}
+      torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
