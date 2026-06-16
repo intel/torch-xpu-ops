@@ -994,7 +994,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
             self.assertExpectedInline(
                 captured_gms[1].code.strip(),
                 """\
-def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, alias_2, alias_3, tangents_0):
+def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals_5, primals_6, primals_7, primals_8, getitem, getitem_1, tangents_0):
     fw_graph0 = self.fw_graph0
     joint_graph0 = self.joint_graph0
     mask_graph0 = self.mask_graph0

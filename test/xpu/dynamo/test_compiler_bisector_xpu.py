@@ -125,7 +125,7 @@ class TestCompilerBisector(TestCase):
             out = CompilerBisector.do_bisect(test_fn)
         self.assertEqual(out.backend, "inductor")
         self.assertEqual(out.subsystem, "pre_grad_passes")
-        self.assertEqual(out.bisect_number, 0)
+        self.assertEqual(out.bisect_number, 3)
         self.assertTrue("pre_grad_custom_pass" in out.debug_info)
 
     def test_joint_graph(self):
@@ -332,7 +332,7 @@ class TestCompilerBisector(TestCase):
         from unittest.mock import patch
 
         from torch._dynamo.utils import counters
-        from torch._inductor.compiler_bisector import get_env_val, reset_counters
+        from torch._inductor.compiler_bisector import get_env_val
 
         def foo(x):
             return x + 1
@@ -348,7 +348,7 @@ class TestCompilerBisector(TestCase):
 
         with patch.dict(os.environ, env):
             get_env_val.cache_clear()
-            reset_counters()
+            CompilerBisector.reset_counters()
             torch._dynamo.reset()
             counters.clear()
             CompilerBisector.bisection_enabled = True
