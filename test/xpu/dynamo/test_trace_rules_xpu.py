@@ -8,6 +8,8 @@ import unittest
 import warnings
 from typing import Any
 
+sys.path.append("../../../../test/dynamo")
+
 import torch
 import torch._dynamo.config as config
 import torch._dynamo.test_case
@@ -29,6 +31,8 @@ from torch._dynamo.variables import (
     UserFunctionVariable,
 )
 from torch.testing._internal.common_utils import skipIfWindows
+from torch.testing._internal.inductor_utils import GPU_TYPE
+
 
 try:
     from .utils import create_dummy_module_and_function
@@ -207,7 +211,6 @@ def gen_allowed_objs_and_ids(record=False, c_binding_only=True) -> AllowedObject
             "torch._lobpcg",
             "torch._logging",
             "torch._meta_registrations",
-            "torch._namedtensor_internals",
             "torch._numpy",
             "torch._sources",
             "torch._subclasses",
@@ -340,6 +343,19 @@ class TraceRuleTests(torch._dynamo.test_case.TestCase):
                     "is not a python module, please check and correct it.",
                 )
 
+    def test_gpu_manual_seed_functions_graph_break(self):
+        for name in (
+            f"torch.{GPU_TYPE}.manual_seed",
+            f"torch.{GPU_TYPE}.manual_seed_all",
+            f"torch.{GPU_TYPE}.random.manual_seed",
+            f"torch.{GPU_TYPE}.random.manual_seed_all",
+        ):
+            self.assertIs(
+                torch._dynamo.trace_rules.lookup(load_object(name)),
+                SkipFunctionVariable,
+            )
+
+    @unittest.skip("https://github.com/pytorch/pytorch/issues/114831")
     @unittest.skip(
         "This test keeps getting broken and our disable infra is not handling well. see #120627"
     )
