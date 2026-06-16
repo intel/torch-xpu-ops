@@ -22,7 +22,7 @@ from torch._functorch._aot_autograd.autograd_cache import (
     BypassAOTAutogradCache,
     sanitize_gm_for_cache,
 )
-from torch._functorch._aot_autograd.schemas import AOTConfig
+from torch._functorch._aot_autograd.schemas import AOTConfig, CacheableAOTConfig
 from torch._guards import TracingContext
 from torch._inductor import config as inductor_config
 from torch._inductor.custom_graph_pass import CustomRuntimeEstimator
@@ -195,8 +195,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             eager_result = fn(a, b)
             compiled_result = compiled_fn(a, b)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
@@ -237,8 +237,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             compiled_result = compiled_fn(a, b)
             self.assertEqual(eager_result, compiled_result)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
                 self.assertEqual(counters["inductor"]["fxgraph_cache_hit"], 0)
@@ -270,8 +270,8 @@ class AOTAutogradCacheTests(InductorTestCase):
             eager_result = fn(a, b)
             compiled_result = compiled_fn(a, b)
             compiled_result.sum().backward()
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             if functorch_config.bundled_autograd_cache:
                 self.assertEqual(counters["inductor"]["fxgraph_cache_miss"], 0)
@@ -2095,8 +2095,8 @@ class AOTAutogradCacheTests(InductorTestCase):
                 torch.compile(dynamic=dynamic)
             ):
                 actual_grads = torch.autograd.grad(compiled_result.sum(), inputs=(a, b))
-            if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                del a._dynamo_weak_dynamic_indices
+            if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                del a._dynamo_propagated_dynamic_indices
             self.assertEqual(eager_result, compiled_result)
             self.assertEqual(expected_grads[0], actual_grads[0])
             self.assertEqual(expected_grads[1], actual_grads[1])
@@ -2157,8 +2157,8 @@ class AOTAutogradCacheTests(InductorTestCase):
                     actual_grads = torch.autograd.grad(
                         compiled_result.sum(), inputs=(a, b)
                     )
-                if hasattr(a, "_dynamo_weak_dynamic_indices"):
-                    del a._dynamo_weak_dynamic_indices
+                if hasattr(a, "_dynamo_propagated_dynamic_indices"):
+                    del a._dynamo_propagated_dynamic_indices
                 self.assertEqual(eager_result, compiled_result)
                 self.assertEqual(expected_grads[0], actual_grads[0])
                 self.assertEqual(expected_grads[1], actual_grads[1])
@@ -2629,7 +2629,7 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
         # Not needed for actual key calculation.
         with torch._guards.tracing(ctx):
             with sanitize_gm_for_cache(fx_g):
-                return autograd_cache_key(fx_g, example_inputs, config, {})
+                return autograd_cache_key(fx_g, example_inputs, config, None)
 
     def test_basic_hash_key(self):
         def fn(x):
@@ -2641,20 +2641,15 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
         c2 = self.gen_cache_key(fn, config)
         self.assertEqual(c1, c2)
 
-    def test_identical_graphs_and_configs(self):
+    def test_runtime_only_configs_do_not_change_key(self):
         def fn(x):
             return x.sin().cos()
 
-        def fn2(x):  # noqa: F841
-            y = x.sin()
-            z = y.cos()
-            return z
-
-        # Make the id different, but otherwise identical
         config = self.default_config()
         config2 = self.default_config()
         config2 = dataclasses.replace(config2, aot_id=1)
-        config3.fw_compiler = lambda gm, inputs: gm
+        config3 = self.default_config()
+        config3 = dataclasses.replace(config3, fw_compiler=lambda gm, inputs: gm)
 
         c1 = self.gen_cache_key(fn, config)
         c2 = self.gen_cache_key(fn, config2)
@@ -2879,18 +2874,22 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
             fx_g.meta = {"foo": "bar"}
             fx_g.compile_subgraph_reason = "Blah"
             config = self.default_config()
+            # autograd_cache_key now applies sanitize_gm_for_cache
+            # internally, so the result is the same whether we wrap the
+            # call or not.
             with sanitize_gm_for_cache(fx_g):
-                c1 = autograd_cache_key(fx_g, example_inputs, config, {})
-            c3 = autograd_cache_key(fx_g, example_inputs, config, {})
+                c1 = autograd_cache_key(fx_g, example_inputs, config, None)
+            c3 = autograd_cache_key(fx_g, example_inputs, config, None)
 
             fx_g.meta = {"foo": "baz"}
             fx_g.compile_subgraph_reason = None
             with sanitize_gm_for_cache(fx_g):
-                c2 = autograd_cache_key(fx_g, example_inputs, config, {})
-            c4 = autograd_cache_key(fx_g, example_inputs, config, {})
+                c2 = autograd_cache_key(fx_g, example_inputs, config, None)
+            c4 = autograd_cache_key(fx_g, example_inputs, config, None)
 
             self.assertEqual(c1, c2)
-            self.assertNotEqual(c3, c4)
+            self.assertEqual(c1, c3)
+            self.assertEqual(c1, c4)
 
     def test_dill_serialization_with_inner_functions(self):
         """
