@@ -15,6 +15,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -672,7 +673,7 @@ void EmbeddingBag_accGradParametersKernel_max(
     scalar_t* gradWeight,
     int64_t stride,
     int64_t numBags) {
-  auto chunksPerBag = CeilDiv(stride, (int64_t)64);
+  auto chunksPerBag = at::ceil_div(stride, (int64_t)64);
   auto numChunks = numBags * chunksPerBag;
   auto kernel_range = 1024 * 64;
 
