@@ -205,8 +205,8 @@ jobs:
             if (forceMerge) {
               const authorAssociation = context.payload.comment.author_association;
               if (!['OWNER', 'MEMBER'].includes(authorAssociation)) {
-                core.setOutput('result', 'denied');
-                core.setOutput('message', '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.');
+                core.setOutput('merge_result', 'denied');
+                core.setOutput('merge_message', '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.');
                 return;
               }
             }
@@ -218,19 +218,19 @@ jobs:
                 pull_number: prNumber,
                 merge_method: 'squash'
               });
-              core.setOutput('result', 'success');
-              core.setOutput('message', `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`);
+              core.setOutput('merge_result', 'success');
+              core.setOutput('merge_message', `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`);
             } catch (e) {
-              core.setOutput('result', 'failed');
-              core.setOutput('message', `❌ Failed to merge PR: ${e.message}`);
+              core.setOutput('merge_result', 'failed');
+              core.setOutput('merge_message', `❌ Failed to merge PR: ${e.message}`);
             }
 
       - name: Report Merge Result
-        if: always() && steps.merge.outputs.result
+        if: always() && steps.merge.outputs.merge_result
         uses: actions/github-script@v7
         env:
-          MERGE_RESULT: ${{ steps.merge.outputs.result }}
-          MERGE_MESSAGE: ${{ steps.merge.outputs.message }}
+          MERGE_RESULT: ${{ steps.merge.outputs.merge_result }}
+          MERGE_MESSAGE: ${{ steps.merge.outputs.merge_message }}
         with:
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
