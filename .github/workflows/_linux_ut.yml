@@ -115,20 +115,6 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Download dpclang
-        if: ${{ inputs.category == 'dpclang' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: dpclang
-      - name: Setup dpclang
-        if: ${{ inputs.category == 'dpclang' }}
-        run: |
-          rm -rf install-dpclang && mkdir install-dpclang
-          tar xzvf install-dpclang.tgz -C install-dpclang
-          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:

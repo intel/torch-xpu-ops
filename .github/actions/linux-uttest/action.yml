@@ -5,10 +5,6 @@ inputs:
   ut_name:
     required: true
     description: Which ut to launch
-  env_file:
-    required: false
-    default: ""
-    description: Environment file to source
 
 runs:
   using: composite
