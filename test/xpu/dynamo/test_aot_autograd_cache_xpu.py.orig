@@ -2653,13 +2653,18 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
         # Make the id different, but otherwise identical
         config = self.default_config()
         config2 = self.default_config()
+<<<<<<< HEAD
         config2 = dataclasses.replace(config2, aot_id=1)
-        config3.fw_compiler = lambda gm, inputs: gm
+        config3 = self.default_config()
+        config3 = dataclasses.replace(config3, fw_compiler=lambda gm, inputs: gm)
+=======
+        config2.aot_id = 1
+>>>>>>> 4c0658c3 (Rebase and fix merge issue)
 
         c1 = self.gen_cache_key(fn, config)
         c2 = self.gen_cache_key(fn, config2)
-        c3 = self.gen_cache_key(fn, config3)
         self.assertEqual(c1, c2)
+<<<<<<< HEAD
         self.assertEqual(c1, c3)
 
     def test_to_cacheable_strips_runtime_only_fields(self):
@@ -2700,6 +2705,8 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
             config_with_backend, precompile_backend_id="backend"
         )
         self.assertNotEqual(base, self.gen_cache_key(fn, config_with_backend))
+=======
+>>>>>>> 4c0658c3 (Rebase and fix merge issue)
 
     def test_different_graphs(self):
         def fn(x):
