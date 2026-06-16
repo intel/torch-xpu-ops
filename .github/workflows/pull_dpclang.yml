@@ -100,3 +100,22 @@ jobs:
       category: dpclang
       runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+
+  linux-ut:
+    needs: build-wheels
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [basic]  #[op_ut, basic]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      category: dpclang
+      runner: pvc
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      ut: ${{ matrix.ut_name }}
