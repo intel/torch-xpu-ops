@@ -260,6 +260,9 @@ jobs:
     needs: [auto-label]
     if: ${{ github.event_name == 'pull_request_target' && needs.auto-label.outputs.labels_changed == 'true' }}
     runs-on: ubuntu-24.04
+    # All API calls use MERGE_TOKEN PAT; no GITHUB_TOKEN write permissions needed.
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Cancel in-flight pull workflow and retrigger via draft toggle

@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: read
-      issues: write
-      pull-requests: read
+      issues: write         # reactions + status comments via GITHUB_TOKEN
+      pull-requests: read   # pulls.get/listReviews; merge uses MERGE_TOKEN PAT
       statuses: read
     if: >-
       github.event.issue.pull_request
