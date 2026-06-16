@@ -17,7 +17,7 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
 )
-from torch.testing._internal.common_dtype import floating_types
+from torch.testing._internal.common_dtype import all_types_complex_float8_and, floating_types
 from torch.testing._internal.common_methods_invocations import (
     foreach_binary_op_db,
     foreach_reduce_op_db,
@@ -28,6 +28,10 @@ try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+next(
+    op for op in foreach_binary_op_db if op.name == "_foreach_copy"
+).dtypesIfXPU = all_types_complex_float8_and(torch.bool, torch.half, torch.bfloat16)
 
 
 def get_device_capability(device=None):

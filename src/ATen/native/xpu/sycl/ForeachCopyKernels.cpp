@@ -120,18 +120,26 @@ struct CopyFunctor {
 
 void foreach_copy_list_kernel_(TensorList self, TensorList src) {
   std::vector<std::vector<at::Tensor>> tensor_lists{src.vec(), self.vec()};
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND7(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::Bool,
+      at::ScalarType::Float8_e4m3fn,
+      at::ScalarType::Float8_e4m3fnuz,
+      at::ScalarType::Float8_e5m2,
+      at::ScalarType::Float8_e5m2fnuz,
       self[0].scalar_type(),
       "foreach_tensor_copy",
       [&]() {
         using dst_t = scalar_t;
-        AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+        AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND7(
             at::ScalarType::Half,
             at::ScalarType::BFloat16,
             at::ScalarType::Bool,
+            at::ScalarType::Float8_e4m3fn,
+            at::ScalarType::Float8_e4m3fnuz,
+            at::ScalarType::Float8_e5m2,
+            at::ScalarType::Float8_e5m2fnuz,
             src[0].scalar_type(),
             "foreach_tensor_copy",
             [&]() {
