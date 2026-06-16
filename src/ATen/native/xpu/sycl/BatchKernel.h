@@ -9,10 +9,9 @@
  */
 
 #pragma once
-#include <c10/util/llvmMathExtras.h>
-
 #include <comm/SYCLContext.h>
 #include <algorithm>
+#include <bit>
 
 namespace at::native::xpu {
 
@@ -229,18 +228,16 @@ class BatchKernelConfig {
     // 1. assign proper x/y to accommodate workload exactly.
     // 2. prefer enough x (at least limit_x) to access memory coalecsingly.
     // Spare y for x if workload is not large along y.
-    wg_range_y_ = std::min<size_t>(
-        wg_range_y_, c10::llvm::PowerOf2Ceil((uint64_t)range_bound_y));
+    wg_range_y_ =
+        std::min<size_t>(wg_range_y_, std::bit_ceil((uint64_t)range_bound_y));
     // Subscribe appropriate x at least limit_x.
     wg_range_x_ = std::max<size_t>(
         std::min<size_t>(
-            wg_size / wg_range_y_,
-            c10::llvm::PowerOf2Ceil((uint64_t)range_bound_x)),
+            wg_size / wg_range_y_, std::bit_ceil((uint64_t)range_bound_x)),
         limit_x);
     // Retieve y if necessary, if x is not large.
     wg_range_y_ = std::min<size_t>(
-        wg_size / wg_range_x_,
-        c10::llvm::PowerOf2Ceil((uint64_t)range_bound_y));
+        wg_size / wg_range_x_, std::bit_ceil((uint64_t)range_bound_y));
 
     if ((uint8_t)policy_ & (uint8_t)Policy::pAdaptive) {
       size_t target_glb_range = syclMaxWorkItemsPerTile() /
