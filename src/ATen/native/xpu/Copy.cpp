@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/core/CachingHostAllocator.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
@@ -17,7 +18,6 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // Official suppression macro provided by Intel SYCL headers for
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/PeerToPeerAccess.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
