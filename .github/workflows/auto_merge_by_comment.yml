@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: read
-      issues: write         # reactions + status comments via GITHUB_TOKEN
+      issues: write         # status comments via GITHUB_TOKEN
       pull-requests: read   # pulls.get/listReviews; merge uses MERGE_TOKEN PAT
       statuses: read
     if: >-
@@ -23,6 +23,7 @@ jobs:
       - name: Acknowledge Command
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.reactions.createForIssueComment({
               owner: context.repo.owner,
