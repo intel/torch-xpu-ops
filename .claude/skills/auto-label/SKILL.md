@@ -107,15 +107,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **If ONLY build system files changed** (no test, no kernel): `disable_e2e`, `disable_distributed`
 
-### Rule 8: yaml/ definition changes
-
-**Condition:** Changed files include `yaml/` (operator definitions).
-
-**Labels:** Minimal — operator definition changes can affect many things. Run full CI.
-
-Apply: `none` (run full CI by default).
-
-### Rule 9: Mixed changes (fallback)
+### Rule 8: Mixed changes (fallback)
 
 **Condition:** None of the above rules fully apply (mixed src + test + CI, etc.).
 
