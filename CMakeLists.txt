@@ -30,7 +30,6 @@ cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 # Avoid SYCL compiler error
 if(NOT WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
   if("$ENV{IS_XPU_CI}" STREQUAL "1")
     string(APPEND CMAKE_CXX_FLAGS " -Werror=unused-variable")
   endif()
