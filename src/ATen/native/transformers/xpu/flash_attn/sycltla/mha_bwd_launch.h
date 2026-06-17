@@ -24,15 +24,8 @@ namespace cute {
 template <typename T, int Headdim, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
-template <typename Layout>
-auto convert_layout_2d_layout(Layout layout) {
-  auto l =
-      make_layout(make_layout(get<0>(layout), get<1>(layout)), get<2>(layout));
-  return l;
-}
-
 template <bool Is_even_M, class T>
-void compute_o_dot_do(
+CUTLASS_DEVICE void compute_o_dot_do(
     T& trait,
     Param<typename T::DType>& param,
     const int m_block,
@@ -185,34 +178,25 @@ void mha_dot_do_o(T trait, Param<typename T::DType> param) {
   }
 }
 
-template <
-    typename Engine0,
-    typename Layout0,
-    typename Engine1,
-    typename Layout1>
-CUTLASS_DEVICE void apply_mask_causal(
-    Tensor<Engine0, Layout0>& tensor,
-    Tensor<Engine1, Layout1>& rC,
-    int m_offset,
-    int n_offset,
-    int diagonal_offset = 0) {
-  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
-  CUTLASS_PRAGMA_UNROLL
-  for (int n = 0; n < size<1>(tensor); ++n) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int m = 0; m < size<0>(tensor); ++m) {
-      int y = m_offset + get<1>(rC_2d(m, n)) + diagonal_offset;
-      int x = n_offset + get<0>(rC_2d(m, n));
-      if (x > y) {
-        tensor(m, n) = -INFINITY;
-      }
-    }
-  }
-  return;
+template <typename Layout>
+CUTLASS_DEVICE auto convert_layout_2d_layout(Layout layout) {
+  auto l =
+      make_layout(make_layout(get<0>(layout), get<1>(layout)), get<2>(layout));
+  return l;
+}
+
+template <typename Layout>
+CUTLASS_DEVICE auto convert_layout_acc_layout(Layout acc_layout) {
+  static_assert(decltype(size<0>(acc_layout))::value == 8);
+  static_assert(decltype(rank(acc_layout))::value == 3);
+  auto l = logical_divide(acc_layout, Shape<_1>{});
+  auto l2 =
+      make_layout(make_layout(get<0, 1>(l), get<1>(l)), make_layout(get<2>(l)));
+  return l2;
 }
 
 template <typename T, class Trait, class MTensor, class TiledMMA>
-auto create_reg(
+CUTLASS_DEVICE auto create_reg(
     Trait const& trait,
     MTensor const& C,
     TiledMMA const& tiled_mma) {
@@ -245,7 +229,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-void gemm_kernel(
+CUTLASS_DEVICE void gemm_kernel(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -331,7 +315,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-void gemm_SdP(
+CUTLASS_DEVICE void gemm_SdP(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -350,7 +334,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-void gemm_dKV(
+CUTLASS_DEVICE void gemm_dKV(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -368,7 +352,7 @@ template <
     class Engine2,
     class Layout2,
     class TiledMMA>
-void gemm_dQ(
+CUTLASS_DEVICE void gemm_dQ(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -392,6 +376,142 @@ void gemm_dQ(
 }
 
 template <
+    bool is_causal,
+    bool Is_even_N = false,
+    bool Is_even_M = false,
+    typename Engine0,
+    typename Layout0,
+    typename Engine1,
+    typename Layout1>
+CUTLASS_DEVICE void apply_mask(
+    Tensor<Engine0, Layout0>& tensor,
+    Tensor<Engine1, Layout1>& rC,
+    int m_offset,
+    int n_offset,
+    int m_size,
+    int n_size,
+    int diagonal_offset = 0) {
+  // When both M and N dimensions are even (no tail), all positions are
+  // in bounds -- skip the OOB position mask entirely.
+  constexpr bool skip_pos_mask = Is_even_N && Is_even_M;
+  if constexpr (!is_causal && skip_pos_mask) {
+    return;
+  }
+  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
+  CUTLASS_PRAGMA_UNROLL
+  for (int n = 0; n < size<1>(tensor); ++n) {
+    CUTLASS_PRAGMA_UNROLL
+    for (int m = 0; m < size<0>(tensor); ++m) {
+      int y = m_offset + get<0>(rC_2d(m, n));
+      int x = n_offset + get<1>(rC_2d(m, n));
+      // mask out of bound positions with -inf, so that after softmax they
+      // become 0 and do not contribute to the output
+      if constexpr (!skip_pos_mask) {
+        if (y >= m_size || x >= n_size) {
+          tensor(m, n) = -INFINITY;
+        }
+      }
+
+      // apply bottom-right causal mask
+      if constexpr (is_causal) {
+        if (x > y + diagonal_offset) {
+          tensor(m, n) = -INFINITY;
+        }
+      }
+    }
+  }
+  return;
+}
+
+template <
+    bool Is_even_M,
+    class Engine0,
+    class Layout0,
+    class Engine1,
+    class Layout1,
+    class Engine2,
+    class Layout2>
+CUTLASS_DEVICE void scale_apply_exp2(
+    Tensor<Engine0, Layout0>& tensor,
+    Tensor<Engine1, Layout1>& max,
+    Tensor<Engine2, Layout2>& rC,
+    const float scale_softmax_log2,
+    const int tail_m = 0) {
+  static_assert(Layout0::rank == 2, "Only support 2D Tensor");
+  static_assert(Layout1::rank == 1, "Only support 1D Tensor");
+  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
+  CUTLASS_PRAGMA_UNROLL
+  for (int mi = 0; mi < size<0>(tensor); ++mi) {
+    int m = get<0>(rC_2d(mi, 0));
+    if constexpr (!Is_even_M) {
+      if (m >= tail_m) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int ni = 0; ni < size<1>(tensor); ++ni) {
+          tensor(mi, ni) = 0.0f;
+        }
+        continue;
+      }
+    }
+    const float max_scaled = max(m) == -INFINITY ? 0.f : max(m) * M_LOG2E;
+    CUTLASS_PRAGMA_UNROLL
+    for (int ni = 0; ni < size<1>(tensor); ++ni) {
+      tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);
+    }
+  }
+}
+
+template <
+    bool Is_even_M,
+    bool is_dropout,
+    class Engine0,
+    class Layout0,
+    class Engine1,
+    class Layout1,
+    class Engine2,
+    class Layout2,
+    class Engine3,
+    class Layout3>
+CUTLASS_DEVICE void softmax_backward(
+    Tensor<Engine0, Layout0>& P,
+    Tensor<Engine1, Layout1>& dP_sum,
+    Tensor<Engine2, Layout2>& dP,
+    Tensor<Engine3, Layout3>& rC,
+    const int tail_m,
+    const float scale,
+    const float rp_dropout = 1.0f) {
+  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
+  CUTLASS_PRAGMA_UNROLL
+  for (int mi = 0; mi < size<0>(dP); ++mi) {
+    int m = get<0>(rC_2d(mi, 0));
+    if constexpr (!Is_even_M) {
+      if (m >= tail_m)
+        continue;
+    }
+    const float dpsum = dP_sum(m);
+    CUTLASS_PRAGMA_UNROLL
+    for (int ni = 0; ni < size<1>(dP); ++ni) {
+      if constexpr (is_dropout) {
+        float p = P(mi, ni);
+        dP(mi, ni) =
+            scale * p * (p >= 0 ? dP(mi, ni) * rp_dropout - dpsum : dpsum);
+      } else {
+        dP(mi, ni) = scale * P(mi, ni) * (dP(mi, ni) - dpsum);
+      }
+    }
+  }
+}
+
+template <typename Engine, typename Layout>
+CUTLASS_DEVICE void apply_dropout_on_signed_P(
+    Tensor<Engine, Layout>& P,
+    const float& rp_dropout) {
+  CUTLASS_PRAGMA_UNROLL
+  for (int i = 0; i < size(P); ++i) {
+    P(i) = P(i) >= 0 ? P(i) * rp_dropout : 0;
+  }
+}
+
+template <
     class Trait,
     class TiledMma,
     class Engine0,
@@ -399,7 +519,7 @@ template <
     class TVLayout0,
     class Engine1,
     class Layout1>
-void mha_copy(
+CUTLASS_DEVICE void mha_copy(
     Trait& trait,
     TiledMma& tiled_mma,
     SubgroupTensor<Engine0, Layout0, TVLayout0>& r,
@@ -425,7 +545,7 @@ template <
     class TVLayout0,
     class Engine1,
     class Layout1>
-void mha_reorder_copy(
+CUTLASS_DEVICE void mha_reorder_copy(
     Trait& trait,
     TiledMma& tiled_mma,
     SubgroupTensor<Engine0, Layout0, TVLayout0>& r,
@@ -435,123 +555,8 @@ void mha_reorder_copy(
   mha_copy(trait, tiled_mma, r16, m);
 }
 
-template <bool Is_even_M, class Tensor0, class Tensor1, class Tensor2>
-CUTLASS_DEVICE void load_1colvec(
-    Tensor0& reg,
-    Tensor1& mT,
-    Tensor2& coord_row,
-    int tail_m = 0) {
-  if constexpr (Is_even_M) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int mi = 0; mi < size(reg); ++mi) {
-      reg(mi) = mT(get<0>(coord_row(mi)));
-    }
-  } else {
-    for (int mi = 0; mi < size(reg); ++mi) {
-      int row = get<0>(coord_row(mi));
-      if (row < tail_m) {
-        reg(mi) = mT(row);
-      }
-    }
-  }
-}
-
-template <typename Layout>
-CUTLASS_DEVICE auto convert_layout_acc_layout(Layout acc_layout) {
-  static_assert(decltype(size<0>(acc_layout))::value == 8);
-  static_assert(decltype(rank(acc_layout))::value == 3);
-  auto l = logical_divide(acc_layout, Shape<_1>{});
-  auto l2 =
-      make_layout(make_layout(get<0, 1>(l), get<1>(l)), make_layout(get<2>(l)));
-  return l2;
-}
-
-template <
-    bool Is_even_M,
-    class Engine0,
-    class Layout0,
-    class Engine1,
-    class Layout1,
-    class Engine2,
-    class Layout2>
-CUTLASS_DEVICE void scale_apply_exp2(
-    Tensor<Engine0, Layout0>& tensor,
-    Tensor<Engine1, Layout1>& max,
-    Tensor<Engine2, Layout2>& rC,
-    const float scale,
-    const int tail_m = 0) {
-  static_assert(Layout0::rank == 2, "Only support 2D Tensor");
-  static_assert(Layout1::rank == 1, "Only support 1D Tensor");
-  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
-  if constexpr (Is_even_M) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      const float max_scaled = max(n) == -INFINITY ? 0.f : max(n) * M_LOG2E;
-      CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(tensor); ++mi) {
-        tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
-      }
-    }
-  } else {
-    CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      const float max_scaled =
-          ((n >= tail_m) || (max(n) == -INFINITY)) ? 0.f : max(n) * M_LOG2E;
-      CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(tensor); ++mi) {
-        tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
-      }
-    }
-  }
-}
-
-template <
-    bool Is_even_M,
-    class Engine0,
-    class Layout0,
-    class Engine1,
-    class Layout1,
-    class Engine2,
-    class Layout2,
-    class Engine3,
-    class Layout3>
-CUTLASS_DEVICE void softmax_backward(
-    Tensor<Engine0, Layout0>& P,
-    Tensor<Engine1, Layout1>& dP_sum,
-    Tensor<Engine2, Layout2>& dP,
-    Tensor<Engine3, Layout3>& rC,
-    const float scale,
-    const int tail_m = 0) {
-  Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
-  if constexpr (Is_even_M) {
-    CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(dP); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      const float neg_dpsum_scaled = -(dP_sum(n) * scale);
-      CUTLASS_PRAGMA_UNROLL
-      for (int mi = 0; mi < size<0>(dP); ++mi) {
-        dP(mi, ni) = P(mi, ni) * fmaf(dP(mi, ni), scale, neg_dpsum_scaled);
-      }
-    }
-  } else {
-    CUTLASS_PRAGMA_UNROLL
-    for (int ni = 0; ni < size<1>(dP); ++ni) {
-      int n = get<1>(rC_2d(0, ni));
-      if (n < tail_m) {
-        const float neg_dpsum_scaled = -(dP_sum(n) * scale);
-        CUTLASS_PRAGMA_UNROLL
-        for (int mi = 0; mi < size<0>(dP); ++mi) {
-          dP(mi, ni) = P(mi, ni) * fmaf(dP(mi, ni), scale, neg_dpsum_scaled);
-        }
-      }
-    }
-  }
-}
-
-template <bool Is_even_N, bool Seq_parallel, class Trait>
-void dq_dk_dv_1colblock(
+template <bool Is_even_N, bool is_dropout, class Trait>
+CUTLASS_DEVICE void dq_dk_dv_1colblock(
     Trait& trait,
     Param<typename Trait::DType>& param,
     const int bidb,
@@ -585,54 +590,80 @@ void dq_dk_dv_1colblock(
       2;
   const index_t dsb_offset = pb_offset + kBlockN * kBlockM;
 
-  const auto block_n_dim = tail_n == 0 ? Int<kBlockN>{} : ((tail_n + 1) & ~1);
-  auto shapeO = make_shape(kBlockM, Int<kHeadDim>{});
-  auto shapeQtOt = make_shape(Int<kHeadDim>{}, kBlockM);
-  auto shapeSPt = make_shape(Int<kBlockN>{}, kBlockM);
-  auto shapeSP = make_shape(kBlockM, block_n_dim);
+  // P = S = Q * K^t
+  auto shapeSP = make_shape(Int<kBlockM>{}, Int<kBlockN>{});
+  Tensor mP = make_tensor(
+      make_gmem_ptr(param.pb_ptr + pb_offset),
+      make_layout(shapeSP, make_stride(Int<kBlockN>{}, _1{})));
 
-  using Shape1 =
-      Shape<std::conditional_t<Is_even_N, Int<kBlockN>, int>, Int<kHeadDim>>;
-  using Shape2 =
-      Shape<Int<kHeadDim>, std::conditional_t<Is_even_N, Int<kBlockN>, int>>;
   auto shapeQ = make_shape(kBlockM, Int<kHeadDim>{});
-  auto shapedQ = Shape<Int<kBlockM>, Int<kHeadDim>>{};
-  Shape1 shapeKtVt;
-  Shape2 shapeKV;
-  if constexpr (Is_even_N) {
-    shapeKtVt = make_shape(Int<kBlockN>{}, Int<kHeadDim>{});
-    shapeKV = make_shape(Int<kHeadDim>{}, Int<kBlockN>{});
-  } else {
-    shapeKtVt = make_shape(tail_n, Int<kHeadDim>{});
-    shapeKV = make_shape(Int<kHeadDim>{}, tail_n);
-  }
   Tensor mQ = make_tensor(
       make_gmem_ptr(param.q_ptr + q_offset),
       make_layout(shapeQ, make_stride(param.q_r_stride, _1{})));
+  using ShapeKtVt_t =
+      Shape<std::conditional_t<Is_even_N, Int<kBlockN>, int>, Int<kHeadDim>>;
+  ShapeKtVt_t shapeKtVt;
+  if constexpr (Is_even_N) {
+    shapeKtVt = make_shape(Int<kBlockN>{}, Int<kHeadDim>{});
+  } else {
+    shapeKtVt = make_shape(tail_n, Int<kHeadDim>{});
+  }
   Tensor mKt = make_tensor(
       make_gmem_ptr(param.k_ptr + k_offset),
       make_layout(shapeKtVt, make_stride(param.k_r_stride, _1{})));
+
+  // dP = dO * V^t
+  Tensor mdP = make_tensor(
+      make_gmem_ptr(param.pb_ptr + dsb_offset),
+      make_layout(shapeSP, make_stride(Int<kBlockN>{}, _1{})));
+  auto shapedO = make_shape(kBlockM, Int<kHeadDim>{});
   Tensor mdO = make_tensor(
       make_gmem_ptr(param.do_ptr + do_offset),
-      make_layout(shapeO, make_stride(param.do_r_stride, _1{})));
+      make_layout(shapedO, make_stride(param.do_r_stride, _1{})));
   Tensor mVt = make_tensor(
       make_gmem_ptr(param.v_ptr + v_offset),
       make_layout(shapeKtVt, make_stride(param.v_r_stride, _1{})));
+
+  // dV = P^t * dO
+  Tensor mdV = make_tensor(
+      make_gmem_ptr(param.dv_ptr + dv_offset),
+      make_layout(shapeKtVt, make_stride(param.dv_r_stride, _1{})));
+  auto shapeSPt = make_shape(Int<kBlockN>{}, Int<kBlockM>{});
   Tensor mPt = make_tensor(
       make_gmem_ptr(param.pb_ptr + pb_offset),
-      make_layout(shapeSPt, make_stride(Int<kBlockM>{}, _1{})));
+      make_layout(shapeSPt, make_stride(_1{}, Int<kBlockN>{})));
+  auto shapeQtOt = make_shape(Int<kHeadDim>{}, kBlockM);
   Tensor mdOt = make_tensor(
       make_gmem_ptr(param.do_ptr + do_offset),
       make_layout(shapeQtOt, make_stride(_1{}, param.do_r_stride)));
-  Tensor mK = make_tensor(
-      make_gmem_ptr(param.k_ptr + k_offset),
-      make_layout(shapeKV, make_stride(_1{}, param.k_r_stride)));
+
+  // dK = (dP)^t * Q
+  Tensor mdK = make_tensor(
+      make_gmem_ptr(param.dk_ptr + dk_offset),
+      make_layout(shapeKtVt, make_stride(param.dk_r_stride, _1{})));
   Tensor mdPt = make_tensor(
       make_gmem_ptr(param.pb_ptr + dsb_offset),
-      make_layout(shapeSPt, make_stride(Int<kBlockM>{}, _1{})));
+      make_layout(shapeSPt, make_stride(_1{}, Int<kBlockN>{})));
   Tensor mQt = make_tensor(
       make_gmem_ptr(param.q_ptr + q_offset),
       make_layout(shapeQtOt, make_stride(_1{}, param.q_r_stride)));
+
+  // dQ = dP * K
+  auto shapedQ = Shape<Int<kBlockM>, Int<kHeadDim>>{};
+  Tensor mdQaccum = make_tensor(
+      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
+      make_layout(shapedQ, make_stride(param.head_dim, _1{})));
+  using ShapeK_t =
+      Shape<Int<kHeadDim>, std::conditional_t<Is_even_N, Int<kBlockN>, int>>;
+  ShapeK_t shapeK;
+  if constexpr (Is_even_N) {
+    shapeK = make_shape(Int<kHeadDim>{}, Int<kBlockN>{});
+  } else {
+    shapeK = make_shape(Int<kHeadDim>{}, tail_n);
+  }
+  Tensor mK = make_tensor(
+      make_gmem_ptr(param.k_ptr + k_offset),
+      make_layout(shapeK, make_stride(_1{}, param.k_r_stride)));
 
   Tensor mLSE = make_tensor(
       make_gmem_ptr(param.lse_ptr + lse_offset),
@@ -641,28 +672,15 @@ void dq_dk_dv_1colblock(
       make_gmem_ptr(param.odo_ptr + lse_offset),
       make_layout(Shape<Int<kBlockM>>{}, Stride<_1>{}));
 
-  Tensor mdV = make_tensor(
-      make_gmem_ptr(param.dv_ptr + dv_offset),
-      make_layout(shapeKtVt, make_stride(param.dv_r_stride, _1{})));
-  Tensor mdP = make_tensor(
-      make_gmem_ptr(param.pb_ptr + dsb_offset),
-      make_layout(shapeSP, make_stride(_1{}, Int<kBlockM>{})));
-  Tensor mdQaccum = make_tensor(
-      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
-      make_layout(shapedQ, make_stride(param.head_dim, _1{})));
-  Tensor mdK = make_tensor(
-      make_gmem_ptr(param.dk_ptr + dk_offset),
-      make_layout(shapeKtVt, make_stride(param.dk_r_stride, _1{})));
-
   typename Trait::TiledMmaSdP tiled_mma_sdp;
   typename Trait::TiledMmadKV tiled_mma_dkv;
   typename Trait::TiledMmadQ tiled_mma_dq;
 
   auto thr_mma_sdp = tiled_mma_sdp.get_slice(local_id);
 
-  Tensor caccSt = make_identity_tensor(Shape<Int<kBlockN>, Int<kBlockM>>{});
-  Tensor taccScSt = thr_mma_sdp.partition_C(caccSt);
-  Tensor taccScS_rt = logical_divide(taccScSt, Shape<_1>{});
+  Tensor caccS = make_identity_tensor(Shape<Int<kBlockM>, Int<kBlockN>>{});
+  Tensor taccScS = thr_mma_sdp.partition_C(caccS);
+  Tensor taccScS_rt = logical_divide(taccScS, Shape<_1>{});
 
   const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
   const int tail_m = param.seq_len_q % kBlockM;
@@ -674,7 +692,6 @@ void dq_dk_dv_1colblock(
   for (int m_block = 0; m_block < max_m_block; ++m_block) {
     const bool Is_even_M = not((m_block == max_m_block - 1) and (tail_m != 0));
     if (not Is_even_M) {
-      const int block_m_dim = ((tail_m + 1) & ~1);
       mQ = make_tensor(
           make_gmem_ptr(mQ.data()),
           make_layout(
@@ -685,29 +702,11 @@ void dq_dk_dv_1colblock(
           make_layout(
               make_shape(tail_m, Int<kHeadDim>{}),
               make_stride(param.do_r_stride, _1{})));
-      mPt = make_tensor(
-          make_gmem_ptr(mPt.data()),
-          make_layout(
-              make_shape(Int<kBlockN>{}, block_m_dim),
-              make_stride(Int<kBlockM>{}, _1{})));
       mdOt = make_tensor(
           make_gmem_ptr(mdOt.data()),
           make_layout(
               make_shape(Int<kHeadDim>{}, tail_m),
               make_stride(_1{}, param.do_r_stride)));
-      mdPt = make_tensor(
-          make_gmem_ptr(mdPt.data()),
-          make_layout(
-              make_shape(Int<kBlockN>{}, block_m_dim),
-              make_stride(Int<kBlockM>{}, _1{})));
-      mdP = make_tensor(
-          make_gmem_ptr(mdP.data()),
-          make_layout(
-              make_shape(block_m_dim, block_n_dim),
-              make_stride(_1{}, Int<kBlockM>{})));
-      mdQaccum = make_tensor(
-          make_gmem_ptr(mdQaccum.data()),
-          make_layout(shapedQ, make_stride(param.head_dim, _1{})));
       mQt = make_tensor(
           make_gmem_ptr(mQt.data()),
           make_layout(
@@ -715,18 +714,31 @@ void dq_dk_dv_1colblock(
               make_stride(_1{}, param.q_r_stride)));
     }
     {
-      auto rS = create_reg<V>(trait, mPt, tiled_mma_sdp);
-      gemm_SdP(trait, mKt, mQ, rS, tiled_mma_sdp);
+      auto rS = create_reg<V>(trait, mP, tiled_mma_sdp);
+      gemm_SdP(trait, mQ, mKt, rS, tiled_mma_sdp);
       Tensor scores =
           make_tensor(rS.data(), convert_layout_acc_layout(rS.layout()));
-      if constexpr (is_causal) {
-        apply_mask_causal(
+
+      if (Is_even_M) {
+        apply_mask<is_causal, Is_even_N, true>(
             scores,
             taccScS_rt,
             m_block * kBlockM,
             n_block * kBlockN,
+            param.seq_len_q,
+            param.seq_len_kv,
+            param.seq_len_kv - param.seq_len_q);
+      } else {
+        apply_mask<is_causal, Is_even_N, false>(
+            scores,
+            taccScS_rt,
+            m_block * kBlockM,
+            n_block * kBlockN,
+            param.seq_len_q,
+            param.seq_len_kv,
             param.seq_len_kv - param.seq_len_q);
       }
+
       if (Is_even_M) {
         scale_apply_exp2<true>(
             scores, mLSE, taccScS_rt, param.scale_softmax_log2);
@@ -734,18 +746,54 @@ void dq_dk_dv_1colblock(
         scale_apply_exp2<false>(
             scores, mLSE, taccScS_rt, param.scale_softmax_log2, tail_m);
       }
-      auto rdP = create_reg<V>(trait, mdPt, tiled_mma_sdp);
-      gemm_SdP(trait, mVt, mdO, rdP, tiled_mma_sdp);
+
+      if constexpr (is_dropout) {
+        static_assert(
+            decltype(size<0>(
+                typename Trait::TiledMmaSdP::AtomShape_MNK{}))::value == 8);
+        int block_row_id = (m_block * kBlockM + get<0>(taccScS(0))) / 8;
+        int block_col_id =
+            (n_block * kBlockN + get<1>(taccScS(0))) / intel::sg_size;
+        FLASH_NAMESPACE::Dropout dropout(
+            param.rng_seed[0],
+            param.rng_offset[0],
+            param.p_dropout_in_uint16_t,
+            bidb,
+            bidh,
+            local_id,
+            param.num_head_q);
+        dropout.apply_dropout</*encode_dropout_in_sign_bit=*/true>(
+            rS, block_row_id, block_col_id);
+      }
+
+      auto rdP = create_reg<V>(trait, mdP, tiled_mma_sdp);
+      gemm_SdP(trait, mdO, mVt, rdP, tiled_mma_sdp);
       Tensor dS = make_tensor(rdP.data(), scores.layout());
       if (Is_even_M) {
-        softmax_backward<true>(
-            scores, mdPsum, dS, taccScS_rt, param.scale_softmax);
+        softmax_backward<true, is_dropout>(
+            scores,
+            mdPsum,
+            dS,
+            taccScS_rt,
+            0,
+            param.scale_softmax,
+            param.rp_dropout);
       } else {
-        softmax_backward<false>(
-            scores, mdPsum, dS, taccScS_rt, param.scale_softmax, tail_m);
+        softmax_backward<false, is_dropout>(
+            scores,
+            mdPsum,
+            dS,
+            taccScS_rt,
+            tail_m,
+            param.scale_softmax,
+            param.rp_dropout);
       }
-      mha_reorder_copy(trait, tiled_mma_sdp, rS, mPt);
-      mha_reorder_copy(trait, tiled_mma_sdp, rdP, mdPt);
+
+      if constexpr (is_dropout) {
+        apply_dropout_on_signed_P(rS, param.rp_dropout);
+      }
+      mha_reorder_copy(trait, tiled_mma_sdp, rS, mP);
+      mha_reorder_copy(trait, tiled_mma_sdp, rdP, mdP);
     }
     sycl::group_barrier(group);
     gemm_dKV(trait, mPt, mdOt, rdV, tiled_mma_dkv);
@@ -754,8 +802,8 @@ void dq_dk_dv_1colblock(
     mQ.data() = mQ.data() + int(kBlockM * param.q_r_stride);
     mdO.data() = mdO.data() + int(kBlockM * param.do_r_stride);
     mdOt.data() = mdOt.data() + int(kBlockM * param.do_r_stride);
-    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.head_dim);
     mQt.data() = mQt.data() + int(kBlockM * param.q_r_stride);
+    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.head_dim);
     mLSE.data() = mLSE.data() + int(kBlockM);
     mdPsum.data() = mdPsum.data() + int(kBlockM);
   }
@@ -769,13 +817,23 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   const int bidhq = BlockIdxY();
   const int bidnblk = BlockIdxX();
   const int bidhkv = bidhq / param.num_qh_per_kvh;
+  const bool is_dropout = param.p_dropout < 1.0f;
   for (int n_block = bidnblk; n_block < param.n_block; n_block += GridDimX()) {
-    if (param.tail_n > 0 and n_block == param.n_block - 1)
-      dq_dk_dv_1colblock<false, false>(
-          trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
-    else
-      dq_dk_dv_1colblock<true, false>(
-          trait, param, bidb, bidhq, bidhkv, n_block);
+    if (param.tail_n > 0 and n_block == param.n_block - 1) {
+      if (is_dropout)
+        dq_dk_dv_1colblock<false, true>(
+            trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
+      else
+        dq_dk_dv_1colblock<false, false>(
+            trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
+    } else {
+      if (is_dropout)
+        dq_dk_dv_1colblock<true, true>(
+            trait, param, bidb, bidhq, bidhkv, n_block);
+      else
+        dq_dk_dv_1colblock<true, false>(
+            trait, param, bidb, bidhq, bidhkv, n_block);
+    }
   }
 }
 
@@ -805,7 +863,7 @@ CUTLASS_DEVICE void convert_type(
 }
 
 template <bool Is_even_M, class T>
-void convert_dq(
+CUTLASS_DEVICE void convert_dq(
     T& trait,
     Param<typename T::DType>& param,
     int m_block,
@@ -958,13 +1016,18 @@ void run_mha_bwd_specialized(
       static_cast<const T*>(flash_bwd_params.k_ptr),
       static_cast<const T*>(flash_bwd_params.v_ptr),
       static_cast<const float*>(flash_bwd_params.lse_ptr),
+      static_cast<const uint64_t*>(flash_bwd_params.rng_seed),
+      static_cast<const uint64_t*>(flash_bwd_params.rng_offset),
       static_cast<float*>(flash_bwd_params.odo_ptr),
       static_cast<float*>(flash_bwd_params.dqaccum_ptr),
       static_cast<T*>(flash_bwd_params.dq_ptr),
       static_cast<T*>(flash_bwd_params.dk_ptr),
       static_cast<T*>(flash_bwd_params.dv_ptr),
       static_cast<T*>(flash_bwd_params.pb_ptr),
-      flash_bwd_params.scale);
+      flash_bwd_params.scale,
+      flash_bwd_params.p_dropout,
+      flash_bwd_params.p_dropout_in_uint16_t,
+      flash_bwd_params.rp_dropout);
   param.batch = BATCH;
   param.num_head_q = NUM_HEAD_Q;
   param.num_head_kv = NUM_HEAD_KV;
