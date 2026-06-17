@@ -17,7 +17,10 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
 )
-from torch.testing._internal.common_dtype import all_types_complex_float8_and, floating_types
+from torch.testing._internal.common_dtype import (
+    all_types_complex_float8_and,
+    floating_types,
+)
 from torch.testing._internal.common_methods_invocations import (
     foreach_binary_op_db,
     foreach_reduce_op_db,
