@@ -1266,7 +1266,10 @@ class DecompOneOffTests(TestCase):
         for o_ref, o in zip(out_ref, out):
             self.assertEqual(o_ref.dtype, o.dtype)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(
+        device_type == "cuda" and not SM70OrLater,
+        "triton requires CUDA with SM>=7.0",
+    )
     def test_rms_norm_decomp_accelerator(self, device):
         @torch.compile
         def rms_norm_sinh(a, b, c):
@@ -1284,12 +1287,12 @@ class DecompOneOffTests(TestCase):
             forward_pass_fn
         )
 
-        # check RMSNorm was fused with sinh
-        self.assertTrue(
-            "triton_per_fused_add_mean_mul_pow_rsqrt_sinh" in generated_codes[0]
-        )
-        self.assertTrue(
-            "triton_per_fused__fused_rms_norm_backward_cosh_mul" in generated_codes[1]
+        # check RMSNorm stays fused with sinh/cosh in fw/bw kernels.
+        # Kernel names can vary across backends (XPU/CUDA) and compiler versions.
+        self.assertGreaterEqual(len(generated_codes), 2)
+        self.assertRegex(generated_codes[0], r"triton_per_fused_.*rms_norm.*sinh")
+        self.assertRegex(
+            generated_codes[1], r"triton_per_fused_.*rms_norm.*backward.*cosh.*mul"
         )
 
 

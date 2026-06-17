@@ -11,10 +11,12 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
@@ -50,28 +52,28 @@ void sigmoid_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erf(float(a));
+    return sycl::erf(float(a));
   }
 };
 
 template <>
 struct ErfFunctor<double> {
   double operator()(double a) const {
-    return std::erf(a);
+    return sycl::erf(a);
   }
 };
 
 template <typename scalar_t>
 struct ErfcFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erfc(float(a));
+    return sycl::erfc(float(a));
   }
 };
 
 template <>
 struct ErfcFunctor<double> {
   double operator()(double a) const {
-    return std::erfc(a);
+    return sycl::erfc(a);
   }
 };
 
@@ -100,13 +102,6 @@ struct ErfinvFunctor {
   }
 };
 
-template <>
-struct ErfinvFunctor<c10::Half> {
-  c10::Half operator()(c10::Half in) const {
-    return calc_erfinv(float(in));
-  }
-};
-
 void erfinv_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half,
@@ -119,7 +114,8 @@ void erfinv_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp2(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::exp2(static_cast<opmath_t>(a));
   }
 };
 
@@ -148,7 +144,7 @@ struct Logit0Functor {
   scalar_t operator()(scalar_t x) const {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(x_acc / (T_ACC(1) - x_acc));
+    volatile T_ACC res = sycl::log(x_acc / (T_ACC(1) - x_acc));
     return res;
   }
 };
@@ -160,7 +156,7 @@ struct Logit1Functor {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    volatile T_ACC res = sycl::log(z / (T_ACC(1) - z));
     return res;
   }
   Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
@@ -289,7 +285,9 @@ struct EntrFunctor {
     if (at::_isnan(x)) {
       return x;
     } else if (x > 0) {
-      return -x * std::log(x);
+      using opmath_t = at::opmath_type<scalar_t>;
+      return static_cast<scalar_t>(
+          static_cast<opmath_t>(-x) * sycl::log(static_cast<opmath_t>(x)));
     } else if (x == 0) {
       return 0;
     }

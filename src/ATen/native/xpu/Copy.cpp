@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/core/CachingHostAllocator.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
@@ -17,7 +18,6 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // Official suppression macro provided by Intel SYCL headers for
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/PeerToPeerAccess.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
@@ -25,6 +25,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <c10/core/ScalarType.h>
+#include <c10/util/env.h>
 #include <c10/xpu/XPUStream.h>
 #include <comm/xpu_aten.h>
 
@@ -88,10 +89,16 @@ void memcpyAsync(
   }
   auto q = copy_stream.queue();
   auto dev = q.get_device();
-  if (dev.ext_oneapi_architecture_is(
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc) ||
-      dev.ext_oneapi_architecture_is(
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg)) {
+  // TORCH_XPU_USE_COPY_ENGINE (default: disabled)
+  // On PVC, the copy kernel is default for better performance. Set to 1 to
+  // force use of the SYCL queue copy engine instead, e.g. for benchmarking
+  static const bool use_copy_engine =
+      c10::utils::check_env("TORCH_XPU_USE_COPY_ENGINE").value_or(false);
+  if (!use_copy_engine &&
+      (dev.ext_oneapi_architecture_is(
+           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc) ||
+       dev.ext_oneapi_architecture_is(
+           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg))) {
     copy_kernel(iter);
   } else {
     auto dst = (char*)iter.data_ptr(0);
