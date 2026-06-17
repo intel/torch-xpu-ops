@@ -503,7 +503,7 @@ Tensor& ungqr_mkl(Tensor& result, const Tensor& tau) {
       const int64_t scratchpad_size =
           oneapi::mkl::lapack::ungqr_batch_scratchpad_size<T>(
               queue, m, n, k, lda, matrix_stride, batch_tau_stride, batch_size);
-      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
       oneapi::mkl::lapack::ungqr_batch(
@@ -523,7 +523,7 @@ Tensor& ungqr_mkl(Tensor& result, const Tensor& tau) {
     } else {
       const int64_t scratchpad_size =
           oneapi::mkl::lapack::ungqr_scratchpad_size<T>(queue, m, n, k, lda);
-      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
       for (const auto batch_item : c10::irange(batch_size)) {
@@ -572,7 +572,7 @@ Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
       const int64_t scratchpad_size =
           oneapi::mkl::lapack::orgqr_batch_scratchpad_size<T>(
               queue, m, n, k, lda, matrix_stride, batch_tau_stride, batch_size);
-      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
       oneapi::mkl::lapack::orgqr_batch(
@@ -592,7 +592,7 @@ Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
     } else {
       const int64_t scratchpad_size =
           oneapi::mkl::lapack::orgqr_scratchpad_size<T>(queue, m, n, k, lda);
-      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      Tensor scratchpad_at = at::zeros({scratchpad_size}, result.options());
       auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
 
       for (const auto batch_item : c10::irange(batch_size)) {
