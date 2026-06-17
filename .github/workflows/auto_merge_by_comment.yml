@@ -5,15 +5,16 @@ on:
     types: [created]
 
 permissions:
-  checks: read
-  contents: write
-  issues: write
-  pull-requests: write
-  statuses: read
+  contents: read
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      issues: write         # status comments via GITHUB_TOKEN
+      pull-requests: read   # pulls.get/listReviews; merge uses MERGE_TOKEN PAT
+      statuses: read
     if: >-
       github.event.issue.pull_request
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
@@ -22,6 +23,7 @@ jobs:
       - name: Acknowledge Command
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.reactions.createForIssueComment({
               owner: context.repo.owner,
@@ -108,7 +110,18 @@ jobs:
               })
             ]);
 
-            const pending = checks.data.check_runs.filter(c => c.status !== 'completed');
+            // A workflow can be triggered multiple times on the same commit.
+            // Keep only the latest run per check name (by started_at timestamp).
+            const latestByName = new Map();
+            for (const c of checks.data.check_runs) {
+              const existing = latestByName.get(c.name);
+              if (!existing || new Date(c.started_at) > new Date(existing.started_at)) {
+                latestByName.set(c.name, c);
+              }
+            }
+            const latestChecks = [...latestByName.values()];
+
+            const pending = latestChecks.filter(c => c.status !== 'completed');
             if (pending.length > 0) {
               const names = pending.map(c => c.name).join(', ');
               await github.rest.issues.createComment({
@@ -123,7 +136,7 @@ jobs:
 
             // 'neutral' and 'skipped' are acceptable conclusions
             const acceptableConclusions = new Set(['success', 'skipped', 'neutral']);
-            const failedChecks = checks.data.check_runs
+            const failedChecks = latestChecks
               .filter(c => !acceptableConclusions.has(c.conclusion));
             const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
 
@@ -180,27 +193,21 @@ jobs:
 
       - name: Merge PR
         uses: actions/github-script@v7
+        id: merge
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
         with:
-          github-token: ${{ secrets.MERGE_TOKEN || github.token }}
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const forceMerge = process.env.FORCE_MERGE === 'true';
             const author = context.payload.comment.user.login;
 
             if (forceMerge) {
-              // Check if comment author is a maintainer via author_association
-              // (avoids dependency on a specific team slug that may not exist)
               const authorAssociation = context.payload.comment.author_association;
               if (!['OWNER', 'MEMBER'].includes(authorAssociation)) {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: prNumber,
-                  body: '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.'
-                });
-                core.setFailed('Force merge not allowed: author is not a maintainer.');
+                core.setOutput('merge_result', 'denied');
+                core.setOutput('merge_message', '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.');
                 return;
               }
             }
@@ -212,18 +219,32 @@ jobs:
                 pull_number: prNumber,
                 merge_method: 'squash'
               });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`
-              });
+              core.setOutput('merge_result', 'success');
+              core.setOutput('merge_message', `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`);
             } catch (e) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: `❌ Failed to merge PR: ${e.message}\n\nPlease ensure the repository has a \`MERGE_TOKEN\` secret configured with \`contents: write\` permission, or that the default GITHUB_TOKEN has sufficient permissions.`
-              });
-              core.setFailed(`Merge failed: ${e.message}`);
+              core.setOutput('merge_result', 'failed');
+              core.setOutput('merge_message', `❌ Failed to merge PR: ${e.message}`);
+            }
+
+      - name: Report Merge Result
+        if: always() && steps.merge.outputs.merge_result
+        uses: actions/github-script@v7
+        env:
+          MERGE_RESULT: ${{ steps.merge.outputs.merge_result }}
+          MERGE_MESSAGE: ${{ steps.merge.outputs.merge_message }}
+        with:
+          script: |
+            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
+            const result = process.env.MERGE_RESULT;
+            const message = process.env.MERGE_MESSAGE;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: message
+            });
+
+            if (result !== 'success') {
+              core.setFailed(message);
             }
