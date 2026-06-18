@@ -18,11 +18,14 @@ If the spreadsheet already contains `testfile_xpu`, `classname_xpu`, `name_xpu` 
 
 The workflow reuses already-analyzed results when possible (same class + similar error message), avoiding redundant work. For new rows, it runs a decision cascade:
 
+0. **Local test run** (for `status_xpu` blank only)? → `Local Passed` (if test passes locally)
 1. Is it a **not-target feature**? → `Not Applicable`
 2. Does it have a **community change**? → `Community Change`
 3. Is `status_xpu` blank? → `To be enabled`
 4. Is there a **known issue**? → `Failures (xpu broken)` / `Feature gap` / `To be enabled`
 5. No known issue → `Submit Issue`
+
+If a test is `Local Passed`, no further classification is needed — it skips Gates 1–4 entirely.
 
 ## Inputs
 
@@ -56,11 +59,12 @@ pip install openpyxl
 
 ## Scripts
 
-This skill uses two companion scripts, both located in the sibling `scripts/` directory:
+This skill uses three companion scripts, all located in the sibling `scripts/` directory:
 
 | Script | Purpose | Workspace-relative path |
 |--------|---------|------------------------|
 | `extract_tasks.py` | Reads the Excel, deduplicates rows, outputs `tasks.json` | `.opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py` |
+| `run_blank_test.py` | Runs `status_xpu` blank test cases locally; marks passing tests as `Local Passed` | `.opencode/skills/torch-xpu-ops-validation/scripts/run_blank_test.py` |
 | `write_results.py` | Takes classification results and writes the `"agent"` sheet | `.opencode/skills/torch-xpu-ops-validation/scripts/write_results.py` |
 
 Run all script commands from the **workspace root** (the repository checkout directory). Do not `cd` into subdirectories.
@@ -90,11 +94,38 @@ The script outputs a JSON object with:
 2. For remaining rows: if a row shares the same `classname_xpu` AND similar `message_xpu` with an analyzed row, copy its `Reason`/`DetailReason` and mark `ReuseSource`.
 3. **Similar message**: messages share an operator reference (`aten::\w+`, `torch\.\w+`) OR have Levenshtein similarity > 0.7 after normalization.
 
-### Phase 2: Classify Each Task
+### Phase 2: Local Test Run (Gate 0)
 
-For each row in `tasks.json`, run the decision cascade. Each check is a **hard gate** — if the condition is met, classification stops and the result is recorded.
+Before running the cascade, run blank `status_xpu` test cases locally. If a test passes locally, it is `Local Passed` and skips all further classification.
 
-> **IMPORTANT — Cascade is mandatory for every task**: The `Reason` and `DetailReason` fields in the `tasks.json` input may contain pre-populated values from a prior run. **These are NOT valid classification results.** The orchestrator MUST run the full cascade (Gates 1-4 via subagents) for every task in the `tasks` array. Only rows in `already_resolved` (Analyzed=TRUE or deduplicated) may bypass the cascade via Step 0 reuse.
+```bash
+# Run from workspace root with a conda environment that has PyTorch installed
+python3 .opencode/skills/torch-xpu-ops-validation/scripts/run_blank_test.py tasks.json \
+    --output results.json --log-dir test_logs --env <conda_env_name> --timeout 300
+```
+
+**Behavior**:
+- Only tasks with blank `status_xpu` are run.
+- Tests are grouped by file and run via `pytest`.
+- A test is `Local Passed` only if `pytest` reports `1 passed` with no `FAILED` output.
+- `DetailReason` is set to the local PyTorch version (e.g. `"Local test PASSED (torch 2.13.0+xpu)"`).
+- Full pytest output is dumped to `test_logs/<testfile_safe_name>.log`.
+- A `run_summary.log` is written to `test_logs/` with per-file results.
+- The output `results.json` includes `Local Passed` entries ready for `write_results.py`.
+- Tests that do not pass locally remain in the output for cascade processing.
+
+**If `Local Passed`**:
+- `Reason = "Local Passed"`
+- `DetailReason = "Local test PASSED (torch <version>)"`
+- Stop. Do not run Gates 1–4 for this row.
+
+**If NOT `Local Passed`** → proceed to Phase 2 (cascade).
+
+### Phase 3: Classify Each Task
+
+For each row not yet classified (not `Local Passed`), run the decision cascade. Each check is a **hard gate** — if the condition is met, classification stops and the result is recorded.
+
+> **IMPORTANT — Cascade is mandatory for every unclassified task**: Tasks not marked `Local Passed` must still run the cascade. The `Reason` and `DetailReason` fields in the `tasks.json` input may contain pre-populated values from a prior run. **These are NOT valid classification results.** The orchestrator MUST run the full cascade (Gates 1-4 via subagents) for every task in the `tasks` array. Only rows in `already_resolved` (Analyzed=TRUE or deduplicated) may bypass the cascade via Step 0 reuse.
 
 > **IMPORTANT — `--filter-*` flags are post-hoc only**: The `--filter-reason` and `--filter-detailreason` flags on `extract_tasks.py` exist for extracting a subset of already-classified rows for review. They MUST NOT be used as a classification shortcut. If you use them to select rows, you MUST still run the full cascade on those rows. "I already know the result" is not valid — the subagents determine the result.
 
@@ -212,7 +243,7 @@ Stop cascade for this row.
 
 ---
 
-### Phase 3: Write Results to Excel
+### Phase 4: Write Results to Excel
 
 `write_results.py` has two modes. Choose based on whether the output file already exists.
 
@@ -248,13 +279,19 @@ Load this skill to orchestrate the full classification. The agent follows this w
    ```
    python3 .opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py <excel_path> [sheet_name] > tasks.json
    ```
-2. For each task in `tasks.json`, run the decision cascade:
+2. **(New) Run Phase 2 — Local Test (Gate 0)**:
+   ```
+   python3 .opencode/skills/torch-xpu-ops-validation/scripts/run_blank_test.py tasks.json \
+       --output results.json --log-dir test_logs --env <conda_env>
+   ```
+   This runs all `status_xpu` blank tests locally. Passing tests get `Reason = "Local Passed"` and skip the cascade.
+3. For each remaining task (not `Local Passed`) in `results.json`, run the decision cascade:
    - **Gate 1**: Pass XPU identifiers (`name_xpu`, `classname_xpu`, `testfile_xpu`). Determine if the XPU test is a not-target feature.
    - **Gate 2**: Pass CUDA identifiers (`name_cuda`, `classname_cuda`, `testfile_cuda`). Check if the upstream CUDA test was removed/renamed (which also affects the XPU variant).
    - **Gate 3**: Check `status_xpu` value directly from the task data.
    - **Gate 4**: Pass XPU identifiers (`name_xpu`, `classname_xpu`, `testfile_xpu`) plus the CUDA source references. Search for known issues related to the XPU failure.
-3. Accumulate all results (already_resolved + newly classified tasks) into `results.json`.
-4. Run Phase 3. If the `--output-excel` accumulator does not exist yet, BUILD it:
+4. Accumulate all results (already_resolved + Local Passed + newly classified tasks) into `results.json`.
+5. Run Phase 4. If the `--output-excel` accumulator does not exist yet, BUILD it:
    ```
    python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py <excel_path> results.json [sheet_name] --output_sheet=agent --output-excel=agent_results.xlsx
    ```
@@ -262,10 +299,11 @@ Load this skill to orchestrate the full classification. The agent follows this w
    ```
    python3 .opencode/skills/torch-xpu-ops-validation/scripts/write_results.py --merge results.json --output_sheet=agent --output-excel=agent_results.xlsx
    ```
-5. Report summary statistics: rows total, deduplicated, classified per Reason category.
+6. Report summary statistics: rows total, deduplicated, local passed, classified per Reason category.
 
 ## Constraints
 
+0. **Gate 0 (Local Test) runs before the cascade**: Always run `run_blank_test.py` before Gate 1. Tests that pass locally (`Local Passed`) skip Gates 1–4 entirely. Only tests that fail/skip/time out locally proceed to the cascade. This saves classification effort for working tests.
 1. **Gate order is strict**: Always check `not_target` before `community_change`, and `community_change` before `status_xpu`. Breaking the order can produce wrong classifications.
 2. **Deduplication is a speed optimization, not a classification shortcut**: Only reuse results from rows with the same class AND similar error message. Do not reuse across unrelated tests.
 3. **Scripts handle all Excel I/O**: The agent should never manipulate Excel cells directly. Always use `.opencode/skills/torch-xpu-ops-validation/scripts/extract_tasks.py` and `.opencode/skills/torch-xpu-ops-validation/scripts/write_results.py`.
@@ -283,6 +321,7 @@ Load this skill to orchestrate the full classification. The agent follows this w
 
 ## Version
 
+- v3.0.0 - 2026-06-17 - Added Gate 0 (Local Test) via `run_blank_test.py`. Blank `status_xpu` tests are run locally before the cascade. Passing tests get `Reason = "Local Passed"` and skip further classification. Added `run_blank_test.py` script and updated workflow Phases (2→local test, 3→cascade, 4→write results). New Constraint 0.
 - v2.3.0 - 2026-06-14 - `check_not_target_feature`: require listing the corresponding `intel/torch-xpu-ops` `not_target`/`wontfix` issue number in `evidence` whenever one exists (new Step 6 "Attach Issue Number" + Strict Constraint 6), even for verdicts reached via the Not-Applicable sheet (Step 3) or implementation analysis (Step 5). Updated Constraint 13 to prefer issue numbers for not_target evidence.
 - v2.2.0 - 2026-06-14 - Added incremental `--merge` mode to `write_results.py` for safely updating an existing accumulator in place (only touches rows in `results.json`, preserves all prior rows). Added a destructive-rebuild guard (BUILD aborts rather than discarding prior `Analyzed = TRUE` rows; override with `--force`), automatic `.bak` backup on in-place writes, and ambiguity detection. Documented BUILD vs MERGE in Phase 3 and added Constraint 14.
 - v2.1.0 - 2026-06-10 - Added Constraint 10-12: explicit rules against using `--filter-reason`/`--filter-detailreason` as classification shortcut, ignoring pre-populated Reason/DetailReason in tasks, and restricting readable task fields. Added IMPORTANT callouts at Phase 2 entry. Added WARNING stderr messages in `extract_tasks.py` for `--filter-reason`/`--filter-detailreason` to discourage misuse.
@@ -291,6 +330,7 @@ Load this skill to orchestrate the full classification. The agent follows this w
 
 ## See Also
 
+- `run_blank_test.py` — Gate 0: runs blank `status_xpu` tests locally, marks passing tests as `Local Passed`
 - `check_not_target_feature` — Gate 1: determines if a test is CUDA-only / not applicable for XPU
 - `check_community_change` — Gate 2: determines if a test was removed/renamed upstream
 - `check_known_issue` — Gate 4: searches for known issues in pytorch/pytorch and intel/torch-xpu-ops
