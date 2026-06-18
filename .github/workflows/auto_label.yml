@@ -133,7 +133,6 @@ jobs:
           HAS_WORKFLOW=false
           HAS_CI_SCRIPTS=false
           HAS_GITHUB_META=false
-          HAS_YAML=false
           ONLY_SKIP_EXPECT=true
           HAS_WIN_TEST=false
 
@@ -156,11 +155,10 @@ jobs:
               .github/actions/*|.github/scripts/*) HAS_CI_SCRIPTS=true ;;
               .github/*) HAS_GITHUB_META=true ;;
               .claude/*) HAS_GITHUB_META=true ;;
-              yaml/*) HAS_YAML=true ;;
             esac
           done <<< "$FILES"
 
-          if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
+          if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ]; then
             if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_CI_SCRIPTS" = true ]; then
               # CI workflow/action/script changes — can't determine scope from paths alone, run full CI
               LABELS=""
@@ -168,7 +166,7 @@ jobs:
               # Pure metadata (.claude/, .github/ templates, test/agentic/)
               LABELS="disable_all"
             fi
-          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ] && [ "$HAS_TEST" = true ]; then
+          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_TEST" = true ]; then
             # Test-only changes
             if [ "$ONLY_SKIP_EXPECT" = true ]; then
               LABELS="disable_all"
@@ -178,7 +176,7 @@ jobs:
                 LABELS="${LABELS},disable_win"
               fi
             fi
-          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ]; then
+          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ]; then
             # Source changes (possibly with tests)
             if [ "$HAS_XCCL" = true ]; then
               # xccl is distributed backend — must run distributed tests, Linux-only
@@ -186,11 +184,11 @@ jobs:
             else
               LABELS="disable_e2e,disable_distributed"
             fi
-          elif [ "$HAS_CMAKE" = true ] && [ "$HAS_SRC" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
+          elif [ "$HAS_CMAKE" = true ] && [ "$HAS_SRC" = false ] && [ "$HAS_TEST" = false ]; then
             # Build system only (including src/*.cmake)
             LABELS="disable_e2e,disable_distributed"
           fi
-          # yaml/ changes, CI script changes, or mixed → no labels (full CI)
+          # CI script changes or mixed → no labels (full CI)
 
           echo "labels=${LABELS}" >> "$GITHUB_OUTPUT"
           echo "api_success=false" >> "$GITHUB_OUTPUT"
