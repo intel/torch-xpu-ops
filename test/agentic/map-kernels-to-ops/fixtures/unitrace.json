@@ -1,0 +1,7 @@
+{
+  "traceEvents": [
+    {"ph": "X", "name": "gemm_kernel[SIMD32 {64; 1; 1} {16; 16; 1}]", "ts": 200, "dur": 4800, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "SoftMaxForwardKernel[SIMD16 {128; 1; 1} {32; 1; 1}]", "ts": 5100, "dur": 1900, "pid": 1, "tid": 2},
+    {"ph": "X", "name": "gemm_kernel[SIMD32 {64; 1; 1} {16; 16; 1}]", "ts": 7100, "dur": 3800, "pid": 1, "tid": 2}
+  ]
+}
