@@ -486,22 +486,21 @@ static void max_unpooling3d_shape_check(
   int nslices = input.size(dimn);
 
   if (gradOutput.defined()) {
-    if (oT != gradOutput.size(dimt) || oH != gradOutput.size(dimh) ||
-        oW != gradOutput.size(dimw)) {
-      AT_ERROR(
-          "Inconsistent gradOutput size. oT= ",
-          oT,
-          ", oH= ",
-          oH,
-          ", oW= ",
-          oW,
-          ". gradOutput: ",
-          gradOutput.size(dimt),
-          "x",
-          gradOutput.size(dimh),
-          "x",
-          gradOutput.size(dimw));
-    }
+    TORCH_CHECK(
+        oT == gradOutput.size(dimt) && oH == gradOutput.size(dimh) &&
+            oW == gradOutput.size(dimw),
+        "Inconsistent gradOutput size. oT= ",
+        oT,
+        ", oH= ",
+        oH,
+        ", oW= ",
+        oW,
+        ". gradOutput: ",
+        gradOutput.size(dimt),
+        "x",
+        gradOutput.size(dimh),
+        "x",
+        gradOutput.size(dimw));
     TORCH_CHECK(
         gradOutput.ndimension() == input.ndimension() &&
             gradOutput.size(dimn) == nslices,
