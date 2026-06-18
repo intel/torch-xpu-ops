@@ -93,6 +93,7 @@ The script outputs a JSON object with:
 1. Rows where `Analyzed == TRUE` are carried over as-is.
 2. For remaining rows: if a row shares the same `classname_xpu` AND similar `message_xpu` with an analyzed row, copy its `Reason`/`DetailReason` and mark `ReuseSource`.
 3. **Similar message**: messages share an operator reference (`aten::\w+`, `torch\.\w+`) OR have Levenshtein similarity > 0.7 after normalization.
+4. **Critical exception — different GitHub issues are never similar**: Messages referencing different GitHub issue/PR numbers (e.g. `github.com/pytorch/pytorch/issues/179853` vs `github.com/pytorch/pytorch/issues/179897`) are NEVER considered similar, even if the surrounding text is identical. The issue/PR number is classification-critical evidence — each issue URL maps to a unique `DetailReason` that must not be reused across rows with different issues.
 
 ### Phase 2: Local Test Run (Gate 0)
 

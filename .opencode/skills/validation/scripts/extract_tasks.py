@@ -48,12 +48,28 @@ def extract_operators(message: str) -> set:
     return ops
 
 
+def extract_github_issues(message: str) -> set:
+    """Extract GitHub issue/PR numbers from an error message."""
+    if not message:
+        return set()
+    return set(re.findall(r'github\.com/\S+/(?:issues|pull)/(\d+)', message))
+
+
 def normalize_message(msg: str) -> str:
-    """Normalize a message for similarity comparison."""
+    """Normalize a message for similarity comparison.
+
+    Preserves GitHub issue references (issue numbers are meaningful evidence
+    that distinguishes known-issue rows). Strips environment-specific noise
+    like hex addresses, random paths, and long digit sequences.
+    """
     if not msg:
         return ""
     msg = msg.lower().strip()
+    # Preserve GitHub issue references — the issue number is meaningful evidence
+    msg = re.sub(r'github\.com/\S+/(?:issues|pull)/(\d+)', r'github_issue_\1', msg)
+    # Strip environment-specific noise
     msg = re.sub(r'0x[0-9a-f]+', '', msg)
+    msg = re.sub(r'https?://\S+', '', msg)
     msg = re.sub(r'/\S+', '', msg)
     msg = re.sub(r'\b\d{10,}\b', '', msg)
     msg = re.sub(r'\s+', ' ', msg).strip()
@@ -82,11 +98,21 @@ def levenshtein_similarity(a: str, b: str) -> float:
 
 
 def messages_similar(msg_a: str, msg_b: str, threshold: float = 0.7) -> bool:
-    """Check if two error messages are similar (share operators OR high string similarity)."""
+    """Check if two error messages are similar (share operators OR high string similarity).
+
+    Messages with different GitHub issue/PR numbers are NEVER considered similar,
+    even if the surrounding text is identical — each issue number is classification-
+    critical evidence.
+    """
     ops_a = extract_operators(msg_a)
     ops_b = extract_operators(msg_b)
     if ops_a and ops_b and ops_a & ops_b:
         return True
+    # Different GitHub issues = not similar (each issue has unique DetailReason)
+    issues_a = extract_github_issues(msg_a)
+    issues_b = extract_github_issues(msg_b)
+    if issues_a and issues_b and issues_a != issues_b:
+        return False
     sim = levenshtein_similarity(normalize_message(msg_a), normalize_message(msg_b))
     return sim >= threshold
 
