@@ -142,7 +142,7 @@ Test: <test line>
 ## Checklist before handing off
 
 - [ ] pre-commit / lintrunner passed (or not configured — noted in summary)
-- [ ] `yaml/`, `src/`, and `test/` are consistent (if any were touched)
+- [ ] `src/`, and `test/` are consistent (if any were touched)
 - [ ] Test file added to `test/repro/` or `Test: none (reason)` written
 - [ ] No unrelated files changed
 - [ ] Commit message is imperative, max 72 chars
