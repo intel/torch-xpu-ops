@@ -1396,8 +1396,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             )
             self.assertEqual(t["entries"][coalesced_op]["p2p_seq_id"], expected_seq)
             expected_seq += 1
-            print("Status:", t["entries"][coalesced_op]["state"])
-            #self.assertEqual(t["entries"][coalesced_op]["state"], "completed")
+            # self.assertEqual(t["entries"][coalesced_op]["state"], "completed")
             self.assertEqual(t["entries"][coalesced_op]["input_sizes"], [])
             self.assertEqual(t["entries"][coalesced_op]["output_sizes"], [])
             if timing_enabled:
