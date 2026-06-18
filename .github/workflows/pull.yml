@@ -251,7 +251,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: bmg-test
-      pytorch: distributed_2.13
+      pytorch: release/2.13
       torch_xpu_ops: dist_2.13
       ut: ${{ matrix.ut_name }}
 
