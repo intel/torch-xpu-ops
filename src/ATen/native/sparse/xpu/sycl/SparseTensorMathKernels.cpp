@@ -644,7 +644,6 @@ Tensor _sparse_sum_backward_kernel(
     } else {
       grad_input_values = at::empty_like(
           input_values, grad_values.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-      AT_ASSERT(grad_input_values.is_xpu());
 
       // get 1D indices
       auto grad_sparse_dim_to_keep_v = std::vector<int64_t>(grad_sparse_dim);
