@@ -1,0 +1,12 @@
+{
+  "traceEvents": [
+    {"ph": "X", "cat": "cpu_op", "name": "aten::addmm", "ts": 1000, "dur": 500, "args": {"External id": 1, "Input Dims": "[[64, 768], [768, 3072]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::_softmax", "ts": 2000, "dur": 300, "args": {"External id": 2, "Input Dims": "[[64, 12, 128, 128]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::addmm", "ts": 3000, "dur": 450, "args": {"External id": 3, "Input Dims": "[[64, 768], [768, 768]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::mul", "ts": 4000, "dur": 100, "args": {"External id": 4, "Input Dims": "[[64, 768]]"}},
+    {"ph": "X", "cat": "kernel", "name": "gemm_kernel", "ts": 1100, "dur": 5000, "args": {"External id": 1}},
+    {"ph": "X", "cat": "kernel", "name": "SoftMaxForwardKernel", "ts": 6200, "dur": 2000, "args": {"External id": 2}},
+    {"ph": "X", "cat": "kernel", "name": "gemm_kernel", "ts": 8300, "dur": 4000, "args": {"External id": 3}},
+    {"ph": "X", "cat": "kernel", "name": "mul_kernel", "ts": 12400, "dur": 800, "args": {"External id": 4}}
+  ]
+}
