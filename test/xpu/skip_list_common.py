@@ -325,7 +325,7 @@ skip_dict = {
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     "dynamo/test_functions_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
