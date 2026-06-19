@@ -13,6 +13,8 @@
 # Owner(s): ["module: intel"]
 
 
+from unittest import mock
+
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
@@ -78,6 +80,22 @@ from torch.distributions import (
 )
 from torch.nn.functional import softmax
 from torch.testing._internal.common_utils import set_rng_seed
+
+_orig_test_distributions_set_up = TestDistributions.setUp
+
+
+def _xpu_test_distributions_set_up(self):
+    _orig_test_distributions_set_up(self)
+    patcher = mock.patch.multiple(
+        "torch",
+        get_rng_state=lambda: torch.xpu.get_rng_state(),
+        set_rng_state=lambda state: torch.xpu.set_rng_state(state),
+    )
+    patcher.start()
+    self.addCleanup(patcher.stop)
+
+
+TestDistributions.setUp = _xpu_test_distributions_set_up
 
 
 def _test_beta_underflow_gpu(self):
