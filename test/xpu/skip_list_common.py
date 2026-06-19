@@ -304,7 +304,14 @@ skip_dict = {
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_export_strict_xpu.py": None,
-    "export/test_torchbind_xpu.py": None,
+    "export/test_torchbind_xpu.py": (
+        # Skipped due to lack of _TorchScriptTesting::queue_push implementation.
+        # It will not be added as the whole TorchScript is currently deprecated.
+        "test_export_obj_torchbind_op_with_autocast_device_xpu",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_aot_eager",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
+    ),
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
@@ -336,4 +343,5 @@ skip_dict = {
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
+    "test_fx_experimental_xpu.py": None,
 }
