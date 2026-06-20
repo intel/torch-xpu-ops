@@ -18,6 +18,8 @@
 #include <comm/SYCLContext.h>
 #include <cstdint>
 
+#include <bit>
+
 namespace at {
 namespace native {
 namespace xpu {
@@ -676,17 +678,6 @@ void sort_pairs(
       keys_in, keys_out, values_in, values_out, 1, num_elements, descending);
 }
 
-inline uint64_t radix_select_last_power2(uint64_t n) {
-  n--;
-  n |= n >> 1;
-  n |= n >> 2;
-  n |= n >> 4;
-  n |= n >> 8;
-  n |= n >> 16;
-  n++;
-  return n;
-}
-
 template <
     typename key_t,
     typename value_t,
@@ -719,7 +710,7 @@ void segmented_group_select_pairs_(
   }
   constexpr int max_group_size = 1024; // simd32-specific
   if (num_elements <= max_group_size * 4) {
-    switch (radix_select_last_power2(num_elements)) {
+    switch (std::bit_ceil(static_cast<uint64_t>(num_elements))) {
       case 4096:
         RUN_RADIX_SELECT(4096); // gsz 1024
         break;
