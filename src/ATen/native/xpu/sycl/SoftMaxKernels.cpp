@@ -2275,29 +2275,6 @@ void _log_softmax_backward_kernel(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
 }
 
-Tensor _safe_softmax_kernel(
-    const Tensor& self,
-    int64_t dim,
-    const bool half_to_float) {
-  auto output_options =
-      self.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  if (half_to_float) {
-    output_options = output_options.dtype(ScalarType::Float);
-  }
-  Tensor output = at::empty_like(self, output_options);
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
-      self.scalar_type(),
-      "_safe_softmax",
-      [&] {
-        host_softmax<false, true>(
-            self.contiguous(), dim, half_to_float, output);
-      });
-
-  return output;
-}
-
 Tensor masked_softmax_kernel(
     const Tensor& input_,
     const Tensor& mask_,
