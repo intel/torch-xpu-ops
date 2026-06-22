@@ -172,7 +172,7 @@ void _fft_with_size(
         ? _mkl_dft<precision::DOUBLE, domain::COMPLEX, double>
         : _mkl_dft<precision::DOUBLE, domain::REAL, double>;
   } else {
-    AT_ERROR("MKL FFT doesn't support tensor of type");
+    TORCH_CHECK(false, "MKL FFT doesn't support tensor of type");
   }
 
   dft_func(
