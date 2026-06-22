@@ -69,6 +69,7 @@ jobs:
         id: determine-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          MODELS_TOKEN: ${{ secrets.MODELS_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
           SKILL_CONTENT=$(cat .claude/skills/auto-label/SKILL.md)
@@ -112,37 +113,22 @@ jobs:
             return 1
           }
 
-          # 1. Try Copilot API (uses GITHUB_TOKEN, no PAT needed)
-          echo "Trying Copilot API..."
-          RESPONSE=$(GH_TOKEN=${{ secrets.COPILOT_TOKEN }} gh api /copilot/chat/completions \
-            --method POST \
-            -f model="gpt-4o" \
-            -f "messages[][role]=user" \
-            -f "messages[][content]=${PROMPT}" \
-            --jq '.choices[0].message.content' 2>&1) && {
-            echo "Copilot API succeeded"
+          # Try GitHub Models API (requires PAT with models scope)
+          echo "Trying GitHub Models API..."
+          RESPONSE=$(curl -sf --max-time 30 \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $MODELS_TOKEN" \
+            -d "$(jq -nc --arg model "openai/gpt-4o-mini" --arg content "$PROMPT" \
+              '{model: $model, messages: [{role: "user", content: $content}]}')" \
+            "https://models.github.ai/inference/chat/completions" | \
+            jq -r '.choices[0].message.content' 2>/dev/null) && {
+            echo "GitHub Models API succeeded"
             parse_llm_response "$RESPONSE" && LLM_SUCCESS=true
           } || {
-            echo "Copilot API failed: $RESPONSE"
+            echo "GitHub Models API failed: $RESPONSE"
           }
 
-          # 2. Try GitHub Models API (requires PAT)
-          if [ "$LLM_SUCCESS" = false ]; then
-            echo "Trying GitHub Models API..."
-            RESPONSE=$(gh api /models/chat/completions \
-              --method POST \
-              -f model="openai/gpt-4o-mini" \
-              -f "messages[][role]=user" \
-              -f "messages[][content]=${PROMPT}" \
-              --jq '.choices[0].message.content' 2>&1) && {
-              echo "GitHub Models API succeeded"
-              parse_llm_response "$RESPONSE" && LLM_SUCCESS=true
-            } || {
-              echo "GitHub Models API failed: $RESPONSE"
-            }
-          fi
-
-          # 3. Fallback: rule-based deterministic logic
+          # Fallback: rule-based deterministic logic
           if [ "$LLM_SUCCESS" = false ]; then
             echo "Using fallback rule-based logic..."
 
@@ -172,6 +158,7 @@ jobs:
                   test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py|test/xpu/extended/skip_list_*.py) ;;
                   *) ONLY_SKIP_EXPECT=false ;;
                 esac ;;
+              .github/workflows/auto_label.yml|.github/workflows/auto_merge_by_comment.yml|.github/workflows/issue_operator.yml) HAS_GITHUB_META=true ;;
               .github/workflows/*) HAS_WORKFLOW=true ;;
               .github/actions/*|.github/scripts/*) HAS_CI_SCRIPTS=true ;;
               .github/*) HAS_GITHUB_META=true ;;
