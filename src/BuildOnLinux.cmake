@@ -34,7 +34,7 @@ endmacro()
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    get_filename_component(name ${sycl_src} NAME_WLE)
     set(sycl_lib torch-xpu-ops-sycl-${name})
     sycl_add_library(
       ${sycl_lib}
