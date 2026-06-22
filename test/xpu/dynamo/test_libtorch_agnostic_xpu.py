@@ -13,9 +13,9 @@ from torch.testing._internal.common_device_type import (
     deviceCountAtLeast,
     dtypes,
     instantiate_device_type_tests,
+    onlyAccelerator,
     onlyCPU,
     onlyCUDA,
-    onlyAccelerator,
 )
 from torch.testing._internal.common_dtype import all_types_and
 from torch.testing._internal.common_utils import (
