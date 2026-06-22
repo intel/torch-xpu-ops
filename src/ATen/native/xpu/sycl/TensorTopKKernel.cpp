@@ -77,15 +77,10 @@ void topk_kernel(
   values.resize_(out_sizes);
   indices.resize_(out_sizes);
 
-  if (at::globalContext().deterministicAlgorithms()) {
-    topk_out_with_sort(
-        self.contiguous(), k, dim, largest, /*stable=*/true, values, indices);
-    return;
-  }
-
   if (k > 256) { // The segmented_group_select_pairs supports k<=256
+    bool stable = at::globalContext().deterministicAlgorithms();
     topk_out_with_sort(
-        self.contiguous(), k, dim, largest, /*stable=*/false, values, indices);
+        self.contiguous(), k, dim, largest, stable, values, indices);
     return;
   }
 
