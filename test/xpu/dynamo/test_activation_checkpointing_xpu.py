@@ -31,7 +31,7 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import IS_WINDOWS, parametrize, skipIfHpu
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import (
-    requires_cuda_and_triton, 
+    requires_cuda_and_triton,
     requires_gpu_and_triton,
 )
 from torch.testing._internal.two_tensor import TwoTensor
@@ -2410,10 +2410,15 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         def get_act_mem(f):
             out = f()
             out.backward()
-            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+                "requested_bytes.all.current"
+            ]
             out = f()
             act_mem = (
-                torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.get_device_module(GPU_TYPE).memory_stats()[
+                    "requested_bytes.all.current"
+                ]
+                - start_mem
             )
             out.backward()
             return act_mem
