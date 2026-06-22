@@ -14,7 +14,6 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
     onlyCPU,
-    onlyCUDA,
     onlyAccelerator,
 )
 from torch.testing._internal.common_dtype import all_types_and
@@ -162,7 +161,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _run_identity(prior_mem):
             t = torch.rand(32, 32, device=device)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             identi_t = libtorch_agnostic.ops.identity(t)
             if identi_t is not t:
                 raise AssertionError("Expected identity op to return the same tensor")
@@ -195,7 +196,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             tensor = libtorch_agnostic.ops.my_abs(t)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             self.assertEqual(tensor, torch.abs(t))
 
         if t.is_cuda or t.is_xpu:
@@ -214,7 +217,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             acc_res = libtorch_agnostic.ops.neg_exp(t)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             self.assertEqual(acc_res, torch.neg(torch.exp(t)))
 
         if t.is_cuda or t.is_xpu:
@@ -233,7 +238,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             acc_res = libtorch_agnostic.ops.divide_neg_exp(t)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             self.assertEqual(acc_res, torch.neg(t) / torch.exp(t))
 
         if t.is_cuda or t.is_xpu:
@@ -264,7 +271,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             tensor = libtorch_agnostic.ops.my_ones_like(t, device)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             self.assertEqual(tensor, torch.ones_like(t, device=device))
 
         if t.is_cuda or t.is_xpu:
@@ -285,7 +294,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             tensor = libtorch_agnostic.ops.my_ones_like(t, device)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
             self.assertEqual(tensor, torch.ones_like(t, device=device))
 
         if t.is_cuda or t.is_xpu:
@@ -452,7 +463,9 @@ class TestLibtorchAgnostic(TestCase):
         device = torch.get_device_module(GPU_TYPE).current_device()
 
         with stream:
-            expected_stream_id = torch.get_device_module(GPU_TYPE).current_stream(0).stream_id
+            expected_stream_id = (
+                torch.get_device_module(GPU_TYPE).current_stream(0).stream_id
+            )
             stream_id = libtorch_agnostic.ops.test_stream(device)
 
         self.assertEqual(stream_id, expected_stream_id)
@@ -463,7 +476,10 @@ class TestLibtorchAgnostic(TestCase):
         import libtorch_agn_2_13 as libtorch_agnostic
 
         device_idx = torch.get_device_module(GPU_TYPE).current_device()
-        streams = [torch.get_device_module(GPU_TYPE).Stream(device=device_idx) for _ in range(3)]
+        streams = [
+            torch.get_device_module(GPU_TYPE).Stream(device=device_idx)
+            for _ in range(3)
+        ]
 
         native_handles = []
         for stream in streams:
@@ -483,7 +499,9 @@ class TestLibtorchAgnostic(TestCase):
         device_idx = torch.get_device_module(GPU_TYPE).current_device()
         fill_value = 42
 
-        input_tensor = torch.zeros(1024, dtype=torch.int32, device=f"{GPU_TYPE}:{device_idx}")
+        input_tensor = torch.zeros(
+            1024, dtype=torch.int32, device=f"{GPU_TYPE}:{device_idx}"
+        )
         custom_stream = torch.get_device_module(GPU_TYPE).Stream(device=device_idx)
 
         with torch.get_device_module(GPU_TYPE).stream(custom_stream):
@@ -611,7 +629,9 @@ class TestLibtorchAgnostic(TestCase):
 
         def _make_acc_tensors(prior_mem):
             acc_res = libtorch_agnostic.ops.my__foreach_mul(tensors, others)
-            self.assertGreater(torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem)
+            self.assertGreater(
+                torch.get_device_module(GPU_TYPE).memory_allocated(device), prior_mem
+            )
 
             expected = torch._foreach_mul(tensors, others)
             for result_t, expected_t in zip(acc_res, expected):
@@ -699,9 +719,7 @@ class TestLibtorchAgnostic(TestCase):
         self.assertEqual(libtorch_agnostic.ops.test_tensor_device(t), t.device)
 
         t_acc = torch.randn(2, 3, device=GPU_TYPE)
-        self.assertEqual(
-            libtorch_agnostic.ops.test_tensor_device(t_acc), t_acc.device
-        )
+        self.assertEqual(libtorch_agnostic.ops.test_tensor_device(t_acc), t_acc.device)
 
         t_acc_1 = torch.randn(2, 3, device=f"{GPU_TYPE}:1")
         self.assertEqual(
@@ -1272,7 +1290,9 @@ class TestLibtorchAgnostic(TestCase):
 
         device_index = torch.device(device).index
         res = libtorch_agnostic.ops.my_get_current_cuda_stream(device_index)
-        expected = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        expected = (
+            torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        )
         self.assertEqual(res, expected)
 
     @skipIfTorchVersionLessThan(2, 10)
@@ -1281,12 +1301,20 @@ class TestLibtorchAgnostic(TestCase):
         import libtorch_agn_2_10 as libtorch_agnostic
 
         device_index = torch.device(device).index
-        prev_stream = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
-        new_stream = torch.get_device_module(GPU_TYPE).streams.Stream(device_index).cuda_stream
+        prev_stream = (
+            torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        )
+        new_stream = (
+            torch.get_device_module(GPU_TYPE).streams.Stream(device_index).cuda_stream
+        )
 
         try:
             libtorch_agnostic.ops.my_set_current_cuda_stream(new_stream, device_index)
-            expected = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+            expected = (
+                torch.get_device_module(GPU_TYPE)
+                .current_stream(device_index)
+                .cuda_stream
+            )
             self.assertEqual(new_stream, expected)
         finally:
             libtorch_agnostic.ops.my_set_current_cuda_stream(prev_stream, device_index)
@@ -1297,7 +1325,9 @@ class TestLibtorchAgnostic(TestCase):
         import libtorch_agn_2_10 as libtorch_agnostic
 
         device_index = torch.device(device).index
-        prev_stream = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        prev_stream = (
+            torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        )
 
         try:
             for high_priority in [False, True]:
@@ -1305,7 +1335,11 @@ class TestLibtorchAgnostic(TestCase):
                     high_priority, device_index
                 )
                 libtorch_agnostic.ops.my_set_current_cuda_stream(stream, device_index)
-                expected = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+                expected = (
+                    torch.get_device_module(GPU_TYPE)
+                    .current_stream(device_index)
+                    .cuda_stream
+                )
                 self.assertEqual(stream, expected)
         finally:
             libtorch_agnostic.ops.my_set_current_cuda_stream(prev_stream, device_index)
@@ -1316,7 +1350,9 @@ class TestLibtorchAgnostic(TestCase):
         import libtorch_agn_2_10 as libtorch_agnostic
 
         device_index = torch.device(device).index
-        stream = torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        stream = (
+            torch.get_device_module(GPU_TYPE).current_stream(device_index).cuda_stream
+        )
         # sanity check for torch_cuda_stream_synchronize:
         libtorch_agnostic.ops.my_cuda_stream_synchronize(stream, device_index)
 
@@ -2166,7 +2202,9 @@ except RuntimeError as e:
             )
 
 
-instantiate_device_type_tests(TestLibtorchAgnostic, globals(), except_for=None, allow_xpu=True)
+instantiate_device_type_tests(
+    TestLibtorchAgnostic, globals(), except_for=None, allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
