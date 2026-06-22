@@ -65,15 +65,16 @@ jobs:
           echo "Changed files:"
           echo "$FILES"
 
-      - name: Determine labels via GitHub Models
+      - name: Determine labels
         id: determine-labels
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          MODELS_TOKEN: ${{ secrets.MODELS_TOKEN }}
           PR_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
           SKILL_CONTENT=$(cat .claude/skills/auto-label/SKILL.md)
           FILES="$PR_FILES"
-          API_SUCCESS=false
+          LLM_SUCCESS=false
 
           # Build the prompt
           # NOTE: File list comes from PR contributors (including forks).
@@ -91,41 +92,47 @@ jobs:
 
           Respond with ONLY a comma-separated list of labels (e.g. 'disable_e2e,disable_distributed') or 'none' if no labels should be applied. No explanation."
 
-          # Call GitHub Models API
-          RESPONSE=$(gh api /models/chat/completions \
-            --method POST \
-            -f model="openai/gpt-4o-mini" \
-            -f "messages[][role]=user" \
-            -f "messages[][content]=${PROMPT}" \
-            --jq '.choices[0].message.content' 2>&1) && API_SUCCESS=true || {
-            echo "GitHub Models API failed, falling back to rule-based logic"
-          }
-
-          # Sanitize response - extract only valid label names (only labels used in pull.yml)
-          LABELS=""
-          if [ "$API_SUCCESS" = true ]; then
-            if [ "$RESPONSE" = "none" ] || echo "$RESPONSE" | grep -qiE '^\s*none\s*$'; then
-              # LLM explicitly said no labels needed — respect that, skip fallback
+          # Helper: parse LLM response into valid labels
+          parse_llm_response() {
+            local response="$1"
+            if [ "$response" = "none" ] || echo "$response" | grep -qiE '^\s*none\s*$'; then
               echo "LLM determined no labels needed (full CI)"
               echo "labels=" >> "$GITHUB_OUTPUT"
               echo "api_success=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            LABELS=$(echo "$RESPONSE" | tr -d ' \n' | grep -oE '(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build)(,(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build))*' || echo "")
-            if [ -n "$LABELS" ]; then
-              echo "LLM determined labels: $LABELS"
-              echo "labels=${LABELS}" >> "$GITHUB_OUTPUT"
+            local labels
+            labels=$(echo "$response" | tr -d ' \n' | grep -oE '(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build)(,(disable_all|disable_ut|disable_e2e|disable_distributed|disable_win|disable_build))*' || echo "")
+            if [ -n "$labels" ]; then
+              echo "LLM determined labels: $labels"
+              echo "labels=${labels}" >> "$GITHUB_OUTPUT"
               echo "api_success=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            # LLM returned something but no valid labels extracted — fall through to fallback
-            echo "LLM response could not be parsed: $RESPONSE"
-          fi
+            echo "LLM response could not be parsed: $response"
+            return 1
+          }
+
+          # Try GitHub Models API (requires PAT with models scope)
+          echo "Trying GitHub Models API..."
+          RESPONSE=$(curl -sf --max-time 30 \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $MODELS_TOKEN" \
+            -d "$(jq -nc --arg model "openai/gpt-4o-mini" --arg content "$PROMPT" \
+              '{model: $model, messages: [{role: "user", content: $content}]}')" \
+            "https://models.github.ai/inference/chat/completions" | \
+            jq -r '.choices[0].message.content' 2>/dev/null) && {
+            echo "GitHub Models API succeeded"
+            parse_llm_response "$RESPONSE" && LLM_SUCCESS=true
+          } || {
+            echo "GitHub Models API failed: $RESPONSE"
+          }
 
           # Fallback: rule-based deterministic logic
-          echo "Using fallback rule-based logic..."
+          if [ "$LLM_SUCCESS" = false ]; then
+            echo "Using fallback rule-based logic..."
 
-          HAS_SRC=false
+            HAS_SRC=false
           HAS_XCCL=false
           HAS_CMAKE=false
           HAS_TEST=false
@@ -133,7 +140,6 @@ jobs:
           HAS_WORKFLOW=false
           HAS_CI_SCRIPTS=false
           HAS_GITHUB_META=false
-          HAS_YAML=false
           ONLY_SKIP_EXPECT=true
           HAS_WIN_TEST=false
 
@@ -152,15 +158,15 @@ jobs:
                   test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py|test/xpu/extended/skip_list_*.py) ;;
                   *) ONLY_SKIP_EXPECT=false ;;
                 esac ;;
+              .github/workflows/auto_label.yml|.github/workflows/auto_merge_by_comment.yml|.github/workflows/issue_operator.yml) HAS_GITHUB_META=true ;;
               .github/workflows/*) HAS_WORKFLOW=true ;;
               .github/actions/*|.github/scripts/*) HAS_CI_SCRIPTS=true ;;
               .github/*) HAS_GITHUB_META=true ;;
               .claude/*) HAS_GITHUB_META=true ;;
-              yaml/*) HAS_YAML=true ;;
             esac
           done <<< "$FILES"
 
-          if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
+          if [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_TEST" = false ]; then
             if [ "$HAS_WORKFLOW" = true ] || [ "$HAS_CI_SCRIPTS" = true ]; then
               # CI workflow/action/script changes — can't determine scope from paths alone, run full CI
               LABELS=""
@@ -168,7 +174,7 @@ jobs:
               # Pure metadata (.claude/, .github/ templates, test/agentic/)
               LABELS="disable_all"
             fi
-          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ] && [ "$HAS_TEST" = true ]; then
+          elif [ "$HAS_SRC" = false ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_TEST" = true ]; then
             # Test-only changes
             if [ "$ONLY_SKIP_EXPECT" = true ]; then
               LABELS="disable_all"
@@ -178,7 +184,7 @@ jobs:
                 LABELS="${LABELS},disable_win"
               fi
             fi
-          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ] && [ "$HAS_YAML" = false ]; then
+          elif [ "$HAS_SRC" = true ] && [ "$HAS_CMAKE" = false ] && [ "$HAS_WORKFLOW" = false ] && [ "$HAS_CI_SCRIPTS" = false ]; then
             # Source changes (possibly with tests)
             if [ "$HAS_XCCL" = true ]; then
               # xccl is distributed backend — must run distributed tests, Linux-only
@@ -186,15 +192,16 @@ jobs:
             else
               LABELS="disable_e2e,disable_distributed"
             fi
-          elif [ "$HAS_CMAKE" = true ] && [ "$HAS_SRC" = false ] && [ "$HAS_TEST" = false ] && [ "$HAS_YAML" = false ]; then
+          elif [ "$HAS_CMAKE" = true ] && [ "$HAS_SRC" = false ] && [ "$HAS_TEST" = false ]; then
             # Build system only (including src/*.cmake)
             LABELS="disable_e2e,disable_distributed"
           fi
-          # yaml/ changes, CI script changes, or mixed → no labels (full CI)
+          # CI script changes or mixed → no labels (full CI)
 
           echo "labels=${LABELS}" >> "$GITHUB_OUTPUT"
           echo "api_success=false" >> "$GITHUB_OUTPUT"
           echo "Determined labels: ${LABELS:-none}"
+          fi
 
       - name: Apply labels
         if: >-
