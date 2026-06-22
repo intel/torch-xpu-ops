@@ -6098,7 +6098,7 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
             return x, y
 
         def g(x, y):
-            return map(f, x, y)
+            return map(f, x, y)  # noqa: B912
 
         opt_g = torch.compile(g, fullgraph=True, backend="eager")
 
