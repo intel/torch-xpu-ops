@@ -56,7 +56,6 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
     list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
