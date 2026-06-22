@@ -59,6 +59,11 @@ skip_dict = {
         # AssertionError:
         # Not equal to tolerance rtol=1e-06, atol=1e-06
         "test_forward_per_tensor_xpu",
+        # deprecated fake quantization stack, https://github.com/intel/torch-xpu-ops/issues/2434
+        # https://docs.pytorch.org/docs/2.12/quantization.html
+        # https://dev-discuss.pytorch.org/t/torch-ao-quantization-migration-plan/2810
+        # https://dev-discuss.pytorch.org/t/clarification-of-pytorch-quantization-flow-support-in-pytorch-and-torchao/2809
+        "test_fq_module_per_tensor_xpu",
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
