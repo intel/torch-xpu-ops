@@ -11,7 +11,6 @@ from torch.utils._triton import has_triton
 from torch.utils.checkpoint import checkpoint
 from torch.utils.flop_counter import FlopCounterMode, register_flop_formula
 
-
 if has_triton():
     # note: if we only import triton in the test, the test fails:
     # def relu_kernel_(inp_ptr, out_ptr, sz, BLOCK_SIZE: tl.constexpr):
@@ -27,9 +26,13 @@ def compile_with_ac(f, memory_budget):
 def get_act_mem(f):
     out = f()
     out.backward()
-    start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+    start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+        "requested_bytes.all.current"
+    ]
     out = f()
-    cur_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+    cur_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+        "requested_bytes.all.current"
+    ]
     act_mem = (cur_mem - start_mem) / (1024 * 1024)
     out.backward()
     return act_mem
