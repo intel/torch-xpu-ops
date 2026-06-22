@@ -32,7 +32,6 @@ from typing import Any, Literal, TypedDict
 from unittest import mock
 
 import numpy as np
-
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing
