@@ -202,7 +202,18 @@ inline int last_pow2(int n) {
 }
 
 static void reduce_fraction(size_t& numerator, size_t& denominator) {
+#ifdef _MSC_VER
+  // MSVC's std::gcd does runtime ISA dispatch through a global variable and
+  // CPU builtins, which cannot be used in device code; use Euclid's algorithm.
+  size_t gcd = denominator;
+  size_t b = numerator;
+  while (b != 0) {
+    gcd %= b;
+    std::swap(gcd, b);
+  }
+#else
   auto gcd = std::gcd(numerator, denominator);
+#endif
   numerator /= gcd;
   denominator /= gcd;
 }
@@ -1150,7 +1161,7 @@ inline void gpu_reduce_kernel(
     ident_t ident = 0,
     AccumulationBuffer* acc_buf_ptr = nullptr,
     int64_t base_idx = 0) {
-  AT_ASSERT(
+  TORCH_INTERNAL_ASSERT(
       iter.numel() > 0 && iter.ntensors() - iter.noutputs() == 1 &&
       iter.noutputs() >= 1);
 
@@ -1401,7 +1412,7 @@ inline void gpu_reduce_kernel(
     launch_vectorized_kernel(config.semaphore_size(), fn, data, ic, vec_size);
   }
 
-  AT_ASSERT(can_use_32bit_indexing);
+  TORCH_INTERNAL_ASSERT(can_use_32bit_indexing);
   auto output_calc = make_output_calculator<uint32_t>(iter);
   auto input_calc = make_input_calculator<uint32_t>(iter);
   auto reduce =

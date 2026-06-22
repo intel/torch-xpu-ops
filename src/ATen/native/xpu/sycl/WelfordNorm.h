@@ -10,17 +10,13 @@
 
 #pragma once
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {
-
-template <typename T>
-inline T divup(T a, T b) {
-  return (a + b - 1) / b;
-}
 
 std::tuple<int, int, int, int> get_adaptive_config(
     const int reduction,
@@ -31,15 +27,16 @@ std::tuple<int, int, int, int> get_adaptive_config(
   loops_per_item /= vec_size;
   int group_size_x = std::min(last_pow2(n_channels / vec_size), 32);
   int group_size_y = std::min(
-      last_pow2(divup(reduction, loops_per_item)), max_wg_size / group_size_x);
+      last_pow2(at::ceil_div(reduction, loops_per_item)),
+      max_wg_size / group_size_x);
   if (group_size_x * group_size_y != max_wg_size) {
     group_size_x =
         std::min(last_pow2(n_channels / vec_size), max_wg_size / group_size_y);
   }
 
-  int nwg_x = divup(n_channels, group_size_x * vec_size);
+  int nwg_x = at::ceil_div(n_channels, group_size_x * vec_size);
   int nwg_y = std::min(
-      divup(reduction, group_size_y * loops_per_item),
+      at::ceil_div(reduction, group_size_y * loops_per_item),
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
   nwg_y = std::max(nwg_y, 1);
 
