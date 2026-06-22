@@ -338,18 +338,18 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             // We cannot actually merge, but we can verify the token has write access
-            // by attempting to merge with an invalid SHA (will fail with 409, not 403/404)
+            // by attempting to merge with a valid-format but wrong SHA (will fail with 409, not 403/404)
             try {
               await github.rest.pulls.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.payload.pull_request.number,
                 merge_method: 'squash',
-                sha: 'invalid_sha_for_permission_test'
+                sha: '0000000000000000000000000000000000000000'
               });
             } catch (e) {
-              if (e.status === 409) {
-                console.log('✅ pulls.merge permission OK (got 409 Conflict as expected with invalid SHA)');
+              if (e.status === 409 || e.status === 422) {
+                console.log(`✅ pulls.merge permission OK (got ${e.status} as expected — token has write access)`);
               } else if (e.status === 405) {
                 console.log('✅ pulls.merge permission OK (got 405 — merge not allowed by branch rules, but token has access)');
               } else if (e.status === 403 || e.status === 404) {
