@@ -355,6 +355,6 @@ jobs:
               } else if (e.status === 403 || e.status === 404) {
                 core.setFailed(`❌ pulls.merge permission DENIED — status: ${e.status}, message: ${e.message}`);
               } else {
-                console.log(`⚠️ pulls.merge got unexpected status ${e.status}: ${e.message}`);
+                core.setFailed(`❌ pulls.merge got unexpected status ${e.status}: ${e.message}`);
               }
             }
