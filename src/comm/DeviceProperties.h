@@ -16,6 +16,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUContext.h>
+#include <sycl/ext/oneapi/experimental/device_architecture.hpp>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
 
@@ -156,13 +157,26 @@ static inline int64_t syclLocalMemSize(
   return dev_prop->local_mem_size;
 }
 
+static inline bool syclIsXeHPC(
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  auto arch = queue.get_device()
+      .get_info<::sycl::ext::oneapi::experimental::info::device::architecture>();
+  return arch == ::sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc ||
+          arch == ::sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg;
+}
+
+// Preferred vector width in bytes. 32 is the preferred vector width of PVC
+// (Xe-HPC, via LSC) and 16 is the preferred for LNL/BMG.
+static inline uint32_t syclPrefVectorBytes(
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+  return syclIsXeHPC(dev_id) ? 32 : 16;
+}
+
 template <typename T>
 uint32_t syclPrefVectorWidth(
     at::DeviceIndex dev_id = at::xpu::current_device()) {
-  (void)dev_id; // Suppress unused variable warning
-
-  // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
-  constexpr uint32_t vec_width = 16;
+  uint32_t vec_width = syclPrefVectorBytes(dev_id);
 
   if constexpr (
       std::is_same_v<T, char> || std::is_same_v<T, short> ||

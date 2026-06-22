@@ -389,6 +389,9 @@ constexpr static inline int max_scalar_size() {
   return std::max<int>(sizeof(return_t), size);
 }
 
+// Covers the widest supported platform (Xe-HPC/PVC: 32 bytes via LSC).
+constexpr int kMaxVecBytes = 32;
+
 template <typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
@@ -400,16 +403,23 @@ static inline void launch_vectorized_kernel(
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
   auto wg_sz = syclMaxWorkItemsPerSubSlice();
+  auto max_vec_bytes = static_cast<int>(syclPrefVectorBytes());
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
+    TORCH_CHECK(                                                             \
+        max_scalar_bytes * vec_size <= max_vec_bytes,                         \
+        "vec_size ",                                                          \
+        vec_size,                                                             \
+        " exceeds device vectorization limit (",                              \
+        max_vec_bytes,                                                        \
+        " bytes)");                                                           \
+    if constexpr (max_scalar_bytes * vec_size <= kMaxVecBytes) {             \
       auto ker =                                                             \
           VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
               N, f, data, input_calc);                                       \
       int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
-      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
+      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker); \
     }                                                                        \
   }
 
