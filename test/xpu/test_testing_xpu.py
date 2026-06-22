@@ -28,7 +28,6 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyAccelerator,
     onlyCPU,
-    onlyCUDA,
     onlyNativeDeviceTypes,
     OpDTypes,
     ops,
@@ -1799,9 +1798,9 @@ class TestMakeTensor(TestCase):
 
         self.assertTrue(
             t.is_contiguous(
-                memory_format=torch.contiguous_format
-                if memory_format is None
-                else memory_format
+                memory_format=(
+                    torch.contiguous_format if memory_format is None else memory_format
+                )
             )
         )
 
@@ -2764,7 +2763,8 @@ class TestImports(TestCase):
     # https://github.com/pytorch/pytorch/issues/110040
     def test_circular_dependencies(self) -> None:
         """Checks that all modules inside torch can be imported
-        Prevents regression reported in https://github.com/pytorch/pytorch/issues/77441"""
+        Prevents regression reported in https://github.com/pytorch/pytorch/issues/77441
+        """
         ignored_modules = [
             "torch.utils.tensorboard",  # deps on tensorboard
             "torch.distributed.elastic.rendezvous",  # depps on etcd
