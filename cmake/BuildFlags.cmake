@@ -45,7 +45,7 @@ macro(set_build_flags)
   set(SYCL_OFFLINE_COMPILER_FLAGS)
 
   set(CPP_STD c++20)
-  # # -- Host flags (SYCL_CXX_FLAGS)
+  # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
     list(APPEND SYCL_HOST_FLAGS /MD)
@@ -53,6 +53,14 @@ macro(set_build_flags)
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
     list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+
+    # -fsycl-host-compiler-options never sees CMAKE_CXX_FLAGS_<CONFIG>, so
+    # spell per-config flags here. /Z7 (not /Zi) avoids parallel PDB contention.
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      list(APPEND SYCL_HOST_FLAGS /Od /Z7)
+    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+      list(APPEND SYCL_HOST_FLAGS /O2 /Z7)
+    endif()
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
@@ -60,13 +68,14 @@ macro(set_build_flags)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
+    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+      list(APPEND SYCL_HOST_FLAGS -g -O2)
+    endif()
   endif()
 
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-    list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
-  elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-    list(APPEND SYCL_HOST_FLAGS -g -O2)
-  endif()
   if(USE_PER_OPERATOR_HEADERS)
     list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
   endif()
