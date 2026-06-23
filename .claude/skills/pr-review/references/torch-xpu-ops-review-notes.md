@@ -15,8 +15,6 @@ Do not treat `torch-xpu-ops` like a generic operator repository.
 
 Inspect these first when the change touches operator wiring, kernels, or tests:
 
-- `yaml/xpu_functions.yaml`
-- `yaml/native/native_functions.yaml`
 - `src/ATen/native/xpu/`
 - `src/ATen/native/xpu/sycl/`
 - `src/ATen/native/xpu/XPUFallback.template`

@@ -384,14 +384,14 @@ struct Sigmoid {
 template <typename T>
 struct Round {
   T operator()(T t) const {
-    return std::nearbyint(t);
+    return sycl::rint(static_cast<at::opmath_type<T>>(t));
   }
 };
 
 template <typename T>
 struct Trunc {
   T operator()(T t) const {
-    return t - std::trunc(t);
+    return t - sycl::trunc(t);
   }
 };
 

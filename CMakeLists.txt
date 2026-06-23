@@ -30,7 +30,6 @@ cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 # Avoid SYCL compiler error
 if(NOT WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
   if("$ENV{IS_XPU_CI}" STREQUAL "1")
     string(APPEND CMAKE_CXX_FLAGS " -Werror=unused-variable")
   endif()
@@ -67,7 +66,7 @@ if(USE_XCCL)
 endif()
 
 set(USE_SYCLTLA ON)
-if(WIN32 OR NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 13.0)
+if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
   set(USE_SYCLTLA OFF)
   message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
 endif()

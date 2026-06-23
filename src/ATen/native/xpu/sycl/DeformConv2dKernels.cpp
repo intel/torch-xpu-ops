@@ -77,6 +77,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
@@ -101,8 +102,9 @@ scalar_t bilinear_interpolate(
     return 0;
   }
 
-  index_t h_low = std::floor(h);
-  index_t w_low = std::floor(w);
+  using opmath_t = at::opmath_type<scalar_t>;
+  index_t h_low = sycl::floor(static_cast<opmath_t>(h));
+  index_t w_low = sycl::floor(static_cast<opmath_t>(w));
   index_t h_high = h_low + 1;
   index_t w_high = w_low + 1;
 
@@ -410,15 +412,18 @@ struct DeformableCol2ImKernel {
 
       const scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
       const scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
+      using opmath_t = at::opmath_type<scalar_t>;
 
       for (index_t dy = -1; dy <= 1; dy++) {
         for (index_t dx = -1; dx <= 1; dx++) {
           index_t yp = (index_t)y + dy;
           index_t xp = (index_t)x + dx;
           if (0 <= yp && yp < height && 0 <= xp && xp < width &&
-              std::abs(y - yp) < 1 && std::abs(x - xp) < 1) {
+              sycl::fabs(static_cast<opmath_t>(y - yp)) < 1 &&
+              sycl::fabs(static_cast<opmath_t>(x - xp)) < 1) {
             index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
-            scalar_t weight = (1 - std::abs(y - yp)) * (1 - std::abs(x - xp));
+            scalar_t weight = (1 - sycl::fabs(static_cast<opmath_t>(y - yp))) *
+                (1 - sycl::fabs(static_cast<opmath_t>(x - xp)));
             atomicAdd(
                 sycl_global_ptr<scalar_t>(grad_im + grad_pos),
                 mask_value * weight * col[index]);
@@ -609,8 +614,9 @@ scalar_t get_coordinate_weight(
     scalar_t y,
     scalar_t x,
     bool is_y_direction) {
-  index_t y_l = std::floor(y);
-  index_t x_l = std::floor(x);
+  using opmath_t = at::opmath_type<scalar_t>;
+  index_t y_l = sycl::floor(static_cast<opmath_t>(y));
+  index_t x_l = sycl::floor(static_cast<opmath_t>(x));
   index_t y_h = y_l + 1;
   index_t x_h = x_l + 1;
 

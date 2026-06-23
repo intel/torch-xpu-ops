@@ -13,9 +13,9 @@
 #include <comm/xpu_aten.h>
 #include <vector>
 
+#include <ATen/core/CachingHostAllocator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

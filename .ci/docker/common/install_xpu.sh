@@ -72,8 +72,40 @@ validate_environment() {
 
 # Common cleanup function
 cleanup() {
-    log_info "Cleaning up temporary files..."
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* 2>/dev/null || true
+    log_info "Cleaning up temporary files and repository configurations..."
+
+    # Remove Intel GPU repository configurations
+    rm -f /etc/apt/sources.list.d/intel-gpu-* 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/*intel*.list 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/*kobuk*.list 2>/dev/null || true
+    rm -f /etc/yum.repos.d/intel-gpu-* 2>/dev/null || true
+    rm -f /etc/zypp/repos.d/intel-gpu-* 2>/dev/null || true
+
+    # Remove Intel GPU GPG keyring
+    rm -f /usr/share/keyrings/intel-graphics.gpg 2>/dev/null || true
+
+    # Clean package manager caches to reduce image size and avoid stale metadata
+    if command -v apt-get &> /dev/null; then
+        apt-get clean -y 2>/dev/null || true
+        rm -rf /var/lib/apt/lists/*
+        rm -rf /var/cache/apt/archives/*.deb
+        rm -rf /var/cache/apt/archives/partial/*
+    elif command -v dnf &> /dev/null; then
+        dnf clean all 2>/dev/null || true
+        rm -rf /var/cache/dnf/*
+        rm -rf /var/cache/yum/*
+    elif command -v zypper &> /dev/null; then
+        zypper clean -a 2>/dev/null || true
+        rm -rf /var/cache/zypp/*
+    fi
+
+    # Clean temporary files and logs
+    rm -rf /tmp/* /var/tmp/* 2>/dev/null || true
+    rm -rf /var/log/apt/* 2>/dev/null || true
+    rm -rf /var/log/dnf* 2>/dev/null || true
+    rm -rf /var/log/yum* 2>/dev/null || true
+
+    log_info "Cleanup completed"
 }
 
 # Common package installation function

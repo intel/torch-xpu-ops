@@ -64,7 +64,7 @@ jobs:
           && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
               || github.event.pull_request.user.login == 'copilot[bot]') }}
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: |
           FAILED_STEPS=""
           if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
@@ -108,7 +108,7 @@ jobs:
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && github.event.pull_request.head.repo.full_name == github.repository }}
         id: reproducer-check
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: |
           cd ./torch-xpu-ops
           FAIL_MSG=""
@@ -231,7 +231,7 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc-1100
+      runner: pvc
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -267,7 +267,7 @@ jobs:
         scenario: [accuracy, performance]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc-1100' }}
+      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
