@@ -193,8 +193,9 @@ int get_num_threads_by_dev_max_group_size(
   return max_size;
 }
 
-int get_prefer_simd(int numPlane, int nHw) {
-  // decide SIMD: SIMD32 or SIMD16
+int get_prefer_simd(int N_H_W) {
+  // Decide sub-group width: SIMD32 or SIMD16.
+  // N_H_W = N * H * W, the total reduction elements per channel.
 
   auto dev_id = at::xpu::current_device();
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
@@ -204,23 +205,20 @@ int get_prefer_simd(int numPlane, int nHw) {
     return simd;
 
   // if max supported simd >16
-  if (nHw <= SIMD16)
+  if (N_H_W <= SIMD16)
     return SIMD16;
-  if (simd >= SIMD32 && nHw <= SIMD32)
+  if (simd >= SIMD32 && N_H_W <= SIMD32)
     return SIMD32;
 
-  int64_t target_tile_size = syclMaxWorkItemsPerTile(dev_id);
-  // for work group barrier perf
-  int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
-  if (simd == SIMD32) {
-    // when setting wg_size 256 can achieve high occupancy, use SIMD16
-    if (wg_size * numPlane >= target_tile_size)
-      return SIMD16;
-    // for latency case
-    if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
-      return SIMD16;
-    }
-  }
+  // Use SIMD16 only when total reduction size per channel is small.
+  // With SIMD32 the max work-group size is larger, so each work-item gets
+  // fewer iterations. When iterations per work-item < 4, barrier and
+  // reduction overhead dominate, making SIMD16 (smaller WG) preferable.
+  // For large reductions, SIMD32 provides better memory coalescing and
+  // bandwidth utilization.
+  int64_t max_wg_size = syclDeviceMaxWorkGroupSize(dev_id);
+  if (simd == SIMD32 && N_H_W < 4 * max_wg_size)
+    return SIMD16;
   return simd;
 }
 
@@ -604,7 +602,7 @@ void batch_norm_stats_template(
           out_invstd, "out_invstd");
 
   auto& queue = getCurrentSYCLQueue();
-  int simd = get_prefer_simd(input.size(1), input.size(0) * input.size(2));
+  int simd = get_prefer_simd(input.size(0) * input.size(2));
 
   if (simd == SIMD32) {
     using KernelClass = BatchNormCollectStatisticsKernelFunctor<
@@ -2065,7 +2063,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
   auto feature_size = input_reshaped.size(2);
   auto& queue = getCurrentSYCLQueue();
   int simd = get_prefer_simd(
-      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
+      input_reshaped.size(0) * input_reshaped.size(2));
 
   if (simd == SIMD32) {
     using KernelClass = BatchNormBackwardReduceKernelFunctor<
@@ -4662,7 +4660,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
           save_invstd_, "save_invstd");
 
   int simd = get_prefer_simd(
-      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
+      input_reshaped.size(0) * input_reshaped.size(2));
 
   auto& queue = getCurrentSYCLQueue();
 
