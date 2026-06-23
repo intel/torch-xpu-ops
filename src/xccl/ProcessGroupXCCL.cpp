@@ -224,6 +224,8 @@ std::vector<at::Tensor>& TensorShelf::get() {
 }
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(
+    std::string pgUID,
+    std::string pgDesc,
     at::Device& device,
     int rank,
     OpType opType,
@@ -234,6 +236,8 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     bool enableTiming,
     bool xpuEventCacheEnabled)
     : Work(rank, opType, profilingTitle, inputs),
+      pgUID_(pgUID),
+      pgDesc_(pgDesc),
       device_(device),
       workStartTime_(std::chrono::steady_clock::now()),
       seq_(seq),
@@ -255,6 +259,8 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
     : Work(w.rank_, w.opType_),
+      pgUID_(w.pgUID_),
+      pgDesc_(w.pgDesc_),
       device_(w.device_),
       xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
@@ -292,7 +298,7 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
 bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   RECORD_PARAM_COMMS(
       std::make_tuple(static_cast<int64_t>(this->seq_), this->isP2P_), // seq
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+      std::make_tuple(pgUID_, pgDesc_), // PG name tuple
       rank_, // rank
       "wait", // collective name
       0, // inNelems
@@ -510,6 +516,8 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     const std::vector<at::Tensor>& outputs,
     bool record) {
   auto r = c10::make_intrusive<ProcessGroupXCCL::WorkXCCL>(
+      pg_uid_,
+      pg_desc_,
       device,
       rank,
       opType,
