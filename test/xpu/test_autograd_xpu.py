@@ -576,13 +576,13 @@ def _test_consumer_to_single_producer_case_3_correctness(
 
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from autograd.test_complex import TestAutogradComplex  # noqa: F401
     from autograd.test_functional import (  # noqa: F401
         base_and_logging_tensor,

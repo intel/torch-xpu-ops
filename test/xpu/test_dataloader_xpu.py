@@ -23,9 +23,9 @@ from torch.utils.data import DataLoader, Dataset, IterDataPipe
 from torch.utils.data.datapipes.iter import IterableWrapper
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 
 class CountingDataset(Dataset):
@@ -46,7 +46,7 @@ test_package = (
 )
 
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
 
     def _set_allocator_settings(device=None):
         pass

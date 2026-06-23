@@ -22,19 +22,19 @@ from torch._numpy.testing import assert_allclose
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 # torch_np test lives under pytorch/test/torch_np, which is not in the default
-# XPUPatchForImport search path. Add it here so the hook-override import works.
+# XPUPatchForImportMinimal search path. Add it here so the hook-override import works.
 _TORCH_NP_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../../../test/torch_np")
 )
 if _TORCH_NP_DIR not in sys.path:
     sys.path.insert(0, _TORCH_NP_DIR)
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_basic import TestMisc
 
 

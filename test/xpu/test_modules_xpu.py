@@ -181,11 +181,11 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
 
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_modules import TestModule
 
     TestModule._test_gradients_helper = _gradients_helper

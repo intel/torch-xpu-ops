@@ -46,9 +46,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 
 def _group_quantize_tensor_impl(w, n_bit=4, q_group_size=16):
@@ -594,7 +594,7 @@ def matrix_rank_out_errors_and_warnings(self, device, dtype):
             self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
 
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_linalg import TestLinalg
 
 

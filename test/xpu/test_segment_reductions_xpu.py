@@ -13,10 +13,10 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
-with XPUPatchForImport(False):
+    from .xpu_test_utils import XPUPatchForImportMinimal
+with XPUPatchForImportMinimal(False):
     from test_segment_reductions import TestSegmentReductions
 
 instantiate_device_type_tests(

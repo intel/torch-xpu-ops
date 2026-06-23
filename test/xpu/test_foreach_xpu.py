@@ -25,9 +25,9 @@ from torch.testing._internal.common_methods_invocations import (
 from torch.testing._internal.common_utils import parametrize, run_tests, serialTest
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 
 def get_device_capability(device=None):
@@ -36,7 +36,7 @@ def get_device_capability(device=None):
 
 torch.cuda.get_device_capability = get_device_capability
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_foreach import TestForeach
 
 

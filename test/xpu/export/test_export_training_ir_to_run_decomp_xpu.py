@@ -19,9 +19,9 @@ torch_xpu_ops_path = Path(__file__).resolve().parents[1]
 if str(torch_xpu_ops_path) not in sys.path:
     sys.path.insert(0, str(torch_xpu_ops_path))
 
-from xpu_test_utils import XPUPatchForImport
+from xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(patch_test_case=False) as patcher:
+with XPUPatchForImportMinimal(patch_test_case=False) as patcher:
     __pytorch_test_dir = Path(patcher.test_package[0]).resolve()
     if str(__pytorch_test_dir) not in sys.path:
         sys.path.insert(0, str(__pytorch_test_dir))
@@ -226,7 +226,7 @@ def make_dynamic_cls(cls, strict):
     return test_class
 
 
-with XPUPatchForImport(patch_test_case=False):
+with XPUPatchForImportMinimal(patch_test_case=False):
     tests = [
         test_export.TestDynamismExpression,
         test_export.TestExport,
