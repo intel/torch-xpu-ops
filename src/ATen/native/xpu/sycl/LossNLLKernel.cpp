@@ -85,9 +85,7 @@ struct NllLossForwardNoReduceKernelFunctor {
 
 template <typename scalar_t, typename index_t>
 struct NllLossForwardReduce1DKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
-
+  void operator()() const {
     const index_t t = *target;
     if (t != ignore_index) {
       CHECK_INDEX_IN_CLASS(t, n_classes);
@@ -269,8 +267,7 @@ struct NllLossBackwardNoReduceKernelFunctor {
 
 template <typename scalar_t, typename index_t>
 struct NllLossBackwardReduce1DKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
+  void operator()() const {
     const index_t t = *target;
     if (t != ignore_index) {
       CHECK_INDEX_IN_CLASS(t, n_classes);
@@ -489,7 +486,8 @@ void nll_loss_forward_kernel(
                         reduction == at::Reduction::Mean,
                         n_classes,
                         ignore_index);
-                sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+                sycl_kernel_submit(
+                    sycl_single_task, getCurrentSYCLQueue(), kfn);
               });
         });
 
@@ -612,10 +610,7 @@ void nll_loss_backward_kernel(
                         n_classes,
                         ignore_index);
                 sycl_kernel_submit(
-                    sycl::range<1>(1),
-                    sycl::range<1>(1),
-                    getCurrentSYCLQueue(),
-                    kfn);
+                    sycl_single_task, getCurrentSYCLQueue(), kfn);
               });
         });
   } else {

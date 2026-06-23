@@ -116,11 +116,7 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
 }
 
 struct AmpUpdateScaleKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    // There is only single item/task scheduled.
-    if (item.get_global_linear_id() != 0)
-      return;
-
+  void operator()() const {
     if (*found_inf_) {
       *current_scale_ *= backoff_factor_;
       *growth_tracker_ = 0;
@@ -176,8 +172,7 @@ Tensor& amp_update_scale_kernel(
       growth_factor,
       backoff_factor,
       growth_interval);
-  sycl_kernel_submit(
-      sycl::range<1>(1), sycl::range<1>(1), getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), kfn);
 
   return current_scale;
 }

@@ -431,7 +431,7 @@ struct MaskedScatterElementwiseFunctor {
 };
 
 struct MaskedScatterSizeCheckFunctor {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     const auto totalElements = *mask_exclusive_sum_ + *mask_;
     SYCL_KERNEL_ASSERT(totalElements <= srcSize_);
   }
@@ -472,7 +472,7 @@ void masked_scatter_kernel(
   // must be <= the number of elements available in `src`.
   auto caller = MaskedScatterSizeCheckFunctor(
       &maskPrefixSum_data[mask_numel - 1], &mask_data[mask_numel - 1], srcSize);
-  sycl_kernel_submit((size_t)1, (size_t)1, getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit(sycl_single_task, getCurrentSYCLQueue(), caller);
 
   // We are getting elements from `src` based on an offset from
   // `maskPrefixSum`, so that should be made contiguous too

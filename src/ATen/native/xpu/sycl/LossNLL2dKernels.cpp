@@ -171,7 +171,7 @@ struct NllLoss2dForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename scalar_t>
 struct NllLoss2dForwardAverageKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
+  void operator()() const {
     *output_ /= *total_weight_;
   }
 
@@ -310,7 +310,8 @@ void nll_loss2d_forward_kernel(
                 NllLoss2dForwardAverageKernelFunctor kfn_average(
                     output.mutable_data_ptr<scalar_t>(),
                     total_weight.const_data_ptr<scalar_t>());
-                sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn_average);
+                sycl_kernel_submit(
+                    sycl_single_task, getCurrentSYCLQueue(), kfn_average);
               }
             });
       });

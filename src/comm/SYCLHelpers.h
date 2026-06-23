@@ -54,14 +54,9 @@ template <typename T>
 using sycl_atomic_ref_rlx_dev_global_t =
     sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_dev, sycl_global_space>;
 
-template <typename ker_t, int dim>
-static inline void sycl_kernel_submit(
-    ::sycl::range<dim> range,
-    ::sycl::queue q,
-    ker_t ker) {
-  auto cgf = [&](::sycl::handler& cgh) { cgh.parallel_for<ker_t>(range, ker); };
-  q.submit(cgf);
-}
+// Tag type to select the single_task overload of sycl_kernel_submit.
+struct sycl_single_task_t {};
+inline constexpr sycl_single_task_t sycl_single_task{};
 
 // Additional convention of SYCL kernel configuration. Besides construct kernel
 // functor, SYCL has some additional conventions to be called during setuping
@@ -78,33 +73,44 @@ static inline void sycl_kernel_submit(
 // compilation.
 struct __SYCL_KER_CONFIG_CONVENTION__ {};
 
-template <typename ker_t, int dim>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
-    ::sycl::range<dim> global_range,
-    ::sycl::range<dim> local_range,
+template <typename ker_t>
+static inline void sycl_kernel_submit(
+    sycl_single_task_t,
     ::sycl::queue q,
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
-    ker.sycl_ker_config_convention(cgh);
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<dim>(global_range, local_range), ker);
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>) {
+      ker.sycl_ker_config_convention(cgh);
+    }
+    cgh.single_task<ker_t>(ker);
   };
   q.submit(cgf);
 }
 
 template <typename ker_t, int dim>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>) {
+      ker.sycl_ker_config_convention(cgh);
+    }
+    cgh.parallel_for<ker_t>(range, ker);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, int dim>
+static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>) {
+      ker.sycl_ker_config_convention(cgh);
+    }
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
@@ -112,40 +118,13 @@ sycl_kernel_submit(
 }
 
 template <typename ker_t>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+static inline void sycl_kernel_submit(
     int64_t global_range,
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
-  auto cgf = [&](::sycl::handler& cgh) {
-    ker.sycl_ker_config_convention(cgh);
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        ker);
-  };
-  q.submit(cgf);
-}
-
-template <typename ker_t>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
-    int64_t global_range,
-    int64_t local_range,
-    ::sycl::queue q,
-    ker_t ker) {
-  auto cgf = [&](::sycl::handler& cgh) {
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        ker);
-  };
-  q.submit(cgf);
+  sycl_kernel_submit(
+      ::sycl::range<1>(global_range), ::sycl::range<1>(local_range), q, ker);
 }
 
 // Overloads accepting kernel properties (e.g., sub_group_size, grf_size).
@@ -169,10 +148,7 @@ struct __SyclKernelWithProps__ {
 };
 
 template <typename ker_t, typename Props, int dim>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
@@ -180,26 +156,9 @@ sycl_kernel_submit(
     ker_t ker) {
   (void)properties;
   auto cgf = [&](::sycl::handler& cgh) {
-    ker.sycl_ker_config_convention(cgh);
-    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<dim>(global_range, local_range), wrapped);
-  };
-  q.submit(cgf);
-}
-
-template <typename ker_t, typename Props, int dim>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
-    ::sycl::range<dim> global_range,
-    ::sycl::range<dim> local_range,
-    ::sycl::queue q,
-    Props properties,
-    ker_t ker) {
-  (void)properties;
-  auto cgf = [&](::sycl::handler& cgh) {
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>) {
+      ker.sycl_ker_config_convention(cgh);
+    }
     __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<dim>(global_range, local_range), wrapped);
@@ -208,46 +167,18 @@ sycl_kernel_submit(
 }
 
 template <typename ker_t, typename Props>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+static inline void sycl_kernel_submit(
     int64_t global_range,
     int64_t local_range,
     ::sycl::queue q,
     Props properties,
     ker_t ker) {
-  (void)properties;
-  auto cgf = [&](::sycl::handler& cgh) {
-    ker.sycl_ker_config_convention(cgh);
-    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        wrapped);
-  };
-  q.submit(cgf);
-}
-
-template <typename ker_t, typename Props>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
-    int64_t global_range,
-    int64_t local_range,
-    ::sycl::queue q,
-    Props properties,
-    ker_t ker) {
-  (void)properties;
-  auto cgf = [&](::sycl::handler& cgh) {
-    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        wrapped);
-  };
-  q.submit(cgf);
+  sycl_kernel_submit(
+      ::sycl::range<1>(global_range),
+      ::sycl::range<1>(local_range),
+      q,
+      properties,
+      ker);
 }
 
 #ifdef __SYCL_DEVICE_ONLY__
