@@ -85,7 +85,7 @@ struct DistsLtTwo {
         : static_cast<scalar_t>(
               Dists<scalar_t>::sign(diff) *
               sycl::pow(
-                  static_cast<opmath_t>(std::abs(diff)),
+                  sycl::fabs(static_cast<opmath_t>(diff)),
                   static_cast<opmath_t>(p - 1)) *
               grad /
               sycl::pow(
@@ -142,7 +142,7 @@ struct DistsP {
         : static_cast<scalar_t>(
               diff *
               sycl::pow(
-                  static_cast<opmath_t>(std::abs(diff)),
+                  sycl::fabs(static_cast<opmath_t>(diff)),
                   static_cast<opmath_t>(p - 2)) *
               grad /
               sycl::pow(
@@ -171,7 +171,7 @@ struct DistsInf {
       const scalar_t grad,
       const scalar_t dist,
       const scalar_t p) {
-    return grad * Dists<scalar_t>::sign(diff) * (std::abs(diff) == dist);
+    return grad * Dists<scalar_t>::sign(diff) * (sycl::fabs(diff) == dist);
   }
 };
 
@@ -303,7 +303,7 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (; a < end; a += stride, b += stride) {
       F::inc(
           agg,
-          std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
     agg =
@@ -771,7 +771,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (; a < end; a += stride, b += stride) {
       F::inc(
           agg,
-          std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
 

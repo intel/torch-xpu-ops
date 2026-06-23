@@ -379,7 +379,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(important_host_flags)
     _sycl_get_important_host_flags(important_host_flags "${SYCL_HOST_FLAGS}")
     set(SYCL_device_link_flags
-        ${link_type_flag}
         ${important_host_flags}
         ${SYCL_DEVICE_LINK_FLAGS})
 
