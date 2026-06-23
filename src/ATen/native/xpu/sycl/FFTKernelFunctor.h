@@ -50,9 +50,7 @@ Tensor promote_fft_input(const Tensor& input);
 
 } // namespace impl
 
-bool _is_fft_size_supported_sycl(
-    const Tensor& orig_self,
-    IntArrayRef dim);
+bool _is_fft_size_supported_sycl(const Tensor& orig_self, IntArrayRef dim);
 
 Tensor _fft_c2c_sycl(
     const Tensor& self,

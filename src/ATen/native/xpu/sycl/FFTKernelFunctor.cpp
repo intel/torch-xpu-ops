@@ -54,7 +54,9 @@ struct fft_descriptor {
   fft_descriptor(fft_descriptor&&) = delete;
   fft_descriptor& operator=(fft_descriptor&&) = delete;
 
-  ~fft_descriptor() { release(); }
+  ~fft_descriptor() {
+    release();
+  }
 
  private:
   void release() {
@@ -610,7 +612,8 @@ void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
         if (desc.twidl_table[dim][dir]) {
-          sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), *desc.queue);
+          sycl::free(
+              const_cast<void*>(desc.twidl_table[dim][dir]), *desc.queue);
           desc.twidl_table[dim][dir] = nullptr;
         }
       }
@@ -664,10 +667,7 @@ static sycl::event compute(
       h.depends_on(prev_ev);
       h.set_arg(0, input);
       h.set_arg(1, out);
-      h.set_arg(
-          2,
-          sycl::local_accessor<T, 1>(
-              desc.slm_size[dim], h));
+      h.set_arg(2, sycl::local_accessor<T, 1>(desc.slm_size[dim], h));
       h.set_arg(3, static_cast<const T*>(desc.twidl_table[dim][dir]));
 
       h.parallel_for(ndrange, kernel);
