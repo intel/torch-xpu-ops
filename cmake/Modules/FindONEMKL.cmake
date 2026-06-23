@@ -74,6 +74,10 @@ foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
     NAMES ${LIB_NAME}
     HINTS ${ONEMKL_LIB_DIR}
     NO_CMAKE_PATH NO_CMAKE_ENVIRONMENT_PATH)
+  if(NOT ${LIB_NAME}_library)
+    message(WARNING "${LIB_NAME} not found in ${ONEMKL_LIB_DIR}!!")
+    return()
+  endif()
   list(APPEND ONEMKL_LIBRARIES ${${LIB_NAME}_library})
 endforeach()
 

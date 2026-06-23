@@ -64,7 +64,7 @@ jobs:
           && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
               || github.event.pull_request.user.login == 'copilot[bot]') }}
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: |
           FAILED_STEPS=""
           if [ "${{ steps.lint-python.outcome }}" = "failure" ]; then
@@ -108,7 +108,7 @@ jobs:
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') && github.event.pull_request.head.repo.full_name == github.repository }}
         id: reproducer-check
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: |
           cd ./torch-xpu-ops
           FAIL_MSG=""
