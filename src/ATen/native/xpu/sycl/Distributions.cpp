@@ -131,19 +131,11 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct GammaTensorApplyFunctor {
+struct GammaKernelFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      randStatePhilox4_32_10_t& state,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
-
     auto uniform_lambda = [&state]() { return rand_uniform(&state); };
     BaseSampler<accscalar_t, decltype(uniform_lambda)> standard_uniform(
         uniform_lambda);
@@ -160,52 +152,33 @@ struct GammaTensorApplyFunctor {
     auto min_value = std::numeric_limits<scalar_t>::min();
     ret_val = (min_value > sample) ? min_value : sample;
   }
-
-  GammaTensorApplyFunctor(PhiloxXpuState philox_args)
-      : philox_args_(philox_args) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
-void gamma_kernel(
-    const at::TensorBase& ret,
-    const at::TensorBase& alpha,
-    PhiloxXpuState philox_args) {
+void gamma_kernel(TensorIterator& iter, XPUGeneratorImpl* gen) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor(philox_args);
-  at::native::xpu::tensor_apply2<
+  GammaKernelFunctor<scalar_t, accscalar_t> f;
+  at::native::xpu::distribution_unary_kernel<
       scalar_t,
       scalar_t,
-      decltype(functor),
-      /*max_threads_per_block=*/256>(
-      const_cast<at::TensorBase&>(ret),
-      const_cast<at::TensorBase&>(alpha),
-      functor);
+      decltype(f),
+      at::native::xpu::DistributionRngInitMode::OffsetAsSubsequence>(
+      iter, gen, f);
 }
 
 void launch_gamma_kernel(
     Tensor& ret,
     const Tensor& alpha,
     XPUGeneratorImpl* gen) {
-  PhiloxXpuState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    // Using a seed value of 10 for the Philox random engine initialization.
-    // This seed was chosen to ensure consistent random number generation
-    // behavior for this specific kernel. Modify with caution as it affects
-    // reproducibility of results.
-    rng_engine_inputs = gen->philox_xpu_state(10);
-  }
+  auto iter =
+      at::TensorIteratorConfig().add_output(ret).add_input(alpha).build();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "gamma_xpu",
-      [&] { gamma_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
+      [&] { gamma_kernel<scalar_t>(iter, gen); });
 }
 
 template <typename scalar_t, typename accscalar_t>
