@@ -45,6 +45,33 @@ struct fft_descriptor {
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
   sycl::kernel_bundle<sycl::bundle_state::executable>* exe_bundle[3][2] = {
       {nullptr}}; // [dimension][direction]
+  sycl::queue* queue = nullptr; // non-owning, for resource cleanup
+
+  fft_descriptor() = default;
+
+  fft_descriptor(const fft_descriptor&) = delete;
+  fft_descriptor& operator=(const fft_descriptor&) = delete;
+  fft_descriptor(fft_descriptor&&) = delete;
+  fft_descriptor& operator=(fft_descriptor&&) = delete;
+
+  ~fft_descriptor() { release(); }
+
+ private:
+  void release() {
+    for (int dim = 0; dim < 3; ++dim) {
+      for (int dir = 0; dir < 2; ++dir) {
+        if (twidl_table[dim][dir] && !external_workspace && queue) {
+          sycl::free(const_cast<void*>(twidl_table[dim][dir]), *queue);
+          twidl_table[dim][dir] = nullptr;
+        }
+        if (exe_bundle[dim][dir]) {
+          delete exe_bundle[dim][dir];
+          exe_bundle[dim][dir] = nullptr;
+        }
+      }
+    }
+    queue = nullptr;
+  }
 };
 
 // Sort transform dimensions by input layout, for best performance
@@ -415,6 +442,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
   if (!q.get_device().is_gpu()) {
     throw std::runtime_error("Device is not a GPU");
   }
+  desc.queue = &q;
 
   if (desc.fft_len.size() < 1 || desc.fft_len.size() > 3) {
     throw std::runtime_error("Unsupported number of dimensions");
@@ -446,8 +474,8 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
 
     auto fact0 = desc.facts[dim][0];
     auto fact1 = desc.facts[dim][1];
-    int slm_size = fact0 * fact1 * 2 * sizeof(T);
-    if (slm_size >
+    auto slm_size = fact0 * fact1 * 2;
+    if (slm_size * static_cast<std::int64_t>(sizeof(T)) >
         q.get_device().get_info<sycl::info::device::local_mem_size>()) {
       throw std::runtime_error("Required SLM size exceeds device limits");
     }
@@ -578,11 +606,11 @@ void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
 
   // Delete any previously allocated twiddle factor buffers if this overrides
   // workspace from internal to external.
-  if (!desc.external_workspace) {
+  if (!desc.external_workspace && desc.queue) {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
         if (desc.twidl_table[dim][dir]) {
-          sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), q);
+          sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), *desc.queue);
           desc.twidl_table[dim][dir] = nullptr;
         }
       }
@@ -600,21 +628,6 @@ void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
   }
 
   calculate_twiddle_factors<T>(q, desc);
-}
-
-void free_descriptor(sycl::queue& q, fft_descriptor& desc) {
-  for (int dim = 0; dim < 3; ++dim) {
-    for (int dir = 0; dir < 2; ++dir) {
-      if (desc.twidl_table[dim][dir] && !desc.external_workspace) {
-        sycl::free(const_cast<void*>(desc.twidl_table[dim][dir]), q);
-        desc.twidl_table[dim][dir] = nullptr;
-      }
-      if (desc.exe_bundle[dim][dir]) {
-        delete desc.exe_bundle[dim][dir];
-        desc.exe_bundle[dim][dir] = nullptr;
-      }
-    }
-  }
 }
 
 template <typename T>
@@ -654,7 +667,7 @@ static sycl::event compute(
       h.set_arg(
           2,
           sycl::local_accessor<T, 1>(
-              desc.facts[dim][0] * desc.facts[dim][1] * 2, h));
+              desc.slm_size[dim], h));
       h.set_arg(3, static_cast<const T*>(desc.twidl_table[dim][dir]));
 
       h.parallel_for(ndrange, kernel);
@@ -663,6 +676,8 @@ static sycl::event compute(
   return prev_ev;
 }
 
+// NOTE: This function does not handle multi-pass chunking  of
+// higher dimensional FFTs like _fft_c2c_mkl does.
 void _fft_with_size_sycl(
     Tensor& output,
     const Tensor& self,

@@ -50,17 +50,17 @@ Tensor promote_fft_input(const Tensor& input);
 
 } // namespace impl
 
-TORCH_XPU_API bool _is_fft_size_supported_sycl(
+bool _is_fft_size_supported_sycl(
     const Tensor& orig_self,
     IntArrayRef dim);
 
-TORCH_XPU_API Tensor _fft_c2c_sycl(
+Tensor _fft_c2c_sycl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward);
 
-TORCH_XPU_API Tensor& _fft_c2c_sycl_out(
+Tensor& _fft_c2c_sycl_out(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
