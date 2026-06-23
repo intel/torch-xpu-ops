@@ -292,7 +292,7 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
 bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   RECORD_PARAM_COMMS(
       std::make_tuple(static_cast<int64_t>(this->seq_), this->isP2P_), // seq
-      std::make_tuple(std::string(), std::string()), // PG name tuple
+      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       rank_, // rank
       "wait", // collective name
       0, // inNelems
