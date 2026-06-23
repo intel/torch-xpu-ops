@@ -42,8 +42,8 @@ inline std::pair<int64_t, int64_t> get_index_mapping1d(
   auto i_start_x = std::max(int64_t(0), -pad_l);
   auto o_start_x = std::max(int64_t(0), pad_l);
 
-  int64_t input_x = std::abs(output_x - pad_l) -
-      std::abs(output_x - (input_w + pad_l - 1)) - output_x + 2 * pad_l +
+  int64_t input_x = sycl::abs(output_x - pad_l) -
+      sycl::abs(output_x - (input_w + pad_l - 1)) - output_x + 2 * pad_l +
       input_w - 1 - o_start_x + i_start_x;
 
   return std::make_pair<int64_t, int64_t>(
@@ -75,12 +75,12 @@ inline std::pair<int64_t, int64_t> get_index_mapping2d(
   auto o_start_x = std::max(int64_t(0), pad_l);
   auto o_start_y = std::max(int64_t(0), pad_t);
 
-  int64_t input_x = std::abs(output_x - pad_l) -
-      std::abs(output_x - (input_dim_x + pad_l - 1)) - output_x + 2 * pad_l +
+  int64_t input_x = sycl::abs(output_x - pad_l) -
+      sycl::abs(output_x - (input_dim_x + pad_l - 1)) - output_x + 2 * pad_l +
       input_dim_x - 1 - o_start_x + i_start_x;
 
-  int64_t input_y = std::abs(output_y - pad_t) -
-      std::abs(output_y - (input_dim_y + pad_t - 1)) - output_y + 2 * pad_t +
+  int64_t input_y = sycl::abs(output_y - pad_t) -
+      sycl::abs(output_y - (input_dim_y + pad_t - 1)) - output_y + 2 * pad_t +
       input_dim_y - 1 - o_start_y + i_start_y;
 
   return std::make_pair<int64_t, int64_t>(
@@ -390,8 +390,8 @@ struct ReflectionPad2dBackwardDetKernelFunctor {
 
     const int64_t bottom_row = input_dim_y_ - 1;
     const int64_t rightmost_col = input_dim_x_ - 1;
-    const int64_t dist_from_bottom = std::abs(inp_row - bottom_row);
-    const int64_t dist_from_right = std::abs(inp_col - rightmost_col);
+    const int64_t dist_from_bottom = sycl::abs(inp_row - bottom_row);
+    const int64_t dist_from_right = sycl::abs(inp_col - rightmost_col);
 
     const bool is_top = (inp_row >= 1) && (inp_row <= pad_top_);
     const bool is_bottom =
@@ -566,15 +566,15 @@ struct ParallelReflectionPad3dKernelFunctor {
     int64_t i_start_z = std::max(int64_t(0), -pad_front_);
     int64_t o_start_z = std::max(int64_t(0), pad_front_);
 
-    int64_t input_x = std::abs(output_x - pad_left_) -
-        std::abs(output_x - (input_.size(4) + pad_left_ - 1)) - output_x +
+    int64_t input_x = sycl::abs(output_x - pad_left_) -
+        sycl::abs(output_x - (input_.size(4) + pad_left_ - 1)) - output_x +
         2 * pad_left_ + input_.size(4) - 1 - o_start_x + i_start_x;
-    int64_t input_y = std::abs(output_y - pad_top_) -
-        std::abs(output_y - (input_.size(3) + pad_top_ - 1)) - output_y +
+    int64_t input_y = sycl::abs(output_y - pad_top_) -
+        sycl::abs(output_y - (input_.size(3) + pad_top_ - 1)) - output_y +
         2 * pad_top_ + input_.size(3) - 1 - o_start_y + i_start_y;
 
-    int64_t input_z = std::abs(output_z - pad_front_) -
-        std::abs(output_z - (input_.size(2) + pad_front_ - 1)) - output_z +
+    int64_t input_z = sycl::abs(output_z - pad_front_) -
+        sycl::abs(output_z - (input_.size(2) + pad_front_ - 1)) - output_z +
         2 * pad_front_ + input_.size(2) - 1 - o_start_z + i_start_z;
 
     f_(input_,
