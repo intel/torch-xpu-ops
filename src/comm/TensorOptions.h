@@ -65,7 +65,8 @@ static inline TensorOptions map_options() {
     return at::TensorOptions().dtype(kUInt64).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   else {
-    AT_ERROR("PSTLFunctions: data type cannot be mapped to tensor's dtype.");
+    TORCH_CHECK(
+        false, "PSTLFunctions: data type cannot be mapped to tensor's dtype.");
   }
   return at::TensorOptions();
 }

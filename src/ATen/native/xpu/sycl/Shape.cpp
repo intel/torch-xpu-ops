@@ -19,7 +19,6 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <c10/core/MemoryFormat.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>

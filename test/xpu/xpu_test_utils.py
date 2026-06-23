@@ -387,6 +387,7 @@ _cuda_xfail_xpu_pass = [
 _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
+    ("_refs.true_divide", "test_python_ref_executor"),
 ]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
@@ -1300,3 +1301,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
     result = subprocess.run(cmd_args)
     return result.returncode
+
+
+def ensure_pytorch_test_path(test_dir):
+    test_dir = os.path.abspath(test_dir)
+    if test_dir not in sys.path:
+        sys.path.insert(0, test_dir)

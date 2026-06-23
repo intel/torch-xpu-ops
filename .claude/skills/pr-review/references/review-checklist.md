@@ -102,8 +102,11 @@ Also flag during review:
 
 ## Dtype, Precision, And Numerics
 
-- [ ] Compute dtype and accumulation dtype are appropriate for FP32, BF16, FP16, and integer paths
-- [ ] Reductions, norms, softmax-style kernels, and atomic accumulation patterns were checked for numerical stability
+- [ ] **dtype choice in SYCL device code** — mirror the matching CUDA kernel
+  - [ ] CUDA uses `at::acc_type<scalar_t, true>` (or `at::acc_type_device<scalar_t, kCUDA>`) for accumulation → XPU uses `at::acc_type_device<scalar_t, kXPU>`. Example sites: reductions, normalization, softmax.
+  - [ ] CUDA uses `at::opmath_type<scalar_t>` for compute → XPU does the same and casts back to `scalar_t` on store. Example sites: element-wise / pointwise.
+  - [ ] No `T_ACC` -> `T` -> `T_ACC` round-trip within one op. If a `T_ACC` value is consumed by another kernel or functor in the same op, route it as `T_ACC` end-to-end — use a separate buffer when the public output must stay `T`.
+- [ ] **Atomic ops go through XPU wrappers** — use `atomicAdd`, `atomicCAS`, etc. from `src/ATen/native/xpu/sycl/Atomics.h`, not raw `sycl::atomic_ref::fetch_add` / `compare_exchange_strong`.
 - [ ] Autocast behavior is covered when the operator participates in mixed precision
 - [ ] Test tolerances are chosen per dtype rather than copied blindly from another backend
 - [ ] **Type promotion** — Manual dtype promotion logic should use established utilities rather than hand-written if/else chains
@@ -127,6 +130,12 @@ Also flag during review:
 - [ ] Claimed optimizations come with benchmark evidence or at least a concrete design rationale
 - [ ] **No unnecessary allocations** — Tensors are not repeatedly created in hot loops
 - [ ] **Appropriate in-place operations** — Use in-place ops where possible in performance-critical paths
+- [ ] **SYCL kernel vectorization** — If the kernel uses vectorized loads/stores, verify it follows the `aligned_vector` pattern:
+  - [ ] Pointer arguments are qualified with `RESTRICT` to enable aliasing optimizations (works on both Linux and Windows)
+  - [ ] Vector type declared as `using vec_t = memory::aligned_vector<scalar_t, vec_size>`
+  - [ ] Loads use reinterpret cast + index: `const vec_t* RESTRICT input_vec = reinterpret_cast<const vec_t*>(input);` then `vec_t data = input_vec[i]`
+  - [ ] Computation operates on the loaded `vec_t` local, not on raw pointer arithmetic
+- [ ] **No shift_group_left + reduction combiner** — Any `sycl::shift_group_left` combined with a reduction op (add, min, max, mean, product, etc.) must use `sycl::reduce_over_group` instead; the shift pattern generates excessive integer ALU instructions causing pipeline stalls. The loop may be at a different call site or inside a functor — trace callers if needed
 
 ## Dispatch, Fallback, And Generated Wiring
 
@@ -179,7 +188,8 @@ When reviewing changes to workflows, build scripts, or CI configuration:
 - [ ] **Immutable artifact references** — Docker images use immutable tags; no overwriting of published artifacts
 - [ ] **No cache-dependent binaries in sensitive contexts** — sccache-backed builds are susceptible to cache corruption; these artifacts should not access sensitive info or be published for general use
 - [ ] **Workflow trigger scope** — `pull_request_target` workflows must not check out PR head code into a trusted context without proper isolation
-- [ ] **Token permissions minimized** — Workflow `permissions` block should request only what is needed (e.g., `contents: read` not `contents: write` unless required)
+- [ ] **Read-only top-level permissions** — Top-level `permissions` must be `read-all` or `contents: read`; all write permissions must be declared at the job level
+- [ ] **Job-level permissions scoped minimally** — Each job's `permissions` block requests only the specific write permissions that job actually needs
 - [ ] **Write permissions justified by GITHUB_TOKEN usage** — Every write permission declared must correspond to an actual API call using `GITHUB_TOKEN`; permissions needed only by PATs or other secrets should not be granted to the default token
 - [ ] **No arbitrary code execution from PR inputs** — PR title, body, branch name, and commit messages must not be interpolated into shell commands without sanitization
 - [ ] **Third-party action pinning** — Actions are pinned to a full commit SHA, not a mutable tag (e.g., `actions/checkout@<sha>` not `actions/checkout@v4`)

@@ -111,11 +111,11 @@ struct RenormKernelFunctor {
       auto x =
           static_cast<accscalar_t>(weights_[base_index + i * weights_stride1_]);
       if (norm_type_ == 1) {
-        v += std::abs(x);
+        v += sycl::fabs(x);
       } else if (norm_type_ == 2) {
         v += x * x;
       } else {
-        v += std::pow(x, norm_type_);
+        v += sycl::pow(x, norm_type_);
       }
     }
 
@@ -126,7 +126,7 @@ struct RenormKernelFunctor {
             smem_.template get_multi_ptr<sycl::access::decorated::no>().get()));
 
     if (tid == 0) {
-      smem_[0] = std::pow(v, static_cast<accscalar_t>(1.0 / norm_type_));
+      smem_[0] = sycl::pow(v, static_cast<accscalar_t>(1.0 / norm_type_));
     }
     sycl::group_barrier(item.get_group());
 

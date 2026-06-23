@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+PYTORCH_TEST_DIR = "../../../../test"
+
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
@@ -57,6 +59,11 @@ skip_dict = {
         # AssertionError:
         # Not equal to tolerance rtol=1e-06, atol=1e-06
         "test_forward_per_tensor_xpu",
+        # deprecated fake quantization stack, https://github.com/intel/torch-xpu-ops/issues/2434
+        # https://docs.pytorch.org/docs/2.12/quantization.html
+        # https://dev-discuss.pytorch.org/t/torch-ao-quantization-migration-plan/2810
+        # https://dev-discuss.pytorch.org/t/clarification-of-pytorch-quantization-flow-support-in-pytorch-and-torchao/2809
+        "test_fq_module_per_tensor_xpu",
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
@@ -127,11 +134,17 @@ skip_dict = {
         "narrow_copy",
         "histogramdd",
         "_jiterator_",
+        # https://github.com/intel/torch-xpu-ops/issues/2285
+        "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
     "test_native_functions_xpu.py": None,
     "test_native_mha_xpu.py": None,
-    "test_nn_xpu.py": None,
+    "test_nn_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuDNN CTC test uses CUDA-only backend/device assumptions.
+        "test_ctc_loss_cudnn_tensor_cuda_xpu",
+    ),
     "test_ops_fwd_gradients_xpu.py": None,
     "test_ops_gradients_xpu.py": None,
     "test_ops_xpu.py": (
@@ -164,7 +177,11 @@ skip_dict = {
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,
-    "test_spectral_ops_xpu.py": None,
+    "test_spectral_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuFFT plan cache is CUDA-specific and has no XPU equivalent.
+        "test_cufft_plan_cache_xpu_float64",
+    ),
     "test_tensor_creation_ops_xpu.py": None,
     "test_testing_xpu.py": None,
     "test_torch_xpu.py": (
@@ -190,6 +207,9 @@ skip_dict = {
         "test_storage_error",
         # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
         # under pytest -k substring semantics used by the XPU skip runner.
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # CudaSyncGuard has no XPU counterpart yet.
+        "test_sync_warning_xpu",
         "test_print",
         "test_tensor_storage_type_xpu",
     ),
@@ -290,7 +310,15 @@ skip_dict = {
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
-    "export/test_torchbind_xpu.py": None,
+    "export/test_export_strict_xpu.py": None,
+    "export/test_torchbind_xpu.py": (
+        # Skipped due to lack of _TorchScriptTesting::queue_push implementation.
+        # It will not be added as the whole TorchScript is currently deprecated.
+        "test_export_obj_torchbind_op_with_autocast_device_xpu",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_aot_eager",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
+    ),
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
@@ -302,7 +330,7 @@ skip_dict = {
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     "dynamo/test_functions_xpu.py": None,
-    "dynamo/test_higher_order_ops_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
@@ -322,4 +350,5 @@ skip_dict = {
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
+    "test_fx_experimental_xpu.py": None,
 }

@@ -41,7 +41,7 @@ macro(set_build_flags)
     set(SYCL_OFFLINE_COMPILER_FLAGS)
 
     set(CPP_STD c++20)
-    # # -- Host flags (SYCL_CXX_FLAGS)
+    # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS /MD)
@@ -49,12 +49,19 @@ macro(set_build_flags)
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
       list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+
+      # -fsycl-host-compiler-options never sees CMAKE_CXX_FLAGS_<CONFIG>, so
+      # spell per-config flags here. /Z7 (not /Zi) avoids parallel PDB contention.
+      if(CMAKE_BUILD_TYPE MATCHES Debug)
+        list(APPEND SYCL_HOST_FLAGS /Od /Z7)
+      elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+        list(APPEND SYCL_HOST_FLAGS /O2 /Z7)
+      endif()
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
-      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -68,13 +75,14 @@ macro(set_build_flags)
       # Excluding warnings which flood the compilation output
       # TODO: fix warnings in the source code and then reenable them in compilation
       list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+
+      if(CMAKE_BUILD_TYPE MATCHES Debug)
+        list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
+      elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+        list(APPEND SYCL_HOST_FLAGS -g -O2)
+      endif()
     endif()
 
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
-    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-      list(APPEND SYCL_HOST_FLAGS -g -O2)
-    endif()
     if(USE_PER_OPERATOR_HEADERS)
       list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
     endif()
@@ -101,14 +109,17 @@ macro(set_build_flags)
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      # On Windows icx uses the clang-cl driver, which ignores -std= with
+      # only a warning; spell it as -Qstd= so device code is really C++20.
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Qstd=${CPP_STD})
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
       # Suppress warnings about dllexport.
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
       # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons

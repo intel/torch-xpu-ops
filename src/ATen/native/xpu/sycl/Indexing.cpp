@@ -13,6 +13,8 @@
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 
+#include <type_traits>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -567,6 +569,10 @@ static inline void index_copy_impl(
   if (sliceSize == 0) {
     return;
   }
+  // No indices: nothing to copy; dst already holds a copy of self.
+  if (indices.numel() == 0) {
+    return;
+  }
 
   TensorInfo<const int64_t, int64_t> indices_info =
       getTensorInfo<const int64_t, int64_t>(indices);
@@ -921,7 +927,12 @@ struct IndexFuncSmallIndexFunctor {
             IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src_);
         srcOffset += srcIndex * src_.strides[srcAddDim_];
 
-        T val = src_.data[srcOffset] * alpha_;
+        T val;
+        if constexpr (std::is_same_v<T, bool>) {
+          val = src_.data[srcOffset] && alpha_;
+        } else {
+          val = src_.data[srcOffset] * alpha_;
+        }
         op_(dst_.data, dstOffset, dstNumel_, &val);
       }
     }
@@ -974,8 +985,7 @@ template <
     bool IndexIsMajor,
     typename func_t>
 struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto local_range = item.get_local_range(0);
     T identity = (T)0;
 
@@ -1014,7 +1024,12 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src_);
       srcOffset += srcIndex * src_.strides[srcAddDim_];
 
-      T val = src_.data[srcOffset] * alpha_;
+      T val;
+      if constexpr (std::is_same_v<T, bool>) {
+        val = src_.data[srcOffset] && alpha_;
+      } else {
+        val = src_.data[srcOffset] * alpha_;
+      }
       const int smem_idx = dstOffset & (SMEM_SIZE - 1);
       IndexType current_offset = smem_offsets[smem_idx];
 
