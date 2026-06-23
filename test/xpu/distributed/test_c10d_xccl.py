@@ -322,7 +322,9 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         dist.destroy_process_group()
 
     @requires_xccl()
-    @skip_but_pass_in_sandcastle_if(not TEST_MULTIXPU, "XCCL test requires 2+ GPUs")
+    @skip_but_pass_in_sandcastle_if(
+        torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
+    )
     def test_set_process_group_desc(self):
         device = torch.device(f"xpu:{self.rank}")
         pg_default = self._create_process_group_xccl(device_id=device)
