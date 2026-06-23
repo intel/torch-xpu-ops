@@ -24,7 +24,7 @@ struct LaguerrePolynomialLFunctor {
       return scalar_t(0.0);
     }
 
-    if (std::abs(x) == scalar_t(0.0)) {
+    if (sycl::fabs(x) == scalar_t(0.0)) {
       return scalar_t(1.0);
     }
 

@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+PYTORCH_TEST_DIR = "../../../../test"
+
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
@@ -335,7 +337,7 @@ skip_dict = {
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     "dynamo/test_functions_xpu.py": None,
-    "dynamo/test_higher_order_ops_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,
