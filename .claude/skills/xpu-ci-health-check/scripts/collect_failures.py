@@ -1,22 +1,26 @@
+#!/usr/bin/env python3
+"""Collect XPU CI failure evidence for AI root-cause analysis.
+
+This module now bundles the script entrypoint, collector helpers, and the small
+data model used by the xpu-ci-health-check skill.
+"""
 from __future__ import annotations
 
+import argparse
 import gzip
 import json
 import re
 import shutil
 import subprocess
-from typing import List
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import List, Optional
+from urllib.parse import quote
 from urllib.request import Request, urlopen
-
-try:
-    from .models import FailureCase, WorkflowJob, WorkflowRun
-except ImportError:
-    from models import FailureCase, WorkflowJob, WorkflowRun  # type: ignore[no-redef]
 
 DEFAULT_API_BASE = "https://api.github.com"
 DEFAULT_WORKFLOW_FILE = "xpu.yml"
 DEFAULT_RAW_JOB_LOG_BASE = "https://ossci-raw-job-status.s3.amazonaws.com/log"
-
 
 FAILURE_PATTERNS = [
     re.compile(r"^FAILED\s+\[(?P<case>(?=[^\]]*(?:/|::))[^\]]+)\](?:\s+-\s+(?P<detail>.*))?$"),
@@ -36,11 +40,80 @@ VALID_CASE_ID_PATTERN = re.compile(
     r"^[A-Za-z0-9_./-]+\.py::[A-Za-z0-9_.\[\]-]+(?:::[A-Za-z0-9_.\[\]-]+)*$"
 )
 
-ROOT_CAUSE_PATTERN = re.compile(
-    r"^(?P<cause>(?:[A-Za-z_][\w.]*?(?:Error|Exception)|AssertionError):.*)$"
+TIMESTAMP_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+\s+")
+
+TARGET_PLATFORM = "xpu"
+TORCH_CI_FAILURE_BASE = "https://www.torch-ci.com/failure?failureCaptures="
+DISABLE_LABELS = ["module: xpu", "triaged"]
+DISABLE_CC_LINE = (
+    "cc [@gujinghui](https://github.com/gujinghui) "
+    "[@EikanWang](https://github.com/EikanWang) "
+    "[@fengyuan14](https://github.com/fengyuan14) "
+    "[@guangyey](https://github.com/guangyey)"
 )
 
-TIMESTAMP_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+\s+")
+
+@dataclass(frozen=True)
+class WorkflowRun:
+    run_id: int
+    run_number: int
+    branch: str
+    status: str
+    conclusion: str
+    html_url: str
+    logs_url: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    head_sha: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class WorkflowJob:
+    job_id: int
+    name: str
+    conclusion: str
+    html_url: str
+    logs_url: str = ""
+
+
+@dataclass(frozen=True)
+class FailureCase:
+    case_id: str
+    run_id: int
+    run_number: int
+    source: str
+    raw_line: str
+    detail: str = ""
+    root_cause: str = ""
+    cuda_status: str = "unknown"
+
+
+@dataclass(frozen=True)
+class DisableCandidate:
+    case_id: str
+    occurrences: List[FailureCase] = field(default_factory=list)
+
+    @property
+    def repeat_count(self) -> int:
+        return len({occurrence.run_id for occurrence in self.occurrences})
+
+
+@dataclass(frozen=True)
+class IssueDraft:
+    title: str
+    body: str
+    template_reference: str
+    labels: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class MonitorReport:
+    runs: List[WorkflowRun]
+    failures_by_run: dict[int, List[FailureCase]]
+    candidates: List[DisableCandidate]
+    window_complete: bool
+    is_green: bool
+    summary: str
 
 
 def normalize_case_id(raw_case: str) -> str:
@@ -62,46 +135,47 @@ def is_plausible_case_id(case_id: str) -> bool:
     return bool(VALID_CASE_ID_PATTERN.match(case_id))
 
 
-def extract_root_cause_from_context(raw_lines: List[str], failure_index: int) -> str:
-    traceback_lines: List[str] = []
-    for raw_line in raw_lines[failure_index + 1 :]:
-        normalized_line = strip_timestamp_prefix(raw_line).strip()
-        if not normalized_line:
-            continue
-        if normalized_line.startswith(("FAILED ", "ERROR ")):
-            break
-        traceback_lines.append(normalized_line)
-        if normalized_line.startswith(("===", "---")):
-            continue
-        if normalized_line.startswith("Traceback"):
-            continue
-        if normalized_line.startswith("E "):
-            normalized_line = normalized_line[1:].strip()
-        match = ROOT_CAUSE_PATTERN.match(normalized_line)
-        if match:
-            raw_cause = match.group("cause").strip()
-            return _summarize_root_cause(raw_cause, traceback_lines, raw_lines[failure_index])
-    return _summarize_root_cause("", traceback_lines, raw_lines[failure_index])
+def _recent_examples_url(case_id: str) -> str:
+    failure_capture = case_id if case_id.startswith("test/") else f"test/{case_id}"
+    encoded = quote(f'["{failure_capture}"]', safe="")
+    return f"{TORCH_CI_FAILURE_BASE}{encoded}"
 
 
-def _summarize_root_cause(raw_cause: str, traceback_lines: List[str], failed_line: str) -> str:
-    combined = " \n".join([failed_line, raw_cause, *traceback_lines]).lower()
-    arch_match = re.search(r"arch\s+(\d+)", combined)
-    arch_text = f"Arch {arch_match.group(1)}" if arch_match else "the detected architecture"
+def _case_id_to_issue_title(case_id: str) -> str:
+    parts = case_id.split("::")
+    if len(parts) >= 3:
+        return f"{parts[-1]} (__main__.{parts[-2]})"
+    if len(parts) == 2:
+        module_name = parts[-2].rsplit("/", maxsplit=1)[-1].removesuffix(".py")
+        return f"{parts[-1]} (__main__.{module_name})"
+    return case_id
 
-    if "cutlass" in combined and ("notimplementederror" in combined or "loweringexception" in combined):
-        return (
-            f"XPU CUTLASS lowering does not support {arch_text}; "
-            "the failure is in the backend lowering path, not the test body."
-        )
 
-    if "inductor" in combined and "loweringexception" in combined:
-        return "XPU Inductor lowering fails in the backend compilation path."
+def build_disable_issue(case_id: str) -> dict:
+    title = f"DISABLED {_case_id_to_issue_title(case_id)}"
+    body = "\n".join(
+        [
+            f"Platforms: {TARGET_PLATFORM}",
+            "",
+            (
+                "This test was disabled because it is failing on main branch "
+                f"([recent examples]({_recent_examples_url(case_id)}))."
+            ),
+            "",
+            DISABLE_CC_LINE,
+        ]
+    )
+    return {"title": title, "body": body, "labels": list(DISABLE_LABELS)}
 
-    if "assertionerror" in combined:
-        return "XPU execution hits an assertion failure."
 
-    return raw_cause or (traceback_lines[-1] if traceback_lines else "")
+def build_github_new_issue_url(owner: str, repo: str, issue: dict) -> str:
+    title = quote(issue["title"], safe="")
+    body = quote(issue["body"], safe="")
+    query = f"title={title}&body={body}"
+    if issue.get("labels"):
+        labels = quote(",".join(issue["labels"]), safe=",")
+        query += f"&labels={labels}"
+    return f"https://github.com/{owner}/{repo}/issues/new?{query}"
 
 
 def extract_failure_cases_from_log_text(
@@ -166,7 +240,7 @@ def extract_failure_cases_from_raw_log_text(
             if not is_plausible_case_id(case_id):
                 break
             detail = (match.groupdict().get("detail") or "").strip()
-            root_cause = detail or extract_root_cause_from_context(raw_lines, index)
+            root_cause = detail
             failures.append(
                 FailureCase(
                     case_id=case_id,
@@ -184,6 +258,9 @@ def extract_failure_cases_from_raw_log_text(
     for failure in failures:
         unique.setdefault(failure.case_id, failure)
     return list(unique.values())
+
+
+extract_failure_cases_from_log_text = extract_failure_cases_from_raw_log_text
 
 
 class GitHubActionsClient:
@@ -207,7 +284,7 @@ class GitHubActionsClient:
             request.add_header("Accept", "application/vnd.github+json")
             request.add_header("X-GitHub-Api-Version", "2022-11-28")
             request.add_header("Authorization", f"Bearer {self.token}")
-            with urlopen(request) as response:
+            with urlopen(request, timeout=10) as response:
                 return json.loads(response.read().decode("utf-8"))
 
         gh_payload = self._gh_api_json(url)
@@ -217,7 +294,7 @@ class GitHubActionsClient:
         request = Request(url)
         request.add_header("Accept", "application/vnd.github+json")
         request.add_header("X-GitHub-Api-Version", "2022-11-28")
-        with urlopen(request) as response:
+        with urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def _request_bytes(self, url: str) -> bytes:
@@ -225,7 +302,7 @@ class GitHubActionsClient:
             request = Request(url)
             request.add_header("Accept", "application/vnd.github+json")
             request.add_header("Authorization", f"Bearer {self.token}")
-            with urlopen(request) as response:
+            with urlopen(request, timeout=10) as response:
                 return response.read()
 
         if url.startswith(self.api_base.rstrip("/") + "/"):
@@ -234,7 +311,7 @@ class GitHubActionsClient:
                 return gh_bytes
 
         request = Request(url)
-        with urlopen(request) as response:
+        with urlopen(request, timeout=10) as response:
             return response.read()
 
     def _gh_api_endpoint(self, url: str) -> str:
@@ -316,7 +393,7 @@ class GitHubActionsClient:
                 break
             for item in workflow_runs:
                 if item.get("head_branch") != "main":
-                    continue
+                   continue
                 if item.get("status") != "completed":
                     continue
                 runs.append(
@@ -368,3 +445,138 @@ class GitHubActionsClient:
         for failure in failures:
             unique.setdefault(failure.case_id, failure)
         return list(unique.values())
+
+
+def collect(owner: str, repo: str, workflow_file: str, run_limit: int, token: str | None) -> dict:
+    client = GitHubActionsClient(
+        owner=owner,
+        repo=repo,
+        workflow_file=workflow_file,
+        token=token,
+    )
+    runs = client.list_recent_completed_main_runs(limit=run_limit)
+
+    grouped: "OrderedDict[str, dict]" = OrderedDict()
+    runs_meta = []
+
+    for run in runs:
+        runs_meta.append(
+            {
+                "run_number": run.run_number,
+                "run_id": run.run_id,
+                "head_sha": run.head_sha,
+                "html_url": run.html_url,
+            }
+        )
+        for job in client.list_failed_jobs(run):
+            if not client._is_test_job(job):
+                continue
+            raw_log_text = client.download_raw_log_text(job.logs_url)
+            raw_lines = raw_log_text.splitlines()
+            failures = extract_failure_cases_from_raw_log_text(
+                raw_log_text,
+                run_id=run.run_id,
+                run_number=run.run_number,
+                source=job.logs_url,
+            )
+            for failure in failures:
+                if failure.case_id in grouped:
+                    continue
+                issue = build_disable_issue(failure.case_id)
+                short_sha = (run.head_sha or "")[:7]
+                grouped[failure.case_id] = {
+                    "case_id": failure.case_id,
+                    "run_number": run.run_number,
+                    "run_id": run.run_id,
+                    "commit_sha": run.head_sha,
+                    "commit_short": short_sha,
+                    "hud_url": (
+                        f"https://hud.pytorch.org/pytorch/pytorch/commit/{run.head_sha}"
+                        if run.head_sha
+                        else None
+                    ),
+                    "commit_url": (
+                        f"https://github.com/{owner}/{repo}/commit/{run.head_sha}"
+                        if run.head_sha
+                        else None
+                    ),
+                    "job_name": job.name,
+                    "failure_line": failure.raw_line,
+                    "error_excerpt": capture_error_excerpt(raw_lines, failure.case_id),
+                    "issue_title": issue["title"],
+                    "issue_body": issue["body"],
+                    "issue_labels": issue["labels"],
+                    "issue_url": build_github_new_issue_url(owner, repo, issue),
+                }
+
+    return {
+        "owner": owner,
+        "repo": repo,
+        "workflow_file": workflow_file,
+        "run_limit": run_limit,
+        "runs": runs_meta,
+        "cases": list(grouped.values()),
+    }
+
+
+_PYTEST_HEADER = re.compile(r"^_{3,}.*_{3,}$")
+_SECTION_BREAK = re.compile(r"^={3,}.*={3,}$")
+
+
+def _short_name(case_id: str) -> str:
+    return case_id.split("::")[-1].split("[")[0]
+
+
+def capture_error_excerpt(raw_lines: list[str], case_id: str, max_lines: int = 60) -> str:
+    short = _short_name(case_id)
+    stripped = [strip_timestamp_prefix(line).rstrip() for line in raw_lines]
+
+    for idx, line in enumerate(stripped):
+        if _PYTEST_HEADER.match(line) and short in line:
+            block: list[str] = [line]
+            for follow in stripped[idx + 1 :]:
+                if _PYTEST_HEADER.match(follow) or _SECTION_BREAK.match(follow):
+                    break
+                block.append(follow)
+                if len(block) >= max_lines:
+                    break
+            excerpt = "\n".join(b for b in block).strip()
+            if excerpt:
+                return excerpt
+
+    for idx, line in enumerate(stripped):
+        if short in line and line.strip().endswith("FAILED") is False and "FAILED" in line:
+            block = []
+            for follow in stripped[idx : idx + max_lines]:
+                if _SECTION_BREAK.match(follow):
+                    break
+                block.append(follow)
+            excerpt = "\n".join(block).strip()
+            if excerpt:
+                return excerpt
+
+    return ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Collect XPU CI failure evidence for AI root-cause analysis.")
+    parser.add_argument("--owner", default="pytorch")
+    parser.add_argument("--repo", default="pytorch")
+    parser.add_argument("--workflow-file", default="xpu.yml")
+    parser.add_argument("--run-limit", type=int, default=1, help="Number of completed main runs to inspect")
+    parser.add_argument("--token", default=None, help="GitHub token (optional; falls back to gh CLI)")
+    args = parser.parse_args()
+
+    bundle = collect(
+        owner=args.owner,
+        repo=args.repo,
+        workflow_file=args.workflow_file,
+        run_limit=args.run_limit,
+        token=args.token,
+    )
+    print(json.dumps(bundle, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

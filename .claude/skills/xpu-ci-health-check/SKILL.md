@@ -31,7 +31,7 @@ This skill automates XPU CI health checks with the following workflow:
 
 Run the bundled collection script from the PyTorch repository root. The script
 is located at `<path/to/skills>/xpu-ci-health-check/scripts/collect_failures.py`
-(included in this skill). Source `.env` first so torch/library paths are set up.
+(included in this skill).
 
 ```bash
 # Run from PyTorch repository root
@@ -39,13 +39,6 @@ cd /path/to/pytorch  # or your PyTorch clone location
 python </path/to/skills>/xpu-ci-health-check/scripts/collect_failures.py --run-limit 1
 ```
 
-Or run directly from the skill directory:
-
-```bash
-# Run from the skill directory itself
-cd </path/to/skills>/xpu-ci-health-check
-python scripts/collect_failures.py --run-limit 1
-```
 
 ### Flags
 
