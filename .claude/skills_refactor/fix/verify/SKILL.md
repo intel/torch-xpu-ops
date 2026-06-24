@@ -1,0 +1,111 @@
+---
+name: fix/verify
+description: >
+  Verify a fix by running tests against a source build. Optionally runs a
+  before/after comparison and lint. Used by both issue-handler and
+  nightly-ci-fix orchestrators after fix/implement.
+---
+
+# Verify — Confirm the Fix Works
+
+Runs the test against a source build (with the fix applied) and reports
+whether the fix is effective. Always uses source build — never nightly wheel,
+since the fix lives in local code.
+
+## Inputs
+
+- `refined_command` — the exact test command from `fix/reproduce` output.
+- `pytorch_dir` — path to local PyTorch checkout.
+- `changed_files` — list of changed files; if any are `.cpp`/`.h`/`.sycl`,
+  a rebuild is required before running.
+- `run_before_after_diff` (bool, default `false`) — if `true`, runs the test
+  before and after the fix to produce a comparison table. Set to `true` by
+  `nightly-ci-fix`.
+- `run_lint` (bool, default `false`) — if `true`, runs `spin fixlint` after a
+  passing result. Set to `true` by `nightly-ci-fix`.
+
+## Step 1: Confirm source build environment
+
+```bash
+python -c "import torch; print(torch.version.git_version)"
+```
+
+This must return a commit hash (source build), not a version string like
+`2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
+to the orchestrator — verify requires source build.
+
+Activate the environment before running
+(see [../references/environment-setup.md](../references/environment-setup.md)).
+
+## Step 2: Rebuild if needed
+
+If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
+rebuild before running:
+
+```bash
+# see fix/references/environment-setup.md for full build command
+TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation \
+  2>&1 | tail -20
+```
+
+Python-only changes (`*.py`) need no rebuild.
+
+## Step 3: Before/after comparison (if run_before_after_diff=true)
+
+```bash
+# Record BEFORE (without the fix)
+git stash
+# run test, capture output
+git stash pop
+
+# Record AFTER (with the fix)
+# run test, capture output
+```
+
+Output a comparison table:
+
+```
+| Test case | Before | After |
+|-----------|--------|-------|
+| TestFooXPU::test_bar | FAILED (AssertionError: ...) | PASSED |
+```
+
+If `git stash` has nothing to stash (no staged changes), skip before recording
+and only record after.
+
+## Step 4: Run test
+
+See [../references/run-test.md](../references/run-test.md) for command format
+and result interpretation.
+
+Run ALL failing test cases from the original report individually — do not
+assume one representative case is sufficient.
+
+## Step 5: Lint (if run_lint=true)
+
+Only run after a passing result:
+```bash
+spin fixlint
+```
+
+Fix any reported issues before returning to the orchestrator.
+
+## Output
+
+Return to the orchestrator:
+
+```
+PASSED
+  before_after_diff: <comparison table, if run_before_after_diff=true>
+  lint: clean | <issues fixed>
+
+FAILED
+  failure_output: <relevant test output>
+  suggestion: <what might need to change in the fix>
+
+CANNOT_VERIFY
+  blocker: <what went wrong (env, rebuild failure, 0 collected, timeout)>
+```
+
+The orchestrator decides whether to loop back to `fix/implement` on `FAILED`,
+or proceed to commit/PR on `PASSED`.
