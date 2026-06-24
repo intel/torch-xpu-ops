@@ -164,29 +164,6 @@ current_accelerator_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
 
-
-def _xpu_capability_major(capability):
-    if isinstance(capability, dict):
-        # XPU capability may be returned as a property dict.
-        return int(capability.get("major", 0))
-    if isinstance(capability, (tuple, list)):
-        return int(capability[0])
-    return int(capability)
-
-
-def _get_device_major(device):
-    dev_type = torch.device(device).type
-    if dev_type == "xpu":
-        # Some XPU builds may expose a CUDA-like `major` on properties.
-        props = torch.xpu.get_device_properties(device)
-        if hasattr(props, "major"):
-            return int(props.major)
-        return _xpu_capability_major(torch.xpu.get_device_capability(device))
-    if dev_type == "cuda":
-        return torch.cuda.get_device_properties(device).major
-    return 0
-
-
 @unittest.skipIf(
     current_accelerator_type == "cuda" and not PLATFORM_SUPPORTS_FP8, f8_msg
 )
@@ -195,48 +172,40 @@ def _get_device_major(device):
 @parametrize("y_cm", [True, False])
 def _xpu_test_scaled_mm_vs_emulated(self, base_dtype, x_cm, y_cm, device):
     # Blackwell (SM_10) supports all possible layout permutations, while Hopper only TN.
-    if (x_cm, y_cm) != (True, False) and _get_device_major(device) != 10:
+    if current_accelerator_type == "cuda" and (x_cm, y_cm) != (True, False) and torch.cuda.get_device_properties(0).major != 10:
         raise unittest.SkipTest("Unsupported layout on the architecture")
-
     torch.manual_seed(42)
     input_dtype = e4m3_type
     output_dtype = base_dtype
     compare_type = torch.float32
 
     M, N, K = 16, 32, 16
-    x = (
-        torch.randn(M, K, device=device, dtype=base_dtype)
-        if x_cm
-        else torch.randn(K, M, device=device, dtype=base_dtype).t()
-    )
-    y = (
-        torch.randn(K, N, device=device, dtype=base_dtype)
-        if y_cm
-        else torch.randn(N, K, device=device, dtype=base_dtype).t()
-    )
+    x = torch.randn(M, K, device=device, dtype=base_dtype) if x_cm else torch.randn(K, M, device=device, dtype=base_dtype).t()
+    y = torch.randn(K, N, device=device, dtype=base_dtype) if y_cm else torch.randn(N, K, device=device, dtype=base_dtype).t()
 
     x_scale = tensor_to_scale(x, input_dtype).float()
     y_scale = tensor_to_scale(y, input_dtype).float()
 
+
     x_fp8 = to_fp8_saturated(x * x_scale, input_dtype)
     y_fp8 = to_fp8_saturated(y * y_scale, input_dtype)
 
-    # Calculate actual F8 mm.
+    # Calculate actual F8 mm
     out_scaled_mm = scaled_mm_wrap(
         x_fp8,
         y_fp8,
         scale_a=x_scale.reciprocal(),
         scale_b=y_scale.reciprocal(),
-        out_dtype=output_dtype,
+        out_dtype=output_dtype
     )
 
-    # Calculate emulated F8 mm.
+    # Calculate emulated F8 mm
     out_emulated = mm_float8_emulated(
         x_fp8,
         x_scale,
         y_fp8,
         y_scale,
-        output_dtype,
+        output_dtype
     )
 
     if output_dtype != base_dtype:
