@@ -13,6 +13,7 @@ PYTORCH_REPO=${PYTORCH_REPO:-"https://github.com/pytorch/pytorch.git"}
 PYTORCH_COMMIT=${PYTORCH_COMMIT:-"main"}
 TORCH_XPU_OPS_REPO=${TORCH_XPU_OPS_REPO:-"https://github.com/intel/torch-xpu-ops.git"}
 TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT:-"main"}
+USE_DPCLANG=${USE_DPCLANG:-"no"}
 for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
@@ -71,7 +72,7 @@ fi
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2026.0.0 mkl-include==2026.0.0
 export USE_STATIC_MKL=1
-if [ "${XPU_ONEAPI_PATH}" == "" ];then
+if [ "${XPU_ONEAPI_PATH}" == "" ] && [ "${USE_DPCLANG}" == "no" ]; then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
         intel-cmplr-lib-rt==2026.0.0 | \
         intel-cmplr-lib-ur==2026.0.0 | \
@@ -95,6 +96,12 @@ if [ "${XPU_ONEAPI_PATH}" == "" ];then
         umf==1.1.0 | \
         intel-pti==0.17.0
     "
+fi
+
+if [ "${USE_DPCLANG}" == "yes" ]; then
+    export XPU_SYCL_COMPILER=dpclang
+    export USE_KINETO=0
+    export USE_ONEMKL_XPU=0
 fi
 
 # Build

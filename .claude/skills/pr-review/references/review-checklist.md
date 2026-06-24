@@ -188,7 +188,8 @@ When reviewing changes to workflows, build scripts, or CI configuration:
 - [ ] **Immutable artifact references** — Docker images use immutable tags; no overwriting of published artifacts
 - [ ] **No cache-dependent binaries in sensitive contexts** — sccache-backed builds are susceptible to cache corruption; these artifacts should not access sensitive info or be published for general use
 - [ ] **Workflow trigger scope** — `pull_request_target` workflows must not check out PR head code into a trusted context without proper isolation
-- [ ] **Token permissions minimized** — Workflow `permissions` block should request only what is needed (e.g., `contents: read` not `contents: write` unless required)
+- [ ] **Read-only top-level permissions** — Top-level `permissions` must be `read-all` or `contents: read`; all write permissions must be declared at the job level
+- [ ] **Job-level permissions scoped minimally** — Each job's `permissions` block requests only the specific write permissions that job actually needs
 - [ ] **Write permissions justified by GITHUB_TOKEN usage** — Every write permission declared must correspond to an actual API call using `GITHUB_TOKEN`; permissions needed only by PATs or other secrets should not be granted to the default token
 - [ ] **No arbitrary code execution from PR inputs** — PR title, body, branch name, and commit messages must not be interpolated into shell commands without sanitization
 - [ ] **Third-party action pinning** — Actions are pinned to a full commit SHA, not a mutable tag (e.g., `actions/checkout@<sha>` not `actions/checkout@v4`)
