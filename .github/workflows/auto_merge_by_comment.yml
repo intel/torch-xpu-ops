@@ -3,16 +3,21 @@ name: Auto Merge PR by Comment with Checks
 on:
   issue_comment:
     types: [created]
+  pull_request:
+    paths:
+      - '.github/workflows/auto_merge_by_comment.yml'
 
 permissions:
-  checks: read
-  issues: write
-  pull-requests: write
-  statuses: read
+  contents: read
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      issues: read
+      pull-requests: read
+      statuses: read
     if: >-
       github.event.issue.pull_request
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
@@ -21,6 +26,7 @@ jobs:
       - name: Acknowledge Command
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             await github.rest.reactions.createForIssueComment({
               owner: context.repo.owner,
@@ -33,6 +39,7 @@ jobs:
         uses: actions/github-script@v7
         id: prinfo
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
@@ -48,6 +55,7 @@ jobs:
         uses: actions/github-script@v7
         id: reviews
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
 
@@ -88,6 +96,7 @@ jobs:
         uses: actions/github-script@v7
         id: status
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const sha = '${{ steps.prinfo.outputs.head_sha }}';
@@ -156,6 +165,7 @@ jobs:
         uses: actions/github-script@v7
         id: conflict
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const mergeable = '${{ steps.prinfo.outputs.mergeable }}';
@@ -203,8 +213,13 @@ jobs:
             if (forceMerge) {
               const authorAssociation = context.payload.comment.author_association;
               if (!['OWNER', 'MEMBER'].includes(authorAssociation)) {
-                core.setOutput('result', 'denied');
-                core.setOutput('message', '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.');
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: '⛔ Only maintainers (OWNER/MEMBER) can force merge. Please contact a maintainer.'
+                });
+                core.setFailed('Only maintainers can force merge.');
                 return;
               }
             }
@@ -216,32 +231,130 @@ jobs:
                 pull_number: prNumber,
                 merge_method: 'squash'
               });
-              core.setOutput('result', 'success');
-              core.setOutput('message', `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`
+              });
             } catch (e) {
-              core.setOutput('result', 'failed');
-              core.setOutput('message', `❌ Failed to merge PR: ${e.message}`);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `❌ Failed to merge PR: ${e.message}`
+              });
+              core.setFailed(`Failed to merge PR: ${e.message}`);
             }
 
-      - name: Report Merge Result
-        if: always() && steps.merge.outputs.result
+  # Dry-run job: triggered by PRs that modify this workflow file.
+  # Validates MERGE_TOKEN permissions for each API operation without actually merging.
+  token-permission-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: "Test: Read PR info (pulls.get)"
         uses: actions/github-script@v7
-        env:
-          MERGE_RESULT: ${{ steps.merge.outputs.result }}
-          MERGE_MESSAGE: ${{ steps.merge.outputs.message }}
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
-            const result = process.env.MERGE_RESULT;
-            const message = process.env.MERGE_MESSAGE;
-
-            await github.rest.issues.createComment({
+            const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
-              body: message
+              pull_number: context.payload.pull_request.number
             });
+            console.log(`✅ pulls.get OK — PR #${pr.data.number}, mergeable: ${pr.data.mergeable}`);
 
-            if (result !== 'success') {
-              core.setFailed(message);
+      - name: "Test: List reviews (pulls.listReviews)"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            console.log(`✅ pulls.listReviews OK — ${reviews.data.length} reviews found`);
+
+      - name: "Test: List check runs (checks.listForRef)"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+            console.log(`✅ checks.listForRef OK — ${checks.data.total_count} check runs`);
+
+      - name: "Test: Get combined status (repos.getCombinedStatusForRef)"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const statuses = await github.rest.repos.getCombinedStatusForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+            console.log(`✅ repos.getCombinedStatusForRef OK — state: ${statuses.data.state}`);
+
+      - name: "Test: Create comment, react, and delete (issues + reactions)"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            // Step 1: Create a comment
+            const comment = await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '🔧 Token permission test — this comment will be deleted automatically.'
+            });
+            console.log(`✅ issues.createComment OK — comment id: ${comment.data.id}`);
+
+            // Step 2: React to the comment
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: comment.data.id,
+              content: '+1'
+            });
+            console.log('✅ reactions.createForIssueComment OK');
+
+            // Step 3: Delete the comment
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: comment.data.id
+            });
+            console.log('✅ issues.deleteComment OK');
+
+      - name: "Test: Merge permission (pulls.merge dry-run)"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            // We cannot actually merge, but we can verify the token has write access
+            // by attempting to merge with a valid-format but wrong SHA (will fail with 409, not 403/404)
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                merge_method: 'squash',
+                sha: '0000000000000000000000000000000000000000'
+              });
+            } catch (e) {
+              if (e.status === 409 || e.status === 422) {
+                console.log(`✅ pulls.merge permission OK (got ${e.status} as expected — token has write access)`);
+              } else if (e.status === 405) {
+                console.log('✅ pulls.merge permission OK (got 405 — merge not allowed by branch rules, but token has access)');
+              } else if (e.status === 403 || e.status === 404) {
+                core.setFailed(`❌ pulls.merge permission DENIED — status: ${e.status}, message: ${e.message}`);
+              } else {
+                core.setFailed(`❌ pulls.merge got unexpected status ${e.status}: ${e.message}`);
+              }
             }
