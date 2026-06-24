@@ -45,7 +45,8 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     int wg_size,
     sycl_local_ptr<void> shared,
     at::detail::Array<arg_t, out_vec_sz> value,
-    CombineFunc combine) {
+    CombineFunc combine,
+    arg_t ident) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
   sycl_local_ptr<vec_t> shared_(shared);
   int l_x = item.get_local_linear_id();
@@ -73,18 +74,20 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   sycl::group_barrier(item.get_group());
 
   if (sg_range <= sg_size) {
-    // sub-group reduce
-    if (l_x < sg_size) {
-      value = shared_[l_x];
-    }
-
-    if (sg_gid == 0 && sg_lid < sg_range) {
-      value = shared_[sg_lid];
-      for (int offset = 1; offset < sg_range; offset <<= 1) {
+    // Reduce the sg_range partials within sub-group 0. Every lane joins the
+    // shift_group_left collective (convergent -> no UB); lanes >= sg_range feed
+    // the identity, a no-op under combine, so lane 0 gets the full reduction.
+    // A per-lane guard on the collective would diverge when sg_range < sg_size.
+    if (sg_gid == 0) {
+#pragma unroll(out_vec_sz)
+      for (int i = 0; i < out_vec_sz; ++i) {
+        value[i] = (sg_lid < sg_range) ? shared_[sg_lid][i] : ident;
+      }
+      for (int offset = 1; offset < sg_size; offset <<= 1) {
 #pragma unroll(out_vec_sz)
         for (int i = 0; i < out_vec_sz; ++i) {
-          arg_t other = sycl::shift_group_left(sg, value[i], offset);
-          value[i] = combine(value[i], other);
+          value[i] =
+              combine(value[i], sycl::shift_group_left(sg, value[i], offset));
         }
       }
     }
@@ -575,7 +578,8 @@ struct ReduceOp {
           arg_t,
           decltype(pos),
           decltype(combine),
-          output_vec_size>(pos, config.num_items, shared, value, combine);
+          output_vec_size>(
+          pos, config.num_items, shared, value, combine, ident);
     } else {
       if (config.should_group_y_reduce()) {
         value = group_y_reduce<
