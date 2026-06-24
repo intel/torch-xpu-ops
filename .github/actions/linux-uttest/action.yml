@@ -102,7 +102,7 @@ runs:
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
         # RN50 Test
-        PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
+        PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0 -b 2
         cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling
         # All Issue Reproduce UT
         python -u test/profiling/correlation_id_mixed.py | \
