@@ -166,6 +166,7 @@ void copy_kernel(TensorIteratorBase& iter) {
         kBool,
         kBFloat16,
         kComplexHalf,
+        kBComplex32,
         AT_EXPAND(AT_FLOAT8_TYPES),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }

@@ -404,8 +404,9 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 }
 
 void nonzero_kernel(const Tensor& self, Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
       at::ScalarType::ComplexHalf,
+      at::ScalarType::BComplex32,
       at::ScalarType::Bool,
       at::ScalarType::BFloat16,
       at::ScalarType::Half,

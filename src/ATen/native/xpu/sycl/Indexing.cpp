@@ -74,6 +74,7 @@ void index_kernel(
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       AT_EXPAND(AT_FLOAT8_TYPES),
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBool,
       kBFloat16);
@@ -94,11 +95,12 @@ struct MaskedFillFunctor {
 };
 
 void masked_fill_kernel(TensorIterator& iter, const Scalar& value) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
       kBool,
       kHalf,
       kBFloat16,
       kComplexHalf,
+      kBComplex32,
       iter.common_dtype(),
       "masked_fill__xpu",
       [&]() {
@@ -154,11 +156,12 @@ void index_fill_kernel(
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
 
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
       at::ScalarType::Bool,
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::ComplexHalf,
+      at::ScalarType::BComplex32,
       self_restrided.scalar_type(),
       "index_fill_xpu",
       [&] {
@@ -222,8 +225,9 @@ void index_put_kernel(
     IntArrayRef index_stride,
     bool accumulate) {
   if (accumulate) {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
         at::ScalarType::ComplexHalf,
+        at::ScalarType::BComplex32,
         at::ScalarType::BFloat16,
         at::ScalarType::Half,
         at::ScalarType::Bool,
@@ -259,6 +263,7 @@ void index_put_kernel(
         AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
         AT_EXPAND(AT_FLOAT8_TYPES),
         kComplexHalf,
+        kBComplex32,
         kHalf,
         kBool,
         kBFloat16);
@@ -370,6 +375,7 @@ void index_put_deterministic_kernel(
           kFloat8_e4m3fnuz,
           kFloat8_e5m2fnuz,
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16);
@@ -399,6 +405,7 @@ void index_put_deterministic_kernel(
           kFloat8_e4m3fnuz,
           kFloat8_e5m2fnuz,
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16);
@@ -593,8 +600,9 @@ void index_copy_kernel(
     const Tensor& index,
     const Tensor& source,
     Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND6(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND7(
       at::ScalarType::ComplexHalf,
+      at::ScalarType::BComplex32,
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::Bool,
@@ -681,11 +689,12 @@ void index_copy_kernel(
   // Nondeterministic when index contains duplicate entries
   // this kernel will not be called when
   // torch.use_deterministic_algorithms(True)
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
       at::ScalarType::Half,
       at::ScalarType::Bool,
       at::ScalarType::BFloat16,
       kComplexHalf,
+      kBComplex32,
       iter.dtype(),
       "index_copy_xpu",
       [&] {
@@ -2233,6 +2242,7 @@ Tensor& index_select_kernel(
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
       AT_EXPAND(AT_FLOAT8_TYPES),
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBool,
       kBFloat16);
