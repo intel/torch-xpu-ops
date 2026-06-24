@@ -4,42 +4,53 @@
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
-| `issue-handler` | End-to-end pipeline for fixing a single GitHub issue | `issue-format`, `test-verification`, `xpu-issues-triaging`, `issue-fix`, `xpu-ops-pr-creation` | `execution-modes.md` |
-| `xpu-nightly-ci-fix` | Batch nightly CI failure triage and repair | `xpu-build-pytorch` | `AGENTS.md`, `reference.md` |
+| `issue-handler` | End-to-end pipeline for fixing a single GitHub issue | `issue-format`, `fix/reproduce`, `fix/triage`, `fix/implement`, `fix/verify`, `xpu-ops-pr-creation` | `execution-modes.md` |
+| `nightly-ci-fix` | Batch nightly CI failure triage and repair | `fix/reproduce`, `fix/triage`, `fix/implement`, `fix/verify` | `AGENTS.md` |
 
-Orchestrators own the scheduling logic for their scenario. Leaf skills under
-Category B/C are shared between both orchestrators.
+Orchestrators own scheduling, mode handling, and all side effects (GitHub writes,
+commits, PRs). Leaf skills under Category B own the core logic and are shared
+between both orchestrators.
 
 ---
 
-## Category B — Fix / Code Change
+## Category B — Fix / Code Change (shared leaf skills)
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
-| `xpu-issues-triaging` | Analysis-only: root cause, fix strategy, IMPLEMENTING/NEEDS_HUMAN verdict | `issue-fix`, `test-verification` | `execution-modes.md` |
-| `issue-fix` | Implement a triaged fix and verify it | `test-verification`, `xpu-issues-triaging`, `xpu-ops-pr-creation` | `execution-modes.md`, `environment-setup.md` |
+| `fix/reproduce` | Verify bug exists via three-stage approach: nightly wheel → source build → CI env | — | `fix/references/run-test.md`, `fix/references/environment-setup.md` |
+| `fix/triage` | Analysis-only: root cause, fix strategy, IMPLEMENTING/NEEDS_HUMAN verdict | — | `fix/references/failure-categories.md` |
+| `fix/implement` | Implement a triaged fix; `allow_skip` parameter controls skip strategy | — | `fix/references/environment-setup.md`, `fix/references/failure-categories.md` |
+| `fix/verify` | Verify fix via source build; optional before/after diff and lint | — | `fix/references/run-test.md`, `fix/references/environment-setup.md` |
 | `at-dispatch-v2` | Convert legacy `AT_DISPATCH_*` macros to the V2 API | — | — |
 
+### fix/ shared references
+
+| Reference | Used by | Content |
+|-----------|---------|---------|
+| `fix/references/run-test.md` | `fix/reproduce`, `fix/verify` | Path resolution, test commands, PASSED/FAILED/CANNOT_VERIFY |
+| `fix/references/environment-setup.md` | `fix/reproduce`, `fix/implement`, `fix/verify` | Source build, xpu.txt pin, rebuild pitfalls |
+| `fix/references/failure-categories.md` | `fix/triage`, `fix/implement`, `nightly-ci-fix` | Root cause taxonomy |
+
+### Stubs (replaced by fix/ skills)
+
+| Stub | Replaced by |
+|------|-------------|
+| `stubs/xpu-issues-triaging` | `fix/triage` |
+| `stubs/issue-fix` | `fix/implement` |
+| `stubs/test-verification` | `fix/reproduce` + `fix/verify` |
+
 ---
 
-## Category C — Verification / Testing
-
-| Skill | Description | Calls | References |
-|-------|-------------|-------|------------|
-| `test-verification` | Run a test, report PASSED / FAILED / CANNOT_VERIFY | — | `execution-modes.md`, `environment-setup.md` |
-
----
-
-## Category D — PR / Code Review
+## Category C — PR / Code Review
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
 | `pr-review` | Review XPU operator PRs | `skill-writer` (when reviewing agent files) | `review-checklist.md`, `bc-guidelines.md`, `torch-xpu-ops-review-notes.md`, `pr-submission-guidelines.md` |
-| `xpu-ops-pr-creation` | Prepare branch, lint, push, and draft PR for torch-xpu-ops | `xpu-issues-triaging` | `.github/copilot-instructions.md` |
+| `xpu-ops-pr-creation` | Prepare branch, lint, push, and draft PR for torch-xpu-ops | — | `.github/copilot-instructions.md` |
 
 ---
 
-## Category E — Environment Setup
+## Category D — Environment Setup
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
@@ -52,36 +63,35 @@ Category B/C are shared between both orchestrators.
 ### Environment setup dependency chain
 
 ```
-source-oneapi  ←──────────────────────────────┐
-     ↑                                         │
-     │ called by                               │ called by
-     │                                         │
+source-oneapi  ←─────────────────────────────────┐
+     ↑                                            │
+     │ called by                                  │ called by
+     │                                            │
 intel-gpu-device-selection   unitrace/setup   xpu-build-pytorch
-                                               │
-                                               ↓
-                                    environment-setup.md (reference doc)
-                                    delegates oneAPI step to source-oneapi,
-                                    adds: venv activation, pip install -e .,
-                                    xpu.txt pin workflow, rebuild pitfalls
+                                                  │
+                                                  ↓
+                                      fix/references/environment-setup.md
+                                      delegates oneAPI step to source-oneapi,
+                                      adds: venv activation, pip install -e .,
+                                      xpu.txt pin workflow, rebuild pitfalls
 ```
 
-`environment-setup.md` is a reference doc (not a skill) consumed by
-`test-verification` and `issue-fix`. Its oneAPI sourcing step delegates to
-the `source-oneapi` skill rather than duplicating the path-finding logic.
+`fix/references/environment-setup.md` is consumed by `fix/reproduce`,
+`fix/implement`, and `fix/verify`.
 
 ---
 
-## Category F — Issue / CI Management
+## Category E — Issue / CI Management
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
-| `issue-format` | Classify GitHub issue as bug/nonbug, extract metadata | `xpu-issues-triaging` (next stage) | `execution-modes.md` |
+| `issue-format` | Classify GitHub issue as bug/nonbug, extract metadata | — | `execution-modes.md` |
 | `auto-label` | Determine `disable_*` CI labels from PR file changes | — | — |
 | `release-branching` | Create release branch, tracker issue, and workflow PR | — | — |
 
 ---
 
-## Category G — Analysis / Reporting
+## Category F — Analysis / Reporting
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
@@ -90,7 +100,7 @@ the `source-oneapi` skill rather than duplicating the path-finding logic.
 
 ---
 
-## Category H — Meta
+## Category G — Meta
 
 | Skill | Description | Calls | References |
 |-------|-------------|-------|------------|
@@ -98,45 +108,50 @@ the `source-oneapi` skill rather than duplicating the path-finding logic.
 
 ---
 
-## Caller Map (who calls whom)
+## Caller Map
 
 | Skill | Called by |
 |-------|-----------|
-| `test-verification` | `issue-handler`, `issue-fix`, `xpu-issues-triaging` |
-| `issue-fix` | `issue-handler` |
-| `xpu-issues-triaging` | `issue-handler`, `issue-format`, `issue-fix`, `xpu-ops-pr-creation` |
+| `fix/reproduce` | `issue-handler`, `nightly-ci-fix` |
+| `fix/triage` | `issue-handler`, `nightly-ci-fix` |
+| `fix/implement` | `issue-handler`, `nightly-ci-fix` |
+| `fix/verify` | `issue-handler`, `nightly-ci-fix` |
 | `issue-format` | `issue-handler` |
-| `xpu-ops-pr-creation` | `issue-handler`, `issue-fix` |
+| `xpu-ops-pr-creation` | `issue-handler` |
 | `source-oneapi` | `intel-gpu-device-selection`, `unitrace/setup`, `xpu-build-pytorch` |
-| `intel-gpu-device-selection` | `source-oneapi` (mutual: each can trigger the other) |
-| `xpu-build-pytorch` | `xpu-nightly-ci-fix` |
+| `intel-gpu-device-selection` | `source-oneapi` (mutual) |
 | `skill-writer` | `pr-review` |
+
+---
+
+## Orchestrator Comparison
+
+| | `issue-handler` | `nightly-ci-fix` |
+|---|---|---|
+| Input | Single GitHub issue URL/number | Batch CI failure report |
+| Scheduling | Sequential pipeline, single failure | Per-failure independent loop |
+| reproduce | May have no reproducer (→ triage only) | Always has CI test command |
+| implement `allow_skip` | `false` — must real fix, no skips | `true` — may skip with tracking issue |
+| verify | No before/after diff, no lint | before/after diff + lint required |
+| State tracking | GitHub issue body markers (pipeline mode) | `agent_space_xpu/summary_<date>.md` |
+| Output | Fix + PR via xpu-ops-pr-creation | Per-failure commits + summary report |
+| Mode | Interactive (default) or pipeline | Interactive only |
 
 ---
 
 ## Layer Model
 
-Skills fall into three reusability layers:
-
 ```
-general/          skill-writer, tmux-long-tasks
-                  (no project or hardware dependency)
+general/      skill-writer, tmux-long-tasks
+              (no project or hardware dependency)
 
-intel-gpu/        source-oneapi, intel-gpu-device-selection, unitrace/setup
-                  (Intel oneAPI / Level Zero / SYCL — no PyTorch dependency)
+intel-gpu/    source-oneapi, intel-gpu-device-selection, unitrace/setup
+              (Intel oneAPI / Level Zero — no PyTorch dependency)
 
-torch-xpu-ops/    everything else
-                  (PyTorch + XPU-specific paths, CI labels, issue templates)
+torch-xpu-ops/  everything else
+                (PyTorch + XPU-specific paths, CI labels, issue templates)
 ```
 
-The fix scenario (Categories B + C) uses leaf skills shared across both
-orchestrators (`issue-handler` and `xpu-nightly-ci-fix`). The orchestrators
-differ in input format, scheduling, and output:
-
-| | `issue-handler` | `xpu-nightly-ci-fix` |
-|---|---|---|
-| Input | Single GitHub issue URL/number | Batch CI failure report |
-| Scheduling | Single sequential pipeline | Per-failure independent loop |
-| State tracking | GitHub issue body markers | `agent_space_xpu/summary_<date>.md` |
-| Output | Fix + PR draft | Multiple commits + summary report |
-| Mode | Interactive (default) or pipeline | Interactive only |
+Within `torch-xpu-ops/`, the fix skills have an internal layer structure —
+see `skills_layer_model.md` for the full general / pytorch-backend /
+torch-xpu-ops breakdown per skill.
