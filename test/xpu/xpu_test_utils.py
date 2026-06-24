@@ -387,6 +387,7 @@ _cuda_xfail_xpu_pass = [
 _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
+    ("_refs.true_divide", "test_python_ref_executor"),
 ]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
@@ -1269,30 +1270,40 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    import subprocess
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     if skip_list is not None and len(skip_list) > 0:
-        skip_options = ' -k "not ' + skip_list[0]
-        for skip_case in skip_list[1:]:
-            skip_option = " and not " + skip_case
-            skip_options += skip_option
-        skip_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-        )
-        test_command += skip_options
+        k_expr = "not " + " and not ".join(skip_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_skip.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     elif exe_list is not None and len(exe_list) > 0:
-        exe_options = ' -k "' + exe_list[0]
-        for exe_case in exe_list[1:]:
-            exe_option = " or " + exe_case
-            exe_options += exe_option
-        exe_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-        )
-        test_command += exe_options
+        k_expr = " or ".join(exe_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_exe.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
-    return os.system(test_command)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_all.{module_name}.xml",
+            test_case,
+        ]
+    # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
+    result = subprocess.run(cmd_args)
+    return result.returncode
+
+
+def ensure_pytorch_test_path(test_dir):
+    test_dir = os.path.abspath(test_dir)
+    if test_dir not in sys.path:
+        sys.path.insert(0, test_dir)

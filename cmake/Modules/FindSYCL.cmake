@@ -50,10 +50,6 @@ endif()
 
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
-  # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
-  # processed.  Using this variable, we can pull out the current path, and
-  # provide a way to get access to the other files we need local to here.
-  get_filename_component(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
   if(NOT EXISTS "${SYCL_${_name}}")
     set(error_message "${_full_name} not found in ${CMAKE_CURRENT_LIST_DIR}/FindSYCL")
@@ -379,7 +375,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(important_host_flags)
     _sycl_get_important_host_flags(important_host_flags "${SYCL_HOST_FLAGS}")
     set(SYCL_device_link_flags
-        ${link_type_flag}
         ${important_host_flags}
         ${SYCL_DEVICE_LINK_FLAGS})
 
