@@ -213,8 +213,6 @@ def categorize(actual: str, expected: str) -> str:
         return "new"
     if "pass" in expected:
         return "real_failed"
-    if actual != expected:
-        return "expected_failed"
     return "expected_failed"
 
 
@@ -237,12 +235,11 @@ def compare_one(
 
     # Gather all model names from both expected and actual
     expected_models: set[str] = set()
-    if (suite,) == (suite,):  # always true; filter expected_df by suite
-        try:
-            suite_df = expected_df.loc[suite]
-            expected_models = set(suite_df.index)
-        except KeyError:
-            pass
+    try:
+        suite_df = expected_df.loc[suite]
+        expected_models = set(suite_df.index)
+    except KeyError:
+        pass
 
     all_models = expected_models | set(test_map.keys())
 

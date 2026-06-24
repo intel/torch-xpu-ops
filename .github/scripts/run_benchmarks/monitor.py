@@ -5,7 +5,8 @@ import shutil
 import subprocess
 import threading
 
-from .config import TestTask, gpu_memory_monitor_enabled, error_patterns
+from . import config
+from .config import TestTask
 from .log import log
 
 # Cache for xpu-smi availability
@@ -19,7 +20,7 @@ _tiles_per_device_lock = threading.Lock()
 
 def parse_memory_threshold() -> float | None:
     """Extract memory threshold from error_patterns (e.g. 'Memory>0.9' → 0.9)."""
-    for pattern in error_patterns:
+    for pattern in config.error_patterns:
         m = re.match(r'Memory>(\d+\.?\d*)', pattern)
         if m:
             return float(m.group(1))
@@ -66,7 +67,7 @@ def get_gpu_memory_utilization(
     Single-tile layout: card C → device C.
     Also logs GPU Utilization, Frequency, Core Temperature, and Memory Bandwidth.
     """
-    if not gpu_memory_monitor_enabled:
+    if not config.gpu_memory_monitor_enabled:
         return None
     if not _is_xpu_smi_available():
         return None

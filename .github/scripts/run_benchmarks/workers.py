@@ -121,15 +121,17 @@ def generate_gpu_workers(num_gpus: int) -> list[tuple[int, str, dict]]:
     """Return (card, cmd_prefix, env_vars) per GPU with numactl CPU binding.
 
     GPU list comes from ZE_AFFINITY_MASK (if set) or 0..num_gpus-1.
-    CPU cores are always distributed evenly by num_gpus.
+    CPU cores are distributed evenly across the active GPUs, binding each by its
+    position in the active list (not its absolute GPU id) so non-contiguous masks
+    such as ``4,5`` still get valid in-range core ranges.
     """
     gpu_list = _parse_ze_affinity_mask(num_gpus)
     physical_cores = get_cpu_topology()
-    cores_per_gpu = max(physical_cores // num_gpus, 1)
+    cores_per_gpu = max(physical_cores // len(gpu_list), 1)
 
     workers: list[tuple[int, str, dict]] = []
-    for gpu in gpu_list:
-        start = gpu * cores_per_gpu
+    for idx, gpu in enumerate(gpu_list):
+        start = idx * cores_per_gpu
         end = min(start + cores_per_gpu - 1, physical_cores - 1)
         if IS_WINDOWS:
             log(f"  GPU {gpu}: OMP_NUM_THREADS={cores_per_gpu} (numactl N/A on Windows)")

@@ -108,7 +108,7 @@ def run_single(
     def _error_monitor():
         scan_pos = 0
         memory_threshold = parse_memory_threshold()
-        deadline = time.time() + 10800
+        deadline = time.time() + config.task_timeout_seconds
 
         while proc.poll() is None and time.time() < deadline:
             with log_buffer_lock:
@@ -165,6 +165,9 @@ def run_single(
         exit_code = -1
     elapsed = time.monotonic() - run_start
     reader_thread.join(timeout=10)
+    if reader_thread.is_alive():
+        log("Output reader thread still running after join; some log lines may be lost",
+            level="WARN", worker=worker_id)
     if log_f is not None and not log_f.closed:
         log_f.close()
     monitor_thread.join(timeout=1)
@@ -284,7 +287,12 @@ def run_all(
     # Summary
     from .log import banner
     wall_time = fmt_duration(time.monotonic() - wall_start)
-    all_results = [results.get() for _ in range(results.qsize())]
+    all_results = []
+    while True:
+        try:
+            all_results.append(results.get_nowait())
+        except queue.Empty:
+            break
     failed = [(task, tr, kr) for task, ok, tr, kr in all_results if not ok]
     passed = total - len(failed)
 

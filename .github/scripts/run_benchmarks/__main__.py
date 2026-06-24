@@ -63,6 +63,9 @@ def main() -> None:
                              "Default: 0.90 on Windows, 0.95 on Linux.")
     parser.add_argument("--no-gpu-memory-monitor", action="store_true", default=False,
                         help="Disable GPU memory monitoring (enabled by default).")
+    parser.add_argument("--task-timeout", type=int, default=None,
+                        help="Max wall-clock seconds a single task may run before being killed "
+                             f"(default: {config.task_timeout_seconds}).")
     args = parser.parse_args()
 
     # Apply GPU memory monitoring settings
@@ -73,6 +76,8 @@ def main() -> None:
         config.error_patterns = [
             p for p in config.error_patterns if not p.startswith("Memory>")
         ] + [f"Memory>{config.gpu_memory_threshold}"]
+    if args.task_timeout is not None:
+        config.task_timeout_seconds = args.task_timeout
 
     is_cpu = args.device == "cpu"
     num_gpus = get_num_gpus(required=not is_cpu)

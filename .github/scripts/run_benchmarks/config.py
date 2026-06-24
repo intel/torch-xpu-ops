@@ -33,6 +33,10 @@ INDUCTOR_DT: set[str] = VALID_DT - {"int8"}
 gpu_memory_threshold: float = 0.90 if IS_WINDOWS else 0.95
 gpu_memory_monitor_enabled: bool = True
 
+# Maximum wall-clock time (seconds) a single task's process may run before the
+# monitor kills it. Mutable at runtime via the --task-timeout CLI arg.
+task_timeout_seconds: int = 10800
+
 # Patterns that trigger process kill when detected in output or GPU metrics.
 # Text patterns are matched case-insensitively; "Memory>N" triggers GPU memory
 # utilisation polling with threshold N.

@@ -226,7 +226,11 @@ class PT2ESuite(BenchmarkSuite):
                 throughput = "failed" if kill_reason else self._parse_throughput(output_dir)
             finally:
                 if output_dir:
-                    shutil.rmtree(output_dir, ignore_errors=True)
+                    shutil.rmtree(
+                        output_dir,
+                        onerror=lambda func, path, exc: log(
+                            f"Failed to remove {path}: {exc[1]}", level="WARN"),
+                    )
             header = CSV_PREFIX + ["throughput", "quantization"]
             row = _prefix_row(device, task, elapsed=elapsed) + [throughput, task.quant]
             result = (throughput, True) if throughput != "failed" else ("failed", False)
