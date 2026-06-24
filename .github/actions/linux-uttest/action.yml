@@ -135,6 +135,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
         
         # llama case for calls number test
+        cd ../../third_party/torch-xpu-ops
         pip install transformers
         python test/profiling/llama.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
