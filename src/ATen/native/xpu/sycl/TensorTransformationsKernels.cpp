@@ -9,7 +9,6 @@
  */
 
 // #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>

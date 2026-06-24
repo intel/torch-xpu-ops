@@ -8,7 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
