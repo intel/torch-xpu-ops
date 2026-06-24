@@ -69,7 +69,6 @@ endif()
 if(USE_SYCLTLA)
   set(REPLACE_FLAGS_FOR_SYCLTLA TRUE)
   set_build_flags()
-  replace_cmake_build_flags()
 
   set(sycl_lib torch-xpu-ops-sycltla)
   sycl_add_library(
@@ -88,7 +87,6 @@ if(USE_SYCLTLA)
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
-  restore_cmake_build_flags()
 endif()
 
 set(SYCL_LINK_LIBRARIES_KEYWORD)
