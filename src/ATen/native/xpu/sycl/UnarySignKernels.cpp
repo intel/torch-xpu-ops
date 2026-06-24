@@ -49,9 +49,14 @@ struct SignFunctor<bool> {
 };
 
 void sgn_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_COMPLEX_TYPES_AND2(kComplexHalf, kBComplex32, iter.dtype(), "sgn_xpu", [&] {
-    gpu_kernel(iter, SgnFunctor<scalar_t>());
-  });
+  AT_DISPATCH_V2(
+      iter.dtype(),
+      "sgn_xpu",
+      AT_WRAP([&] { gpu_kernel(iter, SgnFunctor<scalar_t>()); }),
+      kComplexFloat,
+      kComplexDouble,
+      kComplexHalf,
+      kBComplex32);
 }
 
 void sign_kernel(TensorIteratorBase& iter) {
@@ -124,14 +129,22 @@ struct NegFunctor {
 void neg_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND2(kComplexHalf, kBComplex32, dtype, "neg_xpu", [&]() {
-      gpu_kernel(iter, NegFunctor<scalar_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "neg_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, NegFunctor<scalar_t>()); }),
+        kComplexFloat,
+        kComplexDouble,
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        ScalarType::Half, ScalarType::BFloat16, dtype, "neg_xpu", [&]() {
-          gpu_kernel(iter, NegFunctor<scalar_t>());
-        });
+    AT_DISPATCH_V2(
+        dtype,
+        "neg_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, NegFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_ALL_TYPES),
+        kHalf,
+        kBFloat16);
   }
 }
 

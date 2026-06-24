@@ -95,18 +95,19 @@ struct MaskedFillFunctor {
 };
 
 void masked_fill_kernel(TensorIterator& iter, const Scalar& value) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "masked_fill__xpu",
+      AT_WRAP([&]() {
+        const auto value_ = value.to<scalar_t>();
+        gpu_kernel(iter, MaskedFillFunctor<scalar_t>(value_));
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       kBool,
       kHalf,
       kBFloat16,
       kComplexHalf,
-      kBComplex32,
-      iter.common_dtype(),
-      "masked_fill__xpu",
-      [&]() {
-        const auto value_ = value.to<scalar_t>();
-        gpu_kernel(iter, MaskedFillFunctor<scalar_t>(value_));
-      });
+      kBComplex32);
 }
 
 template <typename ValType>
@@ -156,15 +157,10 @@ void index_fill_kernel(
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
 
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
-      at::ScalarType::Bool,
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::ComplexHalf,
-      at::ScalarType::BComplex32,
+  AT_DISPATCH_V2(
       self_restrided.scalar_type(),
       "index_fill_xpu",
-      [&] {
+      AT_WRAP([&] {
         TensorInfo<const int64_t, int64_t> index_info =
             getTensorInfo<const int64_t, int64_t>(index);
         index_info.collapseDims();
@@ -192,7 +188,13 @@ void index_fill_kernel(
             true,
             IndexFillScalarFunctor<scalar_t>());
         launch_index_kernel(cfg);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kBool,
+      kHalf,
+      kBFloat16,
+      kComplexHalf,
+      kBComplex32);
 }
 
 template <typename scalar_t>
@@ -225,15 +227,10 @@ void index_put_kernel(
     IntArrayRef index_stride,
     bool accumulate) {
   if (accumulate) {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BComplex32,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "index_put_xpu",
-        [&] {
+        AT_WRAP([&] {
           IndexPutAccumulateFunctor<scalar_t> f;
           _index_kernel(
               iter,
@@ -243,7 +240,13 @@ void index_put_kernel(
               IntArrayRef{},
               f,
               false);
-        });
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        kComplexHalf,
+        kBComplex32,
+        kBFloat16,
+        kHalf,
+        kBool);
   } else {
     AT_DISPATCH_V2(
         iter.dtype(),
@@ -600,17 +603,18 @@ void index_copy_kernel(
     const Tensor& index,
     const Tensor& source,
     Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND7(
-      at::ScalarType::ComplexHalf,
-      at::ScalarType::BComplex32,
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
-      at::ScalarType::Float8_e4m3fn,
-      at::ScalarType::Float8_e5m2,
+  AT_DISPATCH_V2(
       out.scalar_type(),
       "index_copy_xpu",
-      [&]() { index_copy_impl<scalar_t>(out, dim, index, source); });
+      AT_WRAP([&]() { index_copy_impl<scalar_t>(out, dim, index, source); }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kComplexHalf,
+      kBComplex32,
+      kHalf,
+      kBFloat16,
+      kBool,
+      kFloat8_e4m3fn,
+      kFloat8_e5m2);
 }
 
 template <typename scalar_t, typename offset_cal_t>
@@ -689,19 +693,20 @@ void index_copy_kernel(
   // Nondeterministic when index contains duplicate entries
   // this kernel will not be called when
   // torch.use_deterministic_algorithms(True)
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND5(
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
-      at::ScalarType::BFloat16,
-      kComplexHalf,
-      kBComplex32,
+  AT_DISPATCH_V2(
       iter.dtype(),
       "index_copy_xpu",
-      [&] {
+      AT_WRAP([&] {
         using dtype = OpaqueType<sizeof(scalar_t)>;
         index_copy_kernel_impl<dtype>(
             iter, dim, self_dim_size, self_dim_stride);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kHalf,
+      kBool,
+      kBFloat16,
+      kComplexHalf,
+      kBComplex32);
 }
 
 template <
