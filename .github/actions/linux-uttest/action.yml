@@ -97,6 +97,8 @@ runs:
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
+        # Set specific PYTEST_ADDOPTS to avoid the threading conflict between profile UT test and para '--dist worksteal'
+        export PYTEST_ADDOPTS="-v --timeout 600"
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
         # RN50 Test
@@ -119,12 +121,6 @@ runs:
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
-        # llama case for calls number test
-        pip install transformers
-        python test/profiling/llama.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
-        python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
-
         # All xpu ut under test/profiler
         cd ../../test/profiler
         python -m pytest -s test_cpp_thread.py | \
@@ -137,6 +133,12 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
         python -m pytest -s test_xpu_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
+        
+        # llama case for calls number test
+        pip install transformers
+        python test/profiling/llama.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
+        python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
