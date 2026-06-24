@@ -5070,7 +5070,6 @@ class TestTorchDeviceType(TestCase):
     # (but have to extend ErrorInputs to handle inplace-only errors!)
     @expectedFailureMeta  # Warning not triggered
     @onlyNativeDeviceTypes
-    @skipXPU
     def test_index_fill_mem_overlap(self, device):
         x = torch.rand((1,), device=device).expand((6,))
         ind = torch.tensor([2, 1, 0], device=device)
@@ -6634,7 +6633,6 @@ class TestTorchDeviceType(TestCase):
     )
     @onlyNativeDeviceTypes
     @dtypes(torch.float)
-    @skipXPU
     def test_grad_scaling_unscale_sparse(self, device, dtype):
         device = torch.device(device)
         scaler = torch.GradScaler(device=device.type)
@@ -7451,7 +7449,6 @@ class TestTorchDeviceType(TestCase):
             torch.uint64,
         )
     )
-    @skipXPU
     def test_item(self, device, dtype):
         xla_unsupported_dtypes = [
             torch.uint16,
