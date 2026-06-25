@@ -54,7 +54,7 @@ static double algbw_gbs(double bytes, double us) {
 }
 static void print_table_header() {
     std::printf("  %-12s  %10s %10s %10s %10s  %12s\n",
-        "Size", "avg_us", "min_us", "max_us", "var_us", "busBW(GB/s)");
+        "Size(in)", "avg_us", "min_us", "max_us", "var_us", "busBW(GB/s)");
     std::printf("  %-12s  %10s %10s %10s %10s  %12s\n",
         "------------", "----------", "----------", "----------", "----------",
         "------------");
