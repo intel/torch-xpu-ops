@@ -80,7 +80,8 @@ The script prints a JSON evidence bundle to stdout:
 
 ## Step 2 — Analyze the root cause (AI analysis required)
 
-For each case in `cases`:
+If the number of failed cases > 10, skip this step and let the root case field be empty.
+For each case in `cases`, use subagent to do:
 
 1. Fetch latest origin main and git checkout to the `commit_sha` locally.
 2. **Identify the real failure**: Read `error_excerpt` and identify the failing frame
@@ -109,7 +110,7 @@ Produce a list these details, one row per case:
 - **Case**: The `case_id` from the evidence bundle.
 - **Is regression**: `Yes` / `No` / `Unknown` (see Step 2.4; `No` = newly appeared).
 - **Root cause**: Both required points from Step 2 (introduced PR + why XPU fails mechanism).
-- **Disable link**: `[Create disable issue](<issue_url>)`. 
+- **Disable link**: `[Create disable issue](<issue_url>)`.
   - **IMPORTANT**: Use `issue_url` **exactly as produced by the script** — do not truncate.
   - The full URL carries prefilled title, body (Platforms + recent examples + cc), and
     labels (`module: xpu`, `triaged`).
