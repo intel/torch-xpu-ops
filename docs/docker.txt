@@ -1,0 +1,5 @@
+请帮我创建一个docker file，以及对应的docker 创建的命令。
+
+1. python = 3.12
+2. pip install --pre torch==2.14.0.dev20260624+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
+3. docker 名字是cherry-ccl
