@@ -250,6 +250,67 @@ orchestrators
 
 ---
 
+## Pending Design: No-UT-Gate Bug Flow
+
+### Problem
+
+Current fix flow assumes a UT gate exists. Some bugs have no UT — only an
+issue description, a user script, or a CI stack trace. These need:
+1. A reproducer script generated and validated first
+2. The reproducer added to UT after the fix is verified
+
+### Proposed Flow
+
+```
+Has UT gate (existing):
+  reproduce → triage → implement → verify (run existing UT)
+
+No UT gate (new):
+  generate_reproducer             ← new step
+      ↓ human validates reproducer is correct and minimal
+  confirm bug (run reproducer)
+      ↓
+  triage → implement
+      ↓
+  verify (run reproducer)
+      ↓ human validates fix is correct before adding to UT
+  add_reproducer_to_ut            ← new step
+      ↓
+  verify (run new UT)
+```
+
+### Key Decisions Made
+
+- **Human checkpoints required at two points:**
+  1. After `generate_reproducer` — human confirms the reproducer correctly
+     captures the bug and is minimal enough for a UT
+  2. After `verify` (reproducer passes) — human confirms fix is correct
+     before the reproducer is promoted to a permanent UT
+
+- **Not a new orchestrator** — extend `issue-handler` with a
+  `has_ut_gate: bool` field in triage output. issue-handler routes to
+  `add_reproducer_to_ut` step only when `has_ut_gate=false`.
+
+### Open Questions (to design in next session)
+
+1. **Reproducer sources** — three cases, need to confirm if handled the same:
+   - Issue body has a user script → validate and use directly
+   - Issue has description only → triage generates minimal reproducer
+   - CI log has stack trace but no script → construct from stack trace
+
+2. **Where to add the UT** — options:
+   - `test/repro/` (already referenced in xpu-ops-pr-creation)
+   - Existing related test file (e.g. test_ops_xpu.py)
+   - New test file under `test/xpu/`
+
+3. **generate_reproducer skill** — new leaf skill under `fix/`, or part of
+   triage output when `has_ut_gate=false`?
+
+4. **add_reproducer_to_ut skill** — new leaf skill, or handled inline in
+   issue-handler orchestrator?
+
+---
+
 ## Files Changed from Original (skills/ only)
 
 ```
