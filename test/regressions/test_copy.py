@@ -35,6 +35,19 @@ class TestSimpleCopy(TestCase):
         b_xpu = a_xpu.clone(memory_format=torch.channels_last)
         self.assertEqual(b_cpu, b_xpu.to(cpu_device))
 
+    def test_copy_and_clone_bcomplex32(self):
+        # bcomplex32 (complex<BFloat16>) CPU support is limited; test XPU only
+        a_cpu = torch.randn(16, 64, 28, 28).to(torch.bcomplex32)
+        b_cpu = torch.randn(16, 64, 28, 28).to(torch.bcomplex32)
+        a_xpu = a_cpu.to(xpu_device)
+        b_xpu = b_cpu.to(xpu_device)
+        # naive copy
+        b_xpu.copy_(a_xpu)
+        self.assertEqual(a_xpu, b_xpu)
+        # clone + permutation
+        b_xpu = a_xpu.clone(memory_format=torch.channels_last)
+        self.assertEqual(a_xpu, b_xpu.to(memory_format=torch.contiguous_format))
+
     def test_copy_and_clone_float4(self):
         # Float4_e2m1fn_x2 copy is not implemented by CPU
         a_cpu = torch.randn(16, 64, 28, 28).to(torch.uint8)
