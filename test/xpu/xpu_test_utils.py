@@ -1274,6 +1274,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    # Strip leading dots from upstream relative paths for cleaner XML names
+    module_name = module_name.lstrip(".")
+
     if skip_list is not None and len(skip_list) > 0:
         k_expr = "not " + " and not ".join(skip_list)
         cmd_args = [
