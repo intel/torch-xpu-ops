@@ -322,7 +322,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // There are two types of coalesce that require `group_start/end`:
           // 1. **Fast Pass for Operations**: For example,
           // `allreduce_coalesced`. In this case, the backend has control, so
-          // the initial group API `ccl::group` is called.
+          // the initial group API `oneccl_group_start` is called.
           // 2. **User-Specified Groups**: The user specifies a series of
           // operations as a group in the frontend by calling the coalesce
           // manager. To avoid incorrect judgments of the p2p state, the
@@ -520,9 +520,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool enableNanCheck_;
 
   friend class HeartbeatMonitorXCCL;
-
- private:
-  std::mutex kvs_mutex_;
 };
 
 TORCH_API void reset_xccl_trace();
