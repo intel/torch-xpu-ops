@@ -208,7 +208,7 @@ scalar_t ratevl(
 
   int64_t i, dir;
   accscalar_t y, num_ans, denom_ans;
-  accscalar_t absx = std::fabs(x);
+  accscalar_t absx = sycl::fabs(x);
   const accscalar_t* p;
 
   if (absx > 1) {
@@ -315,7 +315,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   static const accscalar_t EXP1 = 2.718281828459045;
   static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
-  if (std::fabs(a - x) > 0.4 * std::fabs(a)) {
+  if (sycl::fabs(a - x) > 0.4 * sycl::fabs(a)) {
     ax = a * sycl::log(x) - x - sycl::lgamma(a);
     if (ax < -MAXLOG) {
       return 0.0;
@@ -389,7 +389,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
     fac *= -x / n;
     term = fac / (a + n);
     sum += term;
-    if (std::fabs(term) <= MACHEP * std::fabs(sum)) {
+    if (sycl::fabs(term) <= MACHEP * sycl::fabs(sum)) {
       break;
     }
   }
@@ -686,17 +686,17 @@ static const scalar_t _igam_helper_asymptotic_series(
       }
       ckterm = d[k][n] * etapow[n];
       ck += ckterm;
-      if (std::fabs(ckterm) < MACHEP * std::fabs(ck)) {
+      if (sycl::fabs(ckterm) < MACHEP * sycl::fabs(ck)) {
         break;
       }
     }
     term = ck * afac;
-    absterm = std::fabs(term);
+    absterm = sycl::fabs(term);
     if (absterm > absoldterm) {
       break;
     }
     sum += term;
-    if (absterm < MACHEP * std::fabs(sum)) {
+    if (absterm < MACHEP * sycl::fabs(sum)) {
       break;
     }
     absoldterm = absterm;
@@ -750,7 +750,7 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
     qk = qkm1 * z - qkm2 * yc;
     if (qk != 0) {
       r = pk / qk;
-      t = std::fabs((ans - r) / r);
+      t = sycl::fabs((ans - r) / r);
       ans = r;
     } else {
       t = 1.0;
@@ -759,7 +759,7 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
     pkm1 = pk;
     qkm2 = qkm1;
     qkm1 = qk;
-    if (std::fabs(pk) > BIG) {
+    if (sycl::fabs(pk) > BIG) {
       pkm2 *= BIGINV;
       pkm1 *= BIGINV;
       qkm2 *= BIGINV;
@@ -816,7 +816,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
     return 0.0;
   }
 
-  absxma_a = std::fabs(x - a) / a;
+  absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 0);
   } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
@@ -891,7 +891,7 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   }
 
   /* Asymptotic regime where a ~ x. See [igam2] */
-  absxma_a = std::fabs(x - a) / a;
+  absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 1);
   } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
@@ -995,7 +995,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
       "don't instantiate with low precision type");
   // Upcast input for numerical accuracy purposes
   // Needed for accurate results if input is bfloat16 or float16
-  scalar_t x = std::abs(_x);
+  scalar_t x = sycl::fabs(_x);
 
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i0e_A<scalar_t>();
@@ -1124,7 +1124,7 @@ C10_HOST_DEVICE inline typename std::
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
-  const auto x = std::abs(_x);
+  const auto x = sycl::fabs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -1145,7 +1145,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
-  const auto x = std::abs(_x);
+  const auto x = sycl::fabs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -1565,7 +1565,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
     n /= k;
     g += n;
 
-    t = std::abs(m / f);
+    t = sycl::fabs(m / f);
   }
 
   if ((domain_flag & 1) == 0) {

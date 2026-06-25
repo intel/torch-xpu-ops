@@ -1685,7 +1685,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
   }
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single(
     at::Tensor& output_tensor,
     at::Tensor& input_tensor,
     const AllgatherOptions& opts) {
@@ -1736,7 +1736,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       "xccl:_all_gather_base");
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const AllgatherOptions& opts) {
@@ -1867,7 +1867,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
   }
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
     at::Tensor& outputTensor,
     at::Tensor& inputTensor,
     const ReduceScatterOptions& opts) {
@@ -1926,7 +1926,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       "xccl:_reduce_scatter_base");
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const ReduceScatterOptions& opts) {
@@ -2046,7 +2046,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   return nullptr;
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     at::Tensor& outputTensor,
     at::Tensor& inputTensor,
     std::vector<int64_t>& outputSplitSizes,
