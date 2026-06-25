@@ -17,7 +17,7 @@ skip_dict = {
     "nn/test_init_xpu.py": None,
     "nn/test_lazy_modules_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
-    "nn/test_module_hooks_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
