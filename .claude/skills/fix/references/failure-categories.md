@@ -1,10 +1,10 @@
-# Failure Categories
+# Failure Categories — Shared Reference
 
-Shared reference for `fix/triage` and `xpu-nightly-ci-fix`. Both orchestrators
-use this taxonomy to classify root cause and select a fix strategy.
+Used by `fix/triage` and `nightly-ci-fix`. Both orchestrators use this
+taxonomy to classify root cause and select a fix strategy.
 
 | Category | Description | Typical fix location |
-|----------|-------------|---------------------|
+|---|---|---|
 | **XPU backend bug** | Bug in XPU kernel or backend code | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
 | **Tolerance too tight** | Numerical precision mismatch vs CUDA | Adjust `atol`/`rtol` to match CUDA |
 | **Edge case / numerical accuracy** | NaN/Inf from extreme inputs, CPU-vs-XPU or fp32-vs-fp16 divergence, values near `finfo.max`/`min` | Compare against CUDA/CPU reference; confirm it is a real bug, not expected precision behavior |
