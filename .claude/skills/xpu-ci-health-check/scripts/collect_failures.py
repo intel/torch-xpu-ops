@@ -14,7 +14,7 @@ import shutil
 import subprocess
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -91,7 +91,7 @@ class FailureCase:
 @dataclass(frozen=True)
 class DisableCandidate:
     case_id: str
-    occurrences: List[FailureCase] = field(default_factory=list)
+    occurrences: list[FailureCase] = field(default_factory=list)
 
     @property
     def repeat_count(self) -> int:
@@ -103,14 +103,14 @@ class IssueDraft:
     title: str
     body: str
     template_reference: str
-    labels: List[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class MonitorReport:
-    runs: List[WorkflowRun]
-    failures_by_run: dict[int, List[FailureCase]]
-    candidates: List[DisableCandidate]
+    runs: list[WorkflowRun]
+    failures_by_run: dict[int, list[FailureCase]]
+    candidates: list[DisableCandidate]
     window_complete: bool
     is_green: bool
     summary: str
@@ -178,41 +178,7 @@ def build_github_new_issue_url(owner: str, repo: str, issue: dict) -> str:
     return f"https://github.com/{owner}/{repo}/issues/new?{query}"
 
 
-def extract_failure_cases_from_log_text(
-    log_text: str,
-    *,
-    run_id: int,
-    run_number: int,
-    source: str,
-) -> List[FailureCase]:
-    seen: set[str] = set()
-    failures: List[FailureCase] = []
-    for line in log_text.splitlines():
-        normalized_line = strip_timestamp_prefix(line)
-        for pattern in FAILURE_PATTERNS:
-            match = pattern.match(normalized_line)
-            if not match:
-                continue
-            case_id = normalize_case_id(match.group("case"))
-            if not is_plausible_case_id(case_id) or case_id in seen:
-                break
-            seen.add(case_id)
-            failures.append(
-                FailureCase(
-                    case_id=case_id,
-                    run_id=run_id,
-                    run_number=run_number,
-                    source=source,
-                    raw_line=normalized_line.strip(),
-                    detail=(match.groupdict().get("detail") or "").strip(),
-                    cuda_status="unknown",
-                )
-            )
-            break
-    return failures
-
-
-def extract_failed_lines_from_raw_log_text(log_text: str) -> List[str]:
+def extract_failed_lines_from_raw_log_text(log_text: str) -> list[str]:
     failed_lines = [line.strip() for line in log_text.splitlines() if "FAILED [" in line]
     if failed_lines:
         return failed_lines
@@ -225,8 +191,8 @@ def extract_failure_cases_from_raw_log_text(
     run_id: int,
     run_number: int,
     source: str,
-) -> List[FailureCase]:
-    failures: List[FailureCase] = []
+) -> list[FailureCase]:
+    failures: list[FailureCase] = []
     raw_lines = raw_log_text.splitlines()
     for index, raw_line in enumerate(raw_lines):
         normalized_line = strip_timestamp_prefix(raw_line)
@@ -260,7 +226,6 @@ def extract_failure_cases_from_raw_log_text(
     return list(unique.values())
 
 
-extract_failure_cases_from_log_text = extract_failure_cases_from_raw_log_text
 
 
 class GitHubActionsClient:
@@ -340,8 +305,8 @@ class GitHubActionsClient:
     def _raw_job_log_url(self, job_id: int) -> str:
         return f"{DEFAULT_RAW_JOB_LOG_BASE}/{job_id}"
 
-    def list_run_jobs(self, run: WorkflowRun) -> List[WorkflowJob]:
-        jobs: List[WorkflowJob] = []
+    def list_run_jobs(self, run: WorkflowRun) -> list[WorkflowJob]:
+        jobs: list[WorkflowJob] = []
         page = 1
         while True:
             url = f"{self.api_base}/repos/{self.owner}/{self.repo}/actions/runs/{run.run_id}/jobs"
@@ -364,7 +329,7 @@ class GitHubActionsClient:
             page += 1
         return jobs
 
-    def list_failed_jobs(self, run: WorkflowRun) -> List[WorkflowJob]:
+    def list_failed_jobs(self, run: WorkflowRun) -> list[WorkflowJob]:
         return [job for job in self.list_run_jobs(run) if job.conclusion == "failure"]
 
     @staticmethod
@@ -379,12 +344,12 @@ class GitHubActionsClient:
             raw_bytes = gzip.decompress(raw_bytes)
         return raw_bytes.decode("utf-8-sig", errors="replace")
 
-    def list_recent_completed_main_runs(self, limit: int = 3) -> List[WorkflowRun]:
+    def list_recent_completed_main_runs(self, limit: int = 3) -> list[WorkflowRun]:
         base_url = (
             f"{self.api_base}/repos/{self.owner}/{self.repo}"
             f"/actions/workflows/{self.workflow_file}/runs?branch=main&status=completed"
         )
-        runs: List[WorkflowRun] = []
+        runs: list[WorkflowRun] = []
         page = 1
         while len(runs) < limit:
             payload = self._request_json_page(base_url, page)
@@ -393,7 +358,7 @@ class GitHubActionsClient:
                 break
             for item in workflow_runs:
                 if item.get("head_branch") != "main":
-                   continue
+                    continue
                 if item.get("status") != "completed":
                     continue
                 runs.append(
@@ -427,8 +392,8 @@ class GitHubActionsClient:
             return self._request_bytes(logs_url)
         return self._request_bytes(run.logs_url)
 
-    def collect_failure_cases(self, run: WorkflowRun) -> List[FailureCase]:
-        failures: List[FailureCase] = []
+    def collect_failure_cases(self, run: WorkflowRun) -> list[FailureCase]:
+        failures: list[FailureCase] = []
         for job in self.list_failed_jobs(run):
             if not self._is_test_job(job):
                 continue
@@ -456,7 +421,7 @@ def collect(owner: str, repo: str, workflow_file: str, run_limit: int, token: st
     )
     runs = client.list_recent_completed_main_runs(limit=run_limit)
 
-    grouped: "OrderedDict[str, dict]" = OrderedDict()
+    grouped: OrderedDict[str, dict] = OrderedDict()
     runs_meta = []
 
     for run in runs:
