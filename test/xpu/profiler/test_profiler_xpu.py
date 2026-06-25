@@ -30,6 +30,7 @@ import threading
 import time
 import unittest
 import warnings
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import torch
