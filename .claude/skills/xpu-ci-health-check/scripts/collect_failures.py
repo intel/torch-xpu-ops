@@ -510,7 +510,12 @@ def capture_error_excerpt(raw_lines: list[str], case_id: str, max_lines: int = 6
                 return excerpt
 
     for idx, line in enumerate(stripped):
-        if short in line and line.strip().endswith("FAILED") is False and "FAILED" in line:
+        if (
+                short in line
+                and "FAILED" in line
+                and not line.strip().endswith("FAILED")
+           ):
+
             block = []
             for follow in stripped[idx : idx + max_lines]:
                 if _SECTION_BREAK.match(follow):
