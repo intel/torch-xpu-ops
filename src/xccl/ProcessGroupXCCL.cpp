@@ -607,12 +607,16 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
       rank_,
       store_.get());
   onecclComm_t comm = nullptr;
-  if (onecclSetDevice(device.index()) != onecclSuccess) {
-    std::cerr << "Failed to set device.\n";
-  }
-  if (onecclCommInitRank(&comm, numRanks, xcclID, rank) != onecclSuccess) {
-    std::cerr << "Failed to initialize communicator.\n";
-  }
+  TORCH_CHECK(
+      onecclSetDevice(device.index()) == onecclSuccess,
+      "xccl: onecclSetDevice(",
+      (int)device.index(),
+      ") failed");
+  auto initR = onecclCommInitRank(&comm, numRanks, xcclID, rank);
+  TORCH_CHECK(
+      initR == onecclSuccess,
+      "xccl: onecclCommInitRank failed with code ",
+      (int)initR);
   XCCLComm = std::make_shared<xcclComm_t>(comm);
 
   RECORD_PARAM_COMMS(
