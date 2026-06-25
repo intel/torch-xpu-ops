@@ -11,7 +11,6 @@ import torch
 import torch.distributed as dist
 
 from unpermute_reducescatter_fusion import (
-    unpermute_allreduce_simple,
     unpermute_reducescatter,
     unpermute_reducescatter_fusion,
     unpermute_reducescatter_fusion_native,
@@ -30,10 +29,37 @@ LOOP = 40
 WARMUP = 20
 ENABLE_PROFILE = False
 ENABLE_PROJECTION = True
-RUN_REFERENCE = False
 PCIE_DISCOUNT = 0.85
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
 HBM_BW_GBPS = 437.0
+
+
+def run_reference_unpermute_reducescatter(
+    expert_output,
+    scatter_idx,
+    topk_weights,
+    output,
+    group,
+):
+    """
+    Reference: single local_unpermute_copy_ over all tokens, then reduce_scatter_tensor.
+    """
+    world_size = dist.get_world_size(group)
+    num_tokens = scatter_idx.shape[0]
+    hidden = expert_output.shape[1]
+
+    # Step 1: Unpermute all tokens at once into a full buffer
+    full_result = torch.empty(
+        num_tokens, hidden, device=expert_output.device, dtype=expert_output.dtype,
+    )
+    torch.ops.symm_mem.local_unpermute_copy_(
+        expert_output, scatter_idx, topk_weights,
+        0, num_tokens, full_result,
+    )
+
+    # Step 2: Reduce-scatter across ranks
+    dist.reduce_scatter_tensor(output, full_result, group=group)
+    return output
 
 
 def bytes_to_mb(num_bytes):
@@ -96,9 +122,8 @@ def check_unpermute_reducescatter_fusion():
 
     expert_output, scatter_idx, topk_weights = make_inputs(rank, world_size, device)
 
-    # Pre-allocate output buffers
+    # Pre-allocate output buffer
     output_fused = torch.zeros(num_tokens_per_rank, hidden_size, device=device, dtype=expert_output.dtype)
-    output_ref = torch.zeros(num_tokens_per_rank, hidden_size, device=device, dtype=expert_output.dtype)
 
     backend_stream = torch.xpu.Stream()
 
@@ -111,8 +136,6 @@ def check_unpermute_reducescatter_fusion():
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
     end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
-    ref_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
-    ref_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
 
     if ENABLE_PROFILE:
         prof = torch.profiler.profile(
@@ -160,48 +183,46 @@ def check_unpermute_reducescatter_fusion():
         dist.barrier()
         output_fused.copy_(out)
 
-        if RUN_REFERENCE:
-            # ---------- Warm up reference path ----------
-            for _ in range(WARMUP):
-                ref = torch.zeros_like(output_ref)
-                unpermute_allreduce_simple(
-                    expert_output=expert_output,
-                    scatter_idx=scatter_idx,
-                    topk_weights=topk_weights,
-                    output=ref,
-                    group=group,
-                )
-            torch.xpu.synchronize()
-            dist.barrier()
+        # ---------- Warm up reference path (unpermute + reduce_scatter) ----------
+        ref_begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        ref_end_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
+        for _ in range(WARMUP):
+            ref_out = torch.zeros_like(output_fused)
+            run_reference_unpermute_reducescatter(
+                expert_output=expert_output,
+                scatter_idx=scatter_idx,
+                topk_weights=topk_weights,
+                output=ref_out,
+                group=group,
+            )
+        torch.xpu.synchronize()
+        dist.barrier()
 
-            # ---------- Timed reference path ----------
-            for i in range(LOOP):
-                if i >= WARMUP:
-                    ref_begin_events[i].record()
-                ref = torch.zeros_like(output_ref)
-                unpermute_allreduce_simple(
-                    expert_output=expert_output,
-                    scatter_idx=scatter_idx,
-                    topk_weights=topk_weights,
-                    output=ref,
-                    group=group,
-                )
-                if i >= WARMUP:
-                    ref_end_events[i].record()
-            torch.xpu.synchronize()
-            dist.barrier()
-            output_ref.copy_(ref)
+        # ---------- Timed reference path (unpermute + reduce_scatter) ----------
+        for i in range(LOOP):
+            if i >= WARMUP:
+                ref_begin_events[i].record()
+            ref_out = torch.zeros_like(output_fused)
+            run_reference_unpermute_reducescatter(
+                expert_output=expert_output,
+                scatter_idx=scatter_idx,
+                topk_weights=topk_weights,
+                output=ref_out,
+                group=group,
+            )
+            if i >= WARMUP:
+                ref_end_events[i].record()
+        torch.xpu.synchronize()
+        dist.barrier()
 
     latencies = [begin_events[i].elapsed_time(end_events[i]) for i in range(WARMUP, LOOP)]
-    if RUN_REFERENCE:
-        ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
+    ref_latencies = [ref_begin_events[i].elapsed_time(ref_end_events[i]) for i in range(WARMUP, LOOP)]
 
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_unpermute_reducescatter_fusion_rank{rank}.json")
 
     print(f"[Fusion time in rank {rank}] {latencies} ms")
-    if RUN_REFERENCE:
-        print(f"[Reference unpermute+allreduce time in rank {rank}] {ref_latencies} ms")
+    print(f"[Reference unpermute+reduce_scatter time in rank {rank}] {ref_latencies} ms")
 
     # ---------- Accuracy check ----------
     # Run one final fresh pass and compare fused vs reference
@@ -217,7 +238,7 @@ def check_unpermute_reducescatter_fusion():
         backend_stream=backend_stream,
         rank_buffers_ptr=rank_buffers_ptr,
     )
-    unpermute_allreduce_simple(
+    run_reference_unpermute_reducescatter(
         expert_output=expert_output,
         scatter_idx=scatter_idx,
         topk_weights=topk_weights,
@@ -236,12 +257,12 @@ def check_unpermute_reducescatter_fusion():
 
     if rank == 0:
         avg_fused = sum(latencies) / len(latencies)
+        avg_ref = sum(ref_latencies) / len(ref_latencies)
         print(f"[Summary] avg_fused={avg_fused:.3f} ms")
-        if RUN_REFERENCE:
-            avg_ref = sum(ref_latencies) / len(ref_latencies)
-            print(
-                f"[Summary] avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_fused:.3f}x"
-            )
+        print(
+            f"[Summary] avg_reference(unpermute+reduce_scatter)={avg_ref:.3f} ms, "
+            f"speedup={avg_ref / avg_fused:.3f}x"
+        )
         print(
             f"[Summary] native_kernel={'yes (local_unpermute + reduce_scatter_sum)' if (_HAS_LOCAL_UNPERMUTE_KERNEL and _HAS_REDUCE_SCATTER_SUM) else 'no (Python fallback)'}"
         )
@@ -282,37 +303,5 @@ def check_unpermute_reducescatter_fusion():
     dist.destroy_process_group()
 
 
-def check_unpermute_allreduce_simple():
-    """Standalone smoke test for the simple allreduce baseline (single-rank)."""
-    rank, world_size = init_distributed()
-    device = f"xpu:{rank}"
-    group = dist.group.WORLD
-
-    num_tokens_per_rank = TOKENS_PER_RANK
-    num_tokens = num_tokens_per_rank * world_size
-    hidden_size = HIDDEN_SIZE
-    topk = TOPK
-
-    expert_output, scatter_idx, topk_weights = make_inputs(rank, world_size, device)
-    output = torch.zeros(num_tokens_per_rank, hidden_size, device=device, dtype=expert_output.dtype)
-
-    result = unpermute_allreduce_simple(
-        expert_output=expert_output,
-        scatter_idx=scatter_idx,
-        topk_weights=topk_weights,
-        output=output,
-        group=group,
-    )
-
-    assert result.shape == (num_tokens_per_rank, hidden_size), (
-        f"Unexpected output shape: {result.shape}"
-    )
-    assert not result.isnan().any(), "NaN detected in unpermute_allreduce_simple output"
-    print(f"[Rank {rank}] unpermute_allreduce_simple smoke test PASSED")
-
-    dist.destroy_process_group()
-
-
 if __name__ == "__main__":
     check_unpermute_reducescatter_fusion()
-    # check_unpermute_allreduce_simple()

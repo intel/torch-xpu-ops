@@ -50,16 +50,17 @@ def run_reference_allgather_local_permute(
     topk,
     gathered_ref,
 ):
-    dist.all_gather(gathered_ref, hidden_shard, group=group)
-    all_hidden_ref = torch.stack(gathered_ref, dim=0)  # [world_size, tokens_per_rank, hidden_size]
-    for src_rank in range(world_size):
-        token_offset = src_rank * num_tokens_per_rank
-        torch.ops.symm_mem.local_permute_copy_(
-            all_hidden_ref[src_rank],
-            scatter_idx,
-            token_offset,
-            output_tensor,
-        )
+    all_hidden_ref = torch.empty(
+        world_size * num_tokens_per_rank, hidden_shard.shape[-1],
+        device=hidden_shard.device, dtype=hidden_shard.dtype,
+    )
+    dist.all_gather_into_tensor(all_hidden_ref, hidden_shard, group=group)
+    torch.ops.symm_mem.local_permute_copy_(
+        all_hidden_ref,
+        scatter_idx,
+        0,
+        output_tensor,
+    )
 
 
 def run_naive_reference_allgather_local_permute(

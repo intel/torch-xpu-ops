@@ -2,6 +2,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 #include <climits>
+#include <cstdlib>
 #include <torch/library.h>
 #include <comm/SYCLHelpers.h>
 
@@ -455,6 +456,101 @@ struct AllgatherPermuteRingVecKernel {
 };
 
 // ---------------------------------------------------------------------------
+// WG-pipelined allgather+permute: each WG handles a tile of tokens,
+// iterating over ranks in ring order with explicit phase separation.
+//
+// Phase A: Cooperative coalesced read from remote rank → SLM (fast)
+// Phase B: Scattered writes from SLM to topk destinations (slow)
+//
+// Different WGs are at different pipeline stages → at system level,
+// some WGs are doing remote reads while others are doing scattered writes
+// → read bandwidth and write bandwidth are utilized concurrently.
+//
+// This approach hides permute latency even when permute > allgather because:
+// 1. Reads are batched per-phase → maximizes read port utilization
+// 2. SLM buffers data → reads don't stall behind pending writes
+// 3. Cross-WG phase diversity → memory controller sees interleaved
+//    large read bursts and write bursts (more efficient than fine-grained mixing)
+// ---------------------------------------------------------------------------
+template <typename scalar_t, int VEC_SIZE>
+struct AllgatherPermutePipelinedKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const int64_t* rank_ptrs;
+  const int32_t* scatter_idx_ptr;
+  scalar_t* remap_ptr;
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+  int32_t tile_tokens;
+  int32_t num_tiles;
+
+  sycl::local_accessor<vec_elem_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<vec_elem_t, 1>(
+        static_cast<size_t>(tile_tokens) * hidden_size, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t wg_id = static_cast<int32_t>(item.get_group(0));
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    if (wg_id >= num_tiles) return;
+
+    const int32_t tile_start = wg_id * tile_tokens;
+    const int32_t tile_end = sycl::min(tile_start + tile_tokens, num_tokens_per_rank);
+    const int32_t tile_len = tile_end - tile_start;
+    const int32_t load_elems = tile_len * hidden_vecs;
+
+    auto slm_vec = reinterpret_cast<vec_t*>(
+        slm.template get_multi_ptr<sycl::access::decorated::no>().get());
+
+    // Pipeline: iterate over ranks in ring order
+    for (int32_t step = 0; step < world_size; ++step) {
+      const int32_t src_rank = (rank + step + 1) % world_size;
+      const scalar_t* src = reinterpret_cast<const scalar_t*>(rank_ptrs[src_rank]);
+
+      // Phase A: Cooperative coalesced load from remote rank → SLM
+      for (int32_t i = lid; i < load_elems; i += lsize) {
+        const int32_t t = i / hidden_vecs;
+        const int32_t v = i % hidden_vecs;
+        auto src_vec = reinterpret_cast<const vec_t*>(
+            src + static_cast<int64_t>(tile_start + t) * hidden_size);
+        slm_vec[t * hidden_vecs + v] = src_vec[v];
+      }
+      item.barrier(sycl::access::fence_space::local_space);
+
+      // Phase B: Scattered writes from SLM to topk destinations
+      for (int32_t i = lid; i < load_elems; i += lsize) {
+        const int32_t t = i / hidden_vecs;
+        const int32_t v = i % hidden_vecs;
+        const int32_t local_token_idx = tile_start + t;
+        const int32_t global_token_idx =
+            src_rank * num_tokens_per_rank + local_token_idx;
+
+        vec_t val = slm_vec[t * hidden_vecs + v];
+
+        const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+        for (int32_t k = 0; k < topk; ++k) {
+          const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+          auto dst_vec = reinterpret_cast<vec_t*>(
+              remap_ptr + static_cast<int64_t>(dst_row) * hidden_size);
+          dst_vec[v] = val;
+        }
+      }
+      item.barrier(sycl::access::fence_space::local_space);
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
 // V2 allgather + permute: accepts expert-relative scatter_idx + global_topk_idx
 // + rows_per_expert. Each WG computes expert cumsum in SLM for absolute addressing.
 // ---------------------------------------------------------------------------
@@ -660,27 +756,73 @@ at::Tensor allgather_permute(
   auto stream = at::xpu::getCurrentXPUStream();
   auto& queue = stream.queue();
 
+  // SLM budget: 56KB (leaves headroom under 64KB per WG for occupancy ≥ 2)
+  constexpr int64_t SLM_BUDGET = 56 * 1024;
+
+  // Select kernel variant via environment variable:
+  //   ALLGATHER_PERMUTE_PIPELINED=1  → force pipelined kernel
+  //   ALLGATHER_PERMUTE_PIPELINED=0  → force flat ring kernel (default)
+  //   unset                          → flat ring kernel
+  static const char* env = std::getenv("ALLGATHER_PERMUTE_PIPELINED");
+  const bool use_pipelined = env && (std::atoi(env) != 0);
+
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       remap_hidden_states.scalar_type(), "allgather_permute", [&]() {
         if (hidden_size % VEC_SIZE == 0) {
-          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
-          const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
-          const int64_t blocks = (total + threads - 1) / threads;
-          auto kfn = AllgatherPermuteRingVecKernel<scalar_t, VEC_SIZE>{
-              rank_buffers_ptr.data_ptr<int64_t>(),
-              scatter_idx.data_ptr<int32_t>(),
-              remap_hidden_states.data_ptr<scalar_t>(),
-              static_cast<int32_t>(num_tokens_per_rank),
-              static_cast<int32_t>(hidden_size),
-              static_cast<int32_t>(topk),
-              static_cast<int32_t>(rank),
-              static_cast<int32_t>(world_size),
-              static_cast<int32_t>(hidden_vecs)};
-          sycl_kernel_submit(
-              sycl::range<1>(blocks * threads),
-              sycl::range<1>(threads),
-              queue,
-              kfn);
+          const int32_t h = static_cast<int32_t>(hidden_size);
+          const int32_t hidden_vecs = h / VEC_SIZE;
+
+          if (use_pipelined) {
+            // Pipelined: better when permute (scattered writes) is bottleneck
+            const int64_t bytes_per_token = hidden_size * sizeof(scalar_t);
+            int32_t tile_tokens = static_cast<int32_t>(
+                SLM_BUDGET / bytes_per_token);
+            if (tile_tokens < 1) tile_tokens = 1;
+            if (tile_tokens > static_cast<int32_t>(num_tokens_per_rank))
+              tile_tokens = static_cast<int32_t>(num_tokens_per_rank);
+
+            const int32_t num_tiles = (static_cast<int32_t>(num_tokens_per_rank) +
+                                       tile_tokens - 1) / tile_tokens;
+
+            auto kfn = AllgatherPermutePipelinedKernel<scalar_t, VEC_SIZE>{
+                {},
+                rank_buffers_ptr.data_ptr<int64_t>(),
+                scatter_idx.data_ptr<int32_t>(),
+                remap_hidden_states.data_ptr<scalar_t>(),
+                static_cast<int32_t>(num_tokens_per_rank),
+                h,
+                static_cast<int32_t>(topk),
+                static_cast<int32_t>(rank),
+                static_cast<int32_t>(world_size),
+                hidden_vecs,
+                tile_tokens,
+                num_tiles,
+                {}};
+            sycl_kernel_submit(
+                sycl::range<1>(static_cast<size_t>(num_tiles) * threads),
+                sycl::range<1>(threads),
+                queue,
+                kfn);
+          } else {
+            // Flat ring: better when allgather (remote reads) is bottleneck
+            const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
+            const int64_t blocks = (total + threads - 1) / threads;
+            auto kfn = AllgatherPermuteRingVecKernel<scalar_t, VEC_SIZE>{
+                rank_buffers_ptr.data_ptr<int64_t>(),
+                scatter_idx.data_ptr<int32_t>(),
+                remap_hidden_states.data_ptr<scalar_t>(),
+                static_cast<int32_t>(num_tokens_per_rank),
+                h,
+                static_cast<int32_t>(topk),
+                static_cast<int32_t>(rank),
+                static_cast<int32_t>(world_size),
+                hidden_vecs};
+            sycl_kernel_submit(
+                sycl::range<1>(blocks * threads),
+                sycl::range<1>(threads),
+                queue,
+                kfn);
+          }
         } else {
           const int64_t total = world_size * num_tokens_per_rank * hidden_size;
           const int64_t blocks = (total + threads - 1) / threads;
