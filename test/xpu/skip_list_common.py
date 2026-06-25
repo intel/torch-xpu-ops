@@ -13,7 +13,7 @@ skip_dict = {
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
-    "nn/test_embedding_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
     "nn/test_lazy_modules_xpu.py": None,
     "nn/test_load_state_dict_xpu.py": None,
