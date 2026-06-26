@@ -35,7 +35,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.14.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
@@ -98,7 +98,6 @@ set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
   set(BUILD_SEPARATE_OPS TRUE)
 endif()
-set(BUILD_SPLIT_KERNEL_LIB $ENV{BUILD_SPLIT_KERNEL_LIB})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)
