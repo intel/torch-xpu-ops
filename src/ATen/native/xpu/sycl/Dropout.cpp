@@ -17,8 +17,11 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/TensorInfo.h>
 #include <comm/xpu_aten.h>
+
+#include <utility>
 
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/zeros_like.h>
@@ -46,7 +49,7 @@ struct FusedDropoutVecFunctor {
     using LoadT = memory::aligned_vector<scalar_t, VecSize>;
     using MaskLoadT = memory::aligned_vector<mask_t, VecSize>;
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto& seeds = philox_args_;
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
@@ -118,7 +121,7 @@ struct FusedDropoutVecFunctor {
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
       accscalar_t p,
-      PhiloxXpuState philox_args)
+      std::pair<uint64_t, uint64_t> philox_args)
       : a_(a),
         b_(b),
         c_(c),
@@ -132,7 +135,7 @@ struct FusedDropoutVecFunctor {
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
   accscalar_t p_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
 };
 
 template <
@@ -145,7 +148,7 @@ template <
 struct FusedDropoutUnrollFunctor {
   void operator()(sycl::nd_item<1> item) const {
     constexpr int UNROLL = 4;
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto& seeds = philox_args_;
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
@@ -193,7 +196,7 @@ struct FusedDropoutUnrollFunctor {
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
       accscalar_t p,
-      PhiloxXpuState philox_args)
+      std::pair<uint64_t, uint64_t> philox_args)
       : a_(a),
         b_(b),
         c_(c),
@@ -207,7 +210,7 @@ struct FusedDropoutUnrollFunctor {
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
   accscalar_t p_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
 };
 
 template <typename scalar_t, typename accscalar_t, typename mask_t>
@@ -273,7 +276,7 @@ inline void launcher(
     Tensor& mask,
     double p,
     const int64_t nelem,
-    const PhiloxXpuState rng_engine_inputs,
+    const std::pair<uint64_t, uint64_t> rng_engine_inputs,
     uint32_t num_groups,
     uint32_t group_size) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -394,11 +397,11 @@ std::tuple<Tensor, Tensor> dropout(
   std::tie(counter_offset, num_groups, group_size) =
       calc_execution_policy(nelem);
 
-  PhiloxXpuState rng_engine_inputs;
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
+    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, counter_offset);
   }
 
   if (canUse32BitIndexMath(self)) {
@@ -430,7 +433,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
     return std::tuple<Tensor, Tensor>(ret, mask);
   }
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      std::nullopt, at::xpu::detail::getDefaultXPUGenerator());
+      std::nullopt, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   double p1m = 1. - p;
   return dropout<bool>(gen, self, p1m);
 }
@@ -440,7 +443,7 @@ std::tuple<Tensor, Tensor> fused_dropout_kernel(
     double p,
     std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::xpu::detail::getDefaultXPUGenerator());
+      gen_, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   return dropout<uint8_t>(gen, self, p);
 }
 

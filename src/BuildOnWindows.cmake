@@ -32,13 +32,6 @@ if(BUILD_SEPARATE_OPS)
       SHARED
       SYCL_SOURCES ${sycl_src})
     target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-    # Kernel DLLs reference torch_xpu symbols (e.g., XPUGeneratorImpl::
-    # philox_xpu_state, getDefaultXPUGenerator). These live in torch_xpu.dll
-    # which is always loaded first at runtime, so symbols resolve at load time.
-    # We cannot link torch_xpu.lib directly — ninja detects a build cycle:
-    #   torch_xpu.dll → kernel_DLL.dll → torch_xpu.lib
-    # /FORCE:UNRESOLVED suppresses LNK2019 for these runtime-resolvable symbols.
-    target_link_options(${sycl_lib} PRIVATE /FORCE:UNRESOLVED)
     # On Windows, DLL symbols are not exported by default. Each kernel DLL
     # must export its host-side SYCL entry points so consumers (torch_xpu.dll)
     # can resolve them from the import lib.
