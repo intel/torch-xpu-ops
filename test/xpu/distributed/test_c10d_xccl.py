@@ -33,6 +33,7 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as _functional_collectives
 import torch.distributed._symmetric_memory as symm_mem
 import torch.testing._internal.common_utils as common
+from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_distributed import (
     MultiProcContinuousTest,
     MultiProcessTestCase,
@@ -44,6 +45,7 @@ from torch.testing._internal.common_utils import (
     retry_on_connect_failures,
     run_tests,
     skip_but_pass_in_sandcastle_if,
+    TemporaryFileName,
     TEST_XPU,
     TestCase,
 )
@@ -1580,6 +1582,90 @@ instantiate_parametrized_tests(ProcessGroupXCCLTest)
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
+
+
+def _gemm_kernels(kernels):
+    """Filter kernel events to those whose name contains 'gemm' (any case).
+
+    Matches ``gemm_kernel`` (PT 2.12+) and ``xe4_gemm`` (older releases).
+    """
+    return [k for k in kernels if "gemm" in k.get("name", "").lower()]
+
+
+# Use-case smoke test for distributed profiling with the XCCL backend on
+# XPU (case 03 of the Kineto Profiler User Guide). Uses
+# ``MultiProcessTestCase`` to spawn worker ranks so the test runs under
+# pytest without an external ``torchrun`` launcher.
+class XpuProfilerDistributedTest(MultiProcessTestCase):
+    @property
+    def world_size(self):
+        return 2
+
+    def setUp(self):
+        super().setUp()
+        self._spawn_processes()
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            os.remove(self.file_name)
+        except OSError:
+            pass
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_profiler_xpu_distributed(self):
+        """Profile a GEMM + ``dist.all_reduce`` on XPU with the XCCL
+        backend and verify the per-rank chrome trace contains a GEMM
+        kernel event. Each rank pins to its own XPU device.
+        """
+        # FileStore-based rendezvous avoids needing a free TCP port per run.
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        try:
+            # Pin each rank to its own device so collectives don't share one GPU.
+            torch.xpu.set_device(self.rank)
+
+            M = N = K = 4
+            weight = torch.randn(K, N, device="xpu")
+            x = torch.randn(M, K, device="xpu")
+
+            # Warm up so first-iteration setup costs stay out of the profiled region.
+            for _ in range(2):
+                _ = x @ weight
+            torch.xpu.synchronize()
+
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+            ) as prof:
+                output = x @ weight
+                dist.all_reduce(output)
+                prof.step()
+            torch.xpu.synchronize()
+
+            with TemporaryFileName(mode="w+") as fname:
+                prof.export_chrome_trace(fname)
+                with open(fname) as f:
+                    data = json.load(f)
+                kernels = [
+                    e for e in data.get("traceEvents", []) if e.get("cat") == "kernel"
+                ]
+                gemm_kernels = _gemm_kernels(kernels)
+
+            self.assertGreater(
+                len(gemm_kernels),
+                0,
+                f"[Rank {self.rank}] No GEMM kernel in trace; saw "
+                f"kernels: {[k.get('name') for k in kernels]}",
+            )
+        finally:
+            # Always tear down so a failing rank doesn't hang the others.
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":
