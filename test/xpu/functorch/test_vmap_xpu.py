@@ -4416,6 +4416,7 @@ class TestVmapOperatorsOpInfo(TestCase):
                         sample.kwargs["memory_format"] == torch.channels_last
                     ),
                 ),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -4592,6 +4593,7 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail(
                     "searchsorted"
                 ),  # aten::searchsorted.Scalar hit the vmap fallback which is currently disabled
+                xfail("native_group_norm"),
             }
         ),
     )
