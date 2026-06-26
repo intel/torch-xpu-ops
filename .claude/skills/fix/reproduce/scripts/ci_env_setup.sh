@@ -160,7 +160,7 @@ for build in "${BUILD_ENVS[@]}"; do
     unzip -o -j "$zipfile" 'dist/*.whl' -d "${WHEELS_DIR}" 2>/dev/null || true
     rm -f "$zipfile"
 
-    whl_count=$(ls "${WHEELS_DIR}/"*.whl 2>/dev/null | wc -l)
+    whl_count=$(find "${WHEELS_DIR}" -maxdepth 1 -name "*.whl" 2>/dev/null | wc -l)
     echo "  Extracted wheel(s) to ${WHEELS_DIR}/ (total so far: $whl_count)"
     DOWNLOADED=$((DOWNLOADED + 1))
 done
