@@ -161,8 +161,13 @@ fi
 echo "  Total wheels downloaded: $DOWNLOADED"
 
 # --- Step 4: pull image and print run command ---
-echo "[4/4] Pulling docker image (may take a while)..."
-docker pull "$DOCKER_IMAGE"
+echo "[4/4] Checking docker image..."
+if docker image inspect "$DOCKER_IMAGE" &>/dev/null; then
+    echo "  Already present locally, skipping pull."
+else
+    echo "  Not found locally, pulling (may take a while)..."
+    docker pull "$DOCKER_IMAGE"
+fi
 
 echo ""
 echo "================================================================"
