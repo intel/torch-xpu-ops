@@ -114,72 +114,6 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
             obj.requires_grad = False
 
 
-@modules(module_db)
-def _test_multiple_device_transfer(self, device, dtype, module_info, training):
-    module_cls = module_info.module_cls
-    module_inputs_device = module_info.module_inputs_func(
-        module_info, device=device, dtype=dtype, requires_grad=False, training=training
-    )
-    module_inputs_cpu = module_info.module_inputs_func(
-        module_info, device="cpu", dtype=dtype, requires_grad=False, training=training
-    )
-    for module_input_device, module_input_cpu in zip(
-        module_inputs_device, module_inputs_cpu
-    ):
-        if module_input_device.forward_input is None:
-            continue
-
-        with freeze_rng_state():
-            # === Instantiate the module. ===
-            args, kwargs = (
-                module_input_device.constructor_input.args,
-                module_input_device.constructor_input.kwargs,
-            )
-            m = module_cls(*args, **kwargs)
-            m.to(device).to(dtype)
-            m.train(training)
-
-            # === Do forward pass on GPU ===
-            input_device_args = module_input_device.forward_input.args
-            input_device_kwargs = module_input_device.forward_input.kwargs
-            m(*input_device_args, **input_device_kwargs)
-            self._assert_module_parameters_and_buffer_are(m, device, dtype)
-
-            # === Move to CPU ===
-            input_cpu_args = module_input_cpu.forward_input.args
-            input_cpu_kwargs = module_input_cpu.forward_input.kwargs
-            m.cpu()
-            m(*input_cpu_args, **input_cpu_kwargs)
-            self._assert_module_parameters_and_buffer_are(m, "cpu", dtype)
-
-            # === Move back to GPU and forward pass ===
-            m.xpu()
-            m(*input_device_args, **input_device_kwargs)
-            self._assert_module_parameters_and_buffer_are(m, device, dtype)
-
-            if torch.cuda.device_count() >= 2:
-                # === test cross-GPU transfer works
-                def _to_device1(objs):
-                    if isinstance(objs, tuple | list):
-                        return type(objs)(_to_device1(item) for item in objs)
-                    elif isinstance(objs, dict):
-                        return {name: _to_device1(item) for name, item in objs.items()}
-                    elif isinstance(objs, torch.Tensor):
-                        return objs.cuda(1)
-                    else:
-                        return objs
-
-                input_device_1_args = _to_device1(input_device_args)
-                input_device_1_kwargs = _to_device1(input_device_kwargs)
-
-                m.cuda(1)
-                with torch.cuda.device(1):
-                    m(*input_device_1_args, **input_device_1_kwargs)
-                self._assert_module_parameters_and_buffer_are(
-                    m, torch.device("cuda:1"), dtype
-                )
-
-
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
@@ -189,7 +123,6 @@ with XPUPatchForImport(False):
     from test_modules import TestModule
 
     TestModule._test_gradients_helper = _gradients_helper
-    TestModule.test_multiple_device_transfer = _test_multiple_device_transfer
 
 instantiate_device_type_tests(TestModule, globals(), only_for="xpu", allow_xpu=True)
 
