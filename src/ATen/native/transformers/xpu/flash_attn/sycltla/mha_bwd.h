@@ -28,7 +28,6 @@
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <sycl/sycl.hpp>
-#include <sycltla/dropout.h>
 #include <sycltla/mha_common.h>
 
 #pragma clang diagnostic pop
@@ -71,7 +70,7 @@ struct FAKernel {
       Layout<Shape<Int<AtomLayoutNdKV>, Int<kNSGs / AtomLayoutNdKV>, _1>>;
   using SubgroupLayoutdQ =
       Layout<Shape<Int<AtomLayoutMdQ>, Int<kNSGs / AtomLayoutMdQ>, _1>>;
-  using TileShapeSdP = Layout<Shape<Int<kBlockM>, Int<kBlockN>, _K>>;
+  using TileShapeSdP = Layout<Shape<Int<kBlockN>, Int<kBlockM>, _K>>;
   using TileShapedKV = Layout<Shape<Int<kBlockN>, Int<kHeadDim>, _K>>;
   using TileShapedQ = Layout<Shape<Int<kBlockM>, Int<kHeadDim>, _K>>;
 
@@ -93,10 +92,6 @@ struct FAKernel {
   static constexpr int SubgroupSize = 16;
   static constexpr int smem_size = 0;
 
-  static_assert(
-      SubgroupSize == kSubgroupSize,
-      "Subgroup size must be consistent with the one used in mha_common.h");
-
   FAKernel() {}
 };
 
@@ -111,37 +106,27 @@ struct Param {
       const T* k,
       const T* v,
       const float* lse,
-      const uint64_t* rng_seed,
-      const uint64_t* rng_offset,
       float* odo,
       float* dqaccum,
       T* dq,
       T* dk,
       T* dv,
       T* pb,
-      const float softmax_scale,
-      const float p_dropout,
-      const uint16_t p_dropout_in_uint16_t,
-      const float rp_dropout)
+      const float softmax_scale)
       : do_ptr(dO),
         o_ptr(o),
         q_ptr(q),
         k_ptr(k),
         v_ptr(v),
         lse_ptr(lse),
-        rng_seed(rng_seed),
-        rng_offset(rng_offset),
+        scale_softmax(softmax_scale),
+        scale_softmax_log2(softmax_scale * M_LOG2E),
         odo_ptr(odo),
         dqaccum_ptr(dqaccum),
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
-        pb_ptr(pb),
-        scale_softmax(softmax_scale),
-        scale_softmax_log2(softmax_scale * M_LOG2E),
-        p_dropout(p_dropout),
-        p_dropout_in_uint16_t(p_dropout_in_uint16_t),
-        rp_dropout(rp_dropout) {}
+        pb_ptr(pb) {}
   // read only
   const T* do_ptr;
   const T* o_ptr;
@@ -149,9 +134,8 @@ struct Param {
   const T* k_ptr;
   const T* v_ptr;
   const float* lse_ptr;
-  const uint64_t* rng_seed;
-  const uint64_t* rng_offset;
-
+  const float scale_softmax;
+  const float scale_softmax_log2;
   // write
   float* odo_ptr;
   float* dqaccum_ptr;
@@ -175,13 +159,6 @@ struct Param {
   int tail_m;
   int num_qh_per_kvh;
   int num_nb_per_blk;
-
-  // other params
-  const float scale_softmax;
-  const float scale_softmax_log2;
-  const float p_dropout;
-  const uint16_t p_dropout_in_uint16_t;
-  const float rp_dropout;
 
   // strides
   index_t q_r_stride;
