@@ -80,7 +80,7 @@ The script prints a JSON evidence bundle to stdout:
 
 ## Step 2 — Analyze the root cause (AI analysis required)
 
-If the number of failed cases > 10, skip this step and let the root case field be empty.
+If the number of failed cases > 10, skip this step and let the root cause field be empty.
 For each case in `cases`, use subagent to do:
 
 1. Fetch latest origin main and git checkout to the `commit_sha` locally.

@@ -178,13 +178,6 @@ def build_github_new_issue_url(owner: str, repo: str, issue: dict) -> str:
     return f"https://github.com/{owner}/{repo}/issues/new?{query}"
 
 
-def extract_failed_lines_from_raw_log_text(log_text: str) -> list[str]:
-    failed_lines = [line.strip() for line in log_text.splitlines() if "FAILED [" in line]
-    if failed_lines:
-        return failed_lines
-    return [line.strip() for line in log_text.splitlines() if line.lstrip().startswith("FAILED ")]
-
-
 def extract_failure_cases_from_raw_log_text(
     raw_log_text: str,
     *,
@@ -391,25 +384,6 @@ class GitHubActionsClient:
                 raise ValueError(f"Run {run.run_id} does not expose a logs URL")
             return self._request_bytes(logs_url)
         return self._request_bytes(run.logs_url)
-
-    def collect_failure_cases(self, run: WorkflowRun) -> list[FailureCase]:
-        failures: list[FailureCase] = []
-        for job in self.list_failed_jobs(run):
-            if not self._is_test_job(job):
-                continue
-            raw_log_text = self.download_raw_log_text(job.logs_url)
-            failures.extend(
-                extract_failure_cases_from_raw_log_text(
-                    raw_log_text,
-                    run_id=run.run_id,
-                    run_number=run.run_number,
-                    source=job.logs_url,
-                )
-            )
-        unique: dict[str, FailureCase] = {}
-        for failure in failures:
-            unique.setdefault(failure.case_id, failure)
-        return list(unique.values())
 
 
 def collect(owner: str, repo: str, workflow_file: str, run_limit: int, token: str | None) -> dict:
