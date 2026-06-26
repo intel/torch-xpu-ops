@@ -12,6 +12,7 @@
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 
 namespace at::native::xpu {
 
@@ -20,7 +21,7 @@ void geometric_kernel(
     double p_,
     std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen, at::xpu::detail::getDefaultXPUGenerator());
+      gen, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   at::native::templates::xpu::geometric_kernel(iter, p_, generator);
 }
 
