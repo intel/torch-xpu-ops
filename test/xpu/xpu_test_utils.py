@@ -983,6 +983,59 @@ def get_dtypesIf_mock(src_device_type: str):
     return dtypesIfXPUMock
 
 
+class XPUPatchForImportMinimal:
+    """Minimal context manager for importing upstream test modules on XPU.
+
+    Only performs the essential import mechanics:
+    - Extends sys.path so upstream test modules can be imported
+    - Suppresses instantiate_device_type_tests during import
+    - Suppresses instantiate_parametrized_tests during import
+    - Optionally replaces TestCase with NoTest to hide upstream classes from pytest
+
+    Does NOT apply any decorator remapping, op_db manipulation, or global state
+    faking. Test files using this are expected to work with upstream decorators
+    as-is, relying on upstream's native XPU support.
+    """
+
+    def __init__(self, patch_test_case=True) -> None:
+        test_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "../../../../test"
+        )
+        self.test_package = (
+            test_dir,
+            os.path.join(test_dir, "nn"),
+            os.path.join(test_dir, "distributions"),
+            os.path.join(test_dir, "quantization/core"),
+        )
+        self.patch_test_case = patch_test_case
+        self.original_path = sys.path.copy()
+        self.test_case_cls = common_utils.TestCase
+        self.instantiate_device_type_tests_fn = (
+            common_device_type.instantiate_device_type_tests
+        )
+        self.instantiate_parametrized_tests_fn = (
+            common_utils.instantiate_parametrized_tests
+        )
+
+    def __enter__(self):
+        common_device_type.instantiate_device_type_tests = DO_NOTHING
+        common_utils.instantiate_parametrized_tests = DO_NOTHING
+        if self.patch_test_case:
+            common_utils.TestCase = common_utils.NoTest
+        sys.path.extend(self.test_package)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.path = self.original_path
+        common_device_type.instantiate_device_type_tests = (
+            self.instantiate_device_type_tests_fn
+        )
+        common_utils.instantiate_parametrized_tests = (
+            self.instantiate_parametrized_tests_fn
+        )
+        common_utils.TestCase = self.test_case_cls
+
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(

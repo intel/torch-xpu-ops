@@ -72,11 +72,11 @@ def onlyNativeDeviceTypes(fn):
 
 
 try:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from ..xpu_test_utils import XPUPatchForImport
+    from ..xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_convolution import TestConvolutionNN, TestConvolutionNNDeviceType
 
     @dtypes(torch.float, torch.double, torch.half)

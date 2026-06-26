@@ -17,11 +17,11 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import parametrize, run_tests, skipIfXpu
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_scaled_matmul_cuda import (
         e4m3_type,
         e5m2_type,

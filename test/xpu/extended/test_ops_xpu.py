@@ -38,17 +38,17 @@ try:
         _ops_without_cuda_support,
         _xpu_computation_op_list,
         get_wrapped_fn,
-        XPUPatchForImport,
+        XPUPatchForImportMinimal,
     )
 except Exception as e:
     from ..xpu_test_utils import (
         _ops_without_cuda_support,
         _xpu_computation_op_list,
         get_wrapped_fn,
-        XPUPatchForImport,
+        XPUPatchForImportMinimal,
     )
 
-with XPUPatchForImport():
+with XPUPatchForImportMinimal(False):
     from test_ops import (
         TestCommon as TestCommonBase,
         TestCompositeCompliance as TestCompositeComplianceBase,

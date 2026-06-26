@@ -24,11 +24,11 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_serialization import (
         TestBothSerialization,
         TestSerialization,
@@ -38,7 +38,7 @@ with XPUPatchForImport(False):
 
 
 # Override TestCase-level (non-device) tests that hardcode cuda; mirror upstream
-# bodies on the xpu device. Required because XPUPatchForImport leaves @unittest.skipIf(
+# bodies on the xpu device. Required because XPUPatchForImportMinimal leaves @unittest.skipIf(
 # not torch.cuda.is_available()) intact, which auto-skips on XPU machines.
 def _xpu_test_serialization_mmap_loading_with_map_location(self):
     class DummyModel(torch.nn.Module):

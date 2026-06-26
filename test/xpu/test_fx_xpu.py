@@ -21,11 +21,11 @@ from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
-# test/fx is not in the XPUPatchForImport default search path; add it so
+# test/fx is not in the XPUPatchForImportMinimal default search path; add it so
 # the TestCommonPass import works.
 _FX_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../../../test/fx")
@@ -33,7 +33,7 @@ _FX_DIR = os.path.abspath(
 if _FX_DIR not in sys.path:
     sys.path.insert(0, _FX_DIR)
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 

@@ -15,11 +15,11 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import NoTest, run_tests, TEST_XPU, TestCase
 
 try:
-    from xpu_test_utils import copy_tests, XPUPatchForImport
+    from xpu_test_utils import copy_tests, XPUPatchForImportMinimal
 except Exception as e:
-    from ..xpu_test_utils import copy_tests, XPUPatchForImport
+    from ..xpu_test_utils import copy_tests, XPUPatchForImportMinimal
 
-with XPUPatchForImport():
+with XPUPatchForImportMinimal(False):
     from test_tensor_creation_ops import TestTensorCreation as TestTensorCreationBase
 
 if not TEST_XPU:

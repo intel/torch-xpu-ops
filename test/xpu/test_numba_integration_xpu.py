@@ -18,9 +18,9 @@ import torch
 from torch.testing._internal.common_utils import run_tests, TEST_NUMPY
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
 # numba.cuda may fail to import due to numpy ABI. Detect at module scope.
 try:
@@ -30,7 +30,7 @@ try:
 except Exception:
     TEST_NUMBA_XPU = False
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     from test_numba_integration import TestNumbaIntegration
 
 

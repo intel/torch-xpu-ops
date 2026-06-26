@@ -21,11 +21,11 @@ import torch.multiprocessing as mp
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
-    from xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
+    from xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImportMinimal
 except Exception:
-    from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImportMinimal
 
-with XPUPatchForImport(False) as patcher:
+with XPUPatchForImportMinimal(False) as patcher:
     from test_multiprocessing import TestMultiprocessing
 
 

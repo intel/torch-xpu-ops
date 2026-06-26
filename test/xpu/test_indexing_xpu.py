@@ -21,11 +21,11 @@ from torch.testing._internal.common_dtype import all_types_complex_float8_and
 from torch.testing._internal.common_utils import DeterministicGuard, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUPatchForImportMinimal
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import XPUPatchForImportMinimal
 
-with XPUPatchForImport(False):
+with XPUPatchForImportMinimal(False):
     import torch
     from test_indexing import NumpyTests, TestIndexing
 
