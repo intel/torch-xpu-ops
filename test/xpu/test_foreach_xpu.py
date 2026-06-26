@@ -32,10 +32,10 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
-next(
-    op for op in foreach_binary_op_db if op.name == "_foreach_copy"
-).dtypesIfXPU = all_types_complex_float8_and(torch.bool, torch.half, torch.bfloat16)
-
+for op in foreach_binary_op_db:
+    if op.name == "_foreach_copy":
+        op.dtypesIfXPU = all_types_complex_float8_and(torch.bool, torch.half, torch.bfloat16)
+        break
 
 def get_device_capability(device=None):
     return (9, 0)
