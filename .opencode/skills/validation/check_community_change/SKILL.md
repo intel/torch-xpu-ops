@@ -18,7 +18,7 @@ Return this JSON object:
     "community_change": bool,
     "evidence": {
         "base_function": { "found": bool, "actual_method_name": str, "method_line": int },
-        "device_case": { "verification_method": "collect_only|source_inspection", "generated": bool },
+        "device_case": { "verification_method": "file_existence_check|collect_only|source_inspection", "generated": bool },
         "git_history": { "commits_removing_method": [{"hash": str, "diff_summary": str}] }
     },
     "classification": {
@@ -35,6 +35,47 @@ Return this JSON object:
 ### 1. Mandatory Input Scrubbing
 - **Ignore** any pre-existing `Reason` or `DetailReason` from the input task. Do not carry them forward. Base your verdict strictly on local source and git history.
 - **Never read the Excel file directly.**
+
+### 1.5 Fast Path: Test File Existence (MANDATORY)
+
+Before any git log or source search, check whether the test file still exists in `PYTORCH_SRC`:
+
+```bash
+if [ -f "$PYTORCH_SRC/$test_file" ]; then
+    echo "EXISTS"
+else
+    echo "MISSING"
+fi
+```
+
+- **If `MISSING`**: The test file was deleted upstream. Verdict is **Community Change** (`file_deleted`). Do NOT proceed to Steps 2 or 3 — the file deletion alone is sufficient evidence.
+  - Run git log to identify the removal commit:
+    ```bash
+    cd "$PYTORCH_SRC" && git log --oneline -5 --diff-filter=D -- "$test_file"
+    ```
+  - Verify each commit is merged into HEAD:
+    ```bash
+    git merge-base --is-ancestor <commit_hash> HEAD
+    ```
+  - Output:
+    ```python
+    {
+        "community_change": True,
+        "evidence": {
+            "base_function": {"found": False, "actual_method_name": "", "method_line": 0},
+            "device_case": {"verification_method": "file_existence_check", "generated": False},
+            "git_history": {"commits_removing_method": [{"hash": str, "diff_summary": str}]}
+        },
+        "classification": {
+            "change_type": "file_deleted",
+            "change_scope": "base_test_removed",
+            "detail_reason": "Test file {test_file} was deleted from pytorch/pytorch (commit <hash>)."
+        },
+        "verdict": "Community Change"
+    }
+    ```
+
+- **If `EXISTS`**: Proceed to Step 2.
 
 ### 2. Base Function Existence
 Strip `test_name` suffixes (`_<device>`, `_<dtype>`, OpInfo suffixes) to determine the `base_method`.
@@ -93,3 +134,4 @@ Map its boolean findings: `device_case_renamed` -> **Community Change**. `device
 3. **No Open PRs**: Evidence must be from local merged `git` history. A PR URL or unmerged commit is strictly invalid.
 4. **Git Evidence Audit**: Every `community_change = True` verdict due to removal/rename MUST cite at least one verified ancestor commit hash.
 5. **No Blind Copies**: Output `detail_reason` MUST NOT simply repeat the input's `Reason` or `DetailReason`.
+6. **File existence check is MANDATORY and runs before Steps 2–3**: Step 1.5 (file existence check) MUST be the first analysis step after input scrubbing. Do NOT search for base method definitions, run git log, or check device generation before verifying the test file exists. File deletion is the strongest form of community change — no deeper analysis needed.

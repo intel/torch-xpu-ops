@@ -23,6 +23,7 @@ Examples:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -250,30 +251,91 @@ def main():
 
             pypath = f"PYTHONPATH={os.getcwd()}" if os.getenv("PYTHONPATH") else ""
 
-            k_expr = f"{filter_cls} and {filter_name}"
             base = [sys.executable]
             if conda_env:
                 base = ["conda", "run", "-n", conda_env, "python3"]
-            cmd_list = _isolated(base) + ["-m", "pytest", test_path,
-                         "-k", k_expr, "-v", "--no-header", "--tb=short"]
+            base_cmd = _isolated(base) + ["-m", "pytest", test_path,
+                         "-v", "--no-header", "--tb=short"]
+
+            k_exprs = [f"{filter_cls} and {filter_name}"]
+            k_exprs.append(filter_name)
+            base_clean = re.sub(r'_(cuda|xpu)$', '', filter_name)
+            if base_clean != filter_name:
+                k_exprs.append(base_clean)
+            if name != filter_name:
+                k_exprs.append(name)
+                base_clean2 = re.sub(r'_(cuda|xpu)$', '', name)
+                if base_clean2 != name:
+                    k_exprs.append(base_clean2)
+            if '_prepacked' in filter_name or '_aten_' in filter_name:
+                for sep in ['_aten_', '_prepacked']:
+                    idx = filter_name.find(sep)
+                    if idx > 0:
+                        base_part = filter_name[:idx]
+                        param_part = filter_name[idx:]
+                        k_exprs.append(f"{base_part} and {param_part}")
+                        k_exprs.append(f"{base_part}[{param_part}]")
+            seen = set()
+            k_exprs_unique = [e for e in k_exprs if not (e in seen or seen.add(e))]
 
             start = time.time()
-            try:
-                p = subprocess.run(
-                    cmd_list, capture_output=True, text=True,
-                    timeout=test_timeout, cwd=os.getcwd()
-                )
-            except subprocess.TimeoutExpired:
+            p = None
+            chosen_k = k_exprs_unique[0]
+            for ke in k_exprs_unique:
+                cmd_list = base_cmd + ["-k", ke]
+                try:
+                    r = subprocess.run(
+                        cmd_list, capture_output=True, text=True,
+                        timeout=test_timeout, cwd=os.getcwd()
+                    )
+                except subprocess.TimeoutExpired:
+                    elapsed = time.time() - start
+                    msg = f"TIMEOUT after {elapsed:.0f}s"
+                    print(f"  {msg}: {name}")
+                    with open(log_path, "a") as lf:
+                        lf.write(f"\n--- {name} --- {msg}\n")
+                    results_per_test[name] = {"passed": False, "reason": "timeout"}
+                    continue
+                has_test_errors = "error" in r.stderr.lower() and "conda" not in r.stderr.lower()
+                if "0 selected" not in r.stdout or has_test_errors:
+                    p = r
+                    chosen_k = ke
+                    if ke != k_exprs_unique[0]:
+                        elapsed_extra = time.time() - start
+                        with open(log_path, "a") as lf:
+                            lf.write(f"\n[FALLBACK] '{k_exprs_unique[0]}' matched 0 for '{name}'; retried with '{ke}' (took {elapsed_extra:.1f}s).\n")
+                            lf.write(r.stdout)
+                            if r.stderr:
+                                lf.write("\nSTDERR:\n")
+                                lf.write(r.stderr)
+                    break
+
+            if p is None:
                 elapsed = time.time() - start
-                msg = f"TIMEOUT after {elapsed:.0f}s"
-                print(f"  {msg}: {name}")
                 with open(log_path, "a") as lf:
-                    lf.write(f"\n--- {name} --- {msg}\n")
-                results_per_test[name] = {"passed": False, "reason": "timeout"}
+                    lf.write(f"\n--- {name} ({elapsed:.1f}s) --- FAILED/SKIP ---\n")
+                    lf.write("No matching tests found with any -k expression.\n")
+                print(f"  FAIL ({elapsed:.1f}s): {name} (no matching test)")
+                results_per_test[name] = {"passed": False, "reason": "no_match"}
                 continue
 
             elapsed = time.time() - start
-            passed = "1 passed" in p.stdout and "FAILED" not in p.stdout
+
+            our_test_passed = False
+            test_refs = [name, filter_name, base_clean]
+            for line in p.stdout.split("\n"):
+                if "PASSED" in line:
+                    for ref in test_refs:
+                        if ref and ref in line:
+                            our_test_passed = True
+                            break
+                if our_test_passed:
+                    break
+            all_passed = "FAILED" not in p.stdout and "ERROR" not in p.stderr if p.stderr else "FAILED" not in p.stdout
+            matched_ours = our_test_passed or (chosen_k != k_exprs_unique[0])
+
+            passed = (our_test_passed and all_passed)
+
             status = "PASSED" if passed else "FAILED/SKIP"
 
             with open(log_path, "a") as lf:
