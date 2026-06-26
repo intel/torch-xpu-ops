@@ -17,6 +17,7 @@
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 #include <ATen/native/xpu/sycl/Distributions.h>
@@ -45,7 +46,7 @@ REGISTER_XPU_DISPATCH(geometric_stub, &xpu::geometric_kernel);
 
 Tensor _s_poisson_xpu(const Tensor& lambda, std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::xpu::detail::getDefaultXPUGenerator());
+      gen_, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   Tensor ret = at::empty(lambda.sizes(), lambda.options());
   xpu::launch_poisson_kernel(ret, lambda, gen);
   return ret;
@@ -64,7 +65,7 @@ Tensor _s_binomial_xpu(
       "binomial only supports floating-point dtypes for prob, got: ",
       prob.scalar_type());
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::xpu::detail::getDefaultXPUGenerator());
+      generator, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   Tensor ret = at::empty(count.sizes(), count.options());
   at::TensorIterator iter = at::TensorIteratorConfig()
                                 .add_output(ret)
@@ -77,7 +78,7 @@ Tensor _s_binomial_xpu(
 
 Tensor _s_gamma_xpu(const Tensor& alpha, std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::xpu::detail::getDefaultXPUGenerator());
+      gen_, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   Tensor ret = at::empty(alpha.sizes(), alpha.options());
   xpu::launch_gamma_kernel(ret, alpha, gen);
   return ret;
@@ -87,7 +88,7 @@ Tensor _s_dirichlet_xpu(
     const Tensor& alpha,
     std::optional<Generator> generator) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::xpu::detail::getDefaultXPUGenerator());
+      generator, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   Tensor ret = at::empty(alpha.sizes(), alpha.options());
   xpu::launch_gamma_kernel(ret, alpha, gen);
   auto gamma_sum = ret.sum(/*dim=*/-1, /*keepdim=*/true);
