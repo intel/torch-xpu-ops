@@ -405,6 +405,17 @@ inline WelfordState<T_ACC> welford_shfl(
       sycl::shift_group_left(sg, s.nf, offset)};
 }
 
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_shfl_xor(
+    sycl::sub_group sg,
+    WelfordState<T_ACC> s,
+    int mask) {
+  return {
+      sycl::permute_group_by_xor(sg, s.mean, mask),
+      sycl::permute_group_by_xor(sg, s.m2, mask),
+      sycl::permute_group_by_xor(sg, s.nf, mask)};
+}
+
 // Small-DS fused GroupNorm forward: DS fits in 1 vec4 per lane.
 // WG = 1 SG, flat (N,G) mapping with grid-stride loop.
 // When G < SIMD/lanes, packs groups from multiple batch items per SG.
@@ -456,8 +467,8 @@ struct GNFusedForwardSmallFunctor {
     }
 
     for (index_t ng = flat_base; ng < total_groups; ng += stride) {
-      const T* x_base = X_ + static_cast<int64_t>(ng) * DS;
-      T* y_base = Y_ + static_cast<int64_t>(ng) * DS;
+      const T* x_base = X_ + ng * DS;
+      T* y_base = Y_ + ng * DS;
 
       vec_t xv = *reinterpret_cast<const vec_t*>(
           x_base + local_lid * VEC_SIZE);
@@ -479,16 +490,14 @@ struct GNFusedForwardSmallFunctor {
 
 #pragma unroll
       for (int off = LANES_PER_GROUP / 2; off > 0; off >>= 1)
-        st = welford_combine_symmetric(st, welford_shfl(sg, st, off));
+        st = welford_combine_symmetric(st, welford_shfl_xor(sg, st, off));
 
-      const int leader = group_in_sg * LANES_PER_GROUP;
-      const T_ACC mean_val =
-          sycl::select_from_group(sg, st.mean, leader);
+      // XOR all-reduce: all lanes have the final result, no broadcast needed.
       constexpr T_ACC inv_DS =
           static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS);
-      const T_ACC rstd_val = sycl::rsqrt(
-          sycl::select_from_group(sg, st.m2, leader) * inv_DS +
-          static_cast<T_ACC>(eps_));
+      const T_ACC mean_val = st.mean;
+      const T_ACC rstd_val =
+          sycl::rsqrt(st.m2 * inv_DS + static_cast<T_ACC>(eps_));
 
       if (local_lid == 0) {
         mean_[ng] = static_cast<T>(mean_val);
@@ -581,8 +590,8 @@ struct GNFusedForwardMediumFunctor {
 
     for (index_t n = n_begin; n < n_begin + n_per_wg && n < N_; ++n) {
       const index_t ng = n * G_ + g;
-      const T* x_base = X_ + static_cast<int64_t>(ng) * DS_;
-      T* y_base = Y_ + static_cast<int64_t>(ng) * DS_;
+      const T* x_base = X_ + ng * DS_;
+      T* y_base = Y_ + ng * DS_;
 
       constexpr int MAX_LOADS = 4;
       vec_t xv_cache[MAX_LOADS];
@@ -609,13 +618,12 @@ struct GNFusedForwardMediumFunctor {
       }
 
       for (int off = SIMD / 2; off > 0; off >>= 1)
-        st = welford_combine_symmetric(st, welford_shfl(sg, st, off));
+        st = welford_combine_symmetric(st, welford_shfl_xor(sg, st, off));
 
-      const T_ACC mean_val =
-          sycl::select_from_group(sg, st.mean, 0);
+      // XOR all-reduce: all lanes have the final result.
+      const T_ACC mean_val = st.mean;
       const T_ACC rstd_val = sycl::rsqrt(
-          sycl::select_from_group(sg, st.m2, 0) * inv_DS +
-          static_cast<T_ACC>(eps_));
+          st.m2 * inv_DS + static_cast<T_ACC>(eps_));
 
       if (sg_lid == 0) {
         mean_[ng] = static_cast<T>(mean_val);
