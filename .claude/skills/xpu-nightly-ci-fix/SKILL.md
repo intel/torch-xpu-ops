@@ -197,10 +197,17 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
 
 - **Never cherry-pick** upstream fixes. Rebase (`git rebase origin/main`) instead.
 - **Always rebuild after rebase or branch switch** before running tests.
-- **Fix in torch-xpu-ops?** Copy changed files into
-  `agent_space_xpu/pytorch/third_party/torch-xpu-ops/`, run
-  `ninja -C agent_space_xpu/pytorch/build` for incremental rebuild. Do NOT
-  modify `third_party/xpu.txt`.
+- **Fix in torch-xpu-ops?** Use the dev override from `AGENTS.md` "Commit Pin
+  & Development Override": clone your torch-xpu-ops branch into
+  `agent_space_xpu/pytorch/third_party/torch-xpu-ops/`, then update the pin
+  so CMake's checkout becomes a no-op:
+  ```bash
+  cd agent_space_xpu/pytorch/third_party/torch-xpu-ops
+  git checkout <your-fix-branch>
+  git rev-parse HEAD > agent_space_xpu/pytorch/third_party/xpu.txt
+  ```
+  Do NOT commit `xpu.txt`. Then rebuild with
+  `ninja -C agent_space_xpu/pytorch/build` for an incremental rebuild.
 - Each failure is independent — one failure's `CANNOT_VERIFY` does not block
   others.
 - One fix per commit.

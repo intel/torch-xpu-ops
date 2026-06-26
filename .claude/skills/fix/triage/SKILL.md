@@ -8,7 +8,9 @@ description: >
 
 # Triage — Root Cause Analysis
 
-Analysis-only. You may run read-only inspection commands (e.g., grep, git show, git clone) to read source, but do not run tests or edit files. After returning `IMPLEMENTING`, the orchestrator hands off to
+Analysis-only. You may run read-only inspection commands (`read`/`grep`,
+`git clone`, `git show`) to inspect source, but do not run tests or edit
+files. After returning `IMPLEMENTING`, the orchestrator hands off to
 `fix/implement`.
 
 ## Inputs

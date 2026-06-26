@@ -49,7 +49,7 @@ Python-only changes (`*.py`) need no rebuild.
 
 ```bash
 # Record BEFORE (without the fix)
-git stash
+git stash -u   # stash staged, unstaged, and untracked changes
 # run test, capture output
 git stash pop
 
@@ -65,8 +65,8 @@ Output a comparison table:
 | TestFooXPU::test_bar | FAILED (AssertionError: ...) | PASSED |
 ```
 
-If `git stash` has nothing to stash (no staged changes), skip before recording
-and only record after.
+If `git stash -u` reports "No local changes to save", skip the before
+recording and only record after.
 
 ## Step 4: Run test
 

@@ -36,12 +36,8 @@ WORKFLOW_ID="79954307"  # pytorch/pytorch "xpu" workflow
 BUILD_ENVS=(
     "linux-noble-xpu-n-py3.10"
     "linux-noble-xpu-n-py3.10-client"
-    "linux-jammy-xpu-n-1-py3.10"
-)
-IMAGE_NAMES=(
-    "pytorch-linux-noble-xpu-n-py3"
-    "pytorch-linux-noble-xpu-n-py3"   # client uses same image
-    "pytorch-linux-jammy-xpu-n-1-py3"
+    "linux-noble-xpu-n-py3.11"
+    "linux-noble-xpu-n-py3.11-client"
 )
 
 # --- parse args ---
@@ -115,7 +111,10 @@ echo "  Run ID: $RUN_ID  SHA: $RUN_SHA"
 # --- Step 2: derive docker image tag ---
 echo "[2/4] Computing CI docker image tag..."
 
-CI_TREE_SHA=$(gh api "repos/pytorch/pytorch/git/trees/${RUN_SHA}" \
+# RUN_SHA is a commit SHA; get the commit's root tree SHA first
+ROOT_TREE_SHA=$(gh api "repos/pytorch/pytorch/git/commits/${RUN_SHA}" \
+    --jq '.tree.sha')
+CI_TREE_SHA=$(gh api "repos/pytorch/pytorch/git/trees/${ROOT_TREE_SHA}" \
     --jq '.tree[] | select(.path == ".ci") | .sha')
 DOCKER_HASH=$(gh api "repos/pytorch/pytorch/git/trees/${CI_TREE_SHA}" \
     --jq '.tree[] | select(.path == "docker") | .sha')
