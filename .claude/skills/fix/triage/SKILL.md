@@ -8,8 +8,7 @@ description: >
 
 # Triage — Root Cause Analysis
 
-Analysis-only. Read code and reason about it; do not execute code or edit
-files. After returning `IMPLEMENTING`, the orchestrator hands off to
+Analysis-only. You may run read-only inspection commands (e.g., grep, git show, git clone) to read source, but do not run tests or edit files. After returning `IMPLEMENTING`, the orchestrator hands off to
 `fix/implement`.
 
 ## Inputs
