@@ -104,9 +104,9 @@ generate a ready-to-run container command:
 
 ```bash
 bash .claude/skills/fix/reproduce/scripts/ci_env_setup.sh \
+  $pytorch_dir \
   --py 3.10 \
-  --outdir agent_space_xpu/ci_env \
-  --pytorch-dir <pytorch_dir>   # optional: mounts your checkout into the container
+  --outdir agent_space_xpu/ci_env
 ```
 
 The script prints the exact `docker run` command and saves it to

@@ -5,18 +5,32 @@
 # succeeded, downloads the wheel artifacts, pulls the matching CI docker image,
 # and drops you into a container ready to run the failing test.
 #
-# Usage:
-#   bash ci_env_setup.sh [--py 3.10] [--outdir /tmp/ci_env] [--container-name pytorch_xpu_ci]
+# Called from fix/reproduce Stage 3 after a pytorch checkout already exists
+# from Stage 2. pytorch_dir is passed as the first positional argument.
 #
-# Requirements: gh CLI (authenticated), docker, curl, jq, python3
+# Usage:
+#   bash ci_env_setup.sh <pytorch_dir> [--py 3.10] [--outdir /tmp/ci_env] [--container-name pytorch_xpu_ci]
+#
+# Requirements: gh CLI (authenticated), docker, curl, python3
 
 set -euo pipefail
+
+# --- first positional arg: pytorch_dir ---
+if [[ $# -lt 1 || "$1" == --* ]]; then
+    echo "Usage: bash ci_env_setup.sh <pytorch_dir> [--py 3.10] [--outdir <dir>] [--container-name <name>]" >&2
+    exit 1
+fi
+PYTORCH_DIR="$1"; shift
+
+if [[ ! -d "$PYTORCH_DIR" ]]; then
+    echo "ERROR: pytorch_dir '$PYTORCH_DIR' does not exist." >&2
+    exit 1
+fi
 
 # --- defaults ---
 PY_VERSION="3.10"
 OUTDIR="${HOME}/ci_env_artifacts"
 CONTAINER_NAME="pytorch_xpu_ci"
-PYTORCH_DIR=""        # optional: local pytorch checkout to mount
 WORKFLOW_ID="79954307"  # pytorch/pytorch "xpu" workflow
 
 BUILD_ENVS=(
@@ -36,7 +50,6 @@ while [[ $# -gt 0 ]]; do
         --py) PY_VERSION="$2"; shift 2 ;;
         --outdir) OUTDIR="$2"; shift 2 ;;
         --container-name) CONTAINER_NAME="$2"; shift 2 ;;
-        --pytorch-dir) PYTORCH_DIR="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -144,13 +157,12 @@ for build in "${BUILD_ENVS[@]}"; do
     zipfile="${OUTDIR}/${build}.zip"
     curl -sL --progress-bar "$url" -o "$zipfile"
 
-    mkdir -p "${WHEELS_DIR}/${build}"
-    unzip -o -j "$zipfile" 'dist/*.whl' -d "${WHEELS_DIR}/${build}" 2>/dev/null || true
+    unzip -o -j "$zipfile" 'dist/*.whl' -d "${WHEELS_DIR}" 2>/dev/null || true
     rm -f "$zipfile"
 
-    whl_count=$(ls "${WHEELS_DIR}/${build}/"*.whl 2>/dev/null | wc -l)
-    echo "  Extracted $whl_count wheel(s) to ${WHEELS_DIR}/${build}/"
-    DOWNLOADED=$((DOWNLOADED + whl_count))
+    whl_count=$(ls "${WHEELS_DIR}/"*.whl 2>/dev/null | wc -l)
+    echo "  Extracted wheel(s) to ${WHEELS_DIR}/ (total so far: $whl_count)"
+    DOWNLOADED=$((DOWNLOADED + 1))
 done
 
 if [[ $DOWNLOADED -eq 0 ]]; then
@@ -181,10 +193,7 @@ echo ""
 echo "To start the container:"
 echo ""
 
-MOUNT_ARGS="-v ${WHEELS_DIR}:/workspace/wheels"
-if [[ -n "$PYTORCH_DIR" ]]; then
-    MOUNT_ARGS="${MOUNT_ARGS} -v ${PYTORCH_DIR}:/workspace/pytorch"
-fi
+MOUNT_ARGS="-v ${WHEELS_DIR}:/workspace/wheels -v ${PYTORCH_DIR}:/workspace/pytorch"
 
 echo "  docker run -it \\"
 echo "    --name ${CONTAINER_NAME} \\"
@@ -196,7 +205,7 @@ echo ""
 echo "Inside the container, install the wheel:"
 echo "  pip install /workspace/wheels/*.whl --pre"
 echo ""
-echo "Then run your failing test as usual."
+echo "Then run your failing test from /workspace/pytorch."
 
 # Write the run command to a file for easy copy-paste
 RUN_SCRIPT="${OUTDIR}/run_container.sh"
@@ -206,7 +215,8 @@ cat > "$RUN_SCRIPT" <<EOF
 docker run -it \\
   --name ${CONTAINER_NAME} \\
   --device=/dev/dri \\
-  ${MOUNT_ARGS} \\
+  -v ${WHEELS_DIR}:/workspace/wheels \\
+  -v ${PYTORCH_DIR}:/workspace/pytorch \\
   ${DOCKER_IMAGE} \\
   /bin/bash
 EOF
