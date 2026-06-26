@@ -598,7 +598,6 @@ struct GNFusedForwardMediumFunctor {
       WelfordState<T_ACC> st = {0, 0, 0};
       constexpr T_ACC inv_vec =
           static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
-#pragma unroll 4
       for (int li = 0; li < loads_per_lane; li++) {
         xv_cache[li] = *reinterpret_cast<const vec_t*>(
             x_base + (sg_lid + li * SIMD) * VEC_SIZE);
@@ -634,7 +633,6 @@ struct GNFusedForwardMediumFunctor {
         }
       }
 
-#pragma unroll 4
       for (int li = 0; li < loads_per_lane; li++) {
         vec_t yv;
 #pragma unroll
@@ -1082,12 +1080,11 @@ void group_norm_kernel_impl(
 
   // Small-DS path: single vec4 per lane (covers DS where lanes <= SIMD).
   // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
-  constexpr int PACKED_VEC = 4;
   auto try_single_vec = [&](auto index_tag) -> bool {
     using index_t = decltype(index_tag);
-    if (DS % PACKED_VEC != 0)
+    if (DS % FUSED_VEC_SIZE != 0)
       return false;
-    int64_t lanes = DS / PACKED_VEC;
+    int64_t lanes = DS / FUSED_VEC_SIZE;
     if (lanes <= 0 || lanes > SIMD32 || (lanes & (lanes - 1)) != 0)
       return false;
     // Require G and HxW to be powers of 2 for bitwise modulo/division.
@@ -1113,7 +1110,7 @@ void group_norm_kernel_impl(
     auto launch = [&](auto lanes_tag) {
       constexpr int LANES = decltype(lanes_tag)::value;
       using K = GNFusedForwardSmallFunctor<
-          T, T_ACC, SIMD32, PACKED_VEC, LANES, index_t>;
+          T, T_ACC, SIMD32, FUSED_VEC_SIZE, LANES, index_t>;
       auto kfn = K(
           static_cast<index_t>(D),
           log2_S,
@@ -1148,14 +1145,14 @@ void group_norm_kernel_impl(
   auto try_multi_vec = [&](auto index_tag) -> bool {
     using index_t = decltype(index_tag);
     constexpr int64_t MAX_LOADS = 4;
-    int64_t elems_per_sg = PACKED_VEC * SIMD32;
+    int64_t elems_per_sg = FUSED_VEC_SIZE * SIMD32;
     if (DS % elems_per_sg != 0)
       return false;
     int64_t loads = DS / elems_per_sg;
     if (loads < 1 || loads > MAX_LOADS)
       return false;
     using K = GNFusedForwardMediumFunctor<
-        T, T_ACC, SIMD32, PACKED_VEC, index_t>;
+        T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
     int64_t n_wgs =
         std::max((int64_t)1, std::min(N * G, thread_slots));
     constexpr int64_t wg_sz = SIMD32;
