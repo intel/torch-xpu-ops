@@ -228,21 +228,11 @@ class XeFMHAFwdKernel {
 
     SharedStorage& shared_storage = *reinterpret_cast<SharedStorage*>(smem_buf);
 
-    int thr_id = int(ThreadIdxX());
-
-    bool is_dropout = params.mainloop.p_dropout < 1.0f;
-    auto seed_offset = at::xpu::philox::unpack(params.mainloop.philox_args);
-    // Save seed and offset for backward, before any early exiting. Otherwise
-    // the 0-th thread block might exit early and no one saves the rng states.
-    if (is_dropout && BlockIdxX() == 0 && BlockIdxY() == 0 &&
-        BlockIdxZ() == 0 && thr_id == 0) {
-      params.mainloop.rng_seed[0] = std::get<0>(seed_offset);
-      params.mainloop.rng_offset[0] = std::get<1>(seed_offset);
-    }
-
     auto& p = params.kernel;
     ProblemShape const& s = p.shape;
     int head_group_q = s.num_heads_q / s.num_heads_kv;
+
+    int thr_id = int(ThreadIdxX());
     int q_sg_tile = get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})));
 
     auto cS = make_identity_tensor(take<0, 2>(TiledMMAQK{}.tile_mnk()));
@@ -259,15 +249,6 @@ class XeFMHAFwdKernel {
           tile_scheduler.get_block_coord(); // (Q,V,h,b)
       auto blk_qv = make_coord(blk_q, blk_v);
       int head = head_q / head_group_q;
-
-      FLASH_NAMESPACE::Dropout dropout(
-          std::get<0>(seed_offset),
-          std::get<1>(seed_offset),
-          params.mainloop.p_dropout_in_uint16_t,
-          idx_b,
-          head_q,
-          thr_id,
-          s.num_heads_q);
 
       auto [seq_len_qo, seq_len_kv] = get_sequence_length_shape(s, idx_b);
       if (blk_q * get<0>(TileShapeQK{}) >= seq_len_qo)
@@ -352,9 +333,6 @@ class XeFMHAFwdKernel {
       // Main loop
       int l_coord = is_var_len ? 0 : idx_b;
       CollectiveMainloop mainloop(params.mainloop, shared_storage.mainloop);
-      if (mainloop.params.p_ptr)
-        mainloop.params.p_ptr +=
-            (l_coord * s.num_heads_q + head_q) * seq_len_qo * seq_len_kv;
       mainloop(
           Q(_, _, head_q, l_coord),
           K(_, _, head, l_coord),
@@ -372,9 +350,7 @@ class XeFMHAFwdKernel {
           seq_len_kv,
           idx_b,
           tile_row_idx,
-          rows_of_maxima,
-          is_dropout,
-          dropout);
+          rows_of_maxima);
 
       if constexpr (
           !is_empty_v<MainloopSharedStorage> &&
@@ -400,8 +376,7 @@ class XeFMHAFwdKernel {
           blk_qv,
           thr_id,
           dpLSE,
-          metadata_for_lse,
-          is_dropout);
+          metadata_for_lse);
     }
   }
 };
