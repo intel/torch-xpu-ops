@@ -382,6 +382,18 @@ inline WelfordState<T_ACC> welford_combine(
   return {a.mean + delta * r, a.m2 + b.m2 + delta * delta * a.nf * r, total};
 }
 
+// Symmetric Welford merge: assumes a.nf == b.nf (r = 0.5 always).
+// Eliminates division and branch from the general formula.
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_combine_symmetric(
+    WelfordState<T_ACC> a,
+    WelfordState<T_ACC> b) {
+  T_ACC delta = b.mean - a.mean;
+  return {a.mean + delta * T_ACC(0.5),
+          a.m2 + b.m2 + delta * delta * a.nf * T_ACC(0.5),
+          a.nf + b.nf};
+}
+
 template <typename T_ACC>
 inline WelfordState<T_ACC> welford_shfl(
     sycl::sub_group sg,
@@ -422,7 +434,7 @@ struct GNFusedForwardSmallFunctor {
     // into one SG when G < GROUPS_PER_SG.
     const index_t flat_base =
         static_cast<index_t>(wg_id) * GROUPS_PER_SG + group_in_sg;
-    const index_t g = flat_base % G_;
+    const index_t g = flat_base & (G_ - 1);
     const index_t total_groups = N_ * G_;
     const index_t stride =
         static_cast<index_t>(item.get_group_range(0)) * GROUPS_PER_SG;
@@ -434,7 +446,7 @@ struct GNFusedForwardSmallFunctor {
     const index_t g_offset = g * D_;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; v++) {
-      const index_t cv = (local_lid * VEC_SIZE + v) / S_;
+      const index_t cv = (local_lid * VEC_SIZE + v) >> log2_S_;
       my_gamma[v] = gamma_
           ? static_cast<T_ACC>(gamma_[g_offset + cv])
           : T_ACC(1);
@@ -467,14 +479,15 @@ struct GNFusedForwardSmallFunctor {
 
 #pragma unroll
       for (int off = LANES_PER_GROUP / 2; off > 0; off >>= 1)
-        st = welford_combine(st, welford_shfl(sg, st, off));
+        st = welford_combine_symmetric(st, welford_shfl(sg, st, off));
 
       const int leader = group_in_sg * LANES_PER_GROUP;
       const T_ACC mean_val =
           sycl::select_from_group(sg, st.mean, leader);
+      constexpr T_ACC inv_DS =
+          static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS);
       const T_ACC rstd_val = sycl::rsqrt(
-          sycl::select_from_group(sg, st.m2, leader) /
-              static_cast<T_ACC>(DS) +
+          sycl::select_from_group(sg, st.m2, leader) * inv_DS +
           static_cast<T_ACC>(eps_));
 
       if (local_lid == 0) {
@@ -501,7 +514,7 @@ struct GNFusedForwardSmallFunctor {
 
   GNFusedForwardSmallFunctor(
       index_t D,
-      index_t S,
+      int log2_S,
       index_t G,
       index_t N,
       T eps,
@@ -514,7 +527,7 @@ struct GNFusedForwardSmallFunctor {
       T_ACC* mean_acc,
       T_ACC* rstd_acc)
       : D_(D),
-        S_(S),
+        log2_S_(log2_S),
         G_(G),
         N_(N),
         eps_(eps),
@@ -529,7 +542,7 @@ struct GNFusedForwardSmallFunctor {
 
  private:
   index_t D_;
-  index_t S_;
+  int log2_S_;
   index_t G_;
   index_t N_;
   T eps_;
@@ -557,6 +570,7 @@ struct GNFusedForwardMediumFunctor {
     const index_t wg_id = item.get_group(0);
 
     const int loads_per_lane = DS_ / (VEC_SIZE * SIMD);
+    const T_ACC inv_DS = static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS_);
 
     const index_t g = wg_id % G_;
     const index_t wgs_per_g = item.get_group_range(0) / G_;
@@ -595,13 +609,12 @@ struct GNFusedForwardMediumFunctor {
       }
 
       for (int off = SIMD / 2; off > 0; off >>= 1)
-        st = welford_combine(st, welford_shfl(sg, st, off));
+        st = welford_combine_symmetric(st, welford_shfl(sg, st, off));
 
       const T_ACC mean_val =
           sycl::select_from_group(sg, st.mean, 0);
       const T_ACC rstd_val = sycl::rsqrt(
-          sycl::select_from_group(sg, st.m2, 0) /
-              static_cast<T_ACC>(DS_) +
+          sycl::select_from_group(sg, st.m2, 0) * inv_DS +
           static_cast<T_ACC>(eps_));
 
       if (sg_lid == 0) {
@@ -1069,9 +1082,15 @@ void group_norm_kernel_impl(
     int64_t lanes = DS / PACKED_VEC;
     if (lanes <= 0 || lanes > SIMD32 || (lanes & (lanes - 1)) != 0)
       return false;
+    // Require G and HxW to be powers of 2 for bitwise modulo/division.
+    if ((G & (G - 1)) != 0 || (HxW & (HxW - 1)) != 0)
+      return false;
     int64_t groups_per_sg = SIMD32 / lanes;
     if ((N * G) % groups_per_sg != 0)
       return false;
+    int log2_S = 0;
+    for (int64_t tmp = HxW; tmp > 1; tmp >>= 1)
+      log2_S++;
     int64_t total_sgs = (N * G) / groups_per_sg;
     // Ensure stride preserves g across iterations (stride % G == 0).
     int64_t n_wgs;
@@ -1089,7 +1108,7 @@ void group_norm_kernel_impl(
           T, T_ACC, SIMD32, PACKED_VEC, LANES, index_t>;
       auto kfn = K(
           static_cast<index_t>(D),
-          static_cast<index_t>(HxW),
+          log2_S,
           static_cast<index_t>(G),
           static_cast<index_t>(N),
           eps,
