@@ -280,6 +280,15 @@ class TestTorchMethod(TestCase):
                     res_xpu.is_contiguous(memory_format=torch.channels_last), False
                 )
 
+    def test_cat_bcomplex32(self):
+        # bcomplex32 CPU support is limited; compare XPU results directly
+        a = torch.randn(3, 4).to(torch.bcomplex32).to(xpu_device)
+        b = torch.randn(2, 4).to(torch.bcomplex32).to(xpu_device)
+        result = torch.cat([a, b], dim=0)
+        self.assertEqual(result.shape, torch.Size([5, 4]))
+        self.assertEqual(result[:3], a)
+        self.assertEqual(result[3:], b)
+
 
 instantiate_device_type_tests(
     TestTorchMethod, globals(), only_for="xpu", allow_xpu=True
