@@ -30,8 +30,10 @@ Most failures reproduce here. Start here before doing anything heavier.
 
 ### Install
 
-Use the nightly wheel install command from the domain skill loaded by the
-orchestrator (e.g. `fix/domains/xpu-kernel`).
+```bash
+pip3 install --pre torch torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/nightly/xpu
+```
 
 ### Check commit alignment (if ci_commit provided)
 
