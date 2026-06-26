@@ -96,16 +96,32 @@ domain skill for build command), then run the test (see
 Only reached when both nightly and source build pass locally.
 The failure may be CI-environment-specific.
 
-### What to check
+### Set up the CI environment
 
-From the CI job log, extract and align:
-- Python version (`python --version`)
-- Compiler/runtime version
-- Full test command with all flags (some CI runs pass extra args like `--timeout`,
-  `-x`, or specific env vars)
+Use the setup script to automatically find the latest run with successful
+linux builds, download the matching wheels, pull the CI docker image, and
+generate a ready-to-run container command:
+
+```bash
+bash .claude/skills/fix/reproduce/scripts/ci_env_setup.sh \
+  --py 3.10 \
+  --outdir agent_space_xpu/ci_env \
+  --pytorch-dir <pytorch_dir>   # optional: mounts your checkout into the container
+```
+
+The script prints the exact `docker run` command and saves it to
+`agent_space_xpu/ci_env/run_container.sh`. Inside the container:
+
+```bash
+pip install /workspace/wheels/*.whl --pre
+# then run the failing test
+```
+
+### What to check if the failure still doesn't reproduce
+
+From the CI job log, extract and align any remaining differences:
+- Full test command with all flags (`--timeout`, `-x`, specific env vars)
 - Any environment variables set in the CI job
-
-Align the differences you can control, then re-run.
 
 ### Decision
 
