@@ -1050,14 +1050,14 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         output_tensor = torch.zeros(W, device=f"xpu:{device}")
 
         # warmup
-        c10d.all_gather_into_tensor(output_tensor, input_tensor, group=self.pg)
+        c10d.all_gather_single(output_tensor, input_tensor, group=self.pg)
         torch.xpu.synchronize()
         self.assertEqual(output_tensor.tolist(), [float(r + 1) for r in range(W)])
 
         # capture
         graph = torch.xpu.XPUGraph()
         with torch.xpu.graph(graph):
-            c10d.all_gather_into_tensor(output_tensor, input_tensor, group=self.pg)
+            c10d.all_gather_single(output_tensor, input_tensor, group=self.pg)
 
         # multiple replays with different per-rank values
         for trial in range(5):

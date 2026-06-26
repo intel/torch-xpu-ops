@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+PYTORCH_TEST_DIR = "../../../../test"
+
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
@@ -88,6 +90,14 @@ skip_dict = {
         "test_quick_core_backward_baddbmm_xpu_float64",
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_comprehensive_grid_sampler_2d_xpu_float32",
+        "test_comprehensive_grid_sampler_2d_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward_clamp_max_xpu_float64",
+        "test_quick_core_backward_clamp_min_xpu_float64",
+        # Slow test case: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
@@ -328,7 +338,7 @@ skip_dict = {
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     "dynamo/test_functions_xpu.py": None,
-    "dynamo/test_higher_order_ops_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
     "dynamo/test_streams_xpu.py": None,

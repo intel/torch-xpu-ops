@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 
@@ -404,13 +404,15 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 }
 
 void nonzero_kernel(const Tensor& self, Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      at::ScalarType::ComplexHalf,
-      at::ScalarType::Bool,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
+  AT_DISPATCH_V2(
       self.scalar_type(),
       "nonzero_xpu",
-      [&] { nonzero_template<scalar_t>(self, out); });
+      AT_WRAP([&] { nonzero_template<scalar_t>(self, out); }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kComplexHalf,
+      kBComplex32,
+      kBool,
+      kBFloat16,
+      kHalf);
 }
 } // namespace at::native::xpu
