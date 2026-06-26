@@ -48,7 +48,7 @@ Call `fix/reproduce` with:
 - `reproducer_command` from the issue body (if present)
 - `ci_commit` if the issue references a specific CI run
 - `pytorch_dir` if available; otherwise `fix/reproduce` clones to
-  `agent_space_xpu/pytorch/`
+  `agent_space/pytorch/`
 
 Interpret the output:
 
@@ -66,8 +66,14 @@ Call `fix/triage` with the failure description (error log, context, and
 
 | Verdict | Action |
 |---------|--------|
-| `IMPLEMENTING` | Continue to Stage 4 |
+| `IMPLEMENTING` | Continue to Stage 3.5 |
 | `NEEDS_HUMAN` | Report reason to user; stop |
+
+### Stage 3.5 — Load domain skill
+
+Read the `domain` field from the triage output. Use the skill tool to load
+`fix/domains/<domain>` (e.g. `fix/domains/xpu-kernel`). If no domain skill
+exists for the reported domain, proceed without it.
 
 ### Stage 4 — fix/implement
 

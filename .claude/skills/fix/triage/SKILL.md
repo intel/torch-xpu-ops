@@ -1,8 +1,8 @@
 ---
 name: fix/triage
 description: >
-  Analyze a XPU/PyTorch failure and determine root cause, fix strategy, target
-  repo, and verdict (IMPLEMENTING or NEEDS_HUMAN). Analysis-only — no code
+  Analyze a failure and determine root cause, fix strategy, target repo,
+  domain, and verdict (IMPLEMENTING or NEEDS_HUMAN). Analysis-only — no code
   changes. Used by both issue-handler and nightly-ci-fix orchestrators.
 ---
 
@@ -25,7 +25,8 @@ Determine:
 1. **Root cause** — what exactly is failing and why.
 2. **Fix strategy** — what files/functions to change.
 3. **Target repo** — `pytorch` or `torch-xpu-ops`.
-4. **Verdict** — `IMPLEMENTING` (agent can fix) or `NEEDS_HUMAN`.
+4. **Domain** — which domain knowledge pack applies (see Step 1).
+5. **Verdict** — `IMPLEMENTING` (agent can fix) or `NEEDS_HUMAN`.
 
 ## Step 0: Quick classification
 
@@ -40,26 +41,28 @@ Skip deep analysis if any of these apply:
   "Performance optimization requires human design decision."
 - Clear error message/stack trace → proceed to Step 1.
 
-## Step 1: Classify the failure type
+## Step 1: Classify the failure type and domain
 
-- **A) XPU kernel / operator bug** — failure in XPU-specific operator code.
-- **B) PyTorch core bug** — failure in device-agnostic/framework code that
-  surfaces on XPU.
-- **C) CUDA UT porting issue** — a CUDA test ported to XPU fails due to porting
-  gaps (see [Step 3b](#step-3b-cuda-ut-porting-issues)).
+- **kernel/operator bug** (`domain: xpu-kernel`) — failure in backend-specific
+  operator or kernel code.
+- **test porting issue** (`domain: cuda-porting`) — a test ported from another
+  backend (CUDA) fails due to porting gaps: wrong tolerances, missing kernel,
+  incorrect device assumptions.
+- **core framework bug** (`domain: upstream-pytorch`) — failure in
+  device-agnostic framework code that surfaces on XPU.
 
 Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
-- `torch-xpu-ops` → XPU kernel/operator code (files under `src/`).
-- `pytorch` → core code (files under `torch/`, `aten/`, `test/`, `c10/`).
 
-## Step 2: Obtain PyTorch source for cross-reference
+## Step 2: Obtain upstream source for cross-reference
 
-If in `torch-xpu-ops`, clone PyTorch to inspect upstream code:
+If fixing code in an external submodule repo (e.g. torch-xpu-ops), clone the
+upstream project to compare kernel implementations and check for existing fixes:
+
 ```bash
 git clone --depth 1 https://github.com/pytorch/pytorch.git /tmp/pytorch
 ```
-Use `/tmp/pytorch/` to compare CUDA kernels, check upstream fixes, and verify
-device-agnostic paths.
+
+See domain skill (loaded by orchestrator) for upstream path mappings.
 
 ## Step 3: Investigate
 
@@ -67,9 +70,9 @@ device-agnostic paths.
 2. **Identify what changed.** For a regression, ask: which component changed
    between the working and broken versions? Root cause belongs to the thing
    that changed, not just where the error fires.
-3. **Check if already fixed upstream.** Search PyTorch main for recent commits
-   touching the relevant file(s)/function(s). If a fix already exists, report
-   it and do NOT duplicate it.
+3. **Check if already fixed upstream.** Search for recent commits touching the
+   relevant file(s)/function(s). If a fix already exists, report it and do NOT
+   duplicate it.
 4. **Trace the failing code path** with `read`/`grep`. Stop when you have
    enough to make a call.
 5. **Determine root cause by where the fix must be made**, not by keywords:
@@ -86,52 +89,45 @@ device-agnostic paths.
 - Version-upgrade breakage with no minimal script and no identifiable changed
   component.
 
-### Step 3b: CUDA UT porting issues
-
-If the failure is a CUDA unit test ported to XPU:
-1. **Locate the original CUDA test** in the PyTorch repo (under `test/`).
-   Identify CUDA-specific assertions, tolerances, dtypes, or device assumptions.
-2. **Sketch a reproducer** mirroring the CUDA test's logic but targeting
-   `device="xpu"`.
-3. **Diff CUDA vs XPU behavior** — dtypes, `atol`/`rtol`, dispatch paths,
-   device-specific decorators.
-4. **Root cause** — missing XPU kernel (fix in `src/`), incorrect test porting
-   (fix in `test/`), or genuine behavioral difference.
-
 ## Step 4: Decide the right repo
 
-- Root cause in **device-agnostic/framework code** (`torch/`, `aten/src/ATen/`,
-  `c10/`) → fix belongs in **pytorch**.
-- Root cause in **XPU-specific kernel/dispatch code** (`src/ATen/native/xpu/`,
-  or `third_party/torch-xpu-ops/` inside the pytorch tree) → fix belongs in
-  **torch-xpu-ops**.
+- Root cause in **device-agnostic/framework code** → fix belongs in **pytorch**.
+- Root cause in **backend-specific kernel/dispatch code** → fix belongs in the
+  backend repo (e.g. **torch-xpu-ops**).
 
-### target_repo rules
-- `"torch-xpu-ops"` — fix in `src/ATen/native/xpu/sycl/`, `src/ATen/native/xpu/`,
-  or any path relative to torch-xpu-ops root. Includes files under
-  `third_party/torch-xpu-ops/` in the pytorch tree.
-- `"pytorch"` — fix in `torch/`, `aten/src/ATen/`, `test/`, `c10/`,
-  `torch/_dynamo/`, `torch/_inductor/`, or any top-level pytorch path (but NOT
-  `third_party/torch-xpu-ops/`).
+See domain skill (loaded by orchestrator) for path conventions.
 
 ## Step 5: Assess fixability
 
-- Fix is clearly within pytorch or torch-xpu-ops source → `IMPLEMENTING`.
+- Fix is clearly within source → `IMPLEMENTING`.
 - Requires hardware, complex redesign, or genuinely unresolvable statically →
   `NEEDS_HUMAN`.
+
+## Step 5.5: Sanity check
+
+Before emitting output, confirm all three:
+
+1. **Root cause and fix strategy are consistent** — the fix location is where
+   the bug originates, not just where the error fires.
+2. **`target_repo` matches the fix location** — if the fix is in pytorch core
+   code, `target_repo` must be `"pytorch"`, not `"torch-xpu-ops"`.
+3. **Not concluding "already fixed" from a skip decorator** — a skip confirms
+   the issue exists; it is not a fix.
+
+If any check fails, revise before emitting.
 
 ## Fix-strategy principles
 
 - **Minimal changes** — fix only what's broken.
-- **Align with CUDA** — match CUDA logic, tolerances, and behavior unless the
-  feature depends on hardware-specific details.
+- **Align with upstream** — match upstream logic, tolerances, and behavior
+  unless the feature depends on hardware-specific details.
 - **Never skip tests** — the strategy must FIX the test, never add skip
-  decorators. Exception: `fix/implement` with `allow_skip=true` may add skip
+  decorators. Exception: `fix/implement` with `allow_skip=true` may add a skip
   with tracking issue when explicitly requested by the orchestrator.
 - **Issue-driven** — address the root cause, not merely make one reproducer pass.
 
 See [../references/failure-categories.md](../references/failure-categories.md)
-for the full category taxonomy.
+for the domain routing guide.
 
 ## Output
 
@@ -139,11 +135,10 @@ Return to the orchestrator:
 
 ```
 ### Triage Result
-- **Issue type:** <kernel bug / pytorch core bug / CUDA UT porting / task>
-- **Fix repo:** <pytorch / torch-xpu-ops / N/A>
+- **Issue type:** <kernel/operator bug | test porting issue | core framework bug>
+- **Fix repo:** <pytorch | torch-xpu-ops | N/A>
 - **Root cause:** <2-3 sentences>
 - **Fix strategy:** <files/functions to change, or "None">
-- **CUDA alignment:** <how the strategy aligns with CUDA, or "N/A">
 - **Verdict:** <IMPLEMENTING / NEEDS_HUMAN> — <one-line reason>
 ```
 
@@ -152,10 +147,15 @@ Return to the orchestrator:
   "root_cause": "2-3 sentences",
   "fix_strategy": "specific files/functions to change",
   "target_repo": "pytorch or torch-xpu-ops",
+  "domain": "xpu-kernel or cuda-porting or upstream-pytorch",
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
   "reason": "one-line reason"
 }
 ```
+
+After returning this result, use the `skill` tool to load
+`fix/domains/<domain>` before calling `fix/implement`. If no domain skill
+exists for the reported domain, proceed without it.
 
 ## HARD RULES
 - NEVER make code changes or create PRs for `task`-labeled issues.

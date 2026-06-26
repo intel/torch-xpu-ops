@@ -19,9 +19,10 @@ the result.
 
 - `reproducer_command` — pytest/python command or test name. If absent, return
   `NO_REPRODUCER` immediately.
-- `ci_commit` — pytorch commit hash from the CI report (optional but recommended).
+- `ci_commit` — upstream commit hash from the CI report (optional but
+  recommended).
 - `pytorch_dir` — path to a local PyTorch checkout (optional). If absent and
-  stage 2 is needed, clone to `agent_space_xpu/pytorch/`.
+  stage 2 is needed, clone to `agent_space/pytorch/`.
 
 ## Stage 1: Nightly Wheel (fast path)
 
@@ -29,10 +30,8 @@ Most failures reproduce here. Start here before doing anything heavier.
 
 ### Install
 
-```bash
-pip3 install --pre torch torchvision torchaudio \
-  --index-url https://download.pytorch.org/whl/nightly/xpu
-```
+Use the nightly wheel install command from the domain skill loaded by the
+orchestrator (e.g. `fix/domains/xpu-kernel`).
 
 ### Check commit alignment (if ci_commit provided)
 
@@ -49,14 +48,14 @@ git -C <any_pytorch_dir> merge-base --is-ancestor <ci_commit> <nightly_commit> \
 
 ### Run test
 
-See [../references/run-test.md](../references/run-test.md) for path resolution,
-command format, and result interpretation.
+Read [../references/run-test.md](../references/run-test.md) now for path
+resolution, command format, and result interpretation.
 
 ### Decision
 
 | Result | Condition | Action |
 |--------|-----------|--------|
-| `CANNOT_VERIFY` | env problem (wheel install failed, oneAPI missing) | Report to orchestrator, stop |
+| `CANNOT_VERIFY` | env problem (wheel install failed, runtime missing) | Report to orchestrator, stop |
 | `REPRODUCED` | FAILED | Return `REPRODUCED(stage=nightly, refined_command=...)` |
 | → stage 2 | PASSED and nightly_commit is older than ci_commit | nightly is stale, proceed to stage 2 |
 | → stage 3 | PASSED and nightly_commit is same or newer than ci_commit | inconclusive, proceed to stage 3 |
@@ -72,16 +71,17 @@ If `pytorch_dir` is provided: `git -C $pytorch_dir checkout <ci_commit>`
 If not provided, clone:
 ```bash
 git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
-  agent_space_xpu/pytorch
-git -C agent_space_xpu/pytorch checkout <ci_commit>
-git -C agent_space_xpu/pytorch submodule update --init --recursive
+  agent_space/pytorch
+git -C agent_space/pytorch checkout <ci_commit>
+git -C agent_space/pytorch submodule update --init --recursive
 ```
 
 ### Build and run
 
 Activate environment and build (see
-[../references/environment-setup.md](../references/environment-setup.md)), then
-run the test (see [../references/run-test.md](../references/run-test.md)).
+[../references/environment-setup.md](../references/environment-setup.md) and
+domain skill for build command), then run the test (see
+[../references/run-test.md](../references/run-test.md)).
 
 ### Decision
 
@@ -100,7 +100,7 @@ The failure may be CI-environment-specific.
 
 From the CI job log, extract and align:
 - Python version (`python --version`)
-- oneAPI version (`icpx --version`)
+- Compiler/runtime version
 - Full test command with all flags (some CI runs pass extra args like `--timeout`,
   `-x`, or specific env vars)
 - Any environment variables set in the CI job

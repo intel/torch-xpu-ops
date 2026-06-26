@@ -44,6 +44,11 @@ Immediately after parsing the failure report, create a TodoWrite list:
 Mark a fix item `completed` only after the test actually passes and is
 committed. Never skip to Step 7.
 
+## Domain
+
+This orchestrator always operates in the `xpu-kernel` domain. Load
+`fix/domains/xpu-kernel` before starting the fix pipeline.
+
 ## Step 0: Ensure PyTorch checkout
 
 Check `agent_space_xpu/pytorch/`:
@@ -99,7 +104,7 @@ Call `fix/triage` with the failure description and error log.
 
 | Verdict | Action |
 |---------|--------|
-| `IMPLEMENTING` | Continue to Step 5 |
+| `IMPLEMENTING` | Continue to Step 5 (domain skill already loaded) |
 | `NEEDS_HUMAN` | Mark in summary: "needs human (+ reason)"; skip to next failure |
 
 ## Step 5: Implement each fix
@@ -137,8 +142,10 @@ Call `fix/verify` with:
 | Output | Action |
 |--------|--------|
 | `PASSED` | Commit (one fix per commit); mark in summary: "fixed (commit: <hash>)" |
-| `FAILED` | Loop back to Step 5 (max 3 attempts); if exhausted, mark "needs human" |
-| `CANNOT_VERIFY` | Mark in summary: "cannot verify after fix"; skip |
+| `FAILED` | Loop back to Step 5 (max 3 attempts) |
+| `CANNOT_VERIFY` | Mark in summary: "cannot verify after fix"; skip to next failure |
+
+If 3 attempts exhausted without `PASSED`, mark in summary: "needs human (fix loop exhausted)"; skip to next failure.
 
 Commit after each verified fix:
 ```bash

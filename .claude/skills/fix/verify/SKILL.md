@@ -34,19 +34,14 @@ This must return a commit hash (source build), not a version string like
 `2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
 to the orchestrator — verify requires source build.
 
-Activate the environment before running
-(see [../references/environment-setup.md](../references/environment-setup.md)).
+Activate the environment before running — read
+[../references/environment-setup.md](../references/environment-setup.md) now.
 
 ## Step 2: Rebuild if needed
 
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
-rebuild before running:
-
-```bash
-# see fix/references/environment-setup.md for full build command
-TORCH_XPU_ARCH_LIST=pvc USE_XPU=1 pip install -e . -v --no-build-isolation \
-  2>&1 | tail -20
-```
+rebuild using the build command from the domain skill loaded by the
+orchestrator (e.g. `fix/domains/xpu-kernel`).
 
 Python-only changes (`*.py`) need no rebuild.
 
@@ -75,8 +70,8 @@ and only record after.
 
 ## Step 4: Run test
 
-See [../references/run-test.md](../references/run-test.md) for command format
-and result interpretation.
+Read [../references/run-test.md](../references/run-test.md) now for command
+format and result interpretation.
 
 Run ALL failing test cases from the original report individually — do not
 assume one representative case is sufficient.
