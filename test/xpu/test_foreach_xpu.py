@@ -32,6 +32,7 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
+# These dtypes will need to be added to OpInfo for foreach_copy in common_methods_invocations.py when porting to upstream.
 for op in foreach_binary_op_db:
     if op.name == "_foreach_copy":
         op.dtypesIfXPU = all_types_complex_float8_and(torch.bool, torch.half, torch.bfloat16)
