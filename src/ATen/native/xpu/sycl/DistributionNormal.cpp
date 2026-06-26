@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 #include <comm/xpu_aten.h>
@@ -31,7 +32,7 @@ void normal_kernel(
     double std,
     std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen, at::xpu::detail::getDefaultXPUGenerator());
+      gen, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
   at::native::templates::xpu::normal_kernel(self, mean, std, generator);
 }
 

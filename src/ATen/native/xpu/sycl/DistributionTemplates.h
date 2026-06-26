@@ -24,9 +24,10 @@
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
-#include <ATen/xpu/PhiloxXpuState.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
+#include <utility>
 
 namespace at {
 namespace native {
@@ -65,9 +66,8 @@ struct DistributionElementwiseKernelFunctor {
     int num_groups = item.get_group_range(0);
     int idx = item.get_global_linear_id();
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+    rand_init(philox_args_.first, idx, philox_args_.second, &state);
 
     int full_tile_work_size = group_size * num_groups * unroll_factor;
     int rounded_size =
@@ -94,7 +94,7 @@ struct DistributionElementwiseKernelFunctor {
   }
   DistributionElementwiseKernelFunctor(
       int64_t numel,
-      PhiloxXpuState rng_engine_inputs,
+      std::pair<uint64_t, uint64_t> rng_engine_inputs,
       dist_t dist_func,
       transform_t transform_func,
       char* out_data,
@@ -108,7 +108,7 @@ struct DistributionElementwiseKernelFunctor {
 
  private:
   int64_t numel_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
   dist_t dist_func_;
   transform_t transform_func_;
   char* out_data_;
@@ -138,11 +138,12 @@ void distribution_nullary_kernel(
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
 
-  PhiloxXpuState rng_engine_inputs;
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
+    rng_engine_inputs =
+        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
   }
 
   if (!iter.can_use_32bit_indexing()) {
@@ -201,7 +202,7 @@ struct DistributionUnaryElementwiseKernelFunctor {
     int global_size = item.get_global_range(0);
     int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto& seeds = philox_args_;
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
 
@@ -214,7 +215,7 @@ struct DistributionUnaryElementwiseKernelFunctor {
   DistributionUnaryElementwiseKernelFunctor(
       int numel,
       const func_t f,
-      PhiloxXpuState philox_args,
+      std::pair<uint64_t, uint64_t> philox_args,
       scalar1_t* output_data,
       const scalar2_t* input_data,
       inp_offset_calc_t input_offset_calculator,
@@ -230,7 +231,7 @@ struct DistributionUnaryElementwiseKernelFunctor {
  private:
   int numel_;
   const func_t f_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
   scalar1_t* output_data_;
   const scalar2_t* input_data_;
   inp_offset_calc_t inp_calc_;
@@ -240,7 +241,7 @@ struct DistributionUnaryElementwiseKernelFunctor {
 template <typename scalar1_t, typename scalar2_t, typename func_t>
 void distribution_unary_kernel(
     TensorIterator& iter,
-    PhiloxXpuState philox_args,
+    std::pair<uint64_t, uint64_t> philox_args,
     func_t f) {
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
@@ -307,7 +308,7 @@ struct DistributionBinaryElementwiseKernelFunctor {
     int global_size = item.get_global_range(0);
     int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
 
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto& seeds = philox_args_;
 
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
@@ -323,7 +324,7 @@ struct DistributionBinaryElementwiseKernelFunctor {
   DistributionBinaryElementwiseKernelFunctor(
       int numel,
       func_t f,
-      PhiloxXpuState philox_args,
+      std::pair<uint64_t, uint64_t> philox_args,
       output_t* output_data,
       const input_t_1* input_data_1,
       const input_t_2* input_data_2,
@@ -341,7 +342,7 @@ struct DistributionBinaryElementwiseKernelFunctor {
  private:
   int64_t numel_;
   func_t f_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
   output_t* out_data_;
   const input_t_1* inp_data_1_;
   const input_t_2* inp_data_2_;
@@ -352,7 +353,7 @@ struct DistributionBinaryElementwiseKernelFunctor {
 template <typename func_t>
 void distribution_binary_kernel(
     TensorIteratorBase& iter,
-    PhiloxXpuState philox_args,
+    std::pair<uint64_t, uint64_t> philox_args,
     const func_t& f) {
   static_assert(
       std::is_same<
@@ -725,7 +726,7 @@ struct BernoulliTensorApplyFunctor {
       const prob_t& p2,
       const prob_t& p3,
       const prob_t& p4) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto& seeds = philox_args_;
     randStatePhilox4_32_10_t state;
     rand_init(
         std::get<0>(seeds),
@@ -755,18 +756,18 @@ struct BernoulliTensorApplyFunctor {
       }
     }
   }
-  BernoulliTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
+  BernoulliTensorApplyFunctor(std::pair<uint64_t, uint64_t> rng_engine_inputs)
       : philox_args_(rng_engine_inputs) {}
 
  private:
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
 };
 
 template <typename scalar_t, typename prob_t>
 void bernoulli_tensor_kernel(
     TensorBase& ret,
     TensorBase& p,
-    PhiloxXpuState rng_engine_inputs) {
+    std::pair<uint64_t, uint64_t> rng_engine_inputs) {
   auto functor =
       BernoulliTensorApplyFunctor<scalar_t, prob_t>(rng_engine_inputs);
   // The template argument `4` below indicates that we want to operate on four
@@ -781,11 +782,12 @@ void bernoulli_tensor_kernel(
 
 template <typename RNG>
 void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
-  PhiloxXpuState rng_engine_inputs;
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(10);
+    rng_engine_inputs =
+        c10::xpu::philoxXPUStateBridge(gen, 10);
   }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
