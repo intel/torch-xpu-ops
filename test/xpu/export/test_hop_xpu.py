@@ -25,8 +25,11 @@ from torch.export._trace import _export
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     ops,
+    skip,
+    skipOps,
+    xfail,
 )
-from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
+from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TEST_WITH_ROCM
 from torch.testing._internal.hop_db import (
     FIXME_hop_that_doesnt_have_opinfo_test_allowlist,
     hop_db,
@@ -39,6 +42,29 @@ for op_info in hop_db:
     if op_info_hop_name in FIXME_hop_that_doesnt_have_opinfo_test_allowlist:
         continue
     hop_tests.append(op_info)
+
+hop_export_failures = {
+    xfail("invoke_quant", "simple"),
+    xfail("flex_attention", "simple"),
+    xfail("flex_attention_backward", "simple"),
+    xfail("flex_attention_backward", "explicit_buffers"),
+    xfail("local_map_hop", "simple"),
+    xfail("register_hook", "simple"),
+}
+
+# https://github.com/pytorch/pytorch/issues/178177
+inline_asm_rocm_retrace_skips = (
+    {skip("inline_asm_elementwise", "simple", device_type="cuda")}
+    if TEST_WITH_ROCM
+    else set()
+)
+
+# https://github.com/pytorch/pytorch/issues/178077
+inline_asm_rocm_serialize_skips = (
+    {skip("inline_asm_elementwise", "simple", device_type="cuda")}
+    if TEST_WITH_ROCM
+    else set()
+)
 
 
 @unittest.skipIf(IS_WINDOWS, "Windows isn't supported for this case")
@@ -60,6 +86,7 @@ class TestHOP(TestCase):
             self.assertEqual(orig, loaded)
 
     @ops(hop_tests, allowed_dtypes=(torch.float,))
+    @skipOps(hop_export_failures)
     def test_aot_export(self, device, dtype, op):
         class Foo(torch.nn.Module):
             def forward(self, *args):
@@ -85,6 +112,7 @@ class TestHOP(TestCase):
         torchdynamo._reset_guarded_backend_cache()
 
     @ops(hop_tests, allowed_dtypes=(torch.float,))
+    @skipOps(hop_export_failures)
     def test_pre_dispatch_export(self, device, dtype, op):
         class Foo(torch.nn.Module):
             def forward(self, *args):
@@ -101,6 +129,7 @@ class TestHOP(TestCase):
         torchdynamo._reset_guarded_backend_cache()
 
     @ops(hop_tests, allowed_dtypes=(torch.float,))
+    @skipOps(hop_export_failures | inline_asm_rocm_retrace_skips)
     def test_retrace_export(self, device, dtype, op):
         class Foo(torch.nn.Module):
             def forward(self, *args):
@@ -118,6 +147,7 @@ class TestHOP(TestCase):
         torchdynamo._reset_guarded_backend_cache()
 
     @ops(hop_tests, allowed_dtypes=(torch.float,))
+    @skipOps(hop_export_failures | inline_asm_rocm_serialize_skips)
     def test_serialize_export(self, device, dtype, op):
         class Foo(torch.nn.Module):
             def forward(self, *args):
