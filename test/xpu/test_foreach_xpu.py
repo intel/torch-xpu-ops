@@ -35,8 +35,11 @@ except Exception as e:
 # These dtypes will need to be added to OpInfo for foreach_copy in common_methods_invocations.py when porting to upstream.
 for op in foreach_binary_op_db:
     if op.name == "_foreach_copy":
-        op.dtypesIfXPU = all_types_complex_float8_and(torch.bool, torch.half, torch.bfloat16)
+        op.dtypesIfXPU = all_types_complex_float8_and(
+            torch.bool, torch.half, torch.bfloat16
+        )
         break
+
 
 def get_device_capability(device=None):
     return (9, 0)
