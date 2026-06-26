@@ -14,7 +14,7 @@ independently. All detailed fix logic lives in the `fix/` leaf skills — this
 skill owns the batch scheduling, branch strategy, commit format, and summary
 report.
 
-> **Before starting:** Read the `## Working Principles` section of `AGENTS.md`.
+> **Before starting:** Read the `## Working Principles` section of `CLAUDE.md`.
 > State which principles apply to this task before proceeding.
 
 ## Inputs
