@@ -145,7 +145,7 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/2285
         "_efficient_attention_forward",
     ),
-    "test_modules_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_modules.py": None,
     f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     "test_native_mha_xpu.py": None,
     "test_nn_xpu.py": (
