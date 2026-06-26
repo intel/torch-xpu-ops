@@ -35,9 +35,7 @@ std::tuple<int, int, int, int> get_adaptive_config(
   }
 
   int nwg_x = at::ceil_div(n_channels, group_size_x * vec_size);
-  int nwg_y = std::min(
-      at::ceil_div(reduction, group_size_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
+  int nwg_y = at::ceil_div(reduction, group_size_y * loops_per_item);
   nwg_y = std::max(nwg_y, 1);
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
