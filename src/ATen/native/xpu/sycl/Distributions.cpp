@@ -17,7 +17,7 @@
 #include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 
 namespace at::native::xpu {
 
@@ -70,7 +70,7 @@ void launch_poisson_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, 20);
+    rng_engine_inputs = xpu_hal::philoxState(gen, 20);
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -125,7 +125,7 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, 42);
+    rng_engine_inputs = xpu_hal::philoxState(gen, 42);
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -202,7 +202,7 @@ void launch_gamma_kernel(
     // This seed was chosen to ensure consistent random number generation
     // behavior for this specific kernel. Modify with caution as it affects
     // reproducibility of results.
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, 10);
+    rng_engine_inputs = xpu_hal::philoxState(gen, 10);
   }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(

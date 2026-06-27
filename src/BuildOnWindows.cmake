@@ -22,6 +22,20 @@ macro(setup_common_libraries)
   target_link_libraries(torch_xpu_ops PUBLIC c10)
 endmacro()
 
+# Shared library that stores function pointers for generator operations.
+# kernel DLLs call xpu_hal.dll instead of linking torch_xpu.dll directly,
+# breaking the cyclic dependency.  torch_xpu.dll registers the real
+# implementations at init time via xpu_hal::registerXPUGeneratorBridge().
+# xpu_hal.dll only links c10 — no dependency on torch_xpu.
+set(xpu_hal_srcs ${TORCH_XPU_OPS_ROOT}/src/hal/XPUHal.cpp)
+if(NOT TARGET xpu_hal)
+  add_library(xpu_hal SHARED ${xpu_hal_srcs})
+  target_link_libraries(xpu_hal PUBLIC c10)
+  set_target_properties(xpu_hal PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_hal)
+  install(TARGETS xpu_hal DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+endif()
+
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
@@ -36,11 +50,8 @@ if(BUILD_SEPARATE_OPS)
     # must export its host-side SYCL entry points so consumers (torch_xpu.dll)
     # can resolve them from the import lib.
     set_target_properties(${sycl_lib} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
-    # When the c10_xpu bridge is not available (building against older pytorch),
-    # the fallback inline wrappers call torch_xpu functions directly.  Those
-    # symbols live in torch_xpu.dll which kernel DLLs do not link.  A clean
-    # build against pytorch with the bridge can drop this flag.
-    target_link_options(${sycl_lib} PRIVATE "/FORCE:UNRESOLVED")
+    # kernel DLLs call xpu_hal:: functions instead of linking torch_xpu.dll
+    target_link_libraries(${sycl_lib} PRIVATE xpu_hal)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
