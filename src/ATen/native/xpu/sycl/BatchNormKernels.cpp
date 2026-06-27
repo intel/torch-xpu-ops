@@ -504,10 +504,10 @@ struct BatchNormCollectStatisticsKernelFunctor
     // Save the mean, variance, and moving averages
     if (tid == 0) {
       if (nwg_y_ == 1) {
-        if (save_mean_.data() != NULL) {
+        if (save_mean_ != nullptr) {
           save_mean_[plane] = avg;
         }
-        if (save_transformed_var_.data() != NULL) {
+        if (save_transformed_var_ != nullptr) {
           save_transformed_var_[plane] =
               VarTransform{}(var_n / (input_.size(0) * input_.size(2)), epsilon_);
         }
@@ -552,8 +552,8 @@ struct BatchNormCollectStatisticsKernelFunctor
       : input_(input),
         epsilon_(epsilon),
         momentum_(momentum),
-        save_mean_(save_mean),
-        save_transformed_var_(save_transformed_var),
+        save_mean_(save_mean.data()),
+        save_transformed_var_(save_transformed_var.data()),
         nwg_y_(nwg_y),
         n_input_(n_input),
         staging_mean_(staging_mean),
@@ -569,10 +569,8 @@ struct BatchNormCollectStatisticsKernelFunctor
       input_;
   const stat_accscalar_t epsilon_;
   const stat_accscalar_t momentum_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
-      save_mean_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
-      save_transformed_var_;
+  stat_accscalar_t* save_mean_;
+  stat_accscalar_t* save_transformed_var_;
   int nwg_y_;
   int n_input_;
   stat_accscalar_t* staging_mean_;
@@ -2147,44 +2145,10 @@ struct BatchNormBackwardReduceKernelFunctor
         }
       }
     } else {
-      // Multi-WG staging: write this WG's partial sums.
+      // Stage 1: write this WG's partial sums to staging for merge kernel.
       if (item.get_local_linear_id() == 0) {
         staging_sum_dy_[item.get_group(0) * n_input_ + plane] = res.v1;
         staging_sum_dy_xmu_[item.get_group(0) * n_input_ + plane] = res.v2;
-      }
-      sycl::group_barrier(item.get_group());
-
-      // Mark this WG done; detect if it is the last.
-      if (item.get_local_linear_id() == 0) {
-        sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_[plane]);
-        int old =
-            count.fetch_add(1, sycl_mem_odr_acq_rel /* device scope */);
-        is_last_group_done_[0] = (old == (nwg_y - 1));
-      }
-      sycl::group_barrier(item.get_group());
-
-      // The last WG to finish reduces all partial sums and writes output.
-      if (is_last_group_done_[0]) {
-        if (item.get_local_linear_id() == 0) {
-          stat_accscalar_t total_v1 = 0, total_v2 = 0;
-          for (int y = 0; y < nwg_y; y++) {
-            total_v1 += staging_sum_dy_[y * n_input_ + plane];
-            total_v2 += staging_sum_dy_xmu_[y * n_input_ + plane];
-          }
-          if (grad_weight_.size(0) > 0) {
-            grad_weight_[plane] =
-                static_cast<stat_scalar_t>(total_v2 * factor);
-          }
-          if (grad_bias_.size(0) > 0) {
-            grad_bias_[plane] = static_cast<stat_scalar_t>(total_v1);
-          }
-          if (sum_dy_.size(0) > 0) {
-            sum_dy_[plane] = total_v1;
-          }
-          if (sum_dy_xmu_.size(0) > 0) {
-            sum_dy_xmu_[plane] = total_v2;
-          }
-        }
       }
     }
   }
@@ -2192,7 +2156,6 @@ struct BatchNormBackwardReduceKernelFunctor
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
         sycl::range<1>{(size_t)wg_size_ / SIMD}, cgh);
-    is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>{1}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
@@ -2231,9 +2194,8 @@ struct BatchNormBackwardReduceKernelFunctor
       GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
           grad_bias,
       int wg_size,
-      volatile stat_accscalar_t* staging_sum_dy,
-      volatile stat_accscalar_t* staging_sum_dy_xmu,
-      int* semaphores,
+      stat_accscalar_t* staging_sum_dy,
+      stat_accscalar_t* staging_sum_dy_xmu,
       int n_input)
       : input_(input),
         grad_output_(grad_output),
@@ -2246,7 +2208,6 @@ struct BatchNormBackwardReduceKernelFunctor
         wg_size_(wg_size),
         staging_sum_dy_(staging_sum_dy),
         staging_sum_dy_xmu_(staging_sum_dy_xmu),
-        semaphores_(semaphores),
         n_input_(n_input) {}
 
  private:
@@ -2275,12 +2236,86 @@ struct BatchNormBackwardReduceKernelFunctor
   GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
       grad_bias_;
   int wg_size_;
-  volatile stat_accscalar_t* staging_sum_dy_;
-  volatile stat_accscalar_t* staging_sum_dy_xmu_;
-  int* semaphores_;
+  stat_accscalar_t* staging_sum_dy_;
+  stat_accscalar_t* staging_sum_dy_xmu_;
   int n_input_;
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>> local_sum_;
-  sycl_local_acc_t<bool> is_last_group_done_;
+};
+
+template <typename stat_scalar_t, typename stat_accscalar_t, typename index_t>
+struct BatchNormBackwardReduceMergeKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int c = item.get_global_id(0);
+    if (c >= n_input_)
+      return;
+    stat_accscalar_t total_v1 = 0, total_v2 = 0;
+    for (int gy = 0; gy < nwg_y_; gy++) {
+      total_v1 += staging_sum_dy_[gy * n_input_ + c];
+      total_v2 += staging_sum_dy_xmu_[gy * n_input_ + c];
+    }
+    if (grad_weight_.size(0) > 0) {
+      grad_weight_[c] = static_cast<stat_scalar_t>(total_v2 * invstd_[c]);
+    }
+    if (grad_bias_.size(0) > 0) {
+      grad_bias_[c] = static_cast<stat_scalar_t>(total_v1);
+    }
+    if (sum_dy_.size(0) > 0) {
+      sum_dy_[c] = total_v1;
+    }
+    if (sum_dy_xmu_.size(0) > 0) {
+      sum_dy_xmu_[c] = total_v2;
+    }
+  }
+
+  BatchNormBackwardReduceMergeKernelFunctor(
+      const stat_accscalar_t* staging_sum_dy,
+      const stat_accscalar_t* staging_sum_dy_xmu,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy_xmu,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_weight,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_bias,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> invstd,
+      int n_input,
+      int nwg_y)
+      : staging_sum_dy_(staging_sum_dy),
+        staging_sum_dy_xmu_(staging_sum_dy_xmu),
+        sum_dy_(sum_dy),
+        sum_dy_xmu_(sum_dy_xmu),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
+        invstd_(invstd),
+        n_input_(n_input),
+        nwg_y_(nwg_y) {}
+
+ private:
+  const stat_accscalar_t* staging_sum_dy_;
+  const stat_accscalar_t* staging_sum_dy_xmu_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      sum_dy_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      sum_dy_xmu_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_weight_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_bias_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      invstd_;
+  int n_input_;
+  int nwg_y_;
 };
 
 // supports CF and CL
@@ -2366,22 +2401,18 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
     sycl::range<2> local_range(wg_size_y, wg_size_x);
     sycl::range<2> global_range(nwg_y * wg_size_y, n_input * wg_size_x);
 
-    at::Tensor staging_sum_dy_t, staging_sum_dy_xmu_t, semaphores_t;
+    at::Tensor staging_sum_dy_t, staging_sum_dy_xmu_t;
     stat_accscalar_t* staging_dy_ptr = nullptr;
     stat_accscalar_t* staging_dy_xmu_ptr = nullptr;
-    int* semaphores_ptr = nullptr;
     if (nwg_y > 1) {
       auto acc_opts = grad_out_.options().dtype(
           at::toAccumulateType(grad_out_.scalar_type(), kXPU));
       staging_sum_dy_t = at::empty({(long)(nwg_y * n_input)}, acc_opts);
       staging_sum_dy_xmu_t = at::empty({(long)(nwg_y * n_input)}, acc_opts);
-      semaphores_t =
-          at::zeros({(long)n_input}, input_reshaped.options().dtype(at::kInt));
       staging_dy_ptr =
           staging_sum_dy_t.mutable_data_ptr<stat_accscalar_t>();
       staging_dy_xmu_ptr =
           staging_sum_dy_xmu_t.mutable_data_ptr<stat_accscalar_t>();
-      semaphores_ptr = semaphores_t.mutable_data_ptr<int>();
     }
 
     auto kfn = KernelClass(
@@ -2396,10 +2427,30 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
         wg_size_y * wg_size_x,
         staging_dy_ptr,
         staging_dy_xmu_ptr,
-        semaphores_ptr,
         n_input);
 
     sycl_kernel_submit(global_range, local_range, queue, kfn);
+    if (nwg_y > 1) {
+      auto merge_kfn =
+          BatchNormBackwardReduceMergeKernelFunctor<stat_scalar_t,
+                                                   stat_accscalar_t,
+                                                   index_t>(
+              staging_dy_ptr,
+              staging_dy_xmu_ptr,
+              sum_dy,
+              sum_dy_xmu,
+              grad_weight,
+              grad_bias,
+              invstd,
+              n_input,
+              nwg_y);
+      int n_threads = at::ceil_div((int)n_input, SIMD32) * SIMD32;
+      sycl_kernel_submit(
+          sycl::range<1>{(size_t)n_threads},
+          sycl::range<1>{(size_t)SIMD32},
+          queue,
+          merge_kfn);
+    }
   } else {
     using KernelClass = BatchNormBackwardReduceKernelFunctor<
         SIMD16,
@@ -2417,22 +2468,18 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
     sycl::range<2> local_range(wg_size_y, wg_size_x);
     sycl::range<2> global_range(nwg_y * wg_size_y, n_input * wg_size_x);
 
-    at::Tensor staging_sum_dy_t, staging_sum_dy_xmu_t, semaphores_t;
+    at::Tensor staging_sum_dy_t, staging_sum_dy_xmu_t;
     stat_accscalar_t* staging_dy_ptr = nullptr;
     stat_accscalar_t* staging_dy_xmu_ptr = nullptr;
-    int* semaphores_ptr = nullptr;
     if (nwg_y > 1) {
       auto acc_opts = grad_out_.options().dtype(
           at::toAccumulateType(grad_out_.scalar_type(), kXPU));
       staging_sum_dy_t = at::empty({(long)(nwg_y * n_input)}, acc_opts);
       staging_sum_dy_xmu_t = at::empty({(long)(nwg_y * n_input)}, acc_opts);
-      semaphores_t =
-          at::zeros({(long)n_input}, input_reshaped.options().dtype(at::kInt));
       staging_dy_ptr =
           staging_sum_dy_t.mutable_data_ptr<stat_accscalar_t>();
       staging_dy_xmu_ptr =
           staging_sum_dy_xmu_t.mutable_data_ptr<stat_accscalar_t>();
-      semaphores_ptr = semaphores_t.mutable_data_ptr<int>();
     }
 
     auto kfn = KernelClass(
@@ -2447,10 +2494,30 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
         wg_size_y * wg_size_x,
         staging_dy_ptr,
         staging_dy_xmu_ptr,
-        semaphores_ptr,
         n_input);
 
     sycl_kernel_submit(global_range, local_range, queue, kfn);
+    if (nwg_y > 1) {
+      auto merge_kfn =
+          BatchNormBackwardReduceMergeKernelFunctor<stat_scalar_t,
+                                                   stat_accscalar_t,
+                                                   index_t>(
+              staging_dy_ptr,
+              staging_dy_xmu_ptr,
+              sum_dy,
+              sum_dy_xmu,
+              grad_weight,
+              grad_bias,
+              invstd,
+              n_input,
+              nwg_y);
+      int n_threads = at::ceil_div((int)n_input, SIMD32) * SIMD32;
+      sycl_kernel_submit(
+          sycl::range<1>{(size_t)n_threads},
+          sycl::range<1>{(size_t)SIMD32},
+          queue,
+          merge_kfn);
+    }
   }
   return std::make_tuple(sum_dy_, sum_dy_xmu_, grad_weight_, grad_bias_);
 }
