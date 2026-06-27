@@ -19,7 +19,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 #include <comm/TensorInfo.h>
 #include <comm/xpu_aten.h>
 
