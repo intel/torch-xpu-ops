@@ -8,6 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
@@ -16,7 +18,6 @@
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <c10/xpu/XPUGeneratorBridge.h>
-#include <utility>
 
 namespace at::native::xpu {
 
@@ -111,7 +112,9 @@ struct BinomialFunctor {
 };
 
 template <typename scalar_t>
-void binomial_kernel(TensorIteratorBase& iter, std::pair<uint64_t, uint64_t> philox_args) {
+void binomial_kernel(
+    TensorIteratorBase& iter,
+    std::pair<uint64_t, uint64_t> philox_args) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   BinomialFunctor<scalar_t, accscalar_t> f;
   at::native::xpu::distribution_binary_kernel(iter, philox_args, f);

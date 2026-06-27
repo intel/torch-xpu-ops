@@ -8,14 +8,15 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
-#include <utility>
 
 #include <ATen/ops/arange.h>
 
@@ -100,7 +101,8 @@ void randperm_handle_duplicate_keys(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+    rng_engine_inputs =
+        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
   }
 
   T mask = static_cast<T>((1UL << bits) - 1);

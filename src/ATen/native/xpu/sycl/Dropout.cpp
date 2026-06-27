@@ -8,6 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Activation.h>
@@ -20,8 +22,6 @@
 #include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/TensorInfo.h>
 #include <comm/xpu_aten.h>
-
-#include <utility>
 
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/zeros_like.h>
@@ -401,7 +401,8 @@ std::tuple<Tensor, Tensor> dropout(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+    rng_engine_inputs =
+        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
   }
 
   if (canUse32BitIndexMath(self)) {
