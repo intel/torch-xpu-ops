@@ -14,7 +14,7 @@
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 

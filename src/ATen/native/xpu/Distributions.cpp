@@ -17,7 +17,7 @@
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 #include <ATen/native/xpu/sycl/Distributions.h>

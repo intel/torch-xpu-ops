@@ -31,7 +31,7 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <ATen/xpu/XPUGraphsUtils.h>
 #include <c10/core/InferenceMode.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 #include <torch/autograd.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
