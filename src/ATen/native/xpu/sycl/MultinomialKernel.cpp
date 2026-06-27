@@ -21,7 +21,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/xpu/EmptyTensor.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>

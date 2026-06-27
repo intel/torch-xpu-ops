@@ -17,7 +17,7 @@
 #include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 
 namespace at::native::xpu {
 

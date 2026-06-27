@@ -16,7 +16,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 
 #include <ATen/native/xpu/sycl/RreluWithNoiseKernels.h>
 
