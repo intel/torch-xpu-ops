@@ -31,6 +31,7 @@ endif()
 # compression of device code is supported by SYCL/backend compiler.
 if(WIN32)
   include(BuildOnWindows.cmake)
+  set(TORCH_XPU_OPS_LIBRARIES ${TORCH_XPU_OPS_LIBRARIES} PARENT_SCOPE)
 else()
   include(BuildOnLinux.cmake)
 endif()

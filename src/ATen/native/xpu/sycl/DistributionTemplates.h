@@ -13,6 +13,8 @@
  */
 
 #pragma once
+#include <utility>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
@@ -27,7 +29,6 @@
 #include <c10/xpu/XPUGeneratorBridge.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
-#include <utility>
 
 namespace at {
 namespace native {
@@ -786,8 +787,7 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs =
-        c10::xpu::philoxXPUStateBridge(gen, 10);
+    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, 10);
   }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
