@@ -31,7 +31,7 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <ATen/xpu/XPUGraphsUtils.h>
 #include <c10/core/InferenceMode.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 #include <torch/autograd.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -413,7 +413,7 @@ _scaled_dot_product_efficient_attention_xpu(
   if (dropout_p > 0.0) {
     auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
         std::nullopt,
-        at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+        at::Generator(xpu_hal::getDefaultGenerator(-1)));
     if (at::xpu::currentStreamCaptureStatus() !=
         at::xpu::CaptureStatus::Executing) {
       // Graph capture path: output device tensors that alias the extragraph
@@ -423,7 +423,7 @@ _scaled_dot_product_efficient_attention_xpu(
       std::pair<uint64_t, uint64_t> pstate;
       {
         std::lock_guard<std::mutex> lock(gen->mutex_);
-        pstate = c10::xpu::philoxXPUStateBridge(gen, 0);
+        pstate = xpu_hal::philoxState(gen, 0);
       }
       auto dev_opts =
           at::TensorOptions().dtype(at::kLong).device(query.device());
