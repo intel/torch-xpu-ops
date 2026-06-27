@@ -26,7 +26,7 @@
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
+#include <comm/XPUGenBridge.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 

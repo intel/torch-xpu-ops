@@ -36,6 +36,11 @@ if(BUILD_SEPARATE_OPS)
     # must export its host-side SYCL entry points so consumers (torch_xpu.dll)
     # can resolve them from the import lib.
     set_target_properties(${sycl_lib} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+    # When the c10_xpu bridge is not available (building against older pytorch),
+    # the fallback inline wrappers call torch_xpu functions directly.  Those
+    # symbols live in torch_xpu.dll which kernel DLLs do not link.  A clean
+    # build against pytorch with the bridge can drop this flag.
+    target_link_options(${sycl_lib} PRIVATE "/FORCE:UNRESOLVED")
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
