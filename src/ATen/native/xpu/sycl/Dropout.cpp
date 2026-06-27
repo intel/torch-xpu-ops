@@ -19,7 +19,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 #include <comm/TensorInfo.h>
 #include <comm/xpu_aten.h>
 
@@ -402,7 +402,7 @@ std::tuple<Tensor, Tensor> dropout(
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
     rng_engine_inputs =
-        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+        xpu_hal::philoxState(gen, counter_offset);
   }
 
   if (canUse32BitIndexMath(self)) {
@@ -434,7 +434,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
     return std::tuple<Tensor, Tensor>(ret, mask);
   }
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      std::nullopt, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+      std::nullopt, at::Generator(xpu_hal::getDefaultGenerator(-1)));
   double p1m = 1. - p;
   return dropout<bool>(gen, self, p1m);
 }
@@ -444,7 +444,7 @@ std::tuple<Tensor, Tensor> fused_dropout_kernel(
     double p,
     std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+      gen_, at::Generator(xpu_hal::getDefaultGenerator(-1)));
   return dropout<uint8_t>(gen, self, p);
 }
 

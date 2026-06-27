@@ -14,7 +14,7 @@
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -93,7 +93,7 @@ void randperm_handle_duplicate_keys(
     int64_t n,
     std::optional<at::Generator>& gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+      gen_, at::Generator(xpu_hal::getDefaultGenerator(-1)));
 
   int64_t counter_offset = n;
 
@@ -102,7 +102,7 @@ void randperm_handle_duplicate_keys(
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
     rng_engine_inputs =
-        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+        xpu_hal::philoxState(gen, counter_offset);
   }
 
   T mask = static_cast<T>((1UL << bits) - 1);

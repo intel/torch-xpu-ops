@@ -16,7 +16,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/native/xpu/sycl/RreluWithNoiseKernels.h>
 
@@ -112,13 +112,13 @@ inline void _rrelu_with_noise_xpu_train(
   auto group_size = std::get<2>(execution_policy);
 
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+      generator, at::Generator(xpu_hal::getDefaultGenerator(-1)));
   std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
     rng_engine_inputs =
-        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+        xpu_hal::philoxState(gen, counter_offset);
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();
