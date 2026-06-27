@@ -21,7 +21,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/xpu/EmptyTensor.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <comm/XPUGenBridge.h>
+#include <hal/XPUHal.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
@@ -434,7 +434,7 @@ void multinomial_kernel(
     std::optional<Generator> generator) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+      generator, at::Generator(xpu_hal::getDefaultGenerator(-1)));
 
   int inputSize = self.dim();
   int64_t numDist = inputSize == 1 ? 1 : self.size(0);
@@ -524,7 +524,7 @@ void multinomial_kernel(
             std::lock_guard<std::mutex> lock(gen->mutex_);
             auto offset = ((numDist - 1) / group_range_y + 1) * 4;
             rng_engine_inputs =
-                c10::xpu::philoxXPUStateBridge(gen, offset);
+                xpu_hal::philoxState(gen, offset);
           }
 
           auto result_ptr = result.data_ptr<int64_t>();
