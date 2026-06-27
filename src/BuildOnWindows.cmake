@@ -40,8 +40,8 @@ if(BUILD_SEPARATE_OPS)
 
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-    endforeach()
-    list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+  endforeach()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 else()
   # On Windows, it is not possible to combine all obj files into one library
   # because the obj files of kernels compiled on Windows are much larger than

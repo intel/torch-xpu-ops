@@ -8,6 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
@@ -15,7 +17,6 @@
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <c10/xpu/XPUGeneratorBridge.h>
-#include <utility>
 
 #include <ATen/native/xpu/sycl/RreluWithNoiseKernels.h>
 
@@ -116,7 +117,8 @@ inline void _rrelu_with_noise_xpu_train(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = c10::xpu::philoxXPUStateBridge(gen, counter_offset);
+    rng_engine_inputs =
+        c10::xpu::philoxXPUStateBridge(gen, counter_offset);
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();

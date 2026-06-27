@@ -30,8 +30,8 @@
 #include <ATen/ops/_scaled_dot_product_attention_math.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <ATen/xpu/XPUGraphsUtils.h>
-#include <c10/xpu/XPUGeneratorBridge.h>
 #include <c10/core/InferenceMode.h>
+#include <c10/xpu/XPUGeneratorBridge.h>
 #include <torch/autograd.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -412,7 +412,8 @@ _scaled_dot_product_efficient_attention_xpu(
   Tensor philox_seed_tensor, philox_offset_tensor;
   if (dropout_p > 0.0) {
     auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-        std::nullopt, at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
+        std::nullopt,
+        at::Generator(c10::xpu::getDefaultXPUGeneratorBridge(-1)));
     if (at::xpu::currentStreamCaptureStatus() !=
         at::xpu::CaptureStatus::Executing) {
       // Graph capture path: output device tensors that alias the extragraph
