@@ -59,23 +59,26 @@ namespace {
 constexpr int32_t RING_MAX_WG = 64;
 
 // Publish `val` to a peer pad slot with a system-scope release store.
-// atomic_ref is unavailable here, so we order prior writes with a system-scope
-// release fence and perform the publish as a naturally-atomic 4-byte volatile
-// store.
+// Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
+// system-scope release fence so the store is actually flushed to the shared
+// coherence point and becomes visible to the peer device.
 inline void store_release_sys(uint32_t* addr, uint32_t val) {
+  *addr = val;
   sycl::atomic_fence(
       sycl::memory_order::release, sycl::memory_scope::system);
-  *static_cast<volatile uint32_t*>(addr) = val;
 }
 
-// Spin until *addr == val, then order subsequent reads with a system-scope
-// acquire fence (the load is a naturally-atomic 4-byte volatile read).
+// Spin until *addr == val. Matches src/xccl/Signal.hpp load_acquire: issue a
+// system-scope acquire fence BEFORE EACH load so every iteration re-reads the
+// value from the shared coherence point (a plain volatile load is not coherent
+// across devices on PCIe and can spin forever on a cached value).
 inline void wait_eq_sys(uint32_t* addr, uint32_t val) {
-  volatile uint32_t* p = static_cast<volatile uint32_t*>(addr);
-  while (*p != val) {
+  for (;;) {
+    sycl::atomic_fence(
+        sycl::memory_order::acquire, sycl::memory_scope::system);
+    if (*addr == val)
+      break;
   }
-  sycl::atomic_fence(
-      sycl::memory_order::acquire, sycl::memory_scope::system);
 }
 
 template <typename scalar_t, int VEC_SIZE>

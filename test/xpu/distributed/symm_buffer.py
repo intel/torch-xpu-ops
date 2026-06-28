@@ -66,6 +66,23 @@ if os.path.exists(_NOTIFY_LIB_PATH):
     except Exception:
         pass
 
+# Ring (single-kernel, pipelined) fused collectives.
+from ring_collectives import (
+    _HAS_RING_ALLGATHER_PERMUTE,
+    _HAS_RING_BUILD_ROUTING,
+    _HAS_RING_REDUCE_SCATTER_UNPERMUTE,
+    build_ring_allgather_permute_resources,
+    build_ring_reduce_scatter_unpermute_resources,
+    ring_allgather_permute,
+    ring_reduce_scatter_unpermute,
+)
+
+# Select the fused-kernel implementation.  When FUSION_RING=1 (the default), the
+# allgather_local_permute_fusion / unpermute_reducescatter_fusion APIs use the
+# pipelined single-kernel ring collectives; set FUSION_RING=0 to use the
+# notify_dispatch + allgather_permute / staged-unpermute implementation.
+_FUSION_RING = os.environ.get("FUSION_RING", "1") == "1"
+
 
 @dataclass
 class SymmHandle:
@@ -85,6 +102,8 @@ class SymmHandle:
     global_topk_idx: torch.Tensor     # [num_tokens, topk] int32
     rows_per_expert: torch.Tensor     # [num_experts] int32
     abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32 (absolute, for unpermute)
+    owner_scatter_idx: torch.Tensor = None  # [num_tokens, topk] int32 (owner-local, ring path)
+    num_experts: int = 0              # total experts (ring path owner computation)
 
 
 class SymmBuffer:
@@ -96,9 +115,6 @@ class SymmBuffer:
         hidden: Hidden dimension size.
         num_topk: Number of top-k experts per token.
         hidden_dtype: Data type for hidden states (default: torch.bfloat16).
-        fallback_token_threshold: When the per-rank token count is below this
-            value, fall back to standard ``dist`` APIs instead of the fused
-            symmetric-memory kernels.  Set to 0 to disable the fallback.
     """
 
     def __init__(
@@ -108,7 +124,6 @@ class SymmBuffer:
         hidden: int,
         num_topk: int,
         hidden_dtype: torch.dtype = torch.bfloat16,
-        fallback_token_threshold: int = 512,
     ):
         self.group = group
         self.rank_idx = dist.get_rank(group)
@@ -118,7 +133,6 @@ class SymmBuffer:
         self.num_topk = num_topk
         self.hidden_dtype = hidden_dtype
         self.count = 0
-        self.fallback_token_threshold = fallback_token_threshold
 
         device = f"xpu:{self.rank_idx}"
         num_tokens_max = num_max_tokens_per_rank * self.num_ranks
@@ -231,6 +245,32 @@ class SymmBuffer:
                 )
             )
 
+        # --- ring fused-collective pre-allocations ---
+        # Built last so SymmBuffer's (larger) workspace already exists; the ring
+        # data region (num_tokens_per_rank * hidden * world_size elements) is no
+        # larger than the hidden section, so reusing the cached workspace does
+        # not grow/invalidate it.
+        self._fusion_ring = (
+            _FUSION_RING
+            and _HAS_RING_ALLGATHER_PERMUTE
+            and _HAS_RING_REDUCE_SCATTER_UNPERMUTE
+            and _HAS_RING_BUILD_ROUTING
+        )
+        self._ring_ag_resources = None
+        self._ring_rs_resources = None
+        if self._fusion_ring:
+            repr_tensor = self._unpermute_local_bufs[0]  # [M, hidden] hidden_dtype
+            self._ring_ag_resources = build_ring_allgather_permute_resources(
+                repr_tensor, group=self.group
+            )
+            self._ring_rs_resources = build_ring_reduce_scatter_unpermute_resources(
+                repr_tensor, num_max_tokens_per_rank, group=self.group
+            )
+            # Per-owner slot counter for the dedicated ring routing kernel.
+            self._rows_per_owner_buf = torch.zeros(
+                self.num_ranks, device=device, dtype=torch.int32
+            )
+
     def _build_rank_buffers_ptr(self) -> torch.Tensor:
         """Build stable rank_buffers_ptr for allgather_permute kernel.
 
@@ -295,131 +335,70 @@ class SymmBuffer:
     @staticmethod
     def _log_tensor(name: str, t: torch.Tensor) -> None:
         """Log tensor metadata and a data snippet."""
+        if t is None:
+            _logger.debug("%s: None", name)
+            return
         _logger.debug(
             "%s: shape=%s dtype=%s device=%s\n  data=%s",
             name, list(t.shape), t.dtype, t.device, t,
         )
 
-    # ------------------------------------------------------------------ #
-    #  Fallback implementations using standard dist APIs                  #
-    # ------------------------------------------------------------------ #
 
-    def _allgather_permute_fallback(
+    # ================================================================== #
+    #  Ring-path routing helpers (fully isolated from notify_dispatch)    #
+    # ================================================================== #
+
+    def _ring_build_routing(
         self,
-        hidden_shard: torch.Tensor,
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
         num_experts: int,
-        remap_hidden_states: torch.Tensor,
-    ) -> Tuple[torch.Tensor, SymmHandle]:
-        """Allgather + permute via standard ``dist.all_gather`` + PyTorch ops."""
-        num_tokens_per_rank = hidden_shard.shape[0]
-        topk = topk_idx.shape[1]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build the global routing tables required by the ring kernels with a
+        single dedicated kernel (torch.ops.symm_mem.ring_build_routing).
+
+        The kernel reads every rank's topk_idx / topk_weights straight from
+        symmetric memory (no all_gather, no host sync), buckets per owner rank,
+        and emits owner-local compacted destination rows directly.
+
+        Returns:
+            global_topk_idx: [num_tokens, topk] int32 (block r == rank r tokens).
+            global_topk_weights: [num_tokens, topk] float32.
+            owner_scatter_idx: [num_tokens, topk] int32 owner-local destination
+                rows (slots compacted per owner).
+        """
+        num_tokens_per_rank, topk = topk_idx.shape
         num_tokens = num_tokens_per_rank * self.num_ranks
-        device = hidden_shard.device
 
-        # All-gather hidden states, topk_idx, and topk_weights
-        hidden_list = [torch.empty_like(hidden_shard) for _ in range(self.num_ranks)]
-        topk_idx_list = [torch.empty_like(topk_idx) for _ in range(self.num_ranks)]
-        weights_list = [torch.empty_like(topk_weights) for _ in range(self.num_ranks)]
+        # Stage this rank's topk_idx / weights into symmetric memory so the
+        # kernel can read every rank's slice via the per-rank pointer tables.
+        self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
+        self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
+        self.workspace.barrier()
 
-        dist.all_gather(hidden_list, hidden_shard.contiguous(), group=self.group)
-        dist.all_gather(topk_idx_list, topk_idx.contiguous(), group=self.group)
-        dist.all_gather(weights_list, topk_weights.contiguous(), group=self.group)
+        global_topk_idx = self._global_topk_idx_buf[:num_tokens, :topk]
+        global_topk_weights = self._global_topk_weights_buf[:num_tokens, :topk]
+        owner_scatter_idx = self._scatter_idx[:num_tokens, :topk]
 
-        global_hidden = torch.cat(hidden_list, dim=0)        # [num_tokens, H]
-        global_topk_idx = torch.cat(topk_idx_list, dim=0)    # [num_tokens, topk]
-        global_topk_weights = torch.cat(weights_list, dim=0)  # [num_tokens, topk]
-
-        # Compute rows_per_expert and expert-relative scatter_idx
-        flat_expert = global_topk_idx.reshape(-1)
-        rows_per_expert = torch.bincount(
-            flat_expert.long(), minlength=num_experts,
-        ).to(torch.int32)[:num_experts]
-
-        scatter_idx_flat = torch.zeros(
-            num_tokens * topk, device=device, dtype=torch.int32,
+        torch.ops.symm_mem.ring_build_routing(
+            self._topk_rank_ptrs,
+            global_topk_idx,
+            owner_scatter_idx,
+            self._rows_per_owner_buf,
+            num_tokens_per_rank,
+            topk,
+            self.num_topk,
+            num_experts,
+            self.rank_idx,
+            self.num_ranks,
+            self._weights_rank_ptrs,
+            global_topk_weights,
         )
-        for e in range(num_experts):
-            mask = flat_expert == e
-            n = mask.sum().item()
-            if n > 0:
-                scatter_idx_flat[mask] = torch.arange(n, device=device, dtype=torch.int32)
-        scatter_idx = scatter_idx_flat.reshape(num_tokens, topk)
+        return global_topk_idx, global_topk_weights, owner_scatter_idx
 
-        # Compute absolute scatter_idx
-        expert_cumsum = torch.zeros(num_experts, device=device, dtype=torch.int32)
-        expert_cumsum[1:] = rows_per_expert[:-1]
-        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
-        abs_scatter_idx = (
-            expert_cumsum[flat_expert] + scatter_idx_flat
-        ).reshape(num_tokens, topk)
-
-        # Permute hidden states into expert-centric layout
-        if _HAS_LOCAL_PERMUTE_KERNEL:
-            for src_rank in range(self.num_ranks):
-                token_offset = src_rank * num_tokens_per_rank
-                torch.ops.symm_mem.local_permute_copy_(
-                    hidden_list[src_rank],
-                    abs_scatter_idx,
-                    token_offset,
-                    remap_hidden_states,
-                )
-        else:
-            expanded_hidden = global_hidden.unsqueeze(1).expand(
-                -1, topk, -1,
-            ).reshape(-1, self.hidden)
-            remap_hidden_states[abs_scatter_idx.reshape(-1).long()] = expanded_hidden
-
-        handle = SymmHandle(
-            scatter_idx=scatter_idx,
-            global_topk_weights=global_topk_weights,
-            num_tokens_per_rank=num_tokens_per_rank,
-            global_topk_idx=global_topk_idx,
-            rows_per_expert=rows_per_expert,
-            abs_scatter_idx=abs_scatter_idx,
-        )
-        return remap_hidden_states, handle
-
-    def _unpermute_reducescatter_fallback(
-        self,
-        expert_output: torch.Tensor,
-        handle: SymmHandle,
-        output: torch.Tensor,
-    ) -> torch.Tensor:
-        """Unpermute + reduce-scatter via PyTorch gather + ``dist.reduce_scatter``."""
-        abs_scatter_idx = handle.abs_scatter_idx
-        global_topk_weights = handle.global_topk_weights
-        num_tokens = abs_scatter_idx.shape[0]
-        num_tokens_per_rank = num_tokens // self.num_ranks
-
-        # Unpermute: gather expert outputs back to token order with weights
-        if _HAS_LOCAL_UNPERMUTE_KERNEL:
-            full_output = torch.zeros(
-                num_tokens, expert_output.shape[1],
-                device=expert_output.device, dtype=expert_output.dtype,
-            )
-            torch.ops.symm_mem.local_unpermute_copy_(
-                expert_output, abs_scatter_idx, global_topk_weights,
-                0, num_tokens, full_output,
-            )
-        else:
-            gathered = expert_output[abs_scatter_idx.long()]       # [num_tokens, topk, H]
-            full_output = (
-                global_topk_weights.unsqueeze(-1) * gathered
-            ).sum(dim=1).to(expert_output.dtype)                   # [num_tokens, H]
-
-        # Reduce-scatter across ranks
-        chunks = [
-            full_output[i * num_tokens_per_rank : (i + 1) * num_tokens_per_rank].contiguous()
-            for i in range(self.num_ranks)
-        ]
-        dist.reduce_scatter(output, chunks, op=dist.ReduceOp.SUM, group=self.group)
-        return output
-
-    # ------------------------------------------------------------------ #
-    #  Fused implementations using symmetric-memory kernels               #
-    # ------------------------------------------------------------------ #
+    # ================================================================== #
+    #  Public API: allgather + local permute (dispatch)                   #
+    # ================================================================== #
 
     def allgather_local_permute_fusion(
         self,
@@ -429,39 +408,109 @@ class SymmBuffer:
         num_experts: int,
         remap_hidden_states: torch.Tensor,
     ) -> Tuple[torch.Tensor, SymmHandle]:
-        """Fused allgather + local permute using symmetric memory.
+        """Fused allgather + local permute (MoE dispatch).
 
-        Writes per-rank topk_idx to symmetric memory, then uses the
-        notify_dispatch kernel to compute scatter_idx directly (like
-        elastic_xpu dispatch). No external scatter_idx needed.
+        Dispatches at the entry point to one of two fully independent
+        implementations: the ring single-kernel path (FUSION_RING=1, default) or
+        the notify_dispatch + allgather_permute path (FUSION_RING=0).
 
         Args:
             hidden_shard: [num_tokens_per_rank, hidden] local hidden states.
-            topk_idx: [num_tokens_per_rank, topk] int32, per-rank expert
-                assignments.
-            topk_weights: [num_tokens_per_rank, topk] float32, per-rank
-                routing weights.
+            topk_idx: [num_tokens_per_rank, topk] int32 per-rank expert ids.
+            topk_weights: [num_tokens_per_rank, topk] float32 routing weights.
             num_experts: Total number of experts.
-            remap_hidden_states: Pre-allocated output buffer
-                [num_tokens * topk, hidden].
+            remap_hidden_states: Pre-allocated output [num_tokens * topk, hidden].
 
         Returns:
-            (remap_hidden_states, handle) — handle carries all state needed
-            by unpermute_reducescatter_fusion.
+            (remap_hidden_states, handle).
         """
         self.count += 1
+        if remap_hidden_states.shape[1] != self.hidden:
+            raise ValueError(
+                f"remap_hidden_states hidden ({remap_hidden_states.shape[1]}) must equal "
+                f"self.hidden ({self.hidden})"
+            )
+        if self._fusion_ring:
+            return self._allgather_local_permute_fusion_ring(
+                hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states
+            )
+        return self._allgather_local_permute_fusion_notify(
+            hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Ring implementation                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _allgather_local_permute_fusion_ring(
+        self,
+        hidden_shard: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        num_experts: int,
+        remap_hidden_states: torch.Tensor,
+    ) -> Tuple[torch.Tensor, SymmHandle]:
+        """Single-kernel ring allgather + owner-based permute.
+
+        Routing tables are built with a plain all-gather + tensor ops; the ring
+        kernel gathers the hidden states internally. No symmetric-memory copies,
+        no workspace.barrier, no notify_dispatch.
+        """
+        num_tokens_per_rank = hidden_shard.shape[0]
+
+        global_topk_idx, global_topk_weights, owner_scatter_idx = (
+            self._ring_build_routing(topk_idx, topk_weights, num_experts)
+        )
+
+        ring_allgather_permute(
+            hidden_shard,
+            global_topk_idx,
+            owner_scatter_idx,
+            num_experts,
+            remap_hidden_states.shape[0],
+            group=self.group,
+            resources=self._ring_ag_resources,
+            remap_output=remap_hidden_states,
+        )
+
+        handle = SymmHandle(
+            scatter_idx=owner_scatter_idx,
+            global_topk_weights=global_topk_weights,
+            num_tokens_per_rank=num_tokens_per_rank,
+            global_topk_idx=global_topk_idx,
+            rows_per_expert=None,
+            abs_scatter_idx=None,
+            owner_scatter_idx=owner_scatter_idx,
+            num_experts=num_experts,
+        )
 
         if _SYMM_BUFFER_DEBUG:
             _logger.debug(
-                "=== allgather_local_permute_fusion INPUT (rank=%d, fusion_count=%d) ===",
-                self.rank_idx, self.count,
+                "=== allgather_local_permute_fusion OUTPUT (rank=%d, ring) ===",
+                self.rank_idx,
             )
-            _logger.debug("num_input_tokens=%d", hidden_shard.shape[0])
-            self._log_tensor("hidden_shard", hidden_shard)
-            self._log_tensor("topk_idx", topk_idx)
-            self._log_tensor("topk_weights", topk_weights)
-            _logger.debug("num_experts=%d", num_experts)
-            self._log_tensor("remap_hidden_states (pre-allocated)", remap_hidden_states)
+            self._log_tensor("remap_hidden_states", remap_hidden_states)
+            self._log_tensor("handle.owner_scatter_idx", owner_scatter_idx)
+            self._log_tensor("handle.global_topk_idx", global_topk_idx)
+            self._log_tensor("handle.global_topk_weights", global_topk_weights)
+
+        return remap_hidden_states, handle
+
+    # ------------------------------------------------------------------ #
+    #  notify_dispatch implementation                                      #
+    # ------------------------------------------------------------------ #
+
+    def _allgather_local_permute_fusion_notify(
+        self,
+        hidden_shard: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        num_experts: int,
+        remap_hidden_states: torch.Tensor,
+    ) -> Tuple[torch.Tensor, SymmHandle]:
+        """notify_dispatch_v2 dispatch + allgather_permute via symmetric memory."""
+        if not _HAS_NOTIFY_DISPATCH_V2_KERNEL:
+            raise RuntimeError("notify_dispatch_v2 kernel is required")
 
         num_tokens_per_rank = hidden_shard.shape[0]
         topk = topk_idx.shape[1]
@@ -473,41 +522,8 @@ class SymmBuffer:
                 f"remap_hidden_states rows ({remap_hidden_states.shape[0]}) must be >= "
                 f"num_tokens * topk ({expected_rows})"
             )
-        if remap_hidden_states.shape[1] != self.hidden:
-            raise ValueError(
-                f"remap_hidden_states hidden ({remap_hidden_states.shape[1]}) must equal "
-                f"self.hidden ({self.hidden})"
-            )
 
-        # Fallback to standard dist APIs for small token counts
-        if num_tokens_per_rank < self.fallback_token_threshold:
-            if _SYMM_BUFFER_DEBUG:
-                _logger.debug(
-                    "Fallback to dist APIs (num_tokens_per_rank=%d < threshold=%d)",
-                    num_tokens_per_rank, self.fallback_token_threshold,
-                )
-            remap_hidden_states, handle = self._allgather_permute_fallback(
-                hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states,
-            )
-            if _SYMM_BUFFER_DEBUG:
-                _logger.debug(
-                    "=== allgather_local_permute_fusion OUTPUT (rank=%d, fusion_count=%d, fallback) ===",
-                    self.rank_idx, self.count,
-                )
-                self._log_tensor("remap_hidden_states", remap_hidden_states)
-                self._log_tensor("handle.scatter_idx", handle.scatter_idx)
-                self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
-                self._log_tensor("handle.global_topk_idx", handle.global_topk_idx)
-                self._log_tensor("handle.rows_per_expert", handle.rows_per_expert)
-                self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
-            return remap_hidden_states, handle
-
-        if not _HAS_NOTIFY_DISPATCH_V2_KERNEL:
-            raise RuntimeError("notify_dispatch_v2 kernel is required")
-        if not _HAS_ALLGATHER_PERMUTE_KERNEL:
-            raise RuntimeError("allgather_permute kernel is required")
-
-        # Write local topk_idx, topk_weights, and hidden_shard to symmetric memory
+        # Write local topk_idx / weights / hidden to symmetric memory.
         self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
         self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
         self._allgather_local_slot[:num_tokens_per_rank].copy_(hidden_shard)
@@ -533,16 +549,18 @@ class SymmBuffer:
             global_topk_weights_buf,
         )
 
-        # Compute absolute scatter_idx from expert-relative positions
-        expert_cumsum = torch.zeros(num_experts, device=hidden_shard.device, dtype=torch.int32)
+        # Absolute scatter_idx from expert-relative positions.
+        expert_cumsum = torch.zeros(
+            num_experts, device=hidden_shard.device, dtype=torch.int32
+        )
         expert_cumsum[1:] = rows_per_expert_buf[:-1]
         expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
-
         flat_expert = global_topk_idx_buf.reshape(-1)
         flat_rel = scatter_idx.reshape(-1)
-        abs_scatter_idx = (expert_cumsum[flat_expert] + flat_rel).reshape(num_tokens, topk)
+        abs_scatter_idx = (
+            expert_cumsum[flat_expert] + flat_rel
+        ).reshape(num_tokens, topk)
 
-        # Allgather + permute using absolute scatter_idx
         torch.ops.symm_mem.allgather_permute(
             self._allgather_permute_rank_buffers_ptr,
             abs_scatter_idx,
@@ -550,7 +568,6 @@ class SymmBuffer:
             self.rank_idx,
             self.num_ranks,
         )
-
         self.workspace.barrier()
 
         handle = SymmHandle(
@@ -560,21 +577,24 @@ class SymmBuffer:
             global_topk_idx=global_topk_idx_buf,
             rows_per_expert=rows_per_expert_buf,
             abs_scatter_idx=abs_scatter_idx,
+            owner_scatter_idx=None,
+            num_experts=num_experts,
         )
 
         if _SYMM_BUFFER_DEBUG:
             _logger.debug(
-                "=== allgather_local_permute_fusion OUTPUT (rank=%d) ===",
+                "=== allgather_local_permute_fusion OUTPUT (rank=%d, notify) ===",
                 self.rank_idx,
             )
             self._log_tensor("remap_hidden_states", remap_hidden_states)
-            self._log_tensor("handle.scatter_idx", handle.scatter_idx)
-            self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
-            self._log_tensor("handle.global_topk_idx", handle.global_topk_idx)
-            self._log_tensor("handle.rows_per_expert", handle.rows_per_expert)
-            self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
+            self._log_tensor("handle.scatter_idx", scatter_idx)
+            self._log_tensor("handle.abs_scatter_idx", abs_scatter_idx)
 
         return remap_hidden_states, handle
+
+    # ================================================================== #
+    #  Public API: unpermute + reduce-scatter (dispatch)                  #
+    # ================================================================== #
 
     def unpermute_reducescatter_fusion(
         self,
@@ -582,14 +602,14 @@ class SymmBuffer:
         handle: SymmHandle,
         output: torch.Tensor,
     ) -> torch.Tensor:
-        """Fused unpermute + reduce-scatter using symmetric memory.
+        """Fused unpermute + reduce-scatter (MoE combine).
 
-        Pipelined implementation: computes local unpermute for remote chunks
-        and pushes them via symmetric memory, then computes own chunk at the
-        end to overlap with the last push.
+        Dispatches at the entry point to the ring single-kernel path
+        (FUSION_RING=1, default) or the staged symmetric-memory path
+        (FUSION_RING=0).
 
         Args:
-            expert_output: [num_tokens * topk, hidden] expert-centric layout.
+            expert_output: this rank's expert outputs.
             handle: SymmHandle from allgather_local_permute_fusion.
             output: Pre-allocated output [num_tokens_per_rank, hidden].
 
@@ -597,49 +617,71 @@ class SymmBuffer:
             output
         """
         self.count += 1
-
-        if _SYMM_BUFFER_DEBUG:
-            _logger.debug(
-                "=== unpermute_reducescatter_fusion INPUT (rank=%d, fusion_count=%d) ===",
-                self.rank_idx, self.count,
-            )
-            _logger.debug("num_input_tokens=%d", expert_output.shape[0])
-            self._log_tensor("expert_output", expert_output)
-            self._log_tensor("handle.abs_scatter_idx", handle.abs_scatter_idx)
-            self._log_tensor("handle.global_topk_weights", handle.global_topk_weights)
-            self._log_tensor("output (pre-allocated)", output)
-
-        scatter_idx = handle.abs_scatter_idx
-        global_topk_weights = handle.global_topk_weights
-
-        num_tokens = scatter_idx.shape[0]
+        num_tokens = handle.global_topk_idx.shape[0]
         num_tokens_per_rank = num_tokens // self.num_ranks
         if output.shape[0] != num_tokens_per_rank:
             raise ValueError(
                 f"output rows ({output.shape[0]}) must equal num_tokens_per_rank ({num_tokens_per_rank})"
             )
+        if self._fusion_ring:
+            return self._unpermute_reducescatter_fusion_ring(
+                expert_output, handle, output, num_tokens_per_rank
+            )
+        return self._unpermute_reducescatter_fusion_staged(
+            expert_output, handle, output, num_tokens_per_rank
+        )
 
-        # Fallback to standard dist APIs for small token counts
-        if num_tokens_per_rank < self.fallback_token_threshold:
-            if _SYMM_BUFFER_DEBUG:
-                _logger.debug(
-                    "Fallback to dist APIs (num_tokens_per_rank=%d < threshold=%d)",
-                    num_tokens_per_rank, self.fallback_token_threshold,
-                )
-            self._unpermute_reducescatter_fallback(expert_output, handle, output)
-            if _SYMM_BUFFER_DEBUG:
-                _logger.debug(
-                    "=== unpermute_reducescatter_fusion OUTPUT (rank=%d, fusion_count=%d, fallback) ===",
-                    self.rank_idx, self.count,
-                )
-                self._log_tensor("output", output)
-            return output
+    # ------------------------------------------------------------------ #
+    #  Ring implementation                                                 #
+    # ------------------------------------------------------------------ #
 
+    def _unpermute_reducescatter_fusion_ring(
+        self,
+        expert_output: torch.Tensor,
+        handle: SymmHandle,
+        output: torch.Tensor,
+        num_tokens_per_rank: int,
+    ) -> torch.Tensor:
+        """Single-kernel fused unpermute + ring reduce-scatter."""
+        ring_reduce_scatter_unpermute(
+            expert_output,
+            handle.global_topk_idx,
+            handle.owner_scatter_idx,
+            handle.global_topk_weights,
+            handle.num_experts,
+            num_tokens_per_rank,
+            group=self.group,
+            resources=self._ring_rs_resources,
+            output=output,
+        )
+        if _SYMM_BUFFER_DEBUG:
+            _logger.debug(
+                "=== unpermute_reducescatter_fusion OUTPUT (rank=%d, ring) ===",
+                self.rank_idx,
+            )
+            self._log_tensor("output", output)
+        return output
+
+    # ------------------------------------------------------------------ #
+    #  Staged symmetric-memory implementation                              #
+    # ------------------------------------------------------------------ #
+
+    def _unpermute_reducescatter_fusion_staged(
+        self,
+        expert_output: torch.Tensor,
+        handle: SymmHandle,
+        output: torch.Tensor,
+        num_tokens_per_rank: int,
+    ) -> torch.Tensor:
+        """Pipelined unpermute (per remote chunk) + symmetric-memory reduce."""
         if not _HAS_LOCAL_UNPERMUTE_KERNEL:
             raise RuntimeError(
                 "local_unpermute_copy_ kernel is required for "
                 "unpermute_reducescatter_fusion"
             )
+
+        scatter_idx = handle.abs_scatter_idx
+        global_topk_weights = handle.global_topk_weights
 
         self.workspace.barrier()
         my_chunk_start = self.rank_idx * num_tokens_per_rank
@@ -692,11 +734,9 @@ class SymmBuffer:
 
         if _SYMM_BUFFER_DEBUG:
             _logger.debug(
-                "=== unpermute_reducescatter_fusion OUTPUT (rank=%d) ===",
+                "=== unpermute_reducescatter_fusion OUTPUT (rank=%d, staged) ===",
                 self.rank_idx,
             )
             self._log_tensor("output", output)
 
         return output
-
-        

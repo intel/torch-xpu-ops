@@ -51,25 +51,34 @@ namespace {
 
 constexpr int32_t RING_MAX_WG = 64;
 
-// atomic_ref is unavailable here, so prior writes are ordered with a
-// system-scope release fence and the publish is a naturally-atomic 4-byte
-// volatile store.
+// Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
+// system-scope release fence so the store is actually flushed to the shared
+// coherence point and becomes visible to the peer device.
 inline void store_release_sys(uint32_t* addr, uint32_t val) {
+  *addr = val;
   sycl::atomic_fence(
       sycl::memory_order::release, sycl::memory_scope::system);
-  *static_cast<volatile uint32_t*>(addr) = val;
 }
 
+// Matches src/xccl/Signal.hpp load_acquire: issue a system-scope acquire fence
+// BEFORE EACH load so every iteration re-reads the value from the shared
+// coherence point (a plain volatile load is not coherent across devices on
+// PCIe and can spin forever on a cached value).
 inline void wait_eq_sys(uint32_t* addr, uint32_t val) {
-  volatile uint32_t* p = static_cast<volatile uint32_t*>(addr);
-  while (*p != val) {
+  for (;;) {
+    sycl::atomic_fence(
+        sycl::memory_order::acquire, sycl::memory_scope::system);
+    if (*addr == val)
+      break;
   }
-  sycl::atomic_fence(
-      sycl::memory_order::acquire, sycl::memory_scope::system);
 }
 
 template <typename scalar_t, int VEC_SIZE>
 struct RingReduceScatterUnpermuteSingleKernel {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
   const scalar_t* expert_output_ptr;  // [remap_rows, hidden] (local)
   const int64_t* rank_buffers_ptr;    // symm acc buffers, one per rank
   const int64_t* signal_pads_ptr;     // signal pads, one per rank
@@ -132,9 +141,16 @@ struct RingReduceScatterUnpermuteSingleKernel {
         for (int i = 0; i < VEC_SIZE; ++i)
           acc[i] += w * static_cast<float>(src[i]);
       }
+      // Single coalesced VEC_SIZE-wide store; when dst_row is the remote peer's
+      // acc this is one PCIe block transaction instead of VEC_SIZE per-element
+      // writes (the bandwidth-critical path).
+      vec_t vd;
 #pragma unroll
-      for (int i = 0; i < VEC_SIZE; ++i)
-        dst_row[h_start + i] = static_cast<scalar_t>(acc[i]);
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        const scalar_t s = static_cast<scalar_t>(acc[i]);
+        vd[i] = *reinterpret_cast<const vec_elem_t*>(&s);
+      }
+      *reinterpret_cast<vec_t*>(dst_row + h_start) = vd;
     }
     // Tail for hidden not divisible by VEC_SIZE.
     for (int64_t h = hidden_vecs * VEC_SIZE + lid; h < hidden; h += lsize) {

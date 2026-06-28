@@ -35,6 +35,7 @@ for _lib, _attr in (
     ("libring_reduce_scatter.so", "ring_reduce_scatter"),
     ("libring_allgather_permute.so", "ring_allgather_permute"),
     ("libring_reduce_scatter_unpermute.so", "ring_reduce_scatter_unpermute"),
+    ("libring_build_routing.so", "ring_build_routing"),
 ):
     _path = os.path.join(_BASE, "..", "csrc", _lib)
     if os.path.exists(_path):
@@ -49,6 +50,7 @@ _HAS_RING_ALLGATHER_PERMUTE = hasattr(torch.ops.symm_mem, "ring_allgather_permut
 _HAS_RING_REDUCE_SCATTER_UNPERMUTE = hasattr(
     torch.ops.symm_mem, "ring_reduce_scatter_unpermute"
 )
+_HAS_RING_BUILD_ROUTING = hasattr(torch.ops.symm_mem, "ring_build_routing")
 
 # Monotonically increasing signal tag per group (kept for robustness even
 # though pads are zeroed before each call).
@@ -235,17 +237,21 @@ def ring_allgather(
     return output
 
 
-def ring_reduce_scatter(input: torch.Tensor, group: dist.ProcessGroup = None) -> torch.Tensor:
-    """Pipelined ring reduce-scatter (sum).
+def build_ring_reduce_scatter_resources(
+    input: torch.Tensor, group: dist.ProcessGroup = None
+):
+    """Pre-allocate the symmetric workspace, pointer tensors and output buffer
+    for ring_reduce_scatter, so the (host-side) buffer/pointer setup can be
+    hoisted out of a timed loop.
 
     Args:
-        input: 1D (or flattenable) tensor of `world_size * chunk` elements
-            (the full data, identical layout on every rank).
+        input: a representative full input tensor of `world_size * chunk`
+            elements; its dtype and numel define the workspace size.
         group: process group (default: WORLD).
 
     Returns:
-        A 1D tensor of `chunk` elements containing the reduced (summed) block
-        with index == rank.
+        An opaque resources object to pass as `resources=` to
+        ring_reduce_scatter.
     """
     assert _HAS_RING_REDUCE_SCATTER, "ring_reduce_scatter native kernel not available"
     group, group_name, rank, world_size = _group_info(group)
@@ -264,11 +270,75 @@ def ring_reduce_scatter(input: torch.Tensor, group: dist.ProcessGroup = None) ->
     ) = _build_ring_resources(
         group, group_name, input_flat.dtype, total_numel, world_size, rank
     )
+    output = torch.empty(chunk, dtype=input_flat.dtype, device=input_flat.device)
+    return {
+        "group_name": group_name,
+        "rank": rank,
+        "world_size": world_size,
+        "chunk": chunk,
+        "dtype": input_flat.dtype,
+        "workspace": workspace,
+        "acc": acc,
+        "output": output,
+        "rank_buffers_ptr": rank_buffers_ptr,
+        "signal_pads_ptr": signal_pads_ptr,
+        "local_pad": local_pad,
+    }
+
+
+def ring_reduce_scatter(
+    input: torch.Tensor,
+    group: dist.ProcessGroup = None,
+    resources: dict = None,
+) -> torch.Tensor:
+    """Pipelined ring reduce-scatter (sum).
+
+    Args:
+        input: 1D (or flattenable) tensor of `world_size * chunk` elements
+            (the full data, identical layout on every rank).
+        group: process group (default: WORLD).
+        resources: optional precomputed resources from
+            build_ring_reduce_scatter_resources() to skip per-call
+            workspace/pointer setup (useful for benchmarking the kernel in
+            isolation).
+
+    Returns:
+        A 1D tensor of `chunk` elements containing the reduced (summed) block
+        with index == rank.
+    """
+    assert _HAS_RING_REDUCE_SCATTER, "ring_reduce_scatter native kernel not available"
+    group, group_name, rank, world_size = _group_info(group)
+
+    input_flat = input.contiguous().view(-1)
+    total_numel = input_flat.numel()
+    assert total_numel % world_size == 0, "input numel must be divisible by world_size"
+    chunk = total_numel // world_size
+
+    if resources is not None:
+        assert resources["group_name"] == group_name, "resources group mismatch"
+        assert resources["chunk"] == chunk, "resources chunk size mismatch"
+        assert resources["dtype"] == input_flat.dtype, "resources dtype mismatch"
+        workspace = resources["workspace"]
+        acc = resources["acc"]
+        output = resources["output"]
+        rank_buffers_ptr = resources["rank_buffers_ptr"]
+        signal_pads_ptr = resources["signal_pads_ptr"]
+        local_pad = resources["local_pad"]
+    else:
+        (
+            workspace,
+            acc,
+            rank_buffers_ptr,
+            signal_pads_ptr,
+            local_pad,
+        ) = _build_ring_resources(
+            group, group_name, input_flat.dtype, total_numel, world_size, rank
+        )
+        output = torch.empty(chunk, dtype=input_flat.dtype, device=input_flat.device)
 
     local_pad.zero_()
     workspace.barrier()
 
-    output = torch.empty(chunk, dtype=input_flat.dtype, device=input_flat.device)
     iteration = _next_iter(group_name)
     torch.ops.symm_mem.ring_reduce_scatter(
         input_flat,
@@ -283,28 +353,21 @@ def ring_reduce_scatter(input: torch.Tensor, group: dist.ProcessGroup = None) ->
     return output
 
 
-def ring_allgather_permute(
-    input_shard: torch.Tensor,
-    topk_idx: torch.Tensor,
-    scatter_idx: torch.Tensor,
-    num_experts: int,
-    remap_rows: int,
-    group: dist.ProcessGroup = None,
-) -> torch.Tensor:
-    """Fused ring allgather + MoE permute (dispatch).
+def build_ring_allgather_permute_resources(
+    input_shard: torch.Tensor, group: dist.ProcessGroup = None
+):
+    """Pre-allocate the symmetric workspace and pointer tensors for
+    ring_allgather_permute, so the (host-side) buffer/pointer setup can be
+    hoisted out of a timed loop.
 
     Args:
-        input_shard: [num_tokens_per_rank, hidden] local token shard.
-        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
-        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 destination
-            rows into this rank's expert-grouped buffer.
-        num_experts: total number of experts (for owner computation).
-        remap_rows: number of rows in this rank's expert-grouped output.
+        input_shard: a representative [num_tokens_per_rank, hidden] local shard;
+            its dtype and shape define the workspace size.
         group: process group (default: WORLD).
 
     Returns:
-        remap_output: [remap_rows, hidden] expert-grouped tokens owned by this
-            rank (only owned (token, k) slots are written).
+        An opaque resources object to pass as `resources=` to
+        ring_allgather_permute.
     """
     assert _HAS_RING_ALLGATHER_PERMUTE, "ring_allgather_permute native kernel not available"
     group, group_name, rank, world_size = _group_info(group)
@@ -323,10 +386,87 @@ def ring_allgather_permute(
     ) = _build_ring_resources(
         group, group_name, input_shard.dtype, data_numel, world_size, rank
     )
+    return {
+        "group_name": group_name,
+        "rank": rank,
+        "world_size": world_size,
+        "num_tokens_per_rank": num_tokens_per_rank,
+        "hidden": hidden,
+        "dtype": input_shard.dtype,
+        "workspace": workspace,
+        "gather_output": gather_output,
+        "rank_buffers_ptr": rank_buffers_ptr,
+        "signal_pads_ptr": signal_pads_ptr,
+        "local_pad": local_pad,
+    }
 
-    remap_output = torch.empty(
-        (remap_rows, hidden), dtype=input_shard.dtype, device=input_shard.device
-    )
+
+def ring_allgather_permute(
+    input_shard: torch.Tensor,
+    topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
+    num_experts: int,
+    remap_rows: int,
+    group: dist.ProcessGroup = None,
+    resources: dict = None,
+    remap_output: torch.Tensor = None,
+) -> torch.Tensor:
+    """Fused ring allgather + MoE permute (dispatch).
+
+    Args:
+        input_shard: [num_tokens_per_rank, hidden] local token shard.
+        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
+        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 destination
+            rows into this rank's expert-grouped buffer.
+        num_experts: total number of experts (for owner computation).
+        remap_rows: number of rows in this rank's expert-grouped output.
+        group: process group (default: WORLD).
+        resources: optional precomputed resources from
+            build_ring_allgather_permute_resources() to skip per-call
+            workspace/pointer setup (useful for benchmarking the kernel in
+            isolation).
+        remap_output: optional preallocated [remap_rows, hidden] output buffer
+            to avoid per-call allocation in a timed loop.
+
+    Returns:
+        remap_output: [remap_rows, hidden] expert-grouped tokens owned by this
+            rank (only owned (token, k) slots are written).
+    """
+    assert _HAS_RING_ALLGATHER_PERMUTE, "ring_allgather_permute native kernel not available"
+    group, group_name, rank, world_size = _group_info(group)
+
+    input_shard = input_shard.contiguous()
+    assert input_shard.dim() == 2, "input_shard must be [tokens, hidden]"
+    num_tokens_per_rank, hidden = input_shard.shape
+    data_numel = num_tokens_per_rank * hidden * world_size
+
+    if resources is not None:
+        assert resources["group_name"] == group_name, "resources group mismatch"
+        assert resources["num_tokens_per_rank"] == num_tokens_per_rank, (
+            "resources num_tokens_per_rank mismatch"
+        )
+        assert resources["hidden"] == hidden, "resources hidden size mismatch"
+        assert resources["dtype"] == input_shard.dtype, "resources dtype mismatch"
+        workspace = resources["workspace"]
+        gather_output = resources["gather_output"]
+        rank_buffers_ptr = resources["rank_buffers_ptr"]
+        signal_pads_ptr = resources["signal_pads_ptr"]
+        local_pad = resources["local_pad"]
+    else:
+        (
+            workspace,
+            gather_output,
+            rank_buffers_ptr,
+            signal_pads_ptr,
+            local_pad,
+        ) = _build_ring_resources(
+            group, group_name, input_shard.dtype, data_numel, world_size, rank
+        )
+
+    if remap_output is None:
+        remap_output = torch.empty(
+            (remap_rows, hidden), dtype=input_shard.dtype, device=input_shard.device
+        )
 
     local_pad.zero_()
     workspace.barrier()
@@ -348,29 +488,24 @@ def ring_allgather_permute(
     return remap_output
 
 
-def ring_reduce_scatter_unpermute(
+def build_ring_reduce_scatter_unpermute_resources(
     expert_output: torch.Tensor,
-    topk_idx: torch.Tensor,
-    scatter_idx: torch.Tensor,
-    topk_weights: torch.Tensor,
-    num_experts: int,
     num_tokens_per_rank: int,
     group: dist.ProcessGroup = None,
-) -> torch.Tensor:
-    """Fused MoE unpermute + ring reduce-scatter (combine).
+):
+    """Pre-allocate the symmetric workspace and pointer tensors for
+    ring_reduce_scatter_unpermute, so the (host-side) buffer/pointer setup can
+    be hoisted out of a timed loop.
 
     Args:
-        expert_output: [remap_rows, hidden] this rank's expert outputs.
-        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
-        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 rows into
-            expert_output.
-        topk_weights: [world_size * num_tokens_per_rank, topk] float32 weights.
-        num_experts: total number of experts (for owner computation).
+        expert_output: a representative [remap_rows, hidden] tensor; its dtype
+            and hidden size define the workspace size.
         num_tokens_per_rank: number of tokens this rank receives back.
         group: process group (default: WORLD).
 
     Returns:
-        output: [num_tokens_per_rank, hidden] fully combined tokens of this rank.
+        An opaque resources object to pass as `resources=` to
+        ring_reduce_scatter_unpermute.
     """
     assert (
         _HAS_RING_REDUCE_SCATTER_UNPERMUTE
@@ -390,12 +525,91 @@ def ring_reduce_scatter_unpermute(
     ) = _build_ring_resources(
         group, group_name, expert_output.dtype, data_numel, world_size, rank
     )
+    return {
+        "group_name": group_name,
+        "rank": rank,
+        "world_size": world_size,
+        "num_tokens_per_rank": num_tokens_per_rank,
+        "hidden": hidden,
+        "dtype": expert_output.dtype,
+        "workspace": workspace,
+        "acc": acc,
+        "rank_buffers_ptr": rank_buffers_ptr,
+        "signal_pads_ptr": signal_pads_ptr,
+        "local_pad": local_pad,
+    }
 
-    output = torch.empty(
-        (num_tokens_per_rank, hidden),
-        dtype=expert_output.dtype,
-        device=expert_output.device,
-    )
+
+def ring_reduce_scatter_unpermute(
+    expert_output: torch.Tensor,
+    topk_idx: torch.Tensor,
+    scatter_idx: torch.Tensor,
+    topk_weights: torch.Tensor,
+    num_experts: int,
+    num_tokens_per_rank: int,
+    group: dist.ProcessGroup = None,
+    resources: dict = None,
+    output: torch.Tensor = None,
+) -> torch.Tensor:
+    """Fused MoE unpermute + ring reduce-scatter (combine).
+
+    Args:
+        expert_output: [remap_rows, hidden] this rank's expert outputs.
+        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
+        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 rows into
+            expert_output.
+        topk_weights: [world_size * num_tokens_per_rank, topk] float32 weights.
+        num_experts: total number of experts (for owner computation).
+        num_tokens_per_rank: number of tokens this rank receives back.
+        group: process group (default: WORLD).
+        resources: optional precomputed resources from
+            build_ring_reduce_scatter_unpermute_resources() to skip per-call
+            workspace/pointer setup (useful for benchmarking the kernel in
+            isolation).
+        output: optional preallocated [num_tokens_per_rank, hidden] output
+            buffer to avoid per-call allocation in a timed loop.
+
+    Returns:
+        output: [num_tokens_per_rank, hidden] fully combined tokens of this rank.
+    """
+    assert (
+        _HAS_RING_REDUCE_SCATTER_UNPERMUTE
+    ), "ring_reduce_scatter_unpermute native kernel not available"
+    group, group_name, rank, world_size = _group_info(group)
+
+    expert_output = expert_output.contiguous()
+    hidden = expert_output.size(1)
+    data_numel = num_tokens_per_rank * hidden * world_size
+
+    if resources is not None:
+        assert resources["group_name"] == group_name, "resources group mismatch"
+        assert resources["num_tokens_per_rank"] == num_tokens_per_rank, (
+            "resources num_tokens_per_rank mismatch"
+        )
+        assert resources["hidden"] == hidden, "resources hidden size mismatch"
+        assert resources["dtype"] == expert_output.dtype, "resources dtype mismatch"
+        workspace = resources["workspace"]
+        acc = resources["acc"]
+        rank_buffers_ptr = resources["rank_buffers_ptr"]
+        signal_pads_ptr = resources["signal_pads_ptr"]
+        local_pad = resources["local_pad"]
+    else:
+        (
+            workspace,
+            acc,
+            rank_buffers_ptr,
+            signal_pads_ptr,
+            local_pad,
+        ) = _build_ring_resources(
+            group, group_name, expert_output.dtype, data_numel, world_size, rank
+        )
+
+    if output is None:
+        output = torch.empty(
+            (num_tokens_per_rank, hidden),
+            dtype=expert_output.dtype,
+            device=expert_output.device,
+        )
 
     local_pad.zero_()
     workspace.barrier()

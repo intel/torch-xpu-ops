@@ -40,21 +40,26 @@ namespace {
 // this value.
 constexpr int32_t RING_MAX_WG = 64;
 
-// atomic_ref is unavailable here, so prior writes are ordered with a
-// system-scope release fence and the publish is a naturally-atomic 4-byte
-// volatile store.
+// Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
+// system-scope release fence so the store is actually flushed to the shared
+// coherence point and becomes visible to the peer device.
 inline void store_release_sys(uint32_t* addr, uint32_t val) {
+  *addr = val;
   sycl::atomic_fence(
       sycl::memory_order::release, sycl::memory_scope::system);
-  *static_cast<volatile uint32_t*>(addr) = val;
 }
 
+// Matches src/xccl/Signal.hpp load_acquire: issue a system-scope acquire fence
+// BEFORE EACH load so every iteration re-reads the value from the shared
+// coherence point (a plain volatile load is not coherent across devices on
+// PCIe and can spin forever on a cached value).
 inline void wait_eq_sys(uint32_t* addr, uint32_t val) {
-  volatile uint32_t* p = static_cast<volatile uint32_t*>(addr);
-  while (*p != val) {
+  for (;;) {
+    sycl::atomic_fence(
+        sycl::memory_order::acquire, sycl::memory_scope::system);
+    if (*addr == val)
+      break;
   }
-  sycl::atomic_fence(
-      sycl::memory_order::acquire, sycl::memory_scope::system);
 }
 
 // SINGLE-KERNEL chunked ring reduce-scatter (PUSH based).
@@ -127,10 +132,10 @@ struct RingReduceScatterSingleKernel {
   }
 
   // dst = a + b (accumulate in float) for `n` elements.
-  // Vectorized path: each work-item folds a contiguous run of VEC_SIZE
-  // elements, so the compiler emits coalesced block loads/stores (the remote
-  // `dst` store is the bandwidth-critical part) — same access pattern as
-  // wg_copy.  Falls back to scalar when pointers are not VEC-aligned.
+  // Vectorized path: load `a` and `b` as VEC_SIZE-wide vectors, fold lane by
+  // lane in float, and issue a single VEC_SIZE-wide store — so the remote
+  // `dst` store is one coalesced block transaction (the bandwidth-critical
+  // part), exactly like wg_copy.  Falls back to scalar when not VEC-aligned.
   inline void wg_add2(
       const scalar_t* a,
       const scalar_t* b,
@@ -143,13 +148,24 @@ struct RingReduceScatterSingleKernel {
         reinterpret_cast<uintptr_t>(b) | reinterpret_cast<uintptr_t>(dst);
     if ((al % (VEC_SIZE * sizeof(scalar_t))) == 0 && n >= VEC_SIZE) {
       const int64_t nv = n / VEC_SIZE;
-      for (int64_t v = lid; v < nv; v += lsize) {
-        const int64_t off = v * VEC_SIZE;
+      auto av = reinterpret_cast<const vec_t*>(a);
+      auto bv = reinterpret_cast<const vec_t*>(b);
+      auto dv = reinterpret_cast<vec_t*>(dst);
+      for (int64_t i = lid; i < nv; i += lsize) {
+        vec_t va = av[i];
+        vec_t vb = bv[i];
+        vec_t vd;
 #pragma unroll
         for (int k = 0; k < VEC_SIZE; ++k) {
-          dst[off + k] = static_cast<scalar_t>(
-              static_cast<float>(a[off + k]) + static_cast<float>(b[off + k]));
+          const vec_elem_t ra = va[k];
+          const vec_elem_t rb = vb[k];
+          const scalar_t sa = *reinterpret_cast<const scalar_t*>(&ra);
+          const scalar_t sb = *reinterpret_cast<const scalar_t*>(&rb);
+          const scalar_t sres = static_cast<scalar_t>(
+              static_cast<float>(sa) + static_cast<float>(sb));
+          vd[k] = *reinterpret_cast<const vec_elem_t*>(&sres);
         }
+        dv[i] = vd;
       }
       for (int64_t i = nv * VEC_SIZE + lid; i < n; i += lsize) {
         dst[i] = static_cast<scalar_t>(
