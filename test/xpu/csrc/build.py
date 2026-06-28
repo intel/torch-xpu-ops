@@ -98,6 +98,38 @@ def build():
             "UnpermuteReduceScatter",
         )
     )
+    outputs.append(
+        build_one(
+            cfg,
+            "RingAllgather.cpp",
+            "libring_allgather.so",
+            "RingAllgather",
+        )
+    )
+    outputs.append(
+        build_one(
+            cfg,
+            "RingReduceScatter.cpp",
+            "libring_reduce_scatter.so",
+            "RingReduceScatter",
+        )
+    )
+    outputs.append(
+        build_one(
+            cfg,
+            "RingAllgatherPermute.cpp",
+            "libring_allgather_permute.so",
+            "RingAllgatherPermute",
+        )
+    )
+    outputs.append(
+        build_one(
+            cfg,
+            "RingReduceScatterUnpermute.cpp",
+            "libring_reduce_scatter_unpermute.so",
+            "RingReduceScatterUnpermute",
+        )
+    )
     return outputs
 
 
@@ -110,6 +142,10 @@ def clean():
         os.path.join(base_dir, "libep_combine.so"),
         os.path.join(base_dir, "liballgather_with_symm_mem.so"),
         os.path.join(base_dir, "libunpermute_reduce_scatter.so"),
+        os.path.join(base_dir, "libring_allgather.so"),
+        os.path.join(base_dir, "libring_reduce_scatter.so"),
+        os.path.join(base_dir, "libring_allgather_permute.so"),
+        os.path.join(base_dir, "libring_reduce_scatter_unpermute.so"),
     ]
 
     removed = False
