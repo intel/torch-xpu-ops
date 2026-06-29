@@ -44,13 +44,16 @@ Never stage `third_party/xpu.txt`.
 
 ## Upstream cross-reference
 
-When fixing XPU kernel code, compare against the CUDA implementation:
+When fixing XPU kernel code, compare against the CUDA implementation.
+Reuse the checkout in `agent_space_xpu/pytorch/` if it already exists:
 
 ```bash
-git clone --depth 1 https://github.com/pytorch/pytorch.git /tmp/pytorch
+if [[ ! -d agent_space_xpu/pytorch/.git ]]; then
+    git clone --depth 1 https://github.com/pytorch/pytorch.git agent_space_xpu/pytorch
+fi
 ```
 
-Use `/tmp/pytorch/` to read CUDA kernels, check upstream fixes, and verify
+Use `agent_space_xpu/pytorch/` to read CUDA kernels, check upstream fixes, and verify
 device-agnostic paths. Key mapping:
 
 - `src/ATen/native/xpu/<Op>.cpp` → `aten/src/ATen/native/<Op>.cpp`

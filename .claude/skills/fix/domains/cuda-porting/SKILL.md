@@ -20,14 +20,16 @@ Load `xpu-build-pytorch` for the full env/build workflow.
 
 ### Step 1: Locate the original CUDA test
 
-Find the upstream CUDA test in the PyTorch repo that was ported to XPU:
+Find the upstream CUDA test in the PyTorch repo that was ported to XPU.
+Reuse the checkout in `agent_space_xpu/pytorch/` if it already exists:
 
 ```bash
-# Clone if not already present
-git clone --depth 1 https://github.com/pytorch/pytorch.git /tmp/pytorch
+if [[ ! -d agent_space_xpu/pytorch/.git ]]; then
+    git clone --depth 1 https://github.com/pytorch/pytorch.git agent_space_xpu/pytorch
+fi
 ```
 
-Search for the test by name under `/tmp/pytorch/test/`. Identify any
+Search for the test by name under `agent_space_xpu/pytorch/test/`. Identify any
 CUDA-specific decorators, assertions, tolerances, dtypes, or device
 assumptions in the original.
 

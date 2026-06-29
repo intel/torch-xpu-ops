@@ -147,6 +147,10 @@ fi
 # --- Step 3: download wheel artifacts ---
 echo "[3/4] Downloading wheel artifacts from run $RUN_ID..."
 
+# S3 bucket pattern used by pytorch/pytorch GHA artifact uploads.
+# Format: https://gha-artifacts.s3.amazonaws.com/<owner>/<repo>/<run_id>/<job_name>/artifacts.zip
+# This is a well-known pytorch CI convention; if artifacts move, check the
+# Actions run page on GitHub for updated URLs.
 S3_BASE="https://gha-artifacts.s3.amazonaws.com/pytorch/pytorch/${RUN_ID}"
 WHEELS_DIR="${OUTDIR}/wheels"
 mkdir -p "$WHEELS_DIR"

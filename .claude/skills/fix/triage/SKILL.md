@@ -57,10 +57,13 @@ Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
 ## Step 2: Obtain upstream source for cross-reference
 
 If fixing code in an external submodule repo (e.g. torch-xpu-ops), clone the
-upstream project to compare kernel implementations and check for existing fixes:
+upstream project to compare kernel implementations and check for existing fixes.
+Reuse the checkout in `agent_space_xpu/pytorch/` if it already exists:
 
 ```bash
-git clone --depth 1 https://github.com/pytorch/pytorch.git /tmp/pytorch
+if [[ ! -d agent_space_xpu/pytorch/.git ]]; then
+    git clone --depth 1 https://github.com/pytorch/pytorch.git agent_space_xpu/pytorch
+fi
 ```
 
 See domain skill (loaded by orchestrator) for upstream path mappings.
