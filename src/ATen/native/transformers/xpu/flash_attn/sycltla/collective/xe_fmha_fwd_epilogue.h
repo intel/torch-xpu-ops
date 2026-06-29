@@ -91,11 +91,9 @@ class FMHAFwdEpilogue {
   using TiledCopyO =
       conditional_t<is_void_v<TiledCopyO_>, DefaultTiledCopyO, TiledCopyO_>;
 
-  struct Arguments {
-    float rp_dropout;
-  };
-
-  using Params = Arguments;
+  // Stateless design -- no arguments or parameters.
+  struct Arguments {};
+  struct Params {};
 
   // Shared memory storage
   // Note sum/max tiles are padded to 16 elements, due to limitations in CuTe
@@ -117,14 +115,13 @@ class FMHAFwdEpilogue {
       SharedStorageNone>;
 
  private:
-  Params params;
   SharedStorage& shared;
 
  public:
   static constexpr Params to_underlying_arguments(
       Arguments const& args,
       void* /* workspace */) {
-    return args;
+    return {};
   }
 
   CUTLASS_HOST_DEVICE static bool can_implement(Arguments const&) {
@@ -132,8 +129,7 @@ class FMHAFwdEpilogue {
   }
 
   CUTLASS_HOST_DEVICE
-  FMHAFwdEpilogue(Params const& params_, SharedStorage& shared_)
-      : params(params_), shared(shared_) {}
+  FMHAFwdEpilogue(Params const&, SharedStorage& shared_) : shared(shared_) {}
 
   template <typename QVCoord>
   CUTLASS_DEVICE void operator()(
@@ -145,8 +141,7 @@ class FMHAFwdEpilogue {
       int thr_id, // Work-item ID
       float* pLSE, // Global LSE Ptr
       const std::tuple<int, int, int, int, int, int, int>&
-          metadata_for_lse, // Metadata for LSE to calculate offset
-      bool is_dropout // Whether dropout is enabled
+          metadata_for_lse // Metadata for LSE to calculate offset
   ) {
     using namespace cute;
     using ElementA = typename FragA::element_type;
@@ -167,8 +162,6 @@ class FMHAFwdEpilogue {
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA.size(); i++) {
       rA(i) *= broadcast<0>(rA_sum, rA, i);
-      if (is_dropout)
-        rA(i) *= params.rp_dropout;
       if (std::isnan(rA(i))) {
         rA(i) =
             0; // Handle the -nan when the whole sequence is completely masked
