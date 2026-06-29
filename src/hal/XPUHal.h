@@ -15,6 +15,16 @@
 //
 // No cycle: xpu_hal.dll only links c10 / c10_xpu, never torch_xpu.
 
+#ifdef _WIN32
+#ifdef XPU_HAL_BUILD
+#define XPU_HAL_API __declspec(dllexport)
+#else
+#define XPU_HAL_API __declspec(dllimport)
+#endif
+#else
+#define XPU_HAL_API
+#endif
+
 namespace xpu_hal {
 
 using GetDefaultGeneratorFn =
@@ -24,15 +34,15 @@ using PhiloxStateFn = std::pair<uint64_t, uint64_t> (*)(
     uint64_t increment);
 
 // Called once by torch_xpu during XPU generator initialization.
-void registerXPUGeneratorBridge(
+XPU_HAL_API void registerXPUGeneratorBridge(
     GetDefaultGeneratorFn get_gen,
     PhiloxStateFn philox);
 
 // Bridge accessors for kernel DLLs.
-c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
+XPU_HAL_API c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
     int64_t device_index);
 
-std::pair<uint64_t, uint64_t> philoxState(
+XPU_HAL_API std::pair<uint64_t, uint64_t> philoxState(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
@@ -41,7 +51,7 @@ std::pair<uint64_t, uint64_t> philoxState(
 // instead of linking torch_xpu.dll directly.
 // o p a q u e   f u n c t i o n   p o i n t e r s   a v o i d
 // pulling ATen headers into every kernel DLL through this header.
-void registerTorchXpuBridge(
+XPU_HAL_API void registerTorchXpuBridge(
     void* empty_xpu_primary,
     void* get_device_props);
 
