@@ -30,10 +30,16 @@ endmacro()
 set(xpu_hal_srcs ${TORCH_XPU_OPS_ROOT}/src/hal/XPUHal.cpp)
 if(NOT TARGET xpu_hal)
   add_library(xpu_hal SHARED ${xpu_hal_srcs})
-  target_link_libraries(xpu_hal PUBLIC c10 c10_xpu)
-  target_include_directories(xpu_hal PUBLIC ${TORCH_XPU_OPS_ROOT}/src)
-  target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS})
-  set_target_properties(xpu_hal PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+  target_link_libraries(xpu_hal PRIVATE c10 c10_xpu)
+  target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src)
+# xpu_hal exports via __declspec(dllexport) in XPUHal.h
+# No WINDOWS_EXPORT_ALL_SYMBOLS to avoid INTERFACE_INCLUDE_DIRECTORIES leaks
+  target_compile_definitions(xpu_hal PRIVATE XPU_HAL_BUILD)
+  # The directory-level include_directories(SYSTEM ...) in pytorch's
+  # caffe2/CMakeLists.txt leaks source-tree paths into every target's
+  # INTERFACE_INCLUDE_DIRECTORIES. Clear them so cmake export validation
+  # (CMP0126) doesn't fail.
+  set_target_properties(xpu_hal PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
   list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_hal)
   install(TARGETS xpu_hal EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 endif()
