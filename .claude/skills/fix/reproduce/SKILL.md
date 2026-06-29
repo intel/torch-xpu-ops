@@ -22,7 +22,7 @@ the result.
 - `ci_commit` — upstream commit hash from the CI report (optional but
   recommended).
 - `pytorch_dir` — path to a local PyTorch checkout (optional). If absent and
-  stage 2 is needed, clone to `agent_space/pytorch/`.
+  stage 2 is needed, clone to `agent_space_xpu/pytorch/`.
 
 ## Stage 1: Nightly Wheel (fast path)
 
@@ -73,9 +73,9 @@ If `pytorch_dir` is provided: `git -C $pytorch_dir checkout <ci_commit>`
 If not provided, clone:
 ```bash
 git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
-  agent_space/pytorch
-git -C agent_space/pytorch checkout <ci_commit>
-git -C agent_space/pytorch submodule update --init --recursive
+  agent_space_xpu/pytorch
+git -C agent_space_xpu/pytorch checkout <ci_commit>
+git -C agent_space_xpu/pytorch submodule update --init --recursive
 ```
 
 ### Build and run

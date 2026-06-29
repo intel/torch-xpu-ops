@@ -48,7 +48,7 @@ Call `fix/reproduce` with:
 - `reproducer_command` from the issue body (if present)
 - `ci_commit` if the issue references a specific CI run
 - `pytorch_dir` if available; otherwise `fix/reproduce` clones to
-  `agent_space/pytorch/`
+  `agent_space_xpu/pytorch/`
 
 Interpret the output:
 
