@@ -31,7 +31,6 @@ fi
 PY_VERSION="3.10"
 OUTDIR="${HOME}/ci_env_artifacts"
 CONTAINER_NAME="pytorch_xpu_ci"
-WORKFLOW_ID="79954307"  # pytorch/pytorch "xpu" workflow
 
 BUILD_ENVS=(
     "linux-noble-xpu-n-py3.10"
@@ -51,6 +50,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$OUTDIR"
+
+# --- Resolve workflow ID dynamically ---
+# Looks up the "xpu" workflow by name at runtime so the script stays valid
+# even if the workflow is recreated or renamed.
+# Manual lookup: gh api repos/pytorch/pytorch/actions/workflows --jq '.workflows[] | select(.name=="xpu") | {id,name,path}'
+echo "[0/4] Resolving xpu workflow ID..."
+WORKFLOW_ID=$(gh api repos/pytorch/pytorch/actions/workflows \
+    --jq '.workflows[] | select(.name == "xpu") | .id' 2>/dev/null | head -1)
+if [[ -z "$WORKFLOW_ID" ]]; then
+    echo "ERROR: Could not find a workflow named 'xpu' in pytorch/pytorch." >&2
+    echo "  Check: gh api repos/pytorch/pytorch/actions/workflows --jq '.workflows[].name'" >&2
+    exit 1
+fi
+echo "  Workflow ID: $WORKFLOW_ID"
 
 # --- Step 1: find latest run where all linux build-osdc jobs succeeded ---
 echo "[1/4] Searching for latest xpu workflow run with successful linux builds..."

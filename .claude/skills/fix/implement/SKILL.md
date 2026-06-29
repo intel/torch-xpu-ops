@@ -92,6 +92,11 @@ Return to the orchestrator:
 - **Ready for verify:** yes
 ```
 
+**Contract:** changes are left staged (`git add`) but NOT committed. The
+orchestrator commits only after `fix/verify` returns `PASSED`. `fix/verify`
+relies on `git stash` to record a before-state, which requires uncommitted
+changes to be present when verify is called.
+
 ## HARD RULES
 - NEVER add skip decorators when `allow_skip=false`.
 - NEVER modify files outside your repo scope.

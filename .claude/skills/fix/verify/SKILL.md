@@ -47,6 +47,11 @@ Python-only changes (`*.py`) need no rebuild.
 
 ## Step 3: Before/after comparison (if run_before_after_diff=true)
 
+**Contract:** this step requires that `fix/implement` left changes staged but
+uncommitted. `git stash -u` temporarily removes them to obtain a before-state.
+If the orchestrator has already committed the changes before calling verify,
+the stash will find nothing and the before recording is skipped.
+
 ```bash
 # Record BEFORE (without the fix)
 git stash -u   # stash staged, unstaged, and untracked changes

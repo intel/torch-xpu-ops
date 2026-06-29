@@ -154,10 +154,6 @@ Return to the orchestrator:
 }
 ```
 
-After returning this result, use the `skill` tool to load
-`fix/domains/<domain>` before calling `fix/implement`. If no domain skill
-exists for the reported domain, proceed without it.
-
 ## HARD RULES
 - NEVER make code changes or create PRs for `task`-labeled issues.
 - NEVER submit a torch-xpu-ops PR for a bug whose root cause is in pytorch.
