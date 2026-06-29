@@ -23,13 +23,13 @@ except Exception:
 
 with XPUPatchForImport(False):
     from test_scaled_matmul_cuda import (
-        f8_msg,
-        IS_WINDOWS,
-        PLATFORM_SUPPORTS_FP8,
         e4m3_type,
         e5m2_type,
-        random_matrix_with_scaled_reduction_dim,
+        f8_msg,
+        IS_WINDOWS,
         mm_float8_emulated,
+        PLATFORM_SUPPORTS_FP8,
+        random_matrix_with_scaled_reduction_dim,
         scaled_mm_wrap,
         tensor_to_scale,
         tensor_to_scale_block,
