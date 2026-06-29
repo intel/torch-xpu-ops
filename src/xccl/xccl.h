@@ -76,8 +76,7 @@ inline const std::string& getVersionString() {
     const int minorBase = 100;
     auto xcclMajor = version / majorBase;
     auto xcclMinor = (version % majorBase) / minorBase;
-    auto xcclPatch =
-        version % (xcclMajor * majorBase + xcclMinor * minorBase);
+    auto xcclPatch = version % (xcclMajor * majorBase + xcclMinor * minorBase);
     return std::to_string(xcclMajor) + "." + std::to_string(xcclMinor) + "." +
         std::to_string(xcclPatch);
   }();

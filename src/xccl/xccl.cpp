@@ -159,12 +159,7 @@ void onecclGather(
       if (r != root) {
         auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
         onecclRecv(
-            recvbuff,
-            count,
-            xcclDataType,
-            r,
-            comm.onecclComm,
-            &stream.queue());
+            recvbuff, count, xcclDataType, r, comm.onecclComm, &stream.queue());
       } else {
         // on its own rank, simply copy from the input
         outputs[r].copy_(inputs);

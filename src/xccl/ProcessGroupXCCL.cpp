@@ -644,8 +644,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
   // completes.
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
-  xcclStreamsMap_.emplace(
-      deviceKey, XCCLStream{at::xpu::XPUStream(stream)});
+  xcclStreamsMap_.emplace(deviceKey, XCCLStream{at::xpu::XPUStream(stream)});
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
   LOG(INFO) << logPrefix()
@@ -1539,8 +1538,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
-        xccl::onecclReduce(
-            input, output, comm, opts.reduceOp, root, stream);
+        xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
@@ -1573,8 +1571,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
-        xccl::onecclReduce(
-            input, output, comm, opts.reduceOp, root, stream);
+        xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
@@ -1887,8 +1884,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
-        xccl::onecclReduceScatter(
-            input, output, comm, actualReduceOp, stream);
+        xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1938,8 +1934,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
-        xccl::onecclReduceScatter(
-            input, output, comm, actualReduceOp, stream);
+        xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
