@@ -19,6 +19,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/RangeFactories.h>
+#include <ATen/native/RangeUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
 #include <comm/xpu_aten.h>
@@ -43,23 +44,7 @@ Tensor& arange_xpu_out(
       out.scalar_type(),
       "arange_xpu_preprocess",
       [&]() {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-        auto xstart = start.to<accscalar_t>();
-        auto xend = end.to<accscalar_t>();
-        auto xstep = step.to<accscalar_t>();
-
-        TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
-        TORCH_CHECK(
-            std::isfinite(static_cast<double>(xstart)) &&
-                std::isfinite(static_cast<double>(xend)),
-            "unsupported range: ",
-            xstart,
-            " -> ",
-            xend);
-        TORCH_CHECK(
-            ((xstep > 0) && (xend >= xstart)) ||
-                ((xstep < 0) && (xend <= xstart)),
-            "upper bound and larger bound inconsistent with step sign");
+        arange_check_bounds(start, end, step);
 
         // we use double precision for (start - end) / step
         // to compute size_d for consistency across devices.
@@ -71,6 +56,11 @@ Tensor& arange_xpu_out(
         // than double
         double size_d;
         if constexpr (std::is_same_v<scalar_t, int64_t>) {
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+          auto xstart = start.to<accscalar_t>();
+          auto xend = end.to<accscalar_t>();
+          auto xstep = step.to<accscalar_t>();
+          TORCH_CHECK_VALUE(xstep != 0, "step must be nonzero");
           int64_t sgn = (xstep > 0) - (xstep < 0);
           size_d = std::ceil((xend - xstart + xstep - sgn) / xstep);
         } else {

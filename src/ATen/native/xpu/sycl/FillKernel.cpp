@@ -40,6 +40,7 @@ void fill_kernel(TensorIterator& iter, const Scalar& value) {
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
       kComplexHalf,
+      kBComplex32,
       kBool,
       kHalf,
       kBFloat16,
