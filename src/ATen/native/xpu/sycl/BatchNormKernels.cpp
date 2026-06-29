@@ -605,10 +605,10 @@ struct BatchNormCollectStatisticsMergeKernelFunctor {
           staging_m2n_[idx]);
     }
 
-    if (save_mean_.data() != NULL) {
+    if (save_mean_ != nullptr) {
       save_mean_[plane] = acc_mean;
     }
-    if (save_transformed_var_.data() != NULL) {
+    if (save_transformed_var_ != nullptr) {
       save_transformed_var_[plane] =
           VarTransform{}(acc_m2n / acc_count, epsilon_);
     }
@@ -634,8 +634,8 @@ struct BatchNormCollectStatisticsMergeKernelFunctor {
       : staging_mean_(staging_mean),
         staging_m2n_(staging_m2n),
         staging_count_(staging_count),
-        save_mean_(save_mean),
-        save_transformed_var_(save_transformed_var),
+        save_mean_(save_mean.data()),
+        save_transformed_var_(save_transformed_var.data()),
         epsilon_(epsilon),
         nwg_y_(nwg_y),
         n_input_(n_input) {}
@@ -644,10 +644,8 @@ struct BatchNormCollectStatisticsMergeKernelFunctor {
   const stat_accscalar_t* staging_mean_;
   const stat_accscalar_t* staging_m2n_;
   const int* staging_count_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
-      save_mean_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
-      save_transformed_var_;
+  stat_accscalar_t* save_mean_;
+  stat_accscalar_t* save_transformed_var_;
   stat_accscalar_t epsilon_;
   int nwg_y_;
   int n_input_;
@@ -2131,16 +2129,16 @@ struct BatchNormBackwardReduceKernelFunctor
 
     if (nwg_y == 1) {
       if (item.get_local_id(1) == 0) {
-        if (grad_weight_.size(0) > 0) {
+        if (grad_weight_ != nullptr) {
           grad_weight_[plane] = static_cast<stat_scalar_t>(res.v2 * factor);
         }
-        if (grad_bias_.size(0) > 0) {
+        if (grad_bias_ != nullptr) {
           grad_bias_[plane] = static_cast<stat_scalar_t>(res.v1);
         }
-        if (sum_dy_.size(0) > 0) {
+        if (sum_dy_ != nullptr) {
           sum_dy_[plane] = static_cast<stat_accscalar_t>(res.v1);
         }
-        if (sum_dy_xmu_.size(0) > 0) {
+        if (sum_dy_xmu_ != nullptr) {
           sum_dy_xmu_[plane] = static_cast<stat_accscalar_t>(res.v2);
         }
       }
@@ -2199,12 +2197,12 @@ struct BatchNormBackwardReduceKernelFunctor
       int n_input)
       : input_(input),
         grad_output_(grad_output),
-        mean_(mean),
-        invstd_(invstd),
-        sum_dy_(sum_dy),
-        sum_dy_xmu_(sum_dy_xmu),
-        grad_weight_(grad_weight),
-        grad_bias_(grad_bias),
+        mean_(mean.data()),
+        invstd_(invstd.data()),
+        sum_dy_(sum_dy.data()),
+        sum_dy_xmu_(sum_dy_xmu.data()),
+        grad_weight_(grad_weight.data()),
+        grad_bias_(grad_bias.data()),
         wg_size_(wg_size),
         staging_sum_dy_(staging_sum_dy),
         staging_sum_dy_xmu_(staging_sum_dy_xmu),
@@ -2223,18 +2221,12 @@ struct BatchNormBackwardReduceKernelFunctor
       DefaultPtrTraits,
       index_t>
       grad_output_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      mean_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      invstd_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      sum_dy_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      sum_dy_xmu_;
-  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
-      grad_weight_;
-  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
-      grad_bias_;
+  const stat_accscalar_t* mean_;
+  const stat_accscalar_t* invstd_;
+  stat_accscalar_t* sum_dy_;
+  stat_accscalar_t* sum_dy_xmu_;
+  stat_scalar_t* grad_weight_;
+  stat_scalar_t* grad_bias_;
   int wg_size_;
   stat_accscalar_t* staging_sum_dy_;
   stat_accscalar_t* staging_sum_dy_xmu_;
@@ -2253,16 +2245,16 @@ struct BatchNormBackwardReduceMergeKernelFunctor {
       total_v1 += staging_sum_dy_[gy * n_input_ + c];
       total_v2 += staging_sum_dy_xmu_[gy * n_input_ + c];
     }
-    if (grad_weight_.size(0) > 0) {
+    if (grad_weight_ != nullptr) {
       grad_weight_[c] = static_cast<stat_scalar_t>(total_v2 * invstd_[c]);
     }
-    if (grad_bias_.size(0) > 0) {
+    if (grad_bias_ != nullptr) {
       grad_bias_[c] = static_cast<stat_scalar_t>(total_v1);
     }
-    if (sum_dy_.size(0) > 0) {
+    if (sum_dy_ != nullptr) {
       sum_dy_[c] = total_v1;
     }
-    if (sum_dy_xmu_.size(0) > 0) {
+    if (sum_dy_xmu_ != nullptr) {
       sum_dy_xmu_[c] = total_v2;
     }
   }
@@ -2293,27 +2285,22 @@ struct BatchNormBackwardReduceMergeKernelFunctor {
       int nwg_y)
       : staging_sum_dy_(staging_sum_dy),
         staging_sum_dy_xmu_(staging_sum_dy_xmu),
-        sum_dy_(sum_dy),
-        sum_dy_xmu_(sum_dy_xmu),
-        grad_weight_(grad_weight),
-        grad_bias_(grad_bias),
-        invstd_(invstd),
+        sum_dy_(sum_dy.data()),
+        sum_dy_xmu_(sum_dy_xmu.data()),
+        grad_weight_(grad_weight.data()),
+        grad_bias_(grad_bias.data()),
+        invstd_(invstd.data()),
         n_input_(n_input),
         nwg_y_(nwg_y) {}
 
  private:
   const stat_accscalar_t* staging_sum_dy_;
   const stat_accscalar_t* staging_sum_dy_xmu_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      sum_dy_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      sum_dy_xmu_;
-  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
-      grad_weight_;
-  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
-      grad_bias_;
-  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
-      invstd_;
+  stat_accscalar_t* sum_dy_;
+  stat_accscalar_t* sum_dy_xmu_;
+  stat_scalar_t* grad_weight_;
+  stat_scalar_t* grad_bias_;
+  const stat_accscalar_t* invstd_;
   int n_input_;
   int nwg_y_;
 };
