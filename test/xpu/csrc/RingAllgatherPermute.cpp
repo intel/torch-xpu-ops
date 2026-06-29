@@ -49,7 +49,7 @@
 
 namespace {
 
-constexpr int32_t RING_MAX_WG = 64;
+constexpr int32_t RING_MAX_WG = 256;
 
 // Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
 // system-scope release fence so the store is actually flushed to the shared
@@ -93,6 +93,7 @@ struct RingAllgatherPermuteSingleKernel {
   int32_t rank;
   int32_t world_size;
   int32_t right;
+  int32_t left;
   int32_t num_wg;
   int32_t base_experts;
   int32_t rem_experts;
@@ -120,41 +121,6 @@ struct RingAllgatherPermuteSingleKernel {
     } else {
       for (int64_t i = lid; i < n; i += lsize)
         dst[i] = src[i];
-    }
-  }
-
-  // Single-read dual-write cooperative copy (phase 0: own gather slot + push).
-  inline void wg_copy2(
-      const scalar_t* src,
-      scalar_t* dst0,
-      scalar_t* dst1,
-      int64_t n,
-      int32_t lid,
-      int32_t lsize) const {
-    if (n <= 0) return;
-    const uintptr_t a = reinterpret_cast<uintptr_t>(src) |
-        reinterpret_cast<uintptr_t>(dst0) | reinterpret_cast<uintptr_t>(dst1);
-    if ((a % (VEC_SIZE * sizeof(scalar_t))) == 0 && n >= VEC_SIZE) {
-      const int64_t nv = n / VEC_SIZE;
-      auto sv = reinterpret_cast<const vec_t*>(src);
-      auto dv0 = reinterpret_cast<vec_t*>(dst0);
-      auto dv1 = reinterpret_cast<vec_t*>(dst1);
-      for (int64_t i = lid; i < nv; i += lsize) {
-        const vec_t v = sv[i];
-        dv0[i] = v;
-        dv1[i] = v;
-      }
-      for (int64_t i = nv * VEC_SIZE + lid; i < n; i += lsize) {
-        const scalar_t v = src[i];
-        dst0[i] = v;
-        dst1[i] = v;
-      }
-    } else {
-      for (int64_t i = lid; i < n; i += lsize) {
-        const scalar_t v = src[i];
-        dst0[i] = v;
-        dst1[i] = v;
-      }
     }
   }
 
@@ -208,25 +174,31 @@ struct RingAllgatherPermuteSingleKernel {
 
     uint32_t* my_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[rank]);
     uint32_t* right_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[right]);
-    scalar_t* right_gather =
-        reinterpret_cast<scalar_t*>(rank_buffers_ptr[right]);
+    scalar_t* left_gather =
+        reinterpret_cast<scalar_t*>(rank_buffers_ptr[left]);
 
-    // Phase 0: publish our own shard (block `rank`) then permute it.
+    // Phase 0: publish our own shard (block `rank`) into our LOCAL gather slot,
+    // then tell the right peer it may pull block `rank` from us.  Permute it
+    // while the peers read.  (PULL ring: data moves by REMOTE READS from the
+    // left neighbour rather than remote writes to the right neighbour, because
+    // on this PCIe fabric peer reads sustain far higher bandwidth than the
+    // posted-write traffic a push ring generates.)
     {
       const scalar_t* src = input_shard_ptr + base;
       const int64_t slot = static_cast<int64_t>(rank) * chunk + base;
-      wg_copy2(src, gather_ptr + slot, right_gather + slot, cnt, lid, lsize);
+      wg_copy(src, gather_ptr + slot, cnt, lid, lsize);
       sycl::atomic_fence(
           sycl::memory_order::release, sycl::memory_scope::system);
       item.barrier(sycl::access::fence_space::local_space);
       if (lid == 0 && world_size > 1) {
         store_release_sys(right_pad + (0 * num_wg + wg), tag);
       }
-      // Terminal local permute of block `rank` (overlaps peers' next hop).
+      // Terminal local permute of block `rank` (overlaps peers' reads).
       wg_permute_block(rank, token_base, token_cnt, lid, lsize);
     }
 
-    // Steps 1..ws-1: forward + signal FIRST, then permute the received block.
+    // Steps 1..ws-1: wait until the left peer has block `idx` ready, PULL it
+    // into our gather slot, re-publish to the right peer, then permute it.
     for (int32_t t = 1; t < world_size; ++t) {
       if (lid == 0) {
         wait_eq_sys(my_pad + ((t - 1) * num_wg + wg), tag);
@@ -237,17 +209,17 @@ struct RingAllgatherPermuteSingleKernel {
 
       const int32_t idx = (rank - t + world_size) % world_size;
 
-      if (t < world_size - 1) {
-        const scalar_t* src =
-            gather_ptr + static_cast<int64_t>(idx) * chunk + base;
-        scalar_t* dst = right_gather + static_cast<int64_t>(idx) * chunk + base;
-        wg_copy(src, dst, cnt, lid, lsize);
-        sycl::atomic_fence(
-            sycl::memory_order::release, sycl::memory_scope::system);
-        item.barrier(sycl::access::fence_space::local_space);
-        if (lid == 0) {
-          store_release_sys(right_pad + (t * num_wg + wg), tag);
-        }
+      // Remote read: copy block `idx` from the left peer's gather slot into our
+      // own.  This is the only cross-rank traffic and it is a pure load.
+      const scalar_t* src =
+          left_gather + static_cast<int64_t>(idx) * chunk + base;
+      scalar_t* dst = gather_ptr + static_cast<int64_t>(idx) * chunk + base;
+      wg_copy(src, dst, cnt, lid, lsize);
+      sycl::atomic_fence(
+          sycl::memory_order::release, sycl::memory_scope::system);
+      item.barrier(sycl::access::fence_space::local_space);
+      if (t < world_size - 1 && lid == 0) {
+        store_release_sys(right_pad + (t * num_wg + wg), tag);
       }
       // Permute this block's tokens (terminal local work for all blocks).
       wg_permute_block(idx, token_base, token_cnt, lid, lsize);
@@ -352,6 +324,7 @@ at::Tensor ring_allgather_permute(
   const int32_t ws = static_cast<int32_t>(world_size);
   const int32_t r = static_cast<int32_t>(rank);
   const int32_t right = (r + 1) % ws;
+  const int32_t left = (r - 1 + ws) % ws;
   const int32_t topk = static_cast<int32_t>(topk_idx.size(1));
   const uint32_t tag = static_cast<uint32_t>(iteration);
 
@@ -383,6 +356,7 @@ at::Tensor ring_allgather_permute(
             r,
             ws,
             right,
+            left,
             num_wg,
             base_experts,
             rem_experts,

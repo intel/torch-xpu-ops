@@ -56,12 +56,16 @@ _HAS_RING_BUILD_ROUTING = hasattr(torch.ops.symm_mem, "ring_build_routing")
 # though pads are zeroed before each call).
 _iter_counters = {}
 
-# Must match RING_MAX_WG in RingAllgather.cpp / RingReduceScatter.cpp. The
-# single-kernel ring uses per-work-group signal slots laid out as
+# Upper bound on the number of work-groups any single-kernel ring collective
+# launches; it sizes the signal-pad region.  Must be >= the largest RING_MAX_WG
+# used by any ring kernel (RingAllgather.cpp / RingReduceScatter.cpp use 64;
+# RingAllgatherPermute.cpp uses 256, since more work-groups expose the
+# parallelism needed to saturate cross-GPU read bandwidth on the pull ring).
+# The single-kernel ring uses per-work-group signal slots laid out as
 # slot(phase, wg) = phase * num_wg + wg, with phase up to world_size-1 and
-# wg up to num_wg-1 (num_wg <= RING_MAX_WG). Allocating world_size * RING_MAX_WG
+# wg up to num_wg-1 (num_wg <= RING_MAX_WG). Allocating world_size * _RING_MAX_WG
 # uint32 slots per rank is always sufficient.
-_RING_MAX_WG = 64
+_RING_MAX_WG = 256
 
 
 def _next_iter(group_name):
