@@ -203,3 +203,21 @@ macro(set_build_flags)
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 endmacro()
+
+# Shared options/includes/links for every torch_xpu_ops target.
+# ARGN = extra PUBLIC libs (Windows: c10_xpu torch_cpu).
+function(torch_xpu_ops_finalize_targets)
+  foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
+    # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
+    torch_compile_options(${lib})
+    target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
+    target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
+
+    target_include_directories(${lib} PUBLIC
+        ${TORCH_XPU_OPS_INCLUDE_DIRS} ${ATen_XPU_INCLUDE_DIRS} ${SYCL_INCLUDE_DIR})
+
+    target_link_libraries(${lib}
+        PUBLIC  ${SYCL_LIBRARY} ${ARGN}
+        PRIVATE ATEN_XPU_FILES_GEN_LIB)
+  endforeach()
+endfunction()
