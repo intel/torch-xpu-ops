@@ -66,15 +66,29 @@ if os.path.exists(_NOTIFY_LIB_PATH):
     except Exception:
         pass
 
-# Ring (single-kernel, pipelined) fused collectives.
-from ring_collectives import (
-    _HAS_RING_ALLGATHER_PERMUTE,
-    _HAS_RING_REDUCE_SCATTER_UNPERMUTE,
-    build_ring_allgather_permute_resources,
-    build_ring_reduce_scatter_unpermute_resources,
-    ring_allgather_permute,
-    ring_reduce_scatter_unpermute,
+# Ring (single-kernel, pipelined) fused collectives — native op availability.
+_RING_LIB_NAMES = (
+    "libring_allgather_permute.so",
+    "libring_reduce_scatter_unpermute.so",
 )
+for _lib in _RING_LIB_NAMES:
+    _path = os.path.join(os.path.dirname(__file__), "..", "csrc", _lib)
+    if os.path.exists(_path):
+        try:
+            torch.ops.load_library(_path)
+        except Exception:
+            pass
+_HAS_RING_ALLGATHER_PERMUTE = hasattr(torch.ops.symm_mem, "ring_allgather_permute")
+_HAS_RING_REDUCE_SCATTER_UNPERMUTE = hasattr(
+    torch.ops.symm_mem, "ring_reduce_scatter_unpermute"
+)
+
+# Upper bound on the number of work-groups any single-kernel ring collective
+# launches; sizes the signal-pad region.
+_RING_MAX_WG = 256
+
+# Monotonically increasing signal tag per SymmBuffer instance.
+_ring_iter_counters: dict = {}
 
 # Select the fused-kernel implementation.  When FUSION_RING=1 (the default), the
 # allgather_local_permute_fusion / unpermute_reducescatter_fusion APIs use the
@@ -150,9 +164,14 @@ class SymmBuffer:
         weights_section_bytes = (
             num_max_tokens_per_rank * num_topk * 4 * self.num_ranks
         )
-        self.workspace_size_bytes = (
-            hidden_section_bytes + topk_section_bytes + weights_section_bytes
+        # Signal pad for ring collectives: placed after the three data sections.
+        ring_pad_slots = self.num_ranks * _RING_MAX_WG
+        ring_pad_bytes = ring_pad_slots * 4
+        self._ring_pad_offset_bytes = (
+            (hidden_section_bytes + topk_section_bytes + weights_section_bytes + 127)
+            // 128 * 128
         )
+        self.workspace_size_bytes = self._ring_pad_offset_bytes + ring_pad_bytes
         self.workspace = symm_mem.get_symm_mem_workspace(
             self.group.group_name,
             min_size=self.workspace_size_bytes,
@@ -254,16 +273,44 @@ class SymmBuffer:
             and _HAS_RING_REDUCE_SCATTER_UNPERMUTE
             and _HAS_NOTIFY_DISPATCH_V2_KERNEL
         )
-        self._ring_ag_resources = None
-        self._ring_rs_resources = None
+        self._ring_rank_buffers_ptr = None
+        self._ring_signal_pads_ptr = None
+        self._ring_local_data = None
+        self._ring_local_pad = None
         if self._fusion_ring:
-            repr_tensor = self._unpermute_local_bufs[0]  # [M, hidden] hidden_dtype
-            self._ring_ag_resources = build_ring_allgather_permute_resources(
-                repr_tensor, group=self.group
+            # Ring rank_buffers_ptr: all ranks at offset 0 (flat gather buffer).
+            data_numel = num_max_tokens_per_rank * hidden * self.num_ranks
+            ring_data_ptrs = []
+            ring_pad_ptrs = []
+            pad_offset_i32 = self._ring_pad_offset_bytes // 4
+            pad_slots = self.num_ranks * _RING_MAX_WG
+            for r in range(self.num_ranks):
+                dbuf = self.workspace.get_buffer(
+                    r, (data_numel,), hidden_dtype, storage_offset=0
+                )
+                pbuf = self.workspace.get_buffer(
+                    r, (pad_slots,), torch.int32, storage_offset=pad_offset_i32
+                )
+                ring_data_ptrs.append(dbuf.data_ptr())
+                ring_pad_ptrs.append(pbuf.data_ptr())
+                if r == self.rank_idx:
+                    self._ring_local_data = dbuf
+                    self._ring_local_pad = pbuf
+            signed_data = [ctypes.c_int64(p).value for p in ring_data_ptrs]
+            signed_pad = [ctypes.c_int64(p).value for p in ring_pad_ptrs]
+            self._ring_rank_buffers_ptr = torch.tensor(
+                signed_data, dtype=torch.int64, device=device
             )
-            self._ring_rs_resources = build_ring_reduce_scatter_unpermute_resources(
-                repr_tensor, num_max_tokens_per_rank, group=self.group
+            self._ring_signal_pads_ptr = torch.tensor(
+                signed_pad, dtype=torch.int64, device=device
             )
+
+    def _next_ring_iter(self) -> int:
+        """Return a monotonically increasing ring iteration tag."""
+        key = self.group.group_name
+        v = _ring_iter_counters.get(key, 0) + 1
+        _ring_iter_counters[key] = v
+        return v
 
     def _build_rank_buffers_ptr(self) -> torch.Tensor:
         """Build stable rank_buffers_ptr for allgather_permute kernel.
@@ -440,13 +487,19 @@ class SymmBuffer:
             expert_cumsum[flat_expert] + flat_rel
         ).reshape(num_tokens, topk)
 
-        ring_allgather_permute(
+        iteration = self._next_ring_iter()
+        actual_data_numel = num_tokens_per_rank * self.hidden * self.num_ranks
+        ring_gather_output = self._ring_local_data[:actual_data_numel]
+        torch.ops.symm_mem.ring_allgather_permute(
             hidden_shard,
-            abs_scatter_idx,
-            remap_hidden_states.shape[0],
-            group=self.group,
-            resources=self._ring_ag_resources,
-            remap_output=remap_hidden_states,
+            self._ring_rank_buffers_ptr,
+            self._ring_signal_pads_ptr,
+            ring_gather_output,
+            remap_hidden_states,
+            abs_scatter_idx.contiguous(),
+            self.rank_idx,
+            self.num_ranks,
+            iteration,
         )
 
         handle = SymmHandle(
@@ -618,14 +671,23 @@ class SymmBuffer:
         num_tokens_per_rank: int,
     ) -> torch.Tensor:
         """Single-kernel fused unpermute + ring reduce-scatter."""
-        ring_reduce_scatter_unpermute(
+        self._ring_local_pad.zero_()
+        self.workspace.barrier()
+
+        iteration = self._next_ring_iter()
+        actual_data_numel = num_tokens_per_rank * self.hidden * self.num_ranks
+        ring_acc_output = self._ring_local_data[:actual_data_numel]
+        torch.ops.symm_mem.ring_reduce_scatter_unpermute(
             expert_output,
-            handle.abs_scatter_idx,
-            handle.global_topk_weights,
-            num_tokens_per_rank,
-            group=self.group,
-            resources=self._ring_rs_resources,
-            output=output,
+            self._ring_rank_buffers_ptr,
+            self._ring_signal_pads_ptr,
+            ring_acc_output,
+            output,
+            handle.abs_scatter_idx.contiguous(),
+            handle.global_topk_weights.contiguous(),
+            self.rank_idx,
+            self.num_ranks,
+            iteration,
         )
         if _SYMM_BUFFER_DEBUG:
             _logger.debug(
