@@ -49,8 +49,8 @@ Always redirect build output to a log file so failures can be diagnosed:
 
 ```bash
 source build_pytorch.env  # sets USE_XPU, USE_CUDA (oneAPI already sourced in Step 2)
-pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
-echo "Build log saved to /tmp/pytorch_build_*.log"
+pip install -e . -v --no-build-isolation 2>&1 | tee agent_space_xpu/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+echo "Build log saved to agent_space_xpu/pytorch_build_*.log"
 ```
 
 ### 4. Verify
@@ -67,7 +67,7 @@ Expected: `XPU available: True`
 - **Always rebuild after `git rebase` or `git checkout`** — stale C++ extensions produce unreliable or silently wrong test results.
 - **Faster iteration builds**: set `BUILD_SEPARATE_OPS=1` to shrink translation unit scope. Debug/RelWithDebInfo builds enable this automatically.
   ```bash
-  BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+  BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation 2>&1 | tee agent_space_xpu/pytorch_build_$(date +%Y%m%d_%H%M%S).log
   ```
 - **After editing a C++ header**: manually copy to `torch/include/` — editable installs serve C++ headers from the installed path, not source.
 - **After modifying inductor headers**: delete the PCH cache before rebuilding:

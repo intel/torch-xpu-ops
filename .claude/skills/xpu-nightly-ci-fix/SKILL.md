@@ -29,25 +29,19 @@ report.
 Immediately after parsing the failure report, create a TodoWrite list:
 
 ```
-- [ ] Step 0: Ensure PyTorch checkout exists
+- [ ] Step 0: Ensure PyTorch checkout
 - [ ] Step 1: Parse report — extract ci_commit, date, failing test list
-- [ ] Step 2: Create fix branch fix-<date>
-- [ ] Step 3: Reproduce <failure_1>
-- [ ] Step 3: Reproduce <failure_2>
+- [ ] Step 2: Reproduce <failure_1> with `fix/reproduce` (ci_commit, test command)
+- [ ] Step 3: Reproduce <failure_2> with `fix/reproduce` (ci_commit, test command)
       ... (one entry per failure)
-- [ ] Step 4-6: Fix <failure_1> (triage → implement → verify → commit)
-- [ ] Step 4-6: Fix <failure_2> (triage → implement → verify → commit)
+- [ ] Step 4-6: Fix <failure_1> (checkout fix branch -> triage → implement → verify → commit)
+- [ ] Step 4-6: Fix <failure_2> (checkout fix branch -> triage → implement → verify → commit)
       ... (one entry per failure)
 - [ ] Step 7: Generate summary report
 ```
 
 Mark a fix item `completed` only after the test actually passes and is
 committed. Never skip to Step 7.
-
-## Domain
-
-This orchestrator always operates in the `xpu-kernel` domain. Load
-`fix/domains/xpu-kernel` before starting the fix pipeline.
 
 ## Step 0: Ensure PyTorch checkout
 
@@ -75,15 +69,8 @@ Extract:
 - `ci_commit` — pytorch commit hash; use `origin/main` if absent
 - Failing test list: group by test file/module
 
-## Step 2: Create fix branch
 
-```bash
-git -C agent_space_xpu/pytorch fetch origin main
-git -C agent_space_xpu/pytorch checkout origin/main
-git -C agent_space_xpu/pytorch checkout -b fix-<report_date>
-```
-
-## Step 3: Reproduce each failure
+## Step 2-3: Reproduce each failure
 
 For each failure, call `fix/reproduce` with:
 - `reproducer_command` — the CI test command
@@ -96,9 +83,15 @@ Interpret output per failure:
 |--------|--------|
 | `REPRODUCED` | Continue to Step 4 for this failure |
 | `NOT_REPRODUCED` | Mark in summary: "already fixed"; skip to next failure |
-| `CANNOT_VERIFY` | Mark in summary: "cannot verify (+ blocker)"; skip to next failure |
+| `NEEDS_HUMAN` | Mark in summary: "needs_human: cannot verify (+ blocker)"; skip to next failure |
 
 ## Step 4: Triage each reproduced failure
+
+before calling `fix/triage`, checkout to a new fix branch for this failure:
+
+```bash
+git checkout -b fix-<report_date_issuenumber>  # e.g. fix-20260608
+```
 
 Call `fix/triage` with the failure description and error log.
 
@@ -143,7 +136,7 @@ Call `fix/verify` with:
 |--------|--------|
 | `PASSED` | Commit (one fix per commit); mark in summary: "fixed (commit: <hash>)" |
 | `FAILED` | Loop back to Step 5 (max 3 attempts) |
-| `CANNOT_VERIFY` | Mark in summary: "cannot verify after fix"; skip to next failure |
+| `NEEDS_HUMAN` | Mark in summary: "needs_human: cannot verify after fix"; skip to next failure |
 
 If 3 attempts exhausted without `PASSED`, mark in summary: "needs human (fix loop exhausted)"; skip to next failure.
 
