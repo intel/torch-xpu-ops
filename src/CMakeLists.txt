@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Define archive static library target - torch_xpu_ops
+cmake_policy(SET CMP0126 OLD)
 set(ATen_XPU_MKL_SRCS)
 set(ATen_XPU_NATIVE_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
