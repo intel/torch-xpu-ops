@@ -212,7 +212,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(cnts.frame_count, 2)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_context_manager1(self):
+    def test_gpu_stream_context_manager1(self):
         def fn(x):
             s = torch.get_device_module(device_type).Stream()
             x = torch.mul(x, 5)
@@ -237,7 +237,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
 
     @unittest.expectedFailure  # https://github.com/pytorch/pytorch/issues/118204
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_across_graph_break(self):
+    def test_gpu_stream_across_graph_break(self):
         def fn(x):
             s = torch.Stream()
             x = torch.mul(x, 5)
@@ -268,7 +268,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
 
     @unittest.expectedFailure  # https://github.com/pytorch/pytorch/issues/118204
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_context_manager2(self):
+    def test_gpu_stream_context_manager2(self):
         def fn(x, s):
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
@@ -304,7 +304,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(cnts.op_count, 18)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_method(self):
+    def test_gpu_stream_method(self):
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -341,7 +341,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertExpectedInline(str(cnts.op_count), """15""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_compared_with_constant(self):
+    def test_gpu_stream_compared_with_constant(self):
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -371,7 +371,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(ref, res2)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_stream_compared_with_stream(self):
+    def test_gpu_stream_compared_with_stream(self):
         def fn(x, s0, s1):
             if s0 == s1:
                 return x + 1
@@ -414,7 +414,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
-    def test_cuda_event_reconstruct(self):
+    def test_gpu_event_reconstruct(self):
         def fn(x):
             e = torch.get_device_module(device_type).Event()
             x = torch.mul(x, 5)
@@ -434,7 +434,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
-    def test_cuda_event_across_graph_break(self):
+    def test_gpu_event_across_graph_break(self):
         def fn(x):
             e = torch.get_device_module(device_type).Event()
             e.record()
@@ -461,7 +461,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
-    def test_cuda_event_created_outside_of_graph(self):
+    def test_gpu_event_created_outside_of_graph(self):
         user_stream = torch.Stream()
         event = torch.get_device_module(device_type).Event()
         foo = torch.empty((2, 2), device=device_type)
@@ -496,7 +496,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
-    def test_cuda_event_method_create_stream_outside_of_compile(self):
+    def test_gpu_event_method_create_stream_outside_of_compile(self):
         def fn(x, cur_stream, new_stream):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -535,7 +535,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertExpectedInline(str(cnts.op_count), """16""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_event_method(self):
+    def test_gpu_event_method(self):
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -575,7 +575,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertExpectedInline(str(cnts.op_count), """17""")
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_device(self):
+    def test_gpu_device(self):
         def fn(x):
             with torch.get_device_module(device_type).device(x.device.index - 1):
                 x = torch.sin(x + 1)
@@ -641,7 +641,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(exported.dtype, torch.bfloat16)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    def test_cuda_amp_autocast(self):
+    def test_gpu_amp_autocast(self):
         class MyModule(torch.nn.Module):
             def forward(self, x):
                 a_float32 = torch.rand((8, 8), device=device_type)
