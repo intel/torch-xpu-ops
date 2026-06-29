@@ -197,7 +197,7 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
 
 - **Never cherry-pick** upstream fixes. Rebase (`git rebase origin/main`) instead.
 - **Always rebuild after rebase or branch switch** before running tests.
-- **Fix in torch-xpu-ops?** Use the dev override from `AGENTS.md` "Commit Pin
+- **Fix in torch-xpu-ops?** Use the dev override from `CLAUDE.md` "Commit Pin
   & Development Override": clone your torch-xpu-ops branch into
   `agent_space_xpu/pytorch/third_party/torch-xpu-ops/`, then update the pin
   so CMake's checkout becomes a no-op:
@@ -206,8 +206,15 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
   git checkout <your-fix-branch>
   git rev-parse HEAD > agent_space_xpu/pytorch/third_party/xpu.txt
   ```
-  Do NOT commit `xpu.txt`. Then rebuild with
-  `ninja -C agent_space_xpu/pytorch/build` for an incremental rebuild.
+  Do NOT commit `xpu.txt`. Then rebuild:
+  ```bash
+  pip install -e . -v --no-build-isolation
+  ```
+  Run from `agent_space_xpu/pytorch/`. For pure C++ changes that do not touch
+  codegen (no new ops, no dispatch registration changes), `ninja -C
+  agent_space_xpu/pytorch/build` can be used to speed up incremental C++
+  compilation, but `pip install -e .` is always safe and required whenever in
+  doubt.
 - Each failure is independent — one failure's `CANNOT_VERIFY` does not block
   others.
 - One fix per commit.
