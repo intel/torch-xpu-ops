@@ -2,11 +2,10 @@
 Performance benchmark for ring_reduce_scatter_unpermute (fused combine:
 symmetric-memory single-kernel MoE unpermute + ring reduce-scatter).
 
-Compares the on-device fused ring_reduce_scatter_unpermute against the same
-unfused reference used by test_unpermute_reducescatter_fusion_dist.py: the
-native local_unpermute_copy_ (weighted gather, expert-centric -> token-centric)
-followed by the framework collective dist.reduce_scatter_tensor. Reports a
-roofline projection based on the cross-GPU link bandwidth.
+Compares the on-device fused ring_reduce_scatter_unpermute against an unfused
+reference: native local_unpermute_copy_ (weighted gather, expert-centric ->
+token-centric) followed by the framework collective dist.reduce_scatter_tensor.
+Reports a roofline projection based on the cross-GPU link bandwidth.
 
 Usage:
     mpirun -n 2 python benchmark_ring_reduce_scatter_unpermute_dist.py
@@ -24,8 +23,10 @@ from ring_collectives import (
     ring_reduce_scatter_unpermute,
 )
 
+from allgather_local_permute_fusion import compute_scatter_idx
+
 # Importing this module loads the native local_unpermute_copy_ op used by the
-# reference path (same op as test_unpermute_reducescatter_fusion_dist.py).
+# reference path.
 from unpermute_reducescatter_fusion import _HAS_LOCAL_UNPERMUTE_KERNEL
 
 TOKENS_PER_RANK = 2048
@@ -66,56 +67,31 @@ def init_distributed():
     return rank, world_size
 
 
-def _owners(num_experts, world_size):
-    """Contiguous-block owner assignment (matches the native kernel)."""
-    base = num_experts // world_size
-    rem = num_experts % world_size
-    boundary = rem * (base + 1)
-    owners = torch.empty(num_experts, dtype=torch.int64)
-    for e in range(num_experts):
-        if e < boundary:
-            owners[e] = e // (base + 1)
-        else:
-            owners[e] = rem + (e - boundary) // base
-    return owners
-
-
-def build_routing(num_tokens, topk, num_experts, world_size, device):
+def build_routing(num_tokens, topk, num_experts, device):
     """Build global routing tables (identical on every rank): topk_idx,
-    scatter_idx (owner-local compacted destination rows), topk_weights and the
-    per-rank row counts (remap_rows)."""
+    scatter_idx (absolute expert-sorted destination rows), topk_weights.
+
+    Returns:
+        topk_idx: [num_tokens, topk] int32 expert assignments.
+        scatter_idx: [num_tokens, topk] int32 absolute destination rows.
+        topk_weights: [num_tokens, topk] float32 routing weights.
+        remap_rows: total rows in the expert-sorted layout (= num_tokens * topk).
+    """
     g = torch.Generator().manual_seed(123)
     topk_idx = torch.randint(
         0, num_experts, (num_tokens, topk), generator=g, dtype=torch.int32
     )
     topk_weights = torch.rand(num_tokens, topk, generator=g, dtype=torch.float32)
 
-    owners = _owners(num_experts, world_size)
-    flat_expert = topk_idx.reshape(-1).to(torch.int64)
-    flat_owner = owners[flat_expert]
-
-    scatter_flat = torch.empty(num_tokens * topk, dtype=torch.int32)
-    counts = [0] * world_size
-    for i in range(num_tokens * topk):
-        o = int(flat_owner[i])
-        scatter_flat[i] = counts[o]
-        counts[o] += 1
-    scatter_idx = scatter_flat.reshape(num_tokens, topk)
+    scatter_idx, _ = compute_scatter_idx(topk_idx.to(device), num_experts)
+    remap_rows = num_tokens * topk
 
     return (
         topk_idx.to(device),
         scatter_idx.to(device),
         topk_weights.to(device),
-        counts,
-        owners.to(device),
+        remap_rows,
     )
-
-
-def _expert_output(owner_rank, rows, hidden, device):
-    g = torch.Generator().manual_seed(1000 + owner_rank)
-    if rows == 0:
-        return torch.zeros(0, hidden, dtype=DTYPE, device=device)
-    return torch.randn(rows, hidden, generator=g, dtype=torch.float32).to(device).to(DTYPE)
 
 
 def benchmark_ring_reduce_scatter_unpermute():
@@ -140,68 +116,24 @@ def benchmark_ring_reduce_scatter_unpermute():
     num_experts = NUM_EXPERTS
     num_tokens = num_tokens_per_rank * world_size
 
-    topk_idx, scatter_idx, topk_weights, remap_rows, owners = build_routing(
-        num_tokens, topk, num_experts, world_size, device
+    topk_idx, scatter_idx, topk_weights, remap_rows = build_routing(
+        num_tokens, topk, num_experts, device
     )
-    remap_rows_local = remap_rows[rank]
 
-    # This rank's expert outputs (owner-local compacted rows) consumed by the
-    # fused ring kernel.
-    expert_output = _expert_output(rank, remap_rows_local, hidden, device)
+    # Expert output: full [num_tokens*topk, hidden] buffer (MoE TP: every rank
+    # owns all experts).
+    torch.manual_seed(1000)
+    expert_output = torch.randn(remap_rows, hidden, device=device, dtype=DTYPE)
 
     elem_size = expert_output.element_size()
 
-    # ----------------------------------------------------------------------
-    # Reference path: kept BYTE-FOR-BYTE consistent with
-    # test_unpermute_reducescatter_fusion_dist.py so the reported reference
-    # timing matches that UT.  It uses the same inputs (a full
-    # [num_tokens*topk, hidden] expert_output replicated on every rank, random
-    # scatter_idx, softmax-normalised weights), the same native ops
-    # (local_unpermute_copy_ + dist.reduce_scatter_tensor) and the same
-    # per-iteration buffer allocation.
-    # ----------------------------------------------------------------------
-    num_rows = num_tokens * topk
-    torch.manual_seed(42)
-    ref_expert_output = torch.randn(num_rows, hidden, device=device, dtype=DTYPE)
-    ref_scatter_idx = torch.randint(
-        0, num_rows, (num_tokens, topk), device=device, dtype=torch.int32
-    )
-    raw_w = torch.rand(num_tokens, topk, device=device, dtype=torch.float32)
-    ref_topk_weights = raw_w / raw_w.sum(dim=1, keepdim=True)
-
+    # Reference path: local_unpermute_copy_ (absolute scatter_idx) +
+    # reduce_scatter_tensor.
     def run_reference():
-        # Identical to run_reference_unpermute_reducescatter in
-        # test_unpermute_reducescatter_fusion_dist.py.
         full_result = torch.empty(num_tokens, hidden, device=device, dtype=DTYPE)
         torch.ops.symm_mem.local_unpermute_copy_(
-            ref_expert_output, ref_scatter_idx, ref_topk_weights,
+            expert_output, scatter_idx, topk_weights,
             0, num_tokens, full_result,
-        )
-        out = torch.zeros(num_tokens_per_rank, hidden, device=device, dtype=DTYPE)
-        dist.reduce_scatter_tensor(out, full_result, group=group)
-        return out
-
-    # ----------------------------------------------------------------------
-    # Owner-based reference (NOT timed): reproduces the fused EP-dispatch combine
-    # so the ring kernel's output can be validated.  Each rank contributes only
-    # the (token, k) slots whose expert it owns (non-owned slots zero-weighted,
-    # row clamped to 0), and the reduce_scatter sum across ranks yields the
-    # combine; this is the same local_unpermute_copy_ + reduce_scatter recipe but
-    # on the EP-dispatched expert_output.
-    # ----------------------------------------------------------------------
-    owner_of_slot = owners[topk_idx.reshape(-1).long()]  # [N*topk]
-    owned = owner_of_slot == rank
-    scatter_ref_flat = scatter_idx.reshape(-1).clone()
-    scatter_ref_flat[~owned] = 0
-    acc_scatter_idx = scatter_ref_flat.reshape(num_tokens, topk).contiguous().to(torch.int32)
-    weight_ref_flat = topk_weights.reshape(-1).clone()
-    weight_ref_flat[~owned] = 0.0
-    acc_topk_weights = weight_ref_flat.reshape(num_tokens, topk).contiguous().to(torch.float32)
-
-    def compute_fused_reference():
-        full_result = torch.empty(num_tokens, hidden, device=device, dtype=DTYPE)
-        torch.ops.symm_mem.local_unpermute_copy_(
-            expert_output, acc_scatter_idx, acc_topk_weights, 0, num_tokens, full_result
         )
         out = torch.zeros(num_tokens_per_rank, hidden, device=device, dtype=DTYPE)
         dist.reduce_scatter_tensor(out, full_result, group=group)
@@ -233,7 +165,7 @@ def benchmark_ring_reduce_scatter_unpermute():
         # Warm up fused ring_reduce_scatter_unpermute.
         for _ in range(WARMUP):
             out = ring_reduce_scatter_unpermute(
-                expert_output, topk_idx, scatter_idx, topk_weights, num_experts,
+                expert_output, scatter_idx, topk_weights,
                 num_tokens_per_rank, group=group, resources=resources,
                 output=fused_output,
             )
@@ -245,7 +177,7 @@ def benchmark_ring_reduce_scatter_unpermute():
             if i >= WARMUP:
                 begin_events[i].record()
             out = ring_reduce_scatter_unpermute(
-                expert_output, topk_idx, scatter_idx, topk_weights, num_experts,
+                expert_output, scatter_idx, topk_weights,
                 num_tokens_per_rank, group=group, resources=resources,
                 output=fused_output,
             )
@@ -278,12 +210,12 @@ def benchmark_ring_reduce_scatter_unpermute():
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_ring_reduce_scatter_unpermute_rank{rank}.json")
 
-    # Accuracy check (single fresh pass): fused vs its owner-based reference.
+    # Accuracy check: fused vs reference (local_unpermute_copy_ + reduce_scatter).
     out = ring_reduce_scatter_unpermute(
-        expert_output, topk_idx, scatter_idx, topk_weights, num_experts,
+        expert_output, scatter_idx, topk_weights,
         num_tokens_per_rank, group=group, resources=resources,
     ).clone()
-    ref = compute_fused_reference().clone()
+    ref = run_reference().clone()
     torch.xpu.synchronize()
     max_err = (out.float() - ref.float()).abs().max().item()
     tol = 1e-2 * ref.float().abs().max().clamp_min(1.0).item()
@@ -302,11 +234,7 @@ def benchmark_ring_reduce_scatter_unpermute():
         )
 
         if ENABLE_PROJECTION:
-            # Per-rank cross-GPU payload moved across the ring reduce-scatter:
-            # (world_size - 1) token blocks.
             rs_bytes = (world_size - 1) * num_tokens_per_rank * hidden * elem_size
-            # Unpermute traffic: read num_tokens*topk hidden vectors, write
-            # num_tokens hidden vectors (the per-rank token-centric result).
             read_bytes = num_tokens * topk * hidden * elem_size
             write_bytes = num_tokens * hidden * elem_size
 

@@ -466,8 +466,8 @@ def ring_allgather_permute(
             (remap_rows, hidden), dtype=input_shard.dtype, device=input_shard.device
         )
 
-    local_pad.zero_()
-    workspace.barrier()
+    # local_pad.zero_()
+    # workspace.barrier()
 
     iteration = _next_iter(group_name)
     torch.ops.symm_mem.ring_allgather_permute(
@@ -538,11 +538,8 @@ def build_ring_reduce_scatter_unpermute_resources(
 
 def ring_reduce_scatter_unpermute(
     expert_output: torch.Tensor,
-    topk_idx: torch.Tensor,
     scatter_idx: torch.Tensor,
     topk_weights: torch.Tensor,
-    rows_per_expert: torch.Tensor,
-    num_experts: int,
     num_tokens_per_rank: int,
     group: dist.ProcessGroup = None,
     resources: dict = None,
@@ -551,13 +548,10 @@ def ring_reduce_scatter_unpermute(
     """Fused MoE unpermute + ring reduce-scatter (combine).
 
     Args:
-        expert_output: [remap_rows, hidden] this rank's expert outputs.
-        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
-        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 expert-relative
-            positions (same semantics as notify_dispatch_v2 output).
+        expert_output: [num_tokens*topk, hidden] this rank's expert outputs.
+        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 absolute
+            destination rows (same semantics as allgather_permute).
         topk_weights: [world_size * num_tokens_per_rank, topk] float32 weights.
-        rows_per_expert: [num_experts] int32 global rows per expert.
-        num_experts: total number of experts.
         num_tokens_per_rank: number of tokens this rank receives back.
         group: process group (default: WORLD).
         resources: optional precomputed resources from
@@ -619,11 +613,8 @@ def ring_reduce_scatter_unpermute(
         signal_pads_ptr,
         acc,
         output,
-        topk_idx.contiguous(),
         scatter_idx.contiguous(),
         topk_weights.contiguous(),
-        rows_per_expert.contiguous(),
-        num_experts,
         rank,
         world_size,
         iteration,

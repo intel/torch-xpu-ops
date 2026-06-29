@@ -1,6 +1,6 @@
 """
 Performance benchmark for ring_allgather_permute (fused dispatch: symmetric
--memory single-kernel ring allgather + owner-based MoE permute).
+-memory single-kernel ring allgather + expert-centric MoE permute).
 
 Compares the on-device fused ring_allgather_permute against an unfused
 reference that performs the framework collective dist.all_gather_into_tensor
@@ -65,47 +65,24 @@ def init_distributed():
     return rank, world_size
 
 
-def _owners(num_experts, world_size):
-    """Contiguous-block owner assignment (matches the native kernel)."""
-    base = num_experts // world_size
-    rem = num_experts % world_size
-    boundary = rem * (base + 1)
-    owners = torch.empty(num_experts, dtype=torch.int64)
-    for e in range(num_experts):
-        if e < boundary:
-            owners[e] = e // (base + 1)
-        else:
-            owners[e] = rem + (e - boundary) // base
-    return owners
+def build_routing(num_tokens, topk, num_experts, device):
+    """Build global routing tables (identical on every rank): topk_idx and
+    scatter_idx (absolute expert-sorted destination rows).
 
-
-def build_routing(num_tokens, topk, num_experts, world_size, device):
-    """Build global routing tables (identical on every rank): topk_idx,
-    scatter_idx (owner-local compacted destination rows) and the per-rank row
-    counts (remap_rows)."""
+    Returns:
+        topk_idx: [num_tokens, topk] int32 expert assignments.
+        scatter_idx: [num_tokens, topk] int32 absolute destination rows.
+        remap_rows: total rows in the expert-sorted output (= num_tokens * topk).
+    """
     g = torch.Generator().manual_seed(123)
     topk_idx = torch.randint(
         0, num_experts, (num_tokens, topk), generator=g, dtype=torch.int32
     )
 
-    owners = _owners(num_experts, world_size)
-    flat_expert = topk_idx.reshape(-1).to(torch.int64)
-    flat_owner = owners[flat_expert]
+    scatter_idx, _ = compute_scatter_idx(topk_idx.to(device), num_experts)
+    remap_rows = num_tokens * topk
 
-    scatter_flat = torch.empty(num_tokens * topk, dtype=torch.int32)
-    counts = [0] * world_size
-    for i in range(num_tokens * topk):
-        o = int(flat_owner[i])
-        scatter_flat[i] = counts[o]
-        counts[o] += 1
-    scatter_idx = scatter_flat.reshape(num_tokens, topk)
-
-    return (
-        topk_idx.to(device),
-        scatter_idx.to(device),
-        counts,
-        owners.to(device),
-    )
+    return topk_idx.to(device), scatter_idx.to(device), remap_rows
 
 
 def benchmark_ring_allgather_permute():
@@ -125,10 +102,9 @@ def benchmark_ring_allgather_permute():
     num_experts = NUM_EXPERTS
     num_tokens = num_tokens_per_rank * world_size
 
-    topk_idx, scatter_idx, remap_rows, owners = build_routing(
-        num_tokens, topk, num_experts, world_size, device
+    topk_idx, scatter_idx, remap_rows = build_routing(
+        num_tokens, topk, num_experts, device
     )
-    remap_rows_local = remap_rows[rank]
 
     # Global token table is identical on every rank (rank-independent seed), so
     # the all-gathered tokens equal `full_tokens` and the reference can be
@@ -139,25 +115,15 @@ def benchmark_ring_allgather_permute():
 
     elem_size = shard.element_size()
 
-    # Reference path: identical to test_allgather_local_permute_fusion_dist.py
-    # (all_gather_into_tensor + native local_permute_copy_ with the expert-sorted
-    # scatter index from compute_scatter_idx, writing every (token, k) slot into
-    # a [num_tokens * topk, hidden] buffer).
-    owner_of_slot = owners[topk_idx.reshape(-1).long()]  # [N*topk]
-    owned = owner_of_slot == rank
-    src_token = (torch.arange(num_tokens * topk, device=device) // topk)[owned]
-    dst_row = scatter_idx.reshape(-1)[owned].long()
-
-    scatter_idx_ref, _ = compute_scatter_idx(topk_idx, num_experts)
-    scatter_idx_ref = scatter_idx_ref.contiguous().to(torch.int32)
-
+    # Reference path: all_gather + native local_permute_copy_ with absolute
+    # scatter_idx, writing every (token, k) slot into [num_tokens*topk, hidden].
     all_hidden_ref = torch.empty(num_tokens, hidden, device=device, dtype=DTYPE)
-    ref_output = torch.empty(num_tokens * topk, hidden, device=device, dtype=DTYPE)
+    ref_output = torch.empty(remap_rows, hidden, device=device, dtype=DTYPE)
 
     def run_reference():
         dist.all_gather_into_tensor(all_hidden_ref, shard, group=group)
         torch.ops.symm_mem.local_permute_copy_(
-            all_hidden_ref, scatter_idx_ref, 0, ref_output
+            all_hidden_ref, scatter_idx, 0, ref_output
         )
         return ref_output
 
@@ -166,7 +132,7 @@ def benchmark_ring_allgather_permute():
     # (matches how the reference test hoists rank_buffers_ptr).
     resources = build_ring_allgather_permute_resources(shard, group=group)
     remap_output = torch.empty(
-        (remap_rows_local, hidden), dtype=DTYPE, device=device
+        (remap_rows, hidden), dtype=DTYPE, device=device
     )
 
     begin_events = [torch.xpu.Event(enable_timing=True) for _ in range(LOOP)]
@@ -188,7 +154,7 @@ def benchmark_ring_allgather_permute():
         # Warm up fused ring_allgather_permute.
         for _ in range(WARMUP):
             out = ring_allgather_permute(
-                shard, topk_idx, scatter_idx, num_experts, remap_rows_local,
+                shard, scatter_idx, remap_rows,
                 group=group, resources=resources, remap_output=remap_output,
             )
         torch.xpu.synchronize()
@@ -199,7 +165,7 @@ def benchmark_ring_allgather_permute():
             if i >= WARMUP:
                 begin_events[i].record()
             out = ring_allgather_permute(
-                shard, topk_idx, scatter_idx, num_experts, remap_rows_local,
+                shard, scatter_idx, remap_rows,
                 group=group, resources=resources, remap_output=remap_output,
             )
             if i >= WARMUP:
@@ -231,15 +197,14 @@ def benchmark_ring_allgather_permute():
     if ENABLE_PROFILE:
         prof.export_chrome_trace(f"./profile_ring_allgather_permute_rank{rank}.json")
 
-    # Accuracy check (single fresh pass): only owned (token, k) rows are written.
+    # Accuracy check (single fresh pass): every (token, k) writes to its
+    # absolute scatter_idx position; must match the reference local_permute_copy_.
     out = ring_allgather_permute(
-        shard, topk_idx, scatter_idx, num_experts, remap_rows_local, group=group,
-        resources=resources,
+        shard, scatter_idx, remap_rows, group=group, resources=resources,
     ).clone()
-    expected = torch.zeros(remap_rows_local, hidden, dtype=DTYPE, device=device)
-    expected[dst_row] = full_tokens[src_token]
+    ref = run_reference().clone()
     torch.xpu.synchronize()
-    ok = torch.equal(out, expected)
+    ok = torch.equal(out, ref)
 
     print(f"[Ring allgather_permute time in rank {rank}] {latencies} ms")
     print(f"[Reference allgather+local_permute time in rank {rank}] {ref_latencies} ms")
@@ -247,7 +212,7 @@ def benchmark_ring_allgather_permute():
     if rank == 0:
         avg_ring = sum(latencies) / len(latencies)
         avg_ref = sum(ref_latencies) / len(ref_latencies)
-        print(f"[Accuracy] ring_allgather_permute match={ok} rows={remap_rows}")
+        print(f"[Accuracy] ring_allgather_permute match={ok} remap_rows={remap_rows}")
         print(
             f"[Summary] avg_fused={avg_ring:.3f} ms, "
             f"avg_reference={avg_ref:.3f} ms, speedup={avg_ref / avg_ring:.3f}x"
@@ -256,8 +221,8 @@ def benchmark_ring_allgather_permute():
         if ENABLE_PROJECTION:
             # Per-rank cross-GPU payload received from peers for the allgather.
             allgather_bytes = (world_size - 1) * num_tokens_per_rank * hidden * elem_size
-            # Permute write traffic: one hidden vector per owned (token, k) slot.
-            write_bytes = remap_rows_local * hidden * elem_size
+            # Permute write traffic: one hidden vector per (token, k) slot.
+            write_bytes = remap_rows * hidden * elem_size
 
             proj_allgather_ms = project_time_ms(allgather_bytes, CROSS_GPU_BW_GBPS)
             proj_write_ms = project_time_ms(write_bytes, HBM_BW_GBPS)

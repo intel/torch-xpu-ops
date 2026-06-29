@@ -339,59 +339,6 @@ class SymmBuffer:
 
 
     # ================================================================== #
-    #  Ring-path routing (reuses notify_dispatch_v2)                      #
-    # ================================================================== #
-
-    def _ring_dispatch_routing(
-        self,
-        topk_idx: torch.Tensor,
-        topk_weights: torch.Tensor,
-        num_experts: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Build the global routing tables required by the ring kernels using
-        notify_dispatch_v2 (same kernel as the notify path).
-
-        The kernel reads every rank's topk_idx / topk_weights straight from
-        symmetric memory (no all_gather, no host sync), and emits expert-relative
-        scatter_idx + rows_per_expert.
-
-        Returns:
-            global_topk_idx: [num_tokens, topk] int32 (block r == rank r tokens).
-            global_topk_weights: [num_tokens, topk] float32.
-            scatter_idx: [num_tokens, topk] int32 expert-relative positions.
-            rows_per_expert: [num_experts] int32.
-        """
-        num_tokens_per_rank, topk = topk_idx.shape
-        num_tokens = num_tokens_per_rank * self.num_ranks
-
-        # Stage this rank's topk_idx / weights into symmetric memory so the
-        # kernel can read every rank's slice via the per-rank pointer tables.
-        self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
-        self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
-        self.workspace.barrier()
-
-        global_topk_idx = self._global_topk_idx_buf[:num_tokens, :topk]
-        global_topk_weights = self._global_topk_weights_buf[:num_tokens, :topk]
-        scatter_idx = self._scatter_idx[:num_tokens, :topk]
-        rows_per_expert = self._rows_per_expert_buf[:num_experts]
-
-        torch.ops.symm_mem.notify_dispatch_v2(
-            self._topk_rank_ptrs,
-            global_topk_idx,
-            scatter_idx,
-            rows_per_expert,
-            num_tokens_per_rank,
-            topk,
-            self.num_topk,
-            num_experts,
-            self.rank_idx,
-            self.num_ranks,
-            self._weights_rank_ptrs,
-            global_topk_weights,
-        )
-        return global_topk_idx, global_topk_weights, scatter_idx, rows_per_expert
-
-    # ================================================================== #
     #  Public API: allgather + local permute (dispatch)                   #
     # ================================================================== #
 
@@ -447,20 +394,41 @@ class SymmBuffer:
     ) -> Tuple[torch.Tensor, SymmHandle]:
         """Single-kernel ring allgather + expert-centric permute.
 
-        Routing tables are built with notify_dispatch_v2 (expert-relative
-        scatter_idx + rows_per_expert); abs_scatter_idx is computed from
-        expert_cumsum + rel_scatter_idx, then the ring kernel uses it directly
-        (same as AllgatherPermuteRingVecKernel / allgather_permute).
+        Uses notify_dispatch_v2 to build global routing tables (expert-relative
+        scatter_idx + rows_per_expert), converts to abs_scatter_idx via
+        expert_cumsum, then the ring kernel uses it directly.
         """
         num_tokens_per_rank = hidden_shard.shape[0]
+        topk = topk_idx.shape[1]
+        num_tokens = num_tokens_per_rank * self.num_ranks
 
-        global_topk_idx, global_topk_weights, scatter_idx, rows_per_expert = (
-            self._ring_dispatch_routing(topk_idx, topk_weights, num_experts)
+        # Stage this rank's topk_idx / weights into symmetric memory so the
+        # kernel can read every rank's slice via the per-rank pointer tables.
+        self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
+        self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
+        self.workspace.barrier()
+
+        global_topk_idx = self._global_topk_idx_buf[:num_tokens, :topk]
+        global_topk_weights = self._global_topk_weights_buf[:num_tokens, :topk]
+        scatter_idx = self._scatter_idx[:num_tokens, :topk]
+        rows_per_expert = self._rows_per_expert_buf[:num_experts]
+
+        torch.ops.symm_mem.notify_dispatch_v2(
+            self._topk_rank_ptrs,
+            global_topk_idx,
+            scatter_idx,
+            rows_per_expert,
+            num_tokens_per_rank,
+            topk,
+            self.num_topk,
+            num_experts,
+            self.rank_idx,
+            self.num_ranks,
+            self._weights_rank_ptrs,
+            global_topk_weights,
         )
 
         # Compute absolute scatter_idx from expert-relative positions.
-        num_tokens = num_tokens_per_rank * self.num_ranks
-        topk = topk_idx.shape[1]
         expert_cumsum = torch.zeros(
             num_experts, device=hidden_shard.device, dtype=torch.int32
         )
@@ -652,11 +620,8 @@ class SymmBuffer:
         """Single-kernel fused unpermute + ring reduce-scatter."""
         ring_reduce_scatter_unpermute(
             expert_output,
-            handle.global_topk_idx,
-            handle.scatter_idx,
+            handle.abs_scatter_idx,
             handle.global_topk_weights,
-            handle.rows_per_expert,
-            handle.num_experts,
             num_tokens_per_rank,
             group=self.group,
             resources=self._ring_rs_resources,

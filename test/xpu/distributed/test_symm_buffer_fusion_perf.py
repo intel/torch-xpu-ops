@@ -21,6 +21,7 @@ from allgather_local_permute_fusion import (
 )
 from unpermute_reducescatter_fusion import (
     unpermute_reducescatter,
+    unpermute_allreduce_simple,
 )
 from symm_buffer import SymmBuffer
 
@@ -33,6 +34,23 @@ WARMUP = 20
 PCIE_DISCOUNT = 0.7
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
 HBM_BW_GBPS = 437.0
+
+
+def build_allgather_local_permute_reference(hidden_shard, scatter_idx, group):
+    world_size = dist.get_world_size(group)
+    num_tokens_per_rank, hidden = hidden_shard.shape
+    num_tokens, topk = scatter_idx.shape
+    gathered = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+    dist.all_gather(gathered, hidden_shard, group=group)
+    out = torch.empty(
+        num_tokens * topk, hidden, device=hidden_shard.device, dtype=hidden_shard.dtype
+    )
+    for src_rank in range(world_size):
+        token_offset = src_rank * num_tokens_per_rank
+        torch.ops.symm_mem.local_permute_copy_(
+            gathered[src_rank], scatter_idx, token_offset, out
+        )
+    return out
 
 
 def bytes_to_mb(num_bytes):
@@ -161,6 +179,33 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
 
     symm_latencies = timed_loop(run_symm, LOOP, WARMUP)
 
+    # --- Accuracy check: SymmBuffer vs all_gather reference (matches dist UT) ---
+    run_symm()
+    torch.xpu.synchronize()
+    expert_cumsum = torch.zeros(NUM_EXPERTS, device=device, dtype=torch.int32)
+    expert_cumsum[1:] = symm_handle.rows_per_expert[:-1]
+    expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
+    abs_scatter_idx = (
+        expert_cumsum[symm_handle.global_topk_idx] + symm_handle.scatter_idx
+    ).to(torch.int32)
+    ref_dispatch = build_allgather_local_permute_reference(
+        hidden_shard, abs_scatter_idx, group
+    )
+    dispatch_match = torch.equal(remap_symm, ref_dispatch)
+    print(
+        f"[Rank {rank}] allgather_permute accuracy: "
+        f"match={dispatch_match}"
+        + (
+            f" max_diff={(remap_symm - ref_dispatch).abs().max().item():.6f}"
+            if not dispatch_match
+            else ""
+        )
+    )
+    assert dispatch_match, (
+        f"allgather_permute mismatch on rank {rank}: "
+        f"max_diff={(remap_symm - ref_dispatch).abs().max().item():.6f}"
+    )
+
     avg_symm = print_latency_summary(
         "SymmBuffer.allgather_permute", symm_latencies, rank
     )
@@ -209,7 +254,7 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
         )
         print(f"{'='*70}\n")
 
-    return scatter_idx, symm_handle
+    return abs_scatter_idx, symm_handle
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +305,30 @@ def bench_unpermute_reducescatter_fusion(sbuf, scatter_idx, global_topk_idx,
         )
 
     symm_latencies = timed_loop(run_symm, LOOP, WARMUP)
+
+    # --- Accuracy check: SymmBuffer vs all_gather reference (matches dist UT) ---
+    output_symm.zero_()
+    run_symm()
+    ref_reduce_out = torch.zeros_like(output_symm)
+    unpermute_allreduce_simple(
+        expert_output=expert_output,
+        scatter_idx=scatter_idx,
+        topk_weights=global_topk_weights,
+        output=ref_reduce_out,
+        group=group,
+    )
+    torch.xpu.synchronize()
+    atol = 0.025 * world_size + 0.01
+    unperm_match = torch.allclose(output_symm, ref_reduce_out, atol=atol, rtol=1e-2)
+    max_diff = (output_symm - ref_reduce_out).abs().max().item()
+    print(
+        f"[Rank {rank}] unpermute_reducescatter accuracy: "
+        f"match={unperm_match} max_diff={max_diff:.6f} atol={atol}"
+    )
+    assert unperm_match, (
+        f"unpermute_reducescatter mismatch on rank {rank}: "
+        f"max_diff={max_diff:.6f}, atol={atol}"
+    )
 
     avg_symm = print_latency_summary(
         "SymmBuffer.unpermute_rs", symm_latencies, rank
