@@ -39,7 +39,7 @@ runs:
         fi
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python }}
     - name: Check python
@@ -49,12 +49,12 @@ runs:
         which pip && pip list
         pip install -U pip wheel setuptools
     - name: Checkout torch-xpu-ops
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         path: torch-xpu-ops
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch

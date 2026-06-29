@@ -79,7 +79,7 @@ jobs:
           which pip && pip list
           pip install -U pip wheel setuptools==81.0.0
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
       - name: Snapshot open skipped issues at build start
@@ -89,7 +89,7 @@ jobs:
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: |
@@ -225,13 +225,13 @@ jobs:
           pip list |grep -E 'torch|intel'
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/build_*.log

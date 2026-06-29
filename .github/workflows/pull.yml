@@ -29,7 +29,7 @@ jobs:
       pr_body_cmd: ${{ steps.reproducer-check.outputs.pr_cmd }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
       - name: Run lint check
@@ -41,7 +41,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/lintrunner.sh 2>&1 | tee ${{ github.workspace }}/lint_python_errors.log
       - name: Checkout PyTorch (for headers)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: pytorch/pytorch
           path: pytorch-headers
@@ -174,7 +174,7 @@ jobs:
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
     steps:
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: check-files
         with:
           filters: |
