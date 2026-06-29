@@ -199,7 +199,12 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     std::tie(group_size_y_, group_size_x_, ngroups_y_raw, ngroups_x_) =
         get_adaptive_config(
             reduction_size_, n_channels_, VEC_SIZE, max_group_size);
-    ngroups_y_ = std::min(ngroups_y_raw, max_ngroups_y);
+    int wgs_per_tile =
+        std::max(1, int(syclMaxWorkItemsPerTile()) / int(max_group_size));
+    ngroups_y_ = std::min(
+        {ngroups_y_raw,
+         std::max(1, wgs_per_tile / (int)ngroups_x_),
+         max_ngroups_y});
   }
 
   static bool valid(
