@@ -66,7 +66,6 @@ from torch.testing._internal.common_device_type import (
     skipCUDAIfNotRocm,
     skipMeta,
     skipXLA,
-    skipXPU,
 )
 from torch.testing._internal.common_dtype import (
     all_types_and,
@@ -3913,7 +3912,6 @@ class TestTorchDeviceType(TestCase):
     @parametrize("use_cpu_scalar", [True, False])
     @dtypesIfCUDA(*set(get_all_math_dtypes("cuda")))
     @dtypes(*set(get_all_math_dtypes("cpu")))
-    @skipXPU
     def test_addcmul(self, device, dtype, use_cpu_scalar):
         # Returns floating or integral scalar corresponding to dtype
         def _number(floating, integer, dtype):
