@@ -20,12 +20,14 @@
 //   owner_scatter_idx   [num_tokens, topk] int32  (owner-local absolute row)
 //   global_topk_weights [num_tokens, topk] float32
 //   rows_per_owner      [world_size] int32 (per-owner total slot counts)
+//   rows_per_expert     [num_experts] int32 (per-expert total slot counts)
 // ---------------------------------------------------------------------------
 
 namespace {
 
 constexpr int32_t WG_SIZE = 256;
 constexpr int32_t MAX_OWNERS = 64;
+constexpr int32_t MAX_EXPERTS = 512;
 
 // Contiguous-block expert -> owner-rank map (matches the ring kernels).
 inline int32_t owner_of_expert(
@@ -54,6 +56,7 @@ struct RingBuildRoutingKernel : __SYCL_KER_CONFIG_CONVENTION__ {
   int32_t* owner_scatter_idx;
   float* global_topk_weights_out;     // nullable
   int32_t* rows_per_owner;            // [world_size], zero-initialized by caller
+  int32_t* rows_per_expert;           // [num_experts], zero-initialized by caller
   int32_t num_tokens_per_rank;
   int32_t topk;
   int32_t topk_storage_stride;
@@ -61,12 +64,13 @@ struct RingBuildRoutingKernel : __SYCL_KER_CONFIG_CONVENTION__ {
   int32_t world_size;
   int64_t total_pairs;
 
-  // SLM layout: [0..world_size)            = histogram / local counter
-  //             [MAX_OWNERS..MAX_OWNERS+ws) = reserved base offset
+  // SLM layout: [0..world_size)                         = owner histogram / local counter
+  //             [MAX_OWNERS..MAX_OWNERS+world_size)    = reserved owner base offset
+  //             [2*MAX_OWNERS..2*MAX_OWNERS+num_experts) = expert histogram
   sycl::local_accessor<int32_t, 1> slm;
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm = sycl::local_accessor<int32_t, 1>(2 * MAX_OWNERS, cgh);
+    slm = sycl::local_accessor<int32_t, 1>(2 * MAX_OWNERS + MAX_EXPERTS, cgh);
   }
 
   void operator()(sycl::nd_item<1> item) const {
@@ -80,6 +84,8 @@ struct RingBuildRoutingKernel : __SYCL_KER_CONFIG_CONVENTION__ {
     // Phase 1: zero SLM histogram.
     for (int32_t o = lid; o < world_size; o += lsize)
       slm[o] = 0;
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[2 * MAX_OWNERS + e] = 0;
     item.barrier(sycl::access::fence_space::local_space);
 
     // Phase 2: read expert, compute owner, write outputs, local offset.
@@ -105,6 +111,12 @@ struct RingBuildRoutingKernel : __SYCL_KER_CONFIG_CONVENTION__ {
                          sycl::access::address_space::local_space>
             ref(slm[my_owner]);
         owner_scatter_idx[my_out_idx] = ref.fetch_add(1);  // local offset in WG
+
+        sycl::atomic_ref<int32_t, sycl::memory_order::relaxed,
+                         sycl::memory_scope::work_group,
+                         sycl::access::address_space::local_space>
+            eref(slm[2 * MAX_OWNERS + expert]);
+        eref.fetch_add(1);
       } else {
         owner_scatter_idx[my_out_idx] = -1;
       }
@@ -136,6 +148,17 @@ struct RingBuildRoutingKernel : __SYCL_KER_CONFIG_CONVENTION__ {
     if (my_owner >= 0 && my_owner < world_size) {
       owner_scatter_idx[my_out_idx] += slm[MAX_OWNERS + my_owner];
     }
+
+    // Phase 5: flush local expert histogram to global rows_per_expert.
+    for (int32_t e = lid; e < num_experts; e += lsize) {
+      const int32_t count = slm[2 * MAX_OWNERS + e];
+      if (count > 0) {
+        sycl::atomic_ref<int32_t, sycl::memory_order::relaxed,
+                         sycl::memory_scope::device>
+            eref(rows_per_expert[e]);
+        eref.fetch_add(count);
+      }
+    }
   }
 };
 
@@ -146,6 +169,7 @@ at::Tensor ring_build_routing(
     at::Tensor global_topk_idx,
     at::Tensor owner_scatter_idx,
     at::Tensor rows_per_owner,
+  at::Tensor rows_per_expert,
     int64_t num_tokens_per_rank,
     int64_t topk,
     int64_t topk_storage_stride,
@@ -174,18 +198,22 @@ at::Tensor ring_build_routing(
       rows_per_owner.dim() == 1 && rows_per_owner.size(0) == world_size &&
           rows_per_owner.scalar_type() == at::kInt,
       "ring_build_routing: rows_per_owner must be 1D int32 sized world_size");
+    TORCH_CHECK(
+      rows_per_expert.dim() == 1 && rows_per_expert.size(0) == num_experts &&
+        rows_per_expert.scalar_type() == at::kInt,
+      "ring_build_routing: rows_per_expert must be 1D int32 sized num_experts");
   TORCH_CHECK(
       world_size > 0 && world_size <= MAX_OWNERS,
       "ring_build_routing: world_size must be in (0, ", MAX_OWNERS, "]");
+    TORCH_CHECK(
+      num_experts > 0 && num_experts <= MAX_EXPERTS,
+      "ring_build_routing: num_experts must be in (0, ", MAX_EXPERTS, "]");
   TORCH_CHECK(
       rank >= 0 && rank < world_size,
       "ring_build_routing: rank must be in [0, world_size)");
   TORCH_CHECK(
       topk_storage_stride >= topk,
       "ring_build_routing: topk_storage_stride must be >= topk");
-  TORCH_CHECK(
-      num_experts > 0, "ring_build_routing: num_experts must be > 0");
-
   const int64_t num_tokens = num_tokens_per_rank * world_size;
   TORCH_CHECK(
       global_topk_idx.size(0) == num_tokens && global_topk_idx.size(1) == topk,
@@ -199,6 +227,7 @@ at::Tensor ring_build_routing(
     global_topk_idx.zero_();
     owner_scatter_idx.zero_();
     rows_per_owner.zero_();
+    rows_per_expert.zero_();
     return owner_scatter_idx;
   }
 
@@ -210,6 +239,8 @@ at::Tensor ring_build_routing(
   // Zero rows_per_owner (used as global atomic counter).
   queue.memset(rows_per_owner.data_ptr<int32_t>(), 0,
                world_size * sizeof(int32_t));
+  queue.memset(rows_per_expert.data_ptr<int32_t>(), 0,
+               num_experts * sizeof(int32_t));
 
   const int64_t total_pairs =
       static_cast<int64_t>(world_size) * num_tokens_per_rank * topk;
@@ -244,6 +275,7 @@ at::Tensor ring_build_routing(
       owner_scatter_idx.data_ptr<int32_t>(),
       w_out_ptr,
       rows_per_owner.data_ptr<int32_t>(),
+      rows_per_expert.data_ptr<int32_t>(),
       static_cast<int32_t>(num_tokens_per_rank),
       static_cast<int32_t>(topk),
       static_cast<int32_t>(topk_storage_stride),
@@ -260,7 +292,7 @@ at::Tensor ring_build_routing(
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ring_build_routing(Tensor topk_rank_ptrs, Tensor(a!) global_topk_idx, "
-      "Tensor(a!) owner_scatter_idx, Tensor(a!) rows_per_owner, "
+  "Tensor(a!) owner_scatter_idx, Tensor(a!) rows_per_owner, Tensor(a!) rows_per_expert, "
       "int num_tokens_per_rank, int topk, int topk_storage_stride, "
       "int num_experts, int rank, int world_size, "
       "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");

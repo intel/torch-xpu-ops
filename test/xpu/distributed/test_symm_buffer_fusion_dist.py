@@ -174,6 +174,16 @@ def check_elastic_xpu_fusions():
                     f"expert={expert_id}, rel_pos={rel_pos}, count={expert_count}"
                 )
 
+        # Verify rows_per_expert exactly matches routing histogram from global_topk_idx.
+        expected_rows_per_expert = torch.bincount(
+            handle.global_topk_idx.reshape(-1).to("cpu", dtype=torch.int64),
+            minlength=NUM_EXPERTS,
+        ).to(device=device, dtype=torch.int32)
+        assert torch.equal(handle.rows_per_expert, expected_rows_per_expert), (
+            f"rows_per_expert mismatch on rank {rank}: "
+            f"max_abs_diff={(handle.rows_per_expert - expected_rows_per_expert).abs().max().item()}"
+        )
+
         # Verify rows_per_expert sums to num_tokens * topk
         total_assigned = handle.rows_per_expert.sum().item()
         assert total_assigned == num_tokens * TOPK, (

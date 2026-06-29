@@ -69,7 +69,6 @@ if os.path.exists(_NOTIFY_LIB_PATH):
 # Ring (single-kernel, pipelined) fused collectives.
 from ring_collectives import (
     _HAS_RING_ALLGATHER_PERMUTE,
-    _HAS_RING_BUILD_ROUTING,
     _HAS_RING_REDUCE_SCATTER_UNPERMUTE,
     build_ring_allgather_permute_resources,
     build_ring_reduce_scatter_unpermute_resources,
@@ -93,7 +92,7 @@ class SymmHandle:
     pass individual tensors manually.
 
     scatter_idx holds expert-relative positions; abs_scatter_idx
-    holds the absolute positions used by the unpermute kernel.
+    holds the absolute positions used by the staged unpermute kernel.
     """
 
     scatter_idx: torch.Tensor         # [num_tokens, topk] int32 (expert-relative)
@@ -101,9 +100,8 @@ class SymmHandle:
     num_tokens_per_rank: int
     global_topk_idx: torch.Tensor     # [num_tokens, topk] int32
     rows_per_expert: torch.Tensor     # [num_experts] int32
-    abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32 (absolute, for unpermute)
-    owner_scatter_idx: torch.Tensor = None  # [num_tokens, topk] int32 (owner-local, ring path)
-    num_experts: int = 0              # total experts (ring path owner computation)
+    abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32 (absolute, for staged unpermute)
+    num_experts: int = 0              # total experts
 
 
 class SymmBuffer:
@@ -254,7 +252,7 @@ class SymmBuffer:
             _FUSION_RING
             and _HAS_RING_ALLGATHER_PERMUTE
             and _HAS_RING_REDUCE_SCATTER_UNPERMUTE
-            and _HAS_RING_BUILD_ROUTING
+            and _HAS_NOTIFY_DISPATCH_V2_KERNEL
         )
         self._ring_ag_resources = None
         self._ring_rs_resources = None
@@ -265,10 +263,6 @@ class SymmBuffer:
             )
             self._ring_rs_resources = build_ring_reduce_scatter_unpermute_resources(
                 repr_tensor, num_max_tokens_per_rank, group=self.group
-            )
-            # Per-owner slot counter for the dedicated ring routing kernel.
-            self._rows_per_owner_buf = torch.zeros(
-                self.num_ranks, device=device, dtype=torch.int32
             )
 
     def _build_rank_buffers_ptr(self) -> torch.Tensor:
@@ -345,27 +339,27 @@ class SymmBuffer:
 
 
     # ================================================================== #
-    #  Ring-path routing helpers (fully isolated from notify_dispatch)    #
+    #  Ring-path routing (reuses notify_dispatch_v2)                      #
     # ================================================================== #
 
-    def _ring_build_routing(
+    def _ring_dispatch_routing(
         self,
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
         num_experts: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Build the global routing tables required by the ring kernels with a
-        single dedicated kernel (torch.ops.symm_mem.ring_build_routing).
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build the global routing tables required by the ring kernels using
+        notify_dispatch_v2 (same kernel as the notify path).
 
         The kernel reads every rank's topk_idx / topk_weights straight from
-        symmetric memory (no all_gather, no host sync), buckets per owner rank,
-        and emits owner-local compacted destination rows directly.
+        symmetric memory (no all_gather, no host sync), and emits expert-relative
+        scatter_idx + rows_per_expert.
 
         Returns:
             global_topk_idx: [num_tokens, topk] int32 (block r == rank r tokens).
             global_topk_weights: [num_tokens, topk] float32.
-            owner_scatter_idx: [num_tokens, topk] int32 owner-local destination
-                rows (slots compacted per owner).
+            scatter_idx: [num_tokens, topk] int32 expert-relative positions.
+            rows_per_expert: [num_experts] int32.
         """
         num_tokens_per_rank, topk = topk_idx.shape
         num_tokens = num_tokens_per_rank * self.num_ranks
@@ -378,13 +372,14 @@ class SymmBuffer:
 
         global_topk_idx = self._global_topk_idx_buf[:num_tokens, :topk]
         global_topk_weights = self._global_topk_weights_buf[:num_tokens, :topk]
-        owner_scatter_idx = self._scatter_idx[:num_tokens, :topk]
+        scatter_idx = self._scatter_idx[:num_tokens, :topk]
+        rows_per_expert = self._rows_per_expert_buf[:num_experts]
 
-        torch.ops.symm_mem.ring_build_routing(
+        torch.ops.symm_mem.notify_dispatch_v2(
             self._topk_rank_ptrs,
             global_topk_idx,
-            owner_scatter_idx,
-            self._rows_per_owner_buf,
+            scatter_idx,
+            rows_per_expert,
             num_tokens_per_rank,
             topk,
             self.num_topk,
@@ -394,7 +389,7 @@ class SymmBuffer:
             self._weights_rank_ptrs,
             global_topk_weights,
         )
-        return global_topk_idx, global_topk_weights, owner_scatter_idx
+        return global_topk_idx, global_topk_weights, scatter_idx, rows_per_expert
 
     # ================================================================== #
     #  Public API: allgather + local permute (dispatch)                   #
@@ -450,23 +445,36 @@ class SymmBuffer:
         num_experts: int,
         remap_hidden_states: torch.Tensor,
     ) -> Tuple[torch.Tensor, SymmHandle]:
-        """Single-kernel ring allgather + owner-based permute.
+        """Single-kernel ring allgather + expert-centric permute.
 
-        Routing tables are built with a plain all-gather + tensor ops; the ring
-        kernel gathers the hidden states internally. No symmetric-memory copies,
-        no workspace.barrier, no notify_dispatch.
+        Routing tables are built with notify_dispatch_v2 (expert-relative
+        scatter_idx + rows_per_expert); abs_scatter_idx is computed from
+        expert_cumsum + rel_scatter_idx, then the ring kernel uses it directly
+        (same as AllgatherPermuteRingVecKernel / allgather_permute).
         """
         num_tokens_per_rank = hidden_shard.shape[0]
 
-        global_topk_idx, global_topk_weights, owner_scatter_idx = (
-            self._ring_build_routing(topk_idx, topk_weights, num_experts)
+        global_topk_idx, global_topk_weights, scatter_idx, rows_per_expert = (
+            self._ring_dispatch_routing(topk_idx, topk_weights, num_experts)
         )
+
+        # Compute absolute scatter_idx from expert-relative positions.
+        num_tokens = num_tokens_per_rank * self.num_ranks
+        topk = topk_idx.shape[1]
+        expert_cumsum = torch.zeros(
+            num_experts, device=hidden_shard.device, dtype=torch.int32
+        )
+        expert_cumsum[1:] = rows_per_expert[:-1]
+        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
+        flat_expert = global_topk_idx.reshape(-1)
+        flat_rel = scatter_idx.reshape(-1)
+        abs_scatter_idx = (
+            expert_cumsum[flat_expert] + flat_rel
+        ).reshape(num_tokens, topk)
 
         ring_allgather_permute(
             hidden_shard,
-            global_topk_idx,
-            owner_scatter_idx,
-            num_experts,
+            abs_scatter_idx,
             remap_hidden_states.shape[0],
             group=self.group,
             resources=self._ring_ag_resources,
@@ -474,13 +482,12 @@ class SymmBuffer:
         )
 
         handle = SymmHandle(
-            scatter_idx=owner_scatter_idx,
+            scatter_idx=scatter_idx,
             global_topk_weights=global_topk_weights,
             num_tokens_per_rank=num_tokens_per_rank,
             global_topk_idx=global_topk_idx,
-            rows_per_expert=None,
-            abs_scatter_idx=None,
-            owner_scatter_idx=owner_scatter_idx,
+            rows_per_expert=rows_per_expert,
+            abs_scatter_idx=abs_scatter_idx,
             num_experts=num_experts,
         )
 
@@ -490,9 +497,10 @@ class SymmBuffer:
                 self.rank_idx,
             )
             self._log_tensor("remap_hidden_states", remap_hidden_states)
-            self._log_tensor("handle.owner_scatter_idx", owner_scatter_idx)
+            self._log_tensor("handle.abs_scatter_idx", abs_scatter_idx)
             self._log_tensor("handle.global_topk_idx", global_topk_idx)
             self._log_tensor("handle.global_topk_weights", global_topk_weights)
+            self._log_tensor("handle.rows_per_expert", rows_per_expert)
 
         return remap_hidden_states, handle
 
@@ -577,7 +585,6 @@ class SymmBuffer:
             global_topk_idx=global_topk_idx_buf,
             rows_per_expert=rows_per_expert_buf,
             abs_scatter_idx=abs_scatter_idx,
-            owner_scatter_idx=None,
             num_experts=num_experts,
         )
 
@@ -646,8 +653,9 @@ class SymmBuffer:
         ring_reduce_scatter_unpermute(
             expert_output,
             handle.global_topk_idx,
-            handle.owner_scatter_idx,
+            handle.scatter_idx,
             handle.global_topk_weights,
+            handle.rows_per_expert,
             handle.num_experts,
             num_tokens_per_rank,
             group=self.group,

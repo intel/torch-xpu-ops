@@ -130,14 +130,6 @@ def build():
             "RingReduceScatterUnpermute",
         )
     )
-    outputs.append(
-        build_one(
-            cfg,
-            "RingBuildRouting.cpp",
-            "libring_build_routing.so",
-            "RingBuildRouting",
-        )
-    )
     return outputs
 
 
@@ -154,7 +146,6 @@ def clean():
         os.path.join(base_dir, "libring_reduce_scatter.so"),
         os.path.join(base_dir, "libring_allgather_permute.so"),
         os.path.join(base_dir, "libring_reduce_scatter_unpermute.so"),
-        os.path.join(base_dir, "libring_build_routing.so"),
     ]
 
     removed = False

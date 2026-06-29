@@ -84,8 +84,7 @@ struct RingAllgatherPermuteSingleKernel {
   const int64_t* signal_pads_ptr;    // signal pads, one per rank
   scalar_t* gather_ptr;              // == rank_buffers_ptr[rank]
   scalar_t* remap_ptr;              // [remap_rows, hidden] (local)
-  const int32_t* topk_idx_ptr;     // [world_size * num_tokens_per_rank, topk]
-  const int32_t* scatter_idx_ptr;  // [world_size * num_tokens_per_rank, topk]
+  const int32_t* scatter_idx_ptr;  // [world_size * num_tokens_per_rank, topk] (absolute)
   int64_t hidden;
   int64_t num_tokens_per_rank;
   int64_t tokens_per_wg;
@@ -95,9 +94,6 @@ struct RingAllgatherPermuteSingleKernel {
   int32_t right;
   int32_t left;
   int32_t num_wg;
-  int32_t base_experts;
-  int32_t rem_experts;
-  int32_t boundary;
   uint32_t tag;
 
   // Coalesced cooperative copy of `n` elements by one work-group.
@@ -125,10 +121,9 @@ struct RingAllgatherPermuteSingleKernel {
   }
 
   // Permute every token in this work-group's slice of gathered block `block`
-  // into the expert-grouped `remap` buffer.  For each top-k slot whose expert
-  // is owned by this rank, the token's hidden vector is copied to
-  // remap[scatter_idx[gt, k]].  All threads share the (uniform) token / k /
-  // ownership control flow and cooperate on the per-token hidden copy.
+  // into the expert-sorted `remap` buffer.  For each top-k slot, the token's
+  // hidden vector is copied to remap[scatter_idx[gt * topk + k]].
+  // scatter_idx holds absolute destination rows (same as AllgatherPermuteRingVecKernel).
   inline void wg_permute_block(
       int32_t block,
       int64_t token_base,
@@ -142,15 +137,8 @@ struct RingAllgatherPermuteSingleKernel {
       const scalar_t* src = gather_ptr + gt * hidden;
       const int64_t topk_base = gt * topk;
       for (int32_t k = 0; k < topk; ++k) {
-        const int32_t expert = topk_idx_ptr[topk_base + k];
-        int32_t owner;
-        if (expert < boundary) {
-          owner = expert / (base_experts + 1);
-        } else {
-          owner = rem_experts + (expert - boundary) / base_experts;
-        }
-        if (owner != rank) continue;
         const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+        if (dst_row < 0) continue;
         scalar_t* dst = remap_ptr + static_cast<int64_t>(dst_row) * hidden;
         wg_copy(src, dst, hidden, lid, lsize);
       }
@@ -252,16 +240,14 @@ inline void compute_launch_tokens(
 
 // `gather_output` is rank's slice of symmetric memory and must equal
 // rank_buffers_ptr[rank]; peers push into it directly.  `remap_output` is a
-// local (non-symmetric) expert-grouped buffer this rank owns.
+// local (non-symmetric) expert-sorted buffer this rank owns.
 at::Tensor ring_allgather_permute(
     const at::Tensor& input_shard,
     const at::Tensor& rank_buffers_ptr,
     const at::Tensor& signal_pads_ptr,
     at::Tensor gather_output,
     at::Tensor remap_output,
-    const at::Tensor& topk_idx,
     const at::Tensor& scatter_idx,
-    int64_t num_experts,
     int64_t rank,
     int64_t world_size,
     int64_t iteration) {
@@ -283,12 +269,9 @@ at::Tensor ring_allgather_permute(
   TORCH_CHECK(
       signal_pads_ptr.scalar_type() == at::kLong,
       "ring_allgather_permute: signal_pads_ptr must be int64");
-  TORCH_CHECK(topk_idx.dim() == 2, "ring_allgather_permute: topk_idx must be 2D");
-  TORCH_CHECK(topk_idx.scalar_type() == at::kInt, "ring_allgather_permute: topk_idx must be int32");
-  TORCH_CHECK(topk_idx.is_contiguous());
   TORCH_CHECK(
-      scatter_idx.dim() == 2 && scatter_idx.sizes() == topk_idx.sizes(),
-      "ring_allgather_permute: scatter_idx must match topk_idx shape");
+      scatter_idx.dim() == 2,
+      "ring_allgather_permute: scatter_idx must be 2D [num_tokens, topk]");
   TORCH_CHECK(scatter_idx.scalar_type() == at::kInt, "ring_allgather_permute: scatter_idx must be int32");
   TORCH_CHECK(scatter_idx.is_contiguous());
   TORCH_CHECK(rank >= 0 && rank < world_size, "ring_allgather_permute: rank out of range");
@@ -309,8 +292,8 @@ at::Tensor ring_allgather_permute(
       remap_output.size(1) == hidden,
       "ring_allgather_permute: remap_output hidden must match input_shard");
   TORCH_CHECK(
-      topk_idx.size(0) == num_tokens_per_rank * world_size,
-      "ring_allgather_permute: topk_idx first dim must equal world_size * tokens");
+      scatter_idx.size(0) == num_tokens_per_rank * world_size,
+      "ring_allgather_permute: scatter_idx first dim must equal world_size * tokens");
 
   if (chunk == 0) {
     return remap_output;
@@ -325,12 +308,8 @@ at::Tensor ring_allgather_permute(
   const int32_t r = static_cast<int32_t>(rank);
   const int32_t right = (r + 1) % ws;
   const int32_t left = (r - 1 + ws) % ws;
-  const int32_t topk = static_cast<int32_t>(topk_idx.size(1));
+  const int32_t topk = static_cast<int32_t>(scatter_idx.size(1));
   const uint32_t tag = static_cast<uint32_t>(iteration);
-
-  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
-  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
-  const int32_t boundary = rem_experts * (base_experts + 1);
 
   constexpr int VEC_SIZE = 8;
   constexpr int64_t threads = 256;
@@ -347,7 +326,6 @@ at::Tensor ring_allgather_permute(
             signal_pads_ptr.data_ptr<int64_t>(),
             gather_output.data_ptr<scalar_t>(),
             remap_output.data_ptr<scalar_t>(),
-            topk_idx.data_ptr<int32_t>(),
             scatter_idx.data_ptr<int32_t>(),
             hidden,
             num_tokens_per_rank,
@@ -358,9 +336,6 @@ at::Tensor ring_allgather_permute(
             right,
             left,
             num_wg,
-            base_experts,
-            rem_experts,
-            boundary,
             tag};
         sycl_kernel_submit(
             sycl::range<1>(static_cast<size_t>(num_wg) * threads),
@@ -376,8 +351,7 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ring_allgather_permute(Tensor input_shard, Tensor rank_buffers_ptr, "
       "Tensor signal_pads_ptr, Tensor(a!) gather_output, Tensor(b!) remap_output, "
-      "Tensor topk_idx, Tensor scatter_idx, int num_experts, int rank, "
-      "int world_size, int iteration) -> Tensor(b!)");
+      "Tensor scatter_idx, int rank, int world_size, int iteration) -> Tensor(b!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {

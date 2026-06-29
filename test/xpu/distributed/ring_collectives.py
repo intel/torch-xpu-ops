@@ -35,7 +35,6 @@ for _lib, _attr in (
     ("libring_reduce_scatter.so", "ring_reduce_scatter"),
     ("libring_allgather_permute.so", "ring_allgather_permute"),
     ("libring_reduce_scatter_unpermute.so", "ring_reduce_scatter_unpermute"),
-    ("libring_build_routing.so", "ring_build_routing"),
 ):
     _path = os.path.join(_BASE, "..", "csrc", _lib)
     if os.path.exists(_path):
@@ -50,7 +49,6 @@ _HAS_RING_ALLGATHER_PERMUTE = hasattr(torch.ops.symm_mem, "ring_allgather_permut
 _HAS_RING_REDUCE_SCATTER_UNPERMUTE = hasattr(
     torch.ops.symm_mem, "ring_reduce_scatter_unpermute"
 )
-_HAS_RING_BUILD_ROUTING = hasattr(torch.ops.symm_mem, "ring_build_routing")
 
 # Monotonically increasing signal tag per group (kept for robustness even
 # though pads are zeroed before each call).
@@ -407,9 +405,7 @@ def build_ring_allgather_permute_resources(
 
 def ring_allgather_permute(
     input_shard: torch.Tensor,
-    topk_idx: torch.Tensor,
     scatter_idx: torch.Tensor,
-    num_experts: int,
     remap_rows: int,
     group: dist.ProcessGroup = None,
     resources: dict = None,
@@ -419,11 +415,10 @@ def ring_allgather_permute(
 
     Args:
         input_shard: [num_tokens_per_rank, hidden] local token shard.
-        topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
-        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 destination
-            rows into this rank's expert-grouped buffer.
-        num_experts: total number of experts (for owner computation).
-        remap_rows: number of rows in this rank's expert-grouped output.
+        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 absolute
+            destination rows (same semantics as allgather_permute in
+            LocalPermuteCopy.cpp).
+        remap_rows: number of rows in the expert-sorted output.
         group: process group (default: WORLD).
         resources: optional precomputed resources from
             build_ring_allgather_permute_resources() to skip per-call
@@ -433,8 +428,7 @@ def ring_allgather_permute(
             to avoid per-call allocation in a timed loop.
 
     Returns:
-        remap_output: [remap_rows, hidden] expert-grouped tokens owned by this
-            rank (only owned (token, k) slots are written).
+        remap_output: [remap_rows, hidden] expert-sorted output.
     """
     assert _HAS_RING_ALLGATHER_PERMUTE, "ring_allgather_permute native kernel not available"
     group, group_name, rank, world_size = _group_info(group)
@@ -482,9 +476,7 @@ def ring_allgather_permute(
         signal_pads_ptr,
         gather_output,
         remap_output,
-        topk_idx.contiguous(),
         scatter_idx.contiguous(),
-        num_experts,
         rank,
         world_size,
         iteration,
@@ -549,6 +541,7 @@ def ring_reduce_scatter_unpermute(
     topk_idx: torch.Tensor,
     scatter_idx: torch.Tensor,
     topk_weights: torch.Tensor,
+    rows_per_expert: torch.Tensor,
     num_experts: int,
     num_tokens_per_rank: int,
     group: dist.ProcessGroup = None,
@@ -560,10 +553,11 @@ def ring_reduce_scatter_unpermute(
     Args:
         expert_output: [remap_rows, hidden] this rank's expert outputs.
         topk_idx: [world_size * num_tokens_per_rank, topk] int32 expert ids.
-        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 rows into
-            expert_output.
+        scatter_idx: [world_size * num_tokens_per_rank, topk] int32 expert-relative
+            positions (same semantics as notify_dispatch_v2 output).
         topk_weights: [world_size * num_tokens_per_rank, topk] float32 weights.
-        num_experts: total number of experts (for owner computation).
+        rows_per_expert: [num_experts] int32 global rows per expert.
+        num_experts: total number of experts.
         num_tokens_per_rank: number of tokens this rank receives back.
         group: process group (default: WORLD).
         resources: optional precomputed resources from
@@ -628,6 +622,7 @@ def ring_reduce_scatter_unpermute(
         topk_idx.contiguous(),
         scatter_idx.contiguous(),
         topk_weights.contiguous(),
+        rows_per_expert.contiguous(),
         num_experts,
         rank,
         world_size,

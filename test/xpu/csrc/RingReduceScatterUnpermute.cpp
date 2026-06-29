@@ -50,6 +50,7 @@
 namespace {
 
 constexpr int32_t RING_MAX_WG = 64;
+constexpr int32_t MAX_EXPERTS_RING = 512;
 
 // Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
 // system-scope release fence so the store is actually flushed to the shared
@@ -74,7 +75,7 @@ inline void wait_eq_sys(uint32_t* addr, uint32_t val) {
 }
 
 template <typename scalar_t, int VEC_SIZE>
-struct RingReduceScatterUnpermuteSingleKernel {
+struct RingReduceScatterUnpermuteSingleKernel : __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_elem_t =
       std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
@@ -85,8 +86,9 @@ struct RingReduceScatterUnpermuteSingleKernel {
   scalar_t* acc_ptr;                  // == rank_buffers_ptr[rank]
   scalar_t* output_ptr;              // [num_tokens_per_rank, hidden] (local)
   const int32_t* topk_idx_ptr;       // [world_size * tokens, topk]
-  const int32_t* scatter_idx_ptr;    // [world_size * tokens, topk]
+  const int32_t* scatter_idx_ptr;    // [world_size * tokens, topk] (expert-relative)
   const float* topk_weights_ptr;     // [world_size * tokens, topk]
+  const int32_t* rows_per_expert_ptr; // [num_experts] global rows per expert
   int64_t hidden;
   int64_t num_tokens_per_rank;
   int64_t tokens_per_wg;
@@ -95,15 +97,24 @@ struct RingReduceScatterUnpermuteSingleKernel {
   int32_t world_size;
   int32_t right;
   int32_t num_wg;
+  int32_t num_experts;
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+
+  // SLM: owned-expert exclusive prefix sum for expert-relative → absolute conversion.
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS_RING, cgh);
+  }
   uint32_t tag;
 
   // Unpermute one token of block `block`: form the weighted sum of this rank's
   // owned expert outputs, optionally add the incoming partial `acc_row`, and
   // store into `dst_row`.  Threads cooperatively own VEC_SIZE hidden elements
   // each (amortizing the per-k index loads over VEC_SIZE, like EpCombine).
+  // Uses slm[expert] + scatter_idx (expert-relative) for addressing.
   inline void unpermute_token(
       int64_t gt,
       const scalar_t* acc_row,  // nullptr for phase 0 (no incoming partial)
@@ -126,6 +137,7 @@ struct RingReduceScatterUnpermuteSingleKernel {
       }
       for (int32_t k = 0; k < topk; ++k) {
         const int32_t expert = topk_idx_ptr[topk_base + k];
+        if (expert < 0 || expert >= num_experts) continue;
         int32_t owner;
         if (expert < boundary) {
           owner = expert / (base_experts + 1);
@@ -133,7 +145,8 @@ struct RingReduceScatterUnpermuteSingleKernel {
           owner = rem_experts + (expert - boundary) / base_experts;
         }
         if (owner != rank) continue;
-        const int32_t src_row = scatter_idx_ptr[topk_base + k];
+        const int32_t rel_pos = scatter_idx_ptr[topk_base + k];
+        const int32_t src_row = slm[expert] + rel_pos;
         const float w = topk_weights_ptr[topk_base + k];
         const scalar_t* src =
             expert_output_ptr + static_cast<int64_t>(src_row) * hidden + h_start;
@@ -157,6 +170,7 @@ struct RingReduceScatterUnpermuteSingleKernel {
       float a = (acc_row != nullptr) ? static_cast<float>(acc_row[h]) : 0.0f;
       for (int32_t k = 0; k < topk; ++k) {
         const int32_t expert = topk_idx_ptr[topk_base + k];
+        if (expert < 0 || expert >= num_experts) continue;
         int32_t owner;
         if (expert < boundary) {
           owner = expert / (base_experts + 1);
@@ -164,7 +178,8 @@ struct RingReduceScatterUnpermuteSingleKernel {
           owner = rem_experts + (expert - boundary) / base_experts;
         }
         if (owner != rank) continue;
-        const int32_t src_row = scatter_idx_ptr[topk_base + k];
+        const int32_t rel_pos = scatter_idx_ptr[topk_base + k];
+        const int32_t src_row = slm[expert] + rel_pos;
         const float w = topk_weights_ptr[topk_base + k];
         a += w *
             static_cast<float>(
@@ -222,6 +237,27 @@ struct RingReduceScatterUnpermuteSingleKernel {
     const int32_t wg = static_cast<int32_t>(item.get_group(0));
     const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
     const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    // Compute owned-expert exclusive prefix sum in SLM.
+    for (int32_t e = lid; e < num_experts; e += lsize) {
+      int32_t owner;
+      if (e < boundary) {
+        owner = e / (base_experts + 1);
+      } else {
+        owner = rem_experts + (e - boundary) / base_experts;
+      }
+      slm[e] = (owner == rank) ? rows_per_expert_ptr[e] : 0;
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+    if (lid == 0) {
+      int32_t running = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        const int32_t c = slm[e];
+        slm[e] = running;
+        running += c;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
 
     const int64_t token_base = static_cast<int64_t>(wg) * tokens_per_wg;
     int64_t token_cnt = num_tokens_per_rank - token_base;
@@ -309,6 +345,7 @@ at::Tensor ring_reduce_scatter_unpermute(
     const at::Tensor& topk_idx,
     const at::Tensor& scatter_idx,
     const at::Tensor& topk_weights,
+    const at::Tensor& rows_per_expert,
     int64_t num_experts,
     int64_t rank,
     int64_t world_size,
@@ -344,6 +381,15 @@ at::Tensor ring_reduce_scatter_unpermute(
       "ring_reduce_scatter_unpermute: topk_weights must match topk_idx shape");
   TORCH_CHECK(topk_weights.scalar_type() == at::kFloat, "ring_reduce_scatter_unpermute: topk_weights must be float32");
   TORCH_CHECK(topk_weights.is_contiguous());
+  TORCH_CHECK(
+      rows_per_expert.dim() == 1 && rows_per_expert.size(0) == num_experts,
+      "ring_reduce_scatter_unpermute: rows_per_expert must be 1D with size == num_experts");
+  TORCH_CHECK(
+      rows_per_expert.scalar_type() == at::kInt,
+      "ring_reduce_scatter_unpermute: rows_per_expert must be int32");
+  TORCH_CHECK(
+      num_experts > 0 && num_experts <= MAX_EXPERTS_RING,
+      "ring_reduce_scatter_unpermute: num_experts must be in (0, ", MAX_EXPERTS_RING, "]");
   TORCH_CHECK(rank >= 0 && rank < world_size, "ring_reduce_scatter_unpermute: rank out of range");
   TORCH_CHECK(
       expert_output.scalar_type() == output.scalar_type() &&
@@ -394,6 +440,7 @@ at::Tensor ring_reduce_scatter_unpermute(
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       output.scalar_type(), "ring_reduce_scatter_unpermute", [&]() {
         auto kfn = RingReduceScatterUnpermuteSingleKernel<scalar_t, VEC_SIZE>{
+            {},
             expert_output.data_ptr<scalar_t>(),
             rank_buffers_ptr.data_ptr<int64_t>(),
             signal_pads_ptr.data_ptr<int64_t>(),
@@ -402,6 +449,7 @@ at::Tensor ring_reduce_scatter_unpermute(
             topk_idx.data_ptr<int32_t>(),
             scatter_idx.data_ptr<int32_t>(),
             topk_weights.data_ptr<float>(),
+            rows_per_expert.data_ptr<int32_t>(),
             hidden,
             num_tokens_per_rank,
             tokens_per_wg,
@@ -410,10 +458,12 @@ at::Tensor ring_reduce_scatter_unpermute(
             ws,
             right,
             num_wg,
+            static_cast<int32_t>(num_experts),
             base_experts,
             rem_experts,
             boundary,
-            tag};
+            tag,
+            {}};
         sycl_kernel_submit(
             sycl::range<1>(static_cast<size_t>(num_wg) * threads),
             sycl::range<1>(threads),
@@ -428,8 +478,8 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ring_reduce_scatter_unpermute(Tensor expert_output, Tensor rank_buffers_ptr, "
       "Tensor signal_pads_ptr, Tensor(a!) acc, Tensor(b!) output, Tensor topk_idx, "
-      "Tensor scatter_idx, Tensor topk_weights, int num_experts, int rank, "
-      "int world_size, int iteration) -> Tensor(b!)");
+      "Tensor scatter_idx, Tensor topk_weights, Tensor rows_per_expert, "
+      "int num_experts, int rank, int world_size, int iteration) -> Tensor(b!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
