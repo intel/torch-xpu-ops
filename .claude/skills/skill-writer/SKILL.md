@@ -84,10 +84,12 @@ description: Brief description of what this does and when to use it
 **Field requirements**:
 
 - **name**:
-  - Lowercase letters, numbers, hyphens only
+  - Lowercase letters, numbers, hyphens only; forward slashes (`/`) are
+    allowed as hierarchy separators for nested skills
   - Max 64 characters
-  - Must match directory name
-  - Good: `pdf-processor`, `git-commit-helper`
+  - Must match the skill's directory path relative to `.claude/skills/`
+    (e.g. skill at `.claude/skills/fix/reproduce/` → `name: fix/reproduce`)
+  - Good: `pdf-processor`, `git-commit-helper`, `fix/reproduce`, `fix/domains/xpu-kernel`
   - Bad: `PDF_Processor`, `Git Commits!`
 
 - **description**:
@@ -334,7 +336,7 @@ Detailed reference: See [reference.md](reference.md)
 
 Before finalizing a Skill, verify:
 
-- [ ] Name is lowercase, hyphens only, max 64 chars
+- [ ] Name is lowercase, hyphens and forward slashes only, max 64 chars; matches directory path relative to `.claude/skills/`
 - [ ] Description is specific and < 1024 chars
 - [ ] Description includes "what" and "when"
 - [ ] YAML frontmatter is valid
