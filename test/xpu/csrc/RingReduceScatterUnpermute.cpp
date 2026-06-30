@@ -45,9 +45,47 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+// Bandwidth-critical 16-byte store to the remote peer's acc (the push) uses an
+// Intel GPU LSC store with explicit cache control (L1WB_L3WB) so contiguous
+// remote writes get combined through L3 into larger burst transactions over the
+// cross-GPU link. Measured ~18% faster than the plain vectorized store on B60.
+// Enabled by default; define RING_NO_LSC_STORE to fall back to the plain store.
+#if !defined(RING_LSC_STORE) && !defined(RING_NO_LSC_STORE)
+#define RING_LSC_STORE 1
+#endif
+
+#if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+typedef uint32_t ring_lsc_u4 __attribute__((ext_vector_type(4)));
+enum RingLscStcc { RING_LSC_STCC_L1WB_L3WB = 7 };
+SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
+    __attribute__((opencl_global)) ring_lsc_u4* base,
+    int off,
+    ring_lsc_u4 val,
+    enum RingLscStcc cc);
+#endif
+
 namespace {
 
 constexpr int32_t RING_MAX_WG = 64;
+
+// 16-byte vector store with optional LSC cache control (see RING_LSC_STORE).
+template <typename vec_t>
+inline void ring_vec_store(vec_t* dst, vec_t vd) {
+#if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+  if constexpr (sizeof(vec_t) == 16) {
+    ring_lsc_u4 v = *reinterpret_cast<ring_lsc_u4*>(&vd);
+    __builtin_IB_lsc_store_global_uint4(
+        (__attribute__((opencl_global)) ring_lsc_u4*)(dst),
+        0,
+        v,
+        RING_LSC_STCC_L1WB_L3WB);
+  } else {
+    *dst = vd;
+  }
+#else
+  *dst = vd;
+#endif
+}
 
 // Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
 // system-scope release fence so the store is actually flushed to the shared
@@ -136,7 +174,7 @@ struct RingReduceScatterUnpermuteSingleKernel {
         const scalar_t s = static_cast<scalar_t>(acc[i]);
         vd[i] = *reinterpret_cast<const vec_elem_t*>(&s);
       }
-      *reinterpret_cast<vec_t*>(dst_row + h_start) = vd;
+      ring_vec_store(reinterpret_cast<vec_t*>(dst_row + h_start), vd);
     }
     // Tail for hidden not divisible by VEC_SIZE.
     for (int64_t h = hidden_vecs * VEC_SIZE + lid; h < hidden; h += lsize) {

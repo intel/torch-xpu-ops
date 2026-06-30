@@ -218,7 +218,13 @@ def benchmark_ring_reduce_scatter_unpermute():
     ref = run_reference().clone()
     torch.xpu.synchronize()
     max_err = (out.float() - ref.float()).abs().max().item()
-    tol = 1e-2 * ref.float().abs().max().clamp_min(1.0).item()
+    # The fused ring folds the running partial through `world_size` hops, and for
+    # low-precision dtypes (e.g. bf16) the intermediate sum is rounded to dtype on
+    # every hop. These sequential roundings accumulate, so the worst-case element
+    # error grows with the number of hops. Scale the relative tolerance by
+    # sqrt(world_size) to track that growth (fp32 stays well within tolerance).
+    rel_tol = 1e-2 * (world_size ** 0.5)
+    tol = rel_tol * ref.float().abs().max().clamp_min(1.0).item()
     ok = max_err <= tol
 
     print(f"[Ring reduce_scatter_unpermute time in rank {rank}] {latencies} ms")

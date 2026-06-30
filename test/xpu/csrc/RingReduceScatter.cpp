@@ -33,7 +33,46 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+// The bandwidth-critical 16-byte store pushes the running partial into the
+// right peer's acc over the cross-GPU link. Use an Intel GPU LSC store with
+// explicit cache control (L1WB_L3WB) so contiguous remote writes get combined
+// through L3 into larger burst transactions (same lever measured ~18% faster on
+// the reduce-scatter-unpermute push path). Enabled by default; define
+// RING_NO_LSC_STORE to fall back to the plain vectorized store.
+#if !defined(RING_LSC_STORE) && !defined(RING_NO_LSC_STORE)
+#define RING_LSC_STORE 1
+#endif
+
+#if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+typedef uint32_t ring_lsc_u4 __attribute__((ext_vector_type(4)));
+enum RingLscStcc { RING_LSC_STCC_L1WB_L3WB = 7 };
+SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
+    __attribute__((opencl_global)) ring_lsc_u4* base,
+    int off,
+    ring_lsc_u4 val,
+    enum RingLscStcc cc);
+#endif
+
 namespace {
+
+// 16-byte vector store with optional LSC cache control (see RING_LSC_STORE).
+template <typename vec_t>
+inline void ring_vec_store(vec_t* dst, vec_t vd) {
+#if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+  if constexpr (sizeof(vec_t) == 16) {
+    ring_lsc_u4 v = *reinterpret_cast<ring_lsc_u4*>(&vd);
+    __builtin_IB_lsc_store_global_uint4(
+        (__attribute__((opencl_global)) ring_lsc_u4*)(dst),
+        0,
+        v,
+        RING_LSC_STCC_L1WB_L3WB);
+  } else {
+    *dst = vd;
+  }
+#else
+  *dst = vd;
+#endif
+}
 
 // Upper bound on work-groups; the signal pad is sized world_size * this by
 // the Python wrapper, so the actual (chunk-dependent) num_wg must not exceed
@@ -122,7 +161,7 @@ struct RingReduceScatterSingleKernel {
       auto sv = reinterpret_cast<const vec_t*>(src);
       auto dv = reinterpret_cast<vec_t*>(dst);
       for (int64_t i = lid; i < nv; i += lsize)
-        dv[i] = sv[i];
+        ring_vec_store(&dv[i], sv[i]);
       for (int64_t i = nv * VEC_SIZE + lid; i < n; i += lsize)
         dst[i] = src[i];
     } else {
@@ -165,7 +204,7 @@ struct RingReduceScatterSingleKernel {
               static_cast<float>(sa) + static_cast<float>(sb));
           vd[k] = *reinterpret_cast<const vec_elem_t*>(&sres);
         }
-        dv[i] = vd;
+        ring_vec_store(&dv[i], vd);
       }
       for (int64_t i = nv * VEC_SIZE + lid; i < n; i += lsize) {
         dst[i] = static_cast<scalar_t>(

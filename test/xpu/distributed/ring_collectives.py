@@ -470,7 +470,26 @@ def ring_allgather_permute(
     # workspace.barrier()
 
     iteration = _next_iter(group_name)
-    torch.ops.symm_mem.ring_allgather_permute(
+    # Topology choice is fabric- and scale-dependent. Measured on 8x B60 (PCIe),
+    # with the world_size-gated LSC store in the push kernel (LSC auto-off at
+    # ws<=4, see RingAllgatherPermute.cpp):
+    #   world_size=8: PUSH ~2.44 ms vs PULL ~3.31 ms -> push wins (~26%)
+    #   world_size=4: PUSH ~0.775 ms vs PULL ~0.88 ms -> push wins (~12%)
+    # PUSH's posted writes win at every measured scale once the low-rank LSC
+    # regression is gated out, so default to PUSH whenever available.
+    # Override explicitly with RING_AGP_PUSH=1 / =0.
+    _have_push = hasattr(torch.ops.symm_mem, "ring_allgather_permute_push")
+    _env_push = os.environ.get("RING_AGP_PUSH")
+    if _env_push is not None:
+        _use_push = _env_push == "1" and _have_push
+    else:
+        _use_push = _have_push
+    _agp_op = (
+        torch.ops.symm_mem.ring_allgather_permute_push
+        if _use_push
+        else torch.ops.symm_mem.ring_allgather_permute
+    )
+    _agp_op(
         input_shard,
         rank_buffers_ptr,
         signal_pads_ptr,

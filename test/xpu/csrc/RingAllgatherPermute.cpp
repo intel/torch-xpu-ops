@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
+#include <cstdlib>
 #include <torch/library.h>
 #include <comm/SYCLHelpers.h>
 
@@ -51,8 +52,89 @@ namespace {
 
 constexpr int32_t RING_MAX_WG = 1024;
 
-// Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
-// system-scope release fence so the store is actually flushed to the shared
+// The cross-rank traffic in the PULL ring is a remote READ from the left peer's
+// gather slot followed by a LOCAL write to our gather slot (which the permute
+// re-reads immediately). Measured on this PCIe fabric (8x B60, bf16):
+//   - LSC store (L1WB_L3WB) on the LOCAL write:   ~3.43 -> ~3.31 ms (~3-4% win)
+//   - LSC L1UC load on the REMOTE read:           ~3.43 -> ~3.89 ms (~13% LOSS)
+// The default cached/pipelined remote read beats an L1UC bypass, so by default
+// ONLY the local store uses LSC; the remote load stays a plain load.
+// Opt-outs: RING_NO_LSC_COPY (disable entirely), RING_LSC_COPY_PLAIN_STORE
+// (plain store), RING_LSC_COPY_LSC_LOAD (force LSC load, not recommended here).
+#if !defined(RING_LSC_COPY) && !defined(RING_NO_LSC_COPY)
+#define RING_LSC_COPY 1
+#endif
+#if defined(RING_LSC_COPY) && !defined(RING_LSC_COPY_LSC_LOAD)
+#define RING_LSC_COPY_PLAIN_LOAD 1
+#endif
+
+#if defined(RING_LSC_COPY) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+typedef uint32_t ring_lsc_u4 __attribute__((ext_vector_type(4)));
+enum RingLscLdcc { RING_LSC_LDCC_L1UC_L3C = 2 };
+enum RingLscStcc { RING_LSC_STCC_L1WB_L3WB = 7 };
+SYCL_EXTERNAL extern "C" ring_lsc_u4 __builtin_IB_lsc_load_global_uint4(
+    const __attribute__((opencl_global)) ring_lsc_u4* base,
+    int off,
+    enum RingLscLdcc cc);
+SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
+    __attribute__((opencl_global)) ring_lsc_u4* base,
+    int off,
+    ring_lsc_u4 val,
+    enum RingLscStcc cc);
+#endif
+
+// 16-byte copy (load remote + store local) with optional LSC cache control.
+template <typename vec_t>
+inline void ring_vec_copy(vec_t* dst, const vec_t* src) {
+#if defined(RING_LSC_COPY) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+  if constexpr (sizeof(vec_t) == 16) {
+#if defined(RING_LSC_COPY_PLAIN_LOAD)
+    ring_lsc_u4 v = *reinterpret_cast<const ring_lsc_u4*>(src);
+#else
+    ring_lsc_u4 v = __builtin_IB_lsc_load_global_uint4(
+        (const __attribute__((opencl_global)) ring_lsc_u4*)(src),
+        0,
+        RING_LSC_LDCC_L1UC_L3C);
+#endif
+#if defined(RING_LSC_COPY_PLAIN_STORE)
+    *reinterpret_cast<ring_lsc_u4*>(dst) = v;
+#else
+    __builtin_IB_lsc_store_global_uint4(
+        (__attribute__((opencl_global)) ring_lsc_u4*)(dst),
+        0,
+        v,
+        RING_LSC_STCC_L1WB_L3WB);
+#endif
+  } else {
+    *dst = *src;
+  }
+#else
+  *dst = *src;
+#endif
+}
+
+// 16-byte store with optional LSC cache control (L1WB_L3WB). Used for the PUSH
+// kernel's posted remote write: contiguous remote writes get combined through
+// L3 into larger burst transactions over the cross-GPU link (same lever as the
+// reduce-scatter push). The value is already in a register (reused for the
+// local permute writes), so this is store-only.
+template <typename vec_t>
+inline void ring_vec_store_remote(vec_t* dst, vec_t vd) {
+#if defined(RING_LSC_COPY) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+  if constexpr (sizeof(vec_t) == 16) {
+    ring_lsc_u4 v = *reinterpret_cast<ring_lsc_u4*>(&vd);
+    __builtin_IB_lsc_store_global_uint4(
+        (__attribute__((opencl_global)) ring_lsc_u4*)(dst),
+        0,
+        v,
+        RING_LSC_STCC_L1WB_L3WB);
+  } else {
+    *dst = vd;
+  }
+#else
+  *dst = vd;
+#endif
+}
 // coherence point and becomes visible to the peer device.
 inline void store_release_sys(uint32_t* addr, uint32_t val) {
   *addr = val;
@@ -111,7 +193,7 @@ struct RingAllgatherPermuteSingleKernel {
       auto sv = reinterpret_cast<const vec_t*>(src);
       auto dv = reinterpret_cast<vec_t*>(dst);
       for (int64_t i = lid; i < nv; i += lsize)
-        dv[i] = sv[i];
+        ring_vec_copy(&dv[i], &sv[i]);
       for (int64_t i = nv * VEC_SIZE + lid; i < n; i += lsize)
         dst[i] = src[i];
     } else {
@@ -277,6 +359,7 @@ struct RingAllgatherPermutePushKernel {
   int32_t right;
   int32_t num_wg;
   uint32_t tag;
+  bool lsc_store;
 
   void operator()(sycl::nd_item<1> item) const {
     const int32_t wg = static_cast<int32_t>(item.get_group(0));
@@ -337,7 +420,19 @@ struct RingAllgatherPermutePushKernel {
           auto dv = reinterpret_cast<vec_t*>(d);
           for (int64_t i = lid; i < hidden_vecs; i += lsize) {
             const vec_t v = sv[i];        // single load
-            if (fwd) dv[i] = v;           // posted remote write (async drain)
+            if (fwd) {
+              // LSC write-back store on the remote forward write only pays off
+              // when comm volume is high (many ring hops).  At low world_size
+              // the kernel is dominated by the local topk scatter writes below,
+              // and write-back-caching the remote line pollutes L1/L3 and steals
+              // bandwidth from that dominant stream (measured ~+18% at ws=4).
+              // So use the LSC store only when host enabled it (ws gated).
+              if (lsc_store) {
+                ring_vec_store_remote(&dv[i], v);  // posted remote write (async drain)
+              } else {
+                dv[i] = v;                 // plain remote write
+              }
+            }
             for (int32_t k = 0; k < topk; ++k) {
               const int32_t dst_row = scatter_idx_ptr[topk_base + k];
               if (dst_row < 0) continue;
@@ -558,6 +653,15 @@ at::Tensor ring_allgather_permute_push(
 
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       remap_output.scalar_type(), "ring_allgather_permute_push", [&]() {
+        // LSC L1WB_L3WB store on the remote forward write helps only when comm
+        // volume is high (many ring hops).  At low world_size the push kernel
+        // is dominated by the local topk scatter and the write-back-cached
+        // remote line hurts (measured ~+18% at ws=4), so gate on world_size.
+        // Override with RING_AGP_LSC=0/1.
+        bool lsc_store = ws > 4;
+        if (const char* e = std::getenv("RING_AGP_LSC")) {
+          lsc_store = (e[0] != '0');
+        }
         auto kfn = RingAllgatherPermutePushKernel<scalar_t, VEC_SIZE>{
             input_shard.data_ptr<scalar_t>(),
             rank_buffers_ptr.data_ptr<int64_t>(),
@@ -573,7 +677,8 @@ at::Tensor ring_allgather_permute_push(
             ws,
             right,
             num_wg,
-            tag};
+            tag,
+            lsc_store};
         sycl_kernel_submit(
             sycl::range<1>(static_cast<size_t>(num_wg) * threads),
             sycl::range<1>(threads),
