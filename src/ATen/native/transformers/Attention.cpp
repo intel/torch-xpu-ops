@@ -420,10 +420,10 @@ _scaled_dot_product_efficient_attention_xpu(
       // seed/offset buffers, updated on each replay by replay_prologue().
       philox_seed_tensor = at::empty({1}, query.options().dtype(at::kLong));
       philox_offset_tensor = at::empty({1}, query.options().dtype(at::kLong));
-      std::pair<uint64_t, uint64_t> pstate;
+      xpu_hal::PhiloxCaptureState pstate;
       {
         std::lock_guard<std::mutex> lock(gen->mutex_);
-        pstate = xpu_hal::philoxState(gen, 0);
+        pstate = xpu_hal::philoxCaptureState(gen, 0);
       }
       auto dev_opts =
           at::TensorOptions().dtype(at::kLong).device(query.device());

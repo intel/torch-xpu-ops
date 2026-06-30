@@ -4,22 +4,25 @@
 #include <c10/util/intrusive_ptr.h>
 #include <utility>
 
-// This shared library (xpu_hal.dll) stores function pointers that allow
-// kernel DLLs built in BUILD_SEPARATE_OPS mode to call generator
-// functions without linking torch_xpu.dll.  torch_xpu.dll registers
-// the actual implementations at init time.
+// xpu_hal is a STATIC library WHOLE_ARCHIVE'd into torch_xpu.dll.
+// The dllexport/dllimport pattern is needed because:
+//  - xpu_hal .obj files (inside torch_xpu) export the symbols
+//  - Kernel DLLs import them from torch_xpu.dll
+//  - torch_xpu's own .obj files (e.g. XPUGeneratorImpl.cpp) see neither
 //
-// Dependency graph:
-//   torch_xpu.dll ──▶ xpu_hal.dll (registers at init)
-//   kernel DLLs   ──▶ xpu_hal.dll (calls at runtime)
-//
-// No cycle: xpu_hal.dll only links c10 / c10_xpu, never torch_xpu.
+// When XPU_HAL_BUILD is defined, symbols are dllexport.
+// When XPU_HAL_IMPORT is defined (kernel DLLs), symbols are dllimport
+//   and the pragma pulls in torch_xpu's import lib.
+// Otherwise (torch_xpu internal consumers), symbols are plain.
 
 #ifdef _WIN32
 #ifdef XPU_HAL_BUILD
 #define XPU_HAL_API __declspec(dllexport)
-#else
+#elif defined(XPU_HAL_IMPORT)
 #define XPU_HAL_API __declspec(dllimport)
+#pragma comment(lib, "torch_xpu.lib")
+#else
+#define XPU_HAL_API
 #endif
 #else
 #define XPU_HAL_API
@@ -33,16 +36,40 @@ using PhiloxStateFn = std::pair<uint64_t, uint64_t> (*)(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
+// Extended capture state that mirrors PhiloxXpuState without pulling
+// pytorch's PhiloxXpuState.h into kernel DLLs.  During graph capture
+// the payload is extragraph pointers; outside capture it is raw values.
+struct PhiloxCaptureState {
+  union Payload {
+    uint64_t val;
+    int64_t* ptr;
+    Payload() : val(0) {}
+  };
+  Payload seed_{};
+  Payload offset_{};
+  uint32_t offset_intragraph_ = 0;
+  bool captured_ = false;
+};
+using PhiloxCaptureStateFn = PhiloxCaptureState (*)(
+    c10::GeneratorImpl* gen,
+    uint64_t increment);
+
 // Called once by torch_xpu during XPU generator initialization.
 XPU_HAL_API void registerXPUGeneratorBridge(
     GetDefaultGeneratorFn get_gen,
     PhiloxStateFn philox);
+XPU_HAL_API void registerXPUGeneratorCaptureBridge(
+    PhiloxCaptureStateFn capture_fn);
 
 // Bridge accessors for kernel DLLs.
 XPU_HAL_API c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
     int64_t device_index);
 
 XPU_HAL_API std::pair<uint64_t, uint64_t> philoxState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment);
+
+XPU_HAL_API PhiloxCaptureState philoxCaptureState(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
