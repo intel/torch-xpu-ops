@@ -47,15 +47,9 @@ jobs:
     name: ${{ inputs.pytorch }}
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ inputs.runner }}
-    container:
-      image: 'intel-omix-dev:0.3.0'
-      options: '--pull never'
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      env:
-        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+    defaults:
+      run:
+        shell: 'bash -c "cat {0} | docker run --rm -it -e PIP_CACHE_DIR=/tmp/xpu-tool/.pipcache -w ${{ github.workspace }} --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g intel-omix-dev:0.3.0 bash -xe"'
     env:
       GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300

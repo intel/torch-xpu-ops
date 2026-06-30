@@ -47,9 +47,6 @@ on:
 
 permissions: read-all
 
-defaults:
-  run:
-    shell: bash -xe {0}
 env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -60,17 +57,9 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
-    container:
-      image: 'intel-omix-dev:0.3.0'
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-        - /opt:/opt
-      options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
-              -e ZE_AFFINITY_MASK --pull never
-      env:
-        MODEL_ONLY_NAME: ${{ inputs.model }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    defaults:
+      run:
+        shell: 'bash -c "cat {0} | docker run --rm -it -e MODEL_ONLY_NAME=${{ inputs.model }} -e AGENT_TOOLSDIRECTORY=/tmp/xpu-tool -w ${{ github.workspace }} --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g intel-omix-dev:0.3.0 bash -xe"'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
