@@ -27,5 +27,6 @@ namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(addr_stub, &xpu::addr_kernel);
 REGISTER_XPU_DISPATCH(norm_stub, &xpu::norm_kernel);
+REGISTER_XPU_DISPATCH(powsum_stub, &xpu::powsum_kernel);
 } // namespace native
 } // namespace at
