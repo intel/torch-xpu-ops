@@ -85,7 +85,7 @@ _HAS_RING_REDUCE_SCATTER_UNPERMUTE = hasattr(
 
 # Upper bound on the number of work-groups any single-kernel ring collective
 # launches; sizes the signal-pad region.
-_RING_MAX_WG = 256
+_RING_MAX_WG = 1024
 
 # Monotonically increasing signal tag per SymmBuffer instance.
 _ring_iter_counters: dict = {}
@@ -95,6 +95,9 @@ _ring_iter_counters: dict = {}
 # pipelined single-kernel ring collectives; set FUSION_RING=0 to use the
 # notify_dispatch + allgather_permute / staged-unpermute implementation.
 _FUSION_RING = os.environ.get("FUSION_RING", "1") == "1"
+# When FUSION_RING_PUSH=1, the ring dispatch uses the PUSH kernel (posted writes
+# to the right peer interleaved with permute) instead of the default PULL kernel.
+_FUSION_RING_PUSH = os.environ.get("FUSION_RING_PUSH", "0") == "1"
 
 
 @dataclass
@@ -490,7 +493,12 @@ class SymmBuffer:
         iteration = self._next_ring_iter()
         actual_data_numel = num_tokens_per_rank * self.hidden * self.num_ranks
         ring_gather_output = self._ring_local_data[:actual_data_numel]
-        torch.ops.symm_mem.ring_allgather_permute(
+        ring_op = (
+            torch.ops.symm_mem.ring_allgather_permute_push
+            if _FUSION_RING_PUSH
+            else torch.ops.symm_mem.ring_allgather_permute
+        )
+        ring_op(
             hidden_shard,
             self._ring_rank_buffers_ptr,
             self._ring_signal_pads_ptr,

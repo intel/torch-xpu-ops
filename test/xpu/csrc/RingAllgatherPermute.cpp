@@ -49,7 +49,7 @@
 
 namespace {
 
-constexpr int32_t RING_MAX_WG = 256;
+constexpr int32_t RING_MAX_WG = 1024;
 
 // Matches src/xccl/Signal.hpp store_release: write first, THEN issue the
 // system-scope release fence so the store is actually flushed to the shared
@@ -124,23 +124,54 @@ struct RingAllgatherPermuteSingleKernel {
   // into the expert-sorted `remap` buffer.  For each top-k slot, the token's
   // hidden vector is copied to remap[scatter_idx[gt * topk + k]].
   // scatter_idx holds absolute destination rows (same as AllgatherPermuteRingVecKernel).
+  //
+  // Each lane loads its slice of the source hidden vector ONCE into a register
+  // and writes it to all top-k destinations, instead of re-reading the source
+  // from the gather buffer once per top-k slot (topk reads -> 1 read).  This
+  // matches the read-once/write-topk pattern of the standalone allgather_permute
+  // kernel and keeps the gather-buffer read traffic at num_tokens*hidden.
   inline void wg_permute_block(
       int32_t block,
       int64_t token_base,
       int64_t token_cnt,
       int32_t lid,
       int32_t lsize) const {
+    const uintptr_t base_align =
+        reinterpret_cast<uintptr_t>(gather_ptr) |
+        reinterpret_cast<uintptr_t>(remap_ptr);
+    const bool vectorizable =
+        ((base_align % (VEC_SIZE * sizeof(scalar_t))) == 0) &&
+        (hidden % VEC_SIZE == 0);
+    const int64_t hidden_vecs = hidden / VEC_SIZE;
+
     for (int64_t lt = 0; lt < token_cnt; ++lt) {
       const int64_t local_t = token_base + lt;
       const int64_t gt =
           static_cast<int64_t>(block) * num_tokens_per_rank + local_t;
       const scalar_t* src = gather_ptr + gt * hidden;
       const int64_t topk_base = gt * topk;
-      for (int32_t k = 0; k < topk; ++k) {
-        const int32_t dst_row = scatter_idx_ptr[topk_base + k];
-        if (dst_row < 0) continue;
-        scalar_t* dst = remap_ptr + static_cast<int64_t>(dst_row) * hidden;
-        wg_copy(src, dst, hidden, lid, lsize);
+
+      if (vectorizable) {
+        auto sv = reinterpret_cast<const vec_t*>(src);
+        for (int64_t i = lid; i < hidden_vecs; i += lsize) {
+          const vec_t v = sv[i];  // single load, reused for every top-k slot
+          for (int32_t k = 0; k < topk; ++k) {
+            const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+            if (dst_row < 0) continue;
+            auto dv = reinterpret_cast<vec_t*>(
+                remap_ptr + static_cast<int64_t>(dst_row) * hidden);
+            dv[i] = v;
+          }
+        }
+      } else {
+        for (int64_t i = lid; i < hidden; i += lsize) {
+          const scalar_t v = src[i];  // single load, reused for every top-k slot
+          for (int32_t k = 0; k < topk; ++k) {
+            const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+            if (dst_row < 0) continue;
+            remap_ptr[static_cast<int64_t>(dst_row) * hidden + i] = v;
+          }
+        }
       }
     }
   }
@@ -211,6 +242,131 @@ struct RingAllgatherPermuteSingleKernel {
       }
       // Permute this block's tokens (terminal local work for all blocks).
       wg_permute_block(idx, token_base, token_cnt, lid, lsize);
+    }
+  }
+};
+
+// ===========================================================================
+// PUSH variant: forward each block to the RIGHT peer with posted remote writes
+// that are INTERLEAVED with the permute.  For every gathered vec we issue one
+// posted write to the right peer's gather slot (drains asynchronously over the
+// fabric) and then the topk local remap writes -- so the write drain overlaps
+// the HBM permute on the SAME work-items (no separate comm phase, no gather
+// readback).  Compare against the PULL kernel above on a given fabric: PULL
+// wins when peer reads >> posted writes (the PCIe case the default assumes),
+// PUSH wins when posted writes are cheap and overlap matters.
+// ===========================================================================
+template <typename scalar_t, int VEC_SIZE>
+struct RingAllgatherPermutePushKernel {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const scalar_t* input_shard_ptr;   // [num_tokens_per_rank, hidden] own shard
+  const int64_t* rank_buffers_ptr;   // symm gather buffers, one per rank
+  const int64_t* signal_pads_ptr;    // signal pads, one per rank
+  scalar_t* gather_ptr;              // == rank_buffers_ptr[rank] (left pushes here)
+  scalar_t* remap_ptr;              // [remap_rows, hidden] (local)
+  const int32_t* scatter_idx_ptr;  // absolute destination rows
+  int64_t hidden;
+  int64_t num_tokens_per_rank;
+  int64_t tokens_per_wg;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t right;
+  int32_t num_wg;
+  uint32_t tag;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    const int64_t token_base = static_cast<int64_t>(wg) * tokens_per_wg;
+    int64_t token_cnt = num_tokens_per_rank - token_base;
+    if (token_cnt > tokens_per_wg) token_cnt = tokens_per_wg;
+    if (token_cnt < 0) token_cnt = 0;
+
+    const int64_t chunk = num_tokens_per_rank * hidden;
+    const int64_t hidden_vecs = hidden / VEC_SIZE;
+    const bool vectorizable =
+        ((reinterpret_cast<uintptr_t>(gather_ptr) |
+          reinterpret_cast<uintptr_t>(remap_ptr) |
+          reinterpret_cast<uintptr_t>(input_shard_ptr) |
+          static_cast<uintptr_t>(rank_buffers_ptr[right])) %
+             (VEC_SIZE * sizeof(scalar_t)) ==
+         0) &&
+        (hidden % VEC_SIZE == 0);
+
+    uint32_t* my_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[rank]);
+    uint32_t* right_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[right]);
+    scalar_t* right_gather =
+        reinterpret_cast<scalar_t*>(rank_buffers_ptr[right]);
+
+    // Each rank pushes its own block first, then relays blocks it receives from
+    // the left.  At step t it owns block (rank - t); for t>0 it must wait until
+    // the left peer has pushed that block into this rank's gather slot.
+    for (int32_t t = 0; t < world_size; ++t) {
+      const int32_t block = (rank - t + world_size) % world_size;
+      const scalar_t* src;
+      if (t == 0) {
+        src = input_shard_ptr;  // own shard
+      } else {
+        if (lid == 0) {
+          wait_eq_sys(my_pad + ((t - 1) * num_wg + wg), tag);
+        }
+        item.barrier(sycl::access::fence_space::local_space);
+        sycl::atomic_fence(
+            sycl::memory_order::acquire, sycl::memory_scope::system);
+        src = gather_ptr + static_cast<int64_t>(block) * chunk;
+      }
+
+      const bool fwd = (t < world_size - 1);
+      scalar_t* fwd_base = right_gather + static_cast<int64_t>(block) * chunk;
+
+      for (int64_t lt = 0; lt < token_cnt; ++lt) {
+        const int64_t local_t = token_base + lt;
+        const scalar_t* s = src + local_t * hidden;
+        scalar_t* d = fwd_base + local_t * hidden;
+        const int64_t gt =
+            static_cast<int64_t>(block) * num_tokens_per_rank + local_t;
+        const int64_t topk_base = gt * topk;
+        if (vectorizable) {
+          auto sv = reinterpret_cast<const vec_t*>(s);
+          auto dv = reinterpret_cast<vec_t*>(d);
+          for (int64_t i = lid; i < hidden_vecs; i += lsize) {
+            const vec_t v = sv[i];        // single load
+            if (fwd) dv[i] = v;           // posted remote write (async drain)
+            for (int32_t k = 0; k < topk; ++k) {
+              const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+              if (dst_row < 0) continue;
+              auto rv = reinterpret_cast<vec_t*>(
+                  remap_ptr + static_cast<int64_t>(dst_row) * hidden);
+              rv[i] = v;                  // local HBM write (overlaps drain)
+            }
+          }
+        } else {
+          for (int64_t i = lid; i < hidden; i += lsize) {
+            const scalar_t v = s[i];
+            if (fwd) d[i] = v;
+            for (int32_t k = 0; k < topk; ++k) {
+              const int32_t dst_row = scatter_idx_ptr[topk_base + k];
+              if (dst_row < 0) continue;
+              remap_ptr[static_cast<int64_t>(dst_row) * hidden + i] = v;
+            }
+          }
+        }
+      }
+
+      if (fwd) {
+        sycl::atomic_fence(
+            sycl::memory_order::release, sycl::memory_scope::system);
+        item.barrier(sycl::access::fence_space::local_space);
+        if (lid == 0) {
+          store_release_sys(right_pad + (t * num_wg + wg), tag);
+        }
+      }
     }
   }
 };
@@ -347,13 +503,99 @@ at::Tensor ring_allgather_permute(
   return remap_output;
 }
 
+// PUSH variant of ring_allgather_permute (identical signature/semantics).
+at::Tensor ring_allgather_permute_push(
+    const at::Tensor& input_shard,
+    const at::Tensor& rank_buffers_ptr,
+    const at::Tensor& signal_pads_ptr,
+    at::Tensor gather_output,
+    at::Tensor remap_output,
+    const at::Tensor& scatter_idx,
+    int64_t rank,
+    int64_t world_size,
+    int64_t iteration) {
+  TORCH_CHECK(input_shard.dim() == 2 && input_shard.is_contiguous());
+  TORCH_CHECK(gather_output.dim() == 1 && gather_output.is_contiguous());
+  TORCH_CHECK(remap_output.dim() == 2 && remap_output.is_contiguous());
+  TORCH_CHECK(
+      rank_buffers_ptr.dim() == 1 && rank_buffers_ptr.size(0) == world_size &&
+      rank_buffers_ptr.scalar_type() == at::kLong);
+  TORCH_CHECK(
+      signal_pads_ptr.dim() == 1 && signal_pads_ptr.size(0) == world_size &&
+      signal_pads_ptr.scalar_type() == at::kLong);
+  TORCH_CHECK(scatter_idx.dim() == 2 && scatter_idx.scalar_type() == at::kInt &&
+              scatter_idx.is_contiguous());
+  TORCH_CHECK(rank >= 0 && rank < world_size);
+  TORCH_CHECK(iteration > 0);
+
+  const int64_t num_tokens_per_rank = input_shard.size(0);
+  const int64_t hidden = input_shard.size(1);
+  const int64_t chunk = num_tokens_per_rank * hidden;
+  TORCH_CHECK(gather_output.numel() == chunk * world_size);
+  TORCH_CHECK(remap_output.size(1) == hidden);
+  TORCH_CHECK(scatter_idx.size(0) == num_tokens_per_rank * world_size);
+  if (chunk == 0) {
+    return remap_output;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, remap_output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  const int32_t ws = static_cast<int32_t>(world_size);
+  const int32_t r = static_cast<int32_t>(rank);
+  const int32_t right = (r + 1) % ws;
+  const int32_t topk = static_cast<int32_t>(scatter_idx.size(1));
+  const uint32_t tag = static_cast<uint32_t>(iteration);
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+  int32_t num_wg = 1;
+  int64_t tokens_per_wg = num_tokens_per_rank;
+  compute_launch_tokens(
+      num_tokens_per_rank, hidden, threads, VEC_SIZE, num_wg, tokens_per_wg);
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      remap_output.scalar_type(), "ring_allgather_permute_push", [&]() {
+        auto kfn = RingAllgatherPermutePushKernel<scalar_t, VEC_SIZE>{
+            input_shard.data_ptr<scalar_t>(),
+            rank_buffers_ptr.data_ptr<int64_t>(),
+            signal_pads_ptr.data_ptr<int64_t>(),
+            gather_output.data_ptr<scalar_t>(),
+            remap_output.data_ptr<scalar_t>(),
+            scatter_idx.data_ptr<int32_t>(),
+            hidden,
+            num_tokens_per_rank,
+            tokens_per_wg,
+            topk,
+            r,
+            ws,
+            right,
+            num_wg,
+            tag};
+        sycl_kernel_submit(
+            sycl::range<1>(static_cast<size_t>(num_wg) * threads),
+            sycl::range<1>(threads),
+            queue,
+            kfn);
+      });
+
+  return remap_output;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ring_allgather_permute(Tensor input_shard, Tensor rank_buffers_ptr, "
+      "Tensor signal_pads_ptr, Tensor(a!) gather_output, Tensor(b!) remap_output, "
+      "Tensor scatter_idx, int rank, int world_size, int iteration) -> Tensor(b!)");
+  m.def(
+      "ring_allgather_permute_push(Tensor input_shard, Tensor rank_buffers_ptr, "
       "Tensor signal_pads_ptr, Tensor(a!) gather_output, Tensor(b!) remap_output, "
       "Tensor scatter_idx, int rank, int world_size, int iteration) -> Tensor(b!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ring_allgather_permute", ring_allgather_permute);
+  m.impl("ring_allgather_permute_push", ring_allgather_permute_push);
 }
