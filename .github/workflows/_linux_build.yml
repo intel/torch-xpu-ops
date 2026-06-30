@@ -49,6 +49,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     container:
       image: 'intel-omix-dev:0.3.0'
+      options: '--pull never'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:

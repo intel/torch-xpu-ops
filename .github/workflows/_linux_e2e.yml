@@ -62,6 +62,7 @@ jobs:
     timeout-minutes: 3600
     container:
       image: 'intel-omix-dev:0.3.0'
+      options: '--pull never'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt:/opt
