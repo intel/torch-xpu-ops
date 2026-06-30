@@ -30,7 +30,7 @@ PT2E_DT: set[str] = {"float32", "int8"}
 INDUCTOR_DT: set[str] = VALID_DT - {"int8"}
 
 # GPU memory monitoring settings (mutable at runtime via CLI args)
-gpu_memory_threshold: float = 0.90 if IS_WINDOWS else 0.95
+gpu_memory_threshold: float = 0.90 if IS_WINDOWS else 0.90
 gpu_memory_monitor_enabled: bool = True
 
 # Patterns that trigger process kill when detected in output or GPU metrics.
