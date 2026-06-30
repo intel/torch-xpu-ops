@@ -56,8 +56,7 @@ If the issue is not yet triaged, run `fix/triage` first.
 
 ### Fix strategies by category
 
-See [../references/failure-categories.md](../references/failure-categories.md)
-for the domain routing guide. Common strategies:
+See `fix/triage` Step 1 for domain routing. Common strategies:
 
 - **Tolerance:** match upstream `atol`/`rtol` values exactly.
 - **Regression:** find the guilty commit (`git log --oneline -20 -- <file>`),

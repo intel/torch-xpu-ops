@@ -130,8 +130,7 @@ If any check fails, revise before emitting.
   with tracking issue when explicitly requested by the orchestrator.
 - **Issue-driven** — address the root cause, not merely make one reproducer pass.
 
-See [../references/failure-categories.md](../references/failure-categories.md)
-for the domain routing guide.
+See Step 1 above for domain routing.
 
 ## Output
 
