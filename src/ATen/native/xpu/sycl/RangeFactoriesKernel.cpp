@@ -308,28 +308,37 @@ Tensor& logspace_kernel(
     }
   } else if (isIntegralType(r.scalar_type(), 0)) {
     AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "logspace_xpu", [&]() {
-      float scalar_base =
-          static_cast<float>(base); // Use float to avoid promotion to double
       scalar_t scalar_start = start.to<scalar_t>();
       scalar_t scalar_end = end.to<scalar_t>();
-      float step = static_cast<float>(scalar_end - scalar_start) / (steps - 1);
+      double step = static_cast<double>(scalar_end - scalar_start) / (steps - 1);
       const int64_t halfway = steps / 2;
-      auto f = LogspaceFunctor<scalar_t, float>(
+      auto f = LogspaceFunctor<scalar_t, double>(
+          scalar_start, scalar_end, base, steps, step, halfway);
+
+      gpu_kernel_with_index(r, f);
+    });
+  } else if (isComplexType(r.scalar_type())) {
+    AT_DISPATCH_COMPLEX_TYPES(r.scalar_type(), "logspace_xpu", [&]() {
+      scalar_t scalar_base = static_cast<scalar_t>(base);
+      scalar_t scalar_start = start.to<scalar_t>();
+      scalar_t scalar_end = end.to<scalar_t>();
+      scalar_t step =
+          (scalar_end - scalar_start) / static_cast<scalar_t>(steps - 1);
+      const int64_t halfway = steps / 2;
+      auto f = LogspaceFunctor<scalar_t, scalar_t>(
           scalar_start, scalar_end, scalar_base, steps, step, halfway);
 
       gpu_kernel_with_index(r, f);
     });
   } else {
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+    AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, r.scalar_type(), "logspace_xpu", [&]() {
-          scalar_t scalar_base = static_cast<scalar_t>(base);
           scalar_t scalar_start = start.to<scalar_t>();
           scalar_t scalar_end = end.to<scalar_t>();
-          scalar_t step =
-              (scalar_end - scalar_start) / static_cast<scalar_t>(steps - 1);
+          double step = static_cast<double>(scalar_end - scalar_start) / (steps - 1);
           const int64_t halfway = steps / 2;
-          auto f = LogspaceFunctor<scalar_t, scalar_t>(
-              scalar_start, scalar_end, scalar_base, steps, step, halfway);
+          auto f = LogspaceFunctor<scalar_t, double>(
+              scalar_start, scalar_end, base, steps, step, halfway);
 
           gpu_kernel_with_index(r, f);
         });
