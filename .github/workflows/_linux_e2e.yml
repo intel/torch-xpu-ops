@@ -62,13 +62,12 @@ jobs:
     timeout-minutes: 3600
     container:
       image: 'intel-omix-dev:0.3.0'
-      options: '--pull never'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /opt:/opt
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
-              -e ZE_AFFINITY_MASK
+              -e ZE_AFFINITY_MASK --pull never
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool

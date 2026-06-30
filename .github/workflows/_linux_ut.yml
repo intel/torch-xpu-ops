@@ -51,12 +51,11 @@ jobs:
     runs-on: ${{ inputs.runner }}
     container:
       image: 'intel-omix-dev:0.3.0'
-      options: '--pull never'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -e ZE_AFFINITY_MASK
+              -e ZE_AFFINITY_MASK --pull never
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
