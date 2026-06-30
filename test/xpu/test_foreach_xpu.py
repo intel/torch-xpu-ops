@@ -232,6 +232,8 @@ TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
 def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
     if dtype in (torch.complex128, torch.complex64):
         self.skipTest("Complex dtype not supported")
+    if dtype in (torch.float8_e4m3fnuz, torch.float8_e5m2fnuz):
+        self.skipTest("fp8e4b8/fp8e5fnuz not supported in XPU Triton backend")
     # check foreach_copy when self and src tensorList have different device
     foreach_copy = op.method_variant
     copy_ = op.ref_inplace
