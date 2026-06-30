@@ -14,6 +14,11 @@
 
 namespace sdp {
 
+#ifdef TORCH_XPU_OPS_USE_SDPA_OPTIONALREF_DIAGNOSTICS
+bool can_use_mem_efficient_attention(
+    sdp::sdp_params params,
+    c10::OptionalRef<SDPDiagnostics> diagnostics);
+#endif
 bool can_use_mem_efficient_attention(sdp::sdp_params params, bool debug);
 
 } // namespace sdp
