@@ -362,6 +362,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "linalg_lu.out",
       "linalg_matrix_exp",
       "linalg_matrix_sqrth",
+      "linalg_polar.out",
       "linalg_qr.out",
       "_linalg_svd.U",
       "lu_unpack.out",
