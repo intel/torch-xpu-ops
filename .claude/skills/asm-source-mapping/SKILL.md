@@ -20,12 +20,14 @@ SYCL/DPC++ source file:line and a structural construct label.
 Debug line info flows: `C++ source → LLVM IR !dbg → SPIR-V OpLine → IGC vISA
 DebugLoc → zebin .debug_line` (byte offset → file:line). The zebin's
 `.debug_line` section maps GPU ISA offsets to source, and is the primary data
-source for this skill. Requires `-g` or `-gline-tables-only` at compile time.
-oneDNN ngen has no `.debug_line` — pattern recognition is the only option.
+source for this skill. Requires `-g` at compile time (`-gline-tables-only` is
+**not supported** for `spir64_gen` AOT targets and is silently ignored by the
+compiler). oneDNN ngen has no `.debug_line` — pattern recognition is the only
+option.
 
 ## When to use
 
-- You have hot IPs (from `collect-eu-counters` stall-sampling or profiler).
+- You have hot IPs (from unitrace stall-sampling or profiler).
 - An ASM directory from `extract-xpu-kernel-asm` is available.
 - You need precise source attribution before optimization.
 
