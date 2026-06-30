@@ -29,19 +29,25 @@ endmacro()
 # xpu_hal.dll only links c10 — no dependency on torch_xpu.
 set(xpu_hal_srcs ${TORCH_XPU_OPS_ROOT}/src/hal/XPUHal.cpp)
 if(NOT TARGET xpu_hal)
-  add_library(xpu_hal SHARED ${xpu_hal_srcs})
-  target_link_libraries(xpu_hal PRIVATE c10 c10_xpu)
-  target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src)
-# xpu_hal exports via __declspec(dllexport) in XPUHal.h
-# No WINDOWS_EXPORT_ALL_SYMBOLS to avoid INTERFACE_INCLUDE_DIRECTORIES leaks
-  target_compile_definitions(xpu_hal PRIVATE XPU_HAL_BUILD)
-  # The directory-level include_directories(SYSTEM ...) in pytorch's
-  # caffe2/CMakeLists.txt leaks source-tree paths into every target's
-  # INTERFACE_INCLUDE_DIRECTORIES. Clear them so cmake export validation
-  # (CMP0126) doesn't fail.
-  set_target_properties(xpu_hal PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
-  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_hal)
-  install(TARGETS xpu_hal EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  # xpu_hal.cpp is compiled directly into torch_xpu.dll (BUILD_SEPARATE_OPS=ON)
+  # or torch_xpu_ops (OFF). No separate cmake target avoids cmake 3.29's
+  # export validation which rejects source/build tree paths in
+  # INTERFACE_INCLUDE_DIRECTORIES inherited from pytorch's directory-level
+  # include_directories() calls.
+  # Kernel DLLs resolve xpu_hal symbols via torch_xpu's import lib at link
+  # time (see #pragma comment(lib, "torch_xpu.lib") in <hal/XPUHal.h>).
+  if(NOT BUILD_SEPARATE_OPS)
+    add_library(xpu_hal STATIC ${xpu_hal_srcs})
+    target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src)
+    target_compile_definitions(xpu_hal PRIVATE XPU_HAL_BUILD)
+    list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_hal)
+  else()
+    # For BUILD_SEPARATE_OPS, xpu_hal objects are added to torch_xpu via
+    # a later target_sources() + XPU_HAL_BUILD (see pytorch's
+    # caffe2/CMakeLists.txt). We still need the kernel DLL setup below
+    # to link against torch_xpu's import lib.
+  endif()
+endif()
 endif()
 
 if(BUILD_SEPARATE_OPS)
@@ -53,13 +59,18 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    target_link_libraries(torch_xpu_ops PRIVATE ${sycl_lib})
     # On Windows, DLL symbols are not exported by default. Each kernel DLL
     # must export its host-side SYCL entry points so consumers (torch_xpu.dll)
     # can resolve them from the import lib.
     set_target_properties(${sycl_lib} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
-    # kernel DLLs call xpu_hal:: functions instead of linking torch_xpu.dll
-    target_link_libraries(${sycl_lib} PRIVATE xpu_hal)
+    # kernel DLLs call xpu_hal:: functions. xpu_hal is STATIC and
+    # WHOLE_ARCHIVE'd into torch_xpu.dll. Kernel DLLs resolve xpu_hal
+    # symbols via torch_xpu's import lib at link time (see #pragma in
+    # <hal/XPUHal.h>). add_dependencies ensures build order.
+    add_dependencies(${sycl_lib} torch_xpu)
+    target_link_directories(${sycl_lib} PRIVATE "${CMAKE_BINARY_DIR}/caffe2")
+    target_compile_definitions(${sycl_lib} PRIVATE XPU_HAL_IMPORT)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.

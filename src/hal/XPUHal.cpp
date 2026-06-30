@@ -16,6 +16,7 @@ namespace {
 
 GetDefaultGeneratorFn g_get_default_generator = nullptr;
 PhiloxStateFn g_philox_state = nullptr;
+PhiloxCaptureStateFn g_philox_capture_state = nullptr;
 
 // Typed function pointers for torch_xpu symbols bridged through xpu_hal.
 using EmptyXpuPrimaryFn = at::TensorBase (*)(
@@ -39,6 +40,11 @@ void registerXPUGeneratorBridge(
     PhiloxStateFn philox) {
   g_get_default_generator = get_gen;
   g_philox_state = philox;
+}
+
+void registerXPUGeneratorCaptureBridge(
+    PhiloxCaptureStateFn capture_fn) {
+  g_philox_capture_state = capture_fn;
 }
 
 void registerTorchXpuBridge(
@@ -65,6 +71,16 @@ std::pair<uint64_t, uint64_t> philoxState(
       "XPU generator bridge not registered. "
       "Ensure torch_xpu.dll is loaded before calling XPU generator functions.");
   return g_philox_state(gen, increment);
+}
+
+PhiloxCaptureState philoxCaptureState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment) {
+  TORCH_CHECK(
+      g_philox_capture_state != nullptr,
+      "XPU generator capture bridge not registered. "
+      "Ensure torch_xpu.dll is loaded before calling XPU generator functions.");
+  return g_philox_capture_state(gen, increment);
 }
 
 } // namespace xpu_hal
@@ -123,9 +139,16 @@ TensorBase empty_xpu(
 TensorBase empty_xpu(
     c10::IntArrayRef size,
     const c10::TensorOptions& options) {
+  // c10::TensorOptions stores dtype as caffe2::TypeMeta; convert to
+  // optional<ScalarType> for the underlying bridge call.
+  auto dtype_opt = options.dtype_opt();
+  c10::optional<c10::ScalarType> scalar_type_opt = c10::nullopt;
+  if (dtype_opt.has_value()) {
+    scalar_type_opt = c10::typeMetaToScalarType(dtype_opt.value());
+  }
   return at::detail::empty_xpu(
       size,
-      options.dtype_opt(),
+      scalar_type_opt,
       options.layout_opt(),
       options.device_opt(),
       options.pinned_memory_opt(),
