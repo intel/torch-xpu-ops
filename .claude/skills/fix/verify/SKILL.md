@@ -83,12 +83,16 @@ assume one representative case is sufficient.
 
 ## Step 5: Lint (if run_lint=true)
 
-Only run after a passing result:
+Only run after a passing test result.
+
 ```bash
 spin fixlint
+spin lint 2>&1 | tail -40
 ```
 
-Fix any reported issues before returning to the orchestrator.
+- If **clean**: include `lint: clean` in the `PASSED` output.
+- If **errors remain after fixlint**: return `FAILED` with the lint errors as
+  `failure_output` and `suggestion: lint errors remaining after auto-fix`.
 
 ## Output
 

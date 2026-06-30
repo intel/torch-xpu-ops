@@ -35,19 +35,6 @@ pip3 install --pre torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
 
-### Check commit alignment (if ci_commit provided)
-
-```bash
-python -c "import torch; print(torch.version.git_version)"
-```
-
-Compare `nightly_commit` vs `ci_commit` using:
-```bash
-# From any pytorch checkout — determines which commit came first
-git -C <any_pytorch_dir> merge-base --is-ancestor <ci_commit> <nightly_commit> \
-  && echo "nightly is newer" || echo "nightly is older"
-```
-
 ### Run test
 
 Read [../references/run-test.md](../references/run-test.md) now for path
@@ -59,22 +46,22 @@ resolution, command format, and result interpretation.
 |--------|-----------|--------|
 | `CANNOT_VERIFY` | env problem (wheel install failed, runtime missing) | Report to orchestrator, stop |
 | `REPRODUCED` | FAILED | Return `REPRODUCED(stage=nightly, refined_command=...)` |
-| → stage 2 | PASSED and nightly_commit is older than ci_commit | nightly is stale, proceed to stage 2 |
-| → stage 3 | PASSED and nightly_commit is same or newer than ci_commit | inconclusive, proceed to stage 3 |
+| → stage 2 | PASSED (any nightly age) | Proceed to source build at `origin/main` to confirm |
 
-## Stage 2: Source Build at CI Commit
+## Stage 2: Source Build at origin/main
 
-Only reached when nightly is too old to be conclusive.
+Nightly passing is not conclusive — it may lag behind CI or not reflect the
+exact environment. Build from `origin/main` to verify.
 
 ### Prepare pytorch checkout
 
-If `pytorch_dir` is provided: `git -C $pytorch_dir checkout <ci_commit>`
+If `pytorch_dir` is provided: `git -C $pytorch_dir fetch origin && git -C $pytorch_dir checkout origin/main`
 
 If not provided, clone:
 ```bash
 git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
   agent_space_xpu/pytorch
-git -C agent_space_xpu/pytorch checkout <ci_commit>
+git -C agent_space_xpu/pytorch checkout origin/main
 git -C agent_space_xpu/pytorch submodule update --init --recursive
 ```
 
@@ -95,8 +82,8 @@ domain skill for build command), then run the test (see
 
 ## Stage 3: CI Environment Alignment
 
-Only reached when both nightly and source build pass locally.
-The failure may be CI-environment-specific.
+Only reached when nightly wheel and source build at `origin/main` both pass.
+The failure may be specific to the CI environment (docker image, artifacts, env vars).
 
 ### Set up the CI environment
 

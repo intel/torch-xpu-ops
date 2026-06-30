@@ -71,6 +71,20 @@ for the domain routing guide. Common strategies:
 
 For removing stale skip decorators or adding new skips, load `fix/pytorch-skip`.
 
+When **adding** a new skip (`allow_skip=true`):
+1. Before touching any test file, file a tracking issue in `intel/torch-xpu-ops`:
+   ```bash
+   gh issue create --repo intel/torch-xpu-ops \
+     --title "[skip] <test_name>: <short reason>" \
+     --body "## Why skipped\n<root cause from triage>\n\n## What needs to be done\n<fix strategy>\n\n## Test\n<reproducer command>"
+   ```
+2. Record the issue URL returned by `gh`.
+3. Then load `fix/pytorch-skip` to add the decorator with the issue reference:
+   ```python
+   @skipIfXpu  # TODO: <short reason>. Tracking: intel/torch-xpu-ops#<N>
+   ```
+4. Include the issue URL in the implement output (`tracking_issue` field).
+
 ## Step 3: Stage changes
 
 ```bash
@@ -88,7 +102,7 @@ Return to the orchestrator:
 ### Implement Result
 - **What I changed:** <bullet list of files and what changed in each>
 - **Why:** <one sentence connecting each change to the triage root cause>
-- **Skip added:** <yes (tracking: #N) / no>
+- **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) / no>
 - **Ready for verify:** yes
 ```
 

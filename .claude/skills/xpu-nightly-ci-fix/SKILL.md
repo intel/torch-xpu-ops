@@ -135,16 +135,37 @@ Call `fix/verify` with:
 | Output | Action |
 |--------|--------|
 | `PASSED` | Commit (one fix per commit); mark in summary: "fixed (commit: <hash>)" |
-| `FAILED` | Loop back to Step 5 (max 3 attempts) |
+| `FAILED` | Re-triage with failure context, then re-implement (see fix loop below) |
 | `NEEDS_HUMAN` | Mark in summary: "needs_human: cannot verify after fix"; skip to next failure |
 
-If 3 attempts exhausted without `PASSED`, mark in summary: "needs human (fix loop exhausted)"; skip to next failure.
+**Fix loop** (max 3 attempts total, counting the first verify):
+
+```
+attempt N (starting at 1 after the first fix/verify returns FAILED):
+  1. Call fix/triage again, passing:
+     - original failure description
+     - fix/verify failure_output from this attempt
+     - fix/verify suggestion from this attempt
+     - prior fix strategy (so triage knows what was already tried)
+  2. Call fix/implement with the new triage_result.
+  3. Call fix/verify again.
+     - PASSED → commit, exit loop.
+     - FAILED and attempt < 3 → increment attempt, repeat from step 1.
+     - FAILED and attempt == 3 → exit loop.
+     - NEEDS_HUMAN → exit loop.
+```
+
+If loop exits without `PASSED`, mark in summary: "needs human (fix loop exhausted after 3 attempts)"; record each attempt's `failure_output` and `suggestion` in the summary under a "Fix Attempts" subsection; skip to next failure.
 
 Commit after each verified fix:
 ```bash
 git -C agent_space_xpu/pytorch add <changed_files>
 git -C agent_space_xpu/pytorch commit -m "<commit_message>"
 ```
+
+If the fix was a skip (`fix/implement` output has `skip_added: yes`):
+- Record the tracking issue URL in the summary under "Needs Human" (skip added).
+- The tracking issue already contains the root cause and fix strategy from triage.
 
 Each fix is one commit. Do not batch multiple fixes into one commit.
 
@@ -180,6 +201,13 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
 - Root cause: missing XPU kernel for grouped conv3d
 - Decision: skip added with tracking issue intel/torch-xpu-ops#1234
 - AR: prioritize kernel implementation
+
+### test_foo_xpu.py::TestFooXPU::test_bar (fix loop exhausted)
+- Fix Attempts:
+  - Attempt 1: failure: <output> | suggestion: <suggestion> | fix tried: <what implement changed>
+  - Attempt 2: failure: <output> | suggestion: <suggestion> | fix tried: <what implement changed>
+  - Attempt 3: failure: <output> | suggestion: <suggestion> | fix tried: <what implement changed>
+- AR: manual investigation required
 
 ## Already Fixed / Cannot Verify
 
