@@ -48,6 +48,19 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+// allgather + permute moves hidden vectors by pure byte copies (no arithmetic),
+// so it is dtype-agnostic and additionally supports FP16 and the two 1-byte FP8
+// formats (e4m3fn / e5m2).  Used by the ring permute kernels below.
+#ifndef AT_DISPATCH_PERMUTE_DTYPES
+#define AT_DISPATCH_PERMUTE_DTYPES(scalar_type, name, ...)            \
+  AT_DISPATCH_SWITCH(                                                 \
+      scalar_type, name, AT_DISPATCH_CASE(at::kBFloat16, __VA_ARGS__); \
+      AT_DISPATCH_CASE(at::kHalf, __VA_ARGS__);                       \
+      AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__);                      \
+      AT_DISPATCH_CASE(at::kFloat8_e4m3fn, __VA_ARGS__);              \
+      AT_DISPATCH_CASE(at::kFloat8_e5m2, __VA_ARGS__))
+#endif
+
 namespace {
 
 constexpr int32_t RING_MAX_WG = 1024;
@@ -157,8 +170,10 @@ inline void wait_eq_sys(uint32_t* addr, uint32_t val) {
 
 template <typename scalar_t, int VEC_SIZE>
 struct RingAllgatherPermuteSingleKernel {
-  using vec_elem_t =
-      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_elem_t = std::conditional_t<
+      sizeof(scalar_t) == 1,
+      uint8_t,
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>>;
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
 
   const scalar_t* input_shard_ptr;   // [num_tokens_per_rank, hidden]
@@ -340,8 +355,10 @@ struct RingAllgatherPermuteSingleKernel {
 // ===========================================================================
 template <typename scalar_t, int VEC_SIZE>
 struct RingAllgatherPermutePushKernel {
-  using vec_elem_t =
-      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_elem_t = std::conditional_t<
+      sizeof(scalar_t) == 1,
+      uint8_t,
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>>;
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
 
   const scalar_t* input_shard_ptr;   // [num_tokens_per_rank, hidden] own shard
@@ -569,7 +586,7 @@ at::Tensor ring_allgather_permute(
   compute_launch_tokens(
       num_tokens_per_rank, hidden, threads, VEC_SIZE, num_wg, tokens_per_wg);
 
-  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+  AT_DISPATCH_PERMUTE_DTYPES(
       remap_output.scalar_type(), "ring_allgather_permute", [&]() {
         auto kfn = RingAllgatherPermuteSingleKernel<scalar_t, VEC_SIZE>{
             input_shard.data_ptr<scalar_t>(),
@@ -651,7 +668,7 @@ at::Tensor ring_allgather_permute_push(
   compute_launch_tokens(
       num_tokens_per_rank, hidden, threads, VEC_SIZE, num_wg, tokens_per_wg);
 
-  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+  AT_DISPATCH_PERMUTE_DTYPES(
       remap_output.scalar_type(), "ring_allgather_permute_push", [&]() {
         // LSC L1WB_L3WB store on the remote forward write helps only when comm
         // volume is high (many ring hops).  At low world_size the push kernel

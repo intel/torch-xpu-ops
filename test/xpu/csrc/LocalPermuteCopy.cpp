@@ -12,6 +12,19 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+// allgather + permute moves hidden vectors by pure byte copies (no arithmetic),
+// so it is dtype-agnostic and additionally supports FP16 and the two 1-byte FP8
+// formats (e4m3fn / e5m2).
+#ifndef AT_DISPATCH_PERMUTE_DTYPES
+#define AT_DISPATCH_PERMUTE_DTYPES(scalar_type, name, ...)           \
+  AT_DISPATCH_SWITCH(                                                \
+      scalar_type, name, AT_DISPATCH_CASE(at::kBFloat16, __VA_ARGS__); \
+      AT_DISPATCH_CASE(at::kHalf, __VA_ARGS__);                      \
+      AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__);                     \
+      AT_DISPATCH_CASE(at::kFloat8_e4m3fn, __VA_ARGS__);             \
+      AT_DISPATCH_CASE(at::kFloat8_e5m2, __VA_ARGS__))
+#endif
+
 constexpr int32_t MAX_EXPERTS_V2 = 512;
 
 // Scalar fallback kernel for non-aligned hidden_size.
@@ -410,8 +423,10 @@ struct AllgatherPermuteRingScalarKernel {
 // Vectorized ring-ordered kernel.
 template <typename scalar_t, int VEC_SIZE>
 struct AllgatherPermuteRingVecKernel {
-  using vec_elem_t =
-      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_elem_t = std::conditional_t<
+      sizeof(scalar_t) == 1,
+      uint8_t,
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>>;
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
 
   const int64_t* rank_ptrs;
@@ -529,8 +544,10 @@ struct AllgatherPermuteRingV2ScalarKernel : __SYCL_KER_CONFIG_CONVENTION__ {
 // Vectorized v2 ring-ordered kernel.
 template <typename scalar_t, int VEC_SIZE>
 struct AllgatherPermuteRingV2VecKernel : __SYCL_KER_CONFIG_CONVENTION__ {
-  using vec_elem_t =
-      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_elem_t = std::conditional_t<
+      sizeof(scalar_t) == 1,
+      uint8_t,
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>>;
   using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
 
   const int64_t* rank_ptrs;
@@ -660,7 +677,7 @@ at::Tensor allgather_permute(
   auto stream = at::xpu::getCurrentXPUStream();
   auto& queue = stream.queue();
 
-  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+  AT_DISPATCH_PERMUTE_DTYPES(
       remap_hidden_states.scalar_type(), "allgather_permute", [&]() {
         if (hidden_size % VEC_SIZE == 0) {
           const int64_t hidden_vecs = hidden_size / VEC_SIZE;
@@ -784,7 +801,7 @@ at::Tensor allgather_permute_v2(
   auto stream = at::xpu::getCurrentXPUStream();
   auto& queue = stream.queue();
 
-  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+  AT_DISPATCH_PERMUTE_DTYPES(
       remap_hidden_states.scalar_type(), "allgather_permute_v2", [&]() {
         if (hidden_size % VEC_SIZE == 0) {
           const int64_t hidden_vecs = hidden_size / VEC_SIZE;

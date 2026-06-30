@@ -229,6 +229,8 @@ struct NotifyDispatchV2Kernel : __SYCL_KER_CONFIG_CONVENTION__ {
   int64_t total_pairs;
   const int64_t* weights_rank_ptrs;      // nullable
   float* global_topk_weights_out;        // nullable
+  const int64_t* scale_rank_ptrs;        // nullable: per-rank [num_tokens_per_rank] f32
+  float* global_scale_out;               // nullable: [num_tokens] gathered per-token scale
 
   // SLM layout: [0..num_experts) = histogram/counter
   //             [MAX_EXPERTS..2*MAX_EXPERTS) = reserved base offset
@@ -285,6 +287,14 @@ struct NotifyDispatchV2Kernel : __SYCL_KER_CONFIG_CONVENTION__ {
             reinterpret_cast<const float*>(weights_rank_ptrs[src_rank]);
         global_topk_weights_out[my_out_idx] =
             src_weights[src_token * topk_storage_stride + k];
+      }
+
+      // Gather per-token scale from symm_mem.  The scale is one value per token
+      // (not per top-k slot), so only the k==0 lane writes it.
+      if (scale_rank_ptrs != nullptr && k == 0) {
+        const float* src_scale =
+            reinterpret_cast<const float*>(scale_rank_ptrs[src_rank]);
+        global_scale_out[token_idx] = src_scale[src_token];
       }
     }
     item.barrier(sycl::access::fence_space::local_space);
@@ -493,7 +503,9 @@ at::Tensor notify_dispatch_v2(
     int64_t rank,
     int64_t world_size,
     const std::optional<at::Tensor>& weights_rank_ptrs,
-    const std::optional<at::Tensor>& global_topk_weights) {
+    const std::optional<at::Tensor>& global_topk_weights,
+    const std::optional<at::Tensor>& scale_rank_ptrs,
+    const std::optional<at::Tensor>& global_scale) {
   TORCH_CHECK(
       topk_rank_ptrs.dim() == 1 && topk_rank_ptrs.size(0) == world_size,
       "notify_dispatch_v2: topk_rank_ptrs must be 1D with size == world_size");
@@ -592,6 +604,29 @@ at::Tensor notify_dispatch_v2(
     w_out_ptr = global_topk_weights->data_ptr<float>();
   }
 
+  // Extract optional per-token scale pointers
+  const int64_t* s_rank_ptrs = nullptr;
+  float* s_out_ptr = nullptr;
+  if (scale_rank_ptrs.has_value() && global_scale.has_value()) {
+    TORCH_CHECK(
+        scale_rank_ptrs->dim() == 1 && scale_rank_ptrs->size(0) == world_size,
+        "notify_dispatch_v2: scale_rank_ptrs must be 1D with size == world_size");
+    TORCH_CHECK(
+        scale_rank_ptrs->scalar_type() == at::kLong,
+        "notify_dispatch_v2: scale_rank_ptrs must be int64");
+    TORCH_CHECK(
+        global_scale->dim() == 1 && global_scale->size(0) == num_tokens,
+        "notify_dispatch_v2: global_scale must be 1D with size == num_tokens");
+    TORCH_CHECK(
+        global_scale->scalar_type() == at::kFloat,
+        "notify_dispatch_v2: global_scale must be float32");
+    TORCH_CHECK(
+        global_scale->is_contiguous(),
+        "notify_dispatch_v2: global_scale must be contiguous");
+    s_rank_ptrs = scale_rank_ptrs->data_ptr<int64_t>();
+    s_out_ptr = global_scale->data_ptr<float>();
+  }
+
   // Single multi-WG kernel
   const int64_t num_wgs = (total_pairs + WG_SIZE - 1) / WG_SIZE;
   const int64_t global_range = num_wgs * WG_SIZE;
@@ -609,6 +644,8 @@ at::Tensor notify_dispatch_v2(
       total_pairs,
       w_rank_ptrs,
       w_out_ptr,
+      s_rank_ptrs,
+      s_out_ptr,
       {}};
   sycl_kernel_submit(
       sycl::range<1>(global_range), sycl::range<1>(WG_SIZE), queue, kfn);
@@ -628,7 +665,8 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "Tensor(a!) scatter_idx, Tensor(a!) rows_per_expert, "
       "int num_tokens_per_rank, int topk, int topk_storage_stride, "
       "int num_experts, int rank, int world_size, "
-      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");
+      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None, "
+      "Tensor? scale_rank_ptrs=None, Tensor? global_scale=None) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {

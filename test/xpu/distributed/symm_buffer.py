@@ -119,6 +119,8 @@ class SymmHandle:
     rows_per_expert: torch.Tensor     # [num_experts] int32
     abs_scatter_idx: torch.Tensor     # [num_tokens, topk] int32 (absolute, for staged unpermute)
     num_experts: int = 0              # total experts
+    global_scale: torch.Tensor = None       # [num_tokens] float32 gathered per-token scale (FP8)
+    permuted_scale: torch.Tensor = None      # [remap_rows] float32 per-row scale aligned to remap
 
 
 class SymmBuffer:
@@ -158,6 +160,7 @@ class SymmBuffer:
         #   Section 1 — hidden states:  num_ranks slots of [M, H] in hidden_dtype
         #   Section 2 — topk indices:   num_ranks slots of [M, topk] in int32
         #   Section 3 — topk weights:   num_ranks slots of [M, topk] in float32
+        #   Section 4 — per-token scale: num_ranks slots of [M] in float32 (FP8 path)
         hidden_section_bytes = (
             num_max_tokens_per_rank * hidden * hidden_elem_size * self.num_ranks
         )
@@ -167,11 +170,21 @@ class SymmBuffer:
         weights_section_bytes = (
             num_max_tokens_per_rank * num_topk * 4 * self.num_ranks
         )
-        # Signal pad for ring collectives: placed after the three data sections.
+        # Per-token scale: one float32 per token (not per top-k slot).
+        scale_section_bytes = (
+            num_max_tokens_per_rank * 4 * self.num_ranks
+        )
+        # Signal pad for ring collectives: placed after the four data sections.
         ring_pad_slots = self.num_ranks * _RING_MAX_WG
         ring_pad_bytes = ring_pad_slots * 4
         self._ring_pad_offset_bytes = (
-            (hidden_section_bytes + topk_section_bytes + weights_section_bytes + 127)
+            (
+                hidden_section_bytes
+                + topk_section_bytes
+                + weights_section_bytes
+                + scale_section_bytes
+                + 127
+            )
             // 128 * 128
         )
         self.workspace_size_bytes = self._ring_pad_offset_bytes + ring_pad_bytes
@@ -232,6 +245,26 @@ class SymmBuffer:
             storage_offset=weights_local_offset,
         )
         self._weights_rank_ptrs = self._build_weights_rank_ptrs()
+
+        # --- notify_dispatch pre-allocations (per-token scale, FP8 path) ---
+        # One float32 per token, gathered the same way as weights but indexed
+        # per token (not per top-k slot).
+        self._scale_base_offset = (
+            hidden_section_bytes + topk_section_bytes + weights_section_bytes
+        ) // 4  # in float32 elements
+        scale_local_offset = (
+            self._scale_base_offset + self.rank_idx * num_max_tokens_per_rank
+        )
+        self._scale_local_slot = self.workspace.get_buffer(
+            self.rank_idx,
+            (num_max_tokens_per_rank,),
+            torch.float32,
+            storage_offset=scale_local_offset,
+        )
+        self._scale_rank_ptrs = self._build_scale_rank_ptrs()
+        self._global_scale_buf = torch.empty(
+            num_tokens_max, device=device, dtype=torch.float32,
+        )
 
         # --- unpermute_reducescatter pre-allocations ---
         self._backend_stream = torch.xpu.Stream()
@@ -376,6 +409,26 @@ class SymmBuffer:
             signed_ptrs, dtype=torch.int64, device=f"xpu:{self.rank_idx}"
         )
 
+    def _build_scale_rank_ptrs(self) -> torch.Tensor:
+        """Build rank pointers into per-token scale section of shared workspace."""
+        ptr_list = []
+        for r in range(self.num_ranks):
+            offset = (
+                self._scale_base_offset
+                + r * self.num_max_tokens_per_rank
+            )
+            buf = self.workspace.get_buffer(
+                r,
+                (self.num_max_tokens_per_rank,),
+                torch.float32,
+                storage_offset=offset,
+            )
+            ptr_list.append(buf.data_ptr())
+        signed_ptrs = [ctypes.c_int64(p).value for p in ptr_list]
+        return torch.tensor(
+            signed_ptrs, dtype=torch.int64, device=f"xpu:{self.rank_idx}"
+        )
+
     @staticmethod
     def _log_tensor(name: str, t: torch.Tensor) -> None:
         """Log tensor metadata and a data snippet."""
@@ -399,6 +452,7 @@ class SymmBuffer:
         topk_weights: torch.Tensor,
         num_experts: int,
         remap_hidden_states: torch.Tensor,
+        scale: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, SymmHandle]:
         """Fused allgather + local permute (MoE dispatch).
 
@@ -406,12 +460,21 @@ class SymmBuffer:
         implementations: the ring single-kernel path (FUSION_RING=1, default) or
         the notify_dispatch + allgather_permute path (FUSION_RING=0).
 
+        Supports FP8 hidden states (``torch.float8_e4m3fn`` / ``torch.float8_e5m2``)
+        in addition to 16-bit/float; the permute is a pure byte copy so any
+        element width works.
+
         Args:
             hidden_shard: [num_tokens_per_rank, hidden] local hidden states.
             topk_idx: [num_tokens_per_rank, topk] int32 per-rank expert ids.
             topk_weights: [num_tokens_per_rank, topk] float32 routing weights.
             num_experts: Total number of experts.
             remap_hidden_states: Pre-allocated output [num_tokens * topk, hidden].
+            scale: Optional [num_tokens_per_rank] float32 per-token quantization
+                scale (FP8). When provided it is allgathered (via
+                notify_dispatch_v2) into ``handle.global_scale`` [num_tokens] and
+                permuted into ``handle.permuted_scale`` [remap_rows] aligned with
+                ``remap_hidden_states``.
 
         Returns:
             (remap_hidden_states, handle).
@@ -422,13 +485,47 @@ class SymmBuffer:
                 f"remap_hidden_states hidden ({remap_hidden_states.shape[1]}) must equal "
                 f"self.hidden ({self.hidden})"
             )
+        if scale is not None:
+            if scale.dim() != 1 or scale.shape[0] != hidden_shard.shape[0]:
+                raise ValueError(
+                    f"scale must be 1D [num_tokens_per_rank={hidden_shard.shape[0]}], "
+                    f"got shape {list(scale.shape)}"
+                )
         if self._fusion_ring:
             return self._allgather_local_permute_fusion_ring(
-                hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states
+                hidden_shard, topk_idx, topk_weights, num_experts,
+                remap_hidden_states, scale,
             )
         return self._allgather_local_permute_fusion_notify(
-            hidden_shard, topk_idx, topk_weights, num_experts, remap_hidden_states
+            hidden_shard, topk_idx, topk_weights, num_experts,
+            remap_hidden_states, scale,
         )
+
+    def _permute_scale(
+        self,
+        global_scale: torch.Tensor,
+        abs_scatter_idx: torch.Tensor,
+        remap_rows: int,
+        num_tokens: int,
+        topk: int,
+    ) -> torch.Tensor:
+        """Scatter per-token global scale into expert-row layout.
+
+        permuted_scale[abs_scatter_idx[t, k]] = global_scale[t] for every valid
+        (t, k) destination row, mirroring the hidden-state permute.
+        """
+        permuted_scale = torch.zeros(
+            remap_rows, device=global_scale.device, dtype=torch.float32
+        )
+        flat_dst = abs_scatter_idx.reshape(-1)
+        token_scale = (
+            global_scale.reshape(num_tokens, 1)
+            .expand(num_tokens, topk)
+            .reshape(-1)
+        )
+        valid = flat_dst >= 0
+        permuted_scale[flat_dst[valid].long()] = token_scale[valid]
+        return permuted_scale
 
     # ------------------------------------------------------------------ #
     #  Ring implementation                                                 #
@@ -441,6 +538,7 @@ class SymmBuffer:
         topk_weights: torch.Tensor,
         num_experts: int,
         remap_hidden_states: torch.Tensor,
+        scale: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, SymmHandle]:
         """Single-kernel ring allgather + expert-centric permute.
 
@@ -456,12 +554,18 @@ class SymmBuffer:
         # kernel can read every rank's slice via the per-rank pointer tables.
         self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
         self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
+        if scale is not None:
+            self._scale_local_slot[:num_tokens_per_rank].copy_(scale)
         self.workspace.barrier()
 
         global_topk_idx = self._global_topk_idx_buf[:num_tokens, :topk]
         global_topk_weights = self._global_topk_weights_buf[:num_tokens, :topk]
         scatter_idx = self._scatter_idx[:num_tokens, :topk]
         rows_per_expert = self._rows_per_expert_buf[:num_experts]
+        scale_rank_ptrs = self._scale_rank_ptrs if scale is not None else None
+        global_scale = (
+            self._global_scale_buf[:num_tokens] if scale is not None else None
+        )
 
         torch.ops.symm_mem.notify_dispatch_v2(
             self._topk_rank_ptrs,
@@ -476,6 +580,8 @@ class SymmBuffer:
             self.num_ranks,
             self._weights_rank_ptrs,
             global_topk_weights,
+            scale_rank_ptrs,
+            global_scale,
         )
 
         # Compute absolute scatter_idx from expert-relative positions.
@@ -510,6 +616,13 @@ class SymmBuffer:
             iteration,
         )
 
+        permuted_scale = None
+        if scale is not None:
+            permuted_scale = self._permute_scale(
+                global_scale, abs_scatter_idx,
+                remap_hidden_states.shape[0], num_tokens, topk,
+            )
+
         handle = SymmHandle(
             scatter_idx=scatter_idx,
             global_topk_weights=global_topk_weights,
@@ -518,6 +631,8 @@ class SymmBuffer:
             rows_per_expert=rows_per_expert,
             abs_scatter_idx=abs_scatter_idx,
             num_experts=num_experts,
+            global_scale=global_scale,
+            permuted_scale=permuted_scale,
         )
 
         if _SYMM_BUFFER_DEBUG:
@@ -544,6 +659,7 @@ class SymmBuffer:
         topk_weights: torch.Tensor,
         num_experts: int,
         remap_hidden_states: torch.Tensor,
+        scale: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, SymmHandle]:
         """notify_dispatch_v2 dispatch + allgather_permute via symmetric memory."""
         if not _HAS_NOTIFY_DISPATCH_V2_KERNEL:
@@ -564,12 +680,18 @@ class SymmBuffer:
         self._topk_local_slot[:num_tokens_per_rank, :topk].copy_(topk_idx)
         self._weights_local_slot[:num_tokens_per_rank, :topk].copy_(topk_weights)
         self._allgather_local_slot[:num_tokens_per_rank].copy_(hidden_shard)
+        if scale is not None:
+            self._scale_local_slot[:num_tokens_per_rank].copy_(scale)
         self.workspace.barrier()
 
         scatter_idx = self._scatter_idx[:num_tokens, :topk]
         global_topk_idx_buf = self._global_topk_idx_buf[:num_tokens, :topk]
         global_topk_weights_buf = self._global_topk_weights_buf[:num_tokens, :topk]
         rows_per_expert_buf = self._rows_per_expert_buf[:num_experts]
+        scale_rank_ptrs = self._scale_rank_ptrs if scale is not None else None
+        global_scale = (
+            self._global_scale_buf[:num_tokens] if scale is not None else None
+        )
 
         torch.ops.symm_mem.notify_dispatch_v2(
             self._topk_rank_ptrs,
@@ -584,6 +706,8 @@ class SymmBuffer:
             self.num_ranks,
             self._weights_rank_ptrs,
             global_topk_weights_buf,
+            scale_rank_ptrs,
+            global_scale,
         )
 
         # Absolute scatter_idx from expert-relative positions.
@@ -607,6 +731,13 @@ class SymmBuffer:
         )
         self.workspace.barrier()
 
+        permuted_scale = None
+        if scale is not None:
+            permuted_scale = self._permute_scale(
+                global_scale, abs_scatter_idx,
+                remap_hidden_states.shape[0], num_tokens, topk,
+            )
+
         handle = SymmHandle(
             scatter_idx=scatter_idx,
             global_topk_weights=global_topk_weights_buf,
@@ -615,6 +746,8 @@ class SymmBuffer:
             rows_per_expert=rows_per_expert_buf,
             abs_scatter_idx=abs_scatter_idx,
             num_experts=num_experts,
+            global_scale=global_scale,
+            permuted_scale=permuted_scale,
         )
 
         if _SYMM_BUFFER_DEBUG:
@@ -653,6 +786,14 @@ class SymmBuffer:
             output
         """
         self.count += 1
+        # The reduce-scatter folds partials by accumulation, so only 16-bit
+        # floating types (FP16 / BF16) are supported here — FP8 has no usable
+        # additive accumulation path.
+        if self.hidden_dtype not in (torch.float16, torch.bfloat16):
+            raise ValueError(
+                "unpermute_reducescatter_fusion only supports 16-bit hidden "
+                f"dtypes (float16/bfloat16); got {self.hidden_dtype}"
+            )
         num_tokens = handle.global_topk_idx.shape[0]
         num_tokens_per_rank = num_tokens // self.num_ranks
         if output.shape[0] != num_tokens_per_rank:
