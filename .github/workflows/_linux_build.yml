@@ -48,7 +48,7 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      image: 'intel-omix-dev:0.3.0'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
@@ -63,21 +63,19 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # install gh
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf install -y gh --repo gh-cli
           gh --version
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
-      - name: Setup python-${{ inputs.python }}
+      - name: Setup python-${{ inputs.python }} with uv
         run: |
-          rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools==81.0.0
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+          rm -rf /opt/uv-python
+          uv python install "${{ inputs.python }}"
+          uv venv /opt/uv-python --python "${{ inputs.python }}" --clear
+          source /opt/uv-python/bin/activate
+          uv pip install -U pip wheel setuptools
+          echo "/opt/uv-python/bin" >> ${GITHUB_PATH}
+          echo "VIRTUAL_ENV=/opt/uv-python" >> ${GITHUB_ENV}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -117,8 +115,6 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           export ONEDNN_COMMIT='${{ inputs.onednn }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
@@ -134,8 +130,6 @@ jobs:
           fi
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -182,9 +176,6 @@ jobs:
               curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
-            # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
-            dnf install -y zlib-devel
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
