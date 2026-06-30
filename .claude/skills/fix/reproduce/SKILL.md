@@ -67,8 +67,7 @@ git -C agent_space_xpu/pytorch submodule update --init --recursive
 
 ### Build and run
 
-Activate environment and build (see
-[../references/environment-setup.md](../references/environment-setup.md) and
+Activate environment and build (see `/xpu-build-pytorch` skill and
 domain skill for build command), then run the test (see
 [../references/run-test.md](../references/run-test.md)).
 

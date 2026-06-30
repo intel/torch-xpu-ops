@@ -34,8 +34,7 @@ This must return a commit hash (source build), not a version string like
 `2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
 to the orchestrator — verify requires source build.
 
-Activate the environment before running — read
-[../references/environment-setup.md](../references/environment-setup.md) now.
+Activate the environment before running — load the `/xpu-build-pytorch` skill now.
 
 ## Step 2: Rebuild if needed
 
