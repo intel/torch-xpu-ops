@@ -100,8 +100,13 @@ struct FA2Runner {
     shape.batch = batch;
     shape.num_heads_q = num_heads_qo;
     shape.num_heads_kv = num_heads_kv;
-    shape.seq_len_qo = seq_len_qo;
-    shape.seq_len_kv = seq_len_kv;
+    if constexpr (isVarLen) {
+      shape.seq_len_qo = {seq_len_qo, params.cu_seqlens_q};
+      shape.seq_len_kv = {seq_len_kv, params.cu_seqlens_k};
+    } else {
+      shape.seq_len_qo = seq_len_qo;
+      shape.seq_len_kv = seq_len_kv;
+    }
     shape.head_size_qk = head_size_qk;
     shape.head_size_vo = head_size_vo;
 
@@ -382,6 +387,119 @@ void run_mha_fwd_hdim256(sycl::queue& queue, FLASH_FWD_params& params) {
 template <typename T, int Headdim, bool IS_CAUSAL>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
 
+// Convenience macro for invoking run_mha_fwd_impl with isVarLen=true
+#define run_mha_fwd_varlen_specialized( \
+    TileShapeQK_,                       \
+    TileShapePV_,                       \
+    TileShapeOutPut_,                   \
+    SubgroupLayoutQK_,                  \
+    PipelineStages_)                    \
+  run_mha_fwd_impl<                     \
+      T,                                \
+      IS_CAUSAL,                        \
+      TileShapeQK_,                     \
+      TileShapePV_,                     \
+      TileShapeOutPut_,                 \
+      SubgroupLayoutQK_,                \
+      PipelineStages_,                  \
+      /* isVarLen= */ true>(queue, params)
+
+// Per-headdim varlen dispatch functions.
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim32(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_128, _64, _32>;
+  using TileShapePV = Shape<_128, _32, _64>;
+  using TileShapeOutPut = Shape<_128, _32>;
+  using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim64(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_128, _64, _32>;
+  using TileShapePV = Shape<_128, _32, _64>;
+  using TileShapeOutPut = Shape<_128, _64>;
+  using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim96(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_128, _64, _32>;
+  using TileShapePV = Shape<_128, _32, _64>;
+  using TileShapeOutPut = Shape<_128, _96>;
+  using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim128(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_128, _32, _32>;
+  using TileShapePV = Shape<_128, _32, _32>;
+  using TileShapeOutPut = Shape<_128, _128>;
+  using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim192(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_256, _64, _32>;
+  using TileShapePV = Shape<_256, _32, _64>;
+  using TileShapeOutPut = Shape<_256, _192>;
+  using SubgroupLayoutQK = Layout<Shape<_32, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_hdim256(sycl::queue& queue, FLASH_FWD_params& params) {
+  constexpr int PipelineStages = 2;
+  using TileShapeQK = Shape<_256, _64, _32>;
+  using TileShapePV = Shape<_256, _32, _64>;
+  using TileShapeOutPut = Shape<_256, _256>;
+  using SubgroupLayoutQK = Layout<Shape<_32, _1, _1>>;
+  run_mha_fwd_varlen_specialized(
+      TileShapeQK,
+      TileShapePV,
+      TileShapeOutPut,
+      SubgroupLayoutQK,
+      PipelineStages);
+}
+
+// Primary template declaration for varlen -- defined in mha_fwd.cpp.
+template <typename T, bool IS_CAUSAL>
+void run_mha_fwd_varlen_(sycl::queue& queue, FLASH_FWD_params& params);
+
+#undef run_mha_fwd_varlen_specialized
 #undef run_mha_fwd_specialized
 
 } // namespace cute

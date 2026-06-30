@@ -7390,7 +7390,6 @@ torch.cuda.synchronize()
     @skipIfTorchDynamo("compiles internally")
     @unittest.skipIf(IS_WINDOWS, reason="Windows not yet supported for torch.compile")
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
-    @skipXPUIf(True, "XPU does not support NestedTensor for SDPA operations.")
     @parametrize("use_legacy_api", [True, False])
     @skipCPUIf(True, "SPDA Math NT fallback causes failure: see issue #133644")
     @unittest.skipIf(
@@ -7439,6 +7438,7 @@ torch.cuda.synchronize()
                     [
                         torch.nn.attention.SDPBackend.FLASH_ATTENTION,
                         torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
+                        torch.nn.attention.SDPBackend.MATH,
                     ]
                 ):
                     attn_output = torch.nn.functional.scaled_dot_product_attention(
