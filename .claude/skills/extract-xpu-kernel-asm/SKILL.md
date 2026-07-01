@@ -88,9 +88,8 @@ IGA_LIB=$(test -n "$ONEAPI" && find "$ONEAPI" -name 'libiga64.so' 2>/dev/null | 
 
 ### Step 1: Pin the actually-launched kernel
 
-You MUST identify which kernel was actually executed on the GPU. AOT bundles
-embed all specializations; IGC dumps all referenced kernels. Without pinning,
-you risk extracting the wrong one.
+Identify which kernel was executed on the GPU. The kernel name determines
+which sub-skill to dispatch to (oneDNN vs Triton vs SYCL).
 
 **Preferred: unitrace** (covers ALL code paths including native-handle):
 
