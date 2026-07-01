@@ -16,7 +16,9 @@ Usage (see test_ring_collectives_dist.py):
 """
 
 import ctypes
+import json
 import os
+import threading
 
 import torch
 import torch.distributed as dist
@@ -35,6 +37,10 @@ for _lib, _attr in (
     ("libring_reduce_scatter.so", "ring_reduce_scatter"),
     ("libring_allgather_permute.so", "ring_allgather_permute"),
     ("libring_reduce_scatter_unpermute.so", "ring_reduce_scatter_unpermute"),
+    (
+        "libring_reduce_scatter_unpermute_two_stage.so",
+        "ring_reduce_scatter_unpermute_two_stage",
+    ),
 ):
     _path = os.path.join(_BASE, "..", "csrc", _lib)
     if os.path.exists(_path):
@@ -48,6 +54,9 @@ _HAS_RING_REDUCE_SCATTER = hasattr(torch.ops.symm_mem, "ring_reduce_scatter")
 _HAS_RING_ALLGATHER_PERMUTE = hasattr(torch.ops.symm_mem, "ring_allgather_permute")
 _HAS_RING_REDUCE_SCATTER_UNPERMUTE = hasattr(
     torch.ops.symm_mem, "ring_reduce_scatter_unpermute"
+)
+_HAS_RING_REDUCE_SCATTER_UNPERMUTE_TWO_STAGE = hasattr(
+    torch.ops.symm_mem, "ring_reduce_scatter_unpermute_two_stage"
 )
 
 # Monotonically increasing signal tag per group (kept for robustness even
@@ -70,6 +79,164 @@ def _next_iter(group_name):
     v = _iter_counters.get(group_name, 0) + 1
     _iter_counters[group_name] = v
     return v
+
+
+# ---------------------------------------------------------------------------
+# Work-group autotuning
+# ---------------------------------------------------------------------------
+# The ring reduce-scatter kernels are memory-latency-bound on the scattered
+# top-k gather; the optimal work-group count depends on the GPU (EU count,
+# resident-subgroup capacity) and the problem shape.  Rather than bake a magic
+# constant, we autotune it once per (platform, shape) and persist the result so
+# a *new platform* pays the search cost exactly once.
+#
+# CRITICAL: this is a symmetric collective -- work-group `i` on rank R signals
+# work-group `i` on rank R+1, so num_wg MUST be identical on every rank.  The
+# tuner therefore all-reduces candidate timings and every rank picks the same
+# argmin (never a per-rank local decision).
+_RING_MAX_WG = 256  # upper bound; must match the native RING_MAX_WG / pad size.
+
+# Toggle: "0"/"false" -> use the native analytic formula (num_wg_hint=-1).
+_WG_AUTOTUNE_ENABLED = os.environ.get("RING_WG_AUTOTUNE", "1").lower() not in (
+    "0",
+    "false",
+    "no",
+)
+_WG_TUNE_WARMUP = int(os.environ.get("RING_WG_TUNE_WARMUP", "5"))
+_WG_TUNE_ITERS = int(os.environ.get("RING_WG_TUNE_ITERS", "20"))
+
+_WG_CACHE_PATH = os.environ.get(
+    "RING_WG_CACHE_PATH",
+    os.path.join(
+        os.path.expanduser("~"), ".cache", "torch_xpu_ops", "ring_wg_tune.json"
+    ),
+)
+
+_wg_cache = None  # dict: str(key) -> int(num_wg)
+_wg_cache_lock = threading.Lock()
+_wg_inflight = set()  # keys currently being tuned (guards re-entrancy)
+
+
+def _wg_cache_load():
+    global _wg_cache
+    if _wg_cache is not None:
+        return _wg_cache
+    _wg_cache = {}
+    try:
+        with open(_WG_CACHE_PATH, "r") as f:
+            _wg_cache = json.load(f)
+    except Exception:
+        _wg_cache = {}
+    return _wg_cache
+
+
+def _wg_cache_store(key, value):
+    cache = _wg_cache_load()
+    cache[key] = int(value)
+    try:
+        os.makedirs(os.path.dirname(_WG_CACHE_PATH), exist_ok=True)
+        tmp = _WG_CACHE_PATH + f".tmp.{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump(cache, f, indent=0, sort_keys=True)
+        os.replace(tmp, _WG_CACHE_PATH)
+    except Exception:
+        pass  # cache persistence is best-effort
+
+
+def _platform_tag(device):
+    try:
+        p = torch.xpu.get_device_properties(device)
+        return f"{p.name}|eu{getattr(p, 'gpu_eu_count', 0)}"
+    except Exception:
+        return "unknown-xpu"
+
+
+def _wg_cache_key(device, dtype, world_size, tokens, hidden, topk):
+    return "|".join(
+        str(x)
+        for x in (
+            _platform_tag(device),
+            str(dtype),
+            world_size,
+            tokens,
+            hidden,
+            topk,
+        )
+    )
+
+
+def _wg_candidates(tokens):
+    """Candidate num_wg values from power-of-two token splits (even division
+    avoids the load-imbalance spikes seen with odd tokens/wg)."""
+    cands = set()
+    tpw = 1
+    while tpw <= max(1, tokens):
+        nwg = (tokens + tpw - 1) // tpw
+        if 1 <= nwg <= _RING_MAX_WG:
+            cands.add(int(nwg))
+        tpw *= 2
+    if not cands:
+        cands.add(max(1, min(tokens, _RING_MAX_WG)))
+    return sorted(cands)
+
+
+def _time_candidate(invoke, num_wg, device, group):
+    """Median latency (ms) of `invoke(num_wg)`, agreed across ranks by summing
+    per-rank times so every rank selects the identical winner."""
+    for _ in range(_WG_TUNE_WARMUP):
+        invoke(num_wg)
+    torch.xpu.synchronize()
+    begins = [torch.xpu.Event(enable_timing=True) for _ in range(_WG_TUNE_ITERS)]
+    ends = [torch.xpu.Event(enable_timing=True) for _ in range(_WG_TUNE_ITERS)]
+    for i in range(_WG_TUNE_ITERS):
+        begins[i].record()
+        invoke(num_wg)
+        ends[i].record()
+    torch.xpu.synchronize()
+    lat = sorted(begins[i].elapsed_time(ends[i]) for i in range(_WG_TUNE_ITERS))
+    local_median = lat[len(lat) // 2]
+    t = torch.tensor([local_median], dtype=torch.float64, device=device)
+    if world_size_of(group) > 1:
+        dist.all_reduce(t, op=dist.ReduceOp.SUM, group=group)
+    return t.item()
+
+
+def world_size_of(group):
+    try:
+        return dist.get_world_size(group)
+    except Exception:
+        return 1
+
+
+def autotune_num_wg(key, invoke, tokens, device, group):
+    """Return the best num_wg for `key`, tuning (once) if not cached.
+
+    `invoke(num_wg)` must run one full collective kernel launch with the given
+    work-group hint.  All ranks must call this in lock-step (it issues collective
+    ops); the returned value is identical on every rank.
+    """
+    cache = _wg_cache_load()
+    if key in cache:
+        return int(cache[key])
+    with _wg_cache_lock:
+        if key in cache:
+            return int(cache[key])
+        # Re-entrancy guard: if we're already tuning this key, fall back to auto.
+        if key in _wg_inflight:
+            return -1
+        _wg_inflight.add(key)
+    try:
+        best_wg, best_t = None, None
+        for c in _wg_candidates(tokens):
+            t = _time_candidate(invoke, c, device, group)
+            if best_t is None or t < best_t:
+                best_t, best_wg = t, c
+        if best_wg is None:
+            best_wg = -1
+        _wg_cache_store(key, best_wg)
+        return int(best_wg)
+    finally:
+        _wg_inflight.discard(key)
 
 
 def _align_up(x, a):
@@ -625,12 +792,135 @@ def ring_reduce_scatter_unpermute(
     local_pad.zero_()
     workspace.barrier()
 
+    scatter_idx_c = scatter_idx.contiguous()
+    topk_weights_c = topk_weights.contiguous()
+
+    def _invoke(num_wg_hint):
+        local_pad.zero_()
+        workspace.barrier()
+        iteration = _next_iter(group_name)
+        torch.ops.symm_mem.ring_reduce_scatter_unpermute(
+            expert_output,
+            rank_buffers_ptr,
+            signal_pads_ptr,
+            acc,
+            output,
+            scatter_idx_c,
+            topk_weights_c,
+            rank,
+            world_size,
+            iteration,
+            num_wg_hint,
+        )
+        return output
+
+    num_wg_hint = -1
+    if _WG_AUTOTUNE_ENABLED:
+        topk = scatter_idx_c.size(1)
+        key = _wg_cache_key(
+            expert_output.device,
+            expert_output.dtype,
+            world_size,
+            num_tokens_per_rank,
+            hidden,
+            topk,
+        )
+        num_wg_hint = autotune_num_wg(
+            key, _invoke, num_tokens_per_rank, expert_output.device, group
+        )
+
+    _invoke(num_wg_hint)
+    return output
+
+
+def build_ring_reduce_scatter_unpermute_two_stage_resources(
+    expert_output: torch.Tensor,
+    num_tokens_per_rank: int,
+    group: dist.ProcessGroup = None,
+):
+    """Resources for ring_reduce_scatter_unpermute_two_stage.
+
+    Identical to build_ring_reduce_scatter_unpermute_resources plus a local
+    [2, num_tokens_per_rank, hidden] `scratch` ping-pong buffer used by the
+    two-stage kernel to prefetch each block's gather one ring step ahead.
+    """
+    assert (
+        _HAS_RING_REDUCE_SCATTER_UNPERMUTE_TWO_STAGE
+    ), "ring_reduce_scatter_unpermute_two_stage native kernel not available"
+    resources = build_ring_reduce_scatter_unpermute_resources(
+        expert_output, num_tokens_per_rank, group=group
+    )
+    hidden = resources["hidden"]
+    resources["scratch"] = torch.empty(
+        (2, num_tokens_per_rank, hidden),
+        dtype=expert_output.dtype,
+        device=expert_output.device,
+    )
+    return resources
+
+
+def ring_reduce_scatter_unpermute_two_stage(
+    expert_output: torch.Tensor,
+    scatter_idx: torch.Tensor,
+    topk_weights: torch.Tensor,
+    num_tokens_per_rank: int,
+    group: dist.ProcessGroup = None,
+    resources: dict = None,
+    output: torch.Tensor = None,
+) -> torch.Tensor:
+    """Two-stage (software-pipelined) fused MoE unpermute + ring reduce-scatter.
+
+    Same interface and semantics as ring_reduce_scatter_unpermute, but the
+    native kernel issues the local weighted gather (Stage A) before waiting on
+    the incoming ring partial so the gather overlaps the cross-rank transfer.
+    Requires a `scratch` buffer, provided via
+    build_ring_reduce_scatter_unpermute_two_stage_resources().
+    """
+    assert (
+        _HAS_RING_REDUCE_SCATTER_UNPERMUTE_TWO_STAGE
+    ), "ring_reduce_scatter_unpermute_two_stage native kernel not available"
+    group, group_name, rank, world_size = _group_info(group)
+
+    expert_output = expert_output.contiguous()
+    hidden = expert_output.size(1)
+    data_numel = num_tokens_per_rank * hidden * world_size
+
+    if resources is None:
+        resources = build_ring_reduce_scatter_unpermute_two_stage_resources(
+            expert_output, num_tokens_per_rank, group=group
+        )
+    assert resources["group_name"] == group_name, "resources group mismatch"
+    assert resources["num_tokens_per_rank"] == num_tokens_per_rank, (
+        "resources num_tokens_per_rank mismatch"
+    )
+    assert resources["hidden"] == hidden, "resources hidden size mismatch"
+    assert resources["dtype"] == expert_output.dtype, "resources dtype mismatch"
+    assert "scratch" in resources, "two-stage resources missing scratch buffer"
+
+    workspace = resources["workspace"]
+    acc = resources["acc"]
+    rank_buffers_ptr = resources["rank_buffers_ptr"]
+    signal_pads_ptr = resources["signal_pads_ptr"]
+    local_pad = resources["local_pad"]
+    scratch = resources["scratch"]
+
+    if output is None:
+        output = torch.empty(
+            (num_tokens_per_rank, hidden),
+            dtype=expert_output.dtype,
+            device=expert_output.device,
+        )
+
+    local_pad.zero_()
+    workspace.barrier()
+
     iteration = _next_iter(group_name)
-    torch.ops.symm_mem.ring_reduce_scatter_unpermute(
+    torch.ops.symm_mem.ring_reduce_scatter_unpermute_two_stage(
         expert_output,
         rank_buffers_ptr,
         signal_pads_ptr,
         acc,
+        scratch,
         output,
         scatter_idx.contiguous(),
         topk_weights.contiguous(),

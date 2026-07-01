@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <ATen/ATen.h>
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
@@ -78,7 +79,7 @@ SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
 
 namespace {
 
-constexpr int32_t RING_MAX_WG = 64;
+constexpr int32_t RING_MAX_WG = 256;
 
 // 16-byte vector store with optional LSC cache control (see RING_LSC_STORE).
 template <typename vec_t>
@@ -179,9 +180,18 @@ struct RingReduceScatterUnpermuteSingleKernel {
         const float w = topk_weights_ptr[topk_base + k];
         const scalar_t* src =
             expert_output_ptr + static_cast<int64_t>(src_row) * hidden + h_start;
+        // Single coalesced VEC_SIZE-wide load (h_start is VEC_SIZE-aligned and
+        // hidden % VEC_SIZE == 0, so `src` is naturally aligned). This replaces
+        // VEC_SIZE scalar loads with one wide load per source row -- the gather
+        // is the HBM-bandwidth-critical path, so wide loads roughly double its
+        // achieved bandwidth vs per-element reads.
+        const vec_t sv = *reinterpret_cast<const vec_t*>(src);
 #pragma unroll
-        for (int i = 0; i < VEC_SIZE; ++i)
-          acc[i] += w * static_cast<float>(src[i]);
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          const vec_elem_t bits = sv[i];
+          acc[i] += w *
+              static_cast<float>(*reinterpret_cast<const scalar_t*>(&bits));
+        }
       }
       // Single coalesced VEC_SIZE-wide store; when dst_row is the remote peer's
       // acc this is one PCIe block transaction instead of VEC_SIZE per-element
@@ -310,22 +320,66 @@ struct RingReduceScatterUnpermuteSingleKernel {
   }
 };
 
+inline int32_t ring_max_wg_runtime() {
+  static const int32_t v = [] {
+    const char* e = std::getenv("RING_MAX_WG_OVERRIDE");
+    if (e) {
+      int x = std::atoi(e);
+      if (x > 0) return x;
+    }
+    return static_cast<int>(RING_MAX_WG);
+  }();
+  return v;
+}
+
+// Occupancy-based launch geometry.  The kernel is memory-latency-bound on the
+// scattered top-k gather, so we size the grid to ~2x oversubscribe the machine's
+// resident-subgroup capacity (eu_count) for latency hiding, then snap
+// tokens_per_wg to a power of two so the token stream splits evenly across
+// work-groups (uneven splits measurably regress due to tail load imbalance and
+// per-wg signal skew).  num_wg is additionally clamped to the token count and to
+// the signal-pad capacity (RING_MAX_WG).
+inline int64_t next_pow2(int64_t x) {
+  int64_t p = 1;
+  while (p < x) p <<= 1;
+  return p;
+}
+
 inline void compute_launch_tokens(
     int64_t num_tokens,
-    int64_t hidden,
-    int64_t threads,
-    int VEC_SIZE,
+    int64_t /*hidden*/,
+    int64_t /*threads*/,
+    int /*VEC_SIZE*/,
+    int64_t eu_count,
+    int64_t num_wg_hint,
     int32_t& num_wg,
     int64_t& tokens_per_wg) {
-  const int64_t chunk = num_tokens * hidden;
-  const int64_t per_wg = threads * VEC_SIZE;
-  int64_t nwg = (chunk + per_wg - 1) / per_wg;
-  if (nwg < 1) nwg = 1;
-  if (nwg > RING_MAX_WG) nwg = RING_MAX_WG;
-  int64_t tpw = (num_tokens + nwg - 1) / nwg;
+  const int64_t cap = ring_max_wg_runtime();
+  // Autotuner override: a positive hint pins the work-group count (still snapped
+  // to an even power-of-two token split and clamped to the pad/token limits).
+  int64_t num_wg_target;
+  if (num_wg_hint > 0) {
+    num_wg_target = num_wg_hint;
+  } else {
+    // 2x oversubscription of the EU array is the latency-hiding sweet spot for
+    // the scattered gather; beyond it per-wg signal overhead dominates.
+    num_wg_target = 2 * (eu_count > 0 ? eu_count : 64);
+  }
+  if (num_wg_target > cap) num_wg_target = cap;
+  if (num_wg_target < 1) num_wg_target = 1;
+
+  // Even (power-of-two) tokens per work-group avoids the load-imbalance spikes
+  // seen with odd splits (e.g. 11 or 13 tokens/wg).
+  int64_t tpw = next_pow2((num_tokens + num_wg_target - 1) / num_wg_target);
   if (tpw < 1) tpw = 1;
-  nwg = (num_tokens + tpw - 1) / tpw;
+
+  int64_t nwg = (num_tokens + tpw - 1) / tpw;
   if (nwg < 1) nwg = 1;
+  if (nwg > cap) {
+    nwg = cap;
+    tpw = (num_tokens + nwg - 1) / nwg;
+    nwg = (num_tokens + tpw - 1) / tpw;
+  }
   num_wg = static_cast<int32_t>(nwg);
   tokens_per_wg = tpw;
 }
@@ -345,7 +399,8 @@ at::Tensor ring_reduce_scatter_unpermute(
     const at::Tensor& topk_weights,
     int64_t rank,
     int64_t world_size,
-    int64_t iteration) {
+    int64_t iteration,
+    int64_t num_wg_hint) {
   TORCH_CHECK(expert_output.dim() == 2, "ring_reduce_scatter_unpermute: expert_output must be 2D [rows, hidden]");
   TORCH_CHECK(expert_output.is_contiguous(), "ring_reduce_scatter_unpermute: expert_output must be contiguous");
   TORCH_CHECK(acc.dim() == 1, "ring_reduce_scatter_unpermute: acc must be 1D");
@@ -411,11 +466,17 @@ at::Tensor ring_reduce_scatter_unpermute(
   const uint32_t tag = static_cast<uint32_t>(iteration);
 
   constexpr int VEC_SIZE = 8;
-  constexpr int64_t threads = 256;
+  // One work-group covers one hidden row with coalesced VEC_SIZE loads.
+  int64_t threads = hidden / VEC_SIZE;
+  if (threads < 1) threads = 1;
+  if (threads > 1024) threads = 1024;
+  const int64_t eu_count = static_cast<int64_t>(
+      queue.get_device().get_info<sycl::info::device::max_compute_units>());
   int32_t num_wg = 1;
   int64_t tokens_per_wg = num_tokens_per_rank;
   compute_launch_tokens(
-      num_tokens_per_rank, hidden, threads, VEC_SIZE, num_wg, tokens_per_wg);
+      num_tokens_per_rank, hidden, threads, VEC_SIZE, eu_count, num_wg_hint,
+      num_wg, tokens_per_wg);
 
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       output.scalar_type(), "ring_reduce_scatter_unpermute", [&]() {
@@ -451,7 +512,7 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "ring_reduce_scatter_unpermute(Tensor expert_output, Tensor rank_buffers_ptr, "
       "Tensor signal_pads_ptr, Tensor(a!) acc, Tensor(b!) output, "
       "Tensor scatter_idx, Tensor topk_weights, "
-      "int rank, int world_size, int iteration) -> Tensor(b!)");
+      "int rank, int world_size, int iteration, int num_wg_hint=-1) -> Tensor(b!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
