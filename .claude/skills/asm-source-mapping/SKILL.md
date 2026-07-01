@@ -10,9 +10,9 @@ description: >
 
 # ASM → SYCL Source Mapping
 
-Given one or more GPU instruction addresses (IPs) and an ASM directory produced
-by `extract-xpu-kernel-asm`, resolve each IP to the original SYCL/DPC++ source
-file:line and an optional structural construct label.
+Given one or more GPU instruction addresses (IPs) and an ASM directory, resolve
+each IP to the original SYCL/DPC++ source file:line and an optional structural 
+construct label.
 
 ## Background
 
@@ -21,13 +21,13 @@ DebugLoc → zebin .debug_line` (byte offset → file:line). The zebin's
 `.debug_line` section maps GPU ISA offsets to source, and is the primary data
 source for this skill. Requires `-g` at compile time (`-gline-tables-only` is
 **not supported** for `spir64_gen` AOT targets and is silently ignored by the
-compiler). oneDNN ngen has no `.debug_line` — pattern recognition is the only
+compiler now and may fix it in the future version). oneDNN ngen has no `.debug_line` — pattern recognition is the only
 option.
 
 ## When to use
 
 - You have one or more GPU instruction addresses (IPs) to map to source.
-- An ASM directory from `extract-xpu-kernel-asm` is available.
+- An ASM directory is available.
 - You need source attribution for performance analysis or debugging.
 
 ## When NOT to use
