@@ -32,8 +32,8 @@ but by **where the zebin lives**:
 ┌───────────────┬──────────────────────────────────────────────────┐
 │ Scenario      │ Where is the zebin? How to get it?               │
 ├───────────────┼──────────────────────────────────────────────────┤
-│ sycl-aot      │ Embedded in host binary (__CLANG_OFFLOAD_BUNDLE) │
-│               │ → clang-offload-extract → ocloc disasm           │
+│ sycl-aot      │ Embedded in host binary at build time            │
+│               │ → DumpZEBin=1 NEOReadDebugKeys=1 → ocloc disasm  │
 ├───────────────┼──────────────────────────────────────────────────┤
 │ sycl-jit      │ Generated at first launch, only in memory        │
 │               │ → IGC_ShaderDumpEnable=1 → dump dir → .asm/.elf  │
@@ -78,10 +78,6 @@ if [ -z "$ONEAPI" ]; then
     [ -d "$d" ] && ONEAPI="$d" && break
   done
 fi
-
-# clang-offload-extract (for AOT classification + extraction)
-COE=$(command -v clang-offload-extract 2>/dev/null \
-  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
 
 # ocloc (for disassembling zebin ELFs)
 command -v ocloc >/dev/null || echo "ocloc not found; source oneapi-vars.sh"
@@ -241,19 +237,18 @@ int main() {
 icpx -fsycl -O2 -fsycl-targets=spir64_gen -Xs "-device <dev>" vec_add.cpp -o vec_add
 ```
 
-**Classification signal:** `strings vec_add | grep __CLANG_OFFLOAD_BUNDLE` confirms AOT;
-`clang-offload-extract` yields ELF (arch 0xcd) → scenario = `sycl-aot`
-→ delegate to `extract-asm-syclkernel-aot` (Path A).
+**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 ./vec_add` produces
+`.elf` files → scenario = `sycl-aot` → delegate to `extract-asm-syclkernel-aot`.
 
 **Expected result:**
 ```
 scenario:    sycl-aot
-asm-file:    <workdir>/asm0/.text._ZTS12VecAddKernel.asm
+asm-file:    <workdir>/<name>_dump/.text._ZTS12VecAddKernel.asm
 kernel-name: _ZTS12VecAddKernel
-validation:  file target.bin.0 → ELF 64-bit LSB relocatable, *unknown arch 0xcd*
+validation:  c++filt _ZTS12VecAddKernel → VecAddKernel
 ```
 
-### Example 4 — SYCL AOT: `libtorch_xpu.so` (zstd → AR → zebin)
+### Example 4 — SYCL AOT: `libtorch_xpu.so`
 
 **Repro:**
 ```python
@@ -262,17 +257,15 @@ x = torch.randn(1024, dtype=torch.float, device='xpu')
 y = x + 1.0; torch.xpu.synchronize()
 ```
 
-**Classification signal:** `strings libtorch_xpu.so | grep __CLANG_OFFLOAD_BUNDLE`
-confirms AOT; `clang-offload-extract` yields many zstd-compressed files
-→ scenario = `sycl-aot` → delegate to `extract-asm-syclkernel-aot` (Path B).
+**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 python test.py`
+produces `.elf` files → scenario = `sycl-aot`
+→ delegate to `extract-asm-syclkernel-aot`.
 
 **Expected result:**
 ```
-scenario:    sycl-aot (fat binary)
-format:      zstd → AR → per-device zebin (use ar t to list devices)
-asm-file:    <workdir>/asm/.text._ZTSN2at6native3xpu...E.asm
-kernel-name: matches the kernel pinned via unitrace or SYCL_UR_TRACE
-validation:  file <device_member> → ELF 64-bit LSB relocatable, *unknown arch 0xcd*
+scenario:    sycl-aot
+asm-file:    <workdir>/<name>_dump/.text._ZTSN2at6native3xpu...E.asm
+kernel-name: matches the demangled kernel from c++filt
 ```
 
 ### Example 5 — SYCL JIT: standalone DPC++ without AOT target
@@ -298,8 +291,8 @@ int main() {
 icpx -fsycl -O2 -g -fsycl-targets=spir64 shift_reduce.cpp -o shift_reduce
 ```
 
-**Classification signal:** `clang-offload-extract` yields "Khronos SPIR-V binary"
-(not ELF) → no native code embedded → scenario = `sycl-jit`
+**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 ./shift_reduce`
+produces NO `.elf` files → scenario = `sycl-jit`
 → delegate to `extract-asm-syclkernel-jit`.
 
 **Expected result:**
