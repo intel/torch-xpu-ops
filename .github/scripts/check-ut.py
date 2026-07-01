@@ -260,6 +260,10 @@ def determine_category(ut):
         return 'test_xpu'
     elif 'op_ut' in ut:
         return 'op_ut'
+    elif 'inductor' in ut:
+        return 'inductor'
+    elif 'torch_xpu' in ut:
+        return 'torch_xpu'
     else:
         return 'unknown'
 
