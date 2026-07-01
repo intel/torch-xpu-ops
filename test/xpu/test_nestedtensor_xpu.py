@@ -8622,14 +8622,6 @@ BACKWARD_SKIPS_AND_XFAILS = [
         sample_match_fn=lambda device, sample: ("ragged dim" in sample.name),
         name="broken_min_max_reduction_with_dim_backward_on_ragged_dim",
     ),
-    # copysign(): formula is broken for (T, NT) broadcasting
-    XFailRule(
-        error_type=RuntimeError,
-        error_msg="SymIntArrayRef expected to contain only concrete integers",
-        op_match_fn=lambda device, op: (op.full_name == "copysign"),
-        sample_match_fn=lambda device, sample: ("(T, NT)" in sample.name),
-        name="broken_copysign_backward",
-    ),
     # amin() / amax(): broken in a host of ways I don't think it's a good use of time
     # to try to sift through
     SkipRule(
