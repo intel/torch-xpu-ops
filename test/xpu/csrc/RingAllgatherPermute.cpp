@@ -66,19 +66,34 @@ namespace {
 constexpr int32_t RING_MAX_WG = 1024;
 
 // The cross-rank traffic in the PULL ring is a remote READ from the left peer's
-// gather slot followed by a LOCAL write to our gather slot (which the permute
-// re-reads immediately). Measured on this PCIe fabric (8x B60, bf16):
+// gather slot followed by a LOCAL write to our gather slot. That local write is
+// NOT purely local: on the next hop the RIGHT peer remote-reads the very block
+// we just wrote, so the write must reach a system coherence point before we
+// signal. An LSC store with L1WB_L3WB (writeback) cache control leaves the data
+// in the writeback cache; the system-scope `release` fence orders it but does
+// NOT reliably drain it to where a remote peer's load observes it in time. The
+// result is a multi-hop correctness bug: hop 0/1 (data published locally by the
+// owner) are fine, but blocks relayed two or more hops are read stale by the
+// downstream peer. The write therefore must be a coherent (non-writeback) store
+// by default.
+// Measured on a PCIe fabric (8x B60, bf16):
 //   - LSC store (L1WB_L3WB) on the LOCAL write:   ~3.43 -> ~3.31 ms (~3-4% win)
 //   - LSC L1UC load on the REMOTE read:           ~3.43 -> ~3.89 ms (~13% LOSS)
-// The default cached/pipelined remote read beats an L1UC bypass, so by default
-// ONLY the local store uses LSC; the remote load stays a plain load.
-// Opt-outs: RING_NO_LSC_COPY (disable entirely), RING_LSC_COPY_PLAIN_STORE
-// (plain store), RING_LSC_COPY_LSC_LOAD (force LSC load, not recommended here).
+// The cached/pipelined remote read beats an L1UC bypass, so the remote load
+// stays a plain load. The local store defaults to a plain (coherent) store
+// because its data is consumed by a remote peer; the ~3-4% writeback win is not
+// worth the correctness hazard.
+// Opt-ins (only safe on fabrics where the writeback drains before the peer
+// read): RING_LSC_COPY_LSC_STORE (writeback store), RING_LSC_COPY_LSC_LOAD
+// (LSC load). Opt-out: RING_NO_LSC_COPY (disable LSC builtins entirely).
 #if !defined(RING_LSC_COPY) && !defined(RING_NO_LSC_COPY)
 #define RING_LSC_COPY 1
 #endif
 #if defined(RING_LSC_COPY) && !defined(RING_LSC_COPY_LSC_LOAD)
 #define RING_LSC_COPY_PLAIN_LOAD 1
+#endif
+#if defined(RING_LSC_COPY) && !defined(RING_LSC_COPY_LSC_STORE)
+#define RING_LSC_COPY_PLAIN_STORE 1
 #endif
 
 #if defined(RING_LSC_COPY) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)

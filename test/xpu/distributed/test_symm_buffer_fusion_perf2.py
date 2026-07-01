@@ -222,16 +222,55 @@ def benchmark_unpermute_mode(
     return output, latencies
 
 
-def report_allgather_accuracy(rank, fusion0, fusion1):
-    match = torch.equal(fusion0, fusion1)
-    max_diff = (fusion0 - fusion1).abs().max().item()
+def _canonical_permuted(remap, abs_scatter_idx):
+    """Reconstruct the permuted data in canonical (token, top-k) order.
+
+    The permuted ``remap`` buffer groups tokens by expert, and the row a token
+    lands on within its expert bucket is assigned non-deterministically by
+    ``notify_dispatch_v2`` (work-groups race to reserve position chunks). Two
+    independent runs therefore produce different—but equally valid—permutations,
+    so comparing the raw buffers row-by-row is meaningless. Gathering each row
+    back through the path's own ``abs_scatter_idx`` yields a layout that is
+    invariant to the within-expert ordering, so two correct paths match exactly.
+    """
+    flat = abs_scatter_idx.reshape(-1)
+    valid = flat >= 0
+    out = torch.zeros(flat.numel(), remap.shape[1], device=remap.device, dtype=remap.dtype)
+    out[valid] = remap[flat[valid].long()]
+    return out
+
+
+def report_allgather_accuracy(rank, fusion0, handle0, fusion1, handle1):
+    canon0 = _canonical_permuted(fusion0, handle0.abs_scatter_idx)
+    canon1 = _canonical_permuted(fusion1, handle1.abs_scatter_idx)
+    match = torch.equal(canon0, canon1)
+    max_diff = (canon0.float() - canon1.float()).abs().max().item()
     print(
-        f"[Rank {rank}] allgather_permute accuracy FUSION_RING=0 vs FUSION_RING=1: "
-        f"match={match} max_diff={max_diff:.6f}"
+        f"[Rank {rank}] allgather_permute accuracy FUSION_RING=0 vs FUSION_RING=1 "
+        f"(order-independent): match={match} max_diff={max_diff:.6f}"
     )
     assert match, (
         f"allgather_permute mismatch on rank {rank}: max_diff={max_diff:.6f}"
     )
+
+
+def _build_consistent_expert_output(canonical_src, abs_scatter_idx):
+    """Scatter per-(token, top-k) canonical values into the permuted-row layout
+    using a path's own ``abs_scatter_idx``.
+
+    Each fusion path assigns a different (but valid) within-expert ordering, so a
+    single shared random ``expert_output`` would be read through different row
+    indices by each path and yield divergent combine results. Building the
+    expert output by scattering the SAME canonical per-(token, top-k) data
+    through each path's own mapping guarantees that the row every path reads back
+    during unpermute holds identical logical data (exactly what a real expert
+    stage would produce), making the per-token outputs comparable.
+    """
+    eo = torch.zeros_like(canonical_src)
+    flat = abs_scatter_idx.reshape(-1)
+    valid = flat >= 0
+    eo[flat[valid].long()] = canonical_src[valid]
+    return eo
 
 
 def report_unpermute_accuracy(rank, fusion0, fusion1, world_size):
@@ -295,16 +334,23 @@ def main():
         world_size,
         device,
     )
-    report_allgather_accuracy(rank, fusion0_remap, fusion1_remap)
+    report_allgather_accuracy(rank, fusion0_remap, fusion0_handle, fusion1_remap, fusion1_handle)
 
     ref_remap, ref_latencies = build_allgather_local_permute_reference(
         hidden_shard, scatter_idx, group
     )
     print_latency_summary("benchmark_ring reference allgather_permute", ref_latencies, rank)
-    ref_match = torch.equal(fusion1_remap, ref_remap)
+    # Compare against the reference order-independently and only over the top-k
+    # slots this rank actually owns (the fused path fills owned-expert rows only,
+    # whereas the reference permutes every token to every expert).
+    canon_f1 = _canonical_permuted(fusion1_remap, fusion1_handle.abs_scatter_idx)
+    canon_ref = _canonical_permuted(ref_remap, scatter_idx)
+    owned = fusion1_handle.abs_scatter_idx.reshape(-1) >= 0
+    ref_match = torch.equal(canon_f1[owned], canon_ref[owned])
     print(
-        f"[Rank {rank}] benchmark_ring reference allgather_permute vs FUSION_RING=1: "
-        f"match={ref_match} max_diff={(fusion1_remap - ref_remap).abs().max().item():.6f}"
+        f"[Rank {rank}] benchmark_ring reference allgather_permute vs FUSION_RING=1 "
+        f"(order-independent): match={ref_match} "
+        f"max_diff={(canon_f1[owned].float() - canon_ref[owned].float()).abs().max().item():.6f}"
     )
 
     torch.xpu.synchronize()
@@ -312,9 +358,15 @@ def main():
     torch.xpu.empty_cache()
 
     torch.manual_seed(1000)
-    expert_output = torch.randn(
+    canonical_src = torch.randn(
         world_size * TOKENS_PER_RANK * TOPK, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
     )
+    # Each path reads its expert output through its own permutation, so build a
+    # per-path expert_output that holds the same canonical per-(token, top-k)
+    # data at each path's own rows (see _build_consistent_expert_output).
+    expert_output0 = _build_consistent_expert_output(canonical_src, fusion0_handle.abs_scatter_idx)
+    expert_output1 = _build_consistent_expert_output(canonical_src, fusion1_handle.abs_scatter_idx)
+    expert_output_ref = _build_consistent_expert_output(canonical_src, scatter_idx)
 
     print(f"\n{'=' * 70}")
     print("[Unpermute + Reduce-Scatter Fusion]")
@@ -322,7 +374,7 @@ def main():
     fusion0_output, fusion0_unperm_latencies = benchmark_unpermute_mode(
         sbuf_fusion0,
         "FUSION_RING=0",
-        expert_output,
+        expert_output0,
         fusion0_handle.abs_scatter_idx,
         fusion0_handle.global_topk_weights,
         fusion0_handle,
@@ -333,7 +385,7 @@ def main():
     fusion1_output, fusion1_unperm_latencies = benchmark_unpermute_mode(
         sbuf_fusion1,
         "FUSION_RING=1",
-        expert_output,
+        expert_output1,
         fusion1_handle.abs_scatter_idx,
         fusion1_handle.global_topk_weights,
         fusion1_handle,
@@ -344,7 +396,7 @@ def main():
     report_unpermute_accuracy(rank, fusion0_output, fusion1_output, world_size)
 
     ref_output, ref_unperm_latencies = build_unpermute_reducescatter_reference(
-        expert_output,
+        expert_output_ref,
         scatter_idx,
         global_topk_weights,
         TOKENS_PER_RANK,

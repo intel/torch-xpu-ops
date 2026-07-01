@@ -45,13 +45,25 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
-// Bandwidth-critical 16-byte store to the remote peer's acc (the push) uses an
-// Intel GPU LSC store with explicit cache control (L1WB_L3WB) so contiguous
-// remote writes get combined through L3 into larger burst transactions over the
-// cross-GPU link. Measured ~18% faster than the plain vectorized store on B60.
-// Enabled by default; define RING_NO_LSC_STORE to fall back to the plain store.
+// The bandwidth-critical 16-byte store here writes the reduced partial directly
+// into the RIGHT peer's acc buffer, which that peer then remote-reads (after a
+// system-scope acquire fence) on the next ring step. An Intel GPU LSC store with
+// L1WB_L3WB (writeback) cache control leaves the data in the writeback cache; the
+// system-scope `release` fence orders it but does NOT reliably drain it to the
+// shared coherence point where the downstream peer's load observes it in time.
+// The result is a correctness bug: the peer reads a STALE acc block and folds it
+// into the reduce-scatter, producing garbage combine outputs. (Empirically this
+// manifests whenever the live token count differs from the buffer's
+// num_max_tokens_per_rank, i.e. every real decode/prefill step.) The peer write
+// therefore defaults to a plain (coherent) store; the ~18% writeback win on B60
+// is not worth the multi-hop staleness hazard.
+// Opt-in (only safe on fabrics where the writeback drains before the peer read):
+// RING_LSC_STORE_WB. Opt-out of the LSC path entirely: RING_NO_LSC_STORE.
 #if !defined(RING_LSC_STORE) && !defined(RING_NO_LSC_STORE)
 #define RING_LSC_STORE 1
+#endif
+#if defined(RING_LSC_STORE) && !defined(RING_LSC_STORE_WB)
+#define RING_LSC_STORE_PLAIN 1
 #endif
 
 #if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
@@ -73,12 +85,18 @@ template <typename vec_t>
 inline void ring_vec_store(vec_t* dst, vec_t vd) {
 #if defined(RING_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
   if constexpr (sizeof(vec_t) == 16) {
+#if defined(RING_LSC_STORE_PLAIN)
+    // Plain coherent store: the release fence drains it to the coherence point
+    // so the downstream peer's acquire-load observes it (see note above).
+    *dst = vd;
+#else
     ring_lsc_u4 v = *reinterpret_cast<ring_lsc_u4*>(&vd);
     __builtin_IB_lsc_store_global_uint4(
         (__attribute__((opencl_global)) ring_lsc_u4*)(dst),
         0,
         v,
         RING_LSC_STCC_L1WB_L3WB);
+#endif
   } else {
     *dst = vd;
   }
