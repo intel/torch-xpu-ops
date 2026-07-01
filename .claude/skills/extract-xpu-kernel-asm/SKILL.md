@@ -71,16 +71,23 @@ but by **where the zebin lives**:
 Key tools are NOT always on PATH. Probe before proceeding:
 
 ```bash
+# Detect oneAPI root: check env vars first, then common install locations
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
+if [ -z "$ONEAPI" ]; then
+  for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
+    [ -d "$d" ] && ONEAPI="$d" && break
+  done
+fi
+
 # clang-offload-extract (for AOT classification + extraction)
 COE=$(command -v clang-offload-extract 2>/dev/null \
-  || find /opt/intel/oneapi -name 'clang-offload-extract' -path '*/2026*' 2>/dev/null | head -1 \
-  || find /opt/intel/oneapi -name 'clang-offload-extract' 2>/dev/null | head -1)
+  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
 
 # ocloc (for disassembling zebin ELFs)
 command -v ocloc >/dev/null || echo "ocloc not found; source oneapi-vars.sh"
 
 # libiga64.so (for oneDNN ngen disassembly only)
-IGA_LIB=$(find /opt/intel/oneapi -name 'libiga64.so' 2>/dev/null | head -1)
+IGA_LIB=$(test -n "$ONEAPI" && find "$ONEAPI" -name 'libiga64.so' 2>/dev/null | head -1)
 ```
 
 ### Step 1: Pin the actually-launched kernel

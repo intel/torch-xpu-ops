@@ -56,10 +56,15 @@ Key consequences:
 
 ```bash
 # libiga64.so: shipped with oneAPI debugger component
-# ONEAPI_ROOT may vary (e.g. /opt/intel/oneapi, ~/intel/oneapi, /usr/local/oneapi)
-ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT%/*}}
-IGA_LIB=$(find ${ONEAPI:-/opt/intel/oneapi} -name 'libiga64.so' 2>/dev/null | head -1)
-test -n "$IGA_LIB" || { echo "libiga64.so not found; install oneAPI debugger or set ONEAPI_ROOT"; exit 1; }
+# Detect oneAPI root: check env vars first, then common install locations
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
+if [ -z "$ONEAPI" ]; then
+  for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
+    [ -d "$d" ] && ONEAPI="$d" && break
+  done
+fi
+IGA_LIB=$(find ${ONEAPI:?"oneAPI not found; set ONEAPI_ROOT"} -name 'libiga64.so' 2>/dev/null | head -1)
+test -n "$IGA_LIB" || { echo "libiga64.so not found under $ONEAPI; install oneAPI debugger"; exit 1; }
 export IGA_LIB
 ```
 
