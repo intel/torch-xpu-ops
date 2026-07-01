@@ -29,23 +29,22 @@ endmacro()
 # xpu_hal.dll only links c10 — no dependency on torch_xpu.
 set(xpu_hal_srcs ${TORCH_XPU_OPS_ROOT}/src/hal/XPUHal.cpp)
 if(NOT TARGET xpu_hal)
-  # xpu_hal.cpp is compiled directly into torch_xpu.dll (BUILD_SEPARATE_OPS=ON)
-  # or torch_xpu_ops (OFF). No separate cmake target avoids cmake 3.29's
-  # export validation which rejects source/build tree paths in
-  # INTERFACE_INCLUDE_DIRECTORIES inherited from pytorch's directory-level
-  # include_directories() calls.
+  # xpu_hal target is always created (both BUILD_SEPARATE_OPS ON and OFF).
+  # In ON mode: XPUHal.cpp includes at:: namespace wrappers for kernel DLLs.
+  # In OFF mode: XPUHal.cpp excludes wrappers (pytorch has native implementations).
   # Kernel DLLs resolve xpu_hal symbols via torch_xpu's import lib at link
   # time (see #pragma comment(lib, "torch_xpu.lib") in <hal/XPUHal.h>).
+  add_library(xpu_hal STATIC ${xpu_hal_srcs})
+  target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src)
+  target_compile_definitions(xpu_hal PRIVATE XPU_HAL_BUILD)
+  if(BUILD_SEPARATE_OPS)
+    # Enable at:: namespace wrappers in XPUHal.cpp (no conflict — kernels are separate DLLs)
+    target_compile_definitions(xpu_hal PRIVATE BUILD_SEPARATE_OPS)
+  endif()
+  # In OFF mode, xpu_hal is linked into torch_xpu_ops here.
+  # In ON mode, pytorch's caffe2/CMakeLists.txt links it into torch_xpu.dll.
   if(NOT BUILD_SEPARATE_OPS)
-    add_library(xpu_hal STATIC ${xpu_hal_srcs})
-    target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src)
-    target_compile_definitions(xpu_hal PRIVATE XPU_HAL_BUILD)
     list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_hal)
-  else()
-    # For BUILD_SEPARATE_OPS, xpu_hal objects are added to torch_xpu via
-    # a later target_sources() + XPU_HAL_BUILD (see pytorch's
-    # caffe2/CMakeLists.txt). We still need the kernel DLL setup below
-    # to link against torch_xpu's import lib.
   endif()
 endif()
 

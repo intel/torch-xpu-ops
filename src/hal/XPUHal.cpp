@@ -87,10 +87,17 @@ PhiloxCaptureState philoxCaptureState(
 } // namespace xpu_hal
 
 // ---------------------------------------------------------------------------
-// Wrapper functions that kernel DLLs import from xpu_hal.dll.
+// Wrapper functions that kernel DLLs import from xpu_hal.dll / torch_xpu.dll.
 // These match the mangled names of torch_xpu.dll exports so the linker
 // resolves kernel DLL references without /FORCE:UNRESOLVED.
+//
+// IMPORTANT: Only compiled when BUILD_SEPARATE_OPS=ON. When OFF, all kernel
+// code links into one library with pytorch's torch_xpu.dll which has the
+// native implementations (EmptyTensor.cpp, XPUContext.cpp, etc.). Compiling
+// these wrappers in OFF mode causes LNK2005 multiple definition errors.
 // ---------------------------------------------------------------------------
+
+#ifdef BUILD_SEPARATE_OPS
 
 // XPUGeneratorImpl::device_type() — used by Distribution kernels and
 // Foreach kernels via check_generator<XPUGeneratorImpl>() in SYCL code.
@@ -167,3 +174,5 @@ c10::xpu::DeviceProp* getCurrentDeviceProperties() {
   return fn();
 }
 } // namespace at::xpu
+
+#endif // BUILD_SEPARATE_OPS
