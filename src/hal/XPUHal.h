@@ -4,16 +4,14 @@
 #include <c10/util/intrusive_ptr.h>
 #include <utility>
 
-// xpu_hal is a STATIC library WHOLE_ARCHIVE'd into torch_xpu.dll.
-// The dllexport/dllimport pattern is needed because:
-//  - xpu_hal .obj files (inside torch_xpu) export the symbols
-//  - Kernel DLLs import them from torch_xpu.dll
-//  - torch_xpu's own .obj files (e.g. XPUGeneratorImpl.cpp) see neither
-//
-// When XPU_HAL_BUILD is defined, symbols are dllexport.
-// When XPU_HAL_IMPORT is defined (kernel DLLs), symbols are dllimport
-//   and the pragma pulls in torch_xpu's import lib.
-// Otherwise (torch_xpu internal consumers), symbols are plain.
+#ifndef _WIN32
+#include <ATen/xpu/XPUGeneratorImpl.h>
+#endif
+
+// On Windows, xpu_hal is a STATIC library WHOLE_ARCHIVE'd into torch_xpu.dll.
+// Kernel DLLs import symbols from torch_xpu.dll via the import lib.
+// On Linux, everything links into one .so -- no bridge needed. The header
+// provides inline forwarding to pytorch APIs directly.
 
 #ifdef _WIN32
 #ifdef XPU_HAL_BUILD
@@ -36,9 +34,8 @@ using PhiloxStateFn = std::pair<uint64_t, uint64_t> (*)(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
-// Extended capture state that mirrors PhiloxXpuState without pulling
-// pytorch's PhiloxXpuState.h into kernel DLLs.  During graph capture
-// the payload is extragraph pointers; outside capture it is raw values.
+// Mirrors PhiloxXpuState layout without pulling pytorch's header into
+// kernel DLLs on Windows.
 struct PhiloxCaptureState {
   union Payload {
     uint64_t val;
@@ -50,9 +47,10 @@ struct PhiloxCaptureState {
   uint32_t offset_intragraph_ = 0;
   bool captured_ = false;
 };
-using PhiloxCaptureStateFn = PhiloxCaptureState (*)(
-    c10::GeneratorImpl* gen,
-    uint64_t increment);
+using PhiloxCaptureStateFn =
+    PhiloxCaptureState (*)(c10::GeneratorImpl* gen, uint64_t increment);
+
+#ifdef _WIN32
 
 // Called once by torch_xpu during XPU generator initialization.
 XPU_HAL_API void registerXPUGeneratorBridge(
@@ -69,17 +67,45 @@ XPU_HAL_API std::pair<uint64_t, uint64_t> philoxState(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
-XPU_HAL_API PhiloxCaptureState philoxCaptureState(
-    c10::GeneratorImpl* gen,
-    uint64_t increment);
+XPU_HAL_API PhiloxCaptureState
+philoxCaptureState(c10::GeneratorImpl* gen, uint64_t increment);
 
-// Register torch_xpu function pointers so kernel DLLs can call
-// empty_xpu() and getCurrentDeviceProperties() through xpu_hal.dll
-// instead of linking torch_xpu.dll directly.
-// o p a q u e   f u n c t i o n   p o i n t e r s   a v o i d
-// pulling ATen headers into every kernel DLL through this header.
 XPU_HAL_API void registerTorchXpuBridge(
     void* empty_xpu_primary,
     void* get_device_props);
+
+#else // Linux: inline forwarding to pytorch APIs (no DLL boundary)
+
+inline void registerXPUGeneratorBridge(GetDefaultGeneratorFn, PhiloxStateFn) {}
+inline void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn) {}
+inline void registerTorchXpuBridge(void*, void*) {}
+
+inline c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
+    int64_t device_index) {
+  return at::xpu::detail::getDefaultXPUGenerator(device_index)
+      .getIntrusivePtr();
+}
+
+inline std::pair<uint64_t, uint64_t> philoxState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment) {
+  auto* xpu_gen = static_cast<at::XPUGeneratorImpl*>(gen);
+  return xpu_gen->philox_engine_inputs(increment);
+}
+
+inline PhiloxCaptureState philoxCaptureState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment) {
+  auto* xpu_gen = static_cast<at::XPUGeneratorImpl*>(gen);
+  auto state = xpu_gen->philox_xpu_state(increment);
+  PhiloxCaptureState result;
+  result.seed_.ptr = state.seed_.ptr;
+  result.offset_.ptr = state.offset_.ptr;
+  result.offset_intragraph_ = state.offset_intragraph_;
+  result.captured_ = state.captured_;
+  return result;
+}
+
+#endif // _WIN32
 
 } // namespace xpu_hal
