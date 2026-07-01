@@ -130,17 +130,32 @@ A binary may contain `__CLANG_OFFLOAD_BUNDLE` but its AOT targets may not cover
 the current device (e.g. built for PVC, running on BMG → runtime falls back to
 JIT via SPIR-V). Test which path is actually active:
 
+**Method A (preferred): unitrace Kernel Properties**
+
+If unitrace was already used in Step 1, check the `Compiled` column:
+- `AOT` → scenario = `sycl-aot`
+- `JIT` → scenario = `sycl-jit`
+
+**Method B: IGC dump probe**
+
+IGC is only invoked at runtime for JIT compilation. If IGC dump files appear,
+the kernel was JIT-compiled:
+
 ```bash
-# Quick test: attempt DumpZEBin — if .elf files appear, AOT path is active
-mkdir -p /tmp/aot_test && cd /tmp/aot_test
-DumpZEBin=1 NEOReadDebugKeys=1 <repro_cmd> 2>/dev/null
-if ls *.elf 2>/dev/null | grep -q .; then
-  SCENARIO=sycl-aot
-else
+# Quick test: if IGC produces dump files, JIT path is active
+rm -rf /tmp/igc_probe && mkdir -p /tmp/igc_probe
+IGC_ShaderDumpEnable=1 IGC_ShaderDumpPidDisable=1 IGC_DumpToCustomDir=/tmp/igc_probe <repro_cmd> 2>/dev/null
+if ls /tmp/igc_probe/*.asm 2>/dev/null | grep -q .; then
   SCENARIO=sycl-jit
+else
+  SCENARIO=sycl-aot
 fi
-rm -rf /tmp/aot_test
+rm -rf /tmp/igc_probe
 ```
+
+**NOTE:** Do NOT use `DumpZEBin=1` for classification — it produces `.elf` files
+for both AOT and JIT scenarios (the runtime always has a zebin to submit,
+regardless of how it was produced).
 
 If ambiguous → ask the user.
 
@@ -236,8 +251,8 @@ int main() {
 icpx -fsycl -O2 -fsycl-targets=spir64_gen -Xs "-device <dev>" vec_add.cpp -o vec_add
 ```
 
-**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 ./vec_add` produces
-`.elf` files → scenario = `sycl-aot` → delegate to `extract-asm-syclkernel-aot`.
+**Classification signal:** unitrace shows `VecAddKernel` with `Compiled = AOT`
+→ scenario = `sycl-aot` → delegate to `extract-asm-syclkernel-aot`.
 
 **Expected result:**
 ```
@@ -256,9 +271,8 @@ x = torch.randn(1024, dtype=torch.float, device='xpu')
 y = x + 1.0; torch.xpu.synchronize()
 ```
 
-**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 python test.py`
-produces `.elf` files → scenario = `sycl-aot`
-→ delegate to `extract-asm-syclkernel-aot`.
+**Classification signal:** unitrace shows the kernel with `Compiled = AOT`
+→ scenario = `sycl-aot` → delegate to `extract-asm-syclkernel-aot`.
 
 **Expected result:**
 ```
@@ -290,9 +304,11 @@ int main() {
 icpx -fsycl -O2 -g -fsycl-targets=spir64 shift_reduce.cpp -o shift_reduce
 ```
 
-**Classification signal:** `DumpZEBin=1 NEOReadDebugKeys=1 ./shift_reduce`
-produces NO `.elf` files → scenario = `sycl-jit`
-→ delegate to `extract-asm-syclkernel-jit`.
+**Classification signal:** unitrace shows `ShiftReduceKernel` with `Compiled = JIT`
+→ scenario = `sycl-jit` → delegate to `extract-asm-syclkernel-jit`.
+
+Alternatively: `IGC_ShaderDumpEnable=1 ./shift_reduce` produces `.asm` files
+in the IGC dump directory (confirming IGC was invoked at runtime = JIT).
 
 **Expected result:**
 ```
@@ -300,4 +316,32 @@ scenario:    sycl-jit
 asm-file:    <igc_dump>/OCL_asm*_simd*_entry_*.asm
 kernel-name: _ZTS17ShiftReduceKernel
 validation:  compiled with -g → grep '// Line' shows source annotations
+```
+
+### Example 6 — SYCL JIT fallback: AOT binary targeting wrong device
+
+**Repro:**
+```cpp
+// vec_add.cpp (same as Example 3)
+```
+```bash
+# Compile AOT for PVC, but run on BMG → runtime falls back to JIT via SPIR-V
+icpx -fsycl -O2 -g -fsycl-targets=spir64_gen -Xs "-device pvc" vec_add.cpp -o vec_add_pvc
+```
+
+**Classification signal:** unitrace may crash on cross-device AOT binaries.
+Use IGC probe instead: `IGC_ShaderDumpEnable=1 ./vec_add_pvc` produces `.asm`
+files → IGC was called at runtime → JIT fallback confirmed.
+
+The binary contains `__CLANG_OFFLOAD_BUNDLE` with PVC AOT code, but since the
+current device is BMG, the runtime ignores the PVC native code and JIT-compiles
+from the embedded SPIR-V.
+
+**Expected result:**
+```
+scenario:    sycl-jit
+asm-file:    <igc_dump>/OCL_asm*_simd*_entry_*.asm
+kernel-name: _ZTSN4sycl3_V16detail19__pf_kernel_wrapperI12VecAddKernelEE
+validation:  compiled with -g → grep '// Line' shows source annotations
+             .platform shows XE2 (BMG), not PVC
 ```
