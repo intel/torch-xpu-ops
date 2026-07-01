@@ -23,6 +23,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/_efficientzerotensor_native.h>
 #include <ATen/ops/empty_native.h>
 #include <ATen/ops/empty_strided_native.h>
+#include <ATen/EmptyTensor.h>
 
 #include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
@@ -53,6 +54,72 @@ Tensor& eye_out_xpu(int64_t n, int64_t m, Tensor& result) {
 
 Tensor& eye_out_xpu(int64_t n, Tensor& result) {
   return eye_out_xpu(n, n, result);
+}
+
+Tensor empty_xpu_symint(
+    c10::SymIntArrayRef size,
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
+  TORCH_CHECK(
+      !pin_memory_opt.has_value() || !*pin_memory_opt,
+      "Only dense CPU tensors can be pinned");
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      layout_or_default(layout_opt) == Layout::Strided);
+
+  const auto dtype = dtype_or_default(dtype_opt);
+  at::globalContext().lazyInitDevice(kXPU);
+  const auto device = device_or_default(device_opt);
+  TORCH_INTERNAL_ASSERT(device.is_xpu());
+  const c10::DeviceGuard device_guard(device);
+  auto* allocator = c10::GetAllocator(kXPU);
+  constexpr c10::DispatchKeySet xpu_dks(c10::DispatchKey::XPU);
+
+  Tensor result = at::detail::empty_generic_symint(
+      size, allocator, xpu_dks, dtype, memory_format_opt);
+
+  // See Note [Enabling Deterministic Operations]
+  if (C10_UNLIKELY(
+          at::globalContext().deterministicAlgorithms() &&
+          at::globalContext().deterministicFillUninitializedMemory())) {
+    at::native::fill_empty_deterministic_(result);
+  }
+  return result;
+}
+
+Tensor empty_strided_xpu_symint(
+    c10::SymIntArrayRef size,
+    c10::SymIntArrayRef stride,
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt) {
+  TORCH_CHECK(
+      !pin_memory_opt.has_value() || !*pin_memory_opt,
+      "Only dense CPU tensors can be pinned");
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      layout_or_default(layout_opt) == Layout::Strided);
+
+  const auto dtype = dtype_or_default(dtype_opt);
+  at::globalContext().lazyInitDevice(kXPU);
+  const auto device = device_or_default(device_opt);
+  TORCH_INTERNAL_ASSERT(device.is_xpu());
+  const c10::DeviceGuard device_guard(device);
+  auto* allocator = c10::GetAllocator(kXPU);
+  constexpr c10::DispatchKeySet xpu_dks(c10::DispatchKey::XPU);
+
+  Tensor result = at::detail::empty_strided_symint_generic(
+      size, stride, allocator, xpu_dks, dtype);
+
+  // See Note [Enabling Deterministic Operations]
+  if (C10_UNLIKELY(
+          at::globalContext().deterministicAlgorithms() &&
+          at::globalContext().deterministicFillUninitializedMemory())) {
+    at::native::fill_empty_deterministic_(result);
+  }
+  return result;
 }
 
 Tensor empty_xpu(

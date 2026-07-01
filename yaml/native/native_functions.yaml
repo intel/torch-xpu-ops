@@ -1252,7 +1252,7 @@
 
 - func: empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
   dispatch:
-    XPU: empty_xpu
+    XPU: empty_xpu_symint
     SparseXPU: empty_sparse
     SparseCsrXPU: empty_sparse_compressed
   tags: core
@@ -1275,7 +1275,7 @@
 
 - func: empty_strided(SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
-    XPU: empty_strided_xpu
+    XPU: empty_strided_xpu_symint
   autogen: empty_strided.out
   tags: core
 
