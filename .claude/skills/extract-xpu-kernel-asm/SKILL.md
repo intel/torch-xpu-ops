@@ -126,8 +126,14 @@ unitrace before proceeding. Do NOT extract ASM blindly.
 |---|---|
 | Kernel = `gemm_kernel` / `gen_conv_kernel` / routed via `mkldnn::*` | `onednn` |
 | Kernel = `triton_*` or standalone `@triton.jit` | `triton` |
-| Kernel = `_ZTS…` AND binary has `__CLANG_OFFLOAD_BUNDLE` with `spir64_gen` | `sycl-aot` |
-| Kernel = `_ZTS…` AND no AOT bundle (or bundle has only `spir64` SPIR-V) | `sycl-jit` |
+| Kernel = `_ZTS…` AND AOT bundle contains target matching current device | `sycl-aot` |
+| Kernel = `_ZTS…` AND no AOT bundle, OR AOT target doesn't match current device | `sycl-jit` |
+
+**AOT vs JIT classification note**: A binary may contain `__CLANG_OFFLOAD_BUNDLE`
+but its AOT targets may not cover the current device. For example, PyTorch built
+with `TORCH_XPU_ARCH_LIST=pvc` will have AOT code only for PVC — running on BMG
+causes the runtime to fall back to the embedded SPIR-V and JIT-compile via IGC.
+In this case, use `sycl-jit` (not `sycl-aot`).
 
 If ambiguous → ask the user.
 

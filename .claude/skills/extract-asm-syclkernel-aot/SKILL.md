@@ -19,14 +19,17 @@ description: >
 
 ## When to use
 
-- Kernel is a mangled SYCL symbol (`_ZTS…`) from an AOT-compiled binary:
+- Kernel is a mangled SYCL symbol (`_ZTS…`) from an AOT-compiled binary **whose
+  AOT target matches the current device**:
   - `libtorch_xpu.so` / `libtorch_xpu_ops.so` (default PyTorch XPU build)
   - SYCL-TLA FMHA `.so`
   - Standalone DPC++ executable built with `-fsycl-targets=spir64_gen`
 
 ## When NOT to use
 
-- Binary has no AOT code for current device (falls back to JIT) → use `extract-asm-syclkernel-jit`
+- AOT target does not match current device (e.g. binary built for PVC, running
+  on BMG) → runtime falls back to JIT → use `extract-asm-syclkernel-jit`
+- Binary has no AOT code at all → use `extract-asm-syclkernel-jit`
 - Kernel is oneDNN ngen (`gemm_kernel`, `gen_conv_kernel`) → use `extract-asm-onednn`
 - Kernel is Triton (`triton_*`) → use `extract-asm-triton`
 

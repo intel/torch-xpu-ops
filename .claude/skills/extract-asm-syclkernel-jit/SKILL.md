@@ -39,15 +39,18 @@ memory. Without the dump flag, it's never written to disk.
 
 ## When to use
 
-- Kernel is `_ZTS…` AND binary has NO `__CLANG_OFFLOAD_BUNDLE`
+- Kernel is `_ZTS…` AND one of:
+  - Binary has NO `__CLANG_OFFLOAD_BUNDLE` (pure JIT build)
+  - Binary has AOT bundle but **target does not match current device** (e.g.
+    built for PVC, running on BMG — runtime falls back to JIT via SPIR-V)
 - Common cases:
   - `torch-xpu-ops` built with `TORCH_XPU_ARCH_LIST=none`
   - Standalone DPC++ without `-fsycl-targets=spir64_gen`
-  - Device not in the AOT target list
+  - Device not in the AOT target list (e.g. `TORCH_XPU_ARCH_LIST=pvc` on BMG)
 
 ## When NOT to use
 
-- Binary has `__CLANG_OFFLOAD_BUNDLE` → use `extract-asm-syclkernel-aot`
+- Binary has AOT code **matching current device** → use `extract-asm-syclkernel-aot`
 - Kernel is oneDNN ngen → use `extract-asm-onednn` (different stack)
 - Kernel is Triton → use `extract-asm-triton`
 
@@ -70,13 +73,25 @@ COE=$(command -v clang-offload-extract 2>/dev/null \
 test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
 ```
 
-1. **Confirm JIT (no AOT bundle).**
+1. **Confirm JIT (IGC will be invoked at runtime).**
+
+   A binary may contain AOT bundles that don't cover the current device.
+   Check whether the AOT target actually matches:
 
    ```bash
    BIN=<path to .so or executable>
+   # If no offload bundle at all → definitely JIT
    if strings "$BIN" | grep -q __CLANG_OFFLOAD_BUNDLE; then
-     echo "AOT bundle present — use extract-asm-syclkernel-aot"; exit 2
+     # Bundle exists — check if current device is in AOT target list.
+     # If DumpZEBin produces .elf files, the AOT path was used → wrong skill.
+     # Quick test: run with DumpZEBin and check for output
+     DumpZEBin=1 NEOReadDebugKeys=1 <repro_cmd> 2>/dev/null
+     if ls *.elf 2>/dev/null | grep -q .; then
+       echo "AOT path active for current device — use extract-asm-syclkernel-aot"
+       exit 2
+     fi
    fi
+   echo "JIT path confirmed — proceeding with IGC_ShaderDumpEnable"
    ```
 
 2. **Pin the actually-launched kernel.**
