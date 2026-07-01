@@ -48,7 +48,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        shell: 'bash -c "cat {0} | docker run --rm -it -e AGENT_TOOLSDIRECTORY=/tmp/xpu-tool -w ${{ github.workspace }} --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g intel-omix-dev:0.3.0 bash -xe"'
+        shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} test bash -xe"'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
