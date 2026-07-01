@@ -16,6 +16,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/Pow.h>
 #include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
 
 namespace at::native::xpu {
@@ -250,11 +251,11 @@ struct LogspaceFunctor {
     } else {
       using opmath_t = at::opmath_type<step_type>;
       if (ind < halfway_) {
-        return static_cast<scalar_t>(sycl::pow(
+        return static_cast<scalar_t>(pow_(
             static_cast<opmath_t>(scalar_base_),
             static_cast<opmath_t>(scalar_start_ + step_ * ind)));
       }
-      return static_cast<scalar_t>(sycl::pow(
+      return static_cast<scalar_t>(pow_(
           static_cast<opmath_t>(scalar_base_),
           static_cast<opmath_t>(scalar_end_ - step_ * (steps_ - ind - 1))));
     }
