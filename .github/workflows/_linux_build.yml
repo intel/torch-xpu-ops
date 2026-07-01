@@ -49,7 +49,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        shell: 'bash -c "cat {0} | docker exec -i -e PIP_CACHE_DIR=/tmp/xpu-tool/.pipcache -e VIRTUAL_ENV=/opt/uv-python -e PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/uv-python/bin -w ${{ github.workspace }} build bash -xe"'
+        shell: 'bash -c "cat {0} | docker exec -i -e PIP_CACHE_DIR=/tmp/xpu-tool/.pipcache -e VIRTUAL_ENV=/opt/uv-python -e PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/uv-python/bin -e GH_TOKEN=${{ github.token }} -w ${{ github.workspace }} build bash -xe"'
     env:
       GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300
