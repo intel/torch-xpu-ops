@@ -48,7 +48,6 @@ if(NOT TARGET xpu_hal)
     # to link against torch_xpu's import lib.
   endif()
 endif()
-endif()
 
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
