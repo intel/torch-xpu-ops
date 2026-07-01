@@ -1,15 +1,15 @@
-#include <hal/XPUHal.h>
-#include <c10/util/Exception.h>
-#include <c10/core/DeviceType.h>
-#include <c10/core/ScalarType.h>
+#include <ATen/core/TensorBase.h>
 #include <c10/core/Device.h>
-#include <c10/core/MemoryFormat.h>
+#include <c10/core/DeviceType.h>
 #include <c10/core/Layout.h>
+#include <c10/core/MemoryFormat.h>
+#include <c10/core/ScalarType.h>
 #include <c10/core/TensorOptions.h>
 #include <c10/util/ArrayRef.h>
+#include <c10/util/Exception.h>
 #include <c10/util/Optional.h>
-#include <ATen/core/TensorBase.h>
 #include <c10/xpu/XPUDeviceProp.h>
+#include <hal/XPUHal.h>
 
 namespace xpu_hal {
 namespace {
@@ -22,16 +22,20 @@ PhiloxCaptureStateFn g_philox_capture_state = nullptr;
 using EmptyXpuPrimaryFn = at::TensorBase (*)(
     c10::IntArrayRef size,
     c10::ScalarType dtype,
-    c10::optional<c10::Device> device_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt);
+    std::optional<c10::Device> device_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt);
 using GetDevicePropFn = c10::xpu::DeviceProp* (*)();
 
 EmptyXpuPrimaryFn g_empty_xpu_primary = nullptr;
 GetDevicePropFn g_get_device_props = nullptr;
 
 // Accessors used by the wrapper functions in at::detail / at::xpu.
-EmptyXpuPrimaryFn getEmptyXpuPrimaryFn() { return g_empty_xpu_primary; }
-GetDevicePropFn getDevicePropFn() { return g_get_device_props; }
+EmptyXpuPrimaryFn getEmptyXpuPrimaryFn() {
+  return g_empty_xpu_primary;
+}
+GetDevicePropFn getDevicePropFn() {
+  return g_get_device_props;
+}
 
 } // anonymous namespace
 
@@ -42,14 +46,11 @@ void registerXPUGeneratorBridge(
   g_philox_state = philox;
 }
 
-void registerXPUGeneratorCaptureBridge(
-    PhiloxCaptureStateFn capture_fn) {
+void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn capture_fn) {
   g_philox_capture_state = capture_fn;
 }
 
-void registerTorchXpuBridge(
-    void* empty_xpu_primary,
-    void* get_device_props) {
+void registerTorchXpuBridge(void* empty_xpu_primary, void* get_device_props) {
   g_empty_xpu_primary = reinterpret_cast<EmptyXpuPrimaryFn>(empty_xpu_primary);
   g_get_device_props = reinterpret_cast<GetDevicePropFn>(get_device_props);
 }
@@ -111,8 +112,8 @@ namespace at::detail {
 TensorBase empty_xpu(
     c10::IntArrayRef size,
     c10::ScalarType dtype,
-    c10::optional<c10::Device> device_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt) {
+    std::optional<c10::Device> device_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
   auto fn = xpu_hal::getEmptyXpuPrimaryFn();
   TORCH_CHECK(
       fn != nullptr,
@@ -123,11 +124,11 @@ TensorBase empty_xpu(
 
 TensorBase empty_xpu(
     c10::IntArrayRef size,
-    c10::optional<c10::ScalarType> dtype_opt,
-    c10::optional<c10::Layout> layout_opt,
-    c10::optional<c10::Device> device_opt,
-    c10::optional<bool> pin_memory_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt) {
+    std::optional<c10::ScalarType> dtype_opt,
+    std::optional<c10::Layout> layout_opt,
+    std::optional<c10::Device> device_opt,
+    std::optional<bool> pin_memory_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
   TORCH_CHECK(
       !layout_opt.has_value() || layout_opt.value() == c10::Layout::Strided,
       "empty_xpu only supports Strided layout.");
@@ -136,13 +137,11 @@ TensorBase empty_xpu(
   return at::detail::empty_xpu(size, dtype, device_opt, memory_format_opt);
 }
 
-TensorBase empty_xpu(
-    c10::IntArrayRef size,
-    const c10::TensorOptions& options) {
+TensorBase empty_xpu(c10::IntArrayRef size, const c10::TensorOptions& options) {
   // c10::TensorOptions stores dtype as caffe2::TypeMeta; convert to
   // optional<ScalarType> for the underlying bridge call.
   auto dtype_opt = options.dtype_opt();
-  c10::optional<c10::ScalarType> scalar_type_opt = c10::nullopt;
+  std::optional<c10::ScalarType> scalar_type_opt = c10::nullopt;
   if (dtype_opt.has_value()) {
     scalar_type_opt = c10::typeMetaToScalarType(dtype_opt.value());
   }
