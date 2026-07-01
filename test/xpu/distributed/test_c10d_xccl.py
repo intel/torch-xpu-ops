@@ -1451,6 +1451,10 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
     """XPU SymmetricMemory tests (SYCL IPC backend)."""
 
     @classmethod
+    def backend_str(cls) -> str:
+        return "xccl"
+
+    @classmethod
     def setUpClass(cls):
         for _k in ("TORCH_FR_DUMP_TEMP_FILE", "TORCH_FR_DEBUG_INFO_PIPE_FILE"):
             os.environ.pop(_k, None)
