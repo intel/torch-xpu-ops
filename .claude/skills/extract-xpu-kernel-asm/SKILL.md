@@ -318,7 +318,7 @@ kernel-name: _ZTS17ShiftReduceKernel
 validation:  compiled with -g → grep '// Line' shows source annotations
 ```
 
-### Example 6 — SYCL JIT fallback: AOT binary targeting wrong device
+### Example 6 — SYCL JIT fallback: AOT mismatch
 
 **Repro:**
 ```cpp
@@ -333,9 +333,6 @@ icpx -fsycl -O2 -g -fsycl-targets=spir64_gen -Xs "-device pvc" vec_add.cpp -o ve
 Use IGC probe instead: `IGC_ShaderDumpEnable=1 ./vec_add_pvc` produces `.asm`
 files → IGC was called at runtime → JIT fallback confirmed.
 
-The binary contains `__CLANG_OFFLOAD_BUNDLE` with PVC AOT code, but since the
-current device is BMG, the runtime ignores the PVC native code and JIT-compiles
-from the embedded SPIR-V.
 
 **Expected result:**
 ```
