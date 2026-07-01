@@ -108,7 +108,6 @@ macro(set_build_flags)
     # only a warning; spell it as -Qstd= so device code is really C++20.
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Qstd=${CPP_STD})
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
     # Suppress warnings about dllexport.
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
