@@ -50,7 +50,7 @@ the GPU will be dumped — no unused kernels appear.
 OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$OUT" && cd "$OUT"
 
-DumpZEBin=1 NEOReadDebugKeys=1 python test.py
+DumpZEBin=1 NEOReadDebugKeys=1 <repro_cmd>
 ls *.elf
 ```
 
