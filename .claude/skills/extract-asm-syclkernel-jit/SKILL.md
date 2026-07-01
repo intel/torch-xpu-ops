@@ -58,10 +58,12 @@ memory. Without the dump flag, it's never written to disk.
 `clang-offload-extract` is needed to confirm the binary is JIT (not AOT).
 
 ```bash
+# ONEAPI_ROOT may vary (e.g. /opt/intel/oneapi, ~/intel/oneapi, /usr/local/oneapi)
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT%/*}}
 COE=$(command -v clang-offload-extract 2>/dev/null \
-  || find /opt/intel/oneapi -name 'clang-offload-extract' -path '*/2026*' 2>/dev/null | head -1 \
+  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; } \
   || find /opt/intel/oneapi -name 'clang-offload-extract' 2>/dev/null | head -1)
-test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler"; exit 1; }
+test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
 ```
 
 1. **Confirm JIT (no AOT bundle).**

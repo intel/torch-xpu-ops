@@ -58,10 +58,12 @@ These tools are NOT always on PATH. Probe in order:
 
 ```bash
 # clang-offload-extract: shipped with oneAPI compiler, but buried in bin/compiler/
+# ONEAPI_ROOT may vary (e.g. /opt/intel/oneapi, ~/intel/oneapi, /usr/local/oneapi)
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT%/*}}
 COE=$(command -v clang-offload-extract 2>/dev/null \
-  || find /opt/intel/oneapi -name 'clang-offload-extract' -path '*/2026*' 2>/dev/null | head -1 \
+  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; } \
   || find /opt/intel/oneapi -name 'clang-offload-extract' 2>/dev/null | head -1)
-test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler"; exit 1; }
+test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
 
 # ocloc: usually on PATH after sourcing oneapi-vars.sh
 command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; exit 1; }

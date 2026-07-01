@@ -56,8 +56,10 @@ Key consequences:
 
 ```bash
 # libiga64.so: shipped with oneAPI debugger component
-IGA_LIB=$(find /opt/intel/oneapi -name 'libiga64.so' 2>/dev/null | head -1)
-test -n "$IGA_LIB" || { echo "libiga64.so not found; install oneAPI debugger"; exit 1; }
+# ONEAPI_ROOT may vary (e.g. /opt/intel/oneapi, ~/intel/oneapi, /usr/local/oneapi)
+ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT%/*}}
+IGA_LIB=$(find ${ONEAPI:-/opt/intel/oneapi} -name 'libiga64.so' 2>/dev/null | head -1)
+test -n "$IGA_LIB" || { echo "libiga64.so not found; install oneAPI debugger or set ONEAPI_ROOT"; exit 1; }
 export IGA_LIB
 ```
 
@@ -79,14 +81,31 @@ export IGA_LIB
 
 2. **Disassemble with IGA ctypes.**
 
+   oneDNN `.bin` files are raw ISA bytes (not ELF). Use `libiga64.so` via
+   Python ctypes to disassemble. No separate script needed — run inline:
+
    ```bash
    for bin in dnnl_dump_gpu_*.bin; do
      name=$(basename "$bin" .bin)
-     python3 iga_disasm.py "$bin" > "${name}.asm"
+     python3 -c "
+import ctypes, sys, pathlib
+iga = ctypes.CDLL('$IGA_LIB')
+raw = pathlib.Path('$bin').read_bytes()
+buf = ctypes.create_string_buffer(1 << 20)  # 1MB output buffer
+# Platform IDs: BMG/Xe2=0x2000000, PVC=0x30000, DG2=0x30004
+iga.iga_disassemble(0x2000000, raw, len(raw), buf, len(buf))
+sys.stdout.write(buf.value.decode())
+" > "${name}.asm"
    done
    ```
 
-   Uses `IGA_XE2 = 0x2000000` for BMG/Xe2.
+   **Platform ID selection:**
+   - BMG / Xe2 / LNL: `0x2000000`
+   - PVC (Ponte Vecchio): `0x30000`
+   - DG2 (Alchemist): `0x30004`
+
+   If `iga_disassemble` returns 0 bytes, the platform ID likely doesn't
+   match. Try the next one in the list above.
 
 3. **Pin the actually-invoked kernel.**
 
