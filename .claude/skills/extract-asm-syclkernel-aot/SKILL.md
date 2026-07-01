@@ -54,10 +54,66 @@ the binary already contains pre-compiled device code.
 
 ### Step 0: Locate tools
 
-These tools are NOT always on PATH. Probe in order:
+`ocloc` is required for disassembly. Ensure it is on PATH:
 
 ```bash
-# clang-offload-extract: shipped with oneAPI compiler, but buried in bin/compiler/
+command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; exit 1; }
+```
+
+### Preferred: Runtime dump via NEO driver (`DumpZEBin=1`)
+
+This is the **recommended approach** because it only dumps kernels that are
+actually called during execution — no need to sift through hundreds of unused
+kernels embedded in the PyTorch binary.
+
+1. **Run the workload with NEO debug keys to dump zebin ELFs.**
+
+   ```bash
+   OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
+   mkdir -p "$OUT" && cd "$OUT"
+
+   DumpZEBin=1 NEOReadDebugKeys=1 python test.py
+   ls *.elf
+   ```
+
+   Only kernels actually dispatched to the GPU during `test.py` will appear
+   as `.elf` files. Kernels that exist in the binary but were not called are
+   NOT dumped.
+
+2. **Disassemble each ELF.**
+
+   ```bash
+   for elf in *.elf; do
+     name=$(basename "$elf" .elf)
+     ocloc disasm -file "$elf" -dump "${name}_dump" -device bmg
+   done
+   ```
+
+3. **Identify the kernel.**
+
+   The ASM file is at `<name>_dump/.text._ZTSxxxx.asm`. Demangle the name:
+
+   ```bash
+   ls *_dump/.text.*.asm
+   # For each .asm file, demangle the kernel name:
+   for f in *_dump/.text._ZTS*.asm; do
+     mangled=$(basename "$f" .asm | sed 's/^\.text\.//')
+     echo "$f  →  $(c++filt "$mangled")"
+   done
+   ```
+
+   Match the demangled name to your target kernel.
+
+### Fallback: Static extraction via `clang-offload-extract`
+
+Use this fallback when you cannot run the workload (e.g., analyzing a binary
+on a different machine, or the binary requires hardware you don't have).
+This extracts ALL AOT-compiled kernels from the binary — including ones never
+called at runtime.
+
+#### Locate `clang-offload-extract`
+
+```bash
 # Detect oneAPI root: check env vars first, then common install locations
 ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
 if [ -z "$ONEAPI" ]; then
@@ -68,12 +124,9 @@ fi
 COE=$(command -v clang-offload-extract 2>/dev/null \
   || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
 test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
-
-# ocloc: usually on PATH after sourcing oneapi-vars.sh
-command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; exit 1; }
 ```
 
-### Path A: Standalone DPC++ binary (plain zebin ELF)
+#### Path A: Standalone DPC++ binary (plain zebin ELF)
 
 1. **Extract and disassemble.**
 
@@ -98,7 +151,7 @@ command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; 
    ls asm0/.text.*"$KERNEL"*.asm
    ```
 
-### Path B: zstd-compressed multi-target fat binary (e.g. PyTorch XPU `.so`)
+#### Path B: zstd-compressed multi-target fat binary (e.g. PyTorch XPU `.so`)
 
 When a SYCL library is compiled with multiple `-device` targets, the compiler
 produces a **zstd-compressed AR archive** per compilation unit. Each archive
