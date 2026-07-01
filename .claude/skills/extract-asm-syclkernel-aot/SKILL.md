@@ -103,39 +103,3 @@ kernels embedded in the PyTorch binary.
    ```
 
    Match the demangled name to your target kernel.
-
-### Fallback: Static extraction via `clang-offload-extract`
-
-Use this only when you **cannot run the workload** (e.g., analyzing a binary
-on a different machine, or the binary requires hardware you don't have).
-The preferred `DumpZEBin` method above handles all runtime scenarios regardless
-of binary packaging format (standalone, fat binary, zstd-compressed, etc.).
-
-```bash
-# Detect oneAPI root: check env vars first, then common install locations
-ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
-if [ -z "$ONEAPI" ]; then
-  for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
-    [ -d "$d" ] && ONEAPI="$d" && break
-  done
-fi
-COE=$(command -v clang-offload-extract 2>/dev/null \
-  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
-test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
-
-BIN=<path to executable or .so>
-OUT="<workdir>/aot_static_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$OUT" && cd "$OUT"
-
-# Extract all offload bundles
-"$COE" "$BIN"
-
-# For each target.bin.N:
-# - If plain ELF (arch 0xcd): ocloc disasm -file target.bin.N -dump asmN -device bmg
-# - If zstd-compressed: decompress → ar x 64.bmg → ocloc disasm
-# - Kernel ASM is at asmN/.text._ZTSxxxx.asm; demangle with c++filt
-```
-
-**WARNING**: This extracts ALL kernels embedded in the binary, not just those
-called at runtime. You must separately identify the target kernel (e.g., via
-`SYCL_UR_TRACE=-1` or `unitrace`).
