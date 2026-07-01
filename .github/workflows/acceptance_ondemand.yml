@@ -174,7 +174,7 @@ jobs:
           python-version: ${{ inputs.python }}
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Print configuration
         run: |
@@ -193,37 +193,37 @@ jobs:
           } > "${GITHUB_STEP_SUMMARY}"
 
       - name: Download target E2E logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-target'
           path: ${{ github.workspace }}/results/target/e2e
 
       - name: Download target UT logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-XPU-UT-Data-*-target'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download target UT failure lists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'XPU-UT-Failure-List-*-target'
           path: ${{ github.workspace }}/results/target/ut
 
       - name: Download baseline E2E logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-baseline'
           path: ${{ github.workspace }}/results/baseline/e2e
 
       - name: Download baseline UT logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-XPU-UT-Data-*-baseline'
           path: ${{ github.workspace }}/results/baseline/ut
 
       - name: Download baseline UT failure lists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'XPU-UT-Failure-List-*-baseline'
           path: ${{ github.workspace }}/results/baseline/ut
@@ -296,7 +296,7 @@ jobs:
 
       - name: Upload comparison summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: acceptance-comparison-summary-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

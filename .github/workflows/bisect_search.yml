@@ -67,7 +67,7 @@ jobs:
         USE_KINETO: 0
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: gs-scripts
       - name: Prepare test env
@@ -208,7 +208,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bisect-search
           path: ${{ github.workspace }}/gs-logs
