@@ -146,7 +146,7 @@ skip_dict = {
         "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
-    "test_native_functions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     "test_native_mha_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
@@ -337,7 +337,7 @@ skip_dict = {
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
-    "dynamo/test_functions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,
