@@ -31,7 +31,8 @@ namespace at::native::xpu {
  * "ATen/native/Math.h".
  */
 template <typename T>
-inline std::enable_if_t<std::is_floating_point_v<T>, T> calc_erfinv(T y) {
+  requires std::is_floating_point_v<T>
+inline T calc_erfinv(T y) {
   /* Function to calculate inverse error function. Rational approximation is
    * used to generate an initial approximation, which is then improved to full
    * accuracy by two steps of Newton's method.
@@ -1014,9 +1015,8 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::enable_if<
-    std::is_same<double, T>::value,
-    std::tuple<const T*, size_t>>::type
+  requires std::is_same_v<double, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
 chebyshev_coefficients_i1e_A() {
   /* Chebyshev coefficients for exp(-x) I1(x)
    * in the interval [0,8].
@@ -1044,9 +1044,9 @@ chebyshev_coefficients_i1e_A() {
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::
-    enable_if<std::is_same<float, T>::value, std::tuple<const T*, size_t>>::type
-    chebyshev_coefficients_i1e_A() {
+  requires std::is_same_v<float, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
+chebyshev_coefficients_i1e_A() {
   /* Chebyshev coefficients for exp(-x) I1(x)
    * in the interval [0,8].
    *
@@ -1074,9 +1074,8 @@ C10_HOST_DEVICE inline typename std::
 };
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::enable_if<
-    std::is_same<double, T>::value,
-    std::tuple<const T*, size_t>>::type
+  requires std::is_same_v<double, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
 chebyshev_coefficients_i1e_B() {
   /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
    * in the inverted interval [8,infinity].
@@ -1102,9 +1101,9 @@ chebyshev_coefficients_i1e_B() {
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::
-    enable_if<std::is_same<float, T>::value, std::tuple<const T*, size_t>>::type
-    chebyshev_coefficients_i1e_B() {
+  requires std::is_same_v<float, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
+chebyshev_coefficients_i1e_B() {
   /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
    * in the inverted interval [8,infinity].
    *
