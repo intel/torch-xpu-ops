@@ -106,12 +106,10 @@ kernels embedded in the PyTorch binary.
 
 ### Fallback: Static extraction via `clang-offload-extract`
 
-Use this fallback when you cannot run the workload (e.g., analyzing a binary
+Use this only when you **cannot run the workload** (e.g., analyzing a binary
 on a different machine, or the binary requires hardware you don't have).
-This extracts ALL AOT-compiled kernels from the binary — including ones never
-called at runtime.
-
-#### Locate `clang-offload-extract`
+The preferred `DumpZEBin` method above handles all runtime scenarios regardless
+of binary packaging format (standalone, fat binary, zstd-compressed, etc.).
 
 ```bash
 # Detect oneAPI root: check env vars first, then common install locations
@@ -124,95 +122,20 @@ fi
 COE=$(command -v clang-offload-extract 2>/dev/null \
   || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
 test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
+
+BIN=<path to executable or .so>
+OUT="<workdir>/aot_static_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$OUT" && cd "$OUT"
+
+# Extract all offload bundles
+"$COE" "$BIN"
+
+# For each target.bin.N:
+# - If plain ELF (arch 0xcd): ocloc disasm -file target.bin.N -dump asmN -device bmg
+# - If zstd-compressed: decompress → ar x 64.bmg → ocloc disasm
+# - Kernel ASM is at asmN/.text._ZTSxxxx.asm; demangle with c++filt
 ```
 
-#### Path A: Standalone DPC++ binary (plain zebin ELF)
-
-1. **Extract and disassemble.**
-
-   ```bash
-   BIN=<path to executable or .so>
-   OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
-   mkdir -p "$OUT" && cd "$OUT"
-
-   "$COE" "$BIN"
-   file target.bin.0    # → "ELF 64-bit LSB relocatable, *unknown arch 0xcd*"
-
-   ocloc disasm -file target.bin.0 -dump asm0 -device bmg
-   ls asm0/.text.*.asm
-   ```
-
-2. **Pin kernel.**
-
-   ```bash
-   KERNEL=$(SYCL_UR_TRACE=-1 <repro_cmd> 2>&1 \
-     | grep -oP 'pKernelName = 0x[0-9a-f]+ \(\K[^)]+' | head -1)
-   # The kernel name matches the .text.<name>.asm filename:
-   ls asm0/.text.*"$KERNEL"*.asm
-   ```
-
-#### Path B: zstd-compressed multi-target fat binary (e.g. PyTorch XPU `.so`)
-
-When a SYCL library is compiled with multiple `-device` targets, the compiler
-produces a **zstd-compressed AR archive** per compilation unit. Each archive
-contains one zebin per target device. The runtime selects the matching device
-binary at load time.
-
-1. **Extract all bundles.**
-
-   ```bash
-   LIB=<path to .so with multi-target AOT>
-   OUT="<workdir>/aot_fat_$(date +%Y%m%d_%H%M%S)"
-   mkdir -p "$OUT" && cd "$OUT"
-
-   "$COE" "$LIB"
-   ls target.bin.* | wc -l
-   file target.bin.0   # → "Zstandard compressed data" or "current ar archive"
-   ```
-
-2. **Decompress (if zstd) and list device members.**
-
-   If `file` reports "Zstandard compressed data" (magic bytes `28 b5 2f fd`),
-   decompress first with `python3 -c "import zstandard; ..."` or `zstd -d`.
-   The decompressed output is an AR archive.
-
-   ```bash
-   # Decompress if needed (no-op if already plain AR)
-   python3 -c "
-   import zstandard, sys
-   data = open('target.bin.0','rb').read()
-   out = zstandard.ZstdDecompressor().decompress(data) if data[:4]==b'\x28\xb5\x2f\xfd' else data
-   open('target.bin.0.ar','wb').write(out)"
-
-   # Discover available device targets
-   ar t target.bin.0.ar | grep -v pad
-   # → 64.bmg, 64.dg2, 64.12.60.7, 64.12.74.4, ..., generic_ir
-   ```
-
-3. **Extract the zebin for your device and disassemble.**
-
-   ```bash
-   DEVICE_MEMBER=64.bmg   # from ar t output, match your hardware
-   DEVICE_NAME=bmg        # ocloc device name
-
-   ar x target.bin.0.ar "$DEVICE_MEMBER"
-   file "$DEVICE_MEMBER"  # → ELF 64-bit LSB relocatable, *unknown arch 0xcd*
-
-   ocloc disasm -file "$DEVICE_MEMBER" -dump asm -device "$DEVICE_NAME"
-   ls asm/.text.*.asm
-   ```
-
-4. **Find which `target.bin.N` contains your kernel.**
-
-   With many compilation units, grep the decompressed binary data for the
-   kernel name substring (kernel names are embedded as strings in the zebin):
-
-   ```bash
-   for f in target.bin.*; do
-     python3 -c "
-   import zstandard, sys
-   data = open('$f','rb').read()
-   if data[:4]==b'\x28\xb5\x2f\xfd': data=zstandard.ZstdDecompressor().decompress(data)
-   if b'AddFunctor' in data: print('FOUND in $f')" 2>/dev/null
-   done
-   ```
+**WARNING**: This extracts ALL kernels embedded in the binary, not just those
+called at runtime. You must separately identify the target kernel (e.g., via
+`SYCL_UR_TRACE=-1` or `unitrace`).
