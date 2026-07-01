@@ -39,7 +39,7 @@ runs:
         fi
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python }}
     - name: Check python

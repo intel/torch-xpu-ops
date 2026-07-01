@@ -89,7 +89,7 @@ jobs:
           ref: ${{ env.accelerate }}
           path: accelerate
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.python }}
       - name: Check python

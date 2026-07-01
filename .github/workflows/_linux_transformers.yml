@@ -213,7 +213,7 @@ jobs:
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.python }}
       - name: Check python
@@ -322,7 +322,7 @@ jobs:
         with:
           path: torch-xpu-ops
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.python }}
       - name: Install pip deps
