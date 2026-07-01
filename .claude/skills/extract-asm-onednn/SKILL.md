@@ -41,9 +41,7 @@ Key consequences:
 
 - Op dispatched through oneDNN (`mkldnn::*`): `linear` / `matmul` / `mm` /
   `bmm` / `conv*` / `_scaled_dot_product_attention` (oneDNN-graph)
-- Hot kernel named `gemm_kernel` / `gen_conv_kernel`
-- Hardware: Intel XPU (PVC / BMG-G31 / DG2 / LNL / ARL)
-
+  
 ## When NOT to use
 
 - Kernel is `triton_*` → use `extract-asm-triton`
