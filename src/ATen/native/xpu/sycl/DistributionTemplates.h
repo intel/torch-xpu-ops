@@ -26,9 +26,9 @@
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
-#include <hal/XPUHal.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
+#include <hal/XPUHal.h>
 
 namespace at {
 namespace native {
@@ -143,8 +143,7 @@ void distribution_nullary_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs =
-        xpu_hal::philoxState(gen, counter_offset);
+    rng_engine_inputs = xpu_hal::philoxState(gen, counter_offset);
   }
 
   if (!iter.can_use_32bit_indexing()) {

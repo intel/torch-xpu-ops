@@ -117,8 +117,7 @@ inline void _rrelu_with_noise_xpu_train(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs =
-        xpu_hal::philoxState(gen, counter_offset);
+    rng_engine_inputs = xpu_hal::philoxState(gen, counter_offset);
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();

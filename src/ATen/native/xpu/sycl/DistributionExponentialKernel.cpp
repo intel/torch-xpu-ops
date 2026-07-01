@@ -14,9 +14,9 @@
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <hal/XPUHal.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 
