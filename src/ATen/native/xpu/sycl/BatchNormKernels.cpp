@@ -197,8 +197,8 @@ int get_prefer_simd(int numPlane, int nHw) {
   // decide SIMD: SIMD32 or SIMD16
 
   auto dev_id = at::xpu::current_device();
-  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto sub_group_size = dev_prop->sub_group_sizes;
+  auto& dev = c10::xpu::get_raw_device(dev_id);
+  auto sub_group_size = dev.get_info<::sycl::info::device::sub_group_sizes>();
   int simd = sub_group_size[1];
   if (simd <= SIMD16)
     return simd;

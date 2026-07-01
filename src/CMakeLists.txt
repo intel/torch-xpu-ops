@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Define archive static library target - torch_xpu_ops
+cmake_policy(SET CMP0126 OLD)
 set(ATen_XPU_MKL_SRCS)
 set(ATen_XPU_NATIVE_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
@@ -31,6 +32,7 @@ endif()
 # compression of device code is supported by SYCL/backend compiler.
 if(WIN32)
   include(BuildOnWindows.cmake)
+  set(TORCH_XPU_OPS_LIBRARIES ${TORCH_XPU_OPS_LIBRARIES} PARENT_SCOPE)
 else()
   include(BuildOnLinux.cmake)
 endif()
