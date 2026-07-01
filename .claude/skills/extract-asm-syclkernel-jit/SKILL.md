@@ -56,45 +56,11 @@ memory. Without the dump flag, it's never written to disk.
 
 ## Steps
 
-### Step 0: Locate tools
+**Prerequisite**: The router (`extract-xpu-kernel-asm`) has already confirmed
+that the JIT path is active for the current device. This skill assumes IGC will
+be invoked at runtime.
 
-`clang-offload-extract` is needed to confirm the binary is JIT (not AOT).
-
-```bash
-# Detect oneAPI root: check env vars first, then common install locations
-ONEAPI=${ONEAPI_ROOT:-${CMPLR_ROOT:+${CMPLR_ROOT%/*}}}
-if [ -z "$ONEAPI" ]; then
-  for d in /opt/intel/oneapi ~/intel/oneapi /usr/local/oneapi; do
-    [ -d "$d" ] && ONEAPI="$d" && break
-  done
-fi
-COE=$(command -v clang-offload-extract 2>/dev/null \
-  || { test -n "$ONEAPI" && find "$ONEAPI" -name 'clang-offload-extract' 2>/dev/null | head -1; })
-test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compiler or set ONEAPI_ROOT"; exit 1; }
-```
-
-1. **Confirm JIT (IGC will be invoked at runtime).**
-
-   A binary may contain AOT bundles that don't cover the current device.
-   Check whether the AOT target actually matches:
-
-   ```bash
-   BIN=<path to .so or executable>
-   # If no offload bundle at all → definitely JIT
-   if strings "$BIN" | grep -q __CLANG_OFFLOAD_BUNDLE; then
-     # Bundle exists — check if current device is in AOT target list.
-     # If DumpZEBin produces .elf files, the AOT path was used → wrong skill.
-     # Quick test: run with DumpZEBin and check for output
-     DumpZEBin=1 NEOReadDebugKeys=1 <repro_cmd> 2>/dev/null
-     if ls *.elf 2>/dev/null | grep -q .; then
-       echo "AOT path active for current device — use extract-asm-syclkernel-aot"
-       exit 2
-     fi
-   fi
-   echo "JIT path confirmed — proceeding with IGC_ShaderDumpEnable"
-   ```
-
-2. **Pin the actually-launched kernel.**
+1. **Pin the actually-launched kernel.**
 
    Use unitrace (preferred) or SYCL_UR_TRACE (fallback):
 
@@ -106,7 +72,7 @@ test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compil
 
    Pick the hot kernel name (`<KERNEL>`).
 
-3. **Re-run with IGC dump (cold cache).**
+2. **Re-run with IGC dump (cold cache).**
 
    ```bash
    OUT="<workdir>/$(basename "$BIN")_$(date +%Y%m%d_%H%M%S)"
@@ -121,7 +87,7 @@ test -n "$COE" || { echo "clang-offload-extract not found; install oneAPI compil
    ls "$OUT/igc"/*.asm | wc -l
    ```
 
-4. **Match kernel name to `.asm` file.**
+3. **Match kernel name to `.asm` file.**
 
    ```bash
    MATCH=$(grep -l "$KERNEL" "$OUT/igc"/OCL_asm*_simd*_entry_*.asm | head -1)

@@ -126,14 +126,26 @@ unitrace before proceeding. Do NOT extract ASM blindly.
 |---|---|
 | Kernel = `gemm_kernel` / `gen_conv_kernel` / routed via `mkldnn::*` | `onednn` |
 | Kernel = `triton_*` or standalone `@triton.jit` | `triton` |
-| Kernel = `_ZTS…` AND AOT bundle contains target matching current device | `sycl-aot` |
-| Kernel = `_ZTS…` AND no AOT bundle, OR AOT target doesn't match current device | `sycl-jit` |
+| Kernel = `_ZTS…` AND AOT path active for current device | `sycl-aot` |
+| Kernel = `_ZTS…` AND JIT path active (no AOT or target mismatch) | `sycl-jit` |
 
-**AOT vs JIT classification note**: A binary may contain `__CLANG_OFFLOAD_BUNDLE`
-but its AOT targets may not cover the current device. For example, PyTorch built
-with `TORCH_XPU_ARCH_LIST=pvc` will have AOT code only for PVC — running on BMG
-causes the runtime to fall back to the embedded SPIR-V and JIT-compile via IGC.
-In this case, use `sycl-jit` (not `sycl-aot`).
+**For `_ZTS…` kernels, determine AOT vs JIT:**
+
+A binary may contain `__CLANG_OFFLOAD_BUNDLE` but its AOT targets may not cover
+the current device (e.g. built for PVC, running on BMG → runtime falls back to
+JIT via SPIR-V). Test which path is actually active:
+
+```bash
+# Quick test: attempt DumpZEBin — if .elf files appear, AOT path is active
+mkdir -p /tmp/aot_test && cd /tmp/aot_test
+DumpZEBin=1 NEOReadDebugKeys=1 <repro_cmd> 2>/dev/null
+if ls *.elf 2>/dev/null | grep -q .; then
+  SCENARIO=sycl-aot
+else
+  SCENARIO=sycl-jit
+fi
+rm -rf /tmp/aot_test
+```
 
 If ambiguous → ask the user.
 
