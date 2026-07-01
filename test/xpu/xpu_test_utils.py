@@ -387,6 +387,7 @@ _cuda_xfail_xpu_pass = [
 _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
+    ("_refs.true_divide", "test_python_ref_executor"),
 ]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.

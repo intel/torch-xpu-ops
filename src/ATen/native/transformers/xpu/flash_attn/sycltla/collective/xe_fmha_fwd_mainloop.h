@@ -20,8 +20,6 @@
 
 #include <flash_attention_v2/collective/fmha_fusion.hpp>
 
-#include <sycltla/dropout.h>
-
 namespace cutlass::fmha {
 
 template <int Stages>
@@ -144,18 +142,7 @@ struct FMHAFwdMainloop<
 
   // User-facing arguments
   struct Arguments {
-    // Softmax scale factor.
     ElementS const scale;
-    // Random state for dropout.
-    at::PhiloxXpuState philox_args;
-    // Pointer to the RNG seed and offset.
-    uint64_t* rng_seed;
-    uint64_t* rng_offset;
-    // The dropout probability (probability of keeping an activation).
-    float p_dropout;
-    uint16_t p_dropout_in_uint16_t;
-    // Storing dropout mask for debug accuracy.
-    float* p_ptr;
   };
 
   // Kernel-facing parameters
@@ -177,14 +164,7 @@ struct FMHAFwdMainloop<
       void* /* workspace */) {
     constexpr double kLog2e = 1.4426950408889634074; // log_2(e)
     ElementS val = args.scale * static_cast<ElementS>(kLog2e);
-    return Params{
-        val,
-        args.philox_args,
-        args.rng_seed,
-        args.rng_offset,
-        args.p_dropout,
-        args.p_dropout_in_uint16_t,
-        args.p_ptr};
+    return Params{val};
   }
 
   CUTLASS_HOST_DEVICE static bool can_implement(Arguments const&) {
@@ -208,12 +188,8 @@ struct FMHAFwdMainloop<
       int seq_len_qo,
       int seq_len_kv,
       int l_coord,
-      // For LSE
       int& tile_row_idx,
-      const int& rows_of_maxima,
-      // For dropout
-      bool is_dropout,
-      FLASH_NAMESPACE::Dropout& dropout) {
+      const int& rows_of_maxima) {
     using namespace sycl::ext::oneapi::this_work_item;
 
     // Short dimension names:
@@ -388,64 +364,15 @@ struct FMHAFwdMainloop<
         }
       }
 
-      /* Apply softmax and scaling (tA rescaling fused into GEMM2 VTile loop) */
-      auto rescale = softmax(K == blk_k0, tSrS, tA_max, tA_sum);
-
-      /* Apply Dropout on S
-       *
-       * The Philox PRNG produces 4x uint32 per call, reinterpretable as
-       * 8x uint16 — exactly enough for the 8 elements each lane holds in
-       * one m8×n16 MMA atomic block (subgroup_size = 16).
-       *
-       * To guarantee identical dropout masks in forward and backward
-       * regardless of TiledMMA tile size or subgroup layout, we treat
-       * the m8×n16 mma atomic block as the fundamental unit of dropout:
-       *
-       *   Philox(seed,
-       *          offset  = f(batch_id, head_id, lane_id),
-       *          subseq  = f(block_row_id, block_col_id))
-       *
-       * where block_row/col_id is the atomic block's position in the
-       * global S matrix.  Because both forward and backward use the
-       * same XE_DPAS m8×n16 atomic block, each lane owns the same 8 elements
-       * within a given atomic block, so the generated mask matches.
-       */
-      static_assert(size<0>(typename TiledMMAQK::AtomShape_MNK{}) == 8);
-      int block_row_id = get<0>(cS_thread(0)) / 8;
-      int block_col_id = get<1>(cS_thread(0)) / intel::sg_size;
-      if (params.p_ptr != nullptr) {
-        // Store the S matrix for debug purposes.
-        auto rP_drop = make_fragment_like(tSrS);
-        cute::copy(tSrS, rP_drop);
-        dropout.template apply_dropout</*encode_dropout_in_sign_bit=*/true>(
-            rP_drop, block_row_id, block_col_id);
-        float* p_ptr = params.p_ptr;
-        for (int i = 0; i < rP_drop.size(); ++i) {
-          auto row_idx = get<0>(cS_thread(i));
-          auto col_idx = get<1>(cS_thread(i));
-          if (row_idx < seq_len_qo && col_idx < seq_len_kv) {
-            int idx = row_idx * seq_len_kv + col_idx;
-            p_ptr[idx] = rP_drop(i);
-          }
-        }
-      }
-
-      if (is_dropout) {
-        dropout.apply_dropout(tSrS, block_row_id, block_col_id);
-      }
-
+      /* Apply softmax and scaling */
+      softmax(K == blk_k0, tSrS, tA_max, tA_sum, tArA);
       reorder(tSrS, tArP);
 
-      /* Apply softmax and scaling (tA rescaling fused into GEMM2 VTile loop) */
+      /* GEMM 2: A += P * V, split in v dimension */
       CUTLASS_PRAGMA_UNROLL
       for (int VV = 0; VV < VTiles; VV++) {
         copy(copy_v, tVgV(_, _, _, VV, K), tVrV);
         reorder(tVrV, tArV);
-        if (K != blk_k0) {
-          CUTLASS_PRAGMA_UNROLL
-          for (int i = 0; i < tArA.size() / VTiles; i++)
-            tArA(_, _, _, VV)(i) *= broadcast<0>(rescale, tArA, i);
-        }
         cute::gemm(mma_pv, tArP, tArV, tArA(_, _, _, VV));
       }
 
@@ -489,17 +416,19 @@ struct FMHAFwdMainloop<
 
   // Single step of blocked softmax.
   CUTLASS_DEVICE
-  FragSRow softmax(
+  void softmax(
       bool first_block, // First softmax block?
       FragS& tS, // Softmax src/dst block
       FragSRow& tS_max, // Softmax row-wise max accumulator
-      FragSRow& tS_sum // Softmax row-wise sum accumulator
+      FragSRow& tS_sum, // Softmax row-wise sum accumulator
+      FragA& tA // O accumulator (for rescaling)
   ) {
     /* Compute row-wise maxima for this block */
     auto tS_bmax = reduce<1>(tS, sycl::maximum{});
 
     /* Update (scaled) maxima */
     FragSRow rescale;
+    auto tS_prev_max = tS_max;
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < tS_max.size(); i++) {
       ElementS new_max = sycl::max(tS_max(i), params.scale * tS_bmax(i));
@@ -514,20 +443,23 @@ struct FMHAFwdMainloop<
           params.scale * tS(i) -
           broadcast<0>(tS_max, tS, i)); // Local exponentials
 
-    /* Rescale existing S sums */
+    /* Rescale existing S sums and O accumulator */
     if (!first_block) {
       CUTLASS_PRAGMA_UNROLL
       for (int i = 0; i < tS_max.size(); i++) {
+        rescale(i) = sycl::native::exp2(tS_prev_max(i) - tS_max(i)); //
         tS_sum(i) *= rescale(i);
       }
+
+      CUTLASS_PRAGMA_UNROLL
+      for (int i = 0; i < tA.size(); i++)
+        tA(i) *= broadcast<0>(rescale, tA, i);
     }
 
     /* Update sums */
     auto tS_bsum = reduce<1>(tS, sycl::plus<void>{}); // local sum
     for (int i = 0; i < tS_sum.size(); i++) // Add for each row
       tS_sum(i) += tS_bsum(i);
-
-    return rescale;
   }
 };
 
