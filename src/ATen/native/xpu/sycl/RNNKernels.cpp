@@ -59,7 +59,10 @@ void checkSizes(
   if (input_bias->defined()) {
     checkDim(c, input_bias, 1);
     checkNumel(c, input_bias, gates_size);
-    checkSameSize(c, input_bias, hidden_bias);
+  }
+  if (hidden_bias->defined()) {
+    checkDim(c, hidden_bias, 1);
+    checkNumel(c, hidden_bias, gates_size);
   }
 
   checkDim(c, prev_hidden, 2);
@@ -326,7 +329,8 @@ template <
     int indexing_kind>
 struct GruCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_bias = Bias1_.data != nullptr;
+    bool has_bias1 = Bias1_.data != nullptr;
+    bool has_bias2 = Bias2_.data != nullptr;
 
     for (index_type linearIndex = item.get_global_id(0);
          linearIndex < totalElements_;
@@ -345,18 +349,21 @@ struct GruCellForwardFunctor {
 
       scalar_t b1r, b1i, b1n, b2r, b2i, b2n;
 
-      if (has_bias) {
+      if (has_bias1) {
         b1r = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 0 * hsz_);
         b1i = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 1 * hsz_);
         b1n = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 2 * hsz_);
-
-        b2r = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 0 * hsz_);
-        b2i = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 1 * hsz_);
-        b2n = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 2 * hsz_);
       } else {
         b1r = F2H(0.0);
         b1i = F2H(0.0);
         b1n = F2H(0.0);
+      }
+
+      if (has_bias2) {
+        b2r = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 0 * hsz_);
+        b2i = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 1 * hsz_);
+        b2n = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 2 * hsz_);
+      } else {
         b2r = F2H(0.0);
         b2i = F2H(0.0);
         b2n = F2H(0.0);
