@@ -1,105 +1,74 @@
 ---
 name: extract-asm-syclkernel-aot
 description: >
-  Extract GPU ISA from AOT-compiled SYCL binaries. The zebin ELF is already
-  embedded in the host binary's __CLANG_OFFLOAD_BUNDLE__ section. Uses
-  clang-offload-extract + ocloc disasm. Use when disassembling AOT SYCL kernels,
-  extracting ASM from libtorch_xpu_ops.so, libtorch_xpu.so, SYCL-TLA FMHA, or
-  any DPC++ binary compiled with -fsycl-targets=spir64_gen.
+  Extract GPU ISA from AOT-compiled SYCL binaries using NEO driver runtime dump.
+  Use when the kernel is a SYCL symbol (_ZTS...) from an AOT binary such as
+  libtorch_xpu.so, SYCL-TLA FMHA, or any DPC++ binary compiled with
+  -fsycl-targets=spir64_gen -Xs "-device <gpu>".
 ---
 
 # Extract ASM from AOT-Compiled SYCL Binaries
 
-The zebin (GPU ISA) was compiled at build time and embedded in the host binary.
-This skill's job is: **find it → extract it → disassemble it → pin the right one**.
+## Key facts
 
-## How this fits the compilation stack
-
-```
-Build time (already done):
-  SYCL source → LLVM IR → SPIR-V → IGC → zebin
-                                           ↓
-                                    embedded in binary via
-                                    __CLANG_OFFLOAD_BUNDLE__
-
-This skill (runtime):
-  binary → clang-offload-extract → target.bin.N → ...
-```
-
-**Two sub-formats exist** (depending on how the binary was built):
-
-| Source | Format of `target.bin.N` | Extra steps |
-|---|---|---|
-| Standalone DPC++ (`icpx -fsycl-targets=spir64_gen`) | Plain zebin ELF | None — directly `ocloc disasm` |
-| PyTorch (`libtorch_xpu.so`) | zstd-wrapped AR fat binary | Decompress → `ar x 64.<device>` → `ocloc disasm` |
-
-**Why IGC_ShaderDumpEnable does NOT work**: IGC was never called at runtime —
-the binary already contains pre-compiled device code.
+- GPU ISA (zebin) was already compiled at **build time** by IGC and embedded in
+  the host binary.
+- `IGC_ShaderDumpEnable` does **NOT** work — IGC is never invoked at runtime.
+- Extraction uses NEO driver debug keys to dump the zebin ELF at runtime, then
+  `ocloc disasm` to produce readable ASM.
 
 ## When to use
 
-- Kernel is a mangled SYCL symbol (`_ZTS…`) from an AOT binary:
+- Kernel is a mangled SYCL symbol (`_ZTS…`) from an AOT-compiled binary:
   - `libtorch_xpu.so` / `libtorch_xpu_ops.so` (default PyTorch XPU build)
   - SYCL-TLA FMHA `.so`
-  - Standalone DPC++ executable
-- Confirm: `strings <binary> | grep -q __CLANG_OFFLOAD_BUNDLE`
+  - Standalone DPC++ executable built with `-fsycl-targets=spir64_gen`
 
 ## When NOT to use
 
-- No AOT bundle → use `extract-asm-syclkernel-jit` (same stack, different extraction)
-- Kernel is oneDNN ngen → use `extract-asm-onednn` (different stack entirely)
-- Kernel is Triton → use `extract-asm-triton`
+- Binary has no AOT code for current device (falls back to JIT) → use `extract-asm-syclkernel-jit`
+- Kernel is oneDNN ngen (`gemm_kernel`, `gen_conv_kernel`) → use `extract-asm-onednn`
+- Kernel is Triton (`triton_*`) → use `extract-asm-triton`
 
 ## Steps
 
-### Step 0: Locate tools
-
-`ocloc` is required for disassembly. Ensure it is on PATH:
+### Step 1: Verify tools
 
 ```bash
 command -v ocloc >/dev/null || { echo "ocloc not found; source oneapi-vars.sh"; exit 1; }
 ```
 
-### Preferred: Runtime dump via NEO driver (`DumpZEBin=1`)
+### Step 2: Dump zebin ELFs via NEO driver
 
-This is the **recommended approach** because it only dumps kernels that are
-actually called during execution — no need to sift through hundreds of unused
-kernels embedded in the PyTorch binary.
+Run the workload with NEO debug keys. Only kernels **actually dispatched** to
+the GPU will be dumped — no unused kernels appear.
 
-1. **Run the workload with NEO debug keys to dump zebin ELFs.**
+```bash
+OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$OUT" && cd "$OUT"
 
-   ```bash
-   OUT="<workdir>/aot_$(date +%Y%m%d_%H%M%S)"
-   mkdir -p "$OUT" && cd "$OUT"
+DumpZEBin=1 NEOReadDebugKeys=1 python test.py
+ls *.elf
+```
 
-   DumpZEBin=1 NEOReadDebugKeys=1 python test.py
-   ls *.elf
-   ```
+### Step 3: Disassemble
 
-   Only kernels actually dispatched to the GPU during `test.py` will appear
-   as `.elf` files. Kernels that exist in the binary but were not called are
-   NOT dumped.
+```bash
+for elf in *.elf; do
+  name=$(basename "$elf" .elf)
+  ocloc disasm -file "$elf" -dump "${name}_dump" -device bmg
+done
+```
 
-2. **Disassemble each ELF.**
+### Step 4: Identify the target kernel
 
-   ```bash
-   for elf in *.elf; do
-     name=$(basename "$elf" .elf)
-     ocloc disasm -file "$elf" -dump "${name}_dump" -device bmg
-   done
-   ```
+ASM files are at `<name>_dump/.text._ZTSxxxx.asm`. Demangle to find yours:
 
-3. **Identify the kernel.**
+```bash
+for f in *_dump/.text._ZTS*.asm; do
+  mangled=$(basename "$f" .asm | sed 's/^\.text\.//')
+  echo "$f  →  $(c++filt "$mangled")"
+done
+```
 
-   The ASM file is at `<name>_dump/.text._ZTSxxxx.asm`. Demangle the name:
-
-   ```bash
-   ls *_dump/.text.*.asm
-   # For each .asm file, demangle the kernel name:
-   for f in *_dump/.text._ZTS*.asm; do
-     mangled=$(basename "$f" .asm | sed 's/^\.text\.//')
-     echo "$f  →  $(c++filt "$mangled")"
-   done
-   ```
-
-   Match the demangled name to your target kernel.
+Match the demangled name to the kernel you are analyzing.
