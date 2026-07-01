@@ -1348,7 +1348,7 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(exp_out, out)
         self.assertEqual(x_clone, x)
 
-    def test_input_mutation_mutiple_times_fake_tensor_cahche_hit(self):
+    def test_input_mutation_mutiple_times_fake_tensor_cache_hit(self):
         @nested_compile_region
         def gn(x, y):
             x.add_(1)
@@ -1375,7 +1375,7 @@ class GraphModule(torch.nn.Module):
             return (operands[0].clone(),)
 
         with (
-            mock.patch(
+            mock.patch.dict(
                 "torch._higher_order_ops.utils.registered_hop_fake_fns",
                 {torch.ops.higher_order.invoke_subgraph: _mock_invoke_subgraph},
             ),
@@ -2454,10 +2454,7 @@ class GraphModule(torch.nn.Module):
             if grid_type == 0:
                 grid = (x.numel(),)
             elif grid_type == 1:
-
-                def grid(meta):
-                    return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
+                grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
             else:
                 grid = grid_fn
 
@@ -2520,7 +2517,7 @@ class GraphModule(torch.nn.Module):
         def forward(self, x: "f32[5]", y: "f32[5]"):
             o: "f32[5]" = torch.zeros_like(x)
 
-            triton_kernel_wrapper_mutation = torch.ops.higher_order.triton_kernel_wrapper_mutation(kernel_idx = 0, constant_args_idx = 0, grid = [(5, 1, 1)], tma_descriptor_metadata = {}, kwargs = {'in_ptr0': x, 'in_ptr1': y, 'out_ptr': o});  x = y = triton_kernel_wrapper_mutation = None
+            triton_kernel_wrapper_mutation = torch.ops.higher_order.triton_kernel_wrapper_mutation(kernel_idx = 0, constant_args_idx = 0, grid = [(5, 1, 1)], tma_descriptor_metadata = {}, kwargs = {'in_ptr0': x, 'in_ptr1': y, 'out_ptr': o}, launch_kwargs = ('BLOCK_SIZE',));  x = y = triton_kernel_wrapper_mutation = None
 
             sin: "f32[5]" = o.sin();  o = None
             return (sin,)
