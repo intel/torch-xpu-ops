@@ -412,8 +412,7 @@ _scaled_dot_product_efficient_attention_xpu(
   Tensor philox_seed_tensor, philox_offset_tensor;
   if (dropout_p > 0.0) {
     auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-        std::nullopt,
-        at::Generator(xpu_hal::getDefaultGenerator(-1)));
+        std::nullopt, at::Generator(xpu_hal::getDefaultGenerator(-1)));
     if (at::xpu::currentStreamCaptureStatus() !=
         at::xpu::CaptureStatus::Executing) {
       // Graph capture path: output device tensors that alias the extragraph
