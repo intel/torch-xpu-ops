@@ -643,9 +643,7 @@ class GraphModule(torch.nn.Module):
             )
 
         def fn(q, k, v):
-            with torch.nn.attention.sdpa_kernel(
-                [torch.nn.attention.SDPBackend.FLASH_ATTENTION]
-            ):
+            with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
                 return gn(q, k, v)
 
         q = torch.randn(
