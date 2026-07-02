@@ -570,8 +570,8 @@ struct BatchNormCollectStatisticsKernelFunctor
 
 template <typename scalar_t, typename index_t, typename VarTransform>
 void batch_norm_stats_template(
-    const Tensor& out_mean,
-    const Tensor& out_invstd,
+    Tensor& out_mean,
+    Tensor& out_invstd,
     const Tensor& input_,
     double epsilon) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
@@ -586,22 +586,27 @@ void batch_norm_stats_template(
   at::native::resize_output(out_mean, {n_input});
   at::native::resize_output(out_invstd, {n_input});
 
+  // Ensure contiguous memory layout required by the kernel. If the
+  // user-provided out= tensors are non-contiguous after resize_output, use
+  // contiguous temporaries for the kernel and copy results back afterward.
+  const bool mean_is_contiguous = out_mean.is_contiguous();
+  const bool invstd_is_contiguous = out_invstd.is_contiguous();
+  Tensor mean_c =
+      mean_is_contiguous ? out_mean : at::empty({n_input}, out_mean.options());
+  Tensor invstd_c = invstd_is_contiguous
+      ? out_invstd
+      : at::empty({n_input}, out_invstd.options());
+
   auto input =
       get_packed_accessor<const scalar_t, 3, RestrictPtrTraits, index_t>(
           input_reshaped, "input");
 
-  TORCH_INTERNAL_ASSERT(
-      out_invstd.dim() == 1 && out_invstd.is_contiguous() &&
-      out_invstd.sizes()[0]);
-  TORCH_INTERNAL_ASSERT(
-      out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
-
   auto mean =
       packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
-          out_mean, "out_mean");
+          mean_c, "out_mean");
   auto invstd =
       packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
-          out_invstd, "out_invstd");
+          invstd_c, "out_invstd");
 
   auto& queue = getCurrentSYCLQueue();
   int simd = get_prefer_simd(input.size(1), input.size(0) * input.size(2));
@@ -652,6 +657,13 @@ void batch_norm_stats_template(
         sycl::range<2>(work_group_size_y, work_group_size_x),
         queue,
         kfn);
+  }
+
+  if (!mean_is_contiguous) {
+    out_mean.copy_(mean_c);
+  }
+  if (!invstd_is_contiguous) {
+    out_invstd.copy_(invstd_c);
   }
 }
 
@@ -894,11 +906,17 @@ void batch_norm_stats_channels_last_template(
 
   at::native::resize_output(out_mean, {stride});
   at::native::resize_output(out_invstd, {stride});
-  TORCH_INTERNAL_ASSERT(
-      out_invstd.dim() == 1 && out_invstd.is_contiguous() &&
-      out_invstd.sizes()[0]);
-  TORCH_INTERNAL_ASSERT(
-      out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
+
+  // Ensure contiguous memory layout required by the kernel. If the
+  // user-provided out= tensors are non-contiguous after resize_output, use
+  // contiguous temporaries for the kernel and copy results back afterward.
+  const bool mean_is_contiguous = out_mean.is_contiguous();
+  const bool invstd_is_contiguous = out_invstd.is_contiguous();
+  Tensor mean_c =
+      mean_is_contiguous ? out_mean : at::empty({stride}, out_mean.options());
+  Tensor invstd_c = invstd_is_contiguous
+      ? out_invstd
+      : at::empty({stride}, out_invstd.options());
 
   at::Tensor staging_data;
   at::Tensor semaphores;
@@ -909,8 +927,8 @@ void batch_norm_stats_channels_last_template(
       accscalar_t,
       PREFERRED_VEC_SIZE>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
-  auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
-  auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
+  auto out_mean_ptr = mean_c.mutable_data_ptr<accscalar_t>();
+  auto out_invstd_ptr = invstd_c.mutable_data_ptr<accscalar_t>();
   bool use_vec_kernel = false;
 
   if (VecKernel::valid(
@@ -942,6 +960,12 @@ void batch_norm_stats_channels_last_template(
       kfn.set_semaphores(semaphores_ptr);
       sycl_kernel_submit(
           kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      if (!mean_is_contiguous) {
+        out_mean.copy_(mean_c);
+      }
+      if (!invstd_is_contiguous) {
+        out_invstd.copy_(invstd_c);
+      }
       return;
     }
   }
@@ -988,6 +1012,13 @@ void batch_norm_stats_channels_last_template(
         wg_size_y * wg_size_x);
 
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
+
+  if (!mean_is_contiguous) {
+    out_mean.copy_(mean_c);
+  }
+  if (!invstd_is_contiguous) {
+    out_invstd.copy_(invstd_c);
   }
 }
 
