@@ -1,4 +1,4 @@
-# LLM Collective Communication Benchmark Report
+# oneCCL Collective Communication Benchmark Report
 
 **Machine**: B60-5468-1 (10.239.167.23)  
 **Date**: 2026-07-02  
@@ -8,110 +8,98 @@
 
 ---
 
-## 1. Benchmark Results Summary
+## Summary
 
 ### Peak Bandwidth (GB/s)
 
 | Collective | 4-GPU | 8-GPU |
 |------------|------:|------:|
-| AllGather | 27.86 | 22.40 |
-| ReduceScatter | 25.95 | 21.77 |
+| AllReduce | 27.88 | 22.33 |
+| AllGather | 27.88 | 22.40 |
+| ReduceScatter | 26.01 | 21.77 |
 
-### Small Message Latency (8 KB)
+### Small Message Latency (8 KB, µs)
 
-| Collective | 4-GPU (µs) | 8-GPU (µs) |
-|------------|----------:|----------:|
-| AllGather | 7.42 | 10.92 |
-| ReduceScatter | 13.69 | 22.41 |
-
----
-
-## 2. LLM Model Performance
-
-### Model Configurations
-
-| Model | hidden_size | intermediate | num_experts | topk | layers | Source |
-|-------|-------------|--------------|-------------|------|--------|--------|
-| DeepSeek 4 Pro | 7168 | 3072 (MoE) | 384 | 6 | 61 | [HF](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
-| DeepSeek 4 Flash | 4096 | 2048 (MoE) | 256 | 6 | 43 | [HF](https://huggingface.co/deepseek-ai/DeepSeek-V3) |
-| Qwen 3 235B | 4096 | 1536 (MoE) | 128 | 8 | 94 | [HF](https://huggingface.co/Qwen/Qwen3-235B-A22B) |
-| Hunyuan 3 | 4096 | 1536 (MoE) | 192 | 8 | 80 | [HF](https://huggingface.co/tencent/Hy3-preview) |
-
-### Message Size Calculation
-
-- **AllGather OUTPUT**: `seq × bs × hidden × dtype_size`
-- **ReduceScatter INPUT**: `seq × bs × hidden × dtype_size`
-
-Note: 
-- **Exact values** are from benchmark_exact_v2 with precise sizes
-- **~values** are interpolated from power-of-2 benchmark
-- **N/A** means size exceeds benchmark range
-
-### DECODE Phase (seq = 1)
-
-| Model | TP | BS | AG Size (OUT) | AG Latency (µs) | RS Size (IN) | RS Latency (µs) |
-|-------|---:|---:|--------------:|----------------:|-------------:|----------------:|
-| DeepSeek 4 Flash | 4 | 64 | 256 KB | 14.82 | 512 KB | 25.06 |
-| DeepSeek 4 Pro | 8 | 16 | 112 KB | ~17.25 | 224 KB | ~22.22 |
-| Qwen 3 235B (MXFP8) | 4 | 16 | 64 KB | 10.33 | 128 KB | 12.43 |
-| Qwen 3 235B (BF16) | 4 | 4 | 32 KB | 10.14 | 32 KB | 14.20 |
-| Qwen 3 235B (BF16) | 8 | 8 | 64 KB | 16.74 | 64 KB | 20.27 |
-| Hunyuan 3 (MXFP8) | 4 | 4 | 16 KB | 10.23 | 32 KB | 14.20 |
-| Hunyuan 3 (BF16) | 4 | 2 | 16 KB | 10.23 | 16 KB | 12.74 |
-
-### PREFILL Phase (seq = 3584, input_len for LLM)
-
-**Updated with exact-size benchmarks (TP4 GPU 4-7)**:
-
-| Model | TP | BS | AG Size (OUT) | AG Time (ms) | RS Size (IN) | RS Time (ms) |
-|-------|---:|---:|--------------:|-------------:|-------------:|-------------:|
-| DeepSeek 4 Flash | 4 | 64 | **896 MB** | **25.27** | **1792 MB** | **54.18** |
-| DeepSeek 4 Pro | 8 | 16 | 392 MB | ~16.08 | 784 MB | ~23.21 |
-| Qwen 3 235B (MXFP8) | 4 | 16 | 224 MB | ~6.34 | 448 MB | ~13.58 |
-| Qwen 3 235B (BF16) | 4 | 4 | 112 MB | ~3.19 | 112 MB | ~3.43 |
-| Hunyuan 3 (MXFP8) | 4 | 4 | 64 MB | 1.84 | 128 MB | 3.91 |
-| Hunyuan 3 (BF16) | 4 | 2 | 64 MB | 1.84 | 64 MB | 1.99 |
-
-**Exact Prefill Benchmark Results (TP4)**:
-
-| Size (MB) | AllGather (ms) | AllGather BW | ReduceScatter (ms) | RS BW |
-|----------:|---------------:|-------------:|-------------------:|------:|
-| 64 | 1.84 | 27.35 GB/s | 1.99 | 25.31 GB/s |
-| 128 | 3.64 | 27.63 GB/s | 3.91 | 25.72 GB/s |
-| 256 | 7.25 | 27.78 GB/s | 7.76 | 25.94 GB/s |
-| 384 | 10.85 | 27.83 GB/s | — | — |
-| 448 | 12.65 | 27.84 GB/s | — | — |
-| 768 | — | — | 23.21 | 26.02 GB/s |
-| 896 | **25.27** | **27.89 GB/s** | **27.12** | **25.98 GB/s** |
-| 1792 | — | — | **54.18** | **26.01 GB/s** |
+| Collective | 4-GPU | 8-GPU |
+|------------|------:|------:|
+| AllReduce | 20.01 | 35.15 |
+| AllGather | 7.60 | 10.92 |
+| ReduceScatter | 13.64 | 22.41 |
 
 ---
 
-## 3. Detailed Benchmark Results
+## AllReduce 4-GPU (GPU 4-7)
 
-### AllGather 4-GPU (GPU 4-7)
+| Size | Latency (µs) | Bandwidth (GB/s) |
+|------|-------------:|-----------------:|
+| 8 KB | 20.01 | 0.61 |
+| 16 KB | 17.99 | 1.37 |
+| 32 KB | 18.63 | 2.64 |
+| 64 KB | 17.75 | 5.54 |
+| 128 KB | 18.19 | 10.81 |
+| 256 KB | 25.33 | 15.52 |
+| 512 KB | 44.94 | 17.50 |
+| 1 MB | 82.50 | 19.06 |
+| 2 MB | 159.43 | 19.73 |
+| 4 MB | 313.77 | 20.05 |
+| 8 MB | 494.74 | 25.43 |
+| 16 MB | 976.67 | 25.77 |
+| 32 MB | 1882.83 | 26.73 |
+| 64 MB | 3680.21 | 27.35 |
+| 128 MB | 7274.41 | 27.68 |
+| 256 MB | 14456.69 | 27.85 |
+| 512 MB | 28885.92 | **27.88** |
+
+---
+
+## AllReduce 8-GPU
+
+| Size | Latency (µs) | Bandwidth (GB/s) |
+|------|-------------:|-----------------:|
+| 8 KB | 35.15 | 0.41 |
+| 16 KB | 34.09 | 0.84 |
+| 32 KB | 32.05 | 1.79 |
+| 64 KB | 30.44 | 3.77 |
+| 128 KB | 33.06 | 6.94 |
+| 256 KB | 34.23 | 13.40 |
+| 512 KB | 50.90 | 18.03 |
+| 1 MB | 96.66 | 18.99 |
+| 2 MB | 185.36 | 19.80 |
+| 4 MB | 362.11 | 20.27 |
+| 8 MB | 691.16 | 21.24 |
+| 16 MB | 1405.48 | 20.89 |
+| 32 MB | 2742.68 | 21.41 |
+| 64 MB | 5347.55 | 21.96 |
+| 128 MB | 10554.91 | 22.25 |
+| 256 MB | 21024.52 | 22.34 |
+| 512 MB | 42073.81 | **22.33** |
+
+---
+
+## AllGather 4-GPU (GPU 4-7)
 
 | Size (OUT) | Latency (µs) | Bandwidth (GB/s) |
 |------------|-------------:|-----------------:|
-| 8 KB | 7.42 | 0.83 |
-| 16 KB | 10.23 | 1.20 |
-| 32 KB | 10.14 | 2.42 |
-| 64 KB | 10.33 | 4.76 |
-| 128 KB | 10.19 | 9.65 |
-| 256 KB | 14.82 | 13.27 |
-| 512 KB | 24.66 | 15.95 |
-| 1 MB | 43.76 | 17.97 |
-| 2 MB | 82.24 | 19.13 |
-| 4 MB | 158.40 | 19.86 |
-| 8 MB | 245.76 | 25.60 |
-| 16 MB | 470.44 | 26.75 |
-| 32 MB | 928.90 | 27.09 |
-| 64 MB | 1839.75 | 27.36 |
-| 128 MB | 3642.08 | 27.64 |
-| 256 MB | 7244.96 | 27.79 |
-| 512 MB | 14452.89 | **27.86** |
+| 8 KB | 7.60 | 0.81 |
+| 16 KB | 12.30 | 1.00 |
+| 32 KB | 11.41 | 2.16 |
+| 64 KB | 12.10 | 4.06 |
+| 112 KB | 9.84 | 8.74 |
+| 128 KB | 10.14 | 9.70 |
+| 224 KB | 13.86 | 12.41 |
+| 256 KB | 14.87 | 13.22 |
+| 512 KB | 24.67 | 15.94 |
+| 32 MB | 942.68 | 26.70 |
+| 64 MB | 1840.12 | 27.35 |
+| 112 MB | 3191.89 | 27.60 |
+| 224 MB | 6345.52 | 27.76 |
+| 392 MB | 11076.48 | 27.83 |
+| 448 MB | 12653.69 | 27.84 |
+| 896 MB | 25270.87 | **27.88** |
 
-### AllGather 8-GPU
+---
+
+## AllGather 8-GPU
 
 | Size (OUT) | Latency (µs) | Bandwidth (GB/s) |
 |------------|-------------:|-----------------:|
@@ -133,29 +121,34 @@ Note:
 | 256 MB | 10486.13 | **22.40** |
 | 512 MB | 21008.54 | 22.36 |
 
-### ReduceScatter 4-GPU (GPU 4-7)
+---
+
+## ReduceScatter 4-GPU (GPU 4-7)
 
 | Size (IN) | Latency (µs) | Bandwidth (GB/s) |
 |-----------|-------------:|-----------------:|
-| 8 KB | 13.69 | 0.45 |
-| 16 KB | 12.74 | 0.97 |
-| 32 KB | 14.20 | 1.73 |
-| 64 KB | 12.80 | 3.84 |
-| 128 KB | 12.43 | 7.91 |
-| 256 KB | 15.34 | 12.82 |
-| 512 KB | 25.06 | 15.69 |
-| 1 MB | 44.14 | 17.82 |
-| 2 MB | 82.62 | 19.04 |
-| 4 MB | 159.22 | 19.76 |
-| 8 MB | 310.41 | 20.27 |
-| 16 MB | 524.94 | 23.97 |
-| 32 MB | 1024.04 | 24.58 |
-| 64 MB | 1989.19 | 25.30 |
-| 128 MB | 3914.22 | 25.72 |
-| 256 MB | 7760.06 | 25.94 |
-| 512 MB | 15516.88 | **25.95** |
+| 8 KB | 13.64 | 0.45 |
+| 16 KB | 12.28 | 1.00 |
+| 32 KB | 12.83 | 1.92 |
+| 64 KB | 12.82 | 3.83 |
+| 112 KB | 12.56 | 6.85 |
+| 128 KB | 12.30 | 7.99 |
+| 224 KB | 14.30 | 12.03 |
+| 256 KB | 15.40 | 12.77 |
+| 512 KB | 25.09 | 15.67 |
+| 32 MB | 1041.22 | 24.17 |
+| 64 MB | 1990.70 | 25.28 |
+| 112 MB | 3432.48 | 25.66 |
+| 128 MB | 3912.65 | 25.73 |
+| 224 MB | 6803.89 | 25.89 |
+| 448 MB | 13599.43 | 25.91 |
+| 784 MB | 23741.26 | 25.97 |
+| 896 MB | 27125.10 | 25.98 |
+| 1792 MB | 54177.74 | **26.01** |
 
-### ReduceScatter 8-GPU
+---
+
+## ReduceScatter 8-GPU
 
 | Size (IN) | Latency (µs) | Bandwidth (GB/s) |
 |-----------|-------------:|-----------------:|
@@ -179,45 +172,36 @@ Note:
 
 ---
 
-## 4. Key Observations
+## Key Observations
 
 1. **Peak Bandwidth**: 
-   - 4-GPU: AllGather 27.86 GB/s, ReduceScatter 25.95 GB/s
-   - 8-GPU: AllGather 22.40 GB/s, ReduceScatter 21.77 GB/s
+   - 4-GPU achieves ~27.88 GB/s for AllReduce/AllGather, ~26 GB/s for ReduceScatter
+   - 8-GPU achieves ~22 GB/s across all collectives
 
-2. **Small Message Latency**: 
-   - AllGather: ~7-11 µs base latency
-   - ReduceScatter: ~13-22 µs base latency
+2. **4-GPU vs 8-GPU**:
+   - 4-GPU shows ~25% higher peak bandwidth than 8-GPU
+   - Likely due to PCIe topology (4 GPUs may share closer switch)
 
-3. **4-GPU vs 8-GPU**:
-   - 4-GPU shows ~25% higher peak bandwidth
-   - Likely due to PCIe topology (4 GPUs on same switch)
+3. **Small Message Latency**:
+   - AllGather has lowest latency (~7-11 µs)
+   - AllReduce has highest latency (~20-35 µs) due to reduction computation
+   - ReduceScatter is in between (~13-22 µs)
 
-4. **Decode vs Prefill**:
-   - Decode phase is latency-bound (small messages ~10-25 µs)
-   - Prefill phase is bandwidth-bound (large messages approach peak BW)
-
-5. **LLM Prefill Timing** (TP4, exact sizes):
-   - DeepSeek 4 Flash: AG 896MB = 25.27ms, RS 1792MB = 54.18ms
-   - Per-layer overhead ~80ms for DeepSeek 4 Flash prefill
+4. **Bandwidth Saturation**:
+   - Bandwidth saturates around 8-16 MB message size
+   - Smaller messages are latency-bound
 
 ---
 
-## 5. Benchmark Tools
+## Log Files
 
-### Exact Size Benchmark (New)
-```bash
-# AllGather with exact MB sizes
-mpirun -n 4 ./bench_ccl_allgather_exact_v2 --sizes-mb 384,448,896 --warmup 10 --loop 50
-
-# ReduceScatter with exact MB sizes  
-mpirun -n 4 ./bench_ccl_reduce_scatter_exact_v2 --sizes-mb 768,896,1792 --warmup 10 --loop 50
-```
-
-### Log Files
-
-Saved to `/data/hanchao/bench_logs/`:
+- `allreduce_4gpu.log`
+- `allreduce_8gpu.log`
 - `allgather_4gpu.log`
 - `allgather_8gpu.log`
+- `allgather_exact_prefill.log`
+- `allgather_exact_decode.log`
 - `reduce_scatter_4gpu.log`
 - `reduce_scatter_8gpu.log`
+- `reduce_scatter_exact_prefill.log`
+- `reduce_scatter_exact_decode.log`

@@ -1,0 +1,54 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== ReduceScatter Exact Sizes (Decode) ====================
+2026:07:02-06:39:37:  630 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:39:37:  631 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:39:37:  629 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:39:37:  628 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:39:38:  628:[0] |CCL_WARN| topology recognition shows PCIe connection between devices. If this is not correct, you can disable topology recognition, with CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0. This will assume XeLinks across devices
+
+==========================================================================================
+  Reduce-Scatter Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=4  dtype=bfloat16  warmup=20  loop=100  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes (exact): 9 values specified
+  per-rank recv chunk = total / 4
+  Timing method B (barrier): post.cmd_start − pre.cmd_end
+==========================================================================================
+
+
+  -- reduce_scatter latency summary (C API / barrier) --
+
+  Size(in)          avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  8.00 KB            13.64      13.34      13.97       0.63         0.450
+  16.00 KB           12.28      12.01      12.56       0.55         1.001
+  32.00 KB           12.83      12.62      13.06       0.44         1.916
+  64.00 KB           12.82      12.58      13.08       0.50         3.833
+  112.00 KB          12.56      12.33      12.78       0.45         6.851
+  128.00 KB          12.30      12.11      12.46       0.36         7.990
+  224.00 KB          14.30      13.96      14.66       0.70        12.030
+  256.00 KB          15.40      15.04      15.79       0.75        12.765
+  512.00 KB          25.09      24.40      25.85       1.44        15.674
+

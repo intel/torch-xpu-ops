@@ -1,0 +1,65 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== AllReduce 8-GPU (Full Range) ====================
+2026:07:02-06:40:51:  632 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  633 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  635 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  634 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  631 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  629 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  630 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:51:  628 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:40:52:  628:[0] |CCL_WARN| topology recognition shows PCIe connection between devices. If this is not correct, you can disable topology recognition, with CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0. This will assume XeLinks across devices
+
+==========================================================================================
+  Allreduce Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=8  dtype=bfloat16  warmup=20  loop=100  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes: 2^12 .. 2^28 bf16 elements  (8.00 KB .. 512.00 MB)
+  Timing method B (barrier): post_barrier.cmd_start − pre_barrier.cmd_end
+==========================================================================================
+
+
+  -- allreduce latency summary (C API / barrier) --
+
+  Size              avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  8.00 KB            35.15      34.29      35.87       1.58         0.408
+  16.00 KB           34.09      33.30      34.86       1.56         0.841
+  32.00 KB           32.05      31.28      32.81       1.53         1.789
+  64.00 KB           30.44      29.60      31.16       1.56         3.768
+  128.00 KB          33.06      32.46      33.68       1.22         6.938
+  256.00 KB          34.23      33.80      34.71       0.91        13.401
+  512.00 KB          50.90      49.92      51.88       1.96        18.026
+  1.00 MB            96.66      94.85      98.54       3.69        18.985
+  2.00 MB           185.36     183.65     186.84       3.18        19.800
+  4.00 MB           362.11     360.56     363.37       2.81        20.270
+  8.00 MB           691.16     690.41     691.86       1.46        21.240
+  16.00 MB         1405.48    1400.24    1409.23       8.99        20.890
+  32.00 MB         2742.68    2737.66    2745.72       8.06        21.410
+  64.00 MB         5347.55    5342.75    5350.36       7.61        21.962
+  128.00 MB       10554.91   10550.07   10557.86       7.80        22.253
+  256.00 MB       21024.52   21019.64   21027.50       7.86        22.344
+  512.00 MB       42073.81   42068.12   42077.94       9.83        22.330
+

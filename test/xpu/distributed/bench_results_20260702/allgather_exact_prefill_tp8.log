@@ -1,0 +1,53 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== AllGather TP8 Exact Sizes (Prefill) ====================
+DeepSeek 4 Pro: 392 MB
+Qwen 3 235B: 224 MB
+2026:07:02-07:00:55:  630 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  628 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  634 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  635 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  629 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  631 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  633 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:56:  632 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:00:57:  628:[0] |CCL_WARN| topology recognition shows PCIe connection between devices. If this is not correct, you can disable topology recognition, with CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0. This will assume XeLinks across devices
+
+==========================================================================================
+  Allgather Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=8  dtype=bfloat16  warmup=10  loop=50  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes (exact): 2 values specified
+  per-rank send chunk = total / 8
+  Timing method B (barrier): post.cmd_start − pre.cmd_end
+==========================================================================================
+
+
+  -- allgather latency summary (C API / barrier) --
+
+  Size(out)         avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  224.00 MB        9177.40    9159.85    9185.44      25.59        22.394
+  392.00 MB       16070.41   16053.86   16081.01      27.15        22.380
+

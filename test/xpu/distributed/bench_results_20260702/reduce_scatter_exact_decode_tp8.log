@@ -1,0 +1,53 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== ReduceScatter TP8 Exact Sizes (Decode) ====================
+DeepSeek 4 Pro: 224 KB
+Qwen 3 235B: 64 KB
+2026:07:02-07:02:36:  636 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  633 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  635 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  629 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  632 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  631 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  634 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:36:  630 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-07:02:38:  629:[0] |CCL_WARN| topology recognition shows PCIe connection between devices. If this is not correct, you can disable topology recognition, with CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0. This will assume XeLinks across devices
+
+==========================================================================================
+  Reduce-Scatter Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=8  dtype=bfloat16  warmup=20  loop=100  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes (exact): 2 values specified
+  per-rank recv chunk = total / 8
+  Timing method B (barrier): post.cmd_start − pre.cmd_end
+==========================================================================================
+
+
+  -- reduce_scatter latency summary (C API / barrier) --
+
+  Size(in)          avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  64.00 KB           24.15      22.74      25.45       2.72         2.375
+  224.00 KB          26.09      25.58      26.57       0.99         7.694
+

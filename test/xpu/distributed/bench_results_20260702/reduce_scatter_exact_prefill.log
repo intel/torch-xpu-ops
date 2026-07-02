@@ -1,0 +1,54 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== ReduceScatter Exact Sizes (Prefill) ====================
+2026:07:02-06:22:05:  631 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:22:05:  630 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:22:05:  628 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:22:05:  629 |CCL_WARN| MPI was initialized externally, CCL-MPI specific environment is ignored
+2026:07:02-06:22:05:  628:[0] |CCL_WARN| topology recognition shows PCIe connection between devices. If this is not correct, you can disable topology recognition, with CCL_TOPO_FABRIC_VERTEX_CONNECTION_CHECK=0. This will assume XeLinks across devices
+
+==========================================================================================
+  Reduce-Scatter Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=4  dtype=bfloat16  warmup=10  loop=50  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes (exact): 9 values specified
+  per-rank recv chunk = total / 4
+  Timing method B (barrier): post.cmd_start − pre.cmd_end
+==========================================================================================
+
+
+  -- reduce_scatter latency summary (C API / barrier) --
+
+  Size(in)          avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  32.00 MB         1041.22    1023.32    1049.13      25.80        24.170
+  64.00 MB         1990.70    1989.67    1991.58       1.91        25.283
+  112.00 MB        3432.48    3431.68    3433.27       1.60        25.661
+  128.00 MB        3912.65    3911.82    3913.49       1.67        25.728
+  224.00 MB        6803.89    6802.65    6805.19       2.53        25.891
+  448.00 MB       13599.43   13598.44   13600.40       1.96        25.907
+  784.00 MB       23741.26   23739.95   23742.48       2.54        25.970
+  896.00 MB       27125.10   27123.65   27126.57       2.92        25.978
+  1.75 GB         54177.74   54176.46   54179.05       2.59        26.012
+
