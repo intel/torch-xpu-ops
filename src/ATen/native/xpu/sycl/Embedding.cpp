@@ -111,7 +111,7 @@ struct RenormKernelFunctor {
       auto x =
           static_cast<accscalar_t>(weights_[base_index + i * weights_stride1_]);
       if (norm_type_ == 1) {
-        v += std::abs(x);
+        v += sycl::fabs(x);
       } else if (norm_type_ == 2) {
         v += x * x;
       } else {

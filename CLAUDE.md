@@ -80,7 +80,6 @@ src/ATen/native/xpu/sycl/     # SYCL kernel implementations (.cpp/.h)
 src/ATen/native/nested/xpu/   # Nested tensor XPU implementations
 src/comm/                      # Shared utility headers
 src/xccl/                      # XCCL communication backend
-yaml/native/native_functions.yaml  # Op dispatch registration (PyTorch schema)
 test/xpu/                      # XPU device tests (pytest-based)
 test/regressions/              # Regression tests
 test/sycl/                     # SYCL C++ unit tests (CMake)
@@ -538,12 +537,21 @@ if __name__ == "__main__":
 
 ## YAML Op Registration
 
-Ops are registered in `yaml/native/native_functions.yaml` using PyTorch's schema:
+Ops are registered in `aten/src/ATen/native/native_functions.yaml` in the PyTorch repository, such as:
 ```yaml
-- func: add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
-  structured_delegate: add.out
+- func: all.out(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
   dispatch:
-    XPU: add_xpu
+    CPU, CUDA, MPS, XPU: all_out
+    MTIA: all_out_mtia
+  tags: reduction
+
+- func: baddbmm.dtype(Tensor self, Tensor batch1, Tensor batch2, ScalarType out_dtype, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  variants: function
+  dispatch:
+    CUDA: _baddbmm_dtype_cuda
+    XPU: _baddbmm_dtype_xpu
 ```
 
 XPU dispatch keys: `XPU`, `SparseXPU`, `SparseCsrXPU`, `NestedTensorXPU`.
