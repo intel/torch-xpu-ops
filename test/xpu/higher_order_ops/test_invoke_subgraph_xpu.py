@@ -639,7 +639,9 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(ref, res)
         self.assertEqual(x.grad, x_clone.grad)
 
-    @unittest.skipIf(not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION, "XPU flash attention not available")
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION, "XPU flash attention not available"
+    )
     def test_sdpa(self):
         @nested_compile_region
         def gn(q, k, v):
@@ -648,7 +650,9 @@ class GraphModule(torch.nn.Module):
             )
 
         def fn(q, k, v):
-            with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.FLASH_ATTENTION]):
+            with torch.nn.attention.sdpa_kernel(
+                [torch.nn.attention.SDPBackend.FLASH_ATTENTION]
+            ):
                 return gn(q, k, v)
 
         q = torch.randn(
