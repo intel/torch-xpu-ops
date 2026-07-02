@@ -8,10 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/native/Resize.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #else
-#include <ATen/native/Resize.h>
 #include <ATen/ops/_fft_c2c_native.h>
 #include <ATen/ops/_fft_c2r_native.h>
 #include <ATen/ops/_fft_r2c_native.h>
@@ -25,6 +25,12 @@ Tensor _fft_c2c_xpu(
     int64_t normalization,
     bool forward) {
   TORCH_CHECK(self.is_complex());
+  // ComplexHalf is not natively supported; promote to ComplexFloat first.
+  if (self.scalar_type() == ScalarType::ComplexHalf) {
+    return _fft_c2c_xpu(
+               self.to(ScalarType::ComplexFloat), dim, normalization, forward)
+        .to(ScalarType::ComplexHalf);
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl(self, dim, normalization, forward);
@@ -42,6 +48,14 @@ Tensor& _fft_c2c_xpu_out(
     bool forward,
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
+  // ComplexHalf is not natively supported; promote to ComplexFloat first.
+  if (self.scalar_type() == ScalarType::ComplexHalf) {
+    auto result = _fft_c2c_xpu(
+        self.to(ScalarType::ComplexFloat), dim, normalization, forward);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl_out(self, dim, normalization, forward, out);
@@ -60,6 +74,16 @@ Tensor _fft_c2r_xpu(
     int64_t normalization,
     int64_t last_dim_size) {
   TORCH_CHECK(self.is_complex());
+  // ComplexHalf is not natively supported; promote to ComplexFloat first.
+  // The output for a ComplexHalf input should be Half (real-valued).
+  if (self.scalar_type() == ScalarType::ComplexHalf) {
+    return _fft_c2r_xpu(
+               self.to(ScalarType::ComplexFloat),
+               dim,
+               normalization,
+               last_dim_size)
+        .to(c10::toRealValueType(ScalarType::ComplexHalf));
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2r_mkl(self, dim, normalization, last_dim_size);
@@ -77,6 +101,14 @@ Tensor& _fft_c2r_xpu_out(
     int64_t last_dim_size,
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
+  // ComplexHalf is not natively supported; promote to ComplexFloat first.
+  if (self.scalar_type() == ScalarType::ComplexHalf) {
+    auto result = _fft_c2r_xpu(
+        self.to(ScalarType::ComplexFloat), dim, normalization, last_dim_size);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2r_mkl_out(
@@ -96,6 +128,13 @@ Tensor _fft_r2c_xpu(
     int64_t normalization,
     bool onesided) {
   TORCH_CHECK(self.is_floating_point());
+  // Half (float16) is not natively supported; promote to float32 first.
+  // The output for a Half input should be ComplexHalf.
+  if (self.scalar_type() == ScalarType::Half) {
+    return _fft_r2c_xpu(
+               self.to(ScalarType::Float), dim, normalization, onesided)
+        .to(c10::toComplexType(ScalarType::Half));
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_r2c_mkl(self, dim, normalization, onesided);
@@ -113,6 +152,14 @@ Tensor& _fft_r2c_xpu_out(
     bool onesided,
     Tensor& out) {
   TORCH_CHECK(self.is_floating_point());
+  // Half (float16) is not natively supported; promote to float32 first.
+  if (self.scalar_type() == ScalarType::Half) {
+    auto result =
+        _fft_r2c_xpu(self.to(ScalarType::Float), dim, normalization, onesided);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
 
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_r2c_mkl_out(self, dim, normalization, onesided, out);
