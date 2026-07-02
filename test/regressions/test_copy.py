@@ -64,6 +64,13 @@ class TestSimpleCopy(TestCase):
         b_xpu = a_xpu.clone(memory_format=torch.channels_last)
         self.assertEqual(b_cpu, b_xpu.view(torch.uint8).to(cpu_device))
 
+    def test_copy_kernel_bcomplex32(self):
+        x = torch.tensor([1 + 2j, 3 + 4j, -5 - 6j], dtype=torch.bcomplex32)
+        x_xpu = x.to("xpu")
+        y_xpu = torch.empty_like(x_xpu)
+        y_xpu.copy_(x_xpu)
+        self.assertEqual(y_xpu, x_xpu)
+
 
 instantiate_device_type_tests(TestSimpleCopy, globals(), only_for="xpu", allow_xpu=True)
 
