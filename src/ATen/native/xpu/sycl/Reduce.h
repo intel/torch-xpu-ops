@@ -858,10 +858,10 @@ struct ReduceOp {
   }
 
   template <int output_vec_size, bool can_acc>
+    requires can_acc
   at::detail::Array<arg_t, output_vec_size> accumulate_in_output(
       at::detail::Array<out_scalar_t*, output_vec_size> out,
-      at::detail::Array<arg_t, output_vec_size> value,
-      typename std::enable_if<can_acc>::type* = nullptr) const {
+      at::detail::Array<arg_t, output_vec_size> value) const {
     at::detail::Array<arg_t, output_vec_size> ret;
 #pragma unroll(output_vec_size)
     for (int i = 0; i < output_vec_size; ++i) {
@@ -871,10 +871,8 @@ struct ReduceOp {
   }
 
   template <bool can_acc>
-  out_scalar_t get_accumulated_output(
-      out_scalar_t* out,
-      arg_t value,
-      typename std::enable_if<can_acc>::type* = nullptr) const {
+    requires can_acc
+  out_scalar_t get_accumulated_output(out_scalar_t* out, arg_t value) const {
     assert(!final_output);
     return (out_scalar_t)value;
   }
@@ -883,10 +881,10 @@ struct ReduceOp {
   // It's the version of `accumulate_in_output`
   // when accumulation in the output is not possible.
   template <int output_vec_size, bool can_acc>
+    requires(!can_acc)
   at::detail::Array<arg_t, output_vec_size> accumulate_in_output(
       at::detail::Array<out_scalar_t*, output_vec_size>,
-      at::detail::Array<arg_t, output_vec_size>,
-      typename std::enable_if<!can_acc>::type* = nullptr) const {
+      at::detail::Array<arg_t, output_vec_size>) const {
     assert(false);
     return arg_t{};
   }
@@ -895,10 +893,8 @@ struct ReduceOp {
   // it's the version of `get_accumulated_output`
   // when accumulation in the output is not possible.
   template <bool can_acc>
-  out_scalar_t get_accumulated_output(
-      out_scalar_t* out,
-      arg_t value,
-      typename std::enable_if<!can_acc>::type* = nullptr) const {
+    requires(!can_acc)
+  out_scalar_t get_accumulated_output(out_scalar_t* out, arg_t value) const {
     assert(false);
     return *out;
   }

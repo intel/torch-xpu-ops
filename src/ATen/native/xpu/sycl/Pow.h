@@ -38,12 +38,10 @@ static inline at::BFloat16 pow_(at::BFloat16 base, at::BFloat16 exp) {
 }
 // pow (floating, floating/int)
 template <typename Base_type, typename Exp_type>
-static inline typename std::enable_if<
-    std::is_floating_point<Base_type>::value &&
-        (std::is_same<Base_type, Exp_type>::value ||
-         std::is_same<Exp_type, int>::value),
-    Base_type>::type
-pow_(Base_type base, Exp_type exp) {
+  requires(
+      std::is_floating_point_v<Base_type> &&
+      (std::is_same_v<Base_type, Exp_type> || std::is_same_v<Exp_type, int>))
+static inline Base_type pow_(Base_type base, Exp_type exp) {
   if constexpr (std::is_same_v<Exp_type, int>) {
     return sycl::pown(base, exp);
   } else {
@@ -52,11 +50,9 @@ pow_(Base_type base, Exp_type exp) {
 }
 // pow (Otherwise)
 template <typename Base_type, typename Exp_type>
-static inline typename std::enable_if<
-    !std::is_same<Base_type, Exp_type>::value &&
-        !std::is_same<Exp_type, int>::value,
-    Base_type>::type
-pow_(Base_type base, Exp_type exp) {
+  requires(
+      !std::is_same_v<Base_type, Exp_type> && !std::is_same_v<Exp_type, int>)
+static inline Base_type pow_(Base_type base, Exp_type exp) {
   return static_cast<Base_type>(
       sycl::pow(static_cast<double>(base), static_cast<double>(exp)));
 }
@@ -78,9 +74,8 @@ static inline Base_type pow_(Base_type base, Exp_type exp) {
 #endif
 
 template <typename T>
-static inline std::enable_if_t<std::is_integral<T>::value, T> pow_(
-    T base,
-    T exp) {
+  requires std::is_integral_v<T>
+static inline T pow_(T base, T exp) {
   return at::native::powi(base, exp);
 }
 
