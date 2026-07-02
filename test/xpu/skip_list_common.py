@@ -13,16 +13,16 @@ skip_dict = {
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
-    "nn/test_embedding_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
     "nn/test_lazy_modules_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
-    "nn/test_module_hooks_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "nn/test_pooling_xpu.py": None,
-    "nn/test_pruning_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
