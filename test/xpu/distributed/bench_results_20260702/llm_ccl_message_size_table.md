@@ -30,18 +30,14 @@
 | Model | Assumption | TP | BS | seq | hidden | AG Size (OUT) | AG Time (ms) | RS Size (IN) | RS Time (ms) |
 |-------|------------|----|----|-----|--------|---------------|--------------|--------------|--------------|
 | DeepSeek 4 Flash | 4bit MoE, 8bit dense | 4 | 64 | 3584 | 4096 | **896 MB** | **25.27** | **1792 MB** | **54.18** |
-| DeepSeek 4 Pro | 4bit MoE, 8bit dense | 8 | 16 | 3584 | 7168 | **392 MB** | ~14.40 | **784 MB** | ~23.21 |
-| Qwen 3 235B | MXFP8, BF16 GQA | 4 | 16 | 3584 | 4096 | **224 MB** | ~8.06 | **448 MB** | ~17.23 |
-| Qwen 3 235B | BF16 | 4 | 4 | 3584 | 4096 | **112 MB** | ~4.04 | **112 MB** | ~4.35 |
-| Qwen 3 235B | BF16 | 8 | 8 | 3584 | 4096 | **224 MB** | ~9.15 | **224 MB** | ~10.16 |
-| Qwen 3 235B | MXFP4 MoE | 4 | 32 | 3584 | 4096 | **448 MB** | **12.65** | **896 MB** | **27.12** |
-| Hunyuan 3 | MXFP8, 8bit GQA | 2 | 2 | 4096 | 4096 | **32 MB** | ~0.93 | **64 MB** | ~1.99 |
+| DeepSeek 4 Pro | 4bit MoE, 8bit dense | 8 | 16 | 3584 | 7168 | **392 MB** | **11.08** | **784 MB** | **23.75** |
+| Qwen 3 235B | MXFP8, BF16 GQA | 4 | 16 | 3584 | 4096 | **224 MB** | **6.35** | **448 MB** | **13.60** |
+| Qwen 3 235B | BF16 | 4 | 4 | 3584 | 4096 | **112 MB** | **3.19** | **112 MB** | **3.43** |
+| Qwen 3 235B | BF16 | 8 | 8 | 3584 | 4096 | **224 MB** | **6.35** | **224 MB** | **6.81** |
+| Qwen 3 235B | MXFP4 MoE | 4 | 32 | 3584 | 4096 | **448 MB** | **12.65** | **896 MB** | **27.13** |
+| Hunyuan 3 | MXFP8, 8bit GQA | 2 | 2 | 4096 | 4096 | **32 MB** | **0.94** | **64 MB** | **1.99** |
 | Hunyuan 3 | MXFP8, 8bit GQA | 4 | 4 | 4096 | 4096 | **64 MB** | **1.84** | **128 MB** | **3.91** |
 | Hunyuan 3 | BF16 | 4 | 2 | 4096 | 4096 | **64 MB** | **1.84** | **64 MB** | **1.99** |
-
-**说明**: 
-- **粗体数值** = 精确尺寸测试结果
-- ~数值 = 从 2^n 尺寸插值估算
 
 ---
 
@@ -49,41 +45,61 @@
 
 | Model | Assumption | TP | BS | hidden | AG Size (OUT) | AG Latency (µs) | RS Size (IN) | RS Latency (µs) |
 |-------|------------|----|----|--------|---------------|-----------------|--------------|-----------------|
-| DeepSeek 4 Flash | 4bit MoE, 8bit dense | 4 | 64 | 4096 | **256 KB** | **14.82** | **512 KB** | **25.06** |
-| DeepSeek 4 Pro | 4bit MoE, 8bit dense | 8 | 16 | 7168 | **112 KB** | ~17.42 | **224 KB** | ~22.10 |
-| Qwen 3 235B | MXFP8, BF16 GQA | 4 | 16 | 4096 | **64 KB** | **10.33** | **128 KB** | **12.43** |
-| Qwen 3 235B | BF16 | 4 | 4 | 4096 | **32 KB** | **10.14** | **32 KB** | **14.20** |
-| Qwen 3 235B | BF16 | 8 | 8 | 4096 | **64 KB** | **16.74** | **64 KB** | **20.27** |
-| Qwen 3 235B | MXFP4 MoE | 4 | 32 | 4096 | **128 KB** | **10.19** | **256 KB** | **15.34** |
-| Hunyuan 3 | MXFP8, 8bit GQA | 2 | 2 | 4096 | **8 KB** | ~7.42 | **16 KB** | ~12.74 |
-| Hunyuan 3 | MXFP8, 8bit GQA | 4 | 4 | 4096 | **16 KB** | **10.23** | **32 KB** | **14.20** |
-| Hunyuan 3 | BF16 | 4 | 2 | 4096 | **16 KB** | **10.23** | **16 KB** | **12.74** |
+| DeepSeek 4 Flash | 4bit MoE, 8bit dense | 4 | 64 | 4096 | **256 KB** | **14.84** | **512 KB** | **25.09** |
+| DeepSeek 4 Pro | 4bit MoE, 8bit dense | 8 | 16 | 7168 | **112 KB** | **11.52** | **224 KB** | **16.23** |
+| Qwen 3 235B | MXFP8, BF16 GQA | 4 | 16 | 4096 | **64 KB** | **10.54** | **128 KB** | **12.38** |
+| Qwen 3 235B | BF16 | 4 | 4 | 4096 | **32 KB** | **9.97** | **32 KB** | **12.92** |
+| Qwen 3 235B | BF16 | 8 | 8 | 4096 | **64 KB** | **10.54** | **64 KB** | **12.81** |
+| Qwen 3 235B | MXFP4 MoE | 4 | 32 | 4096 | **128 KB** | **10.19** | **256 KB** | **15.37** |
+| Hunyuan 3 | MXFP8, 8bit GQA | 2 | 2 | 4096 | **8 KB** | **7.24** | **16 KB** | **12.53** |
+| Hunyuan 3 | MXFP8, 8bit GQA | 4 | 4 | 4096 | **16 KB** | **10.84** | **32 KB** | **12.92** |
+| Hunyuan 3 | BF16 | 4 | 2 | 4096 | **16 KB** | **10.84** | **16 KB** | **12.53** |
+
+**所有数值均为精确尺寸实测结果**
 
 ---
 
 ## 精确尺寸 Benchmark 结果 (TP4, GPU 4-7)
 
-### AllGather
+### AllGather Prefill
 
 | Size | Time (ms) | Bandwidth (GB/s) |
 |------|-----------|------------------|
+| 32 MB | 0.94 | 26.73 |
 | 64 MB | 1.84 | 27.35 |
-| 128 MB | 3.64 | 27.63 |
-| 256 MB | 7.25 | 27.78 |
-| 384 MB | 10.85 | 27.83 |
+| 112 MB | 3.19 | 27.60 |
+| 224 MB | 6.35 | 27.76 |
+| 392 MB | 11.08 | 27.83 |
 | 448 MB | 12.65 | 27.84 |
-| 896 MB | **25.27** | **27.89** |
+| 896 MB | **25.27** | **27.88** |
 
-### ReduceScatter
+### ReduceScatter Prefill
 
 | Size | Time (ms) | Bandwidth (GB/s) |
 |------|-----------|------------------|
-| 64 MB | 1.99 | 25.31 |
+| 32 MB | 1.03 | 24.37 |
+| 64 MB | 1.99 | 25.30 |
+| 112 MB | 3.43 | 25.66 |
 | 128 MB | 3.91 | 25.72 |
-| 256 MB | 7.76 | 25.94 |
-| 768 MB | 23.21 | 26.02 |
-| 896 MB | 27.12 | 25.98 |
+| 224 MB | 6.81 | 25.88 |
+| 448 MB | 13.60 | 25.91 |
+| 784 MB | 23.75 | 25.96 |
+| 896 MB | 27.13 | 25.97 |
 | 1792 MB | **54.18** | **26.01** |
+
+### Decode (精确尺寸)
+
+| Size | AG (µs) | RS (µs) |
+|------|---------|---------|
+| 8 KB | 7.24 | 13.32 |
+| 16 KB | 10.84 | 12.53 |
+| 32 KB | 9.97 | 12.92 |
+| 64 KB | 10.54 | 12.81 |
+| 112 KB | **11.52** | **17.15** |
+| 128 KB | 10.19 | 12.38 |
+| 224 KB | **14.75** | **16.23** |
+| 256 KB | 14.84 | 15.37 |
+| 512 KB | 24.66 | 25.09 |
 
 ---
 
@@ -95,17 +111,13 @@ source /opt/intel/oneapi/setvars.sh --force
 export ZE_AFFINITY_MASK=4,5,6,7  # 使用 GPU 4-7 (避免与其他用户冲突)
 export CCL_ATL_TRANSPORT=mpi
 
-# Decode 阶段 - 小消息延迟测试
-mpirun -n 4 ./bench_ccl_allgather_latency_c_api --min 12 --max 18 --warmup 20 --loop 100
-mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --min 12 --max 18 --warmup 20 --loop 100
+# Decode 阶段 - 精确尺寸测试
+mpirun -n 4 ./bench_ccl_allgather_latency_c_api --sizes-kb 8,16,32,64,112,128,224,256,512 --warmup 20 --loop 100
+mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --sizes-kb 8,16,32,64,112,128,224,256,512 --warmup 20 --loop 100
 
-# Prefill 阶段 - 精确尺寸测试 (推荐)
-mpirun -n 4 ./bench_ccl_allgather_latency_c_api --sizes-mb 64,128,256,384,448,896 --warmup 10 --loop 50
-mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --sizes-mb 64,128,256,768,896,1792 --warmup 10 --loop 50
-
-# 或者使用 2^n 尺寸范围
-mpirun -n 4 ./bench_ccl_allgather_latency_c_api --min 24 --max 29 --warmup 10 --loop 50
-mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --min 24 --max 29 --warmup 10 --loop 50
+# Prefill 阶段 - 精确尺寸测试
+mpirun -n 4 ./bench_ccl_allgather_latency_c_api --sizes-mb 32,64,112,224,392,448,896 --warmup 10 --loop 50
+mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --sizes-mb 32,64,112,128,224,448,784,896,1792 --warmup 10 --loop 50
 ```
 
 ### 精确尺寸参数说明
@@ -113,7 +125,7 @@ mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --min 24 --max 29 --warmup 
 | 参数 | 说明 | 示例 |
 |------|------|------|
 | `--sizes-mb` | 以 MB 为单位的精确尺寸列表 | `--sizes-mb 64,128,256,896` |
-| `--sizes-kb` | 以 KB 为单位的精确尺寸列表 | `--sizes-kb 256,512,1024` |
+| `--sizes-kb` | 以 KB 为单位的精确尺寸列表 | `--sizes-kb 112,224,256,512` |
 | `--sizes` | 以 bf16 元素数量为单位 | `--sizes 33554432,67108864` |
 | `--min/--max` | 2^n 尺寸范围 (log2) | `--min 24 --max 28` |
 
@@ -123,5 +135,5 @@ mpirun -n 4 ./bench_ccl_reduce_scatter_latency_c_api --min 24 --max 29 --warmup 
 
 | Collective | 4-GPU | 8-GPU |
 |------------|------:|------:|
-| AllGather | 27.86 GB/s | 22.40 GB/s |
-| ReduceScatter | 25.95 GB/s | 21.77 GB/s |
+| AllGather | 27.88 GB/s | 22.40 GB/s |
+| ReduceScatter | 26.01 GB/s | 21.77 GB/s |
