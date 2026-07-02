@@ -65,8 +65,6 @@ skip_dict = {
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
         "test_profiler_emit_nvtx_xpu",
-        # kineto profiler propagation via JIT fork/wait is not supported on XPU
-        "test_profiler_propagation",
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
         # CUDA-specific bogus autograd registration tests, not applicable to XPU
