@@ -15,6 +15,8 @@ from contextlib import nullcontext
 import torch
 import torch.distributed as dist
 
+import env
+
 from ring_collectives import (
     _HAS_RING_ALLGATHER,
     build_ring_allgather_resources,
@@ -44,10 +46,9 @@ def project_time_ms(bytes_count, bw_gbps):
 
 
 def init_distributed():
-    os.environ.setdefault("RANK", str(os.environ.get("PMI_RANK", 0)))
-    os.environ.setdefault("WORLD_SIZE", str(os.environ.get("PMI_SIZE", 1)))
-    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
-    os.environ.setdefault("MASTER_PORT", "29801")
+    env.setup_distributed_env(
+        master_addr="127.0.0.1", master_port="29801", overwrite=False
+    )
     if not dist.is_initialized():
         dist.init_process_group(backend="xccl")
     rank = dist.get_rank()

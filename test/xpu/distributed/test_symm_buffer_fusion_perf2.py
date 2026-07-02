@@ -19,11 +19,13 @@ from contextlib import contextmanager
 import torch
 import torch.distributed as dist
 
+import env
+
 import symm_buffer as symm_buffer_mod
 from allgather_local_permute_fusion import _HAS_LOCAL_PERMUTE_KERNEL, compute_scatter_idx
 from unpermute_reducescatter_fusion import _HAS_LOCAL_UNPERMUTE_KERNEL
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 2048))
+TOKENS_PER_RANK = env.tokens_per_rank()
 HIDDEN_SIZE = 2048
 TOPK = 8
 NUM_EXPERTS = 128
@@ -32,10 +34,7 @@ WARMUP = 20
 
 
 def init_distributed():
-    os.environ["RANK"] = str(os.environ.get("PMI_RANK", 0))
-    os.environ["WORLD_SIZE"] = str(os.environ.get("PMI_SIZE", 1))
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29525"
+    env.setup_distributed_env(master_addr="localhost", master_port="29525")
     if not dist.is_initialized():
         dist.init_process_group(backend="xccl")
     rank = dist.get_rank()

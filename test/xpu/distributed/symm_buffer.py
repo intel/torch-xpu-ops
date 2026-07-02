@@ -20,9 +20,11 @@ import torch
 import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
 
+import env
+
 # Debug logging controlled by SYMM_BUFFER_DEBUG environment variable.
 # Set SYMM_BUFFER_DEBUG=1 to enable detailed input/output logging.
-_SYMM_BUFFER_DEBUG = os.environ.get("SYMM_BUFFER_DEBUG", "0") == "1"
+_SYMM_BUFFER_DEBUG = env.symm_buffer_debug()
 _logger = logging.getLogger("SymmBuffer")
 if _SYMM_BUFFER_DEBUG and not _logger.handlers:
     _handler = logging.StreamHandler()
@@ -66,6 +68,9 @@ if os.path.exists(_NOTIFY_LIB_PATH):
     except Exception:
         pass
 
+_HAS_COMPUTE_ABS_SCATTER_IDX = hasattr(torch.ops.symm_mem, "compute_abs_scatter_idx")
+_HAS_NOTIFY_DISPATCH_V2_ABS = hasattr(torch.ops.symm_mem, "notify_dispatch_v2_abs")
+
 # Ring (single-kernel, pipelined) fused collectives — native op availability.
 _RING_LIB_NAMES = (
     "libring_allgather_permute.so",
@@ -94,10 +99,17 @@ _ring_iter_counters: dict = {}
 # allgather_local_permute_fusion / unpermute_reducescatter_fusion APIs use the
 # pipelined single-kernel ring collectives; set FUSION_RING=0 to use the
 # notify_dispatch + allgather_permute / staged-unpermute implementation.
-_FUSION_RING = os.environ.get("FUSION_RING", "1") == "1"
+_FUSION_RING = env.fusion_ring()
 # When FUSION_RING_PUSH=1, the ring dispatch uses the PUSH kernel (posted writes
-# to the right peer interleaved with permute) instead of the default PULL kernel.
-_FUSION_RING_PUSH = os.environ.get("FUSION_RING_PUSH", "0") == "1"
+# to the right peer interleaved with permute) instead of the PULL kernel.
+# PUSH (posted writes) is faster at all measured scales (ws=4: ~0.78 ms vs
+# ~0.88 ms PULL; see RingAllgatherPermute.cpp / benchmark notes), so default to
+# PUSH whenever the native op is available.  Override explicitly with
+# FUSION_RING_PUSH=1 / =0.
+_HAS_RING_ALLGATHER_PERMUTE_PUSH = hasattr(
+    torch.ops.symm_mem, "ring_allgather_permute_push"
+)
+_FUSION_RING_PUSH = env.fusion_ring_push() and _HAS_RING_ALLGATHER_PERMUTE_PUSH
 
 
 @dataclass
@@ -214,6 +226,9 @@ class SymmBuffer:
         )
         self._global_topk_weights_buf = torch.empty(
             num_tokens_max, topk, device=device, dtype=torch.float32,
+        )
+        self._abs_scatter_idx_buf = torch.empty(
+            num_tokens_max, topk, device=device, dtype=torch.int32,
         )
 
         # --- notify_dispatch pre-allocations (topk in shared workspace) ---
@@ -527,6 +542,40 @@ class SymmBuffer:
         permuted_scale[flat_dst[valid].long()] = token_scale[valid]
         return permuted_scale
 
+    def _compute_abs_scatter_idx(
+        self,
+        global_topk_idx: torch.Tensor,
+        scatter_idx: torch.Tensor,
+        rows_per_expert: torch.Tensor,
+        num_experts: int,
+        num_tokens: int,
+        topk: int,
+    ) -> torch.Tensor:
+        """Convert expert-relative scatter_idx to absolute expert-sorted rows.
+
+        Uses the fused ``compute_abs_scatter_idx`` kernel (single launch) when
+        available, otherwise falls back to the host tensor-op sequence.
+        """
+        if _HAS_COMPUTE_ABS_SCATTER_IDX:
+            abs_scatter_idx = self._abs_scatter_idx_buf[:num_tokens, :topk]
+            torch.ops.symm_mem.compute_abs_scatter_idx(
+                global_topk_idx,
+                scatter_idx,
+                rows_per_expert[:num_experts],
+                abs_scatter_idx,
+                num_experts,
+            )
+            return abs_scatter_idx
+
+        expert_cumsum = torch.zeros(
+            num_experts, device=scatter_idx.device, dtype=torch.int32
+        )
+        expert_cumsum[1:] = rows_per_expert[:num_experts][:-1]
+        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
+        flat_expert = global_topk_idx.reshape(-1)
+        flat_rel = scatter_idx.reshape(-1)
+        return (expert_cumsum[flat_expert] + flat_rel).reshape(num_tokens, topk)
+
     # ------------------------------------------------------------------ #
     #  Ring implementation                                                 #
     # ------------------------------------------------------------------ #
@@ -567,34 +616,65 @@ class SymmBuffer:
             self._global_scale_buf[:num_tokens] if scale is not None else None
         )
 
-        torch.ops.symm_mem.notify_dispatch_v2(
-            self._topk_rank_ptrs,
-            global_topk_idx,
-            scatter_idx,
-            rows_per_expert,
-            num_tokens_per_rank,
-            topk,
-            self.num_topk,
-            num_experts,
-            self.rank_idx,
-            self.num_ranks,
-            self._weights_rank_ptrs,
-            global_topk_weights,
-            scale_rank_ptrs,
-            global_scale,
-        )
-
-        # Compute absolute scatter_idx from expert-relative positions.
-        expert_cumsum = torch.zeros(
-            num_experts, device=hidden_shard.device, dtype=torch.int32
-        )
-        expert_cumsum[1:] = rows_per_expert[:-1]
-        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
-        flat_expert = global_topk_idx.reshape(-1)
-        flat_rel = scatter_idx.reshape(-1)
-        abs_scatter_idx = (
-            expert_cumsum[flat_expert] + flat_rel
-        ).reshape(num_tokens, topk)
+        if scale is not None:
+            torch.ops.symm_mem.notify_dispatch_with_scale(
+                self._topk_rank_ptrs,
+                global_topk_idx,
+                scatter_idx,
+                rows_per_expert,
+                num_tokens_per_rank,
+                topk,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+                scale_rank_ptrs,
+                global_scale,
+                self._weights_rank_ptrs,
+                global_topk_weights,
+            )
+            abs_scatter_idx = self._compute_abs_scatter_idx(
+                global_topk_idx, scatter_idx, rows_per_expert,
+                num_experts, num_tokens, topk,
+            )
+        elif _HAS_NOTIFY_DISPATCH_V2_ABS:
+            # Fused: notify_dispatch_v2 + absolute-scatter-idx conversion in a
+            # single op call (one Python dispatch, dependent kernels chained).
+            abs_scatter_idx = self._abs_scatter_idx_buf[:num_tokens, :topk]
+            torch.ops.symm_mem.notify_dispatch_v2_abs(
+                self._topk_rank_ptrs,
+                global_topk_idx,
+                scatter_idx,
+                rows_per_expert,
+                abs_scatter_idx,
+                num_tokens_per_rank,
+                topk,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+                self._weights_rank_ptrs,
+                global_topk_weights,
+            )
+        else:
+            torch.ops.symm_mem.notify_dispatch_v2(
+                self._topk_rank_ptrs,
+                global_topk_idx,
+                scatter_idx,
+                rows_per_expert,
+                num_tokens_per_rank,
+                topk,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+                self._weights_rank_ptrs,
+                global_topk_weights,
+            )
+            abs_scatter_idx = self._compute_abs_scatter_idx(
+                global_topk_idx, scatter_idx, rows_per_expert,
+                num_experts, num_tokens, topk,
+            )
 
         iteration = self._next_ring_iter()
         actual_data_numel = num_tokens_per_rank * self.hidden * self.num_ranks
@@ -693,34 +773,44 @@ class SymmBuffer:
             self._global_scale_buf[:num_tokens] if scale is not None else None
         )
 
-        torch.ops.symm_mem.notify_dispatch_v2(
-            self._topk_rank_ptrs,
-            global_topk_idx_buf,
-            scatter_idx,
-            rows_per_expert_buf,
-            num_tokens_per_rank,
-            topk,
-            self.num_topk,
-            num_experts,
-            self.rank_idx,
-            self.num_ranks,
-            self._weights_rank_ptrs,
-            global_topk_weights_buf,
-            scale_rank_ptrs,
-            global_scale,
-        )
+        if scale is not None:
+            torch.ops.symm_mem.notify_dispatch_with_scale(
+                self._topk_rank_ptrs,
+                global_topk_idx_buf,
+                scatter_idx,
+                rows_per_expert_buf,
+                num_tokens_per_rank,
+                topk,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+                scale_rank_ptrs,
+                global_scale,
+                self._weights_rank_ptrs,
+                global_topk_weights_buf,
+            )
+        else:
+            torch.ops.symm_mem.notify_dispatch_v2(
+                self._topk_rank_ptrs,
+                global_topk_idx_buf,
+                scatter_idx,
+                rows_per_expert_buf,
+                num_tokens_per_rank,
+                topk,
+                self.num_topk,
+                num_experts,
+                self.rank_idx,
+                self.num_ranks,
+                self._weights_rank_ptrs,
+                global_topk_weights_buf,
+            )
 
         # Absolute scatter_idx from expert-relative positions.
-        expert_cumsum = torch.zeros(
-            num_experts, device=hidden_shard.device, dtype=torch.int32
+        abs_scatter_idx = self._compute_abs_scatter_idx(
+            global_topk_idx_buf, scatter_idx, rows_per_expert_buf,
+            num_experts, num_tokens, topk,
         )
-        expert_cumsum[1:] = rows_per_expert_buf[:-1]
-        expert_cumsum = expert_cumsum.cumsum(0).to(torch.int32)
-        flat_expert = global_topk_idx_buf.reshape(-1)
-        flat_rel = scatter_idx.reshape(-1)
-        abs_scatter_idx = (
-            expert_cumsum[flat_expert] + flat_rel
-        ).reshape(num_tokens, topk)
 
         torch.ops.symm_mem.allgather_permute(
             self._allgather_permute_rank_buffers_ptr,

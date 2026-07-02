@@ -229,8 +229,6 @@ struct NotifyDispatchV2Kernel : __SYCL_KER_CONFIG_CONVENTION__ {
   int64_t total_pairs;
   const int64_t* weights_rank_ptrs;      // nullable
   float* global_topk_weights_out;        // nullable
-  const int64_t* scale_rank_ptrs;        // nullable: per-rank [num_tokens_per_rank] f32
-  float* global_scale_out;               // nullable: [num_tokens] gathered per-token scale
 
   // SLM layout: [0..num_experts) = histogram/counter
   //             [MAX_EXPERTS..2*MAX_EXPERTS) = reserved base offset
@@ -288,10 +286,113 @@ struct NotifyDispatchV2Kernel : __SYCL_KER_CONFIG_CONVENTION__ {
         global_topk_weights_out[my_out_idx] =
             src_weights[src_token * topk_storage_stride + k];
       }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    // Phase 3: Reserve chunk from global rows_per_expert
+    for (int32_t e = lid; e < num_experts; e += lsize) {
+      const int32_t count = slm[e];
+      if (count > 0) {
+        sycl::atomic_ref<int32_t, sycl::memory_order::relaxed,
+                         sycl::memory_scope::device>
+            gref(rows_per_expert[e]);
+        slm[MAX_EXPERTS + e] = gref.fetch_add(count);
+      } else {
+        slm[MAX_EXPERTS + e] = 0;
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    // Phase 4: Fix up scatter_idx with global base offset
+    if (my_expert >= 0 && my_expert < num_experts) {
+      scatter_idx[my_out_idx] += slm[MAX_EXPERTS + my_expert];
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// WithScale Kernel: identical to NotifyDispatchV2Kernel but additionally
+// gathers a per-token scale (FP8 scenario) from symmetric memory.
+//
+// Kept as a separate kernel so that the scale-free path (e.g. BF16) does not
+// pay for the extra scale branch / registers and avoids a performance
+// regression on notify_dispatch_v2.
+// ---------------------------------------------------------------------------
+struct NotifyDispatchWithScaleKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  const int64_t* topk_rank_ptrs;
+  int32_t* global_topk_idx;
+  int32_t* scatter_idx;
+  int32_t* rows_per_expert;      // [num_experts], zero-initialized by caller
+  int32_t num_tokens_per_rank;
+  int32_t topk;
+  int32_t topk_storage_stride;
+  int32_t num_experts;
+  int32_t world_size;
+  int64_t total_pairs;
+  const int64_t* weights_rank_ptrs;      // nullable
+  float* global_topk_weights_out;        // nullable
+  const int64_t* scale_rank_ptrs;        // per-rank [num_tokens_per_rank] f32
+  float* global_scale_out;               // [num_tokens] gathered per-token scale
+
+  // SLM layout: [0..num_experts) = histogram/counter
+  //             [MAX_EXPERTS..2*MAX_EXPERTS) = reserved base offset
+  sycl::local_accessor<int32_t, 1> slm;
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(2 * MAX_EXPERTS, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+    const int64_t wg_start =
+        static_cast<int64_t>(item.get_group(0)) * lsize;
+    const int64_t wg_end =
+        (wg_start + lsize < total_pairs) ? wg_start + lsize : total_pairs;
+
+    // Phase 1: Zero SLM histogram
+    for (int32_t e = lid; e < num_experts; e += lsize)
+      slm[e] = 0;
+    item.barrier(sycl::access::fence_space::local_space);
+
+    // Phase 2: Count + assign local offset + write global_topk_idx/weights.
+    int32_t my_expert = -1;
+    int32_t my_out_idx = -1;
+    const int64_t my_idx = wg_start + lid;
+    if (my_idx < wg_end) {
+      const int32_t token_idx = static_cast<int32_t>(my_idx / topk);
+      const int32_t k = static_cast<int32_t>(my_idx % topk);
+      const int32_t src_rank = token_idx / num_tokens_per_rank;
+      const int32_t src_token = token_idx % num_tokens_per_rank;
+      my_out_idx = token_idx * topk + k;
+
+      const int32_t* src_topk =
+          reinterpret_cast<const int32_t*>(topk_rank_ptrs[src_rank]);
+      const int32_t expert = src_topk[src_token * topk_storage_stride + k];
+      my_expert = expert;
+      global_topk_idx[my_out_idx] = expert;
+
+      if (expert >= 0 && expert < num_experts) {
+        sycl::atomic_ref<int32_t, sycl::memory_order::relaxed,
+                         sycl::memory_scope::work_group,
+                         sycl::access::address_space::local_space>
+            ref(slm[expert]);
+        scatter_idx[my_out_idx] = ref.fetch_add(1);  // local offset within WG
+      } else {
+        scatter_idx[my_out_idx] = -1;
+      }
+
+      // Gather weights from symm_mem
+      if (weights_rank_ptrs != nullptr) {
+        const float* src_weights =
+            reinterpret_cast<const float*>(weights_rank_ptrs[src_rank]);
+        global_topk_weights_out[my_out_idx] =
+            src_weights[src_token * topk_storage_stride + k];
+      }
 
       // Gather per-token scale from symm_mem.  The scale is one value per token
       // (not per top-k slot), so only the k==0 lane writes it.
-      if (scale_rank_ptrs != nullptr && k == 0) {
+      if (k == 0) {
         const float* src_scale =
             reinterpret_cast<const float*>(scale_rank_ptrs[src_rank]);
         global_scale_out[token_idx] = src_scale[src_token];
@@ -316,6 +417,55 @@ struct NotifyDispatchV2Kernel : __SYCL_KER_CONFIG_CONVENTION__ {
     // Phase 4: Fix up scatter_idx with global base offset
     if (my_expert >= 0 && my_expert < num_experts) {
       scatter_idx[my_out_idx] += slm[MAX_EXPERTS + my_expert];
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// AbsScatterIdx Kernel: convert expert-relative scatter_idx into absolute
+// expert-sorted row indices in a single pass.
+//
+// Replaces the multi-op host sequence (zeros + shift + cumsum + gather + add)
+// with one kernel launch.  Each work-group loads rows_per_expert into SLM and
+// computes its exclusive prefix sum (expert base offsets), then every thread
+// emits abs = base[expert] + relative for its (token, k) slot.
+// ---------------------------------------------------------------------------
+struct AbsScatterIdxKernel : __SYCL_KER_CONFIG_CONVENTION__ {
+  const int32_t* global_topk_idx;   // [total_pairs] expert ids
+  const int32_t* scatter_idx_rel;   // [total_pairs] expert-relative offsets
+  const int32_t* rows_per_expert;   // [num_experts]
+  int32_t* abs_scatter_idx;         // [total_pairs] output
+  int32_t num_experts;
+  int64_t total_pairs;
+
+  sycl::local_accessor<int32_t, 1> slm;  // [num_experts] exclusive prefix sum
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm = sycl::local_accessor<int32_t, 1>(MAX_EXPERTS, cgh);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+
+    // Compute exclusive prefix sum of rows_per_expert into SLM (thread 0).
+    // num_experts <= MAX_EXPERTS (512), so a serial scan is cheap and avoids
+    // a barrier-heavy parallel scan.
+    if (lid == 0) {
+      int32_t acc = 0;
+      for (int32_t e = 0; e < num_experts; ++e) {
+        slm[e] = acc;
+        acc += rows_per_expert[e];
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+
+    const int64_t idx =
+        static_cast<int64_t>(item.get_group(0)) * item.get_local_range(0) + lid;
+    if (idx < total_pairs) {
+      const int32_t e = global_topk_idx[idx];
+      const int32_t rel = scatter_idx_rel[idx];
+      abs_scatter_idx[idx] =
+          (e >= 0 && e < num_experts) ? (slm[e] + rel) : rel;
     }
   }
 };
@@ -503,9 +653,7 @@ at::Tensor notify_dispatch_v2(
     int64_t rank,
     int64_t world_size,
     const std::optional<at::Tensor>& weights_rank_ptrs,
-    const std::optional<at::Tensor>& global_topk_weights,
-    const std::optional<at::Tensor>& scale_rank_ptrs,
-    const std::optional<at::Tensor>& global_scale) {
+    const std::optional<at::Tensor>& global_topk_weights) {
   TORCH_CHECK(
       topk_rank_ptrs.dim() == 1 && topk_rank_ptrs.size(0) == world_size,
       "notify_dispatch_v2: topk_rank_ptrs must be 1D with size == world_size");
@@ -604,33 +752,166 @@ at::Tensor notify_dispatch_v2(
     w_out_ptr = global_topk_weights->data_ptr<float>();
   }
 
-  // Extract optional per-token scale pointers
-  const int64_t* s_rank_ptrs = nullptr;
-  float* s_out_ptr = nullptr;
-  if (scale_rank_ptrs.has_value() && global_scale.has_value()) {
-    TORCH_CHECK(
-        scale_rank_ptrs->dim() == 1 && scale_rank_ptrs->size(0) == world_size,
-        "notify_dispatch_v2: scale_rank_ptrs must be 1D with size == world_size");
-    TORCH_CHECK(
-        scale_rank_ptrs->scalar_type() == at::kLong,
-        "notify_dispatch_v2: scale_rank_ptrs must be int64");
-    TORCH_CHECK(
-        global_scale->dim() == 1 && global_scale->size(0) == num_tokens,
-        "notify_dispatch_v2: global_scale must be 1D with size == num_tokens");
-    TORCH_CHECK(
-        global_scale->scalar_type() == at::kFloat,
-        "notify_dispatch_v2: global_scale must be float32");
-    TORCH_CHECK(
-        global_scale->is_contiguous(),
-        "notify_dispatch_v2: global_scale must be contiguous");
-    s_rank_ptrs = scale_rank_ptrs->data_ptr<int64_t>();
-    s_out_ptr = global_scale->data_ptr<float>();
-  }
-
   // Single multi-WG kernel
   const int64_t num_wgs = (total_pairs + WG_SIZE - 1) / WG_SIZE;
   const int64_t global_range = num_wgs * WG_SIZE;
   auto kfn = NotifyDispatchV2Kernel{
+      {},
+      topk_rank_ptrs.data_ptr<int64_t>(),
+      global_topk_idx.data_ptr<int32_t>(),
+      scatter_idx.data_ptr<int32_t>(),
+      rows_per_expert.data_ptr<int32_t>(),
+      static_cast<int32_t>(num_tokens_per_rank),
+      static_cast<int32_t>(topk),
+      static_cast<int32_t>(topk_storage_stride),
+      static_cast<int32_t>(num_experts),
+      static_cast<int32_t>(world_size),
+      total_pairs,
+      w_rank_ptrs,
+      w_out_ptr,
+      {}};
+  sycl_kernel_submit(
+      sycl::range<1>(global_range), sycl::range<1>(WG_SIZE), queue, kfn);
+
+  return scatter_idx;
+}
+
+at::Tensor notify_dispatch_with_scale(
+    const at::Tensor& topk_rank_ptrs,
+    at::Tensor global_topk_idx,
+    at::Tensor scatter_idx,
+    at::Tensor rows_per_expert,
+    int64_t num_tokens_per_rank,
+    int64_t topk,
+    int64_t topk_storage_stride,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size,
+    const at::Tensor& scale_rank_ptrs,
+    at::Tensor global_scale,
+    const std::optional<at::Tensor>& weights_rank_ptrs,
+    const std::optional<at::Tensor>& global_topk_weights) {
+  TORCH_CHECK(
+      topk_rank_ptrs.dim() == 1 && topk_rank_ptrs.size(0) == world_size,
+      "notify_dispatch_with_scale: topk_rank_ptrs must be 1D with size == world_size");
+  TORCH_CHECK(
+      topk_rank_ptrs.scalar_type() == at::kLong,
+      "notify_dispatch_with_scale: topk_rank_ptrs must be int64");
+  TORCH_CHECK(
+      global_topk_idx.dim() == 2,
+      "notify_dispatch_with_scale: global_topk_idx must be 2D");
+  TORCH_CHECK(
+      global_topk_idx.scalar_type() == at::kInt,
+      "notify_dispatch_with_scale: global_topk_idx must be int32");
+  TORCH_CHECK(
+      global_topk_idx.is_contiguous(),
+      "notify_dispatch_with_scale: global_topk_idx must be contiguous");
+  TORCH_CHECK(
+      scatter_idx.dim() == 2,
+      "notify_dispatch_with_scale: scatter_idx must be 2D");
+  TORCH_CHECK(
+      scatter_idx.scalar_type() == at::kInt,
+      "notify_dispatch_with_scale: scatter_idx must be int32");
+  TORCH_CHECK(
+      scatter_idx.is_contiguous(),
+      "notify_dispatch_with_scale: scatter_idx must be contiguous");
+  TORCH_CHECK(
+      rows_per_expert.dim() == 1 && rows_per_expert.size(0) == num_experts,
+      "notify_dispatch_with_scale: rows_per_expert must be 1D with size == num_experts");
+  TORCH_CHECK(
+      rows_per_expert.scalar_type() == at::kInt,
+      "notify_dispatch_with_scale: rows_per_expert must be int32");
+  TORCH_CHECK(
+      rank >= 0 && rank < world_size,
+      "notify_dispatch_with_scale: rank must be in [0, world_size)");
+  TORCH_CHECK(
+      num_tokens_per_rank >= 0,
+      "notify_dispatch_with_scale: num_tokens_per_rank must be >= 0");
+  TORCH_CHECK(
+      topk >= 0,
+      "notify_dispatch_with_scale: topk must be >= 0");
+  TORCH_CHECK(
+      topk_storage_stride >= topk,
+      "notify_dispatch_with_scale: topk_storage_stride must be >= topk");
+  TORCH_CHECK(
+      num_experts > 0 && num_experts <= MAX_EXPERTS,
+      "notify_dispatch_with_scale: num_experts must be in (0, ", MAX_EXPERTS, "]");
+
+  const int64_t num_tokens = num_tokens_per_rank * world_size;
+  TORCH_CHECK(
+      global_topk_idx.size(0) == num_tokens && global_topk_idx.size(1) == topk,
+      "notify_dispatch_with_scale: global_topk_idx shape mismatch");
+  TORCH_CHECK(
+      scatter_idx.size(0) == num_tokens && scatter_idx.size(1) == topk,
+      "notify_dispatch_with_scale: scatter_idx shape mismatch");
+
+  if (num_tokens == 0 || topk == 0) {
+    global_topk_idx.zero_();
+    scatter_idx.zero_();
+    rows_per_expert.zero_();
+    return scatter_idx;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, scatter_idx.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  // Zero rows_per_expert (used as global atomic counter)
+  queue.memset(rows_per_expert.data_ptr<int32_t>(), 0,
+               num_experts * sizeof(int32_t));
+
+  const int64_t total_pairs =
+      static_cast<int64_t>(world_size) * num_tokens_per_rank * topk;
+
+  // Extract optional weights pointers
+  const int64_t* w_rank_ptrs = nullptr;
+  float* w_out_ptr = nullptr;
+  if (weights_rank_ptrs.has_value() && global_topk_weights.has_value()) {
+    TORCH_CHECK(
+        weights_rank_ptrs->dim() == 1 && weights_rank_ptrs->size(0) == world_size,
+        "notify_dispatch_with_scale: weights_rank_ptrs must be 1D with size == world_size");
+    TORCH_CHECK(
+        weights_rank_ptrs->scalar_type() == at::kLong,
+        "notify_dispatch_with_scale: weights_rank_ptrs must be int64");
+    TORCH_CHECK(
+        global_topk_weights->dim() == 2 &&
+        global_topk_weights->size(0) == num_tokens &&
+        global_topk_weights->size(1) == topk,
+        "notify_dispatch_with_scale: global_topk_weights shape mismatch");
+    TORCH_CHECK(
+        global_topk_weights->scalar_type() == at::kFloat,
+        "notify_dispatch_with_scale: global_topk_weights must be float32");
+    TORCH_CHECK(
+        global_topk_weights->is_contiguous(),
+        "notify_dispatch_with_scale: global_topk_weights must be contiguous");
+    w_rank_ptrs = weights_rank_ptrs->data_ptr<int64_t>();
+    w_out_ptr = global_topk_weights->data_ptr<float>();
+  }
+
+  // Extract required per-token scale pointers
+  TORCH_CHECK(
+      scale_rank_ptrs.dim() == 1 && scale_rank_ptrs.size(0) == world_size,
+      "notify_dispatch_with_scale: scale_rank_ptrs must be 1D with size == world_size");
+  TORCH_CHECK(
+      scale_rank_ptrs.scalar_type() == at::kLong,
+      "notify_dispatch_with_scale: scale_rank_ptrs must be int64");
+  TORCH_CHECK(
+      global_scale.dim() == 1 && global_scale.size(0) == num_tokens,
+      "notify_dispatch_with_scale: global_scale must be 1D with size == num_tokens");
+  TORCH_CHECK(
+      global_scale.scalar_type() == at::kFloat,
+      "notify_dispatch_with_scale: global_scale must be float32");
+  TORCH_CHECK(
+      global_scale.is_contiguous(),
+      "notify_dispatch_with_scale: global_scale must be contiguous");
+  const int64_t* s_rank_ptrs = scale_rank_ptrs.data_ptr<int64_t>();
+  float* s_out_ptr = global_scale.data_ptr<float>();
+
+  // Single multi-WG kernel
+  const int64_t num_wgs = (total_pairs + WG_SIZE - 1) / WG_SIZE;
+  const int64_t global_range = num_wgs * WG_SIZE;
+  auto kfn = NotifyDispatchWithScaleKernel{
       {},
       topk_rank_ptrs.data_ptr<int64_t>(),
       global_topk_idx.data_ptr<int32_t>(),
@@ -653,6 +934,88 @@ at::Tensor notify_dispatch_v2(
   return scatter_idx;
 }
 
+at::Tensor compute_abs_scatter_idx(
+    const at::Tensor& global_topk_idx,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& rows_per_expert,
+    at::Tensor abs_scatter_idx,
+    int64_t num_experts) {
+  TORCH_CHECK(
+      global_topk_idx.scalar_type() == at::kInt &&
+      scatter_idx.scalar_type() == at::kInt &&
+      rows_per_expert.scalar_type() == at::kInt &&
+      abs_scatter_idx.scalar_type() == at::kInt,
+      "compute_abs_scatter_idx: all tensors must be int32");
+  TORCH_CHECK(
+      global_topk_idx.is_contiguous() && scatter_idx.is_contiguous() &&
+      abs_scatter_idx.is_contiguous(),
+      "compute_abs_scatter_idx: idx tensors must be contiguous");
+  TORCH_CHECK(
+      num_experts > 0 && num_experts <= MAX_EXPERTS,
+      "compute_abs_scatter_idx: num_experts must be in (0, ", MAX_EXPERTS, "]");
+  TORCH_CHECK(
+      rows_per_expert.numel() >= num_experts,
+      "compute_abs_scatter_idx: rows_per_expert too small");
+
+  const int64_t total_pairs = global_topk_idx.numel();
+  TORCH_CHECK(
+      scatter_idx.numel() == total_pairs &&
+      abs_scatter_idx.numel() == total_pairs,
+      "compute_abs_scatter_idx: scatter_idx/abs_scatter_idx numel mismatch");
+
+  if (total_pairs == 0) {
+    return abs_scatter_idx;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, abs_scatter_idx.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  const int64_t num_wgs = (total_pairs + WG_SIZE - 1) / WG_SIZE;
+  const int64_t global_range = num_wgs * WG_SIZE;
+  auto kfn = AbsScatterIdxKernel{
+      {},
+      global_topk_idx.data_ptr<int32_t>(),
+      scatter_idx.data_ptr<int32_t>(),
+      rows_per_expert.data_ptr<int32_t>(),
+      abs_scatter_idx.data_ptr<int32_t>(),
+      static_cast<int32_t>(num_experts),
+      total_pairs,
+      {}};
+  sycl_kernel_submit(
+      sycl::range<1>(global_range), sycl::range<1>(WG_SIZE), queue, kfn);
+
+  return abs_scatter_idx;
+}
+
+// Combined entry: run notify_dispatch_v2 then convert to absolute scatter_idx
+// in a single op call (both kernels submit to the same queue, saving a Python
+// dispatch and keeping the two dependent kernels back-to-back on device).
+at::Tensor notify_dispatch_v2_abs(
+    const at::Tensor& topk_rank_ptrs,
+    at::Tensor global_topk_idx,
+    at::Tensor scatter_idx,
+    at::Tensor rows_per_expert,
+    at::Tensor abs_scatter_idx,
+    int64_t num_tokens_per_rank,
+    int64_t topk,
+    int64_t topk_storage_stride,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size,
+    const std::optional<at::Tensor>& weights_rank_ptrs,
+    const std::optional<at::Tensor>& global_topk_weights) {
+  notify_dispatch_v2(
+      topk_rank_ptrs, global_topk_idx, scatter_idx, rows_per_expert,
+      num_tokens_per_rank, topk, topk_storage_stride, num_experts,
+      rank, world_size, weights_rank_ptrs, global_topk_weights);
+  compute_abs_scatter_idx(
+      global_topk_idx, scatter_idx, rows_per_expert, abs_scatter_idx,
+      num_experts);
+  return abs_scatter_idx;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "notify_dispatch(Tensor topk_rank_ptrs, Tensor(a!) global_topk_idx, "
@@ -665,11 +1028,29 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "Tensor(a!) scatter_idx, Tensor(a!) rows_per_expert, "
       "int num_tokens_per_rank, int topk, int topk_storage_stride, "
       "int num_experts, int rank, int world_size, "
-      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None, "
-      "Tensor? scale_rank_ptrs=None, Tensor? global_scale=None) -> Tensor(a!)");
+      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");
+  m.def(
+      "notify_dispatch_with_scale(Tensor topk_rank_ptrs, Tensor(a!) global_topk_idx, "
+      "Tensor(a!) scatter_idx, Tensor(a!) rows_per_expert, "
+      "int num_tokens_per_rank, int topk, int topk_storage_stride, "
+      "int num_experts, int rank, int world_size, "
+      "Tensor scale_rank_ptrs, Tensor(a!) global_scale, "
+      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");
+  m.def(
+      "compute_abs_scatter_idx(Tensor global_topk_idx, Tensor scatter_idx, "
+      "Tensor rows_per_expert, Tensor(a!) abs_scatter_idx, int num_experts) -> Tensor(a!)");
+  m.def(
+      "notify_dispatch_v2_abs(Tensor topk_rank_ptrs, Tensor(a!) global_topk_idx, "
+      "Tensor(a!) scatter_idx, Tensor(a!) rows_per_expert, Tensor(a!) abs_scatter_idx, "
+      "int num_tokens_per_rank, int topk, int topk_storage_stride, "
+      "int num_experts, int rank, int world_size, "
+      "Tensor? weights_rank_ptrs=None, Tensor? global_topk_weights=None) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("notify_dispatch", notify_dispatch);
   m.impl("notify_dispatch_v2", notify_dispatch_v2);
+  m.impl("notify_dispatch_with_scale", notify_dispatch_with_scale);
+  m.impl("compute_abs_scatter_idx", compute_abs_scatter_idx);
+  m.impl("notify_dispatch_v2_abs", notify_dispatch_v2_abs);
 }

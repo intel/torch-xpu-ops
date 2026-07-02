@@ -24,6 +24,8 @@ import torch
 import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
 
+import env
+
 # ---------------------------------------------------------------------------
 # Load native libraries
 # ---------------------------------------------------------------------------
@@ -97,20 +99,11 @@ def _next_iter(group_name):
 _RING_MAX_WG = 256  # upper bound; must match the native RING_MAX_WG / pad size.
 
 # Toggle: "0"/"false" -> use the native analytic formula (num_wg_hint=-1).
-_WG_AUTOTUNE_ENABLED = os.environ.get("RING_WG_AUTOTUNE", "1").lower() not in (
-    "0",
-    "false",
-    "no",
-)
-_WG_TUNE_WARMUP = int(os.environ.get("RING_WG_TUNE_WARMUP", "5"))
-_WG_TUNE_ITERS = int(os.environ.get("RING_WG_TUNE_ITERS", "20"))
+_WG_AUTOTUNE_ENABLED = env.ring_wg_autotune()
+_WG_TUNE_WARMUP = env.ring_wg_tune_warmup()
+_WG_TUNE_ITERS = env.ring_wg_tune_iters()
 
-_WG_CACHE_PATH = os.environ.get(
-    "RING_WG_CACHE_PATH",
-    os.path.join(
-        os.path.expanduser("~"), ".cache", "torch_xpu_ops", "ring_wg_tune.json"
-    ),
-)
+_WG_CACHE_PATH = env.ring_wg_cache_path()
 
 _wg_cache = None  # dict: str(key) -> int(num_wg)
 _wg_cache_lock = threading.Lock()
@@ -646,11 +639,7 @@ def ring_allgather_permute(
     # regression is gated out, so default to PUSH whenever available.
     # Override explicitly with RING_AGP_PUSH=1 / =0.
     _have_push = hasattr(torch.ops.symm_mem, "ring_allgather_permute_push")
-    _env_push = os.environ.get("RING_AGP_PUSH")
-    if _env_push is not None:
-        _use_push = _env_push == "1" and _have_push
-    else:
-        _use_push = _have_push
+    _use_push = env.ring_agp_push() and _have_push
     _agp_op = (
         torch.ops.symm_mem.ring_allgather_permute_push
         if _use_push

@@ -14,6 +14,8 @@ import os
 import torch
 import torch.distributed as dist
 
+import env
+
 from allgather_local_permute_fusion import (
     allgather_local_permute_fusion,
     build_allgather_rank_buffers_ptr,
@@ -25,7 +27,7 @@ from unpermute_reducescatter_fusion import (
 )
 from symm_buffer import SymmBuffer
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 2048))
+TOKENS_PER_RANK = env.tokens_per_rank()
 HIDDEN_SIZE = 2048
 TOPK = 8
 NUM_EXPERTS = 128
@@ -62,10 +64,7 @@ def project_time_ms(bytes_count, bw_gbps):
 
 
 def init_distributed():
-    os.environ["RANK"] = str(os.environ.get("PMI_RANK", 0))
-    os.environ["WORLD_SIZE"] = str(os.environ.get("PMI_SIZE", 1))
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29525"
+    env.setup_distributed_env(master_addr="localhost", master_port="29525")
     if not dist.is_initialized():
         dist.init_process_group(backend="xccl")
     rank = dist.get_rank()
