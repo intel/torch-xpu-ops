@@ -17,7 +17,7 @@ from torch.nn.utils._expanded_weights.expanded_weights_utils import (
     unpack_expanded_weight_or_tensor,
 )
 from torch.nn.utils._per_sample_grad import call_for_per_sample_grads
-from torch.testing._internal.common_cuda import TEST_CUDA, tf32_off
+from torch.testing._internal.common_cuda import tf32_off
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     OpDTypes,
@@ -1022,38 +1022,14 @@ for test_param in supported_tests:
     decorator = test_param.pop("decorator", lambda test: test)
     test = ContextManagerTests(**test_param)
     test_name = test.get_name()
-    if hasattr(TestExpandedWeightModule, test_name):
-        raise RuntimeError("Found two tests with the same name: " + test_name)
-    test_name_multi_input = test.get_name() + "_multiple_inputs"
-    if hasattr(TestExpandedWeightModule, test_name_multi_input):
-        raise RuntimeError("Found two tests with the same name: " + test_name)
-    if test.test_cpu:
-        setattr(
-            TestExpandedWeightModule,
-            test_name,
-            decorator(lambda self, test=test: test.test_context_manager(self, "cpu")),
-        )
-        setattr(
-            TestExpandedWeightModule,
-            test_name_multi_input,
-            decorator(
-                lambda self, test=test: test.test_context_manager_multiple_inputs(
-                    self, "cpu"
-                )
-            ),
-        )
-    if TEST_CUDA and test.test_cuda:
-        # since this checks derivatives, only use double for precision
-        setattr(
-            TestExpandedWeightModule,
-            test_name + "_cuda_double",
-            decorator(lambda self, test=test: test.test_context_manager(self, "cuda")),
-        )
     if TEST_XPU and test.test_xpu:
         # since this checks derivatives, only use double for precision
+        xpu_test_name = test_name + "_xpu_double"
+        if hasattr(TestExpandedWeightModule, xpu_test_name):
+            raise RuntimeError("Found two tests with the same name: " + xpu_test_name)
         setattr(
             TestExpandedWeightModule,
-            test_name + "_xpu_double",
+            xpu_test_name,
             decorator(lambda self, test=test: test.test_context_manager(self, "xpu")),
         )
 
