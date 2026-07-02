@@ -11,7 +11,7 @@ description: >
 # ASM → SYCL Source Mapping
 
 Given one or more GPU instruction addresses (IPs) and an ASM directory, resolve
-each IP to the original SYCL/DPC++ source file:line and an optional structural 
+each IP to the original SYCL/DPC++ source file:line and an optional structural
 construct label.
 
 ## Background
