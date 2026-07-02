@@ -1,146 +1,129 @@
 ---
 name: issue-handler
 description: >
-  End-to-end orchestrator for handling a single GitHub issue on pytorch or
-  torch-xpu-ops. Use when asked to fix the issue — formatting the issue,
-  verifying it reproduces, triaging the root cause, proposing and verifying a
-  fix, and reporting back to the user. Coordinates the issue-format,
-  test-verification, xpu-issues-triaging, and issue-fix sub-skills.
+  End-to-end orchestrator for fixing a single GitHub issue on pytorch or
+  torch-xpu-ops. Sequences fix/ leaf skills into a pipeline and reports the
+  result to the user or writes to the GitHub issue body.
 ---
 
-# Issue Handler — End-to-End Orchestrator
+# Issue Handler — Orchestrator
 
-This is the **high-level scenario skill**. It does not do the detailed work
-itself; it sequences four leaf skills into one iterative pipeline and reports
-the result to the user. Each stage's mechanics live in its own skill — read and
-follow that skill when you reach the stage or you are asked to do one specific task.
-
-## Pipeline overview
-
-```
-format  ->  verify-exists  ->  triage  ->  propose-fix  ->  verify-fix  ->  report
-```
-
-| Stage | Sub-skill | Purpose |
-|-------|-----------|---------|
-| 1. Format | `issue-format` | Classify bug/nonbug, extract metadata, normalize the issue body |
-| 2. Verify exists | `test-verification` | Confirm the failure still reproduces locally |
-| 3. Triage | `xpu-issues-triaging` | Root cause, fix strategy, `IMPLEMENTING`/`NEEDS_HUMAN` verdict |
-| 4. Propose fix | `issue-fix` | Implement the fix and re-verify the reproducer |
-| 5. Verify fix | `test-verification` | Re-run to confirm the fix resolves the failure |
-| 6. Report | this skill | Summarize outcome for the user (and update issue body) |
-
-## Inputs
-
-- A GitHub issue (URL, number, or raw body) on `pytorch` or `torch-xpu-ops`.
-- For local reproduction/fix stages: a local checkout and Python environment
-  (see `test-verification` and `issue-fix` for environment setup).
+Sequences `fix/reproduce`, `fix/triage`, `fix/implement`, `fix/verify` into a
+single pipeline for one GitHub issue. All the detailed logic lives in those
+leaf skills — this skill owns the scheduling, mode handling, and reporting.
 
 ## Execution modes
 
-This pipeline runs in one of two modes — **interactive (default)** or
-**pipeline** — which changes how every stage reports results and whether it
-writes to the GitHub issue. Decide the mode at the start of the run and pass it
-down to every leaf skill. See the shared reference for the full rules:
-[references/execution-modes.md](references/execution-modes.md).
+Decide mode once at the start and keep it for every stage.
 
-- **Interactive (default):** ask the user when blocked; report conversationally;
-  do not touch the issue body/labels unless asked.
-- **Pipeline (explicit):** no human to ask — write status into the issue body,
-  advance the `agent:status` marker and labels, leave a comment, and stop.
+- **Interactive (default):** human present. Ask when blocked. Report
+  conversationally. Do not write to the GitHub issue body unless the user asks.
+- **Pipeline:** automated. No human to ask. Write status into the issue body,
+  advance `agent:status` marker and labels, leave a comment, and stop.
 
-## How to run the pipeline
+See [references/execution-modes.md](references/execution-modes.md) for the
+full pipeline mode contract (status markers, label map, log slots).
 
-Work the stages in order. After each stage, decide whether to continue, loop,
-or stop based on that stage's output.
+## Inputs
 
-### Stage 1 — Format (`issue-format`)
-Classify the issue and extract metadata. If `issue_type` is `nonbug` (task,
-feature request, enhancement, performance, question), **stop the fix pipeline**:
-record the classification, mark the issue accordingly, and skip to Report. Only
-`bug` issues continue to Stage 2.
+- A GitHub issue URL, number, or raw body on `pytorch` or `torch-xpu-ops`.
+- Local checkout and Python environment for reproduction/fix stages.
 
-### Stage 2 — Verify it reproduces (`test-verification`)
-Resolve the reproducer to a local command and run it.
-- `FAILED` (bug reproduces) -> continue to Stage 3.
-- `PASSED` (no longer reproduces) -> the issue may be already fixed; record that
-  and skip to Report.
-- `CANNOT_VERIFY` -> note why; you may still triage statically (Stage 3 does not
-  require a successful local run), but flag the uncertainty in the report.
+## Pipeline
 
-### Stage 3 — Triage (`xpu-issues-triaging`)
-Determine root cause, fix strategy, target repo, and verdict.
-- Verdict `IMPLEMENTING` -> continue to Stage 4.
-- Verdict `NEEDS_HUMAN` -> stop the fix pipeline and skip to Report with the
-  reason.
+```
+issue-format → reproduce → triage → implement → verify → report
+```
 
-### Stage 4 — Propose the fix (`issue-fix`)
-Implement the fix following the triage strategy. `issue-fix` re-runs the
-reproducer as part of its own verification.
+### Stage 1 — issue-format
 
-### Stage 5 — Verify the fix (`test-verification`)
-Re-run the reproducer (and related tests) to confirm the failure is resolved
-and nothing regressed. If it still fails, **loop back to Stage 4** with the new
-information. Stop looping when the fix verifies or you hit a genuine blocker
-(then report `NEEDS_HUMAN`).
+Classify as `bug` or `nonbug` and extract metadata.
 
-### Stage 6 — Report
-See "Reporting to the user" below.
+- `nonbug` → record classification, report to user, **stop**.
+- `bug` → continue to Stage 2.
+
+### Stage 2 — fix/reproduce
+
+Call `fix/reproduce` with:
+- `reproducer_command` from the issue body (if present)
+- `ci_commit` if the issue references a specific CI run
+- `pytorch_dir` if available; otherwise `fix/reproduce` clones to
+  `agent_space_xpu/pytorch/`
+
+Interpret the output:
+
+| Output | Action |
+|--------|--------|
+| `REPRODUCED` | Continue to Stage 3 with `refined_command` |
+| `NOT_REPRODUCED` | Triage to collect why; report to user; stop |
+| `NO_REPRODUCER` | Continue to Stage 3 (static triage only) |
+| `CANNOT_VERIFY` | Report blocker to user; stop |
+
+### Stage 3 — fix/triage
+
+Call `fix/triage` with the failure description (error log, context, and
+`refined_command` if available from Stage 2).
+
+| Verdict | Action |
+|---------|--------|
+| `IMPLEMENTING` | Continue to Stage 3.5 |
+| `NEEDS_HUMAN` | Report reason to user; stop |
+
+### Stage 3.5 — Load domain skill
+
+Read the `domain` field from the triage output. Use the skill tool to load
+`fix/domains/<domain>` (e.g. `fix/domains/xpu-kernel`). If no domain skill
+exists for the reported domain, proceed without it.
+
+### Stage 4 — fix/implement
+
+Call `fix/implement` with:
+- `triage_result` from Stage 3
+- `pytorch_dir`
+- `allow_skip=false` — issue-handler never allows adding skip decorators
+- no `commit_message_template` (use standard format)
+
+### Stage 5 — fix/verify
+
+Call `fix/verify` with:
+- `refined_command` from Stage 2
+- `pytorch_dir`
+- `changed_files` from Stage 4
+- `run_before_after_diff=false`
+- `run_lint=false`
+
+| Output | Action |
+|--------|--------|
+| `PASSED` | Continue to Stage 6 |
+| `FAILED` | Loop back to Stage 4 with failure output (max 3 attempts) |
+| `CANNOT_VERIFY` | Report to user; stop |
+
+If 3 attempts exhausted without `PASSED`, report `NEEDS_HUMAN`.
+
+### Stage 6 — Report and hand off
+
+Summarize the outcome. In **interactive mode**, report to the user. In
+**pipeline mode**, write to the issue body and leave a comment.
+
+Always include:
+- Issue link and one-line title
+- Classification (bug/nonbug + category)
+- Reproduced: yes / no / cannot-verify (+ command used)
+- Root cause (one sentence)
+- Files changed (or "none" + reason)
+- Fix verified: PASS / FAIL / not-attempted (+ command)
+- Outcome: `IMPLEMENTING` / `NEEDS_HUMAN` / `SKIPPED` / `NOT_REPRODUCED`
+
+If outcome is `IMPLEMENTING` (fix verified), hand off to `xpu-ops-pr-creation`
+to open the PR. Do not open it from this skill.
 
 ## Iterative loop
 
 The pipeline is not strictly linear. Loop when a later stage invalidates an
 earlier assumption:
 
-- Stage 5 fails -> return to Stage 4 (refine the fix).
-- Stage 4 reveals the triage was wrong -> return to Stage 3 (re-triage).
-- Stage 3 finds the reproducer is wrong/incomplete -> return to Stage 2.
+- Stage 5 FAILED → return to Stage 4 (refine the fix)
+- Stage 4 reveals triage was wrong → return to Stage 3
+- Stage 3 finds reproducer is wrong → return to Stage 2
 
-Bound the loop: stop after the fix verifies, or when you have exhausted a
-reasonable number of attempts (treat 3 fix attempts as the soft cap, matching
-the legacy pipeline's `max_agent_attempts`). When you stop without success,
-report `NEEDS_HUMAN` with the blocker.
-
-## Issue-body status (backward compatible)
-
-**Pipeline mode only.** In interactive mode (default), do not touch the issue
-body, markers, or labels unless the user asks — report to the user instead.
-
-The full backward-compatible contract (status markers, stage->label map, Action
-Items checklist, canonical headings) lives in the shared reference:
-[references/execution-modes.md](references/execution-modes.md). This orchestrator owns
-advancing the overall `agent:status` stage and the checklist; each leaf skill
-owns its own marker/log slot.
-
-## Reporting to the user
-
-At the end of every run, summarize the outcome. In **interactive mode** present
-this to the user in plain language; in **pipeline mode** write the same summary
-into the GitHub issue (comment + body) and stop. Always include:
-
-- **Issue:** link/number and one-line title.
-- **Classification:** bug / nonbug (+ category).
-- **Reproduced:** yes / no / cannot-verify (with the command used).
-- **Root cause:** one sentence (from triage).
-- **Action taken:** files changed, or "none" with the reason.
-- **Fix verified:** PASS / FAIL / not-attempted (with the command).
-- **Outcome:** one of `IMPLEMENTING` (fix ready / PR next), `NEEDS_HUMAN`
-  (with blocker), `SKIPPED` (nonbug or already-fixed), and any open risks.
-
-If the outcome is `IMPLEMENTING` and a PR should be opened, hand off to the
-`xpu-ops-pr-creation` skill — do not open the PR from this skill.
-
-## See also
-
-> **Sub-skill discoverability:** The leaf skills under `issue-handler/` (e.g.
-> `issue-fix`, `issue-format`, `test-verification`) are nested two levels deep
-> under `.claude/skills/` and may not be auto-discovered by the skill system.
-> They are intended to be reached via explicit orchestrator delegation (this
-> skill calls them by name). Load them directly if needed by invoking
-> `issue-handler/issue-fix`, etc.
-
-- `issue-format` — Stage 1 classification + metadata.
-- `test-verification` — Stages 2 and 5 local reproduction.
-- `xpu-issues-triaging` — Stage 3 root cause + verdict (canonical triage skill).
-- `issue-fix` — Stage 4 implementation.
-- `xpu-ops-pr-creation` — opens the PR once a fix is verified.
+Soft cap: 3 fix attempts (Stages 4–5). Stop with `NEEDS_HUMAN` if exhausted.

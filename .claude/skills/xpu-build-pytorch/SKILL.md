@@ -27,9 +27,12 @@ test -f third_party/xpu.txt || echo "ERROR: Not in PyTorch root"
 test -d /opt/intel/oneapi/compiler || echo "WARNING: oneAPI not found at /opt/intel/oneapi/compiler"
 ```
 
-### 2. Configure `build_pytorch.env`
+### 2. Source oneAPI and configure `build_pytorch.env`
 
-Create in PyTorch root. Adjust paths for your system.
+First, source oneAPI using the `source-oneapi` skill — it finds the installation
+root automatically and sources components individually.
+
+Then create `build_pytorch.env` in the PyTorch root:
 
 ```bash
 # Target hardware: pvc (Data Center GPU Max), dg2 (Arc GPU), etc.
@@ -38,11 +41,6 @@ Create in PyTorch root. Adjust paths for your system.
 
 export USE_XPU=1
 export USE_CUDA=0
-
-# Adjust to your oneAPI installation path
-source /opt/intel/oneapi/compiler/latest/env/vars.sh
-# Alternative: source /opt/intel/oneapi/setvars.sh
-# Optional PTI support: source /opt/intel/oneapi/pti/latest/env/vars.sh
 ```
 
 ### 3. Build
@@ -50,15 +48,14 @@ source /opt/intel/oneapi/compiler/latest/env/vars.sh
 Always redirect build output to a log file so failures can be diagnosed:
 
 ```bash
-source build_pytorch.env
-pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
-echo "Build log saved to /tmp/pytorch_build_*.log"
+source build_pytorch.env  # sets USE_XPU, USE_CUDA (oneAPI already sourced in Step 2)
+pip install -e . -v --no-build-isolation 2>&1 | tee agent_space_xpu/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+echo "Build log saved to agent_space_xpu/pytorch_build_*.log"
 ```
 
 ### 4. Verify
 
 ```bash
-source build_pytorch.env
 python -c "import torch; print('XPU available:', torch.xpu.is_available())"
 ```
 
@@ -70,7 +67,7 @@ Expected: `XPU available: True`
 - **Always rebuild after `git rebase` or `git checkout`** — stale C++ extensions produce unreliable or silently wrong test results.
 - **Faster iteration builds**: set `BUILD_SEPARATE_OPS=1` to shrink translation unit scope. Debug/RelWithDebInfo builds enable this automatically.
   ```bash
-  BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%Y%m%d_%H%M%S).log
+  BUILD_SEPARATE_OPS=1 pip install -e . -v --no-build-isolation 2>&1 | tee agent_space_xpu/pytorch_build_$(date +%Y%m%d_%H%M%S).log
   ```
 - **After editing a C++ header**: manually copy to `torch/include/` — editable installs serve C++ headers from the installed path, not source.
 - **After modifying inductor headers**: delete the PCH cache before rebuilding:
