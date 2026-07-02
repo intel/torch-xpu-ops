@@ -14,7 +14,7 @@ with XPUPatchForImport(False):
 instantiate_device_type_tests(
     TestSchemaCheckModeOpInfo,
     globals(),
-    only_for=("xpu"),
+    only_for="xpu",
     allow_xpu=True,
 )
 
