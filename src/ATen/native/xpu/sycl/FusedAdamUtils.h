@@ -81,9 +81,9 @@ inline void adam_math(
     opmath_t denom;
     if (amsgrad) {
       max_exp_avg_sq = std::max(max_exp_avg_sq, exp_avg_sq);
-      denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = (sycl::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
     } else {
-      denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = (sycl::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
     }
     param -= step_size * exp_avg / denom;
 
@@ -140,7 +140,7 @@ struct FusedAdamMathFunctor {
           1 - sycl::pow(beta1, static_cast<double>(*step_count));
       const auto bias_correction2 =
           1 - sycl::pow(beta2, static_cast<double>(*step_count));
-      const auto bias_correction2_sqrt = std::sqrt(bias_correction2);
+      const auto bias_correction2_sqrt = sycl::sqrt(bias_correction2);
       return {bias_correction1, bias_correction2_sqrt};
     }();
 
