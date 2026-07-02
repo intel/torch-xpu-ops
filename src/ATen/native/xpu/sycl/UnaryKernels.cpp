@@ -29,7 +29,12 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct SqrtFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sqrt(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::sqrt(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::sqrt(static_cast<opmath_t>(a));
+    }
   }
 };
 
