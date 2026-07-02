@@ -1,0 +1,57 @@
+ 
+:: initializing oneAPI environment ...
+   bash: BASH_VERSION = 5.3.9(1)-release
+   args: Using "$@" for setvars.sh arguments: --force
+:: advisor -- latest
+:: ccl -- latest
+:: compiler -- latest
+:: dal -- latest
+:: debugger -- latest
+:: dev-utilities -- latest
+:: dnnl -- latest
+:: dpcpp-ct -- latest
+:: dpl -- latest
+:: ipp -- latest
+:: ippcp -- latest
+:: mkl -- latest
+:: mpi -- latest
+:: tbb -- latest
+:: tcm -- latest
+:: umf -- latest
+:: vtune -- latest
+:: oneAPI environment initialized ::
+ 
+==================== ReduceScatter 8-GPU (Full range) ====================
+
+==========================================================================================
+  Reduce-Scatter Latency Benchmark  (oneCCL C API / barrier timing)
+  world_size=8  dtype=bfloat16  warmup=20  loop=100  measure(last)=50
+  prefill: 64 M bf16 elements × 100 reps/elem
+  sizes (total input): 2^12 .. 2^28 bf16 elements  (8.00 KB .. 512.00 MB)
+  per-rank recv chunk = total / 8
+  Timing method B (barrier): post.cmd_start − pre.cmd_end
+==========================================================================================
+
+
+  -- reduce_scatter latency summary (C API / barrier) --
+
+  Size(in)          avg_us     min_us     max_us     var_us   busBW(GB/s)
+  ------------  ---------- ---------- ---------- ----------  ------------
+  8.00 KB            22.41      21.94      22.89       0.96         0.320
+  16.00 KB           21.66      21.24      22.09       0.86         0.662
+  32.00 KB           21.64      21.21      22.09       0.87         1.325
+  64.00 KB           20.27      19.50      20.86       1.36         2.829
+  128.00 KB          22.57      21.93      23.15       1.22         5.081
+  256.00 KB          22.10      21.19      22.84       1.65        10.380
+  512.00 KB          28.70      27.30      30.14       2.84        15.986
+  1.00 MB            51.53      49.83      53.75       3.92        17.804
+  2.00 MB            95.64      94.30      97.13       2.83        19.187
+  4.00 MB           184.59     183.22     186.06       2.84        19.882
+  8.00 MB           362.49     361.08     363.79       2.71        20.249
+  16.00 MB          725.66     721.83     727.59       5.76        20.230
+  32.00 MB         1432.68    1427.89    1435.17       7.27        20.493
+  64.00 MB         2769.85    2764.93    2772.49       7.56        21.200
+  128.00 MB        5434.75    5429.72    5437.72       8.00        21.609
+  256.00 MB       10790.45   10785.81   10793.41       7.60        21.767
+  512.00 MB       21621.55   21615.45   21625.50      10.05        21.727
+

@@ -2,8 +2,7 @@
  * bench_ccl_allgather_latency_c_api.cpp
  *
  * Allgather kernel-time latency benchmark using oneCCL **C API** (NCCL-like).
- * Requires oneAPI 2026.0+ (oneCCL 2022.0).  See bench_ccl_allreduce_latency_c_api.cpp
- * for general notes.
+ * Requires oneAPI 2026.0+ (oneCCL 2022.0).
  *
  * C API call:
  *   onecclAllGather(send, recv, sendcount, dtype, comm, stream)
@@ -11,6 +10,12 @@
  *
  * busBW factor: (n-1)/n
  * Size column reports total OUTPUT bytes (numel * 2).
+ *
+ * Usage:
+ *   mpirun -n 4 ./bench_ccl_allgather_c_api --min 12 --max 28    # 2^12 to 2^28 elements
+ *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes 917504,1835008  # exact element counts
+ *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes-kb 1792,3584    # exact KB sizes
+ *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes-mb 896,1792     # exact MB sizes
  */
 
 #include <algorithm>
@@ -20,6 +25,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <sstream>
 
 #include <sycl/sycl.hpp>
 #include <oneapi/ccl.h>
@@ -44,6 +50,18 @@ static std::string fmt_size(double bytes) {
     else if (bytes >= (double)(1LL<<10)) std::snprintf(buf,sizeof(buf),"%.2f KB",bytes/(double)(1LL<<10));
     else                                  std::snprintf(buf,sizeof(buf),"%.0f B", bytes);
     return std::string(buf);
+}
+
+// Parse comma-separated list of sizes
+static std::vector<int64_t> parse_sizes(const char* str, int64_t multiplier = 1) {
+    std::vector<int64_t> result;
+    std::stringstream ss(str);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        int64_t val = std::atoll(token.c_str());
+        result.push_back(val * multiplier);
+    }
+    return result;
 }
 
 static double busbw_factor(int ws) {
@@ -142,6 +160,7 @@ int main(int argc, char** argv) {
     int warmup = 20, loop = 100;
     size_t prefill_n = 64ULL * 1024 * 1024;
     int    prefill_reps = 100;
+    std::vector<int64_t> exact_sizes;  // exact element counts (if specified)
 
     for (int i = 1; i < argc; ++i) {
         if      (!std::strcmp(argv[i],"--min")         && i+1<argc) min_log2     = std::atoi(argv[++i]);
@@ -151,6 +170,12 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i],"--loop")        && i+1<argc) loop         = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i],"--prefill-n")   && i+1<argc) prefill_n    = static_cast<size_t>(std::atoll(argv[++i]));
         else if (!std::strcmp(argv[i],"--prefill-reps")&& i+1<argc) prefill_reps = std::atoi(argv[++i]);
+        // New: exact sizes in bf16 elements
+        else if (!std::strcmp(argv[i],"--sizes")       && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 1);
+        // New: exact sizes in KB (convert to bf16 elements: KB * 1024 / 2)
+        else if (!std::strcmp(argv[i],"--sizes-kb")    && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 512);
+        // New: exact sizes in MB (convert to bf16 elements: MB * 1024 * 1024 / 2)
+        else if (!std::strcmp(argv[i],"--sizes-mb")    && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 524288);
     }
 
     int mpi_provided;
@@ -159,6 +184,7 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &ws);
 
+    // CRITICAL: Each rank must use its own GPU device
     auto devs = sycl::platform{sycl::gpu_selector_v}.get_devices();
     if ((int)devs.size() < ws) {
         if (rank == 0) std::fprintf(stderr, "bench: need %d GPUs, found %zu\n", ws, devs.size());
@@ -177,12 +203,24 @@ int main(int argc, char** argv) {
     onecclComm_t comm = nullptr;
     ONECCL_CHECK(onecclCommInitRank(&comm, static_cast<size_t>(ws), uniqId, rank));
 
-    const int64_t max_numel = (int64_t)1 << max_log2;
-    if (max_numel % ws != 0) {
-        if (rank == 0)
-            std::fprintf(stderr, "bench: max_numel must be divisible by ws\n");
-        MPI_Finalize(); return 1;
+    // Build size list
+    std::vector<int64_t> size_list;
+    if (!exact_sizes.empty()) {
+        size_list = exact_sizes;
+    } else {
+        for (int lg = min_log2; lg <= max_log2; lg += step) {
+            size_list.push_back((int64_t)1 << lg);
+        }
     }
+
+    // Find max size for allocation
+    int64_t max_numel = 0;
+    for (auto sz : size_list) {
+        // Round up to be divisible by ws
+        int64_t aligned = ((sz + ws - 1) / ws) * ws;
+        if (aligned > max_numel) max_numel = aligned;
+    }
+
     bf16* buf_chunk = sycl::malloc_device<bf16>(max_numel / ws, q);
     bf16* buf_out   = sycl::malloc_device<bf16>(max_numel,      q);
     bf16* prefill   = sycl::malloc_device<bf16>(prefill_n,      q);
@@ -204,10 +242,14 @@ int main(int argc, char** argv) {
                     ws, warmup, loop, measure);
         std::printf("  prefill: %zu M bf16 elements × %d reps/elem\n",
                     prefill_n >> 20, prefill_reps);
-        std::printf("  sizes (total output): 2^%d .. 2^%d bf16 elements  (%s .. %s)\n",
-                    min_log2, max_log2,
-                    fmt_size((double)((int64_t)1<<min_log2)*2).c_str(),
-                    fmt_size((double)((int64_t)1<<max_log2)*2).c_str());
+        if (!exact_sizes.empty()) {
+            std::printf("  sizes (exact): %zu values specified\n", exact_sizes.size());
+        } else {
+            std::printf("  sizes (total output): 2^%d .. 2^%d bf16 elements  (%s .. %s)\n",
+                        min_log2, max_log2,
+                        fmt_size((double)((int64_t)1<<min_log2)*2).c_str(),
+                        fmt_size((double)((int64_t)1<<max_log2)*2).c_str());
+        }
         std::printf("  per-rank send chunk = total / %d\n", ws);
         std::printf("  Timing method B (barrier): post.cmd_start − pre.cmd_end\n");
         std::printf("%s\n", sep.c_str());
@@ -217,9 +259,11 @@ int main(int argc, char** argv) {
     struct RowData { double bytes; double avg_us, min_us, max_us, var_us; };
     std::vector<RowData> table_rows;
 
-    for (int lg = min_log2; lg <= max_log2; lg += step) {
-        const int64_t numel = (int64_t)1 << lg;
-        if (numel % ws != 0) continue;
+    for (auto numel : size_list) {
+        // Round up to be divisible by ws
+        if (numel % ws != 0) {
+            numel = ((numel + ws - 1) / ws) * ws;
+        }
         const int64_t chunk = numel / ws;
         const double  bytes = static_cast<double>(numel) * 2.0;
 
