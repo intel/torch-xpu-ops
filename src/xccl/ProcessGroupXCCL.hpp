@@ -87,6 +87,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   class WorkXCCL : public Work {
    public:
     WorkXCCL(
+        std::string pgUID,
+        std::string pgDesc,
         at::Device& device,
         int rank,
         OpType opType,
@@ -130,6 +132,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
 
    protected:
+    std::string pgUID_;
+    std::string pgDesc_;
     at::Device device_;
     std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;

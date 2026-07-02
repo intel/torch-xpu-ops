@@ -49,6 +49,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 - If modifying `_linux_e2e.yml` or e2e-related actions/scripts → keep linux-e2e running: `disable_ut,disable_distributed,disable_win`
 - If modifying `_windows_*.yml` → keep windows jobs running, add `windows_ci`: `disable_ut,disable_e2e,disable_distributed`
 - If modifying `pull.yml` only (trigger/condition/concurrency changes) → `disable_all`
+- If modifying only non-functional workflows (`auto_label.yml`, `auto_merge_by_comment.yml`, `issue_operator.yml`) → `disable_all`
 - If modifying MULTIPLE workflow areas or unclear scope → run full CI: `none`
 
 **Additional:** If no `src/`, `cmake/`, `CMakeLists.txt` files changed, add `disable_build`.
@@ -107,15 +108,7 @@ Rules are evaluated top-to-bottom; use the FIRST matching rule set.
 
 **If ONLY build system files changed** (no test, no kernel): `disable_e2e`, `disable_distributed`
 
-### Rule 8: yaml/ definition changes
-
-**Condition:** Changed files include `yaml/` (operator definitions).
-
-**Labels:** Minimal — operator definition changes can affect many things. Run full CI.
-
-Apply: `none` (run full CI by default).
-
-### Rule 9: Mixed changes (fallback)
+### Rule 8: Mixed changes (fallback)
 
 **Condition:** None of the above rules fully apply (mixed src + test + CI, etc.).
 

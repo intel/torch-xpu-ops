@@ -157,7 +157,7 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
     const std::optional<Scalar>& correction_opt,
     bool keepdim,
     bool take_sqrt) {
-  AT_ASSERT(result1.defined() && result2.defined());
+  TORCH_INTERNAL_ASSERT(result1.defined() && result2.defined());
   TORCH_CHECK(
       self.device().is_xpu(),
       fname,
