@@ -9,6 +9,8 @@
  */
 
 #pragma once
+
+#include <ATen/native/xpu/sycl/WorkGroupUtils.h>
 #include <comm/SYCLContext.h>
 #include <algorithm>
 #include <bit>
@@ -238,6 +240,9 @@ class BatchKernelConfig {
     // Retieve y if necessary, if x is not large.
     wg_range_y_ = std::min<size_t>(
         wg_size / wg_range_x_, std::bit_ceil((uint64_t)range_bound_y));
+
+    wg_range_y_ = detail::align_workgroup_2d_to_subgroup_multiple(
+        wg_range_x_, wg_range_y_, sg_size, wg_size);
 
     if ((uint8_t)policy_ & (uint8_t)Policy::pAdaptive) {
       size_t target_glb_range = syclMaxWorkItemsPerTile() /
