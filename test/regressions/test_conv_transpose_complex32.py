@@ -24,8 +24,9 @@ class TestConvTransposeComplex32Reference(TestCase):
     }
 
     def _make_inputs(self, conv_op, x_shape):
+        in_channels = x_shape[1]
         x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
-        module_cpu = self.CONV_OP_TO_MODULE[conv_op](4, 5, 3).to(dtype=torch.complex32)
+        module_cpu = self.CONV_OP_TO_MODULE[conv_op](in_channels, 5, 3).to(dtype=torch.complex32)
         return x_cpu, module_cpu.weight.detach(), module_cpu.bias.detach()
 
     def _assert_conv_transpose_complex32_xpu_close_to_ref64(
