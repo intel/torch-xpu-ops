@@ -24,11 +24,12 @@ if(NOT __XCCL_INCLUDED)
     ${XCCL_INCLUDE_DIR})
   # oneCCL declares all C-API symbols (oneccl*) with __attribute__((weak)) in
   # <oneapi/ccl.h>. Under the default --as-needed link policy this would cause
-  # the libccl shared objects to be dropped from libtorch_xpu.so dependencies
-  # (no strong undefined reference is generated), and the weak symbols would
-  # resolve to NULL at runtime -> segfault on the first oneccl* call.
-  # Wrap them with --no-as-needed,...,--as-needed so they remain in NEEDED.
+  # libccl.so.2 to be dropped from libtorch_xpu.so dependencies (no strong
+  # undefined reference is generated), and the weak symbols would resolve to
+  # NULL at runtime -> segfault on the first oneccl* call.
+  # Wrap with --no-as-needed,...,--as-needed so it remains in NEEDED.
+  # Once the weak attribute is removed upstream, this wrapper can be dropped.
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
-    "-Wl,--no-as-needed,${XCCL_LIBRARY},${XCCL_LIBRARY_2_0},--as-needed")
+    "-Wl,--no-as-needed,${XCCL_LIBRARY},--as-needed")
 endif()
