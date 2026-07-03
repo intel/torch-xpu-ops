@@ -17,13 +17,15 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestConvTransposeComplex32Reference(TestCase):
+    CONV_OP_TO_MODULE = {
+        F.conv_transpose1d: nn.ConvTranspose1d,
+        F.conv_transpose2d: nn.ConvTranspose2d,
+        F.conv_transpose3d: nn.ConvTranspose3d,
+    }
+
     def _make_inputs(self, conv_op, x_shape):
         x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
-        module_cpu = {
-            F.conv_transpose1d: nn.ConvTranspose1d,
-            F.conv_transpose2d: nn.ConvTranspose2d,
-            F.conv_transpose3d: nn.ConvTranspose3d,
-        }[conv_op](4, 5, 3).to(dtype=torch.complex32)
+        module_cpu = self.CONV_OP_TO_MODULE[conv_op](4, 5, 3).to(dtype=torch.complex32)
         return x_cpu, module_cpu.weight.detach(), module_cpu.bias.detach()
 
     def _assert_conv_transpose_complex32_xpu_close_to_ref64(
