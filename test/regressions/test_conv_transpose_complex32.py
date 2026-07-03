@@ -10,8 +10,8 @@
 # Regression test for https://github.com/intel/torch-xpu-ops/issues/3030
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.testing._creation import make_tensor
 from torch.testing._internal.common_utils import run_tests, TestCase
 
