@@ -73,7 +73,7 @@ For LLM workloads where message sizes are not power-of-2:
 mpirun -n 4 ./bench_ccl_allgather --sizes-mb 64,128,224,448,896 --warmup 10 --loop 50
 mpirun -n 4 ./bench_ccl_reduce_scatter --sizes-mb 64,128,224,448,896,1792 --warmup 10 --loop 50
 
-# Exact sizes in KB  
+# Exact sizes in KB
 mpirun -n 4 ./bench_ccl_allgather --sizes-kb 112,224,256,512 --warmup 20 --loop 100
 
 # Exact sizes in bf16 element count
