@@ -49,8 +49,7 @@ find_file(
   NO_DEFAULT_PATH
 )
 
-# Find XCCL v2 C-API library (libccl.so.2.0). This is the only oneCCL binary
-# we link against; the v1 C++ API (libccl.so.1) is no longer used.
+# Find XCCL v2 C-API library (libccl.so.2.0).
 find_file(
   XCCL_LIBRARY
   NAMES libccl.so.2.0
