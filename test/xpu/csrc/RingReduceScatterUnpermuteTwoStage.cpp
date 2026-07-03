@@ -384,7 +384,7 @@ struct RingReduceScatterUnpermuteTwoStageKernel {
       const int32_t b1 = (rank - 1 - 1 + 2 * world_size) % world_size;
       wg_gather_block(b1, cur, token_base, token_cnt, lid, lsize);
       // Publish `cur` (global) across subgroups before Stage C reads it.
-      item.barrier(sycl::access::fence_space::global_and_local);
+      item.barrier(sycl::access::fence_space::local_space);
     }
 
     // Steps 1..ws-1: fold the incoming partial. The expensive local gather for
@@ -415,7 +415,7 @@ struct RingReduceScatterUnpermuteTwoStageKernel {
         // our local gather.
         sycl::atomic_fence(
             sycl::memory_order::release, sycl::memory_scope::system);
-        item.barrier(sycl::access::fence_space::local_space);
+        item.barrier(sycl::access::fence_space::global_and_local);
         if (lid == 0) {
           store_release_sys(right_pad + (t * num_wg + wg), tag);
         }

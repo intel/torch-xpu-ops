@@ -2,8 +2,8 @@
 Performance benchmark for SymmBuffer fusion APIs on XPU.
 
 The script runs three groups for each fused op:
-1. FUSION_RING=0
-2. FUSION_RING=1
+1. staged path
+2. ring-enabled path for the op under test
 3. benchmark_ring reference path
 
 The first two groups are compared for accuracy, then the benchmark_ring
@@ -44,25 +44,34 @@ def init_distributed():
 
 
 @contextmanager
-def set_module_fusion_ring(enabled):
-    previous = symm_buffer_mod._FUSION_RING
-    symm_buffer_mod._FUSION_RING = enabled
+def set_module_ring_modes(dispatch_enabled, combine_enabled):
+    previous_dispatch = symm_buffer_mod._FUSION_RING_DISPATCH
+    previous_combine = symm_buffer_mod._FUSION_RING_COMBINE
+    symm_buffer_mod._FUSION_RING_DISPATCH = "1" if dispatch_enabled else "0"
+    symm_buffer_mod._FUSION_RING_COMBINE = combine_enabled
     try:
         yield
     finally:
-        symm_buffer_mod._FUSION_RING = previous
+        symm_buffer_mod._FUSION_RING_DISPATCH = previous_dispatch
+        symm_buffer_mod._FUSION_RING_COMBINE = previous_combine
 
 
-def create_symm_buffer(enabled, group):
-    with set_module_fusion_ring(enabled):
+def create_symm_buffer(dispatch_enabled, combine_enabled, group):
+    with set_module_ring_modes(dispatch_enabled, combine_enabled):
         sbuf = symm_buffer_mod.SymmBuffer(
             group=group,
             num_max_tokens_per_rank=TOKENS_PER_RANK,
             hidden=HIDDEN_SIZE,
             num_topk=TOPK,
         )
-    if enabled and not getattr(sbuf, "_fusion_ring", False):
-        raise RuntimeError("FUSION_RING=1 requested, but the ring backend is unavailable")
+    if dispatch_enabled and not getattr(sbuf, "_fusion_ring_dispatch", False):
+        raise RuntimeError(
+            "FUSION_RING_DISPATCH=1 requested, but the ring dispatch backend is unavailable"
+        )
+    if combine_enabled and not getattr(sbuf, "_fusion_ring_combine", False):
+        raise RuntimeError(
+            "FUSION_RING_COMBINE=1 requested, but the ring combine backend is unavailable"
+        )
     return sbuf
 
 
@@ -245,7 +254,8 @@ def report_allgather_accuracy(rank, fusion0, handle0, fusion1, handle1):
     match = torch.equal(canon0, canon1)
     max_diff = (canon0.float() - canon1.float()).abs().max().item()
     print(
-        f"[Rank {rank}] allgather_permute accuracy FUSION_RING=0 vs FUSION_RING=1 "
+        f"[Rank {rank}] allgather_permute accuracy FUSION_RING_DISPATCH=0 vs "
+        f"FUSION_RING_DISPATCH=1 "
         f"(order-independent): match={match} max_diff={max_diff:.6f}"
     )
     assert match, (
@@ -277,7 +287,8 @@ def report_unpermute_accuracy(rank, fusion0, fusion1, world_size):
     match = torch.allclose(fusion0, fusion1, atol=atol, rtol=1e-2)
     max_diff = (fusion0 - fusion1).abs().max().item()
     print(
-        f"[Rank {rank}] unpermute_reducescatter accuracy FUSION_RING=0 vs FUSION_RING=1: "
+        f"[Rank {rank}] unpermute_reducescatter accuracy FUSION_RING_COMBINE=0 vs "
+        f"FUSION_RING_COMBINE=1: "
         f"match={match} max_diff={max_diff:.6f} atol={atol}"
     )
     assert match, (
@@ -303,15 +314,17 @@ def main():
     if not _HAS_LOCAL_UNPERMUTE_KERNEL:
         raise RuntimeError("local_unpermute_copy_ kernel is required for benchmark_ring unpermute reference")
 
-    sbuf_fusion0 = create_symm_buffer(False, group)
-    sbuf_fusion1 = create_symm_buffer(True, group)
+    sbuf_dispatch0 = create_symm_buffer(False, False, group)
+    sbuf_dispatch1 = create_symm_buffer(True, False, group)
+    sbuf_combine0 = create_symm_buffer(False, False, group)
+    sbuf_combine1 = create_symm_buffer(False, True, group)
 
     print(f"\n{'=' * 70}")
     print("[Allgather + Permute Fusion]")
 
-    fusion0_remap, fusion0_handle, fusion0_latencies = benchmark_allgather_mode(
-        sbuf_fusion0,
-        "FUSION_RING=0",
+    dispatch0_remap, dispatch0_handle, dispatch0_latencies = benchmark_allgather_mode(
+        sbuf_dispatch0,
+        "FUSION_RING_DISPATCH=0",
         hidden_shard,
         topk_idx,
         topk_weights,
@@ -321,9 +334,9 @@ def main():
         world_size,
         device,
     )
-    fusion1_remap, fusion1_handle, fusion1_latencies = benchmark_allgather_mode(
-        sbuf_fusion1,
-        "FUSION_RING=1",
+    dispatch1_remap, dispatch1_handle, dispatch1_latencies = benchmark_allgather_mode(
+        sbuf_dispatch1,
+        "FUSION_RING_DISPATCH=1",
         hidden_shard,
         topk_idx,
         topk_weights,
@@ -333,7 +346,9 @@ def main():
         world_size,
         device,
     )
-    report_allgather_accuracy(rank, fusion0_remap, fusion0_handle, fusion1_remap, fusion1_handle)
+    report_allgather_accuracy(
+        rank, dispatch0_remap, dispatch0_handle, dispatch1_remap, dispatch1_handle
+    )
 
     ref_remap, ref_latencies = build_allgather_local_permute_reference(
         hidden_shard, scatter_idx, group
@@ -342,12 +357,13 @@ def main():
     # Compare against the reference order-independently and only over the top-k
     # slots this rank actually owns (the fused path fills owned-expert rows only,
     # whereas the reference permutes every token to every expert).
-    canon_f1 = _canonical_permuted(fusion1_remap, fusion1_handle.abs_scatter_idx)
+    canon_f1 = _canonical_permuted(dispatch1_remap, dispatch1_handle.abs_scatter_idx)
     canon_ref = _canonical_permuted(ref_remap, scatter_idx)
-    owned = fusion1_handle.abs_scatter_idx.reshape(-1) >= 0
+    owned = dispatch1_handle.abs_scatter_idx.reshape(-1) >= 0
     ref_match = torch.equal(canon_f1[owned], canon_ref[owned])
     print(
-        f"[Rank {rank}] benchmark_ring reference allgather_permute vs FUSION_RING=1 "
+        f"[Rank {rank}] benchmark_ring reference allgather_permute vs "
+        f"FUSION_RING_DISPATCH=1 "
         f"(order-independent): match={ref_match} "
         f"max_diff={(canon_f1[owned].float() - canon_ref[owned].float()).abs().max().item():.6f}"
     )
@@ -363,36 +379,37 @@ def main():
     # Each path reads its expert output through its own permutation, so build a
     # per-path expert_output that holds the same canonical per-(token, top-k)
     # data at each path's own rows (see _build_consistent_expert_output).
-    expert_output0 = _build_consistent_expert_output(canonical_src, fusion0_handle.abs_scatter_idx)
-    expert_output1 = _build_consistent_expert_output(canonical_src, fusion1_handle.abs_scatter_idx)
+    expert_output = _build_consistent_expert_output(
+        canonical_src, dispatch0_handle.abs_scatter_idx
+    )
     expert_output_ref = _build_consistent_expert_output(canonical_src, scatter_idx)
 
     print(f"\n{'=' * 70}")
     print("[Unpermute + Reduce-Scatter Fusion]")
 
-    fusion0_output, fusion0_unperm_latencies = benchmark_unpermute_mode(
-        sbuf_fusion0,
-        "FUSION_RING=0",
-        expert_output0,
-        fusion0_handle.abs_scatter_idx,
-        fusion0_handle.global_topk_weights,
-        fusion0_handle,
+    combine0_output, combine0_unperm_latencies = benchmark_unpermute_mode(
+        sbuf_combine0,
+        "FUSION_RING_COMBINE=0",
+        expert_output,
+        dispatch0_handle.abs_scatter_idx,
+        dispatch0_handle.global_topk_weights,
+        dispatch0_handle,
         rank,
         world_size,
         device,
     )
-    fusion1_output, fusion1_unperm_latencies = benchmark_unpermute_mode(
-        sbuf_fusion1,
-        "FUSION_RING=1",
-        expert_output1,
-        fusion1_handle.abs_scatter_idx,
-        fusion1_handle.global_topk_weights,
-        fusion1_handle,
+    combine1_output, combine1_unperm_latencies = benchmark_unpermute_mode(
+        sbuf_combine1,
+        "FUSION_RING_COMBINE=1",
+        expert_output,
+        dispatch0_handle.abs_scatter_idx,
+        dispatch0_handle.global_topk_weights,
+        dispatch0_handle,
         rank,
         world_size,
         device,
     )
-    report_unpermute_accuracy(rank, fusion0_output, fusion1_output, world_size)
+    report_unpermute_accuracy(rank, combine0_output, combine1_output, world_size)
 
     ref_output, ref_unperm_latencies = build_unpermute_reducescatter_reference(
         expert_output_ref,
@@ -402,10 +419,14 @@ def main():
         group,
     )
     print_latency_summary("benchmark_ring reference unpermute_reducescatter", ref_unperm_latencies, rank)
-    ref_unperm_match = torch.allclose(fusion1_output, ref_output, atol=0.025 * world_size + 0.01, rtol=1e-2)
+    ref_unperm_match = torch.allclose(
+        combine1_output, ref_output, atol=0.025 * world_size + 0.01, rtol=1e-2
+    )
     print(
-        f"[Rank {rank}] benchmark_ring reference unpermute_reducescatter vs FUSION_RING=1: "
-        f"match={ref_unperm_match} max_diff={(fusion1_output - ref_output).abs().max().item():.6f}"
+        f"[Rank {rank}] benchmark_ring reference unpermute_reducescatter vs "
+        f"FUSION_RING_COMBINE=1: "
+        f"match={ref_unperm_match} "
+        f"max_diff={(combine1_output - ref_output).abs().max().item():.6f}"
     )
 
     dist.destroy_process_group()

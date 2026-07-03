@@ -95,11 +95,14 @@ _RING_MAX_WG = 1024
 # Monotonically increasing signal tag per SymmBuffer instance.
 _ring_iter_counters: dict = {}
 
-# Select the fused-kernel implementation.  When FUSION_RING=1 (the default), the
-# allgather_local_permute_fusion / unpermute_reducescatter_fusion APIs use the
-# pipelined single-kernel ring collectives; set FUSION_RING=0 to use the
-# notify_dispatch + allgather_permute / staged-unpermute implementation.
-_FUSION_RING = env.fusion_ring()
+# Select the fused-kernel implementation independently for dispatch and
+# combine. The current dispatch ring kernel writes both the gathered buffer and
+# the permuted buffer; on small PCIe groups (observed at ws=4) the staged
+# notify_dispatch+allgather_permute path is faster, while ring combine still
+# wins. FUSION_RING_DISPATCH lets callers override the dispatch policy and
+# FUSION_RING_COMBINE gates ring combine directly.
+_FUSION_RING_DISPATCH = env.fusion_ring_dispatch()
+_FUSION_RING_COMBINE = env.fusion_ring_combine()
 # When FUSION_RING_PUSH=1, the ring dispatch uses the PUSH kernel (posted writes
 # to the right peer interleaved with permute) instead of the PULL kernel.
 # PUSH (posted writes) is faster at all measured scales (ws=4: ~0.78 ms vs
@@ -318,17 +321,19 @@ class SymmBuffer:
         # data region (num_tokens_per_rank * hidden * world_size elements) is no
         # larger than the hidden section, so reusing the cached workspace does
         # not grow/invalidate it.
-        self._fusion_ring = (
-            _FUSION_RING
-            and _HAS_RING_ALLGATHER_PERMUTE
-            and _HAS_RING_REDUCE_SCATTER_UNPERMUTE
-            and _HAS_NOTIFY_DISPATCH_V2_KERNEL
+        self._ring_dispatch_available = (
+            _HAS_RING_ALLGATHER_PERMUTE and _HAS_NOTIFY_DISPATCH_V2_KERNEL
+        )
+        self._ring_combine_available = _HAS_RING_REDUCE_SCATTER_UNPERMUTE
+        self._fusion_ring_dispatch = self._should_use_ring_dispatch()
+        self._fusion_ring_combine = (
+            _FUSION_RING_COMBINE and self._ring_combine_available
         )
         self._ring_rank_buffers_ptr = None
         self._ring_signal_pads_ptr = None
         self._ring_local_data = None
         self._ring_local_pad = None
-        if self._fusion_ring:
+        if self._fusion_ring_dispatch or self._fusion_ring_combine:
             # Ring rank_buffers_ptr: all ranks at offset 0 (flat gather buffer).
             data_numel = num_max_tokens_per_rank * hidden * self.num_ranks
             ring_data_ptrs = []
@@ -355,6 +360,23 @@ class SymmBuffer:
             self._ring_signal_pads_ptr = torch.tensor(
                 signed_pad, dtype=torch.int64, device=device
             )
+
+    def _should_use_ring_dispatch(self) -> bool:
+        """Whether dispatch should use the ring kernel for this group.
+
+        The current ring dispatch materializes both the gathered buffer and the
+        permuted output. On 4-GPU PCIe runs this is slower than the staged
+        symmetric-memory allgather_permute path, while ring combine remains
+        faster. Keep the ring backend enabled, but default dispatch to staged on
+        small groups unless explicitly overridden.
+        """
+        if not self._ring_dispatch_available:
+            return False
+        if _FUSION_RING_DISPATCH in ("1", "true", "yes", "on"):
+            return True
+        if _FUSION_RING_DISPATCH in ("0", "false", "no", "off"):
+            return False
+        return self.num_ranks > 4
 
     def _next_ring_iter(self) -> int:
         """Return a monotonically increasing ring iteration tag."""
@@ -472,8 +494,10 @@ class SymmBuffer:
         """Fused allgather + local permute (MoE dispatch).
 
         Dispatches at the entry point to one of two fully independent
-        implementations: the ring single-kernel path (FUSION_RING=1, default) or
-        the notify_dispatch + allgather_permute path (FUSION_RING=0).
+        implementations: the ring single-kernel path or the notify_dispatch +
+        allgather_permute path. By default dispatch auto-falls back to
+        notify/allgather_permute on groups of 4 ranks or fewer unless
+        FUSION_RING_DISPATCH forces the ring path.
 
         Supports FP8 hidden states (``torch.float8_e4m3fn`` / ``torch.float8_e5m2``)
         in addition to 16-bit/float; the permute is a pure byte copy so any
@@ -506,7 +530,7 @@ class SymmBuffer:
                     f"scale must be 1D [num_tokens_per_rank={hidden_shard.shape[0]}], "
                     f"got shape {list(scale.shape)}"
                 )
-        if self._fusion_ring:
+        if self._fusion_ring_dispatch:
             return self._allgather_local_permute_fusion_ring(
                 hidden_shard, topk_idx, topk_weights, num_experts,
                 remap_hidden_states, scale,
@@ -852,7 +876,7 @@ class SymmBuffer:
         return remap_hidden_states, handle
 
     # ================================================================== #
-    #  Public API: unpermute + reduce-scatter (dispatch)                  #
+    #  Public API: unpermute + reduce-scatter (combine)                   #
     # ================================================================== #
 
     def unpermute_reducescatter_fusion(
@@ -864,8 +888,8 @@ class SymmBuffer:
         """Fused unpermute + reduce-scatter (MoE combine).
 
         Dispatches at the entry point to the ring single-kernel path
-        (FUSION_RING=1, default) or the staged symmetric-memory path
-        (FUSION_RING=0).
+        (when FUSION_RING_COMBINE=1 and the kernel is available) or the staged
+        symmetric-memory path.
 
         Args:
             expert_output: this rank's expert outputs.
@@ -890,7 +914,7 @@ class SymmBuffer:
             raise ValueError(
                 f"output rows ({output.shape[0]}) must equal num_tokens_per_rank ({num_tokens_per_rank})"
             )
-        if self._fusion_ring:
+        if self._fusion_ring_combine:
             return self._unpermute_reducescatter_fusion_ring(
                 expert_output, handle, output, num_tokens_per_rank
             )

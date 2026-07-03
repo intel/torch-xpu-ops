@@ -61,8 +61,16 @@ def setup_distributed_env(
 SYMM_BUFFER_DEBUG_ENV = "SYMM_BUFFER_DEBUG"
 SYMM_BUFFER_DEBUG_DEFAULT = "0"
 
-FUSION_RING_ENV = "FUSION_RING"
-FUSION_RING_DEFAULT = "1"
+# Dispatch (allgather + permute) and combine (unpermute + reduce-scatter) are
+# controlled independently.
+#   FUSION_RING_DISPATCH=auto -> staged for ws<=4, ring for ws>4
+#   FUSION_RING_DISPATCH=1    -> always use ring dispatch when available
+#   FUSION_RING_DISPATCH=0    -> never use ring dispatch
+FUSION_RING_DISPATCH_ENV = "FUSION_RING_DISPATCH"
+FUSION_RING_DISPATCH_DEFAULT = "auto"
+
+FUSION_RING_COMBINE_ENV = "FUSION_RING_COMBINE"
+FUSION_RING_COMBINE_DEFAULT = "1"
 
 # PUSH is faster than PULL at every measured scale (ws=4: ring dispatch
 # ~0.78 ms PUSH vs ~0.88 ms PULL), so the default is PUSH.  The module still
@@ -76,9 +84,18 @@ def symm_buffer_debug():
     return os.environ.get(SYMM_BUFFER_DEBUG_ENV, SYMM_BUFFER_DEBUG_DEFAULT) == "1"
 
 
-def fusion_ring():
-    """FUSION_RING=1 (default) selects the pipelined ring-collective path."""
-    return os.environ.get(FUSION_RING_ENV, FUSION_RING_DEFAULT) == "1"
+def fusion_ring_dispatch():
+    """Dispatch policy for allgather+permute: auto / 1 / 0."""
+    return os.environ.get(
+        FUSION_RING_DISPATCH_ENV, FUSION_RING_DISPATCH_DEFAULT
+    ).lower()
+
+
+def fusion_ring_combine():
+    """Whether combine should use the ring kernel (default enabled)."""
+    return os.environ.get(
+        FUSION_RING_COMBINE_ENV, FUSION_RING_COMBINE_DEFAULT
+    ) == "1"
 
 
 def fusion_ring_push():

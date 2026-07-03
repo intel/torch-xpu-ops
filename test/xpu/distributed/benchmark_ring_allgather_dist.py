@@ -93,7 +93,10 @@ def benchmark_ring_allgather():
     else:
         prof = nullcontext()
 
-    gathered = [torch.empty(chunk, dtype=DTYPE, device=device) for _ in range(world_size)]
+    # Use a single contiguous receive buffer so the framework reference matches
+    # the oneCCL bench path more closely than dist.all_gather(list), which pays
+    # an extra flatten/scatter copy inside ProcessGroupXCCL.
+    gathered = torch.empty(chunk * world_size, dtype=DTYPE, device=device)
 
     with prof:
         # Warm up ring allgather.
@@ -114,15 +117,15 @@ def benchmark_ring_allgather():
 
         # Warm up reference dist.all_gather.
         for _ in range(WARMUP):
-            dist.all_gather(gathered, shard, group=group)
+            dist.all_gather_into_tensor(gathered, shard, group=group)
         torch.xpu.synchronize()
         dist.barrier()
 
-        # Timed reference dist.all_gather.
+        # Timed reference dist.all_gather_into_tensor.
         for i in range(LOOP):
             if i >= WARMUP:
                 ref_begin_events[i].record()
-            dist.all_gather(gathered, shard, group=group)
+            dist.all_gather_into_tensor(gathered, shard, group=group)
             if i >= WARMUP:
                 ref_end_events[i].record()
         torch.xpu.synchronize()
@@ -138,13 +141,13 @@ def benchmark_ring_allgather():
 
     # Accuracy check (single fresh pass).
     out = ring_allgather(shard, group=group, resources=resources).clone()
-    dist.all_gather(gathered, shard, group=group)
-    expected = torch.cat(gathered, dim=0)
+    dist.all_gather_into_tensor(gathered, shard, group=group)
+    expected = gathered
     torch.xpu.synchronize()
     ok = torch.equal(out, expected)
 
     print(f"[Ring allgather time in rank {rank}] {latencies} ms")
-    print(f"[Reference dist.all_gather time in rank {rank}] {ref_latencies} ms")
+    print(f"[Reference dist.all_gather_into_tensor time in rank {rank}] {ref_latencies} ms")
 
     if rank == 0:
         avg_ring = sum(latencies) / len(latencies)

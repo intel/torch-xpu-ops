@@ -1,6 +1,6 @@
 """Regression test for the ring unpermute + reduce-scatter staleness bug.
 
-Bug: SymmBuffer.unpermute_reducescatter_fusion with FUSION_RING=1 drove its
+Bug: SymmBuffer.unpermute_reducescatter_fusion with FUSION_RING_COMBINE=1 drove its
 cross-rank peer write with an LSC L1WB_L3WB (writeback) store. The system-scope
 release fence ordered that store but did NOT reliably drain it to the coherence
 point before the downstream peer's acquire-load read it on the next ring step, so
@@ -13,8 +13,8 @@ token counts. This is exactly the vLLM pattern: the buffer is sized once to the
 (large) warmup batch, then every real prefill/decode step drives it with fewer
 tokens. This test therefore creates ONE buffer at a large capacity and exercises
 several live token counts strictly BELOW that capacity (plus one AT capacity as a
-control), asserting the FUSION_RING=1 (ring) combine output matches the
-FUSION_RING=0 (staged, known-good) path.
+control), asserting the FUSION_RING_COMBINE=1 (ring) combine output matches the
+FUSION_RING_COMBINE=0 (staged, known-good) path.
 
 Usage:
     mpirun -n 4 python test_symm_buffer_unpermute_capacity_regression_dist.py
@@ -53,26 +53,29 @@ def init_distributed():
 
 
 @contextmanager
-def force_fusion_ring(enabled):
-    previous = symm_buffer_mod._FUSION_RING
-    symm_buffer_mod._FUSION_RING = enabled
+def force_ring_modes(dispatch_enabled, combine_enabled):
+    previous_dispatch = symm_buffer_mod._FUSION_RING_DISPATCH
+    previous_combine = symm_buffer_mod._FUSION_RING_COMBINE
+    symm_buffer_mod._FUSION_RING_DISPATCH = "1" if dispatch_enabled else "0"
+    symm_buffer_mod._FUSION_RING_COMBINE = combine_enabled
     try:
         yield
     finally:
-        symm_buffer_mod._FUSION_RING = previous
+        symm_buffer_mod._FUSION_RING_DISPATCH = previous_dispatch
+        symm_buffer_mod._FUSION_RING_COMBINE = previous_combine
 
 
-def make_symm_buffer(enabled, group):
-    with force_fusion_ring(enabled):
+def make_symm_buffer(dispatch_enabled, combine_enabled, group):
+    with force_ring_modes(dispatch_enabled, combine_enabled):
         sbuf = SymmBuffer(
             group=group,
             num_max_tokens_per_rank=NUM_MAX_TOKENS_PER_RANK,
             hidden=HIDDEN_SIZE,
             num_topk=TOPK,
         )
-    if enabled and not getattr(sbuf, "_fusion_ring", False):
+    if combine_enabled and not getattr(sbuf, "_fusion_ring_combine", False):
         raise RuntimeError(
-            "FUSION_RING=1 requested but the ring backend is unavailable; "
+            "FUSION_RING_COMBINE=1 requested but the ring backend is unavailable; "
             "cannot run this regression test."
         )
     return sbuf
@@ -109,7 +112,9 @@ def build_consistent_expert_output(canonical_src, abs_scatter_idx):
     return eo
 
 
-def run_cycle(sbuf, hidden_shard, topk_idx, topk_weights, canonical_src, ntok, ws, device):
+def build_dispatch_handle(
+    sbuf, hidden_shard, topk_idx, topk_weights, ntok, ws, device
+):
     remap = torch.empty(
         (ntok * ws * TOPK, HIDDEN_SIZE), device=device, dtype=torch.bfloat16
     )
@@ -120,7 +125,10 @@ def run_cycle(sbuf, hidden_shard, topk_idx, topk_weights, canonical_src, ntok, w
         num_experts=NUM_EXPERTS,
         remap_hidden_states=remap,
     )
-    expert_output = build_consistent_expert_output(canonical_src, handle.abs_scatter_idx)
+    return handle
+
+
+def run_combine(sbuf, handle, expert_output, ntok, device):
     output = torch.empty(ntok, HIDDEN_SIZE, device=device, dtype=torch.bfloat16)
     sbuf.unpermute_reducescatter_fusion(
         expert_output=expert_output, handle=handle, output=output
@@ -137,8 +145,9 @@ def check():
         raise RuntimeError("notify_dispatch_v2 kernel required for this test")
 
     # Two independent buffers, each created ONCE at the large capacity.
-    sbuf_ref = make_symm_buffer(False, group)   # FUSION_RING=0 (staged, known-good)
-    sbuf_ring = make_symm_buffer(True, group)   # FUSION_RING=1 (ring, under test)
+    # Keep dispatch staged for both so the test isolates the combine path.
+    sbuf_ref = make_symm_buffer(False, False, group)
+    sbuf_ring = make_symm_buffer(False, True, group)
 
     atol = 0.025 * world_size + 0.02
     failures = []
@@ -151,12 +160,12 @@ def check():
             ntok * world_size * TOPK, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
         )
 
-        out_ref = run_cycle(
-            sbuf_ref, hidden_shard, topk_idx, topk_weights, canonical_src, ntok, world_size, device
+        handle = build_dispatch_handle(
+            sbuf_ref, hidden_shard, topk_idx, topk_weights, ntok, world_size, device
         )
-        out_ring = run_cycle(
-            sbuf_ring, hidden_shard, topk_idx, topk_weights, canonical_src, ntok, world_size, device
-        )
+        expert_output = build_consistent_expert_output(canonical_src, handle.abs_scatter_idx)
+        out_ref = run_combine(sbuf_ref, handle, expert_output, ntok, device)
+        out_ring = run_combine(sbuf_ring, handle, expert_output, ntok, device)
 
         max_diff = (out_ref.float() - out_ring.float()).abs().max().item()
         ok = torch.allclose(out_ref, out_ring, atol=atol, rtol=1e-2)
