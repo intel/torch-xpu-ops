@@ -150,7 +150,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       *(ret_per_tensor_[group_id]) =
           norm_type == NormType::L1 || norm_type == NormType::LInf
           ? sum_val
-          : std::sqrt((opmath_t)sum_val);
+          : sycl::sqrt((opmath_t)sum_val);
     }
   }
   void sycl_ker_config_convention(sycl::handler& cgh) {

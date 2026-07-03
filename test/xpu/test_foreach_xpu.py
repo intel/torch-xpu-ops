@@ -17,7 +17,10 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
 )
-from torch.testing._internal.common_dtype import floating_types
+from torch.testing._internal.common_dtype import (
+    all_types_complex_float8_and,
+    floating_types,
+)
 from torch.testing._internal.common_methods_invocations import (
     foreach_binary_op_db,
     foreach_reduce_op_db,
@@ -28,6 +31,14 @@ try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+# These dtypes will need to be added to OpInfo for foreach_copy in common_methods_invocations.py when porting to upstream.
+for op in foreach_binary_op_db:
+    if op.name == "_foreach_copy":
+        op.dtypesIfXPU = all_types_complex_float8_and(
+            torch.bool, torch.half, torch.bfloat16
+        )
+        break
 
 
 def get_device_capability(device=None):
@@ -221,6 +232,8 @@ TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
 def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
     if dtype in (torch.complex128, torch.complex64):
         self.skipTest("Complex dtype not supported")
+    if dtype in (torch.float8_e4m3fnuz, torch.float8_e5m2fnuz):
+        self.skipTest("fp8e4b8/fp8e5fnuz not supported in XPU Triton backend")
     # check foreach_copy when self and src tensorList have different device
     foreach_copy = op.method_variant
     copy_ = op.ref_inplace
