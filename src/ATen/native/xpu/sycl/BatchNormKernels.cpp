@@ -1598,12 +1598,11 @@ void batch_norm_elemt_channels_last_template(
   const auto second_dtype = weight.defined()
       ? weight.scalar_type()
       : (shift.defined() ? shift.scalar_type() : input.scalar_type());
-  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
-
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+          constexpr int VEC_SIZE = 8 / sizeof(scalar_t);
 
           auto input_data_ptr = input.const_data_ptr<scalar_t>();
           auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
@@ -1689,6 +1688,7 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+          constexpr int VEC_SIZE = 8 / sizeof(scalar_t);
 
           auto input_data_ptr = input.const_data_ptr<scalar_t>();
           auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
