@@ -212,9 +212,7 @@ Tensor _histc_template(
     int64_t nbins,
     at::acc_type_device<input_t, kXPU> min,
     at::acc_type_device<input_t, kXPU> max) {
-  if (nbins <= 0) {
-    AT_ERROR("bins must be > 0");
-  }
+  TORCH_CHECK(nbins > 0, "bins must be > 0");
   Tensor output = at::zeros(
       {nbins},
       self.scalar_type(),

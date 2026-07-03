@@ -87,6 +87,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   class WorkXCCL : public Work {
    public:
     WorkXCCL(
+        std::string pgUID,
+        std::string pgDesc,
         at::Device& device,
         int rank,
         OpType opType,
@@ -130,6 +132,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
 
    protected:
+    std::string pgUID_;
+    std::string pgDesc_;
     at::Device device_;
     std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
@@ -406,12 +410,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& inputTensors,
       const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  c10::intrusive_ptr<Work> _allgather_base(
+  c10::intrusive_ptr<Work> all_gather_single(
       at::Tensor& outputbuffer,
       at::Tensor& inputbuffer,
       const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  c10::intrusive_ptr<Work> allgather_into_tensor_coalesced(
+  c10::intrusive_ptr<Work> all_gather_single_coalesced(
       std::vector<at::Tensor>& outputs,
       std::vector<at::Tensor>& inputs,
       const AllgatherOptions& opts = AllgatherOptions()) override;
@@ -421,12 +425,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<std::vector<at::Tensor>>& inputTensors,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  c10::intrusive_ptr<Work> _reduce_scatter_base(
+  c10::intrusive_ptr<Work> reduce_scatter_single(
       at::Tensor& outputTensor,
       at::Tensor& inputTensor,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  c10::intrusive_ptr<Work> reduce_scatter_tensor_coalesced(
+  c10::intrusive_ptr<Work> reduce_scatter_single_coalesced(
       std::vector<at::Tensor>& outputs,
       std::vector<at::Tensor>& inputs,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
@@ -434,7 +438,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Work> barrier(
       const BarrierOptions& opts = BarrierOptions()) override;
 
-  c10::intrusive_ptr<Work> alltoall_base(
+  c10::intrusive_ptr<Work> all_to_all_single(
       at::Tensor& outputTensor,
       at::Tensor& inputTensor,
       std::vector<int64_t>& outputSplitSizes,

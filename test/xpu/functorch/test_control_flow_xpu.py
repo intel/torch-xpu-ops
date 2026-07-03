@@ -8570,7 +8570,7 @@ class GraphModule(torch.nn.Module):
         out_x: "f32[s77, s27]" = while_loop[1];  while_loop = None
 
         gt: "Sym(u2 > 0)" = getitem_4 > 0
-        _check = torch._check(gt);  gt = _check = None
+        _assert_scalar_default_2 = torch.ops.aten._assert_scalar.default(gt, "Runtime assertion failed for expression u2 > 0 on node 'gt'");  gt = _assert_scalar_default_2 = None
 
         add: "Sym(u2 + 1)" = getitem_4 + 1
 
@@ -8603,11 +8603,11 @@ class GraphModule(torch.nn.Module):
             x_clone: "f32[s77, s27]" = child_1.clone()
 
             ge: "Sym(u1 >= 0)" = unbacked_symint_0 >= 0
-            _check = torch._check(ge);  ge = _check = None
+            _assert_scalar_default = torch.ops.aten._assert_scalar.default(ge, "Runtime assertion failed for expression u1 >= 0 on node 'ge'");  ge = _assert_scalar_default = None
 
             size = child_1.size();  child_1 = size = None
             lt: "Sym(u1 < s77)" = unbacked_symint_0 < sym_size_int;  sym_size_int = None
-            _check_1 = torch._check(lt);  lt = _check_1 = None
+            _assert_scalar_default_1 = torch.ops.aten._assert_scalar.default(lt, "Runtime assertion failed for expression u1 < s77 on node 'lt'");  lt = _assert_scalar_default_1 = None
 
             select: "f32[s27]" = x_clone.select(0, unbacked_symint_0)
             select_1: "f32[s27]" = x_clone.select(0, unbacked_symint_0)
@@ -8616,7 +8616,7 @@ class GraphModule(torch.nn.Module):
 
             add_1: "Sym(u1 + 1)" = unbacked_symint_0 + 1;  unbacked_symint_0 = None
             return (add_1, x_clone)
-""",  # noqa: B950
+""",
             )
 
     @skipIfTorchDynamo("Skip because we're testing export")
@@ -9002,6 +9002,7 @@ class GraphModule(torch.nn.Module):
         while_loop_stack_output = torch.ops.higher_order.while_loop_stack_output(while_loop_cond_graph_0, while_loop_body_graph_0, (primals_1,), (primals_3, primals_2));  while_loop_cond_graph_0 = while_loop_body_graph_0 = None
         getitem: "f32[u2, 3, 3]" = while_loop_stack_output[0];  while_loop_stack_output = None
         select: "f32[3, 3]" = torch.ops.aten.select.int(getitem, 0, -1)
+
         unsqueeze: "f32[1, 3, 3]" = torch.ops.aten.unsqueeze.default(primals_1, 0);  primals_1 = None
         slice_1: "f32[u2 - 1, 3, 3]" = torch.ops.aten.slice.Tensor(getitem, 0, 0, -1);  getitem = None
         cat: "f32[u2, 3, 3]" = torch.ops.aten.cat.default([unsqueeze, slice_1]);  unsqueeze = slice_1 = None

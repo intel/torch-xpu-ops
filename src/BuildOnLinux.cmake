@@ -34,7 +34,7 @@ endmacro()
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    get_filename_component(name ${sycl_src} NAME_WLE)
     set(sycl_lib torch-xpu-ops-sycl-${name})
     sycl_add_library(
       ${sycl_lib}
@@ -69,7 +69,6 @@ endif()
 if(USE_SYCLTLA)
   set(REPLACE_FLAGS_FOR_SYCLTLA TRUE)
   set_build_flags()
-  replace_cmake_build_flags()
 
   set(sycl_lib torch-xpu-ops-sycltla)
   sycl_add_library(
@@ -88,7 +87,6 @@ if(USE_SYCLTLA)
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
-  restore_cmake_build_flags()
 endif()
 
 set(SYCL_LINK_LIBRARIES_KEYWORD)
@@ -106,9 +104,3 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
   target_link_libraries(${lib} PRIVATE ATEN_XPU_FILES_GEN_LIB)
 endforeach()
-
-if(USE_ONEMKL_XPU)
-  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL_XPU")
-  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
-  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
-endif()

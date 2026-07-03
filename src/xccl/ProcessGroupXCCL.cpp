@@ -224,6 +224,8 @@ std::vector<at::Tensor>& TensorShelf::get() {
 }
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(
+    std::string pgUID,
+    std::string pgDesc,
     at::Device& device,
     int rank,
     OpType opType,
@@ -234,6 +236,8 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     bool enableTiming,
     bool xpuEventCacheEnabled)
     : Work(rank, opType, profilingTitle, inputs),
+      pgUID_(pgUID),
+      pgDesc_(pgDesc),
       device_(device),
       workStartTime_(std::chrono::steady_clock::now()),
       seq_(seq),
@@ -255,6 +259,8 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
     : Work(w.rank_, w.opType_),
+      pgUID_(w.pgUID_),
+      pgDesc_(w.pgDesc_),
       device_(w.device_),
       xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
@@ -290,6 +296,20 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
 }
 
 bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
+  RECORD_PARAM_COMMS(
+      std::make_tuple(static_cast<int64_t>(this->seq_), this->isP2P_), // seq
+      std::make_tuple(pgUID_, pgDesc_), // PG name tuple
+      rank_, // rank
+      "wait", // collective name
+      0, // inNelems
+      0, // outNelems
+      at::kByte, // dType
+      std::vector<int64_t>(), // inSplitSizes
+      std::vector<int64_t>(), // outSplitSizes
+      -1,
+      -1,
+      static_cast<int>(1)); // number of device?
+
   synchronize();
 
   if (blockingWait_ || timeout != kNoTimeout) {
@@ -496,6 +516,8 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     const std::vector<at::Tensor>& outputs,
     bool record) {
   auto r = c10::make_intrusive<ProcessGroupXCCL::WorkXCCL>(
+      pg_uid_,
+      pg_desc_,
       device,
       rank,
       opType,
@@ -1685,7 +1707,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
   }
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single(
     at::Tensor& output_tensor,
     at::Tensor& input_tensor,
     const AllgatherOptions& opts) {
@@ -1736,7 +1758,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       "xccl:_all_gather_base");
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const AllgatherOptions& opts) {
@@ -1867,7 +1889,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
   }
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
     at::Tensor& outputTensor,
     at::Tensor& inputTensor,
     const ReduceScatterOptions& opts) {
@@ -1926,7 +1948,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       "xccl:_reduce_scatter_base");
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const ReduceScatterOptions& opts) {
@@ -2046,7 +2068,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   return nullptr;
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
+c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     at::Tensor& outputTensor,
     at::Tensor& inputTensor,
     std::vector<int64_t>& outputSplitSizes,
