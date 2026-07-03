@@ -325,7 +325,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   }
 
   fac = a + lanczos_g - 0.5;
-  res = std::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
+  res = sycl::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
 
   if ((a < 200) && (x < 200)) {
     res *= sycl::exp(a - x) * sycl::pow(x / fac, a);
@@ -670,13 +670,13 @@ static const scalar_t _igam_helper_asymptotic_series(
   }
 
   if (lambda > 1) {
-    eta = std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
+    eta = sycl::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else if (lambda < 1) {
-    eta = -std::sqrt(-2 * (sycl::log1p(sigma) - sigma));
+    eta = -sycl::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else {
     eta = 0;
   }
-  res = 0.5 * sycl::erfc(sgn * eta * std::sqrt(a / 2));
+  res = 0.5 * sycl::erfc(sgn * eta * sycl::sqrt(a / 2));
 
   for (k = 0; k < 25; k++) {
     ck = d[k][0];
@@ -704,7 +704,7 @@ static const scalar_t _igam_helper_asymptotic_series(
     afac /= a;
   }
   const accscalar_t PI = 3.14159265358979323846;
-  res += sgn * sycl::exp(-0.5 * a * eta * eta) * sum / std::sqrt(2 * PI * a);
+  res += sgn * sycl::exp(-0.5 * a * eta * eta) * sum / sycl::sqrt(2 * PI * a);
 
   return res;
 }
@@ -820,7 +820,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
   absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 0);
-  } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
+  } else if ((a > LARGE) && (absxma_a < LARGERATIO / sycl::sqrt(a))) {
     return _igam_helper_asymptotic_series(a, x, 0);
   }
 
@@ -895,7 +895,7 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 1);
-  } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
+  } else if ((a > LARGE) && (absxma_a < LARGERATIO / sycl::sqrt(a))) {
     return _igam_helper_asymptotic_series(a, x, 1);
   }
 
@@ -1011,7 +1011,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
   auto len = std::get<1>(coeff_pair);
   return (
       sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
-      std::sqrt(x));
+      sycl::sqrt(x));
 }
 
 template <typename T>
@@ -1138,7 +1138,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
       (sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
-      std::sqrt(x);
+      sycl::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
@@ -1158,7 +1158,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / std::sqrt(x);
+      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / sycl::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
@@ -1268,7 +1268,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
               std::cos(x - scalar_t(2.356194490192344928846982537459627163)) -
           scalar_t(5.0) / x * (qp / qq) *
               std::sin(x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
+      scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_j1_forward(scalar_t x)
 
 template <typename scalar_t>
@@ -1388,7 +1388,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
               std::sin(x - scalar_t(2.356194490192344928846982537459627163)) +
           scalar_t(5.0) / x * (qp / qq) *
               std::cos(x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
+      scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_y1_forward(scalar_t x)
 
 template <typename T>
@@ -1483,7 +1483,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
   T k;
 
   if (x < T(-2.09f)) {
-    T z = T(1.0f) / (T(-2.0f) * x * std::sqrt(-x) / T(3.0f));
+    T z = T(1.0f) / (T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f));
 
     T afn = 0.0f;
 
@@ -1509,10 +1509,10 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
       agd = agd * (z * z) + AGD[index];
     }
 
-    T t = T(-2.0f) * x * std::sqrt(-x) / T(3.0f) +
+    T t = T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f) +
         T(0.25f) * T(3.14159265358979323846f);
 
-    return T(5.64189583547756286948e-01f) / std::sqrt(std::sqrt(-x)) *
+    return T(5.64189583547756286948e-01f) / sycl::sqrt(sycl::sqrt(-x)) *
         (std::sin(t) * (T(1.0f) + z * z * afn / afd) -
          std::cos(t) * (z * agn / agd));
   }
@@ -1520,7 +1520,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
   if (x >= T(2.09f)) {
     domain_flag = 5;
 
-    T zeta = T(2.0f) * x * std::sqrt(x) / T(3.0f);
+    T zeta = T(2.0f) * x * sycl::sqrt(x) / T(3.0f);
 
     T an = 0.0f;
 
@@ -1535,7 +1535,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
     }
 
     ai = T(5.64189583547756286948e-01f) * (an / ad) /
-        (T(2.0f) * std::sqrt(std::sqrt(x)) * sycl::exp(zeta));
+        (T(2.0f) * sycl::sqrt(sycl::sqrt(x)) * sycl::exp(zeta));
 
     if (x > T(8.3203353f)) {
       return ai;
