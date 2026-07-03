@@ -1316,15 +1316,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(input, output, comm, actualReduceOp, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::ALLREDUCE,
@@ -1404,15 +1395,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(input, output, comm, actualReduceOp, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::COALESCED,
@@ -1539,15 +1521,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::REDUCE,
@@ -1572,15 +1545,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::REDUCE,
@@ -1799,15 +1763,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
           auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
           xccl::onecclReduceScatter(
               input, output, comm, actualReduceOp, stream);
-#if !defined(XCCL_HAS_AVG)
-          if (opts.reduceOp == ReduceOp::AVG) {
-            auto divisor = getSize();
-            c10::StreamGuard guard(stream);
-            c10::xpu::XPUCachingAllocator::recordStream(
-                output.storage().data_ptr(), stream);
-            output.div_(divisor);
-          }
-#endif
           return;
         },
         [&](at::xpu::XPUStream& Stream,
@@ -1885,15 +1840,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::_REDUCE_SCATTER_BASE,
@@ -1935,15 +1881,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
-#endif
         return;
       },
       OpType::COALESCED,
