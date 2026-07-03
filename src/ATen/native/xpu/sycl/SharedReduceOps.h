@@ -27,7 +27,7 @@
 #define MAX(X, Y) max_impl(X, Y)
 #define MIN(X, Y) min_impl(X, Y)
 
-#define device_sqrt std::sqrt
+#define device_sqrt sycl::sqrt
 #define compat_pow sycl::pow
 
 namespace at {

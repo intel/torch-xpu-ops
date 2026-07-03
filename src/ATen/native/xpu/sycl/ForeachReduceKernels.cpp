@@ -155,7 +155,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
       // raw sum of squares. L1 and LInf never apply a root.
       if constexpr (norm_type == NormType::L2 && apply_root) {
-        *(ret_per_tensor_[group_id]) = std::sqrt((opmath_t)sum_val);
+        *(ret_per_tensor_[group_id]) = sycl::sqrt((opmath_t)sum_val);
       } else {
         *(ret_per_tensor_[group_id]) = sum_val;
       }
