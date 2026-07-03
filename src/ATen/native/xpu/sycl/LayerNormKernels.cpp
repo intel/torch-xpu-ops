@@ -589,11 +589,34 @@ struct VectorizedLayerNormKernelFunctor
   sycl_local_acc_t<T_ACC> buf_;
 };
 
-int64_t layer_norm_wg_size_select(int64_t max_wg_size, int n) {
-  while (max_wg_size > n && max_wg_size > SIMD) {
-    max_wg_size >>= 1;
+int64_t layer_norm_wg_size_select(
+    const int64_t max_wg_size,
+    const int64_t M,
+    const int n) {
+  if (n > max_wg_size)
+    return max_wg_size;
+
+  int64_t wg_size = max_wg_size;
+  while (wg_size > n && wg_size > SIMD) {
+    wg_size >>= 1;
   }
-  return max_wg_size;
+
+  // To reduce the barrier overhead during tree-reduce
+  // with 4 subgroups per workgroup
+  constexpr int64_t threads_per_wg = 4;
+  constexpr int64_t preferred_wg_size = SIMD * threads_per_wg;
+
+  // keep wg_size when n is not large enough to utilize preferred_wg_size
+  if (wg_size <= preferred_wg_size)
+    return wg_size;
+
+  // (XeCore count * EUs per XeCore) * HW threads per EU
+  int64_t total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  // Only use preferred_wg_size when less than 50% HW threads would be left idle
+  if (M * threads_per_wg > total_hw_threads / 2)
+    return preferred_wg_size;
+
+  return wg_size;
 }
 
 template <typename T, typename T_ACC, bool rms_norm>
@@ -609,7 +632,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
-      syclMaxWorkGroupSize<KernelClass>(), N / vec_size);
+      syclMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
   KernelClass kfn(
       N,
       eps,
