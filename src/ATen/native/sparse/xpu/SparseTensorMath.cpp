@@ -32,6 +32,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/matmul.h>
 #include <ATen/ops/sspaddmm_native.h>
 #include <ATen/ops/zeros.h>
+#include <ATen/ops/mm.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
@@ -360,7 +361,8 @@ Tensor& _sspaddmm_out_xpu(
       result.is_xpu(),
       "sspaddmm: expected 'result' to be XPU tensor, but got CPU");
 
-  TORCH_CHECK(at::xpu::check_device({self, mat1, mat2, result}));
+  TORCH_CHECK(at::xpu::check_device({self, mat1, mat2, result}), 
+      "sspaddmm: all tensors must be on the same XPU device");
 
   // Validate input types and dimensions
   TORCH_CHECK(
@@ -417,12 +419,18 @@ Tensor& _sspaddmm_out_xpu(
   Tensor mat1_dense = mat1.to_dense();
   Tensor self_dense = self.to_dense();
 
-  // Compute: result = self*beta + (mat1_dense @ mat2)*alpha
+//   Compute: result = self*beta + (mat1_dense @ mat2)*alpha
   Tensor mm_result = at::mm(mat1_dense, mat2);
   Tensor dense_result = self_dense * beta + mm_result * alpha;
+  Tensor sparse_result = dense_result.to_sparse();
 
-  // Convert result back to sparse format
-  result = dense_result.to_sparse();
+  // Write the sparse result into the provided out tensor.
+  get_sparse_impl(result)->raw_resize_(
+      2, 0, {sparse_result.size(0), sparse_result.size(1)});
+  get_sparse_impl(result)->set_indices_and_values_unsafe(
+      sparse_result._indices(), sparse_result._values());
+  get_sparse_impl(result)->set_nnz_and_narrow(sparse_result._nnz());
+  get_sparse_impl(result)->set_coalesced(sparse_result.is_coalesced());
 
   return result;
 }
