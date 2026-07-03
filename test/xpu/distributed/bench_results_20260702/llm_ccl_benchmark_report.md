@@ -15,16 +15,16 @@
 | Collective | 4-GPU | 8-GPU |
 |------------|------:|------:|
 | AllReduce | 27.88 | 22.33 |
-| AllGather | 27.88 | 22.40 |
-| ReduceScatter | 26.01 | 21.77 |
+| AllGather | 27.86 | 22.40 |
+| ReduceScatter | 25.95 | 21.77 |
 
 ### Small Message Latency (8 KB, µs)
 
 | Collective | 4-GPU | 8-GPU |
 |------------|------:|------:|
 | AllReduce | 20.01 | 35.15 |
-| AllGather | 7.60 | 10.92 |
-| ReduceScatter | 13.64 | 22.41 |
+| AllGather | 7.24 | 10.92 |
+| ReduceScatter | 13.32 | 22.41 |
 
 ---
 
@@ -80,22 +80,23 @@
 
 | Size (OUT) | Latency (µs) | Bandwidth (GB/s) |
 |------------|-------------:|-----------------:|
-| 8 KB | 7.60 | 0.81 |
-| 16 KB | 12.30 | 1.00 |
-| 32 KB | 11.41 | 2.16 |
-| 64 KB | 12.10 | 4.06 |
-| 112 KB | 9.84 | 8.74 |
-| 128 KB | 10.14 | 9.70 |
-| 224 KB | 13.86 | 12.41 |
-| 256 KB | 14.87 | 13.22 |
-| 512 KB | 24.67 | 15.94 |
-| 32 MB | 942.68 | 26.70 |
-| 64 MB | 1840.12 | 27.35 |
-| 112 MB | 3191.89 | 27.60 |
-| 224 MB | 6345.52 | 27.76 |
-| 392 MB | 11076.48 | 27.83 |
-| 448 MB | 12653.69 | 27.84 |
-| 896 MB | 25270.87 | **27.88** |
+| 8 KB | 7.24 | 0.85 |
+| 16 KB | 10.84 | 1.13 |
+| 32 KB | 9.97 | 2.46 |
+| 64 KB | 10.54 | 4.66 |
+| 128 KB | 10.19 | 9.65 |
+| 256 KB | 14.84 | 13.25 |
+| 512 KB | 24.66 | 15.94 |
+| 1 MB | 43.82 | 17.95 |
+| 2 MB | 81.94 | 19.20 |
+| 4 MB | 158.56 | 19.84 |
+| 8 MB | 245.79 | 25.60 |
+| 16 MB | 470.49 | 26.74 |
+| 32 MB | 928.80 | 27.10 |
+| 64 MB | 1839.91 | 27.36 |
+| 128 MB | 3641.89 | 27.64 |
+| 256 MB | 7245.04 | 27.79 |
+| 512 MB | 14452.72 | **27.86** |
 
 ---
 
@@ -127,24 +128,23 @@
 
 | Size (IN) | Latency (µs) | Bandwidth (GB/s) |
 |-----------|-------------:|-----------------:|
-| 8 KB | 13.64 | 0.45 |
-| 16 KB | 12.28 | 1.00 |
-| 32 KB | 12.83 | 1.92 |
-| 64 KB | 12.82 | 3.83 |
-| 112 KB | 12.56 | 6.85 |
-| 128 KB | 12.30 | 7.99 |
-| 224 KB | 14.30 | 12.03 |
-| 256 KB | 15.40 | 12.77 |
+| 8 KB | 13.32 | 0.46 |
+| 16 KB | 12.53 | 0.98 |
+| 32 KB | 12.92 | 1.90 |
+| 64 KB | 12.81 | 3.84 |
+| 128 KB | 12.38 | 7.94 |
+| 256 KB | 15.37 | 12.79 |
 | 512 KB | 25.09 | 15.67 |
-| 32 MB | 1041.22 | 24.17 |
-| 64 MB | 1990.70 | 25.28 |
-| 112 MB | 3432.48 | 25.66 |
-| 128 MB | 3912.65 | 25.73 |
-| 224 MB | 6803.89 | 25.89 |
-| 448 MB | 13599.43 | 25.91 |
-| 784 MB | 23741.26 | 25.97 |
-| 896 MB | 27125.10 | 25.98 |
-| 1792 MB | 54177.74 | **26.01** |
+| 1 MB | 44.21 | 17.79 |
+| 2 MB | 82.72 | 19.01 |
+| 4 MB | 159.86 | 19.68 |
+| 8 MB | 309.91 | 20.30 |
+| 16 MB | 525.04 | 23.97 |
+| 32 MB | 1023.96 | 24.58 |
+| 64 MB | 1988.88 | 25.31 |
+| 128 MB | 3913.90 | 25.72 |
+| 256 MB | 7759.98 | 25.94 |
+| 512 MB | 15516.66 | **25.95** |
 
 ---
 
@@ -175,7 +175,7 @@
 ## Key Observations
 
 1. **Peak Bandwidth**: 
-   - 4-GPU achieves ~27.88 GB/s for AllReduce/AllGather, ~26 GB/s for ReduceScatter
+   - 4-GPU achieves ~27.88 GB/s for AllReduce/AllGather, ~25.95 GB/s for ReduceScatter
    - 8-GPU achieves ~22 GB/s across all collectives
 
 2. **4-GPU vs 8-GPU**:
@@ -195,13 +195,10 @@
 
 ## Log Files
 
-- `allreduce_4gpu.log`
-- `allreduce_8gpu.log`
-- `allgather_4gpu.log`
-- `allgather_8gpu.log`
-- `allgather_exact_prefill.log`
-- `allgather_exact_decode.log`
-- `reduce_scatter_4gpu.log`
-- `reduce_scatter_8gpu.log`
-- `reduce_scatter_exact_prefill.log`
-- `reduce_scatter_exact_decode.log`
+- `allreduce_4gpu.log` - AllReduce 4-GPU (2^12 - 2^28)
+- `allreduce_8gpu.log` - AllReduce 8-GPU (2^12 - 2^28)
+- `allgather_4gpu.log` - AllGather 4-GPU (2^12 - 2^28)
+- `allgather_8gpu.log` - AllGather 8-GPU (2^12 - 2^28)
+- `reduce_scatter_4gpu.log` - ReduceScatter 4-GPU (2^12 - 2^28)
+- `reduce_scatter_8gpu.log` - ReduceScatter 8-GPU (2^12 - 2^28)
+- `*_exact_*.log` - 精确尺寸测试 (用于 LLM 模型)
