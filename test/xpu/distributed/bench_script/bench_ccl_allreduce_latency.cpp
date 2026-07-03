@@ -1,13 +1,13 @@
 /*
- * bench_ccl_allreduce_latency_c_api.cpp
+ * bench_ccl_allreduce_latency.cpp
  *
  * busBW factor: 2*(n-1)/n  (AllReduce does reduce + broadcast)
  *
  * Usage:
- *   mpirun -n 4 ./bench_ccl_allreduce_c_api --min 12 --max 28    # 2^12 to 2^28 elements
- *   mpirun -n 4 ./bench_ccl_allreduce_c_api --sizes 917504,1835008  # exact element counts
- *   mpirun -n 4 ./bench_ccl_allreduce_c_api --sizes-kb 1792,3584    # exact KB sizes
- *   mpirun -n 4 ./bench_ccl_allreduce_c_api --sizes-mb 896,1792     # exact MB sizes
+ *   mpirun -n 4 ./bench_ccl_allreduce --min 12 --max 28    # 2^12 to 2^28 elements
+ *   mpirun -n 4 ./bench_ccl_allreduce --sizes 917504,1835008  # exact element counts
+ *   mpirun -n 4 ./bench_ccl_allreduce --sizes-kb 1792,3584    # exact KB sizes
+ *   mpirun -n 4 ./bench_ccl_allreduce --sizes-mb 896,1792     # exact MB sizes
  */
 
 #include <algorithm>

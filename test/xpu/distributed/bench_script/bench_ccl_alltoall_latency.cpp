@@ -1,18 +1,13 @@
 /*
- * bench_ccl_allgather_latency_c_api.cpp
+ * bench_ccl_alltoall_latency.cpp (v2 - with onecclSetDevice fix)
  *
  * C API call:
- *   onecclAllGather(send, recv, sendcount, dtype, comm, stream)
- *   where sendcount = numel/ws and recvbuf must hold numel total elements.
+ *   onecclAllToAll(send, recv, count, dtype, comm, stream)
+ *   where count = elements per rank (each rank sends count elements to every other rank)
+ *   Total send = count * ws, Total recv = count * ws
  *
- * busBW factor: (n-1)/n
- * Size column reports total OUTPUT bytes (numel * 2).
- *
- * Usage:
- *   mpirun -n 4 ./bench_ccl_allgather_c_api --min 12 --max 28    # 2^12 to 2^28 elements
- *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes 917504,1835008  # exact element counts
- *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes-kb 1792,3584    # exact KB sizes
- *   mpirun -n 4 ./bench_ccl_allgather_c_api --sizes-mb 896,1792     # exact MB sizes
+ * busBW factor: (n-1)/n (each rank sends (n-1)*count elements out, receives (n-1)*count in)
+ * Size column reports total bytes per rank (count * ws * sizeof(dtype))
  */
 
 #include <algorithm>
@@ -22,7 +17,6 @@
 #include <cstring>
 #include <string>
 #include <vector>
-#include <sstream>
 
 #include <sycl/sycl.hpp>
 #include <oneapi/ccl.h>
@@ -49,33 +43,24 @@ static std::string fmt_size(double bytes) {
     return std::string(buf);
 }
 
-// Parse comma-separated list of sizes
-static std::vector<int64_t> parse_sizes(const char* str, int64_t multiplier = 1) {
-    std::vector<int64_t> result;
-    std::stringstream ss(str);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        int64_t val = std::atoll(token.c_str());
-        result.push_back(val * multiplier);
-    }
-    return result;
-}
-
+// AllToAll busBW factor: (n-1)/n
 static double busbw_factor(int ws) {
     double n = static_cast<double>(ws);
     return (n - 1.0) / n;
 }
+
 static double algbw_gbs(double bytes, double us) {
     return us > 0.0 ? bytes / (us * 1e-6) / 1e9 : 0.0;
 }
 
 static void print_table_header() {
     std::printf("  %-12s  %10s %10s %10s %10s  %12s\n",
-        "Size(out)", "avg_us", "min_us", "max_us", "var_us", "busBW(GB/s)");
+        "Size", "avg_us", "min_us", "max_us", "var_us", "busBW(GB/s)");
     std::printf("  %-12s  %10s %10s %10s %10s  %12s\n",
         "------------", "----------", "----------", "----------", "----------",
         "------------");
 }
+
 static void print_table_row(double bytes, double avg_us, double min_us,
                             double max_us, double var_us, int ws) {
     double alg = algbw_gbs(bytes, avg_us);
@@ -157,7 +142,6 @@ int main(int argc, char** argv) {
     int warmup = 20, loop = 100;
     size_t prefill_n = 64ULL * 1024 * 1024;
     int    prefill_reps = 100;
-    std::vector<int64_t> exact_sizes;  // exact element counts (if specified)
 
     for (int i = 1; i < argc; ++i) {
         if      (!std::strcmp(argv[i],"--min")         && i+1<argc) min_log2     = std::atoi(argv[++i]);
@@ -165,65 +149,62 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i],"--step")        && i+1<argc) step         = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i],"--warmup")      && i+1<argc) warmup       = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i],"--loop")        && i+1<argc) loop         = std::atoi(argv[++i]);
-        else if (!std::strcmp(argv[i],"--prefill-n")   && i+1<argc) prefill_n    = static_cast<size_t>(std::atoll(argv[++i]));
+        else if (!std::strcmp(argv[i],"--prefill")     && i+1<argc) prefill_n    = (size_t)std::atoll(argv[++i]);
         else if (!std::strcmp(argv[i],"--prefill-reps")&& i+1<argc) prefill_reps = std::atoi(argv[++i]);
-        // New: exact sizes in bf16 elements
-        else if (!std::strcmp(argv[i],"--sizes")       && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 1);
-        // New: exact sizes in KB (convert to bf16 elements: KB * 1024 / 2)
-        else if (!std::strcmp(argv[i],"--sizes-kb")    && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 512);
-        // New: exact sizes in MB (convert to bf16 elements: MB * 1024 * 1024 / 2)
-        else if (!std::strcmp(argv[i],"--sizes-mb")    && i+1<argc) exact_sizes  = parse_sizes(argv[++i], 524288);
     }
 
-    int mpi_provided;
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_provided);
+    MPI_Init(&argc, &argv);
     int rank, ws;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &ws);
 
-    // CRITICAL: Each rank must use its own GPU device
-    auto devs = sycl::platform{sycl::gpu_selector_v}.get_devices();
-    if ((int)devs.size() < ws) {
-        if (rank == 0) std::fprintf(stderr, "bench: need %d GPUs, found %zu\n", ws, devs.size());
-        MPI_Finalize(); return 1;
+    // Get local rank for device selection
+    MPI_Comm local_comm;
+    MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &local_comm);
+    int local_rank;
+    MPI_Comm_rank(local_comm, &local_rank);
+
+    // CRITICAL: Set device BEFORE comm init (following acceptance_sycl.cpp pattern)
+    ONECCL_CHECK(onecclSetDevice(local_rank));
+
+    // Create SYCL queue for the selected device
+    auto gpu_devices = sycl::device::get_devices(sycl::info::device_type::gpu);
+    if (local_rank >= (int)gpu_devices.size()) {
+        std::fprintf(stderr, "Error: local_rank %d >= num_gpus %zu\n", local_rank, gpu_devices.size());
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
-    sycl::device  dev = devs[rank];
-    sycl::context ctx(dev);
-    sycl::queue   q{ctx, dev,
-        {sycl::property::queue::in_order{},
-         sycl::property::queue::enable_profiling{}}};
-
-    ONECCL_CHECK(onecclSetDevice(static_cast<uint32_t>(rank)));
-    onecclUniqueId uniqId{};
-    if (rank == 0) ONECCL_CHECK(onecclGetUniqueId(&uniqId));
-    MPI_Bcast(&uniqId, sizeof(uniqId), MPI_BYTE, 0, MPI_COMM_WORLD);
-    onecclComm_t comm = nullptr;
-    ONECCL_CHECK(onecclCommInitRank(&comm, static_cast<size_t>(ws), uniqId, rank));
-
-    // Build size list
-    std::vector<int64_t> size_list;
-    if (!exact_sizes.empty()) {
-        size_list = exact_sizes;
-    } else {
-        for (int lg = min_log2; lg <= max_log2; lg += step) {
-            size_list.push_back((int64_t)1 << lg);
-        }
+    sycl::queue q{gpu_devices[local_rank],
+                  sycl::property_list{sycl::property::queue::enable_profiling{},
+                                      sycl::property::queue::in_order{}}};
+    if (rank == 0) {
+        auto dev = q.get_device();
+        std::printf("[rank %d] %s\n", rank, dev.get_info<sycl::info::device::name>().c_str());
+        std::fflush(stdout);
     }
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    // Find max size for allocation
-    int64_t max_numel = 0;
-    for (auto sz : size_list) {
-        // Round up to be divisible by ws
-        int64_t aligned = ((sz + ws - 1) / ws) * ws;
-        if (aligned > max_numel) max_numel = aligned;
+    // Create oneCCL communicator (C API)
+    onecclComm_t comm;
+    {
+        onecclUniqueId uid;
+        if (rank == 0) ONECCL_CHECK(onecclGetUniqueId(&uid));
+        MPI_Bcast(&uid, sizeof(uid), MPI_BYTE, 0, MPI_COMM_WORLD);
+        ONECCL_CHECK(onecclCommInitRank(&comm, ws, uid, rank));
     }
 
-    bf16* buf_chunk = sycl::malloc_device<bf16>(max_numel / ws, q);
-    bf16* buf_out   = sycl::malloc_device<bf16>(max_numel,      q);
-    bf16* prefill   = sycl::malloc_device<bf16>(prefill_n,      q);
-    q.memset(buf_chunk, 0, (max_numel / ws) * sizeof(bf16));
-    q.memset(buf_out,   0, max_numel * sizeof(bf16));
-    q.memset(prefill,   0, prefill_n * sizeof(bf16));
+    // For AllToAll: each rank has count elements to send to each other rank
+    // Total send buffer = count * ws elements
+    // Total recv buffer = count * ws elements
+    // We use 2^lg as the total elements per rank (count * ws)
+    // So count = numel / ws
+    const int64_t max_numel = (int64_t)1 << max_log2;
+
+    bf16* buf_send  = sycl::malloc_device<bf16>(max_numel, q);
+    bf16* buf_recv  = sycl::malloc_device<bf16>(max_numel, q);
+    bf16* prefill   = sycl::malloc_device<bf16>(prefill_n, q);
+    q.memset(buf_send, 0, max_numel * sizeof(bf16));
+    q.memset(buf_recv, 0, max_numel * sizeof(bf16));
+    q.memset(prefill,  0, prefill_n * sizeof(bf16));
     q.wait();
 
     const int measure = std::min(loop, 50);
@@ -234,20 +215,16 @@ int main(int argc, char** argv) {
     if (rank == 0) {
         const std::string sep(90, '=');
         std::printf("\n%s\n", sep.c_str());
-        std::printf("  Allgather Latency Benchmark  (oneCCL C API / barrier timing)\n");
+        std::printf("  AllToAll Latency Benchmark  (oneCCL C API / barrier timing)\n");
         std::printf("  world_size=%d  dtype=bfloat16  warmup=%d  loop=%d  measure(last)=%d\n",
                     ws, warmup, loop, measure);
         std::printf("  prefill: %zu M bf16 elements × %d reps/elem\n",
                     prefill_n >> 20, prefill_reps);
-        if (!exact_sizes.empty()) {
-            std::printf("  sizes (exact): %zu values specified\n", exact_sizes.size());
-        } else {
-            std::printf("  sizes (total output): 2^%d .. 2^%d bf16 elements  (%s .. %s)\n",
-                        min_log2, max_log2,
-                        fmt_size((double)((int64_t)1<<min_log2)*2).c_str(),
-                        fmt_size((double)((int64_t)1<<max_log2)*2).c_str());
-        }
-        std::printf("  per-rank send chunk = total / %d\n", ws);
+        std::printf("  sizes (total per rank): 2^%d .. 2^%d bf16 elements  (%s .. %s)\n",
+                    min_log2, max_log2,
+                    fmt_size((double)((int64_t)1<<min_log2)*2).c_str(),
+                    fmt_size((double)((int64_t)1<<max_log2)*2).c_str());
+        std::printf("  per-rank send to each peer = total / %d\n", ws);
         std::printf("  Timing method B (barrier): post.cmd_start − pre.cmd_end\n");
         std::printf("%s\n", sep.c_str());
         std::fflush(stdout);
@@ -256,20 +233,18 @@ int main(int argc, char** argv) {
     struct RowData { double bytes; double avg_us, min_us, max_us, var_us; };
     std::vector<RowData> table_rows;
 
-    for (auto numel : size_list) {
-        // Round up to be divisible by ws
-        if (numel % ws != 0) {
-            numel = ((numel + ws - 1) / ws) * ws;
-        }
-        const int64_t chunk = numel / ws;
-        const double  bytes = static_cast<double>(numel) * 2.0;
+    for (int lg = min_log2; lg <= max_log2; lg += step) {
+        const int64_t numel = (int64_t)1 << lg;  // total elements per rank
+        if (numel % ws != 0) continue;
+        const int64_t count = numel / ws;        // elements to send to each peer
+        const double  bytes = static_cast<double>(numel) * 2.0;  // total bytes per rank
 
         BenchResult res = bench_loop(q, warmup, loop, MPI_COMM_WORLD,
                                      prefill, prefill_n, prefill_reps,
             [&]() {
-                ONECCL_CHECK(onecclAllGather(
-                    buf_chunk, buf_out,
-                    static_cast<size_t>(chunk),
+                ONECCL_CHECK(onecclAllToAll(
+                    buf_send, buf_recv,
+                    static_cast<size_t>(count),
                     onecclBfloat16,
                     comm,
                     static_cast<void*>(&q)));
@@ -305,7 +280,7 @@ int main(int argc, char** argv) {
     }
 
     if (rank == 0) {
-        std::printf("\n\n  -- allgather latency summary (C API / barrier) --\n\n");
+        std::printf("\n\n  -- alltoall latency summary (C API / barrier) --\n\n");
         print_table_header();
         for (const auto& row : table_rows)
             print_table_row(row.bytes, row.avg_us, row.min_us,
@@ -316,11 +291,12 @@ int main(int argc, char** argv) {
 
     MPI_Barrier(MPI_COMM_WORLD);
     q.wait();
-    sycl::free(buf_chunk, q);
-    sycl::free(buf_out,   q);
-    sycl::free(prefill,   q);
+    sycl::free(buf_send, q);
+    sycl::free(buf_recv, q);
+    sycl::free(prefill,  q);
     q.wait();
     ONECCL_CHECK(onecclCommDestroy(comm));
+    MPI_Comm_free(&local_comm);
     MPI_Finalize();
     return 0;
 }

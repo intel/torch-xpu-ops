@@ -6,9 +6,9 @@ Latency benchmarks for oneCCL collectives using the C API.
 
 | File | Collective | Description |
 |------|------------|-------------|
-| `bench_ccl_allreduce_latency_c_api.cpp` | AllReduce | Sum reduction across all ranks |
-| `bench_ccl_allgather_latency_c_api.cpp` | AllGather | Gather from all ranks to all ranks |
-| `bench_ccl_reduce_scatter_latency_c_api.cpp` | ReduceScatter | Reduce then scatter to each rank |
+| `bench_ccl_allreduce_latency.cpp` | AllReduce | Sum reduction across all ranks |
+| `bench_ccl_allgather_latency.cpp` | AllGather | Gather from all ranks to all ranks |
+| `bench_ccl_reduce_scatter_latency.cpp` | ReduceScatter | Reduce then scatter to each rank |
 
 ## Requirements
 
@@ -27,7 +27,7 @@ icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
     -L${ONEAPI_ROOT}/ccl/latest/lib \
     -L${ONEAPI_ROOT}/mpi/latest/lib \
     -lccl -lmpi \
-    bench_ccl_allreduce_latency_c_api.cpp -o bench_ccl_allreduce
+    bench_ccl_allreduce_latency.cpp -o bench_ccl_allreduce
 
 icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
     -I${ONEAPI_ROOT}/ccl/latest/include \
@@ -35,7 +35,7 @@ icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
     -L${ONEAPI_ROOT}/ccl/latest/lib \
     -L${ONEAPI_ROOT}/mpi/latest/lib \
     -lccl -lmpi \
-    bench_ccl_allgather_latency_c_api.cpp -o bench_ccl_allgather
+    bench_ccl_allgather_latency.cpp -o bench_ccl_allgather
 
 icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
     -I${ONEAPI_ROOT}/ccl/latest/include \
@@ -43,7 +43,7 @@ icpx -fsycl -fsycl-targets=spir64_gen -Xs "-device bmg" -O2 -std=c++17 \
     -L${ONEAPI_ROOT}/ccl/latest/lib \
     -L${ONEAPI_ROOT}/mpi/latest/lib \
     -lccl -lmpi \
-    bench_ccl_reduce_scatter_latency_c_api.cpp -o bench_ccl_reduce_scatter
+    bench_ccl_reduce_scatter_latency.cpp -o bench_ccl_reduce_scatter
 ```
 
 ## Usage
