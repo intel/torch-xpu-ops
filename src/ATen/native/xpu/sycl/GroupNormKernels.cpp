@@ -14,6 +14,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
 #include <comm/MemoryFormat.h>
@@ -897,7 +898,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // Use precomputed coefficients from SLM
       if (lid == 0) {
         for (index_t j = 0; j < head; j++) {
-          const index_t c = j / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
           y_base[j] = static_cast<T>(
               coeff_[c] * static_cast<T_ACC>(x_base[j]) + coeff_[D_ + c]);
         }
@@ -909,7 +911,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         vec_t yv;
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; v++) {
-          const index_t c = (j + v) / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j + v)));
           yv[v] = static_cast<T>(
               coeff_[c] * static_cast<T_ACC>(xv[v]) + coeff_[D_ + c]);
         }
@@ -917,7 +920,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       if (lid == 0) {
         for (index_t j = tail_start; j < DS_; j++) {
-          const index_t c = j / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
           y_base[j] = static_cast<T>(
               coeff_[c] * static_cast<T_ACC>(x_base[j]) + coeff_[D_ + c]);
         }
@@ -926,7 +930,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // Compute coefficients on-the-fly (gamma/beta L1/L2 cached)
       if (lid == 0) {
         for (index_t j = 0; j < head; j++) {
-          const index_t c = j / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
           const index_t gc = g_offset + c;
           T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
           T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
@@ -942,7 +947,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         vec_t yv;
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; v++) {
-          const index_t c = (j + v) / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j + v)));
           const index_t gc = g_offset + c;
           T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
           T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
@@ -954,7 +960,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       if (lid == 0) {
         for (index_t j = tail_start; j < DS_; j++) {
-          const index_t c = j / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
           const index_t gc = g_offset + c;
           T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
           T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
@@ -1002,9 +1009,16 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         mean_acc_(mean_acc),
         rstd_acc_(rstd_acc),
         wg_size_(wg_size),
-        use_slm_coeff_(use_slm_coeff) {}
+        use_slm_coeff_(use_slm_coeff),
+        s_divider_(static_cast<unsigned_index_t>(S)) {}
 
  private:
+  // at::detail::IntDivider<unsigned int> replaces the Pass-2 channel-index
+  // division (c = j / S_) with a precomputed magic-number multiply + shift
+  // (see IntegerDivider.h). Falls back to plain division when index_t is
+  // 64-bit (IntDivider has no fast specialization for that width, matching
+  // the CUDA/XPU IntDivider's own precedent elsewhere in this codebase).
+  using unsigned_index_t = std::make_unsigned_t<index_t>;
   index_t D_;
   index_t S_;
   index_t DS_;
@@ -1023,6 +1037,7 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<T_ACC> reduce_shared_;
   sycl_local_acc_t<T_ACC> broadcast_;
   sycl_local_acc_t<T_ACC> coeff_;
+  at::detail::IntDivider<unsigned_index_t> s_divider_;
 };
 
 template <typename T, typename T_ACC = acc_type_device<T, kXPU>>
