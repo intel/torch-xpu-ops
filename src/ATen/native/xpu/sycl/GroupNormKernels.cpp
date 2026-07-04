@@ -847,8 +847,14 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         const T* bp = beta_ + g_offset;
         const int gp_elem =
             static_cast<int>(reinterpret_cast<uintptr_t>(gp) / sizeof(T));
-        const index_t c_head =
-            ((VEC_SIZE - gp_elem % VEC_SIZE) % VEC_SIZE);
+        // Clamp to D_: for D_ < VEC_SIZE (e.g. num_groups == num_channels),
+        // the raw alignment-derived head can exceed D_, which would make
+        // c_nvecs truncate to 0 and c_tail stay above D_ -- the head loop
+        // below would then run past D_, reading gp/bp out of bounds and
+        // writing beyond coeff_'s intended a[]/b[] sub-ranges.
+        const index_t c_head = std::min(
+            static_cast<index_t>((VEC_SIZE - gp_elem % VEC_SIZE) % VEC_SIZE),
+            D_);
         const index_t c_nvecs = (D_ - c_head) / VEC_SIZE;
         const index_t c_tail = c_head + c_nvecs * VEC_SIZE;
         if (lid == 0) {
