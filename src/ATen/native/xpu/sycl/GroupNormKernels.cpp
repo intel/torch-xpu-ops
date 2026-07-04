@@ -639,7 +639,8 @@ struct GNFusedForwardMediumFunctor {
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; v++) {
           const int pos = (sg_lid + li * SIMD) * VEC_SIZE + v;
-          const index_t c = pos / S_;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(pos)));
           T_ACC gv = gamma_
               ? static_cast<T_ACC>(gamma_[g_offset + c])
               : T_ACC(1);
@@ -685,9 +686,13 @@ struct GNFusedForwardMediumFunctor {
         mean_(mean),
         rstd_(rstd),
         mean_acc_(mean_acc),
-        rstd_acc_(rstd_acc) {}
+        rstd_acc_(rstd_acc),
+        s_divider_(static_cast<unsigned_index_t>(S)) {}
 
  private:
+  // See GNFusedForwardFunctor's s_divider_ for rationale (magic-number
+  // multiply+shift for 32-bit index_t, plain division fallback for 64-bit).
+  using unsigned_index_t = std::make_unsigned_t<index_t>;
   index_t D_;
   index_t S_;
   index_t DS_;
@@ -702,6 +707,7 @@ struct GNFusedForwardMediumFunctor {
   T* rstd_;
   T_ACC* mean_acc_;
   T_ACC* rstd_acc_;
+  at::detail::IntDivider<unsigned_index_t> s_divider_;
 };
 
 // Fused GroupNorm forward kernel: combines reduction + normalization
