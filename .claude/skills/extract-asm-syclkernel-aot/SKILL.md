@@ -57,9 +57,13 @@ ls *.elf
 ### Step 3: Disassemble
 
 ```bash
+# Detect device name (bmg, dg2, pvc, etc.)
+DEVICE=$(sycl-ls 2>/dev/null | grep -oP '(?<=\[)[^]]+' | head -1 | awk '{print tolower($NF)}')
+DEVICE=${DEVICE:-bmg}  # fallback
+
 for elf in *.elf; do
   name=$(basename "$elf" .elf)
-  ocloc disasm -file "$elf" -dump "${name}_dump" -device bmg
+  ocloc disasm -file "$elf" -dump "${name}_dump" -device "$DEVICE"
 done
 ```
 

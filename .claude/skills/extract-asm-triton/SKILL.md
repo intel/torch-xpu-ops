@@ -46,7 +46,7 @@ The back half (SPIR-V → IGC → zebin) is IDENTICAL.
 
 - Kernel is `_ZTS…` (SYCL) → use `extract-asm-syclkernel-{aot,jit}`
 - Kernel is oneDNN ngen → use `extract-asm-onednn` (different stack)
-- You only need Triton IR → read `~/.triton/cache/` directly
+- You only need Triton IR → read `${TRITON_CACHE_DIR:-~/.triton/cache}/` directly
 
 ## Steps
 
@@ -54,7 +54,8 @@ The back half (SPIR-V → IGC → zebin) is IDENTICAL.
 
    **Inductor fusion** (from `torch.compile`):
    ```bash
-   rm -rf ~/.triton/cache /tmp/torchinductor_$USER
+   TRITON_CACHE="${TRITON_CACHE_DIR:-$HOME/.triton/cache}"
+   rm -rf "$TRITON_CACHE" /tmp/torchinductor_$USER
    TORCH_LOGS=output_code python <repro.py> 2>&1 \
      | grep -oE 'triton_(poi|per|red)_fused_[A-Za-z0-9_]+' | sort -u
    ```
@@ -70,7 +71,8 @@ The back half (SPIR-V → IGC → zebin) is IDENTICAL.
 2. **Re-run with IGC dump (cold cache).**
 
    ```bash
-   rm -rf ~/.triton/cache /tmp/torchinductor_$USER
+   TRITON_CACHE="${TRITON_CACHE_DIR:-$HOME/.triton/cache}"
+   rm -rf "$TRITON_CACHE" /tmp/torchinductor_$USER
    OUT="<workdir>/triton_$(date +%Y%m%d_%H%M%S)"
    mkdir -p "$OUT/igc"
 
