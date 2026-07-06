@@ -1450,6 +1450,113 @@ struct BatchNormTransformInputChannelsLastKernelFunctor {
   const bool fuse_relu_;
 };
 
+// 1D kernel for cache-line-aligned writes in channels-last BN.
+// When C * sizeof(scalar_t) is not a multiple of 64, the 2D (m, c/VEC)
+// mapping causes sub-groups to straddle cache line boundaries, producing
+// L3 partial writes and DRAM read-modify-write amplification.
+// This kernel uses a flat 1D mapping: consecutive work items in a sub-group
+// access consecutive elements, so fp16 x 32 lanes = 64 B = one cache line.
+// Per-channel parameters are loaded into SLM once per work group.
+template <typename scalar_t, typename accscalar_t, typename layerscalar_t>
+struct BatchNormTransformInputChannelsLast1DKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<1> item) const {
+    int wg_size = item.get_local_range(0);
+    int lid = item.get_local_id(0);
+
+    // Cooperatively load per-channel params into SLM
+    for (int i = lid; i < stride_; i += wg_size) {
+      slm_mean_[i] = mean_[i];
+      slm_inv_std_[i] = inv_std_[i];
+    }
+    if (weight_ != nullptr) {
+      for (int i = lid; i < stride_; i += wg_size)
+        slm_weight_[i] = weight_[i];
+    }
+    if (shift_ != nullptr) {
+      for (int i = lid; i < stride_; i += wg_size)
+        slm_shift_[i] = shift_[i];
+    }
+    sycl::group_barrier(item.get_group());
+
+    int total = reduction_size_ * stride_;
+    int global_stride = item.get_global_range(0);
+
+    for (int idx = item.get_global_id(0); idx < total;
+         idx += global_stride) {
+      int c = idx % stride_;
+
+      auto m_c = slm_mean_[c];
+      auto inv_std_c = static_cast<accscalar_t>(slm_inv_std_[c]);
+      auto w_c = weight_ == nullptr
+          ? accscalar_t(1.0)
+          : static_cast<accscalar_t>(slm_weight_[c]);
+      auto s_c = shift_ == nullptr
+          ? accscalar_t(0.0)
+          : static_cast<accscalar_t>(slm_shift_[c]);
+
+      auto tmp = w_c *
+              (static_cast<accscalar_t>(input_[idx]) - m_c) * inv_std_c +
+          s_c;
+      if (z_ != nullptr) {
+        tmp += z_[idx];
+      }
+      out_[idx] = (fuse_relu_ && tmp <= accscalar_t(0.0)
+                       ? scalar_t(0.0)
+                       : static_cast<scalar_t>(tmp));
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_mean_ = sycl_local_acc_t<accscalar_t, 1>(
+        sycl::range<1>{(size_t)stride_}, cgh);
+    slm_inv_std_ = sycl_local_acc_t<accscalar_t, 1>(
+        sycl::range<1>{(size_t)stride_}, cgh);
+    slm_weight_ = sycl_local_acc_t<layerscalar_t, 1>(
+        sycl::range<1>{(size_t)(weight_ != nullptr ? stride_ : 1)}, cgh);
+    slm_shift_ = sycl_local_acc_t<layerscalar_t, 1>(
+        sycl::range<1>{(size_t)(shift_ != nullptr ? stride_ : 1)}, cgh);
+  }
+
+  BatchNormTransformInputChannelsLast1DKernelFunctor(
+      const scalar_t* RESTRICT input,
+      const scalar_t* RESTRICT z,
+      const accscalar_t* RESTRICT mean,
+      const accscalar_t* RESTRICT inv_std,
+      const layerscalar_t* RESTRICT weight,
+      const layerscalar_t* RESTRICT shift,
+      scalar_t* RESTRICT out,
+      const int reduction_size,
+      const int stride,
+      const bool fuse_relu)
+      : input_(input),
+        z_(z),
+        mean_(mean),
+        inv_std_(inv_std),
+        weight_(weight),
+        shift_(shift),
+        out_(out),
+        reduction_size_(reduction_size),
+        stride_(stride),
+        fuse_relu_(fuse_relu) {}
+
+ private:
+  const scalar_t* RESTRICT input_;
+  const scalar_t* RESTRICT z_;
+  const accscalar_t* RESTRICT mean_;
+  const accscalar_t* RESTRICT inv_std_;
+  const layerscalar_t* RESTRICT weight_;
+  const layerscalar_t* RESTRICT shift_;
+  scalar_t* RESTRICT out_;
+  const int reduction_size_;
+  const int stride_;
+  const bool fuse_relu_;
+  sycl_local_acc_t<accscalar_t, 1> slm_mean_;
+  sycl_local_acc_t<accscalar_t, 1> slm_inv_std_;
+  sycl_local_acc_t<layerscalar_t, 1> slm_weight_;
+  sycl_local_acc_t<layerscalar_t, 1> slm_shift_;
+};
+
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -1614,16 +1721,39 @@ void batch_norm_elemt_channels_last_template(
           auto shift_data_ptr =
               shift.defined() ? shift.const_data_ptr<accscalar_t>() : nullptr;
 
-          if (can_use_batch_norm_cnl_vec_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  VEC_SIZE>(
-                  (char*)input_data_ptr,
-                  (char*)output_data_ptr,
-                  (char*)z_data_ptr,
-                  (char*)weight_data_ptr,
-                  (char*)shift_data_ptr,
-                  stride)) {
+          if ((stride * sizeof(scalar_t)) % 64 != 0) {
+            auto kfn =
+                BatchNormTransformInputChannelsLast1DKernelFunctor<
+                    scalar_t,
+                    accscalar_t,
+                    accscalar_t>(
+                    input_data_ptr,
+                    z_data_ptr,
+                    mean.const_data_ptr<accscalar_t>(),
+                    inv_std.const_data_ptr<accscalar_t>(),
+                    weight_data_ptr,
+                    shift_data_ptr,
+                    output_data_ptr,
+                    reduction_size,
+                    stride,
+                    fuse_relu);
+            int64_t wg_size = 256;
+            int64_t total = (int64_t)reduction_size * stride;
+            int64_t num_wg = std::min(
+                at::ceil_div(total, wg_size),
+                (int64_t)(syclMaxWorkItemsPerTile() / wg_size));
+            num_wg = std::max(num_wg, (int64_t)1);
+            sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
+          } else if (can_use_batch_norm_cnl_vec_kernel<
+                         scalar_t,
+                         accscalar_t,
+                         VEC_SIZE>(
+                         (char*)input_data_ptr,
+                         (char*)output_data_ptr,
+                         (char*)z_data_ptr,
+                         (char*)weight_data_ptr,
+                         (char*)shift_data_ptr,
+                         stride)) {
             auto kfn =
                 BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
                     scalar_t,
@@ -1699,13 +1829,39 @@ void batch_norm_elemt_channels_last_template(
           auto shift_data_ptr =
               shift.defined() ? shift.const_data_ptr<scalar_t>() : nullptr;
 
-          if (can_use_batch_norm_cnl_vec_kernel<scalar_t, scalar_t, VEC_SIZE>(
-                  (char*)input_data_ptr,
-                  (char*)output_data_ptr,
-                  (char*)z_data_ptr,
-                  (char*)weight_data_ptr,
-                  (char*)shift_data_ptr,
-                  stride)) {
+          if ((stride * sizeof(scalar_t)) % 64 != 0) {
+            auto kfn =
+                BatchNormTransformInputChannelsLast1DKernelFunctor<
+                    scalar_t,
+                    accscalar_t,
+                    scalar_t>(
+                    input_data_ptr,
+                    z_data_ptr,
+                    mean.const_data_ptr<accscalar_t>(),
+                    inv_std.const_data_ptr<accscalar_t>(),
+                    weight_data_ptr,
+                    shift_data_ptr,
+                    output_data_ptr,
+                    reduction_size,
+                    stride,
+                    fuse_relu);
+            int64_t wg_size = 256;
+            int64_t total = (int64_t)reduction_size * stride;
+            int64_t num_wg = std::min(
+                at::ceil_div(total, wg_size),
+                (int64_t)(syclMaxWorkItemsPerTile() / wg_size));
+            num_wg = std::max(num_wg, (int64_t)1);
+            sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
+          } else if (can_use_batch_norm_cnl_vec_kernel<
+                         scalar_t,
+                         scalar_t,
+                         VEC_SIZE>(
+                         (char*)input_data_ptr,
+                         (char*)output_data_ptr,
+                         (char*)z_data_ptr,
+                         (char*)weight_data_ptr,
+                         (char*)shift_data_ptr,
+                         stride)) {
             auto kfn =
                 BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
                     scalar_t,
