@@ -86,6 +86,7 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
 from torch.testing._internal.two_tensor import TwoTensor
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.utils._python_dispatch import TorchDispatchMode
 
 _orig_module_call = torch.nn.Module.__call__
@@ -94,9 +95,6 @@ _orig_module_call = torch.nn.Module.__call__
 lib = torch.library.Library("test_sample", "DEF")  # noqa: SCOPED_LIBRARY
 lib.define("foo(Tensor self) -> Tensor")
 lib.impl("foo", torch.sin, "CPU")
-
-
-requires_cuda = unittest.skipUnless(torch.cuda.is_available(), "requires cuda")
 
 
 _GLOBAL_CPU_TENSOR = torch.randn(3)
@@ -9422,8 +9420,8 @@ class ReproTestsDevice(torch._dynamo.test_case.TestCase):
         )
 
 
-class CUDAReproTests(torch._dynamo.test_case.TestCase):
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+class AcceleratorReproTests(torch._dynamo.test_case.TestCase):
+    @unittest.skipIf(not torch.accelerator.is_available(), "requires accelerator")
     def test_cuda_sync(self):
         def fn(x):
             y = x + 1
@@ -9436,7 +9434,7 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(fn(x), opt_fn(x))
         self.assertEqual(cnt.frame_count, 1)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.accelerator.is_available(), "requires accelerator")
     def test_torch_cuda_is_initialized(self):
         @torch.compile(fullgraph=True, backend="eager")
         def f(x):
@@ -9450,7 +9448,7 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
         with mock.patch("torch.cuda.is_initialized", lambda: False):
             self.assertEqual(f(inp), inp + 2)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.accelerator.is_available(), "requires accelerator")
     def test_graph_metadata_does_not_retain_cuda_fake_constants(self):
         def f():
             x = torch.tensor(5, dtype=torch.float32, device="cuda")
@@ -9476,7 +9474,7 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
         # retained the real CUDA scalar through FakeTensor.constant.
         self.assertIsNotNone(opt_f)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.accelerator.is_available(), "requires accelerator")
     @unittest.skipIf(not dist.is_available(), "test requires distributed")
     # TODO: Remoe this skip once nccl issue if fixed
     @unittest.skip(

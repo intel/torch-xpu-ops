@@ -656,6 +656,7 @@ class TestLibtorchAgnostic(TestCase):
         self.assertEqual(result[0], t1 * t1)
         self.assertEqual(result[1], t2 * t2)
 
+    //Need to add dynamic skip on xpu
     @skipIfTorchVersionLessThan(2, 10)
     @onlyAccelerator
     def test_device(self, device):

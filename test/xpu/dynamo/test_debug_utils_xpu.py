@@ -17,6 +17,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyCUDA,
+    onlyAccelerator
 )
 
 f32 = torch.float32
@@ -109,6 +110,31 @@ def forward(self, x_1):
         self.assertNotIn("os.environ['TORCHDYNAMO_REPRO_LEVEL']", env_strings)
         self.assertIn("os.environ.pop('TORCHDYNAMO_REPRO_AFTER', None)", env_strings)
         self.assertIn("os.environ.pop('TORCHDYNAMO_REPRO_LEVEL', None)", env_strings)
+
+    def test_cuda_system_info_comment_nvcc_os_errors(self):
+        self.addCleanup(debug_utils._cuda_system_info_comment.cache_clear)
+        errors = (
+            PermissionError(13, "Permission denied", "nvcc"),
+            OSError(5, "Input/output error", "nvcc"),
+        )
+
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                debug_utils._cuda_system_info_comment.cache_clear()
+                with (
+                    patch.object(torch.cuda, "is_available", return_value=True),
+                    patch.object(torch.version, "hip", None),
+                    patch.object(
+                        debug_utils.subprocess,
+                        "check_output",
+                        side_effect=error,
+                    ),
+                    patch.object(torch.cuda, "device_count", return_value=0),
+                ):
+                    result = debug_utils._cuda_system_info_comment()
+
+                self.assertIn("# nvcc not found\n", result)
+                self.assertIn("# GPU Hardware Info: \n", result)
 
 
 class TestDebugUtilsDevice(TestCase):
@@ -434,7 +460,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         torch._dynamo.reset()
         super().tearDown()
 
-    @onlyCUDA
     def test_config_router_single_graph(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -445,7 +470,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         )
         self.assertIsNone(router.get_value_for_graph(1))
 
-    @onlyCUDA
     def test_config_router_multiple_options(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -457,7 +481,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
             {"triton.cudagraphs": False, "triton.cudagraph_trees": False},
         )
 
-    @onlyCUDA
     def test_config_router_comparison(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -466,7 +489,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         self.assertIsNone(router.get_value_for_graph(1))
         self.assertEqual(router.get_value_for_graph(2), {"triton.cudagraphs": True})
 
-    @onlyCUDA
     def test_config_router_range(self, device):
         from torch._dynamo.graph_id_filter import GraphConfigRouter
 
@@ -540,7 +562,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         result = get_inductor_config_override_for_compile_id(None, "")
         self.assertIsNone(result)
 
-    @onlyCUDA
     def test_combined_backend_and_config_override(self, device):
         """
         Test combining backend override with config override.
@@ -627,7 +648,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         )
         self.assertEqual(configs_applied[2], {"triton.cudagraphs": True})
 
-    @onlyCUDA
     def test_multiple_config_overrides_with_backend(self, device):
         """
         Test multiple config overrides applied to different graphs with backend override.
@@ -721,7 +741,6 @@ class TestInductorConfigOverrideIntegration(TestCase):
         self.assertIn({"triton.cudagraphs": False}, configs_applied)
         self.assertIn({"triton.cudagraph_skip_dynamic_graphs": False}, configs_applied)
 
-    @onlyCUDA
     def test_config_override_backward_propagation(self, device):
         """
         Verify that inductor config overrides are active at inductor compile
