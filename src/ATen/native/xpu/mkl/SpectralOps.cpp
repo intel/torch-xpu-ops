@@ -341,7 +341,7 @@ Tensor& _fft_c2c_mkl_out_impl(
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
-  //auto out = at::empty(out_sizes, self.options());
+  // auto out = at::empty(out_sizes, self.options());
   at::native::resize_output(out, out_sizes);
   auto input_sizes = self.sizes();
   auto working_tensor = self;
@@ -397,8 +397,8 @@ Tensor _fft_c2c_mkl(
   auto input_sizes = self.sizes();
   auto out = at::empty(input_sizes, self.options());
   _fft_c2c_mkl_out_impl(self, dim, normalization, forward, out);
-  //at::native::resize_output(out, result.sizes());
-  //out.copy_(result);
+  // at::native::resize_output(out, result.sizes());
+  // out.copy_(result);
   return out;
 }
 
@@ -464,9 +464,9 @@ Tensor& _fft_c2r_mkl_out_impl(
   auto in_sizes = input.sizes();
   auto out_sizes = out.sizes();
 
-  //auto out = at::empty(
-  //    out_sizes,
-  //    self.options().dtype(c10::toRealValueType(self.scalar_type())));
+  // auto out = at::empty(
+  //     out_sizes,
+  //     self.options().dtype(c10::toRealValueType(self.scalar_type())));
   at::native::resize_output(out, out_sizes);
 
   input = input.clone(MemoryFormat::Contiguous);
@@ -490,7 +490,10 @@ Tensor& _fft_c2r_mkl_out_impl(
   return out;
 }
 
-inline DimVector _fft_c2r_out_sizes(const Tensor& self, int64_t last_dim_size) {
+inline DimVector _fft_c2r_out_sizes(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t last_dim_size) {
   auto in_sizes = self.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
@@ -506,14 +509,14 @@ Tensor _fft_c2r_mkl(
     return self.clone();
   }
 
-  auto out_sizes = _fft_c2r_out_sizes(self, last_dim_size);
+  auto out_sizes = _fft_c2r_out_sizes(self, dim, last_dim_size);
   auto out = at::empty(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
   _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
-  //at::native::resize_output(out, result.sizes());
-  //out.copy_(result);
+  // at::native::resize_output(out, result.sizes());
+  // out.copy_(result);
   return out;
 }
 
@@ -528,7 +531,7 @@ Tensor& _fft_c2r_mkl_out(
     return out;
   }
 
-  auto out_sizes = _fft_c2r_out_sizes(self, last_dim_size);
+  auto out_sizes = _fft_c2r_out_sizes(self, dim, last_dim_size);
   at::native::resize_output(out, out_sizes);
 
   _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
@@ -551,6 +554,9 @@ Tensor& _fft_r2c_mkl_out_impl(
 
   auto input_sizes = self.sizes();
   auto out_sizes = out.sizes();
+
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
 
   auto working_tensor = self.contiguous();
 
@@ -607,11 +613,14 @@ Tensor& _fft_r2c_mkl_out_impl(
   return orig_out;
 }
 
-inline DimVector _fft_r2c_out_sizes(const Tensor& self, IntArrayRef dim, bool onesided) {
+inline DimVector _fft_r2c_out_sizes(
+    const Tensor& self,
+    IntArrayRef dim,
+    bool onesided) {
   auto in_sizes = self.sizes();
 
   if (!onesided) {
-    return in_sizes;
+    return DimVector(in_sizes.begin(), in_sizes.end());
   }
 
   DimVector onesided_sizes(in_sizes.begin(), in_sizes.end());
@@ -638,8 +647,8 @@ Tensor _fft_r2c_mkl(
 
   _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
 
-  //at::native::resize_output(out, result.sizes());
-  //out.copy_(result);
+  // at::native::resize_output(out, result.sizes());
+  // out.copy_(result);
   return out;
 }
 
@@ -655,8 +664,9 @@ Tensor& _fft_r2c_mkl_out(
   }
 
   auto out_sizes = _fft_r2c_out_sizes(self, dim, onesided);
-  //auto out = at::empty(
-  //    out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  // auto out = at::empty(
+  //     out_sizes,
+  //     self.options().dtype(c10::toComplexType(self.scalar_type())));
   at::native::resize_output(out, out_sizes);
 
   _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
