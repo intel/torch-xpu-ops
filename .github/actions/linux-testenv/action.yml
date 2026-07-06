@@ -185,7 +185,7 @@ runs:
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          pip install torchao==0.18.0.dev20260618+xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
