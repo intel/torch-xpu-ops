@@ -10,6 +10,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
@@ -40,13 +41,16 @@ struct SigmoidFunctor {
 };
 
 void sigmoid_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "sigmoid_xpu",
+      AT_WRAP([&]() { gpu_kernel(iter, SigmoidFunctor<scalar_t>()); }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      AT_EXPAND(AT_COMPLEX_TYPES),
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       kComplexHalf,
-      iter.common_dtype(),
-      "sigmoid_xpu",
-      [&]() { gpu_kernel(iter, SigmoidFunctor<scalar_t>()); });
+      kBComplex32);
 }
 
 template <typename scalar_t>

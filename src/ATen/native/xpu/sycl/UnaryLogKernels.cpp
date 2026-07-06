@@ -11,6 +11,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
@@ -40,18 +41,24 @@ struct LogFunctor {
 void log_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, iter.common_dtype(), "log_xpu", [&]() {
-          using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, LogFunctor<opmath_t>());
-        });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        ScalarType::Half,
-        ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         iter.common_dtype(),
         "log_xpu",
-        [&]() { gpu_kernel(iter, LogFunctor<scalar_t>()); });
+        AT_WRAP([&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, LogFunctor<opmath_t>());
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
+  } else {
+    AT_DISPATCH_V2(
+        iter.common_dtype(),
+        "log_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, LogFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        ScalarType::Half,
+        ScalarType::BFloat16);
   }
 }
 
