@@ -41,7 +41,6 @@ from torch.utils.checkpoint import (
     create_selective_checkpoint_contexts,
 )
 
-
 if HAS_GPU:
     import triton
     from triton import language as tl
@@ -487,10 +486,9 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
 
         context_fn = functools.partial(
             torch.utils.checkpoint.create_selective_checkpoint_contexts,
-            lambda ctx,
-            op,
-            *args,
-            **kwargs: torch.utils.checkpoint.CheckpointPolicy.PREFER_RECOMPUTE,
+            lambda ctx, op, *args, **kwargs: (
+                torch.utils.checkpoint.CheckpointPolicy.PREFER_RECOMPUTE
+            ),
         )
 
         def fn(x, w):

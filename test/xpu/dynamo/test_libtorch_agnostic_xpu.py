@@ -15,7 +15,6 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyAccelerator,
     onlyCPU,
-    onlyCUDA,
 )
 from torch.testing._internal.common_dtype import all_types_and
 from torch.testing._internal.common_utils import (
@@ -656,7 +655,7 @@ class TestLibtorchAgnostic(TestCase):
         self.assertEqual(result[0], t1 * t1)
         self.assertEqual(result[1], t2 * t2)
 
-    //Need to add dynamic skip on xpu
+    # Need to add dynamic skip on xpu
     @skipIfTorchVersionLessThan(2, 10)
     @onlyAccelerator
     def test_device(self, device):
@@ -1903,7 +1902,7 @@ except RuntimeError as e:
 
             inner()
 
-    if is_accelerator:
+        if is_accelerator:
             # original tensor is out of scope, all the memory should be freed
             torch.get_device_module(GPU_TYPE).synchronize(device)
             curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
