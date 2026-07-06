@@ -307,7 +307,6 @@ skip_dict = {
     "profiler/test_execution_trace_xpu.py": None,
     "profiler/test_profiler_xpu.py": None,
     "export/test_hop_xpu.py": None,
-    "tracked_process_pool_xpu.py": None,
     "dynamo/test_trace_rules_xpu.py": None,
     "dynamo/test_subclasses_xpu.py": None,
     "dynamo/test_structured_trace_xpu.py": None,
