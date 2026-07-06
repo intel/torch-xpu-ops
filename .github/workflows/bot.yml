@@ -1,0 +1,796 @@
+name: bot
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    paths:
+      - '.github/workflows/bot.yml'
+      - '.github/scripts/bot_*.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bot-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  parse-command:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && contains(github.event.comment.body, '@torchxpubot')
+    permissions:
+      pull-requests: read
+      issues: read
+    outputs:
+      command: ${{ steps.parse.outputs.command }}
+      force: ${{ steps.parse.outputs.force }}
+      rerun_mode: ${{ steps.parse.outputs.rerun_mode }}
+      pytorch_ref: ${{ steps.parse.outputs.pytorch_ref }}
+      revert_reason: ${{ steps.parse.outputs.revert_reason }}
+      pr_number: ${{ steps.parse.outputs.pr_number }}
+      actor: ${{ steps.parse.outputs.actor }}
+      authorized: ${{ steps.parse.outputs.authorized }}
+    steps:
+      - name: Acknowledge Command
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1'
+            });
+
+      - name: Parse Command
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment.body;
+            const actor = context.payload.comment.user.login;
+            const assoc = context.payload.comment.author_association;
+            const prNumber = context.payload.issue.number;
+
+            // Extract the @torchxpubot command line
+            const match = body.match(/@torchxpubot\s+(\S+)(.*)/i);
+            if (!match) {
+              core.setOutput('command', '');
+              core.setFailed('No valid command found after @torchxpubot');
+              return;
+            }
+
+            const command = match[1].toLowerCase();
+            const args = (match[2] || '').trim();
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'ut-check', 'help'];
+
+            if (!validCommands.includes(command)) {
+              core.setOutput('command', 'invalid');
+              core.setOutput('pr_number', prNumber);
+              core.setOutput('actor', actor);
+              core.setOutput('authorized', 'false');
+              return;
+            }
+
+            // Permission check
+            const privileged = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            const maintainerOnly = ['OWNER', 'MEMBER'];
+            let authorized = true;
+
+            if (command === 'help') {
+              authorized = true; // anyone
+            } else if (!privileged.includes(assoc)) {
+              authorized = false;
+            }
+
+            // Parse command-specific args
+            let force = 'false';
+            let rerunMode = 'all';
+            let pytorchRef = '';
+            let revertReason = '';
+
+            if (command === 'merge') {
+              if (args.includes('-f')) {
+                force = 'true';
+                if (!maintainerOnly.includes(assoc)) {
+                  authorized = false;
+                }
+              }
+            } else if (command === 'revert') {
+              const reasonMatch = args.match(/-m\s+["']([^"']+)["']/);
+              if (reasonMatch) {
+                revertReason = reasonMatch[1];
+              } else {
+                const reasonMatchUnquoted = args.match(/-m\s+(.+)/);
+                if (reasonMatchUnquoted) {
+                  revertReason = reasonMatchUnquoted[1].trim();
+                }
+              }
+            } else if (command === 'rerun') {
+              if (args.toLowerCase().includes('failed')) {
+                rerunMode = 'failed';
+              }
+              const branchMatch = args.match(/-b\s+(\S+)/);
+              if (branchMatch) {
+                pytorchRef = branchMatch[1];
+              }
+            }
+
+            core.setOutput('command', command);
+            core.setOutput('force', force);
+            core.setOutput('rerun_mode', rerunMode);
+            core.setOutput('pytorch_ref', pytorchRef);
+            core.setOutput('revert_reason', revertReason);
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('actor', actor);
+            core.setOutput('authorized', String(authorized));
+
+  invalid-command:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: needs.parse-command.outputs.command == 'invalid'
+    steps:
+      - name: Post invalid command message
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: 'Unknown command. Use `@torchxpubot help` to see available commands.'
+            });
+
+  permission-denied:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command != 'invalid'
+      && needs.parse-command.outputs.command != 'help'
+      && needs.parse-command.outputs.command != ''
+      && needs.parse-command.outputs.authorized == 'false'
+    steps:
+      - name: Post permission denied message
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const cmd = '${{ needs.parse-command.outputs.command }}';
+            const force = '${{ needs.parse-command.outputs.force }}';
+            let msg = `You do not have permission to use \`@torchxpubot ${cmd}\`. `;
+            msg += 'This command requires OWNER, MEMBER, or COLLABORATOR association.';
+            if (cmd === 'merge' && force === 'true') {
+              msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: msg
+            });
+
+  help:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: needs.parse-command.outputs.command == 'help'
+    steps:
+      - name: Post help message
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const helpText = `## @torchxpubot Commands
+
+            | Command | Description |
+            |---------|-------------|
+            | \`@torchxpubot merge\` | Merge PR (requires 2 approvals + CI pass) |
+            | \`@torchxpubot merge -f\` | Force merge (maintainers only, skips CI check) |
+            | \`@torchxpubot revert -m "reason"\` | Create a revert PR |
+            | \`@torchxpubot rebase\` | Rebase onto latest main |
+            | \`@torchxpubot lint\` | Auto-fix lint errors and push |
+            | \`@torchxpubot rerun\` | Re-trigger full CI |
+            | \`@torchxpubot rerun failed\` | Re-run only failed CI jobs |
+            | \`@torchxpubot rerun -b <branch_or_commit>\` | Rerun CI against a pytorch ref |
+            | \`@torchxpubot review\` | AI-powered PR code review |
+            | \`@torchxpubot ut-check\` | Analyze UT results: new failures, relevance, coverage |
+            | \`@torchxpubot help\` | Show this help message |`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: helpText.replace(/^ +/gm, '')
+            });
+
+  merge:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'merge'
+      && needs.parse-command.outputs.authorized == 'true'
+    permissions:
+      checks: read
+      issues: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - name: Get PR Info
+        uses: actions/github-script@v7
+        id: prinfo
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: ${{ needs.parse-command.outputs.pr_number }}
+            });
+            core.setOutput('head_sha', pr.data.head.sha);
+            core.setOutput('mergeable', String(pr.data.mergeable));
+
+      - name: Check Reviews
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const reviews = await github.paginate(
+              github.rest.pulls.listReviews,
+              { owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber }
+            );
+            const latestByUser = new Map();
+            for (const r of reviews) {
+              if (r.state === 'COMMENTED') continue;
+              latestByUser.set(r.user.login, r);
+            }
+            const approvals = [...latestByUser.values()].filter(r => r.state === 'APPROVED');
+            if (approvals.length < 2) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `Not enough approvals (${approvals.length}/2). At least 2 approvals are required to merge.`
+              });
+              core.setFailed(`Not enough approvals: ${approvals.length}/2`);
+            }
+
+      - name: Check CI Status
+        if: needs.parse-command.outputs.force != 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const sha = '${{ steps.prinfo.outputs.head_sha }}';
+            const [checks, statuses] = await Promise.all([
+              github.rest.checks.listForRef({
+                owner: context.repo.owner, repo: context.repo.repo, ref: sha, per_page: 100
+              }),
+              github.rest.repos.getCombinedStatusForRef({
+                owner: context.repo.owner, repo: context.repo.repo, ref: sha
+              })
+            ]);
+            const latestByName = new Map();
+            for (const c of checks.data.check_runs) {
+              const existing = latestByName.get(c.name);
+              if (!existing || new Date(c.started_at) > new Date(existing.started_at)) {
+                latestByName.set(c.name, c);
+              }
+            }
+            const latestChecks = [...latestByName.values()];
+            const pending = latestChecks.filter(c => c.status !== 'completed');
+            if (pending.length > 0) {
+              const names = pending.map(c => c.name).join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `Some checks are still running: ${names}. Please wait for them to complete.`
+              });
+              core.setFailed(`Checks still in progress: ${names}`);
+              return;
+            }
+            const acceptable = new Set(['success', 'skipped', 'neutral']);
+            const failedChecks = latestChecks.filter(c => !acceptable.has(c.conclusion));
+            const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+            if (failedChecks.length > 0 || statusFailed) {
+              const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
+              const msg = [
+                failedChecks.length > 0 ? `Failed checks: ${failedNames}` : '',
+                statusFailed ? `Combined commit status: ${statuses.data.state}` : ''
+              ].filter(Boolean).join('\n');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `CI checks have not passed.\n${msg}\n\nUse \`@torchxpubot merge -f\` to force merge (maintainers only).`
+              });
+              core.setFailed('CI checks failed.');
+            }
+
+      - name: Check Merge Conflicts
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            let mergeable = '${{ steps.prinfo.outputs.mergeable }}';
+            if (mergeable === 'null') {
+              await new Promise(r => setTimeout(r, 5000));
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber
+              });
+              mergeable = String(pr.data.mergeable);
+            }
+            if (mergeable === 'false') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'This PR has conflicts with the target branch. Please resolve the conflicts before merging.'
+              });
+              core.setFailed('PR has merge conflicts.');
+            }
+
+      - name: Merge PR
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const actor = '${{ needs.parse-command.outputs.actor }}';
+            const force = '${{ needs.parse-command.outputs.force }}' === 'true';
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner, repo: context.repo.repo,
+                pull_number: prNumber, merge_method: 'squash'
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `PR has been successfully merged by @${actor}${force ? ' (force merge)' : ''}.`
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `Failed to merge PR: ${e.message}`
+              });
+              core.setFailed(`Failed to merge PR: ${e.message}`);
+            }
+
+  revert:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'revert'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Validate revert reason
+        if: needs.parse-command.outputs.revert_reason == ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: 'Missing revert reason. Usage: `@torchxpubot revert -m "reason for revert"`'
+            });
+            core.setFailed('Missing revert reason');
+
+      - name: Checkout repository
+        if: needs.parse-command.outputs.revert_reason != ''
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Run revert script
+        if: needs.parse-command.outputs.revert_reason != ''
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          REVERT_REASON: ${{ needs.parse-command.outputs.revert_reason }}
+        run: |
+          python .github/scripts/bot_revert.py \
+            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
+            --reason "$REVERT_REASON" \
+            --repo ${{ github.repository }}
+
+  rebase:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'rebase'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Check fork status and rebase
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            const isFork = pr.data.head.repo.full_name !== pr.data.base.repo.full_name;
+            if (isFork && !pr.data.maintainer_can_modify) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'Cannot rebase: this PR is from a fork and "Allow edits from maintainers" is not enabled. Please enable it in your PR settings and try again.'
+              });
+              core.setFailed('Fork PR without maintainer_can_modify');
+              return;
+            }
+            // Validate branch name to prevent shell injection
+            const headRef = pr.data.head.ref;
+            if (!/^[a-zA-Z0-9._\/-]+$/.test(headRef)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'Cannot rebase: branch name contains invalid characters.'
+              });
+              core.setFailed('Invalid branch name');
+              return;
+            }
+            core.exportVariable('PR_HEAD_REF', headRef);
+            core.exportVariable('PR_HEAD_REPO', pr.data.head.repo.clone_url);
+            core.exportVariable('PR_IS_FORK', String(isFork));
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Rebase and push
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          git config user.name "torchxpubot"
+          git config user.email "torchxpubot@users.noreply.github.com"
+
+          if [ "$PR_IS_FORK" = "true" ]; then
+            git remote add fork "$PR_HEAD_REPO"
+            git fetch fork "$PR_HEAD_REF"
+            git checkout -b "$PR_HEAD_REF" "fork/$PR_HEAD_REF"
+          else
+            git fetch origin "$PR_HEAD_REF"
+            git checkout "$PR_HEAD_REF"
+          fi
+
+          git fetch origin main
+          git rebase origin/main
+
+          if [ "$PR_IS_FORK" = "true" ]; then
+            git push --force-with-lease fork "$PR_HEAD_REF"
+          else
+            git push --force-with-lease origin "$PR_HEAD_REF"
+          fi
+
+      - name: Post success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: 'Successfully rebased onto latest `main`.'
+            });
+
+      - name: Post failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: 'Rebase failed. There may be conflicts that need manual resolution.'
+            });
+
+  lint:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'lint'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Check fork status
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            const isFork = pr.data.head.repo.full_name !== pr.data.base.repo.full_name;
+            if (isFork && !pr.data.maintainer_can_modify) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'Cannot fix lint: this PR is from a fork and "Allow edits from maintainers" is not enabled. Please enable it in your PR settings and try again.'
+              });
+              core.setFailed('Fork PR without maintainer_can_modify');
+              return;
+            }
+            const headRef = pr.data.head.ref;
+            if (!/^[a-zA-Z0-9._\/-]+$/.test(headRef)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'Cannot fix lint: branch name contains invalid characters.'
+              });
+              core.setFailed('Invalid branch name');
+              return;
+            }
+            core.exportVariable('PR_HEAD_REF', headRef);
+            core.exportVariable('PR_HEAD_REPO', pr.data.head.repo.clone_url);
+            core.exportVariable('PR_IS_FORK', String(isFork));
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+          ref: ${{ needs.parse-command.outputs.pr_number && format('refs/pull/{0}/head', needs.parse-command.outputs.pr_number) || '' }}
+
+      - name: Checkout correct branch for push
+        run: |
+          git config user.name "torchxpubot"
+          git config user.email "torchxpubot@users.noreply.github.com"
+          if [ "$PR_IS_FORK" = "true" ]; then
+            git remote add fork "$PR_HEAD_REPO"
+            git fetch fork "$PR_HEAD_REF"
+            git checkout -b "$PR_HEAD_REF" FETCH_HEAD
+          else
+            git fetch origin "$PR_HEAD_REF"
+            git checkout "$PR_HEAD_REF"
+          fi
+
+      - name: Run lintrunner
+        run: |
+          # CLANGFORMAT excluded: requires PyTorch headers checkout.
+          # PR CI handles clang formatting; bot only fixes Python linters.
+          export ADDITIONAL_LINTRUNNER_ARGS="--take RUFF,PYFMT,NEWLINE -a --all-files"
+          bash .github/scripts/lintrunner.sh || true
+
+      - name: Commit and push lint fixes
+        id: push
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            git add -A
+            git commit -m "[torchxpubot] Fix lint"
+            if [ "$PR_IS_FORK" = "true" ]; then
+              git push fork "$PR_HEAD_REF"
+            else
+              git push origin "$PR_HEAD_REF"
+            fi
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post result
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const hasChanges = '${{ steps.push.outputs.has_changes }}' === 'true';
+            const msg = hasChanges
+              ? 'Lint fixes have been applied and pushed.'
+              : 'No lint issues found. Code is clean.';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: msg
+            });
+
+  rerun:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'rerun'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Rerun CI
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.parse-command.outputs.pr_number }};
+            const mode = '${{ needs.parse-command.outputs.rerun_mode }}';
+            const pytorchRef = '${{ needs.parse-command.outputs.pytorch_ref }}';
+
+            // Get PR head SHA
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber
+            });
+            const headSha = pr.data.head.sha;
+
+            // Handle rerun -b (workflow_dispatch mode)
+            if (pytorchRef) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: 'pull.yml',
+                  ref: pr.data.base.ref,
+                  inputs: {
+                    pytorch_ref: pytorchRef,
+                    pr_number: String(prNumber)
+                  }
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                  body: `CI triggered with pytorch ref: \`${pytorchRef}\`. A new workflow run will appear shortly.`
+                });
+              } catch (e) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                  body: `Failed to trigger CI with pytorch ref \`${pytorchRef}\`: ${e.message}`
+                });
+                core.setFailed(e.message);
+              }
+              return;
+            }
+
+            // Find the latest 'pull' workflow run for this PR's head SHA
+            const workflows = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'pull.yml', head_sha: headSha, per_page: 5
+            });
+
+            if (workflows.data.total_count === 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: 'No workflow runs found for the current PR head. Push a new commit or wait for CI to start.'
+              });
+              core.setFailed('No workflow runs found');
+              return;
+            }
+
+            const latestRun = workflows.data.workflow_runs[0];
+            const runId = latestRun.id;
+
+            try {
+              if (mode === 'failed') {
+                // Get failed jobs for the comment
+                const jobs = await github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner, repo: context.repo.repo, run_id: runId
+                });
+                const failedJobs = jobs.data.jobs.filter(j => j.conclusion === 'failure');
+                const failedNames = failedJobs.map(j => j.name).join(', ') || 'none found';
+
+                await github.rest.actions.reRunWorkflowFailedJobs({
+                  owner: context.repo.owner, repo: context.repo.repo, run_id: runId
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                  body: `Re-running failed jobs: ${failedNames}\nWorkflow run: ${latestRun.html_url}`
+                });
+              } else {
+                await github.rest.actions.reRunWorkflow({
+                  owner: context.repo.owner, repo: context.repo.repo, run_id: runId
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                  body: `Full CI re-run triggered.\nWorkflow run: ${latestRun.html_url}`
+                });
+              }
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `Failed to re-run CI: ${e.message}`
+              });
+              core.setFailed(e.message);
+            }
+
+  review:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'review'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run review script
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python .github/scripts/bot_review.py \
+            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
+            --repo ${{ github.repository }}
+
+  ut-check:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    if: >-
+      needs.parse-command.outputs.command == 'ut-check'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run UT check script
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python .github/scripts/bot_ut_check.py \
+            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
+            --repo ${{ github.repository }}
+
+  token-permission-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: "Test: MERGE_TOKEN has PR read/write access"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            console.log(`pulls.get OK - PR #${pr.data.number}`);
+
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner, repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            console.log(`pulls.listReviews OK - ${reviews.data.length} reviews`);
+
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+            console.log(`checks.listForRef OK - ${checks.data.total_count} checks`);
+
+            // Test comment create + delete
+            const comment = await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: 'Bot token permission test -- this comment will be deleted.'
+            });
+            console.log(`issues.createComment OK`);
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              comment_id: comment.data.id, content: '+1'
+            });
+            console.log(`reactions.createForIssueComment OK`);
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              comment_id: comment.data.id
+            });
+            console.log(`issues.deleteComment OK`);
+
+            // Test merge permission (dry-run with wrong SHA)
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner, repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                merge_method: 'squash',
+                sha: '0000000000000000000000000000000000000000'
+              });
+            } catch (e) {
+              if (e.status === 409 || e.status === 422 || e.status === 405) {
+                console.log(`pulls.merge permission OK (got ${e.status})`);
+              } else {
+                core.setFailed(`pulls.merge permission DENIED: ${e.status}`);
+              }
+            }
+
+      - name: "Test: ANTHROPIC_API_KEY is set"
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::warning::ANTHROPIC_API_KEY is not set. Review and ut-check commands will not work."
+          else
+            echo "ANTHROPIC_API_KEY is configured."
+          fi
