@@ -15,7 +15,11 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyAccelerator,
     onlyCPU,
+<<<<<<< HEAD
     onlyCUDA,
+=======
+    onlyAccelerator,
+>>>>>>> 9c26336e025775af1c3d0034028a7d40dc7919d3
 )
 from torch.testing._internal.common_dtype import all_types_and
 from torch.testing._internal.common_utils import (
@@ -156,7 +160,7 @@ class TestLibtorchAgnostic(TestCase):
         )
         self.assertEqual(new_param, param)
 
-    @onlyAccelerator
+    @onlyCPU
     def test_identity_does_not_hog_memory(self, device):
         import libtorch_agn_2_9 as libtorch_agnostic
 
@@ -1902,7 +1906,6 @@ except RuntimeError as e:
 
             inner()
 
-    if is_accelerator:
             # original tensor is out of scope, all the memory should be freed
             torch.get_device_module(GPU_TYPE).synchronize(device)
             curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
@@ -1953,7 +1956,6 @@ except RuntimeError as e:
 
             inner()
 
-        if is_accelerator:
             # original tensor is out of scope, all the memory should be freed
             torch.get_device_module(GPU_TYPE).synchronize(device)
             curr_mem = torch.get_device_module(GPU_TYPE).memory_allocated(device)
