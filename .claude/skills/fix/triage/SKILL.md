@@ -44,11 +44,9 @@ Skip deep analysis if any of these apply:
 
 ## Step 1: Classify the failure type and domain
 
-- **kernel/operator bug** (`domain: xpu-kernel`) — failure in backend-specific
-  operator or kernel code.
-- **test porting issue** (`domain: cuda-porting`) — a test ported from another
-  backend (CUDA) fails due to porting gaps: wrong tolerances, missing kernel,
-  incorrect device assumptions.
+- **kernel/operator bug** (`domain: xpu-kernel`) — failure in XPU backend
+  kernel or operator code, including ported CUDA tests that fail due to porting
+  gaps (wrong tolerances, missing kernel, incorrect device assumptions).
 - **core framework bug** (`domain: upstream-pytorch`) — failure in
   device-agnostic framework code that surfaces on XPU.
 
@@ -150,7 +148,7 @@ Return to the orchestrator:
   "root_cause": "2-3 sentences",
   "fix_strategy": "specific files/functions to change",
   "target_repo": "pytorch or torch-xpu-ops",
-  "domain": "xpu-kernel or cuda-porting or upstream-pytorch",
+  "domain": "xpu-kernel or upstream-pytorch",
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
   "reason": "one-line reason"
 }
