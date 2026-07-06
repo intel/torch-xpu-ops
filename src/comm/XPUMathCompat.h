@@ -125,11 +125,14 @@ __MATH_FUNCTIONS_DECL__ double tanh(double x) {
   return sycl::tanh(x);
 }
 
+// https://github.com/intel/llvm/blob/HEAD/libc/include/llvm-libc-macros/math-macros.h
+constexpr double kSqrt1_2 = 0x1.6a09e667f3bcdp-1; // 1/sqrt(2) M_SQRT1_2
+
 __MATH_FUNCTIONS_DECL__ float normcdf(float x) {
-  return 0.5f * sycl::erfc(-x * static_cast<float>(M_SQRT1_2));
+  return 0.5f * sycl::erfc(-x * static_cast<float>(kSqrt1_2));
 }
 __MATH_FUNCTIONS_DECL__ double normcdf(double x) {
-  return 0.5 * sycl::erfc(-x * M_SQRT1_2);
+  return 0.5 * sycl::erfc(-x * kSqrt1_2);
 }
 
 // To walk around SYCL compiler optimization on data type promotion.
