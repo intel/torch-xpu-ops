@@ -11,8 +11,67 @@ description: >
 Processes a batch of nightly CI failures. Each failure runs through the same
 `fix/reproduce` → `fix/triage` → `fix/implement` → `fix/verify` pipeline
 independently. All detailed fix logic lives in the `fix/` leaf skills — this
-skill owns the batch scheduling, branch strategy, commit format, and summary
-report.
+skill owns the batch scheduling, branch strategy, commit format, and progress
+tracking.
+
+## Execution modes
+
+- **Interactive (default):** human present. Report progress conversationally.
+  Ask when blocked.
+- **Pipeline:** automated. No human to ask. Write progress to
+  `agent_space_xpu/runs/<report_date>/` and stop on blockers.
+
+## Progress tracking
+
+All runs write to `agent_space_xpu/runs/<report_date>/`:
+
+```
+runs/<report_date>/
+  progress.md          # per-failure status table, updated after each stage
+  logs/<failure_id>.md # per-failure stage log, append-only
+  summary.md           # generated at the end
+```
+
+**`progress.md`:**
+```markdown
+# Progress — <report_date>
+
+ci_commit: <hash>
+
+| failure_id | status | stage | commit |
+|---|---|---|---|
+| test_ops_xpu::TestFooXPU::test_bar | done | verify | abc1234 |
+| test_nn_xpu::TestNNXPU::test_conv3d | in_progress | implement | — |
+| test_sparse_xpu::TestSparseXPU::test_mm | pending | — | — |
+```
+
+`status` values: `pending` / `in_progress` / `done` / `needs_human`.
+
+**`logs/<failure_id>.md`** — append one section per stage as it completes:
+```markdown
+## Reproduce
+result: REPRODUCED
+command: pytest ...
+
+## Triage
+domain: xpu-kernel
+root_cause: ...
+fix_strategy: ...
+
+## Implement (attempt 1)
+files_changed: ...
+
+## Verify (attempt 1)
+result: FAILED
+output: ...
+
+## Verify (attempt 2)
+result: PASSED
+commit: abc1234
+```
+
+**Recovery:** on restart, read `progress.md`. Skip `done`/`needs_human` rows.
+Resume `in_progress` from its current `stage`. Start `pending` from scratch.
 
 > **Before starting:** Read the `## Working Principles` section of `CLAUDE.md`.
 > State which principles apply to this task before proceeding.
