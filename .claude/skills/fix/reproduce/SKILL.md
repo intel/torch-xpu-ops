@@ -37,8 +37,7 @@ pip3 install --pre torch torchvision torchaudio \
 
 ### Run test
 
-Read [../references/run-test.md](../references/run-test.md) now for path
-resolution, command format, and result interpretation.
+Run the test. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
 
 ### Decision
 
@@ -67,9 +66,7 @@ git -C agent_space_xpu/pytorch submodule update --init --recursive
 
 ### Build and run
 
-Activate environment and build (see `/xpu-build-pytorch` skill and
-domain skill for build command), then run the test (see
-[../references/run-test.md](../references/run-test.md)).
+Build and run the test. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
 
 ### Decision
 

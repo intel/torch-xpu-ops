@@ -74,11 +74,7 @@ recording and only record after.
 
 ## Step 4: Run test
 
-Read [../references/run-test.md](../references/run-test.md) now for command
-format and result interpretation.
-
-Run ALL failing test cases from the original report individually — do not
-assume one representative case is sufficient.
+Run ALL failing test cases from the original report individually. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
 
 ## Step 5: Lint (if run_lint=true)
 
