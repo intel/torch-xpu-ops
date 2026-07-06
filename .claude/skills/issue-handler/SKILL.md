@@ -21,8 +21,37 @@ Decide mode once at the start and keep it for every stage.
 - **Pipeline:** automated. No human to ask. Write status into the issue body,
   advance `agent:status` marker and labels, leave a comment, and stop.
 
-See [references/execution-modes.md](references/execution-modes.md) for the
-full pipeline mode contract (status markers, label map, log slots).
+### Pipeline mode: issue body contract
+
+Status marker at top of body: `<!-- agent:status:STAGE -->`. Advance through:
+```
+DISCOVERED -> UPSTREAM_VERIFYING -> WAITING_UPSTREAM -> TRIAGING ->
+TRIAGED -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED
+```
+Terminal stages: `DONE`, `SKIPPED`, `NEEDS_HUMAN`.
+
+Stage → label mapping:
+
+| Stage(s) | Label |
+|---|---|
+| DISCOVERED, UPSTREAM_VERIFYING, TRIAGING, IMPLEMENTING, IN_REVIEW, PUBLIC_PR, CI_WATCH, MERGED | `agent:active` |
+| WAITING_UPSTREAM | `agent:waiting-upstream` |
+| TRIAGED | `agent:triaged` |
+| DONE, SKIPPED | `agent:done` |
+| NEEDS_HUMAN | `agent:needs-human` |
+
+Log slots (fill as stages complete):
+
+| Slot | Stage |
+|---|---|
+| `<!-- agent:discovery-log -->` | issue-format |
+| `<!-- agent:env-log -->` | reproduce |
+| `<!-- agent:upstream-log -->`, `<!-- agent:triage-log -->` | triage |
+| `<!-- agent:fix-log -->` | implement |
+| `<!-- agent:verification-log -->` | verify |
+
+Templates: `.github/ISSUE_TEMPLATE/agent/agent-issue-body.yml` (bug),
+`agent-issue-body-nonbug.yml` (non-bug).
 
 ## Inputs
 

@@ -65,5 +65,4 @@ this stage owns:
 - the `<!-- agent:discovery-log -->` slot,
 - checking the "Issue formatted" Action Item.
 
-See [../references/execution-modes.md](../references/execution-modes.md) for
-the full pipeline mode contract.
+See the pipeline mode contract in `issue-handler/SKILL.md`.
