@@ -826,8 +826,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     if (it == xcclStreamsMap_.end()) {
       LOG(INFO) << "Current stream id changed, register new xpu stream";
       std::lock_guard<std::mutex> lock(mutex_);
-      xcclStreamsMap_.emplace(
-          StreamKey, at::xpu::XPUStream(stream));
+      xcclStreamsMap_.emplace(StreamKey, at::xpu::XPUStream(stream));
     }
   }
 

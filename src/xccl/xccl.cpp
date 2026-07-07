@@ -28,8 +28,7 @@ void onecclAllReduce(
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp =
-      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclAllReduce(
       input.data_ptr(),
       output.data_ptr(),
@@ -48,8 +47,7 @@ void onecclReduce(
     const int root,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp =
-      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclReduce(
       input.data_ptr(),
       output.data_ptr(),
@@ -85,8 +83,7 @@ void onecclReduceScatter(
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream) {
   auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp =
-      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclReduceScatter(
       input.data_ptr(),
       output.data_ptr(),
@@ -158,8 +155,7 @@ void onecclGather(
     for (const auto r : c10::irange(numranks)) {
       if (r != root) {
         auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
-        onecclRecv(
-            recvbuff, count, xcclDataType, r, comm, &stream.queue());
+        onecclRecv(recvbuff, count, xcclDataType, r, comm, &stream.queue());
       } else {
         // on its own rank, simply copy from the input
         outputs[r].copy_(inputs);
@@ -167,12 +163,7 @@ void onecclGather(
     }
   } else {
     onecclSend(
-        inputs.data_ptr(),
-        count,
-        xcclDataType,
-        root,
-        comm,
-        &stream.queue());
+        inputs.data_ptr(), count, xcclDataType, root, comm, &stream.queue());
   }
   onecclGroupEnd();
 }
@@ -261,12 +252,7 @@ void onecclAllToAll(
   if (isUniform) {
     // Use native onecclAllToAll for uniform case
     onecclAllToAll(
-        sendbuff,
-        recvbuff,
-        uniformCount,
-        xcclDataType,
-        comm,
-        &stream.queue());
+        sendbuff, recvbuff, uniformCount, xcclDataType, comm, &stream.queue());
     return;
   }
 
