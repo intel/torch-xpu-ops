@@ -4,9 +4,16 @@
 
 """Analyze UT results from CI: new failures, relevance to PR, new-test coverage.
 
+Modes:
+    --output FILE   Collect data and write JSON for downstream AI analysis.
+    --deterministic Collect data and post a deterministic (no-LLM) report.
+
 Usage:
-    ANTHROPIC_API_KEY=... python bot_ut_check.py \
-        --pr-number 123 --repo owner/repo --run-id 12345
+    # Collect data for AI analysis (used by claude-code-action)
+    python bot_ut_check.py --pr-number 123 --repo owner/repo --output /tmp/ut_data.json
+
+    # Post deterministic fallback report
+    python bot_ut_check.py --pr-number 123 --repo owner/repo --deterministic
 """
 
 import argparse
@@ -173,34 +180,6 @@ def extract_new_test_names(repo, pr_number, test_files):
     return new_tests
 
 
-def call_claude(prompt, api_key):
-    """Call Claude API for analysis."""
-    import urllib.request
-
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-    }
-    data = json.dumps(
-        {
-            "model": "claude-opus-4-20250514",
-            "max_tokens": 4096,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-    ).encode("utf-8")
-
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result["content"][0]["text"]
-    except Exception as e:
-        print(f"Warning: Claude API call failed: {e}", file=sys.stderr)
-        return None
-
-
 def build_deterministic_report(failures, changed_files, new_tests, passed_tests):
     """Build a report without LLM -- deterministic fallback."""
     lines = ["## UT Result Check\n"]
@@ -270,62 +249,60 @@ def build_deterministic_report(failures, changed_files, new_tests, passed_tests)
     return "\n".join(lines)
 
 
-def build_llm_report(failures, changed_files, new_tests, passed_tests, api_key):
-    """Build a report using Claude for relevance analysis."""
-    # Prepare data for Claude
-    failures_text = json.dumps(failures[:30], indent=2) if failures else "[]"
-    changed_text = json.dumps(changed_files, indent=2)
-    new_tests_text = json.dumps(new_tests, indent=2) if new_tests else "[]"
-    passed_list = [t for t in new_tests if t in passed_tests]
-    not_run_list = [
+def collect_data(repo, pr_number, run_id_arg):
+    """Collect all UT data and return structured dict (or None if not ready)."""
+    if run_id_arg:
+        run_id = run_id_arg
+        status = "completed"
+    else:
+        run_id, status = find_latest_run(repo, pr_number)
+        if not run_id:
+            run(
+                f"gh pr comment {pr_number} --repo {repo} "
+                f'--body "No CI workflow run found for this PR. '
+                f'Please wait for CI to complete and try again."'
+            )
+            return None
+
+    if status != "completed":
+        run(
+            f"gh pr comment {pr_number} --repo {repo} "
+            f'--body "CI is still running (status: {status}). '
+            f'Please wait for CI to complete and try again."'
+        )
+        return None
+
+    # Download artifacts
+    download_dir = "/tmp/ut_artifacts"
+    run(f"rm -rf {download_dir}", check=False)
+    has_new_failures = download_artifacts(repo, run_id, download_dir)
+
+    # Parse results
+    failures = parse_new_failures(download_dir) if has_new_failures else []
+    passed_tests = parse_passed_tests(download_dir)
+
+    # Get PR changes
+    changed_files = get_pr_changed_files(repo, pr_number)
+    new_tests = extract_new_test_names(repo, pr_number, changed_files["test_files"])
+
+    passed_new = [t for t in new_tests if t in passed_tests]
+    not_run = [
         t
         for t in new_tests
         if t not in passed_tests
         and not any(f"{f['class']}::{f['test']}" == t for f in failures)
     ]
 
-    prompt = f"""Analyze these UT (unit test) results for a PR on intel/torch-xpu-ops.
-
-## New Failures (not in known issues)
-{failures_text}
-
-## PR Changed Files
-{changed_text}
-
-## New/Modified Test Methods in PR
-{new_tests_text}
-
-## New Tests That Passed
-{json.dumps(passed_list)}
-
-## New Tests Not Found in Results
-{json.dumps(not_run_list)}
-
-Produce a report in this exact markdown format:
-
-## UT Result Check
-
-### New Failures
-<count> new failure(s) or "No new failures detected."
-
-If there are failures, include a table:
-| Test | Category | Status | Related to PR? |
-|------|----------|--------|----------------|
-
-### Failure Relevance Analysis
-For each new failure, explain whether it is Related, Possibly related, or Unrelated
-to the PR changes. Map operator source files to test modules.
-- Related: changes to src/ATen/native/xpu/sycl/FooKernels.cpp and failure in test_foo
-- Unrelated: failure in a completely different area
-
-### New Test Coverage
-If the PR adds/modifies test files, report which new tests ran and passed,
-which failed, and which were NOT RUN.
-
-### Summary
-One-sentence verdict."""
-
-    return call_claude(prompt, api_key)
+    return {
+        "pr_number": pr_number,
+        "run_id": run_id,
+        "failures": failures,
+        "changed_files": changed_files,
+        "new_tests": new_tests,
+        "new_tests_passed": passed_new,
+        "new_tests_not_run": not_run,
+        "passed_tests_count": len(passed_tests),
+    }
 
 
 def main():
@@ -335,59 +312,49 @@ def main():
     parser.add_argument(
         "--run-id", type=int, default=0, help="Workflow run ID (auto-detected if 0)"
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="",
+        help="Write collected data as JSON to this file (for AI analysis)",
+    )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Post a deterministic (no-LLM) report as a PR comment",
+    )
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-
-    # Find the latest run
-    if args.run_id:
-        run_id = args.run_id
-        status = "completed"
-    else:
-        run_id, status = find_latest_run(args.repo, args.pr_number)
-        if not run_id:
-            run(
-                f"gh pr comment {args.pr_number} --repo {args.repo} "
-                f'--body "No CI workflow run found for this PR. '
-                f'Please wait for CI to complete and try again."'
-            )
-            return
-
-    if status != "completed":
-        run(
-            f"gh pr comment {args.pr_number} --repo {args.repo} "
-            f'--body "CI is still running (status: {status}). '
-            f'Please wait for CI to complete and try again."'
-        )
+    data = collect_data(args.repo, args.pr_number, args.run_id)
+    if data is None:
         return
 
-    # Download artifacts
-    download_dir = "/tmp/ut_artifacts"
-    run(f"rm -rf {download_dir}", check=False)
-    has_new_failures = download_artifacts(args.repo, run_id, download_dir)
+    if args.output:
+        # Write JSON for downstream AI analysis
+        with open(args.output, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"UT data written to {args.output}")
+        # Signal to the workflow that data is available
+        github_output = os.environ.get("GITHUB_OUTPUT", "")
+        if github_output:
+            with open(github_output, "a") as f:
+                f.write("has_data=true\n")
+        # Warn if there are new failures
+        if data["failures"]:
+            print(f"::warning::{len(data['failures'])} new UT failure(s) detected")
+        return
 
-    # Parse results
-    failures = parse_new_failures(download_dir) if has_new_failures else []
-    passed_tests = parse_passed_tests(download_dir)
-
-    # Get PR changes
-    changed_files = get_pr_changed_files(args.repo, args.pr_number)
-    new_tests = extract_new_test_names(
-        args.repo, args.pr_number, changed_files["test_files"]
-    )
-
-    # Build report
-    if api_key:
-        report = build_llm_report(
-            failures, changed_files, new_tests, passed_tests, api_key
+    if args.deterministic:
+        # Reconstruct passed_tests set for deterministic report
+        passed_tests = set(data["new_tests_passed"])
+        report = build_deterministic_report(
+            data["failures"], data["changed_files"], data["new_tests"], passed_tests
         )
     else:
-        report = None
-
-    if not report:
-        # Fallback to deterministic report
+        # Default: deterministic report (no LLM fallback without --output)
+        passed_tests = set(data["new_tests_passed"])
         report = build_deterministic_report(
-            failures, changed_files, new_tests, passed_tests
+            data["failures"], data["changed_files"], data["new_tests"], passed_tests
         )
 
     # Post report
@@ -399,9 +366,8 @@ def main():
     )
     print(f"UT check report posted to PR #{args.pr_number}")
 
-    # Fail the job if there are new failures
-    if failures:
-        print(f"::warning::{len(failures)} new UT failure(s) detected")
+    if data["failures"]:
+        print(f"::warning::{len(data['failures'])} new UT failure(s) detected")
 
 
 if __name__ == "__main__":

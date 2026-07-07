@@ -697,14 +697,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run review script
+      - name: Run AI review
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 10"
+          prompt: |
+            Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
+            in the ${{ github.repository }} repository.
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          python .github/scripts/bot_review.py \
-            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
-            --repo ${{ github.repository }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
   ut-check:
     needs: parse-command
@@ -716,14 +720,59 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run UT check script
+      - name: Collect UT data
+        id: collect
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python .github/scripts/bot_ut_check.py \
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
-            --repo ${{ github.repository }}
+            --repo ${{ github.repository }} \
+            --output /tmp/ut_data.json
+
+      - name: AI analysis
+        if: steps.collect.outputs.has_data == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 5"
+          prompt: |
+            Read the file /tmp/ut_data.json which contains UT (unit test) results
+            for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
+
+            Produce a report in this markdown format and post it as a PR comment:
+
+            ## UT Result Check
+
+            ### New Failures
+            <count> new failure(s) or "No new failures detected."
+            If there are failures, include a table:
+            | Test | Category | Status | Related to PR? |
+
+            ### Failure Relevance Analysis
+            For each failure, classify as Related, Possibly related, or Unrelated
+            to the PR changes. Map operator source files to test modules.
+
+            ### New Test Coverage
+            If the PR adds/modifies test files, report which new tests ran and
+            passed, which failed, and which were NOT RUN.
+
+            ### Summary
+            One-sentence verdict.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Deterministic fallback
+        if: steps.collect.outputs.has_data == 'true' && failure()
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          python .github/scripts/bot_ut_check.py \
+            --pr-number ${{ needs.parse-command.outputs.pr_number }} \
+            --repo ${{ github.repository }} \
+            --deterministic
 
   token-permission-test:
     runs-on: ubuntu-latest
@@ -787,10 +836,16 @@ jobs:
               }
             }
 
-      - name: "Test: ANTHROPIC_API_KEY is set"
-        run: |
-          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
-            echo "::warning::ANTHROPIC_API_KEY is not set. Review and ut-check commands will not work."
-          else
-            echo "ANTHROPIC_API_KEY is configured."
-          fi
+      - name: "Test: AWS Bedrock connectivity via Claude Code Action"
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 1"
+          use_sticky_comment: "true"
+          prompt: |
+            Reply with exactly: "Bedrock connectivity test passed."
+            Do not do anything else.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
