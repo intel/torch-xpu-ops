@@ -437,6 +437,11 @@ CROSS_REF_EXCLUDE_SET = {
         None,
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
+    # Decomposition is intentionally partial: returns NotImplemented for
+    # non-evenly-divisible output sizes.
+    (None, None, "nn.functional.adaptive_max_pool1d"),
+    (None, None, "nn.functional.adaptive_max_pool2d"),
+    (None, None, "nn.functional.adaptive_max_pool3d"),
     # XPU specific exclude cases
     # ("xpu", None, "some_xpu_specific_op"),
     # max_pool2d_with_indices_backward tests are not applicable
