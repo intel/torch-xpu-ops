@@ -8688,11 +8688,11 @@ BACKWARD_SKIPS_AND_XFAILS = [
         ),
         name="unimplemented_masked_fill",
     ),
-    XFailRule(
-        sample_match_fn=lambda device, sample: "(T, NT)" in sample.name,
-        op_match_fn=lambda device, op: op.full_name == "nextafter",
-        name="nextafter_backward_not_implemented",
-    ),
+    # XFailRule(
+    #     sample_match_fn=lambda device, sample: "(T, NT)" in sample.name,
+    #     op_match_fn=lambda device, op: op.full_name == "nextafter",
+    #     name="nextafter_backward_not_implemented",
+    # ),
 ]
 
 COMPILE_FORWARD_SKIPS_AND_XFAILS = [
@@ -8744,17 +8744,18 @@ COMPILE_BACKWARD_SKIPS_AND_XFAILS = [
         sample_match_fn=lambda device, sample: ("noncontig_holes" in sample.name),
         name="noncontig_holes_data_dependency",
     ),
+    
     # mean(): weird bug
-    XFailRule(
-        error_type=torch._dynamo.exc.BackendCompilerFailed,
-        error_msg="'NestedIntNode' object has no attribute 'sub'",
-        op_match_fn=lambda device, op: (op.full_name == "mean"),
-        sample_match_fn=lambda device, sample: (
-            "full reduction" not in sample.name
-            and "normal dim reduction" not in sample.name
-        ),
-        name="broken_mean_compile_backward",
-    ),
+    # XFailRule(
+    #     error_type=torch._dynamo.exc.BackendCompilerFailed,
+    #     error_msg="'NestedIntNode' object has no attribute 'sub'",
+    #     op_match_fn=lambda device, op: (op.full_name == "mean"),
+    #     sample_match_fn=lambda device, sample: (
+    #         "full reduction" not in sample.name
+    #         and "normal dim reduction" not in sample.name
+    #     ),
+    #     name="broken_mean_compile_backward",
+    # ),
     # min() / max(): weird bug
     XFailRule(
         error_type=AttributeError,

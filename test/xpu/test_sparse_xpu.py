@@ -1998,7 +1998,7 @@ class TestSparse(TestSparseBase):
     # adding a graph break before self.assertFalse(weight._indices().is_contiguous())
     # makes the test pass so some existent sparse related bug
     @skipIfTorchDynamo("skip")
-    @dtypes(torch.double, torch.cdouble)
+    @dtypes(torch.double, torch.cdouble, torch.float, torch.cfloat)
     def test_sspaddmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
@@ -2053,7 +2053,7 @@ class TestSparse(TestSparseBase):
 
     @onlyOn("xpu")
     @coalescedonoff
-    @dtypes(torch.double)
+    @dtypes(torch.double, torch.float)
     def test_sspaddmm_out(self, device, dtype, coalesced):
         def make_sparse(size, entries):
             if entries:
@@ -2195,7 +2195,7 @@ class TestSparse(TestSparseBase):
                     self.assertEqual(alias_result.to_dense(), alias_expected)
 
     @onlyOn("xpu")
-    @dtypes(torch.double)
+    @dtypes(torch.double, torch.float)
     def test_sspaddmm_out_shape_checks(self, device, dtype):
         self_input = torch.sparse_coo_tensor(
             torch.tensor([[0], [1]], dtype=torch.int64, device=device),
@@ -2226,6 +2226,17 @@ class TestSparse(TestSparseBase):
                 self_input,
                 mat1,
                 mat2[:2],
+                out=out,
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"(mat1.*sparse|sparse.*mat1)",
+        ):
+            torch.ops.aten.sspaddmm.out(
+                self_input,
+                mat1.to_dense(),
+                mat2,
                 out=out,
             )
 
