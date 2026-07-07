@@ -10,7 +10,7 @@
 # XCCL_FOUND               : True if the system has the XCCL library.
 # XCCL_INCLUDE_DIR         : Include directories needed to use XCCL.
 # XCCL_LIBRARY_DIR         ：The path to the XCCL library.
-# XCCL_LIBRARY             : Full path to libccl.so.2.0 (oneCCL v2 C API).
+# XCCL_LIBRARY             : XCCL library fullname. (oneCCL v2 C API).
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
