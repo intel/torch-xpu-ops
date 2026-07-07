@@ -24,6 +24,8 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
+#include <hal/XPUHal.h>
+#include <utility>
 
 namespace at::native::xpu {
 
@@ -160,7 +162,7 @@ inline int binarySearchForMultinomial(
 template <typename scalar_t, typename item_t>
 inline void sampleMultinomialWithReplacement(
     item_t& item,
-    PhiloxXpuState philox_args,
+    std::pair<uint64_t, uint64_t> philox_args,
     int totalSamples,
     int64_t* dest,
     int64_t distributions,
@@ -178,7 +180,7 @@ inline void sampleMultinomialWithReplacement(
   // search due to divergence. It seems possible to compute multiple
   // values and limit divergence though later on.
 
-  auto seeds = at::xpu::philox::unpack(philox_args);
+  auto& seeds = philox_args;
 
   // global index formula for 2D grid of 1D group
   int idx = group_idx_y * group_range_x * thread_range +
@@ -224,7 +226,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr);
   }
   MultinomialWithReplacementKernelImplFunctor(
-      PhiloxXpuState rng_engine_inputs_,
+      std::pair<uint64_t, uint64_t> rng_engine_inputs_,
       const int64_t n_sample_,
       int64_t* result_ptr_,
       int64_t numDist_,
@@ -240,7 +242,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr(normDist_ptr_) {}
 
  private:
-  PhiloxXpuState rng_engine_inputs;
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   const int64_t n_sample;
   int64_t* result_ptr;
   int64_t numDist;
@@ -432,7 +434,7 @@ void multinomial_kernel(
     std::optional<Generator> generator) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::xpu::detail::getDefaultXPUGenerator());
+      generator, at::Generator(xpu_hal::getDefaultGenerator(-1)));
 
   int inputSize = self.dim();
   int64_t numDist = inputSize == 1 ? 1 : self.size(0);
@@ -516,12 +518,12 @@ void multinomial_kernel(
           int group_range_y = numDist;
           int group_range_x = (n_sample - 1) / group_size + 1;
 
-          PhiloxXpuState rng_engine_inputs;
+          std::pair<uint64_t, uint64_t> rng_engine_inputs;
           {
             // See Note [Acquire lock when using random generators]
             std::lock_guard<std::mutex> lock(gen->mutex_);
             auto offset = ((numDist - 1) / group_range_y + 1) * 4;
-            rng_engine_inputs = gen->philox_xpu_state(offset);
+            rng_engine_inputs = xpu_hal::philoxState(gen, offset);
           }
 
           auto result_ptr = result.data_ptr<int64_t>();

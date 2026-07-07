@@ -16,6 +16,7 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 
@@ -26,7 +27,7 @@ void exponential_kernel(
     double lambda,
     std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen, at::xpu::detail::getDefaultXPUGenerator());
+      gen, at::Generator(xpu_hal::getDefaultGenerator(-1)));
   at::native::templates::xpu::exponential_kernel(iter, lambda, generator);
 }
 
