@@ -10,6 +10,7 @@ on:
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1
+  COST_TRACKING_ISSUE: 4251
 
 permissions:
   contents: read
@@ -706,7 +707,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 10"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 10 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -738,6 +739,39 @@ jobs:
               core.setFailed('AI review failed.');
             }
 
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'review');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`review\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
+
   ut-check:
     needs: parse-command
     runs-on: ubuntu-latest
@@ -765,7 +799,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 5"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 5 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
           prompt: |
             Read the file /tmp/ut_data.json which contains UT (unit test) results
             for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
@@ -817,6 +851,39 @@ jobs:
               });
               core.setFailed('AI analysis failed.');
             }
+
+      - name: Report usage cost
+        if: always() && steps.collect.outputs.has_data == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'ut-check');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
 
       - name: Deterministic fallback
         if: steps.collect.outputs.has_data == 'true' && failure()
