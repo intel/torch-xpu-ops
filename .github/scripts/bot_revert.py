@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2026 Intel Corporation
 # Licensed under the Apache License, Version 2.0
 
 """Create a revert PR for a merged pull request.
