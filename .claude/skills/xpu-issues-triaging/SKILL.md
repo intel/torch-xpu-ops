@@ -168,7 +168,7 @@ If the failure is a CUDA unit test ported to XPU:
 Extract the reproducer command from the issue (pytest command, python script,
 bash command, or just a test name). You **cannot run it** here — use it to
 understand the code path, not to verify the failure. To actually reproduce
-locally, use the `test-verification` skill.
+locally, use the `fix/reproduce` skill.
 
 ## Failure categories
 

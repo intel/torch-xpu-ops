@@ -287,17 +287,17 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
   ```bash
   cd agent_space_xpu/pytorch/third_party/torch-xpu-ops
   git checkout <your-fix-branch>
-  git rev-parse HEAD > agent_space_xpu/pytorch/third_party/xpu.txt
+  git rev-parse HEAD > ../xpu.txt
   ```
-  Do NOT commit `xpu.txt`. Then rebuild:
+  Do NOT commit `xpu.txt`. Then rebuild from the pytorch checkout root:
   ```bash
+  cd <repo_root>/agent_space_xpu/pytorch
   pip install -e . -v --no-build-isolation
   ```
-  Run from `agent_space_xpu/pytorch/`. For pure C++ changes that do not touch
-  codegen (no new ops, no dispatch registration changes), `ninja -C
-  agent_space_xpu/pytorch/build` can be used to speed up incremental C++
-  compilation, but `pip install -e .` is always safe and required whenever in
-  doubt.
+  For pure C++ changes that do not touch codegen (no new ops, no dispatch
+  registration changes), `ninja -C agent_space_xpu/pytorch/build` can be used
+  to speed up incremental C++ compilation, but `pip install -e .` is always
+  safe and required whenever in doubt.
 - Each failure is independent — one failure's `CANNOT_VERIFY` does not block
   others.
 - One fix per commit.

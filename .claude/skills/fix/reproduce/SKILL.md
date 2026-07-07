@@ -37,7 +37,10 @@ pip3 install --pre torch torchvision torchaudio \
 
 ### Run test
 
-Run the test. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
+Run the test. Result interpretation: if `all skipped` by `@skipIfXpu`, load
+`fix/pytorch-skip` and follow its "Temporarily remove for reproduction"
+procedure before concluding — only return `CANNOT_VERIFY` if the skip is
+environmental (not an XPU marker). `xfailed` → `FAILED`.
 
 ### Decision
 
@@ -71,7 +74,8 @@ git -C agent_space_xpu/pytorch submodule update --init --recursive
 
 ### Build and run
 
-Build and run the test. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
+Build and run the test. Result interpretation: same `all skipped` handling as
+Stage 1 (try `fix/pytorch-skip` temp-removal first); `xfailed` → `FAILED`.
 
 ### Decision
 

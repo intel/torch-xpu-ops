@@ -34,13 +34,11 @@ This must return a commit hash (source build), not a version string like
 `2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
 to the orchestrator — verify requires source build.
 
-Activate the environment before running — load the `xpu-build-pytorch` skill now.
-
 ## Step 2: Rebuild if needed
 
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
-rebuild using the build command from the domain skill loaded by the
-orchestrator (e.g. `fix/domains/xpu-kernel`).
+activate the environment and rebuild — load the `xpu-build-pytorch` skill now,
+then run its build command.
 
 Python-only changes (`*.py`) need no rebuild.
 
@@ -48,8 +46,9 @@ Python-only changes (`*.py`) need no rebuild.
 
 **Contract:** this step requires that `fix/implement` left changes staged but
 uncommitted. `git stash -u` temporarily removes them to obtain a before-state.
-If the orchestrator has already committed the changes before calling verify,
-the stash will find nothing and the before recording is skipped.
+If `run_before_after_diff=true` and the stash finds nothing (orchestrator
+committed the changes early), the contract is violated — return `CANNOT_VERIFY`
+(see below), do not silently produce an after-only table.
 
 ```bash
 # Record BEFORE (without the fix)
