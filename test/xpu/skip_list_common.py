@@ -278,7 +278,7 @@ skip_dict = {
         "test_cudnn_rnn",
     ),
     "test_compile_benchmark_util_xpu.py": None,
-    "test_hub_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_hub.py": None,
     "test_matmul_cuda_xpu.py": None,
     "test_custom_ops_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3644
