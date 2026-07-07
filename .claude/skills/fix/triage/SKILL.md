@@ -136,7 +136,7 @@ Return to the orchestrator:
 
 ```
 ### Triage Result
-- **Issue type:** <kernel/operator bug | test porting issue | core framework bug>
+- **Issue type:** <kernel/operator bug | core framework bug>
 - **Fix repo:** <pytorch | torch-xpu-ops | N/A>
 - **Root cause:** <2-3 sentences>
 - **Fix strategy:** <files/functions to change, or "None">

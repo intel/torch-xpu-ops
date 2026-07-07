@@ -74,13 +74,19 @@ genuinely requires significant implementation work (missing kernel, blocked
 upstream feature, dependencies on onednn/triton etc).
 
 **Requirements before adding:**
-1. A tracking issue must exist. File one if it does not.
+1. A tracking issue must exist. File one if it does not:
+   ```bash
+   gh issue create --repo intel/torch-xpu-ops \
+     --title "[skip] <test_name>: <short reason>" \
+     --body "## Why skipped\n<root cause from triage>\n\n## What needs to be done\n<fix strategy>\n\n## Test\n<reproducer command>"
+   ```
+   Record the issue URL returned by `gh` and return it to the caller.
 2. Record the skip in the orchestrator's summary report.
 
 Format:
 
 ```python
-@skipIfXpu  # TODO: <short reason>. Tracking: <repo>#<issue_number>
+@skipIfXpu  # TODO: <short reason>. Tracking: intel/torch-xpu-ops#<N>
 def test_something(self):
     ...
 ```

@@ -54,13 +54,18 @@ exact environment. Build from `origin/main` to verify.
 
 ### Prepare pytorch checkout
 
-If `pytorch_dir` is provided: `git -C $pytorch_dir fetch origin && git -C $pytorch_dir checkout origin/main`
+If `pytorch_dir` is provided: `git -C $pytorch_dir fetch origin`
 
-If not provided, clone:
+Checkout target commit: use `$ci_commit` if provided, otherwise `origin/main`:
+```bash
+git -C $pytorch_dir checkout ${ci_commit:-origin/main}
+```
+
+If not provided, clone and checkout:
 ```bash
 git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
   agent_space_xpu/pytorch
-git -C agent_space_xpu/pytorch checkout origin/main
+git -C agent_space_xpu/pytorch checkout ${ci_commit:-origin/main}
 git -C agent_space_xpu/pytorch submodule update --init --recursive
 ```
 

@@ -70,19 +70,10 @@ See `fix/triage` Step 1 for domain routing. Common strategies:
 
 For removing stale skip decorators or adding new skips, load `fix/pytorch-skip`.
 
-When **adding** a new skip (`allow_skip=true`):
-1. Before touching any test file, file a tracking issue in `intel/torch-xpu-ops`:
-   ```bash
-   gh issue create --repo intel/torch-xpu-ops \
-     --title "[skip] <test_name>: <short reason>" \
-     --body "## Why skipped\n<root cause from triage>\n\n## What needs to be done\n<fix strategy>\n\n## Test\n<reproducer command>"
-   ```
-2. Record the issue URL returned by `gh`.
-3. Then load `fix/pytorch-skip` to add the decorator with the issue reference:
-   ```python
-   @skipIfXpu  # TODO: <short reason>. Tracking: intel/torch-xpu-ops#<N>
-   ```
-4. Include the issue URL in the implement output (`tracking_issue` field).
+When **adding** a new skip (`allow_skip=true`), load `fix/pytorch-skip` and
+follow its "Add a new skip" procedure. It handles filing the tracking issue
+and returning the issue URL. Include that URL in the implement output
+(`tracking_issue` field).
 
 ## Step 3: Stage changes
 

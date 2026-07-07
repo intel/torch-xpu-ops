@@ -7,16 +7,16 @@ description: >
 # Triage XPU / PyTorch Issue
 
 > **Scope note:** This skill is **analysis-only**. Implementation belongs to the
-> `issue-fix` skill. Any existing workflow that expected this skill to produce a
-> code fix should delegate to `issue-fix` after this skill returns a verdict of
+> `fix/implement` skill. Any existing workflow that expected this skill to produce a
+> code fix should delegate to `fix/implement` after this skill returns a verdict of
 > `IMPLEMENTING`.
 
 > **Execution mode:** this skill behaves differently in interactive (default)
 > vs pipeline mode (e.g. whether it comments on the issue). See
-> [../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md).
+> `issue-handler/SKILL.md` "Pipeline mode: issue body contract".
 
 You **analyze**; you do not execute code or edit files. Implementation belongs
-to the `issue-fix` skill. In this triage stage, you could only do modification for
+to the `fix/implement` skill. In this triage stage, you could only do modification for
 unskip the `skip` decorator or just do some prints for triaging. DO NOT commit
 any code changes!
 
@@ -25,7 +25,7 @@ any code changes!
 - One GitHub issue — structured or raw — including its error log, reproducer (if
 any), surrounding context, and labels. You have read-only access to the
 codebase (`read`/`grep`).
-- If user offered the raw test command, delegate to the `test-verification` skill
+- If user offered the raw test command, delegate to the `fix/reproduce` skill
 to run it and confirm the failure before triaging; do NOT run it yourself.
 
 
@@ -121,7 +121,7 @@ the fix need to be made?"**
 ### Needs reproduction (lean toward NEEDS_HUMAN / defer)
 
 If the issue cannot be reduced to something an agent can reproduce or analyze
-statically, lean toward `NEEDS_HUMAN` (or defer to the `test-verification`
+statically, lean toward `NEEDS_HUMAN` (or defer to the `fix/reproduce`
 skill). Signals:
 
 - Hardware-specific failure on a particular GPU model with no self-contained
@@ -179,7 +179,7 @@ Classify the root cause to structure the fix strategy:
 | **XPU backend bug** | Bug in XPU kernel or backend code | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
 | **Tolerance too tight** | Numerical precision mismatch vs CUDA | Adjust `atol`/`rtol` to match CUDA |
 | **Edge case / numerical accuracy** | NaN/Inf from extreme inputs, CPU-vs-XPU or fp32-vs-fp16 divergence, values near `finfo.max`/`min`, fuzzer-generated cases | Compare against CUDA/CPU reference; confirm it is a real bug, not expected precision behavior |
-| **Skip decorator stale** | `@skipIfXpu`/`@expectedFailure` but test now passes | Remove decorator (see `issue-fix`) |
+| **Skip decorator stale** | `@skipIfXpu`/`@expectedFailure` but test now passes | Remove decorator (see `fix/implement`) |
 | **Upstream regression** | New upstream code broke XPU; needs XPU workaround | `torch/`, `aten/`, `test/` |
 | **Test infrastructure** | Environment, import, or setup issue | Test file or CI config |
 
@@ -201,7 +201,7 @@ it to see if XPU support is expected — this affects the fix strategy.
 
 **Pipeline mode only.** In interactive mode (default), return the triage result
 to the user/orchestrator and do not write to the issue body. See
-[../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md)
+`issue-handler/SKILL.md` "Pipeline mode: issue body contract"
 for the full contract.
 
 This stage corresponds to legacy status stages `TRIAGING` -> `TRIAGED`. It
@@ -256,5 +256,5 @@ summary below (no JSON-last constraint applies in interactive mode):
 
 ## Next step
 
-Once the verdict is `IMPLEMENTING`, hand off to the `issue-fix` skill to
+Once the verdict is `IMPLEMENTING`, hand off to the `fix/implement` skill to
 implement and verify the fix.

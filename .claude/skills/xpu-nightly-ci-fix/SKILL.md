@@ -142,14 +142,17 @@ Interpret output per failure:
 |--------|--------|
 | `REPRODUCED` | Continue to Step 4 for this failure |
 | `NOT_REPRODUCED` | Mark in summary: "already fixed"; skip to next failure |
-| `NEEDS_HUMAN` | Mark in summary: "needs_human: cannot verify (+ blocker)"; skip to next failure |
+| `CANNOT_VERIFY` | Mark in summary: "cannot verify (+ blocker)"; skip to next failure |
 
 ## Step 4: Triage each reproduced failure
 
-before calling `fix/triage`, checkout to a new fix branch for this failure:
+Before calling `fix/triage`, checkout a new branch for this failure. One
+branch per failure; name it `fix-<report_date>-<short_test_name>` where
+`short_test_name` is the last component of the test method name (e.g.
+`test_add` from `TestBinaryUfuncsXPU::test_add_xpu`):
 
 ```bash
-git checkout -b fix-<report_date_issuenumber>  # e.g. fix-20260608
+git checkout -b fix-<report_date>-<short_test_name>  # e.g. fix-20260608-test_add
 ```
 
 Call `fix/triage` with the failure description and error log.
@@ -195,7 +198,7 @@ Call `fix/verify` with:
 |--------|--------|
 | `PASSED` | Commit (one fix per commit); mark in summary: "fixed (commit: <hash>)" |
 | `FAILED` | Re-triage with failure context, then re-implement (see fix loop below) |
-| `NEEDS_HUMAN` | Mark in summary: "needs_human: cannot verify after fix"; skip to next failure |
+| `CANNOT_VERIFY` | Mark in summary: "cannot verify after fix"; skip to next failure |
 
 **Fix loop** (max 3 attempts total, counting the first verify):
 
@@ -208,10 +211,10 @@ attempt N (starting at 1 after the first fix/verify returns FAILED):
      - prior fix strategy (so triage knows what was already tried)
   2. Call fix/implement with the new triage_result.
   3. Call fix/verify again.
-     - PASSED → commit, exit loop.
-     - FAILED and attempt < 3 → increment attempt, repeat from step 1.
-     - FAILED and attempt == 3 → exit loop.
-     - NEEDS_HUMAN → exit loop.
+      - PASSED → commit, exit loop.
+      - FAILED and attempt < 3 → increment attempt, repeat from step 1.
+      - FAILED and attempt == 3 → exit loop.
+      - CANNOT_VERIFY → exit loop.
 ```
 
 If loop exits without `PASSED`, mark in summary: "needs human (fix loop exhausted after 3 attempts)"; record each attempt's `failure_output` and `suggestion` in the summary under a "Fix Attempts" subsection; skip to next failure.

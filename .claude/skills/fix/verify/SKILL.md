@@ -34,7 +34,7 @@ This must return a commit hash (source build), not a version string like
 `2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
 to the orchestrator — verify requires source build.
 
-Activate the environment before running — load the `/xpu-build-pytorch` skill now.
+Activate the environment before running — load the `xpu-build-pytorch` skill now.
 
 ## Step 2: Rebuild if needed
 
@@ -69,8 +69,8 @@ Output a comparison table:
 | TestFooXPU::test_bar | FAILED (AssertionError: ...) | PASSED |
 ```
 
-If `git stash -u` reports "No local changes to save", skip the before
-recording and only record after.
+If `git stash -u` reports "No local changes to save", return `CANNOT_VERIFY`
+with `blocker: "no staged changes; fix/implement contract requires uncommitted changes"`.
 
 ## Step 4: Run test
 

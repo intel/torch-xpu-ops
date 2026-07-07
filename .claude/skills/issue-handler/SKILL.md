@@ -121,6 +121,10 @@ Call `fix/verify` with:
 - `run_before_after_diff=false`
 - `run_lint=false`
 
+Note: if you ever set `run_before_after_diff=true` here, `fix/implement` must
+leave changes staged but uncommitted (its default contract) — do not commit
+before calling verify.
+
 | Output | Action |
 |--------|--------|
 | `PASSED` | Continue to Stage 6 |
