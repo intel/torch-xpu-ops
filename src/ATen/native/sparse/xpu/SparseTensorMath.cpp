@@ -30,7 +30,9 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/bmm.h>
 #include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
+#include <ATen/ops/sspaddmm_native.h>
 #include <ATen/ops/zeros.h>
+#include <ATen/ops/mm.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
@@ -327,5 +329,111 @@ Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
       at::MemoryFormat::Contiguous);
   return bmm_out_sparse_xpu(self, mat2, result);
 }
+
+Tensor& _sspaddmm_out_only_sparse_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_CHECK(false, "tensor.sspaddmm(...) can only be called on sparse tensors");
+}
+
+Tensor& _sspaddmm_out_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  // Validate all inputs are on XPU
+  TORCH_CHECK(
+      self.is_xpu(),
+      "sspaddmm: expected 'self' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      mat1.is_xpu(),
+      "sspaddmm: expected 'mat1' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      mat2.is_xpu(),
+      "sspaddmm: expected 'mat2' to be XPU tensor, but got CPU");
+  TORCH_CHECK(
+      result.is_xpu(),
+      "sspaddmm: expected 'result' to be XPU tensor, but got CPU");
+
+  TORCH_CHECK(at::xpu::check_device({self, mat1, mat2, result}), 
+      "sspaddmm: all tensors must be on the same XPU device");
+
+  // Validate input types and dimensions
+  TORCH_CHECK(
+      self.layout() == kSparse,
+      "sspaddmm: expected 'self' to have sparse layout");
+  TORCH_CHECK(
+      mat1.layout() == kSparse,
+      "sspaddmm: expected 'mat1' to have sparse layout");
+  TORCH_CHECK(
+      mat2.layout() == kStrided,
+      "sspaddmm: expected 'mat2' to have strided layout");
+
+  TORCH_CHECK(
+      self.sparse_dim() == 2,
+      "sspaddmm: expected 'self' to be 2D sparse, got ",
+      self.sparse_dim(),
+      "D");
+  TORCH_CHECK(
+      mat1.sparse_dim() == 2,
+      "sspaddmm: expected 'mat1' to be 2D sparse, got ",
+      mat1.sparse_dim(),
+      "D");
+  TORCH_CHECK(
+      mat2.dim() == 2,
+      "sspaddmm: expected 'mat2' to be 2D dense, got ",
+      mat2.dim(),
+      "D");
+
+  // Validate dimensions match
+  int64_t dim_i = mat1.size(0);
+  int64_t dim_j = mat1.size(1);
+  int64_t dim_k = mat2.size(1);
+
+  TORCH_CHECK(
+      mat2.size(0) == dim_j,
+      "sspaddmm: mat2 dimension 0 should be ",
+      dim_j,
+      ", got ",
+      mat2.size(0));
+  TORCH_CHECK(
+      self.size(0) == dim_i,
+      "sspaddmm: self dimension 0 should be ",
+      dim_i,
+      ", got ",
+      self.size(0));
+  TORCH_CHECK(
+      self.size(1) == dim_k,
+      "sspaddmm: self dimension 1 should be ",
+      dim_k,
+      ", got ",
+      self.size(1));
+
+  // Convert sparse matrices to dense for computation
+  Tensor mat1_dense = mat1.to_dense();
+  Tensor self_dense = self.to_dense();
+
+//   Compute: result = self*beta + (mat1_dense @ mat2)*alpha
+  Tensor mm_result = at::mm(mat1_dense, mat2);
+  Tensor dense_result = self_dense * beta + mm_result * alpha;
+  Tensor sparse_result = dense_result.to_sparse();
+
+  // Write the sparse result into the provided out tensor.
+  get_sparse_impl(result)->raw_resize_(
+      2, 0, {sparse_result.size(0), sparse_result.size(1)});
+  get_sparse_impl(result)->set_indices_and_values_unsafe(
+      sparse_result._indices(), sparse_result._values());
+  get_sparse_impl(result)->set_nnz_and_narrow(sparse_result._nnz());
+  get_sparse_impl(result)->set_coalesced(sparse_result.is_coalesced());
+
+  return result;
+}
+
 
 } // namespace at::native
