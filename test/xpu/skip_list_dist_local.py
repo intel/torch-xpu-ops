@@ -53,7 +53,6 @@
     "../../../../test/distributed/test_c10d_logger.py": None,
     "../../../../test/distributed/test_c10d_object_collectives.py": None,
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
-    "../../../../test/distributed/test_control_collectives.py": None,
     "distributed/test_device_mesh.py": None,
     "distributed/test_dynamo_distributed.py": None,
     "../../../../test/distributed/test_fake_pg.py": None,
