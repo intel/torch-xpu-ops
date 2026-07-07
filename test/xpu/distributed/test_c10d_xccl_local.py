@@ -29,7 +29,7 @@ if not c10d.is_available() or not c10d.is_xccl_available():
 
 
 _UPSTREAM_DISTRIBUTED_TEST_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../../../test/distributed")
+    os.path.join(os.path.dirname(__file__), "../../../../../test/distributed")
 )
 if _UPSTREAM_DISTRIBUTED_TEST_PATH not in sys.path:
     sys.path.insert(0, _UPSTREAM_DISTRIBUTED_TEST_PATH)

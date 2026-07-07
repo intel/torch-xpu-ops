@@ -45,7 +45,7 @@ def path(script):
         return local_path
 
     upstream_launcher_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../../../test/distributed/launcher")
+        os.path.join(os.path.dirname(__file__), "../../../../../../test/distributed/launcher")
     )
     return os.path.join(upstream_launcher_path, script)
 
