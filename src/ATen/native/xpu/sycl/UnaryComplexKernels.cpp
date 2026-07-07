@@ -11,6 +11,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
@@ -32,15 +33,23 @@ struct ConjScalarFunc {
 };
 
 void conj_kernel(TensorIterator& iter) {
-  AT_DISPATCH_SWITCH(
+  AT_DISPATCH_V2(
       iter.common_dtype(),
       "conj_xpu",
-      AT_DISPATCH_CASE_ALL_TYPES_AND3(kBool, kBFloat16, kHalf, [&] {
-        // Conj is a no-op for non-complex types
-        copy_kernel(iter);
-      }) AT_DISPATCH_CASE_COMPLEX_TYPES_AND(kComplexHalf, [&] {
-        gpu_kernel(iter, ConjScalarFunc<scalar_t>());
-      }));
+      AT_WRAP([&]() {
+        if constexpr (c10::is_complex<scalar_t>::value) {
+          gpu_kernel(iter, ConjScalarFunc<scalar_t>());
+        } else {
+          copy_kernel(iter);
+        }
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kBFloat16,
+      kHalf,
+      AT_EXPAND(AT_COMPLEX_TYPES),
+      kComplexHalf,
+      kBComplex32);
 }
 
 template <typename scalar_t>
@@ -58,15 +67,23 @@ struct ConjPhysicalFunctor<c10::complex<TYPE>> {
 };
 
 void conj_physical_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_SWITCH(
+  AT_DISPATCH_V2(
       iter.common_dtype(),
       "conj_xpu",
-      AT_DISPATCH_CASE_ALL_TYPES_AND3(kBool, kBFloat16, kHalf, [&] {
-        // Conj is a no-op for non-complex types
-        copy_kernel(iter);
-      }) AT_DISPATCH_CASE_COMPLEX_TYPES_AND(kComplexHalf, [&] {
-        gpu_kernel(iter, ConjPhysicalFunctor<scalar_t>());
-      }));
+      AT_WRAP([&]() {
+        if constexpr (c10::is_complex<scalar_t>::value) {
+          gpu_kernel(iter, ConjPhysicalFunctor<scalar_t>());
+        } else {
+          copy_kernel(iter);
+        }
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kBFloat16,
+      kHalf,
+      AT_EXPAND(AT_COMPLEX_TYPES),
+      kComplexHalf,
+      kBComplex32);
 }
 
 template <typename scalar_t>
@@ -92,14 +109,21 @@ struct NegScalarFunc {
 void neg_kernel(TensorIterator& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "neg_xpu", [&]() {
-      gpu_kernel(iter, NegScalarFunc<scalar_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "neg_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, NegScalarFunc<scalar_t>()); }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        ScalarType::Half, ScalarType::BFloat16, dtype, "neg_xpu", [&]() {
-          gpu_kernel(iter, NegScalarFunc<scalar_t>());
-        });
+    AT_DISPATCH_V2(
+        dtype,
+        "neg_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, NegScalarFunc<scalar_t>()); }),
+        AT_EXPAND(AT_ALL_TYPES),
+        ScalarType::Half,
+        ScalarType::BFloat16);
   }
 }
 
@@ -123,9 +147,13 @@ struct AngleWrapper<c10::complex<T>> {
 void angle_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "angle_xpu", [&]() {
-      gpu_kernel(iter, AngleWrapper<scalar_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "angle_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, AngleWrapper<scalar_t>()); }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
     AT_DISPATCH_FLOATING_TYPES(dtype, "angle_xpu", [&]() {
       gpu_kernel(iter, AngleWrapper<scalar_t>());
