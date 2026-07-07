@@ -694,7 +694,6 @@ jobs:
   review:
     needs: parse-command
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
@@ -708,8 +707,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 30 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 10 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -777,7 +775,6 @@ jobs:
   ut-check:
     needs: parse-command
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: >-
       needs.parse-command.outputs.command == 'ut-check'
       && needs.parse-command.outputs.authorized == 'true'
@@ -802,8 +799,7 @@ jobs:
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 5 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
           prompt: |
             Read the file /tmp/ut_data.json which contains UT (unit test) results
             for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
