@@ -26,7 +26,7 @@ defaults:
 env:
   GH_TOKEN: ${{ github.token }}
   DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-  WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/manylinux2_28-builder:xpu_2619' }}
+  WORKFLOW_TAG: ${{ inputs.tag }}
   WORKFLOW_PUSH_TO_HUB: ${{ github.event_name == 'workflow_dispatch' && inputs.push_to_hub || false }}
 
 jobs:
@@ -51,17 +51,23 @@ jobs:
           username: intelgpu
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Push Docker image
-        if: env.WORKFLOW_PUSH_TO_HUB == 'true'
-        run: |
-          docker push "${{ env.WORKFLOW_TAG }}"
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .ci/docker
+          file: .ci/docker/ubuntu/Dockerfile
+          push: ${{ env.WORKFLOW_PUSH_TO_HUB == 'true' }}
+          tags: |
+            ${{ inputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Verify and list images
         run: |
           docker images
-          echo "Built image: ${{ env.WORKFLOW_TAG }}"
+          echo "Built image: ${{ inputs.tag }}"
 
       - name: Test the built image
         run: |
           # Run a simple test to ensure the image works
-          docker run --rm ${{ env.WORKFLOW_TAG }} echo "Image test successful"
+          docker run --rm ${{ inputs.tag }} echo "Image test successful"
