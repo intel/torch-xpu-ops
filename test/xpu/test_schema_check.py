@@ -17,7 +17,7 @@ except Exception:
     from .xpu_test_utils import XPUImportCtx
 
 with XPUImportCtx(False):
-    from test_schema_check import TestSchemaCheckModeOpInfo
+    from test_schema_check import TestSchemaCheck, TestSchemaCheckModeOpInfo
 
 instantiate_device_type_tests(
     TestSchemaCheckModeOpInfo,
