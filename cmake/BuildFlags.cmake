@@ -103,6 +103,8 @@ macro(set_build_flags)
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -foffload-fp32-prec-div)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -foffload-fp32-prec-sqrt)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # On Windows icx uses the clang-cl driver, which ignores -std= with
     # only a warning; spell it as -Qstd= so device code is really C++20.
@@ -154,10 +156,11 @@ macro(set_build_flags)
   endif()
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} --offload-compress)
+  set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -foffload-fp32-prec-sqrt)
+  set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -foffload-fp32-prec-div)
 
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-poison-unsupported-fp64-kernels")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-enable-auto-large-GRF-mode")
-  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
 
   if(REPLACE_FLAGS_FOR_SYCLTLA)
