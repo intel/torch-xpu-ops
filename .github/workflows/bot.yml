@@ -778,6 +778,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: "Test: MERGE_TOKEN has PR read/write access"
         uses: actions/github-script@v7
         with:
