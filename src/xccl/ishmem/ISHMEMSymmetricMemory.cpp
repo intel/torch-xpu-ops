@@ -134,7 +134,8 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
       signal_pad_raw_ptr_ = nullptr;
     }
     if (buffers_dev_) {
-      c10::xpu::XPUCachingAllocator::raw_delete(static_cast<void*>(buffers_dev_));
+      c10::xpu::XPUCachingAllocator::raw_delete(
+          static_cast<void*>(buffers_dev_));
       buffers_dev_ = nullptr;
     }
     if (signal_pads_dev_) {
@@ -168,9 +169,7 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
 
 class ISHMEMSymmetricMemory : public SymmetricMemory {
  public:
-  ISHMEMSymmetricMemory(
-      ISHMEMAllocation* allocation,
-      std::string group_name)
+  ISHMEMSymmetricMemory(ISHMEMAllocation* allocation, std::string group_name)
       : device_idx_(allocation->device_idx),
         group_name_(std::move(group_name)) {
     pai_ = c10::make_intrusive<ISHMEMPeerAllocInfo>(allocation, group_name_);
