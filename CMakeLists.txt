@@ -65,6 +65,22 @@ if(USE_XCCL)
   endif()
 endif()
 
+# Intel SHMEM (ISHMEM) backed symmetric memory. Opt-in: enabled automatically
+# when ISHMEM_ROOT is set in the environment, and requires the XCCL backend.
+if(NOT DEFINED USE_ISHMEM)
+  if(USE_XCCL AND DEFINED ENV{ISHMEM_ROOT})
+    set(USE_ISHMEM ON)
+  else()
+    set(USE_ISHMEM OFF)
+  endif()
+endif()
+if(USE_ISHMEM)
+  include(${TORCH_XPU_OPS_ROOT}/cmake/ISHMEM.cmake)
+  if(NOT PYTORCH_FOUND_ISHMEM)
+    set(USE_ISHMEM OFF)
+  endif()
+endif()
+
 set(USE_SYCLTLA ON)
 if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
   set(USE_SYCLTLA OFF)
