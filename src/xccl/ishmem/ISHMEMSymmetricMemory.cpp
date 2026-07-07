@@ -1,6 +1,6 @@
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
-#include "../XPUSymmetricMemoryUtils.hpp"
+#include <xccl/XPUSymmetricMemoryUtils.hpp>
 
 #include <ATen/xpu/XPUContext.h>
 #include <c10/util/error.h>
@@ -122,7 +122,7 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
         .wait();
   }
 
-  ~ISHMEMPeerAllocInfo() {
+  ~ISHMEMPeerAllocInfo() override {
     if (is_finalizing() || ishmem_finalized) {
       return;
     }
@@ -134,11 +134,12 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
       signal_pad_raw_ptr_ = nullptr;
     }
     if (buffers_dev_) {
-      c10::xpu::XPUCachingAllocator::raw_delete(buffers_dev_);
+      c10::xpu::XPUCachingAllocator::raw_delete(static_cast<void*>(buffers_dev_));
       buffers_dev_ = nullptr;
     }
     if (signal_pads_dev_) {
-      c10::xpu::XPUCachingAllocator::raw_delete(signal_pads_dev_);
+      c10::xpu::XPUCachingAllocator::raw_delete(
+          static_cast<void*>(signal_pads_dev_));
       signal_pads_dev_ = nullptr;
     }
     if (rank_to_global_rank_dev_) {
@@ -169,9 +170,10 @@ class ISHMEMSymmetricMemory : public SymmetricMemory {
  public:
   ISHMEMSymmetricMemory(
       ISHMEMAllocation* allocation,
-      const std::string& group_name)
-      : device_idx_(allocation->device_idx), group_name_(group_name) {
-    pai_ = c10::make_intrusive<ISHMEMPeerAllocInfo>(allocation, group_name);
+      std::string group_name)
+      : device_idx_(allocation->device_idx),
+        group_name_(std::move(group_name)) {
+    pai_ = c10::make_intrusive<ISHMEMPeerAllocInfo>(allocation, group_name_);
     offset_ = 0;
   }
 
@@ -324,7 +326,7 @@ static void initialize_ishmem_with_store(
 
   // Register ishmem_finalize via Py_AtExit (LIFO order ensures it runs
   // before mpi4py's MPI_Finalize, preventing proxy thread segfault).
-  using PyAtExitFn = int (*)(void (*)(void));
+  using PyAtExitFn = int (*)(void (*)());
   auto py_atexit =
       reinterpret_cast<PyAtExitFn>(dlsym(RTLD_DEFAULT, "Py_AtExit"));
   if (py_atexit != nullptr) {
