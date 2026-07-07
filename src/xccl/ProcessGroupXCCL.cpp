@@ -562,7 +562,7 @@ float ProcessGroupXCCL::WorkXCCL::getDuration() const {
   return xcclStartEvent_->elapsed_time(*xcclEndEvent_);
 }
 
-std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
+std::shared_ptr<onecclComm_t> ProcessGroupXCCL::getXCCLComm(
     const std::string& deviceKey) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = devXCCLCommMap_.find(deviceKey);
@@ -573,7 +573,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   return nullptr;
 }
 
-std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
+std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
     const std::string& deviceKey,
     at::Device& device,
     OpType opType,
@@ -588,7 +588,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
 
   usedDeviceIdxs_.insert(device.index());
 
-  std::shared_ptr<xcclComm_t> XCCLComm;
+  std::shared_ptr<onecclComm_t> XCCLComm;
 
   bool batchP2P = xcclActiveGroupCounter_ > 0;
   bool singleP2POp = isP2POp(opType, batchP2P);
@@ -639,7 +639,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
       initR == onecclSuccess,
       "xccl: onecclCommInitRank failed with code ",
       (int)initR);
-  XCCLComm = std::make_shared<xcclComm_t>(comm);
+  XCCLComm = std::make_shared<onecclComm_t>(comm);
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -666,7 +666,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
   // completes.
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
-  xcclStreamsMap_.emplace(deviceKey, XCCLStream{at::xpu::XPUStream(stream)});
+  xcclStreamsMap_.emplace(deviceKey, at::xpu::XPUStream(stream));
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
   LOG(INFO) << logPrefix()
@@ -709,7 +709,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   auto device = coalescedDevice_;
 
   const auto key = std::to_string(device.index());
-  auto stream = xcclStreamsMap_.at(key).xpuStream;
+  auto stream = xcclStreamsMap_.at(key);
   auto opProfilerTitle = optype != OpType::COALESCED
       ? "xccl:" + opTypeToString(optype) + "_coalesced"
       : "xccl:coalesced";
@@ -786,7 +786,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   errorIfCapturingNonCapturableXCCL(capture_status);
 
   const auto key = std::to_string(device.index());
-  std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
+  std::shared_ptr<onecclComm_t> comm = getXCCLComm(key);
   if (comm == nullptr) {
     comm = initXCCLComm(key, device, opType);
   }
@@ -815,7 +815,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = asyncOp ? xcclStreamsMap_.at(key).xpuStream
+  auto stream = asyncOp ? xcclStreamsMap_.at(key)
                         : at::xpu::getCurrentXPUStream(device.index());
   if (asyncOp) {
     syncStream(device, xcclEventsMap_[key], stream);
@@ -827,7 +827,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       LOG(INFO) << "Current stream id changed, register new xpu stream";
       std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
-          StreamKey, XCCLStream{at::xpu::XPUStream(stream)});
+          StreamKey, at::xpu::XPUStream(stream));
     }
   }
 
@@ -955,7 +955,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   }
 
   op_id_++;
-  std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
+  std::shared_ptr<onecclComm_t> comm = getXCCLComm(key);
   if (comm == nullptr) {
     comm = initXCCLComm(key, device, opType, p2pRank, isSendRecvSelf);
   }
@@ -979,7 +979,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     coalescedAsync_ = true;
   }
 
-  auto stream = xcclStreamsMap_.at(key).xpuStream;
+  auto stream = xcclStreamsMap_.at(key);
   syncStream(device, xcclEventsMap_[key], stream);
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
@@ -1100,7 +1100,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
   auto ret = pointToPoint(
       tensor,
       [&](at::Tensor& input,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream,
           int dst) {
         xccl::onecclSend(input, comm, dst, stream);
@@ -1143,7 +1143,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
   auto ret = pointToPoint(
       tensor,
       [&](at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream,
           int src) {
         xccl::onecclRecv(output, comm, src, stream);
@@ -1225,7 +1225,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       outputs, // just to fit the collective interface
       [&](at::Tensor& /* unused */,
           at::Tensor& /* unused */,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         const auto root = opts.rootRank;
         xccl::onecclGather(inputTensor, outputs, comm, root, stream);
@@ -1309,7 +1309,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       inputs, // just to fit the collective interface
       [&](at::Tensor& /* unused */,
           at::Tensor& /* unused */,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         if (getRank() == root) {
           for (auto input : inputs) {
@@ -1334,7 +1334,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
       tensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(input, output, comm, actualReduceOp, stream);
@@ -1413,7 +1413,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       tensors,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(input, output, comm, actualReduceOp, stream);
@@ -1462,7 +1462,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       tensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         xccl::onecclBroadcast(input, output, comm, root, stream);
         return;
@@ -1489,7 +1489,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
       outputTensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         xccl::onecclBroadcast(input, output, comm, root, stream);
         return;
@@ -1539,7 +1539,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
       tensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
@@ -1563,7 +1563,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
       outputTensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(input, output, comm, opts.reduceOp, root, stream);
@@ -1615,7 +1615,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
         outputFlattened,
         [&](at::Tensor& input,
             at::Tensor& output,
-            xcclComm_t& comm,
+            onecclComm_t& comm,
             at::xpu::XPUStream& stream) {
           xccl::onecclAllGather(input, output, comm, stream);
           return;
@@ -1691,7 +1691,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single(
       output_tensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         xccl::onecclAllGather(input, output, comm, stream);
         return;
@@ -1731,7 +1731,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single_coalesced(
       outputs,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         xccl::onecclAllGather(input, output, comm, stream);
         return;
@@ -1780,7 +1780,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
         outputTensor,
         [&](at::Tensor& input,
             at::Tensor& output,
-            xcclComm_t& comm,
+            onecclComm_t& comm,
             at::xpu::XPUStream& stream) {
           auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
           xccl::onecclReduceScatter(
@@ -1858,7 +1858,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
       outputTensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
@@ -1899,7 +1899,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
       outputs,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
@@ -2043,7 +2043,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
       outputTensor,
       [&](at::Tensor& input,
           at::Tensor& output,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         std::vector<size_t> send_lengths(size_);
         std::vector<size_t> recv_lengths(size_);
@@ -2121,7 +2121,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       outputTensors.front(),
       [&](at::Tensor& /* unused */,
           at::Tensor& /* unused */,
-          xcclComm_t& comm,
+          onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         xccl::oneccl_group_start();
         for (const int r :

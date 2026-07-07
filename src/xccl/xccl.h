@@ -85,18 +85,7 @@ inline const std::string& getVersionString() {
 
 namespace c10d {
 
-struct XCCLStream {
-  at::xpu::XPUStream xpuStream;
-};
-
-struct xcclComm_t {
-  onecclComm_t onecclComm{nullptr};
-
-  xcclComm_t() = default;
-  explicit xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
-};
-
-const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
+const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOps = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
     {ReduceOp::MAX, onecclRedOp_t::onecclMax},
     {ReduceOp::SUM, onecclRedOp_t::onecclSum},
@@ -104,7 +93,7 @@ const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::AVG, onecclRedOp_t::onecclAvg},
 };
 
-inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
+inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypes = {
     {at::kByte, onecclDataType_t::onecclUint8},
     {at::kChar, onecclDataType_t::onecclChar},
     {at::kInt, onecclDataType_t::onecclInt32},
@@ -123,21 +112,9 @@ inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
 
 namespace {
 
-struct XCCLTraitsV2 {
+struct xcclRedOpRAII {
   using OpType = onecclRedOp_t;
   using CommType = onecclComm_t;
-
-#if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
-  static void destroyOp(OpType op, CommType comm) {
-    onecclRedOpDestroy(op, comm);
-  }
-#endif
-};
-
-template <typename Traits>
-struct xcclRedOpRAII {
-  using OpType = typename Traits::OpType;
-  using CommType = typename Traits::CommType;
 
   xcclRedOpRAII() = default;
   xcclRedOpRAII(OpType op) : op_(op) {}
@@ -156,7 +133,7 @@ struct xcclRedOpRAII {
 #if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
   ~xcclRedOpRAII() {
     if (premul_sum_ && comm_) {
-      Traits::destroyOp(op_, comm_);
+      onecclRedOpDestroy(op_, comm_);
     }
   }
 #endif
@@ -170,11 +147,9 @@ struct xcclRedOpRAII {
   bool premul_sum_ = false;
 };
 
-using xcclRedOpRAIIV2 = xcclRedOpRAII<XCCLTraitsV2>;
-
 #ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
 template <typename T, onecclDataType_t dataType>
-inline xcclRedOpRAIIV2 unpackPreMulSumV2(
+inline xcclRedOpRAII unpackPreMulSum(
     const ReduceOp& reduceOp,
     onecclComm_t comm) {
   const auto* preMulSupplement =
@@ -194,11 +169,11 @@ inline xcclRedOpRAIIV2 unpackPreMulSumV2(
       dataType,
       residence,
       comm);
-  return xcclRedOpRAIIV2(preMulSum, comm);
+  return xcclRedOpRAII(preMulSum, comm);
 }
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
 
-inline onecclDataType_t getXcclDataTypeV2(
+inline onecclDataType_t getXcclDataType(
     at::ScalarType type,
     bool is_reduction_op = false) {
   if (is_reduction_op) {
@@ -206,16 +181,16 @@ inline onecclDataType_t getXcclDataTypeV2(
         !isFloat8Type(type),
         "Float8 dtypes are not currently supported for XCCL reductions");
   }
-  auto it = xcclDatatypesV2.find(type);
+  auto it = xcclDatatypes.find(type);
   TORCH_CHECK_WITH(
       TypeError,
-      it != xcclDatatypesV2.end(),
+      it != xcclDatatypes.end(),
       "Input tensor data type is not supported for XCCL process group: ",
       type);
   return it->second;
 }
 
-inline xcclRedOpRAIIV2 getXcclReduceOpV2(
+inline xcclRedOpRAII getXcclReduceOp(
     const ReduceOp& reduceOp,
     at::Tensor& input,
     const onecclDataType_t& dataType,
@@ -223,7 +198,7 @@ inline xcclRedOpRAIIV2 getXcclReduceOpV2(
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
-        return xcclRedOpRAIIV2(onecclRedOp_t::onecclMax);
+        return xcclRedOpRAII(onecclRedOp_t::onecclMax);
       }
       if (reduceOp == ReduceOp::AVG) {
         C10_THROW_ERROR(
@@ -234,16 +209,16 @@ inline xcclRedOpRAIIV2 getXcclReduceOpV2(
 #ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
       switch (dataType) {
         case onecclDataType_t::onecclFloat16:
-          return unpackPreMulSumV2<at::Half, onecclDataType_t::onecclFloat16>(
+          return unpackPreMulSum<at::Half, onecclDataType_t::onecclFloat16>(
               reduceOp, comm);
         case onecclDataType_t::onecclFloat32:
-          return unpackPreMulSumV2<float, onecclDataType_t::onecclFloat32>(
+          return unpackPreMulSum<float, onecclDataType_t::onecclFloat32>(
               reduceOp, comm);
         case onecclDataType_t::onecclBfloat16:
-          return unpackPreMulSumV2<float, onecclDataType_t::onecclBfloat16>(
+          return unpackPreMulSum<float, onecclDataType_t::onecclBfloat16>(
               reduceOp, comm);
         case onecclDataType_t::onecclFloat64:
-          return unpackPreMulSumV2<double, onecclDataType_t::onecclFloat64>(
+          return unpackPreMulSum<double, onecclDataType_t::onecclFloat64>(
               reduceOp, comm);
         default:
           C10_THROW_ERROR(
@@ -254,7 +229,7 @@ inline xcclRedOpRAIIV2 getXcclReduceOpV2(
       C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2022.0");
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
     }
-    return xcclRedOpRAIIV2(xcclOpsV2.at(reduceOp));
+    return xcclRedOpRAII(xcclOps.at(reduceOp));
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
         ValueError,
@@ -327,53 +302,53 @@ void oneccl_group_end();
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream);
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     const int root,
     at::xpu::XPUStream& stream);
 void onecclBroadcast(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream);
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream);
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream);
 void onecclSend(
     at::Tensor& input,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int dstRank,
     at::xpu::XPUStream& stream);
 void onecclRecv(
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int srcRank,
     at::xpu::XPUStream& stream);
 void onecclGather(
     const at::Tensor& inputs,
     std::vector<at::Tensor>& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream);
 void onecclScatter(
     const std::vector<at::Tensor>& inputs,
     at::Tensor& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream);
 void onecclAllToAll(
@@ -385,7 +360,7 @@ void onecclAllToAll(
     const size_t* recvdispls,
     size_t size,
     at::ScalarType dataType,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream);
 
 } // namespace xccl

@@ -203,9 +203,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   void setEnableNanCheck(bool enableNanCheck);
 
-  std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
+  std::shared_ptr<onecclComm_t> getXCCLComm(const std::string& deviceKey);
 
-  std::shared_ptr<xcclComm_t> initXCCLComm(
+  std::shared_ptr<onecclComm_t> initXCCLComm(
       const std::string& deviceKey,
       at::Device& device,
       OpType opType,
@@ -495,9 +495,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
-  std::unordered_map<std::string, XCCLStream> xcclStreamsMap_;
+  std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
-  std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
+  std::unordered_map<std::string, std::shared_ptr<onecclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
@@ -505,7 +505,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::set<int> usedDeviceIdxs_;
   int coalescing_state_ = 0;
   at::Device coalescedDevice_ = at::Device("xpu");
-  std::shared_ptr<xcclComm_t> coalescedComm_ = nullptr;
+  std::shared_ptr<onecclComm_t> coalescedComm_ = nullptr;
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;

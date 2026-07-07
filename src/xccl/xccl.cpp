@@ -24,32 +24,32 @@ void oneccl_group_end() {
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp =
-      getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclAllReduce(
       input.data_ptr(),
       output.data_ptr(),
       (size_t)input.numel(),
       xcclDataType,
       xcclReduceOp,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     const int root,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp =
-      getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclReduce(
       input.data_ptr(),
       output.data_ptr(),
@@ -57,109 +57,109 @@ void onecclReduce(
       xcclDataType,
       xcclReduceOp,
       root,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclBroadcast(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
   onecclBroadcast(
       input.data_ptr(),
       output.data_ptr(),
       (size_t)input.numel(),
       xcclDataType,
       root,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
   auto xcclReduceOp =
-      getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+      getXcclReduceOp(reduceOp, input, xcclDataType, comm);
   onecclReduceScatter(
       input.data_ptr(),
       output.data_ptr(),
       (size_t)output.numel(),
       xcclDataType,
       xcclReduceOp,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
   onecclAllGather(
       input.data_ptr(),
       output.data_ptr(),
       (size_t)input.numel(),
       xcclDataType,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclSend(
     at::Tensor& input,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int dstRank,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(input.scalar_type(), false);
   onecclSend(
       input.data_ptr(),
       (size_t)input.numel(),
       xcclDataType,
       dstRank,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclRecv(
     at::Tensor& output,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int srcRank,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(output.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(output.scalar_type(), false);
   onecclRecv(
       output.data_ptr(),
       (size_t)output.numel(),
       xcclDataType,
       srcRank,
-      comm.onecclComm,
+      comm,
       &stream.queue());
 }
 
 void onecclGather(
     const at::Tensor& inputs,
     std::vector<at::Tensor>& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream) {
   size_t count = inputs.numel();
-  auto xcclDataType = getXcclDataTypeV2(inputs.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(inputs.scalar_type(), false);
   int numranks = 0, cur_rank = 0;
-  onecclCommCount(comm.onecclComm, &numranks);
-  onecclCommUserRank(comm.onecclComm, &cur_rank);
+  onecclCommCount(comm, &numranks);
+  onecclCommUserRank(comm, &cur_rank);
   onecclGroupStart();
   if (cur_rank == root) {
     for (const auto r : c10::irange(numranks)) {
       if (r != root) {
         auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
         onecclRecv(
-            recvbuff, count, xcclDataType, r, comm.onecclComm, &stream.queue());
+            recvbuff, count, xcclDataType, r, comm, &stream.queue());
       } else {
         // on its own rank, simply copy from the input
         outputs[r].copy_(inputs);
@@ -171,7 +171,7 @@ void onecclGather(
         count,
         xcclDataType,
         root,
-        comm.onecclComm,
+        comm,
         &stream.queue());
   }
   onecclGroupEnd();
@@ -180,13 +180,13 @@ void onecclGather(
 void onecclScatter(
     const std::vector<at::Tensor>& inputs,
     at::Tensor& outputs,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     const int root,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
+  auto xcclDataType = getXcclDataType(outputs.scalar_type(), false);
   int numranks = 0, cur_rank = 0;
-  onecclCommCount(comm.onecclComm, &numranks);
-  onecclCommUserRank(comm.onecclComm, &cur_rank);
+  onecclCommCount(comm, &numranks);
+  onecclCommUserRank(comm, &cur_rank);
   onecclGroupStart();
   if (cur_rank == root) {
     for (const auto r : c10::irange(numranks)) {
@@ -197,7 +197,7 @@ void onecclScatter(
             send_count,
             xcclDataType,
             r,
-            comm.onecclComm,
+            comm,
             &stream.queue());
       } else {
         // on its own rank, simply copy from the input
@@ -211,7 +211,7 @@ void onecclScatter(
         recv_count,
         xcclDataType,
         root,
-        comm.onecclComm,
+        comm,
         &stream.queue());
   }
   onecclGroupEnd();
@@ -249,11 +249,11 @@ void onecclAllToAll(
     const size_t* recvdispls,
     size_t size,
     at::ScalarType dataType,
-    xcclComm_t& comm,
+    onecclComm_t& comm,
     at::xpu::XPUStream& stream) {
-  auto xcclDataType = getXcclDataTypeV2(dataType, false);
+  auto xcclDataType = getXcclDataType(dataType, false);
   int numranks = 0;
-  onecclCommCount(comm.onecclComm, &numranks);
+  onecclCommCount(comm, &numranks);
 
   auto [isUniform, uniformCount] = checkUniformAllToAll(
       sendcounts, senddispls, recvcounts, recvdispls, numranks);
@@ -265,7 +265,7 @@ void onecclAllToAll(
         recvbuff,
         uniformCount,
         xcclDataType,
-        comm.onecclComm,
+        comm,
         &stream.queue());
     return;
   }
@@ -279,7 +279,7 @@ void onecclAllToAll(
           sendcounts[r],
           xcclDataType,
           r,
-          comm.onecclComm,
+          comm,
           &stream.queue());
     }
     if (recvcounts[r] != 0) {
@@ -288,7 +288,7 @@ void onecclAllToAll(
           recvcounts[r],
           xcclDataType,
           r,
-          comm.onecclComm,
+          comm,
           &stream.queue());
     }
   }
