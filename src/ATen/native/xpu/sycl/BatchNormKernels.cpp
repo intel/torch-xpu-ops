@@ -26,6 +26,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
 
@@ -1401,8 +1402,9 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
 
       for (int idx = item.get_global_id(0); idx < total_vecs;
            idx += global_stride) {
-        int c_offset = (idx % vec_stride) * VEC_SIZE;
-        int flat_pos = (idx / vec_stride) * stride_ + c_offset;
+        auto dm = vec_divider_.divmod(static_cast<unsigned int>(idx));
+        int c_offset = static_cast<int>(dm.mod) * VEC_SIZE;
+        int flat_pos = static_cast<int>(dm.div) * stride_ + c_offset;
         int remaining = stride_ - c_offset;
 
         if (remaining >= VEC_SIZE) {
@@ -1464,7 +1466,8 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
       scalar_t* RESTRICT out,
       const int reduction_size,
       const int stride,
-      const bool fuse_relu)
+      const bool fuse_relu,
+      const at::detail::IntDivider<unsigned int> vec_divider)
       : input_(input),
         z_(z),
         mean_(mean),
@@ -1474,7 +1477,8 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
         out_(out),
         reduction_size_(reduction_size),
         stride_(stride),
-        fuse_relu_(fuse_relu) {}
+        fuse_relu_(fuse_relu),
+        vec_divider_(vec_divider) {}
 
  private:
   inline void load_params(
@@ -1503,6 +1507,7 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
   const int reduction_size_;
   const int stride_;
   const bool fuse_relu_;
+  const at::detail::IntDivider<unsigned int> vec_divider_;
 };
 
 void batch_norm_elemt_channels_last_template(
@@ -1563,7 +1568,8 @@ void batch_norm_elemt_channels_last_template(
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight_data_ptr, shift_data_ptr,
                     output_data_ptr, reduction_size,
-                    stride, fuse_relu);
+                    stride, fuse_relu,
+                    at::detail::IntDivider<unsigned int>(static_cast<unsigned int>(vec_stride)));
             sycl_kernel_submit(
                 num_wg * wg_size, wg_size, queue, kfn);
           } else {
@@ -1576,7 +1582,8 @@ void batch_norm_elemt_channels_last_template(
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight_data_ptr, shift_data_ptr,
                     output_data_ptr, reduction_size,
-                    stride, fuse_relu);
+                    stride, fuse_relu,
+                    at::detail::IntDivider<unsigned int>(static_cast<unsigned int>(vec_stride)));
             sycl_kernel_submit(
                 num_wg * wg_size, wg_size, queue, kfn);
           }
@@ -1628,7 +1635,8 @@ void batch_norm_elemt_channels_last_template(
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight_data_ptr, shift_data_ptr,
                     output_data_ptr, reduction_size,
-                    stride, fuse_relu);
+                    stride, fuse_relu,
+                    at::detail::IntDivider<unsigned int>(static_cast<unsigned int>(vec_stride)));
             sycl_kernel_submit(
                 num_wg * wg_size, wg_size, queue, kfn);
           } else {
@@ -1641,7 +1649,8 @@ void batch_norm_elemt_channels_last_template(
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight_data_ptr, shift_data_ptr,
                     output_data_ptr, reduction_size,
-                    stride, fuse_relu);
+                    stride, fuse_relu,
+                    at::detail::IntDivider<unsigned int>(static_cast<unsigned int>(vec_stride)));
             sycl_kernel_submit(
                 num_wg * wg_size, wg_size, queue, kfn);
           }
