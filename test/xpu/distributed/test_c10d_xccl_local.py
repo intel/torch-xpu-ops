@@ -57,7 +57,7 @@ from torch.testing._internal.common_distributed import (
     get_timeout,
     init_multigpu_helper,
     MultiProcessTestCase,
-    requires_xccl,
+    requires_accelerator_dist_backend,
     skip_if_lt_x_gpu,
     TEST_SKIPS,
     with_dist_debug_levels,
@@ -135,7 +135,7 @@ _log_configure(level=logging.INFO, force=True)
 
 class RendezvousEnvTest(TestCase):
     @retry_on_connect_failures
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_XPU, "No GPUs available, skipping test")
     def test_common_errors(self):
         vars = {
@@ -234,7 +234,7 @@ class RendezvousEnvTest(TestCase):
 
 
 class TimeoutTest(test_c10d_common.AbstractTimeoutTest, TestCase):
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @retry_on_connect_failures
     @skip_but_pass_in_sandcastle_if(not TEST_XPU, "No GPUs available, skipping test")
     def test_default_store_timeout_xccl(self):
@@ -254,7 +254,7 @@ class ProcessGroupXCCLNoGPUTest(TestCase):
     def tearDown(self):
         pass
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(TEST_XPU, "GPUs are available, skipping test")
     def test_init_no_gpus(self):
         store = c10d.FileStore(self.file.name, self.world_size)
@@ -298,14 +298,14 @@ class ProcessGroupXCCLInitTest(MultiProcessTestCase):
             **kwargs,
         )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_init_wo_backend_str(self):
         self._init_process_group(device_id=self.device)
         x = torch.empty(1, device=self.device)
         c10d.all_reduce(x)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_scalable_init(self):
         self._init_process_group(device_id=self.device)
@@ -386,7 +386,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         # does not need auto-destroy upon exit.
         return False
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 1 GPU")
     @skip_if_lt_x_gpu(1)
     def test_xccl_dist_backend_error(self):
@@ -402,7 +402,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
 
         self.assertIsInstance(cm.exception, RuntimeError)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("eager_init", [True, False])
     def test_close_pg(self, eager_init: bool):
@@ -425,7 +425,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         with self.assertRaises(ValueError):
             dist.all_reduce(t)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_restart_pg(self):
         # Note: restart test passes steadily only for blocking mode for now.
@@ -465,7 +465,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         with self.assertRaises(ValueError):
             dist.all_reduce(t1)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_xpu_event_cache_mthd_race(self):
         # This unit test is to test the case when the collective is launched in
@@ -496,7 +496,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         # reset ENV
         os.environ["TORCH_XCCL_XPU_EVENT_CACHE"] = "0"
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(
         not TEST_MULTIGPU,
         "Test requires 2+ GPUs",
@@ -565,7 +565,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_nan_rank_filter(self):
         # Putting NaN at recv buffer, program should not fail as NaN checker
@@ -591,7 +591,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_nan_check(self):
         # Not expecting an error, NaN check should not make legit code fail
@@ -650,7 +650,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
                 f"Extra CUDA context may have been created.",
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_extra_xpu_context(self):
         self.skipTest("XPU context test not supported")
@@ -670,7 +670,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         except ModuleNotFoundError:
             self._helper_test_extra_xpu_context_by_memory()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_extra_xpu_context_sync_ops(self):
         self.skipTest("XPU context test not supported")
@@ -722,7 +722,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
             f"Found {nprocs} processes creating contexts on {device}, expecting 1 at most",
         )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_destruct_before_terminate_pg(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -735,7 +735,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         # force destruction before terminating comms, destructor would terminate comms
         del pg
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(
         torch.xpu.device_count() < 2, "XCCL test requires 2+ XPUs"
     )
@@ -758,7 +758,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         options = pg._get_backend(torch.device(f"xpu:{self.rank}")).options
         self.assertEqual(options._timeout, expected_timeout)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_XPU, "No XPUs available, skipping test")
     def test_init_process_group_xccl_timeout(self):
         # xccl is handled 'specially' inside init_process_group and its options class is different from the options
@@ -802,7 +802,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         self._check_xccl_timeout(timedelta(seconds=1240))
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("backend", [None, "xccl"])
     def test_set_xccl_pg_timeout(self, backend):
@@ -1010,7 +1010,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
             self.assertEqual(send_tensor, recv_tensor)
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_get_uid(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -1022,7 +1022,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         pg_2 = c10d.new_group([0, 1])
         self.assertEqual(_get_process_group_uid(pg_2), 1)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_set_process_group_desc(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -1036,7 +1036,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         pg_2 = c10d.new_group([0, 1])
         self.assertEqual(pg_2.group_desc, "undefined")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_deterministic_mode_no_break(self):
         torch.use_deterministic_algorithms(True)
@@ -1046,7 +1046,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         tensor = torch.empty(10, 10, device=device)
         dist.all_reduce(tensor)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_init_with_idx(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -1059,7 +1059,7 @@ class ProcessGroupXCCLGroupTest(MultiProcessTestCase):
         )
         dist.all_reduce(torch.empty(1, device=torch.device("xpu", device_idx)))
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_block_current_stream(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -1097,7 +1097,7 @@ class DistributedDataParallelTest(
             process_group, devices, device_ids, multi_device, gradient_as_bucket_view
         )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_complex_params_and_grads(self):
         # test ddp with complex parameters and gradients
@@ -1214,7 +1214,7 @@ class DistributedDataParallelTest(
                 "Final model parameters don't match after training",
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_mixed_real_and_complex_params(self):
         # test ddp with mixed real and complex parameters and gradients
@@ -1319,7 +1319,7 @@ class DistributedDataParallelTest(
                         f"Real gradient mismatch at iteration {iteration}, param {name}",
                     )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_backend_multi_device_ids_not_allowed(self):
         int_devices = list(range(torch.xpu.device_count()))
@@ -1329,12 +1329,12 @@ class DistributedDataParallelTest(
         ):
             self._test_xccl_backend(devices, int_devices)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_backend_single_device_module_device_ids_None(self):
         self._test_xccl_backend(None, None)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_backend_single_device_module_empty_device_ids(self):
         # This tests the backward compatibility of accepting an empty list as `device_ids`,
@@ -1342,42 +1342,42 @@ class DistributedDataParallelTest(
         # which is consistent with multi-device modules and CPU modules.
         self._test_xccl_backend(None, [])
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_xccl_backend_multi_device_module_device_ids_None(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:2]
         devices = [torch.device("xpu:" + str(i)) for i in int_devices]
         self._test_xccl_backend(devices, None, multi_device=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_backend_1gpu_module_device_ids_integer_list(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:1]
         devices = [torch.device("xpu:" + str(i)) for i in int_devices]
         self._test_xccl_backend(devices, int_devices)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_backend_1gpu_module_device_ids_torch_device_list(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:1]
         devices = [torch.device("xpu:" + str(i)) for i in int_devices]
         self._test_xccl_backend(devices, devices)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_xccl_backend_2gpu_module(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:2]
         devices = [torch.device("xpu:" + str(i)) for i in int_devices]
         self._test_xccl_backend(devices, None, multi_device=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(8)
     def test_xccl_backend_4gpu_module(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:4]
         devices = [torch.device("xpu:" + str(i)) for i in int_devices]
         self._test_xccl_backend(devices, None, multi_device=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_ddp_multi_device_module_config(self):
         gpus = gpus_for_rank(self.world_size)[self.rank]
@@ -1442,12 +1442,12 @@ class DistributedDataParallelTest(
 
         self.assertFalse(any(torch.isinf(p.grad).any() for p in ddp_model.parameters()))
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_fp16(self):
         self._test_fp16()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_fp16_grad_is_view(self):
         self._test_fp16(gradient_as_bucket_view=True)
@@ -1542,17 +1542,17 @@ class DistributedDataParallelTest(
             unbox=lambda obj: obj["list"][3],
         )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_arbitrary_forward_return_value(self):
         self._test_arbitrary_forward_return_value()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_arbitrary_forward_return_value_grad_is_view(self):
         self._test_arbitrary_forward_return_value(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_with_lazy_parameters(self):
         process_group = self._get_process_group()
@@ -1680,37 +1680,37 @@ class DistributedDataParallelTest(
 
     # TODO: Combine the following tests once https://github.com/pytorch/pytorch/issues/55967
     # is resolved.
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["DETAIL"])
     def test_find_unused_parameters_kwarg_debug_detail(self):
         self._test_find_unused_parameters_kwarg()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["INFO"])
     def test_find_unused_parameters_kwarg_debug_info(self):
         self._test_find_unused_parameters_kwarg()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["OFF"])
     def test_find_unused_parameters_kwarg_debug_off(self):
         self._test_find_unused_parameters_kwarg()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["DETAIL"])
     def test_find_unused_parameters_kwarg_grad_is_view_debug_detail(self):
         self._test_find_unused_parameters_kwarg(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["INFO"])
     def test_find_unused_parameters_kwarg_grad_is_view_debug_info(self):
         self._test_find_unused_parameters_kwarg(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["OFF"])
     def test_find_unused_parameters_kwarg_grad_is_view_debug_off(self):
@@ -1766,17 +1766,17 @@ class DistributedDataParallelTest(
         loss2 = criterion(output2, target)
         loss2.backward()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_multiple_outputs_multiple_backward(self):
         self._test_multiple_outputs_multiple_backward()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_multiple_outputs_multiple_backward_grad_is_view(self):
         self._test_multiple_outputs_multiple_backward(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_no_grad(self):
         """
@@ -1875,17 +1875,17 @@ class DistributedDataParallelTest(
             torch.manual_seed(1337 + iteration)
             input = input[torch.randperm(global_batch_size)]
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_accumulate_gradients_module(self):
         self._test_accumulate_gradients_module()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_accumulate_gradients_module_with_grad_is_view(self):
         self._test_accumulate_gradients_module(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_failure_recovery(self):
         process_group = self._get_process_group()
@@ -1955,7 +1955,7 @@ class DistributedDataParallelTest(
             loss = criterion(output, target)
             loss.backward()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_pass_default_pg(self):
         dist.init_process_group(
@@ -2091,7 +2091,7 @@ class DistributedDataParallelTest(
                             )
                             raise
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_grad_layout_1devicemodule_1replicaperprocess(self):
         dev0 = torch.device("xpu:" + str(gpus_for_rank(self.world_size)[self.rank][0]))
@@ -2102,7 +2102,7 @@ class DistributedDataParallelTest(
         local_batch_size = 16
         self._test_grad_layout(replica_devices, layer_devs, local_batch_size)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_grad_layout_2devicemodule(self):
         int_devices = gpus_for_rank(self.world_size)[self.rank][:2]
@@ -2115,7 +2115,7 @@ class DistributedDataParallelTest(
         local_batch_size = 16
         self._test_grad_layout(replica_devices, layer_devs, local_batch_size)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_param_layout_mismatch_error(self):
         self.skipTest("Skipping test due to no oneCCL error reporting")
@@ -2166,7 +2166,7 @@ class DistributedDataParallelTest(
 
         return gpu_model
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_comm_hook_future_passing_gpu_xccl(self):
         """
@@ -2330,72 +2330,72 @@ class DistributedDataParallelTest(
             # check whether the grads are equal to what DDP without hook would return.
             self._run_and_verify_hook(gpu_model, 8, 0.25 * torch.ones(2, 2))
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_comm_hook_allreduce_hook_xccl(self):
         self._test_ddp_comm_hook_allreduce_hook_xccl()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_default_ddp_comm_hooks_xccl(self):
         self._test_default_ddp_comm_hooks_xccl()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_fp16_compress_wrapper_xccl(self):
         self._test_fp16_compress_wrapper()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_bf16_compress_wrapper_xccl(self):
         self._test_bf16_compress_wrapper()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_builtin_ddp_comm_hooks_xccl(self):
         self._test_builtin_ddp_comm_hooks_xccl()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_powerSGD_ddp_comm_hook_xccl(self):
         self._test_powerSGD_ddp_comm_hook_xccl()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_comm_hook_allreduce_hook_xccl_grad_is_view(self):
         self._test_ddp_comm_hook_allreduce_hook_xccl(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_comm_hook_allreduce_hook_xccl_static_graph(self):
         self._test_ddp_comm_hook_allreduce_hook_xccl(static_graph=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_default_ddp_comm_hooks_xccl_is_view(self):
         self._test_default_ddp_comm_hooks_xccl(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_fp16_compress_wrapper_is_view(self):
         self._test_fp16_compress_wrapper(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_bf16_compress_wrapper_is_view(self):
         self._test_bf16_compress_wrapper(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_builtin_ddp_comm_hooks_xccl_grad_is_view(self):
         self._test_builtin_ddp_comm_hooks_xccl(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_powerSGD_ddp_comm_hook_xccl_grad_is_view(self):
         self._test_powerSGD_ddp_comm_hook_xccl(gradient_as_bucket_view=True)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_comm_hook_allreduce_with_then_hook_xccl(self):
         """
@@ -2438,7 +2438,7 @@ class DistributedDataParallelTest(
         def forward(self, input):
             return input + self.a * self.f
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_weight_sharing(self):
         process_group = self._get_process_group()
@@ -2482,7 +2482,7 @@ class DistributedDataParallelTest(
                         + f"set_to_none = {try_set_to_none}, use_bucket_view = {use_bucket_view}",
                     )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_packed_sequence(self):
         """
@@ -2543,7 +2543,7 @@ class DistributedDataParallelTest(
         for p1, p2 in zip(lstm.parameters(), lstm_ddp.parameters()):
             self.assertEqual(p1.grad, p2.grad)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_channels_last_contig(self):
         process_group = self._get_process_group()
@@ -2553,7 +2553,7 @@ class DistributedDataParallelTest(
         )
         process_group.broadcast([tensor]).wait()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_ddp_complex_params(self):
         process_group = self._get_process_group()
@@ -2604,7 +2604,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
     def _run_all_reduce(self, pg):
         pg.allreduce(torch.rand(10).xpu(self.rank))
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_send_recv_non_dense_tensor(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -2622,7 +2622,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
             with self.assertRaises(ValueError):
                 dist.recv(block, src=0)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     @skip_but_pass_in_sandcastle("Test does not pass when run locally")
     def test_xccl_errors_nonblocking(self):
@@ -2644,7 +2644,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
             t.join(int(get_timeout(self.id()) / 5))
             self.assertTrue(t.is_alive())
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_xccl_errors_blocking(self):
         # TODO: expose proper error reporting in xccl backend
@@ -2679,14 +2679,14 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
                     timeout=timedelta(seconds=self.op_timeout_sec)
                 )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_xccl_blocking_wait_with_barrier(self):
         # TODO: expose proper error reporting in xccl backend
         self.skipTest("Skipping test due to no oneCCL error reporting")
         self._test_barrier_error()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_xccl_non_blocking_wait_with_barrier(self):
         # TODO: expose proper error reporting in xccl backend
@@ -2703,7 +2703,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
                 prev_xccl_async_error_handling
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_error_detection_and_propagation(self):
         # TODO: expose proper error reporting in xccl backend
@@ -2757,7 +2757,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
                 prev_xccl_async_error_handling
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_restart_pg_after_error(self):
         # TODO: expose proper error reporting in xccl backend
@@ -2831,7 +2831,7 @@ class XcclErrorHandlingTest(MultiProcessTestCase):
         with self.assertRaises(RuntimeError):
             c10d.ProcessGroupXCCL(store, self.rank, self.world_size)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(3)
     def test_invalid_xccl_blocking_wait_env(self):
         self._run_invalid_xccl_blocking_wait_env("abc")
@@ -2887,7 +2887,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         if self.rank != root_rank:
             self.assertEqual(tensors, target)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_broadcast_coalesced_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -2900,7 +2900,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         for root_rank in ranks:
             self._test_broadcast_coalesced(process_group, device, root_rank)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_all_reduce_coalesced_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -2922,7 +2922,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
                 ),
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_all_reduce_coalesced_manager_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -2950,7 +2950,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
                 ),
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_intra_node_comm_all_reduce(self):
         from torch.testing._internal.common_cuda import SM80OrLater
@@ -3002,25 +3002,25 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
 
         c10d.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_sequence_num_set_default_pg_xccl(self):
         torch.xpu.set_device(self.rank)
         self._test_sequence_num_set_default_pg(backend="xccl")
 
     @skip_if_lt_x_gpu(2)
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     def test_sequence_num_incremented_xccl_default(self):
         self._test_sequence_num_incremented_default_group("xccl")
 
     @skip_if_lt_x_gpu(4)
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     def test_sequence_num_incremented_xccl_subgroup(self):
         if self.world_size < 4:
             return skip_but_pass_in_sandcastle("Test requires world_size of at least 4")
         self._test_sequence_num_incremented_subgroup("xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_sequence_num_set_xccl_new_group(self):
         torch.xpu.set_device(self.rank)
@@ -3045,14 +3045,14 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         expected_tensor = torch.tensor([3] * 10).xpu(self.rank)
         self.assertEqual(expected_tensor, t)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_pass_xccl_options_high_priority_stream(self):
         pg_opts = c10d.ProcessGroupXCCL.Options()
         pg_opts.is_high_priority_stream = True
         self._test_pass_xccl_options(pg_opts)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_xccl_barrier(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -3085,7 +3085,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
             pg.allreduce(t).wait()
             self.assertEqual(expected_tensor, t)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_barrier_device_ids(self):
         store = c10d.FileStore(self.file_name, self.world_size)
@@ -3095,7 +3095,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
 
         c10d.barrier(device_ids=[self.rank])
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_unwaited(self) -> None:
         # Verify that the process can terminate gracefully
@@ -3130,7 +3130,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         # the context manager is not registered in the work registry.
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_wait_tensor(self) -> None:
         # Verify that c10d_functional.wait_tensor() can be invoked on
@@ -3175,40 +3175,40 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
         self.assertEqual(input1, input2)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["DETAIL"])
     def test_xccl_warn_not_in_group_debug_detail(self):
         self._test_warn_not_in_group(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["INFO"])
     def test_xccl_warn_not_in_group_debug_info(self):
         self._test_warn_not_in_group(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @with_dist_debug_levels(levels=["OFF"])
     def test_xccl_warn_not_in_group_debug_off(self):
         self._test_warn_not_in_group(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_nncl_rank_membership(self):
         self._test_rank_membership(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_tensor_dtype_mismatch(self):
         self._test_tensor_dtype_mismatch(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_tensor_dtype_complex(self):
         self._test_tensor_dtype_complex(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_reduce_scatter_base_k(self):
         store = dist.FileStore(self.file_name, self.world_size)
@@ -3226,7 +3226,7 @@ class CommTest(test_c10d_common.AbstractCommTest, MultiProcessTestCase):
         dist.reduce_scatter_tensor(output_tensor, input_tensors)
         self.assertEqual(output_tensor, input_tensors[self.rank] * self.world_size)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_reduce_scatter_tensor_coalesced(self):
         store = dist.FileStore(self.file_name, self.world_size)
@@ -3252,22 +3252,22 @@ class SetDeviceMethod(Enum):
 class XcclProcessGroupWithDispatchedCollectivesTests(
     test_c10d_common.ProcessGroupWithDispatchedCollectivesTests
 ):
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_collectives(self):
         self._test_collectives(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_allreduce_coalesced(self):
         self._test_allreduce_coalesced(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_all_to_all_single(self):
         self._test_all_to_all_single(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_allgather_base(self):
         store = dist.FileStore(self.file_name, self.world_size)
@@ -3283,7 +3283,7 @@ class XcclProcessGroupWithDispatchedCollectivesTests(
         dist.all_gather_into_tensor(output_tensor, tensor)
         self.assertEqual(output_tensor, tensor)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     @parametrize("float8_dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
     def test_allgather_float8(self, float8_dtype):
@@ -3323,17 +3323,17 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
     def device(self):
         return self.rank
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_new_group_local_sync(self):
         self._test_new_group_local_sync(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_new_group_local_sync_sanity_check(self):
         self._test_new_group_local_sync_sanity_check(backend="xccl")
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     def test_new_group_local_sync_duplicated_pg(self):
         self._test_new_group_local_sync_duplicate_pg(backend="xccl")
@@ -3353,7 +3353,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
         b_group = c10d.new_group([2, 3])
         return a_group if self.rank < 2 else b_group
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_gather_subgroup(self, group_rank):
@@ -3405,7 +3405,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                     async_op=False,
                 )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_gather_object_subgroup(self, group_rank):
@@ -3446,7 +3446,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                     input, object_gather_list=None, dst=self.rank - 1, group=subgroup
                 )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_reduce_subgroup(self, group_rank):
@@ -3469,7 +3469,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
             else:
                 c10d.reduce(x, dst=self.rank - 1, group=subgroup, async_op=False)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     @parametrize("async_op", [True, False])
@@ -3506,7 +3506,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                 else:
                     c10d.send(x, dst=self.rank - 1, group=subgroup)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_batch_send_recv_subgroup(self, group_rank):
@@ -3540,7 +3540,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
             for work in dist.batch_isend_irecv(ops):
                 work.wait()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_broadcast_subgroup(self, group_rank):
@@ -3564,7 +3564,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
             else:
                 c10d.broadcast(x, src=self.rank, group=subgroup)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize(
         "set_device",
@@ -3602,7 +3602,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                     x, dst=self.rank - 1, group=subgroup, device=device
                 )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize(
         "set_device",
@@ -3644,7 +3644,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                     x, src=self.rank, group=subgroup, device=device
                 )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_scatter_subgroup(self, group_rank):
@@ -3673,7 +3673,7 @@ class LargeCommTest(test_c10d_common.AbstractLargeCommTest, MultiProcessTestCase
                 )
         self.assertEqual(x, expected)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(4)
     @parametrize("group_rank", [True, False])
     def test_scatter_object_list_subgroup(self, group_rank):
@@ -3758,7 +3758,7 @@ class SparseCollective(MultiProcessTestCase):
             # output shape: (batch_size, 1)
             return output
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_ddp_set_sparse_metadata(self):
         self.skipTest("XCCL does not support sparse allreduce")
@@ -3813,7 +3813,7 @@ class ProcessGroupXCCLOneRankTest(MultiProcessTestCase):
         except OSError:
             pass
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(1)
     def test_reduce_scatter(self):
         device = torch.device(f"xpu:{self.rank:d}")
@@ -4034,7 +4034,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         # Set name
         pthread_setname_np(tid, name.encode())
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     @parametrize("include_collectives", [True, False])
@@ -4061,7 +4061,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self._verify_trace(t, include_collectives, timing_enabled, True)
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     @parametrize("include_collectives", [True, False])
@@ -4093,7 +4093,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         )
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_fr_record_reset(self, timing_enabled):
@@ -4121,7 +4121,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(len(t["entries"]), 4)
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_dump_pipe(self):
         def open_file_with_timeout(file_path, mode, timeout=1.0):
@@ -4157,7 +4157,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.parent.send("next")
         self.parent.recv()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_long(self):
         os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
@@ -4196,7 +4196,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(last["collective_seq_id"] - first["collective_seq_id"], 9)
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     def test_barrier_profiling(self):
         os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
@@ -4218,7 +4218,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @skipIfXpu(msg="XCCL doesn't currently support onlyActive filtering")
     @parametrize("timing_enabled", [True, False])
@@ -4271,7 +4271,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             self.assertEqual("next", self.parent.recv())
             torch.xpu.synchronize(device=device)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_trace_while_stuck(self, timing_enabled):
@@ -4332,7 +4332,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             self.assertEqual("next", self.parent.recv())
             torch.xpu.synchronize(device=device)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize(
         "op_sizes_per_coalesce",
@@ -4437,7 +4437,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
                 t["entries"][coalesced_op]["timeout_ms"], DEFAULT_PG_TIMEOUT
             )
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize(
         "op_sizes",
@@ -4501,7 +4501,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             else:
                 self.assertTrue("duration_ms" not in t["entries"][seq])
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @parametrize("timing_enabled", [True, False])
     def test_allgather_uneven(self, timing_enabled):
@@ -4545,7 +4545,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         )
 
     # TODO(whc) test out other ops (And combinations of ops, if that's valid?)
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @parametrize("timing_enabled", [True, False])
     def test_coalescing_manager_collective(self, timing_enabled):
@@ -4608,7 +4608,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         else:
             self.assertTrue("duration_ms" not in t["entries"][0])
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_fr_record_reset_circular_buffer_full(self, timing_enabled):
@@ -4666,7 +4666,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_fr_record_reset_partial_overwrite(self, timing_enabled):
@@ -4717,7 +4717,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_fr_record_reset_wraparound(self, timing_enabled):
@@ -4772,7 +4772,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
         dist.destroy_process_group()
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ XPUs")
     @parametrize("timing_enabled", [True, False])
     def test_fr_record_multiple_resets(self, timing_enabled):
@@ -4874,7 +4874,7 @@ class XCCLTraceTestDumpOnTimeoutBase(XCCLTraceTestBase):
 
 @skip_but_pass_in_sandcastle
 class XCCLTraceTestDumpOnTimeout(XCCLTraceTestDumpOnTimeoutBase):
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     @parametrize("timing_enabled", [True, False])
     def test_timeout_dumps(self, timing_enabled):
@@ -4931,7 +4931,7 @@ class XCCLTraceTestTimeoutDumpOnStuckRanks(XCCLTraceTestDumpOnTimeoutBase):
         self.assertEqual(self.processes[0].exitcode, -6)
         self.assertEqual(self.processes[1].exitcode, -6)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_timeout_dumps_on_stuck_ranks(self):
         if self.rank == self.MAIN_PROCESS_RANK:
@@ -4987,7 +4987,7 @@ class XcclErrorDumpTest(XCCLTraceTestBase):
         self.assertEqual(self.processes[0].exitcode, -6)
         self.assertEqual(self.processes[1].exitcode, 1)
 
-    @requires_xccl()
+    @requires_accelerator_dist_backend(["nccl", "xccl"])
     @skip_if_lt_x_gpu(2)
     def test_xccl_errors_dump(self):
         os.environ["TORCH_FR_BUFFER_SIZE"] = "1000"
