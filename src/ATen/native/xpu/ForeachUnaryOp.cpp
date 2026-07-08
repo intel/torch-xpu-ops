@@ -20,6 +20,7 @@
 #include <ATen/ops/_foreach_atan_native.h>
 #include <ATen/ops/_foreach_ceil_native.h>
 #include <ATen/ops/_foreach_clone_native.h>
+#include <ATen/ops/_foreach_copy_native.h>
 #include <ATen/ops/_foreach_cos_native.h>
 #include <ATen/ops/_foreach_cosh_native.h>
 #include <ATen/ops/_foreach_erf_native.h>
@@ -46,7 +47,6 @@
 #include <ATen/ops/_foreach_tanh_native.h>
 #include <ATen/ops/_foreach_trunc_native.h>
 #include <ATen/ops/_foreach_zero_native.h>
-#include <ATen/ops/_foreach_copy_native.h>
 #include <ATen/ops/empty_like_native.h>
 #include <ATen/ops/empty_strided_native.h>
 
