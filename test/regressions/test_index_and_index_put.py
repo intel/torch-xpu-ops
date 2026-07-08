@@ -180,3 +180,30 @@ class TestTorchMethod(TestCase):
                 v_xpu, i_xpu = op(x.xpu(), dim)
                 self.assertEqual(v_xpu.cpu(), v_cpu)
                 self.assertEqual(i_xpu.cpu(), i_cpu)
+
+    def test_index_bcomplex32(self):
+        # bcomplex32 CPU support is limited; compare XPU results directly
+        x = torch.randn(8, 4).to(torch.bcomplex32).to(xpu_device)
+        idx = torch.tensor([0, 3, 5], device=xpu_device)
+        result = x[idx]
+        self.assertEqual(result.dtype, torch.bcomplex32)
+        self.assertEqual(result, torch.stack([x[0], x[3], x[5]]))
+
+    def test_masked_fill_bcomplex32(self):
+        x = torch.randn(4, 8).to(torch.bcomplex32).to(xpu_device)
+        mask = torch.zeros(4, 8, dtype=torch.bool, device=xpu_device)
+        mask[1] = True
+        x.masked_fill_(mask, 0)
+        self.assertEqual(x.dtype, torch.bcomplex32)
+        self.assertEqual(
+            x[1], torch.zeros(8, dtype=torch.bcomplex32, device=xpu_device)
+        )
+
+    def test_index_put_bcomplex32(self):
+        x = torch.zeros(4, 8, dtype=torch.bcomplex32, device=xpu_device)
+        idx = torch.tensor([1, 3], device=xpu_device)
+        vals = torch.randn(2, 8).to(torch.bcomplex32).to(xpu_device)
+        x.index_put_([idx], vals)
+        self.assertEqual(x.dtype, torch.bcomplex32)
+        self.assertEqual(x[1], vals[0])
+        self.assertEqual(x[3], vals[1])

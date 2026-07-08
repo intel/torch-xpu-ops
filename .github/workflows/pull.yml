@@ -10,11 +10,21 @@ on:
     branches:
       - main
       - release/*
+  workflow_dispatch:
+    inputs:
+      pytorch_ref:
+        description: 'PyTorch branch or commit to build against'
+        required: false
+        default: ''
+      pr_number:
+        description: 'PR number to checkout (for bot-triggered reruns)'
+        required: false
+        default: ''
 
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('pull-rerun-{0}', github.event.inputs.pr_number) || format('{0}-{1}', github.workflow, github.event.pull_request.number) }}
   cancel-in-progress: true
 
 jobs:
