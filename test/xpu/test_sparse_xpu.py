@@ -1998,7 +1998,7 @@ class TestSparse(TestSparseBase):
     # adding a graph break before self.assertFalse(weight._indices().is_contiguous())
     # makes the test pass so some existent sparse related bug
     @skipIfTorchDynamo("skip")
-    @dtypes(torch.double, torch.cdouble)
+    @dtypes(torch.double, torch.cdouble, torch.float, torch.cfloat)
     def test_sspaddmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
@@ -2050,6 +2050,231 @@ class TestSparse(TestSparseBase):
 
         true_result = (bias.to_dense() + torch.matmul(weight.to_dense(), x)).to_sparse()
         self.assertEqual(self.safeToDense(res), self.safeToDense(true_result))
+
+    @onlyOn("xpu")
+    @coalescedonoff
+    @dtypes(torch.double, torch.float)
+    def test_sspaddmm_out(self, device, dtype, coalesced):
+        def make_sparse(size, entries):
+            if entries:
+                rows, cols, vals = zip(*entries)
+                indices = torch.tensor([rows, cols], dtype=torch.int64, device=device)
+                values = torch.tensor(vals, dtype=dtype, device=device)
+            else:
+                indices = torch.empty((2, 0), dtype=torch.int64, device=device)
+                values = torch.empty((0,), dtype=dtype, device=device)
+
+            result = torch.sparse_coo_tensor(
+                indices,
+                values,
+                size=size,
+                dtype=dtype,
+                device=device,
+            )
+            if coalesced:
+                result = result.coalesce()
+            return result
+
+        alpha_beta_values = [
+            (1.0, 1.0),
+            (0.0, 0.0),
+            (0.0, -2.0),
+            (1.75, 0.0),
+            (2.5, -1.5),
+            (-0.75, 3.25),
+        ]
+
+        case_specs = [
+            {
+                "name": "skinny_inner_dim",
+                "self_size": (7, 9),
+                "mat1_size": (7, 1),
+                "self_entries": [(0, 0, 1.0), (6, 8, -2.5)],
+                "mat1_entries": [(0, 0, 2.0), (6, 0, -3.0)],
+            },
+            {
+                "name": "zero_inner_dimension",
+                "self_size": (4, 3),
+                "mat1_size": (4, 0),
+                "self_entries": [(0, 0, -4.0), (3, 2, 5.0)],
+                "mat1_entries": [],
+            },
+            {
+                "name": "zero_output_columns",
+                "self_size": (3, 0),
+                "mat1_size": (3, 5),
+                "self_entries": [],
+                "mat1_entries": [],
+            },
+            {
+                "name": "empty_rows_in_sparse_pattern",
+                "self_size": (6, 2),
+                "mat1_size": (6, 4),
+                "self_entries": [(0, 1, 1.0), (3, 0, -2.0)],
+                "mat1_entries": [(1, 0, 3.0), (1, 3, -1.0), (5, 2, 4.0)],
+            },
+            {
+                "name": "singleton",
+                "self_size": (1, 1),
+                "mat1_size": (1, 1),
+                "self_entries": [(0, 0, 2.0)],
+                "mat1_entries": [(0, 0, -3.0)],
+            },
+            {
+                "name": "bigger_tensor_case",
+                "self_size": (67, 73),
+                "mat1_size": (67, 29),
+                "self_entries": [
+                    (0, 0, 1.0),
+                    (16, 40, -2.0),
+                    (32, 72, 3.5),
+                    (66, 11, -4.0),
+                ],
+                "mat1_entries": [
+                    (0, 0, 2.0),
+                    (16, 7, -1.5),
+                    (16, 21, 1.25),
+                    (48, 28, 3.0),
+                    (66, 10, -2.25),
+                ],
+            },
+        ]
+
+        for case in case_specs:
+            di, dk = case["self_size"]
+            _, dj = case["mat1_size"]
+            if dj * dk == 0:
+                mat2 = torch.empty((dj, dk), dtype=dtype, device=device)
+            else:
+                mat2 = torch.arange(1, dj * dk + 1, dtype=dtype, device=device).reshape(dj, dk)
+
+            self_input = make_sparse(case["self_size"], case["self_entries"])
+            mat1 = make_sparse(case["mat1_size"], case["mat1_entries"])
+
+            for alpha, beta in alpha_beta_values:
+                with self.subTest(case=case["name"], alpha=alpha, beta=beta):
+                    out = torch.empty(0, dtype=dtype, device=device).to_sparse()
+                    result = torch.ops.aten.sspaddmm.out(
+                        self_input,
+                        mat1,
+                        mat2,
+                        beta=beta,
+                        alpha=alpha,
+                        out=out,
+                    )
+                    expected = torch.addmm(
+                        self_input.to_dense(),
+                        mat1.to_dense(),
+                        mat2,
+                        beta=beta,
+                        alpha=alpha,
+                    )
+
+                    self.assertIs(result, out)
+                    self.assertEqual(result.shape, expected.shape)
+                    self.assertEqual(result.to_dense(), expected)
+
+                    alias_out = self_input.clone()
+                    alias_result = torch.ops.aten.sspaddmm.out(
+                        alias_out,
+                        mat1,
+                        mat2,
+                        beta=beta,
+                        alpha=alpha,
+                        out=alias_out,
+                    )
+                    alias_expected = torch.addmm(
+                        self_input.to_dense(),
+                        mat1.to_dense(),
+                        mat2,
+                        beta=beta,
+                        alpha=alpha,
+                    )
+                    self.assertIs(alias_result, alias_out)
+                    self.assertEqual(alias_result.shape, alias_expected.shape)
+                    self.assertEqual(alias_result.to_dense(), alias_expected)
+
+    @onlyOn("xpu")
+    @dtypes(torch.double, torch.float)
+    def test_sspaddmm_out_shape_checks(self, device, dtype):
+        self_input = torch.sparse_coo_tensor(
+            torch.tensor([[0], [1]], dtype=torch.int64, device=device),
+            torch.tensor([1.0], dtype=dtype, device=device),
+            size=(4, 5),
+            dtype=dtype,
+            device=device,
+        )
+        mat1 = torch.sparse_coo_tensor(
+            torch.tensor([[0], [2]], dtype=torch.int64, device=device),
+            torch.tensor([2.0], dtype=dtype, device=device),
+            size=(4, 3),
+            dtype=dtype,
+            device=device,
+        )
+        mat2 = torch.tensor(
+            [[1.0, 0.0, 2.0, -1.0, 0.5], [0.0, 1.0, -1.0, 0.0, 3.0], [2.0, -1.0, 0.0, 1.0, -2.0]],
+            dtype=dtype,
+            device=device,
+        )
+        out = torch.empty(0, dtype=dtype, device=device).to_sparse()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"sspaddmm: mat2 dimension 0 should be 3, got 2",
+        ):
+            torch.ops.aten.sspaddmm.out(
+                self_input,
+                mat1,
+                mat2[:2],
+                out=out,
+            )
+        
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"(mat1.*sparse|sparse.*mat1)",
+        ):
+            torch.ops.aten.sspaddmm.out(
+                self_input,
+                mat1.to_dense(),
+                mat2,
+                out=out,
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"sspaddmm: self dimension 0 should be 4, got 3",
+        ):
+            wrong_self_rows = torch.sparse_coo_tensor(
+                torch.tensor([[0], [1]], dtype=torch.int64, device=device),
+                torch.tensor([1.0], dtype=dtype, device=device),
+                size=(3, 5),
+                dtype=dtype,
+                device=device,
+            )
+            torch.ops.aten.sspaddmm.out(
+                wrong_self_rows,
+                mat1,
+                mat2,
+                out=out,
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"sspaddmm: self dimension 1 should be 5, got 4",
+        ):
+            wrong_self_cols = torch.sparse_coo_tensor(
+                torch.tensor([[0], [1]], dtype=torch.int64, device=device),
+                torch.tensor([1.0], dtype=dtype, device=device),
+                size=(4, 4),
+                dtype=dtype,
+                device=device,
+            )
+            torch.ops.aten.sspaddmm.out(
+                wrong_self_cols,
+                mat1,
+                mat2,
+                out=torch.empty(0, dtype=dtype, device=device).to_sparse(),
+            )
 
     @coalescedonoff
     @precisionOverride({torch.bfloat16: 5e-2, torch.float16: 5e-2})
