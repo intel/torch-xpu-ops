@@ -113,8 +113,9 @@ void lu_factor_kernel_xpu(
             << " USE_ONEMKL_XPU=1"
             << " batch_size=" << batch_size
             << std::endl;
-  // TODO: optimize lu_factor performance on XPU when batch_size = 1
-  if (batch_size == 1) {
+  // Keep CPU fallback for batch_size == 1 only when pivots are requested,
+  // because CPU LU without pivoting is not implemented.
+  if (batch_size == 1 && compute_pivots) {
     std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu -> fallback_cpu_path"
               << std::endl;
     lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);

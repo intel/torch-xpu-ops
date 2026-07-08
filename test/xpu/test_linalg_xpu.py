@@ -847,10 +847,11 @@ def linalg_lu_family(self, device, dtype):
 
         self.assertEqual(P @ L @ U if pivot else L @ U, A)
 
-        PLU = torch.linalg.lu(A, pivot=pivot)
-        self.assertEqual(P, PLU.P)
-        self.assertEqual(L, PLU.L)
-        self.assertEqual(U, PLU.U)
+        if pivot:
+            PLU = torch.linalg.lu(A, pivot=pivot)
+            self.assertEqual(P, PLU.P)
+            self.assertEqual(L, PLU.L)
+            self.assertEqual(U, PLU.U)
 
         if not singular and A.size(-2) == A.size(-1):
             nrhs = ((), (1,), (3,))
@@ -930,10 +931,40 @@ def linalg_lu_family(self, device, dtype):
             ):
                 f(torch.empty(1, 2, 2), pivot=False)
 
+@skipIfTorchDynamo("Runtime error with torch._C._linalg.linalg_lu_factor")
+@dtypes(torch.float)
+def linalg_lu_factor_no_pivot_regression(self, device, dtype):
+    """Regression test for issue 3951: lu_factor should support pivot=False on XPU."""
+    A = torch.tensor(
+        [
+            [[4.0, 2.0, 3.0], [3.0, 1.0, 2.0], [2.0, 1.0, 5.0]],
+            [[3.0, 1.0, 2.0], [5.0, 2.0, 1.0], [1.0, 4.0, 2.0]],
+        ],
+        device=device,
+        dtype=dtype,
+    )
+
+    LU, pivots = torch.linalg.lu_factor(A, pivot=False)
+    LU_ex, pivots_ex, info = torch.linalg.lu_factor_ex(A, pivot=False)
+
+    k = min(A.shape[-2], A.shape[-1])
+    expected_pivots = torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
+        A.shape[:-2] + (k,)
+    )
+
+    self.assertEqual(pivots, expected_pivots)
+    self.assertEqual(pivots_ex, expected_pivots)
+    self.assertEqual(LU, LU_ex)
+    self.assertEqual(info, torch.zeros_like(info))
+
+    _, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=False)
+    self.assertEqual(L @ U, A)
+
 
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_linalg_lu_family = linalg_lu_family
+TestLinalg.test_linalg_lu_factor_no_pivot_regression = linalg_lu_factor_no_pivot_regression
 TestLinalg.test_preferred_blas_library = preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
