@@ -30,6 +30,8 @@
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl/lapack.hpp>
 
+#include <iostream>
+
 namespace at::native::xpu {
 
 #define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
@@ -370,6 +372,13 @@ void lu_factor_mkl(
     const Tensor& pivots,
     const Tensor& info,
     bool pivot) {
+  std::cout << "[LU_FACTOR_DEBUG] lu_factor_mkl"
+            << " device=" << LU.device()
+            << " dtype=" << LU.scalar_type()
+            << " shape=" << LU.sizes()
+            << " pivot=" << pivot
+            << " stride_last=" << LU.stride(-1)
+            << std::endl;
   TORCH_CHECK(
       LU.dim() >= 2,
       "torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: ",

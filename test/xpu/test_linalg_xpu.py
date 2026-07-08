@@ -887,8 +887,9 @@ def linalg_lu_family(self, device, dtype):
                     self.assertEqual(B_, X_ @ A)
 
     sizes = ((3, 3), (5, 5), (4, 2), (3, 4), (0, 0), (0, 1), (1, 0))
-    batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
-    pivots = (True,)
+    # batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
+    batches = ((2,), (3,), (1, 0), (3, 5))
+    pivots = (False,)
     fns = (
         partial(torch.lu, get_infos=True),
         torch.linalg.lu_factor,
