@@ -9,9 +9,10 @@
  */
 
 // XPU numeric utilities ported from PyTorch's ATen/NumericUtils.h.
-// Replaces __CUDACC__/__HIPCC__ paths with SYCL equivalents.
-// __SYCL_DEVICE_ONLY__ -> sycl::native::func (fast path)
-// otherwise -> std::func
+// Mapping rules from CUDA to SYCL:
+// 1. ::func (CUDA)    -> sycl::func (device)
+// 2. __func (CUDA)    -> sycl::native::func (device, fast path)
+// 3. std::func (host) -> std::func (host, unchanged)
 
 #pragma once
 
