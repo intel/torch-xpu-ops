@@ -794,6 +794,42 @@ def cond_errors_and_warnings(self, device, dtype):
             torch.linalg.cond(a, p)
 
 
+@dtypes(torch.float, torch.cfloat)
+def linalg_lstsq_out_cpu_fallback(self, device, dtype):
+    # XPU currently executes lstsq via CPU-backed implementation; ensure
+    # out= variant is wired and returns consistent values on XPU tensors.
+    a = torch.randn(6, 4, dtype=dtype, device=device)
+    b = torch.randn(6, 3, dtype=dtype, device=device)
+
+    expected = torch.linalg.lstsq(a, b)
+
+    solution = torch.empty_like(expected.solution)
+    residuals = torch.empty_like(expected.residuals)
+    rank = torch.empty_like(expected.rank)
+    singular_values = torch.empty_like(expected.singular_values)
+
+    actual = torch.linalg.lstsq(
+        a,
+        b,
+        out=(solution, residuals, rank, singular_values),
+    )
+
+    self.assertIs(actual.solution, solution)
+    self.assertIs(actual.residuals, residuals)
+    self.assertIs(actual.rank, rank)
+    self.assertIs(actual.singular_values, singular_values)
+
+    self.assertEqual(actual.solution.device.type, "xpu")
+    self.assertEqual(actual.residuals.device.type, "xpu")
+    self.assertEqual(actual.rank.device.type, "xpu")
+    self.assertEqual(actual.singular_values.device.type, "xpu")
+
+    self.assertEqual(actual.solution, expected.solution)
+    self.assertEqual(actual.residuals, expected.residuals)
+    self.assertEqual(actual.rank, expected.rank)
+    self.assertEqual(actual.singular_values, expected.singular_values)
+
+
 # Skip Float8_e4m3fnuz rowwise scaled GEMM on XPU: oneDNN lacks FNUZ support.
 # Note: the primary CUDA test is already limited to ROCm (onlyCUDA + skipCUDAIfNotRocm),
 # so this XPU variant is intentionally skipped for the same unsupported dtype.
@@ -950,6 +986,7 @@ TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
+TestLinalg.test_linalg_lstsq_out_cpu_fallback = linalg_lstsq_out_cpu_fallback
 TestLinalg._tunableop_ctx = __tunableop_ctx
 TestLinalg.test_matrix_rank_out_errors_and_warnings = (
     matrix_rank_out_errors_and_warnings
