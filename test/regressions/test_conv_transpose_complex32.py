@@ -24,35 +24,6 @@ from torch.testing._internal.common_utils import (
 
 @instantiate_parametrized_tests
 class TestConvTransposeComplex32Reference(TestCase):
-    def _make_inputs(self, module_cls, x_shape):
-        in_channels = x_shape[1]
-        x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
-        module_cpu = module_cls(in_channels, 5, 3).to(dtype=torch.complex32)
-        return x_cpu, module_cpu.weight.detach(), module_cpu.bias.detach()
-
-    def _assert_conv_transpose_complex32_xpu_close_to_ref64(
-        self,
-        conv_op,
-        x_cpu,
-        w_cpu,
-        b_cpu,
-        *,
-        atol=3e-3,
-        rtol=1e-3,
-    ):
-        xpu_out = conv_op(x_cpu.to("xpu"), w_cpu.to("xpu"), b_cpu.to("xpu")).cpu()
-        ref64 = conv_op(
-            x_cpu.to(torch.complex64),
-            w_cpu.to(torch.complex64),
-            b_cpu.to(torch.complex64),
-        )
-        self.assertEqual(
-            xpu_out.to(torch.complex64),
-            ref64,
-            atol=atol,
-            rtol=rtol,
-        )
-
     @parametrize(
         "conv_op, module_cls, x_shape",
         [
@@ -65,10 +36,19 @@ class TestConvTransposeComplex32Reference(TestCase):
     )
     def test_complex32_xpu_close_to_ref64(self, conv_op, module_cls, x_shape):
         torch.manual_seed(0)
-        x_cpu, w_cpu, b_cpu = self._make_inputs(module_cls, x_shape)
-        self._assert_conv_transpose_complex32_xpu_close_to_ref64(
-            conv_op, x_cpu, w_cpu, b_cpu
+        in_channels = x_shape[1]
+        x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
+        module_cpu = module_cls(in_channels, 5, 3).to(dtype=torch.complex32)
+        w_cpu = module_cpu.weight.detach()
+        b_cpu = module_cpu.bias.detach()
+
+        xpu_out = conv_op(x_cpu.to("xpu"), w_cpu.to("xpu"), b_cpu.to("xpu")).cpu()
+        ref64 = conv_op(
+            x_cpu.to(torch.complex64),
+            w_cpu.to(torch.complex64),
+            b_cpu.to(torch.complex64),
         )
+        self.assertEqual(xpu_out.to(torch.complex64), ref64, atol=3e-3, rtol=1e-3)
 
 
 if __name__ == "__main__":
