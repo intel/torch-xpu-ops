@@ -13,22 +13,21 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.testing._creation import make_tensor
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    parametrize,
+    run_tests,
+    subtest,
+    TestCase,
+)
 
 
+@instantiate_parametrized_tests
 class TestConvTransposeComplex32Reference(TestCase):
-    CONV_OP_TO_MODULE = {
-        F.conv_transpose1d: nn.ConvTranspose1d,
-        F.conv_transpose2d: nn.ConvTranspose2d,
-        F.conv_transpose3d: nn.ConvTranspose3d,
-    }
-
-    def _make_inputs(self, conv_op, x_shape):
+    def _make_inputs(self, module_cls, x_shape):
         in_channels = x_shape[1]
         x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
-        module_cpu = self.CONV_OP_TO_MODULE[conv_op](in_channels, 5, 3).to(
-            dtype=torch.complex32
-        )
+        module_cpu = module_cls(in_channels, 5, 3).to(dtype=torch.complex32)
         return x_cpu, module_cpu.weight.detach(), module_cpu.bias.detach()
 
     def _assert_conv_transpose_complex32_xpu_close_to_ref64(
@@ -54,25 +53,21 @@ class TestConvTransposeComplex32Reference(TestCase):
             rtol=rtol,
         )
 
-    def test_conv_transpose1d_complex32_xpu_close_to_ref64(self):
+    @parametrize(
+        "conv_op, module_cls, x_shape",
+        [
+            subtest((F.conv_transpose1d, nn.ConvTranspose1d, (2, 4, 3)), name="1d"),
+            subtest((F.conv_transpose2d, nn.ConvTranspose2d, (2, 4, 3, 4)), name="2d"),
+            subtest(
+                (F.conv_transpose3d, nn.ConvTranspose3d, (2, 4, 3, 4, 5)), name="3d"
+            ),
+        ],
+    )
+    def test_complex32_xpu_close_to_ref64(self, conv_op, module_cls, x_shape):
         torch.manual_seed(0)
-        x_cpu, w_cpu, b_cpu = self._make_inputs(F.conv_transpose1d, (2, 4, 3))
+        x_cpu, w_cpu, b_cpu = self._make_inputs(module_cls, x_shape)
         self._assert_conv_transpose_complex32_xpu_close_to_ref64(
-            F.conv_transpose1d, x_cpu, w_cpu, b_cpu
-        )
-
-    def test_conv_transpose2d_complex32_xpu_close_to_ref64(self):
-        torch.manual_seed(0)
-        x_cpu, w_cpu, b_cpu = self._make_inputs(F.conv_transpose2d, (2, 4, 3, 4))
-        self._assert_conv_transpose_complex32_xpu_close_to_ref64(
-            F.conv_transpose2d, x_cpu, w_cpu, b_cpu
-        )
-
-    def test_conv_transpose3d_complex32_xpu_close_to_ref64(self):
-        torch.manual_seed(0)
-        x_cpu, w_cpu, b_cpu = self._make_inputs(F.conv_transpose3d, (2, 4, 3, 4, 5))
-        self._assert_conv_transpose_complex32_xpu_close_to_ref64(
-            F.conv_transpose3d, x_cpu, w_cpu, b_cpu
+            conv_op, x_cpu, w_cpu, b_cpu
         )
 
 
