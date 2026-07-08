@@ -25,7 +25,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue.pull_request
-      && contains(github.event.comment.body, '@torchxpubot')
+      && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
       pull-requests: read
       issues: read
@@ -62,7 +62,7 @@ jobs:
             const prNumber = context.payload.issue.number;
 
             // Extract the @torchxpubot command line
-            const match = body.match(/@torchxpubot\s+(\S+)(.*)/i);
+            const match = body.match(/^@torchxpubot\s+(\S+)(.*)/i);
             if (!match) {
               core.setOutput('command', '');
               core.setFailed('No valid command found after @torchxpubot');
