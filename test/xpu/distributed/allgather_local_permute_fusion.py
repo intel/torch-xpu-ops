@@ -54,6 +54,19 @@ if os.path.exists(_ALLGATHER_LIB_PATH):
     except Exception:
         pass
 
+_ALLGATHER_ISHMEM_LIB_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "csrc", "liballgather_permute_ishmem.so"
+)
+_HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL = False
+if os.path.exists(_ALLGATHER_ISHMEM_LIB_PATH):
+    try:
+        torch.ops.load_library(_ALLGATHER_ISHMEM_LIB_PATH)
+        _HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL = hasattr(
+            torch.ops.symm_mem, "allgather_permute_ishmem"
+        )
+    except Exception:
+        pass
+
 
 def compute_scatter_idx(topk_idx: torch.Tensor, num_experts: int = None):
     """
@@ -479,3 +492,28 @@ def allgather_with_symm_mem(
 
     workspace.barrier()
     return output_tensor
+
+
+def allgather_permute_ishmem(
+    input_shard: torch.Tensor,
+    scatter_idx: torch.Tensor,
+    remap_hidden_states: torch.Tensor,
+    group: dist.ProcessGroup = None,
+):
+    """Allgather + permute via the ISHMEM kernel."""
+    if not _HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL:
+        raise RuntimeError(
+            "allgather_permute_ishmem kernel is unavailable; build "
+            "test/xpu/csrc/liballgather_permute_ishmem.so first"
+        )
+    if group is None:
+        group = dist.group.WORLD
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+    return torch.ops.symm_mem.allgather_permute_ishmem(
+        input_shard.contiguous(),
+        scatter_idx.contiguous(),
+        remap_hidden_states,
+        rank,
+        world_size,
+    )
