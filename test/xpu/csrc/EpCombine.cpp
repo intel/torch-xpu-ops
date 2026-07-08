@@ -3,6 +3,7 @@
 #include <c10/core/DeviceGuard.h>
 #include <torch/library.h>
 #include <comm/SYCLHelpers.h>
+#include <cstdlib>
 
 #ifndef AT_DISPATCH_FLOAT_AND_BFLOAT16
 #define AT_DISPATCH_FLOAT_AND_BFLOAT16(scalar_type, name, ...)         \
@@ -114,17 +115,35 @@ struct EpCombineRingScalarKernel {
   }
 };
 
-// Vectorized ring-ordered push kernel.
-//
-// Key optimizations (mirror ep_dispatch):
-// 1. Ring ordering: adjacent work groups write to DIFFERENT target ranks,
-//    spreading PCIe write bandwidth across all interconnect links.
-// 2. Ownership pre-check: skip aggregation + write if no expert is owned.
-//    Saves both local reads from expert_output AND expensive PCIe writes.
-// 3. Reads from LOCAL expert_output (fast HBM) only for owned expert slots.
-// 4. Float accumulator for precision with bfloat16 data.
+// Aligned POD vector so the compiler emits a single wide load/store transaction
+// (16 bytes for bf16 x8, 32 bytes for fp32 x8) instead of per-element accesses.
+// Wide, coalesced transactions are critical for remote (PCIe) write throughput.
 template <typename scalar_t, int VEC_SIZE>
-struct EpCombineRingVecKernel {
+struct alignas(sizeof(scalar_t) * VEC_SIZE) EpVec {
+  scalar_t data[VEC_SIZE];
+};
+
+constexpr int kEpCombineMaxTopK = 32;
+
+// Work-group-per-token vectorized ring-ordered push kernel.
+//
+// One work-group handles one (target-token) row of the hidden dimension.
+// Threads in the group stride over the hidden vectors, issuing wide vectorized
+// loads from LOCAL expert_output and wide vectorized stores to the target rank's
+// receive buffer.
+//
+// Key optimizations (mirror flashinfer moeA2ACombineKernel):
+// 1. One WG per token: ownership is resolved ONCE per token (not once per
+//    hidden element as in the old flat kernel), and the whole row's writes are
+//    contiguous, maximizing PCIe burst efficiency.
+// 2. Wide vectorized load/store (single 16B/32B transactions).
+// 3. Ring ordering: adjacent work-groups target DIFFERENT ranks, spreading
+//    PCIe write bandwidth across all interconnect links.
+// 4. Ownership pre-check: skip the whole row if no expert is owned (caller
+//    pre-zeroes the receive buffer so skipped slots stay zero).
+// 5. Float accumulator for precision with bfloat16 data.
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombineRingWGKernel {
   const scalar_t* expert_output_ptr;
   const int64_t* rank_output_ptrs;
   const int32_t* topk_idx_ptr;
@@ -139,40 +158,30 @@ struct EpCombineRingVecKernel {
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  int32_t write_empty;  // if true, always write (zeros) so caller need not pre-zero
+  int32_t no_compute;   // debug: skip local read/accumulate, write zeros (isolate write BW)
 
   void operator()(sycl::nd_item<1> item) const {
-    const int32_t idx = static_cast<int32_t>(item.get_global_id(0));
-    const int32_t total = num_tokens_per_rank * world_size * hidden_vecs;
-    if (idx >= total) return;
+    using Vec = EpVec<scalar_t, VEC_SIZE>;
 
-    const int32_t vec_h = idx % hidden_vecs;
-    const int32_t pair_idx = idx / hidden_vecs;
-    const int32_t step = pair_idx % world_size;
-    const int32_t local_token_idx = pair_idx / world_size;
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
 
-    // Ring ordering: spread PCIe writes across target ranks
+    // Ring ordering: consecutive work-groups map to consecutive steps, so
+    // adjacent groups push to different target ranks.
+    const int32_t step = wg % world_size;
+    const int32_t local_token_idx = wg / world_size;
+    if (local_token_idx >= num_tokens_per_rank) return;
+
     const int32_t target_rank = (rank + step + 1) % world_size;
     const int32_t global_token_idx = target_rank * num_tokens_per_rank + local_token_idx;
-    const int32_t h_start = vec_h * VEC_SIZE;
-
-    // Ownership pre-check: skip if this rank doesn't own any expert for this token.
-    // Caller must pre-zero the receive buffer so skipped slots remain zero.
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
-    bool has_owned = false;
-    for (int32_t k = 0; k < topk; ++k) {
-      const int32_t expert = topk_idx_ptr[topk_base + k];
-      int32_t owner;
-      if (expert < boundary) {
-        owner = expert / (base_experts + 1);
-      } else {
-        owner = rem_experts + (expert - boundary) / base_experts;
-      }
-      if (owner == rank) { has_owned = true; break; }
-    }
-    if (!has_owned) return;
 
-    // Compute weighted partial sum from LOCAL expert_output (only owned experts)
-    float acc[VEC_SIZE] = {};
+    // Resolve ownership ONCE for this token: collect owned (weight, src_row).
+    float owned_w[kEpCombineMaxTopK];
+    int32_t owned_row[kEpCombineMaxTopK];
+    int32_t num_owned = 0;
     for (int32_t k = 0; k < topk; ++k) {
       const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
@@ -182,26 +191,41 @@ struct EpCombineRingVecKernel {
         owner = rem_experts + (expert - boundary) / base_experts;
       }
       if (owner == rank) {
-        const float weight = topk_weights_ptr[topk_base + k];
-        const int32_t src_row = scatter_idx_ptr[topk_base + k];
-        const scalar_t* src = expert_output_ptr +
-            static_cast<int64_t>(src_row) * hidden_size + h_start;
-        #pragma unroll
-        for (int i = 0; i < VEC_SIZE; ++i) {
-          acc[i] += weight * static_cast<float>(src[i]);
-        }
+        owned_w[num_owned] = topk_weights_ptr[topk_base + k];
+        owned_row[num_owned] = scatter_idx_ptr[topk_base + k];
+        ++num_owned;
       }
     }
+    if (num_owned == 0 && !write_empty) return;  // receive buffer pre-zeroed by caller
 
-    // Push partial result to target_rank's receive buffer at this rank's slot
-    // Layout: [world_size, num_tokens_per_rank, hidden]
     scalar_t* target_buf = reinterpret_cast<scalar_t*>(rank_output_ptrs[target_rank]);
-    scalar_t* dst = target_buf +
-        (static_cast<int64_t>(rank) * num_tokens_per_rank + local_token_idx) * hidden_size +
-        h_start;
-    #pragma unroll
-    for (int i = 0; i < VEC_SIZE; ++i) {
-      dst[i] = static_cast<scalar_t>(acc[i]);
+    scalar_t* dst_row = target_buf +
+        (static_cast<int64_t>(rank) * num_tokens_per_rank + local_token_idx) *
+            hidden_size;
+
+    for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+      const int32_t h_start = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+
+      for (int32_t j = 0; j < num_owned && !no_compute; ++j) {
+        const float weight = owned_w[j];
+        const Vec src = *reinterpret_cast<const Vec*>(
+            expert_output_ptr +
+            static_cast<int64_t>(owned_row[j]) * hidden_size + h_start);
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          acc[i] += weight * static_cast<float>(src.data[i]);
+        }
+      }
+
+      Vec out;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        out.data[i] = static_cast<scalar_t>(acc[i]);
+      }
+      *reinterpret_cast<Vec*>(dst_row + h_start) = out;
     }
   }
 };
@@ -256,6 +280,10 @@ at::Tensor ep_combine(
   const int64_t hidden_size = expert_output.size(1);
 
   TORCH_CHECK(
+      topk <= kEpCombineMaxTopK,
+      "ep_combine: topk exceeds kEpCombineMaxTopK");
+
+  TORCH_CHECK(
       num_tokens % world_size == 0,
       "ep_combine: num_tokens must be divisible by world_size");
   const int64_t num_tokens_per_rank = num_tokens / world_size;
@@ -276,8 +304,13 @@ at::Tensor ep_combine(
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
   const int32_t boundary = rem_experts * (base_experts + 1);
 
-  constexpr int VEC_SIZE = 8;
-  constexpr int64_t threads = 256;
+  // Tunable via env for sweeping: EPCOMBINE_VEC (8|16), EPCOMBINE_THREADS.
+  int vec_sel = 8;
+  if (const char* v = std::getenv("EPCOMBINE_VEC")) vec_sel = std::atoi(v);
+  int64_t threads = 256;
+  if (const char* t = std::getenv("EPCOMBINE_THREADS")) threads = std::atoi(t);
+  int no_compute_flag = 0;
+  if (const char* nc = std::getenv("EPCOMBINE_NOCOMPUTE")) no_compute_flag = std::atoi(nc);
 
   c10::Device device(c10::DeviceType::XPU, output.device().index());
   c10::DeviceGuard guard(device);
@@ -286,11 +319,11 @@ at::Tensor ep_combine(
 
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       output.scalar_type(), "ep_combine", [&]() {
-        if (hidden_size % VEC_SIZE == 0) {
+        const int64_t num_wgs = world_size * num_tokens_per_rank;
+        auto launch_wg = [&](auto vec_tag) {
+          constexpr int VEC_SIZE = decltype(vec_tag)::value;
           const int64_t hidden_vecs = hidden_size / VEC_SIZE;
-          const int64_t total = world_size * num_tokens_per_rank * hidden_vecs;
-          const int64_t blocks = (total + threads - 1) / threads;
-          auto kfn = EpCombineRingVecKernel<scalar_t, VEC_SIZE>{
+          auto kfn = EpCombineRingWGKernel<scalar_t, VEC_SIZE>{
               expert_output.data_ptr<scalar_t>(),
               rank_output_ptrs.data_ptr<int64_t>(),
               topk_idx.data_ptr<int32_t>(),
@@ -304,12 +337,20 @@ at::Tensor ep_combine(
               static_cast<int32_t>(hidden_vecs),
               base_experts,
               rem_experts,
-              boundary};
+              boundary,
+              /*write_empty=*/1,
+              /*no_compute=*/no_compute_flag};
           sycl_kernel_submit(
-              sycl::range<1>(blocks * threads),
+              sycl::range<1>(num_wgs * threads),
               sycl::range<1>(threads),
               queue,
               kfn);
+        };
+
+        if (vec_sel == 16 && hidden_size % 16 == 0) {
+          launch_wg(std::integral_constant<int, 16>{});
+        } else if (hidden_size % 8 == 0) {
+          launch_wg(std::integral_constant<int, 8>{});
         } else {
           const int64_t total = world_size * num_tokens_per_rank * hidden_size;
           const int64_t blocks = (total + threads - 1) / threads;
@@ -338,7 +379,94 @@ at::Tensor ep_combine(
   return output;
 }
 
-// Ownership-filtered local unpermute kernel.
+// Fused reduction kernel: output[t] = sum_r recv[r][t] over all world_size
+// receive-buffer slots. One work-group per token, threads stride the hidden
+// dimension issuing wide vectorized loads/stores. Replaces the per-slot Python
+// add loop (which launched world_size+1 kernels and re-read `output` each time).
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombineReduceKernel {
+  const scalar_t* recv_ptr;  // [world_size, num_tokens_per_rank, hidden]
+  scalar_t* output_ptr;      // [num_tokens_per_rank, hidden]
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t hidden_vecs;
+  int32_t world_size;
+
+  void operator()(sycl::nd_item<1> item) const {
+    using Vec = EpVec<scalar_t, VEC_SIZE>;
+    const int32_t token = static_cast<int32_t>(item.get_group(0));
+    if (token >= num_tokens_per_rank) return;
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
+
+    const int64_t slot_stride =
+        static_cast<int64_t>(num_tokens_per_rank) * hidden_size;
+    const int64_t token_off = static_cast<int64_t>(token) * hidden_size;
+    scalar_t* dst_row = output_ptr + token_off;
+
+    for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+      const int32_t h = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+
+      const scalar_t* base = recv_ptr + token_off + h;
+      for (int32_t r = 0; r < world_size; ++r) {
+        const Vec v = *reinterpret_cast<const Vec*>(base + r * slot_stride);
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) acc[i] += static_cast<float>(v.data[i]);
+      }
+
+      Vec out;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) out.data[i] = static_cast<scalar_t>(acc[i]);
+      *reinterpret_cast<Vec*>(dst_row + h) = out;
+    }
+  }
+};
+
+// Reduce the world_size receive-buffer slots of `recv` into `output`.
+at::Tensor ep_combine_reduce(
+    const at::Tensor& recv,
+    at::Tensor output,
+    int64_t world_size) {
+  TORCH_CHECK(recv.is_contiguous() && output.is_contiguous());
+  TORCH_CHECK(output.dim() == 2, "ep_combine_reduce: output must be 2D");
+  const int64_t num_tokens_per_rank = output.size(0);
+  const int64_t hidden_size = output.size(1);
+  if (num_tokens_per_rank == 0 || hidden_size == 0) return output;
+
+  constexpr int VEC_SIZE = 8;
+  constexpr int64_t threads = 256;
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "ep_combine_reduce", [&]() {
+        TORCH_CHECK(hidden_size % VEC_SIZE == 0,
+                    "ep_combine_reduce: hidden must be divisible by 8");
+        const int32_t hidden_vecs = static_cast<int32_t>(hidden_size / VEC_SIZE);
+        const int64_t num_wgs = num_tokens_per_rank;
+        auto kfn = EpCombineReduceKernel<scalar_t, VEC_SIZE>{
+            recv.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            static_cast<int32_t>(num_tokens_per_rank),
+            static_cast<int32_t>(hidden_size),
+            hidden_vecs,
+            static_cast<int32_t>(world_size)};
+        sycl_kernel_submit(
+            sycl::range<1>(num_wgs * threads),
+            sycl::range<1>(threads),
+            queue,
+            kfn);
+      });
+
+  return output;
+}
+
 // Like local_unpermute_copy_ but only reads rows for experts owned by this rank.
 // Saves ~75% HBM bandwidth compared to reading all topk rows.
 // Output must be pre-zeroed by caller (skipped tokens remain zero).
@@ -494,6 +622,9 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "Tensor(a!) output, int num_experts, "
       "int rank, int world_size) -> Tensor(a!)");
   m.def(
+      "ep_combine_reduce(Tensor recv, Tensor(a!) output, int world_size) "
+      "-> Tensor(a!)");
+  m.def(
       "ep_combine_local_(Tensor expert_output, Tensor topk_idx, "
       "Tensor scatter_idx, Tensor topk_weights, "
       "Tensor(a!) output, int num_experts, "
@@ -503,5 +634,6 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ep_combine", ep_combine);
+  m.impl("ep_combine_reduce", ep_combine_reduce);
   m.impl("ep_combine_local_", ep_combine_local_);
 }
