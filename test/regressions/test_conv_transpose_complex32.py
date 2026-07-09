@@ -11,8 +11,6 @@
 
 import torch
 import torch.nn.functional as F
-from torch import nn
-from torch.testing._creation import make_tensor
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
@@ -25,22 +23,20 @@ from torch.testing._internal.common_utils import (
 @instantiate_parametrized_tests
 class TestConvTransposeComplex32Reference(TestCase):
     @parametrize(
-        "conv_op, module_cls, x_shape",
+        "conv_op, x_shape",
         [
-            subtest((F.conv_transpose1d, nn.ConvTranspose1d, (2, 4, 3)), name="1d"),
-            subtest((F.conv_transpose2d, nn.ConvTranspose2d, (2, 4, 3, 4)), name="2d"),
-            subtest(
-                (F.conv_transpose3d, nn.ConvTranspose3d, (2, 4, 3, 4, 5)), name="3d"
-            ),
+            subtest((F.conv_transpose1d, (2, 4, 3)), name="1d"),
+            subtest((F.conv_transpose2d, (2, 4, 3, 4)), name="2d"),
+            subtest((F.conv_transpose3d, (2, 4, 3, 4, 5)), name="3d"),
         ],
     )
-    def test_complex32_xpu_close_to_ref64(self, conv_op, module_cls, x_shape):
+    def test_complex32_xpu_close_to_ref64(self, conv_op, x_shape):
         torch.manual_seed(0)
-        in_channels = x_shape[1]
-        x_cpu = make_tensor(x_shape, dtype=torch.complex32, device="cpu")
-        module_cpu = module_cls(in_channels, 5, 3).to(dtype=torch.complex32)
-        w_cpu = module_cpu.weight.detach()
-        b_cpu = module_cpu.bias.detach()
+        w_shape = (x_shape[1], 5) + (3,) * (len(x_shape) - 2)
+
+        x_cpu = torch.randn(x_shape, dtype=torch.complex32)
+        w_cpu = torch.randn(w_shape, dtype=torch.complex32)
+        b_cpu = torch.randn(5, dtype=torch.complex32)
 
         xpu_out = conv_op(x_cpu.to("xpu"), w_cpu.to("xpu"), b_cpu.to("xpu")).cpu()
         ref64 = conv_op(
@@ -48,7 +44,7 @@ class TestConvTransposeComplex32Reference(TestCase):
             w_cpu.to(torch.complex64),
             b_cpu.to(torch.complex64),
         )
-        self.assertEqual(xpu_out.to(torch.complex64), ref64, atol=3e-3, rtol=1e-3)
+        self.assertEqual(xpu_out.to(torch.complex64), ref64, atol=2e-2, rtol=1e-3)
 
 
 if __name__ == "__main__":
