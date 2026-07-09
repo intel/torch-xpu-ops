@@ -4,10 +4,10 @@
 #include <c10/util/intrusive_ptr.h>
 #include <utility>
 
-// xpu_hal is a STATIC library WHOLE_ARCHIVE'd into torch_xpu.dll.
+// xpu_hal is built as a standalone DLL in BUILD_SEPARATE_OPS mode.
 // The dllexport/dllimport pattern is needed because:
-//  - xpu_hal .obj files (inside torch_xpu) export the symbols
-//  - Kernel DLLs import them from torch_xpu.dll
+//  - xpu_hal exports bridge symbols
+//  - Kernel DLLs import them from xpu_hal.dll
 //  - torch_xpu's own .obj files (e.g. XPUGeneratorImpl.cpp) see neither
 //
 // When XPU_HAL_BUILD is defined, symbols are dllexport.
@@ -20,7 +20,7 @@
 #define XPU_HAL_API __declspec(dllexport)
 #elif defined(XPU_HAL_IMPORT)
 #define XPU_HAL_API __declspec(dllimport)
-#pragma comment(lib, "torch_xpu.lib")
+#pragma comment(lib, "xpu_hal.lib")
 #else
 #define XPU_HAL_API
 #endif
