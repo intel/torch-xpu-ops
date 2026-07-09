@@ -75,6 +75,47 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
+  if(TARGET torch-xpu-ops-sycl-BinaryDivFloorKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-BinaryDivFloorKernel
+      PRIVATE
+      torch-xpu-ops-sycl-BinaryDivTrueKernel
+      torch-xpu-ops-sycl-BinaryDivTruncKernel
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-PowKernels)
+    target_link_libraries(
+      torch-xpu-ops-sycl-PowKernels
+      PRIVATE
+      torch-xpu-ops-sycl-UnaryFractionKernels
+      torch-xpu-ops-sycl-UnaryKernels
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-TensorTopKSbtopkKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel
+      PRIVATE
+      torch-xpu-ops-sycl-TensorTopKSingleWgKernel
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k1
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k2
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k4
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k8
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-TensorTopKKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-TensorTopKKernel
+      PRIVATE
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-UnaryComplexKernels)
+    target_link_libraries(
+      torch-xpu-ops-sycl-UnaryComplexKernels
+      PRIVATE
+      torch-xpu-ops-sycl-CopyKernel
+    )
+  endif()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 else()
   # On Windows, it is not possible to combine all obj files into one library

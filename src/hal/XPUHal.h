@@ -80,10 +80,12 @@ XPU_HAL_API PhiloxCaptureState philoxCaptureState(
     uint64_t increment);
 
 // Register torch_xpu function pointers so kernel DLLs can call
-// empty_xpu() and getCurrentDeviceProperties() through xpu_hal.dll
+// empty_xpu(), resize_impl_xpu_(), and getCurrentDeviceProperties()
+// through xpu_hal.dll
 // instead of linking torch_xpu.dll directly.
 XPU_HAL_API void registerTorchXpuBridge(
     void* empty_xpu_primary,
+    void* resize_impl_xpu,
     void* get_device_props);
 
 #else

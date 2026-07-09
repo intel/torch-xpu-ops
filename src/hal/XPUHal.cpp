@@ -8,6 +8,7 @@
 #include <c10/core/TensorOptions.h>
 #include <c10/util/ArrayRef.h>
 #include <c10/util/Optional.h>
+#include <ATen/core/Tensor.h>
 #include <ATen/core/TensorBase.h>
 #include <c10/xpu/XPUDeviceProp.h>
 
@@ -24,13 +25,20 @@ using EmptyXpuPrimaryFn = at::TensorBase (*)(
     c10::ScalarType dtype,
     c10::optional<c10::Device> device_opt,
     c10::optional<c10::MemoryFormat> memory_format_opt);
+using ResizeImplXpuFn = at::TensorImpl* (*)(
+    at::TensorImpl* self,
+    c10::IntArrayRef size,
+    at::OptionalIntArrayRef stride,
+    bool device_guard);
 using GetDevicePropFn = c10::xpu::DeviceProp* (*)();
 
 EmptyXpuPrimaryFn g_empty_xpu_primary = nullptr;
+ResizeImplXpuFn g_resize_impl_xpu = nullptr;
 GetDevicePropFn g_get_device_props = nullptr;
 
 // Accessors used by the wrapper functions in at::detail / at::xpu.
 EmptyXpuPrimaryFn getEmptyXpuPrimaryFn() { return g_empty_xpu_primary; }
+ResizeImplXpuFn getResizeImplXpuFn() { return g_resize_impl_xpu; }
 GetDevicePropFn getDevicePropFn() { return g_get_device_props; }
 
 } // anonymous namespace
@@ -49,8 +57,10 @@ void registerXPUGeneratorCaptureBridge(
 
 void registerTorchXpuBridge(
     void* empty_xpu_primary,
+    void* resize_impl_xpu,
     void* get_device_props) {
   g_empty_xpu_primary = reinterpret_cast<EmptyXpuPrimaryFn>(empty_xpu_primary);
+  g_resize_impl_xpu = reinterpret_cast<ResizeImplXpuFn>(resize_impl_xpu);
   g_get_device_props = reinterpret_cast<GetDevicePropFn>(get_device_props);
 }
 
@@ -98,7 +108,7 @@ PhiloxCaptureState philoxCaptureState(
 // definition lives in torch_xpu.dll).
 namespace at {
 struct XPUGeneratorImpl {
-  static c10::DeviceType device_type();
+  static XPU_HAL_API c10::DeviceType device_type();
 };
 c10::DeviceType XPUGeneratorImpl::device_type() {
   return c10::DeviceType::XPU;
@@ -109,7 +119,7 @@ c10::DeviceType XPUGeneratorImpl::device_type() {
 // TensorFactories kernels when creating output tensors.
 namespace at::detail {
 
-TensorBase empty_xpu(
+XPU_HAL_API TensorBase empty_xpu(
     c10::IntArrayRef size,
     c10::ScalarType dtype,
     c10::optional<c10::Device> device_opt,
@@ -122,7 +132,7 @@ TensorBase empty_xpu(
   return fn(size, dtype, device_opt, memory_format_opt);
 }
 
-TensorBase empty_xpu(
+XPU_HAL_API TensorBase empty_xpu(
     c10::IntArrayRef size,
     c10::optional<c10::ScalarType> dtype_opt,
     c10::optional<c10::Layout> layout_opt,
@@ -137,7 +147,7 @@ TensorBase empty_xpu(
   return at::detail::empty_xpu(size, dtype, device_opt, memory_format_opt);
 }
 
-TensorBase empty_xpu(
+XPU_HAL_API TensorBase empty_xpu(
     c10::IntArrayRef size,
     const c10::TensorOptions& options) {
   // c10::TensorOptions stores dtype as caffe2::TypeMeta; convert to
@@ -158,9 +168,26 @@ TensorBase empty_xpu(
 
 } // namespace at::detail
 
+namespace at::native::xpu {
+
+XPU_HAL_API TensorImpl* resize_impl_xpu_(
+    TensorImpl* self,
+    c10::IntArrayRef size,
+    at::OptionalIntArrayRef stride,
+    bool device_guard) {
+  auto fn = xpu_hal::getResizeImplXpuFn();
+  TORCH_CHECK(
+      fn != nullptr,
+      "resize_impl_xpu_ bridge not registered. "
+      "Ensure torch_xpu.dll is loaded before calling resize_impl_xpu_.");
+  return fn(self, size, stride, device_guard);
+}
+
+} // namespace at::native::xpu
+
 // getCurrentDeviceProperties — used by SoftMaxKernels for occupancy tuning.
 namespace at::xpu {
-c10::xpu::DeviceProp* getCurrentDeviceProperties() {
+XPU_HAL_API c10::xpu::DeviceProp* getCurrentDeviceProperties() {
   auto fn = xpu_hal::getDevicePropFn();
   TORCH_CHECK(
       fn != nullptr,
