@@ -7,7 +7,6 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 # Owner(s): ["module: intel"]
-# Regression test for https://github.com/intel/torch-xpu-ops/issues/3030
 
 import torch
 import torch.nn.functional as F
@@ -20,6 +19,7 @@ from torch.testing._internal.common_utils import (
 )
 
 
+# Regression test for https://github.com/intel/torch-xpu-ops/issues/3030
 @instantiate_parametrized_tests
 class TestConvTransposeComplex32Reference(TestCase):
     @parametrize(
