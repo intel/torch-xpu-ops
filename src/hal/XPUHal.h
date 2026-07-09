@@ -92,7 +92,7 @@ XPU_HAL_API void registerTorchXpuBridge(
 
 inline void registerXPUGeneratorBridge(GetDefaultGeneratorFn, PhiloxStateFn) {}
 inline void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn) {}
-inline void registerTorchXpuBridge(void*, void*) {}
+inline void registerTorchXpuBridge(void*, void*, void*) {}
 
 inline c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
     int64_t device_index) {
