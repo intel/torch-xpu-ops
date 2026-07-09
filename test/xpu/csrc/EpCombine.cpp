@@ -12,6 +12,58 @@
       AT_DISPATCH_CASE(at::kFloat, __VA_ARGS__))
 #endif
 
+// The bandwidth-critical remote store pushes the aggregated partial into the
+// target rank's receive buffer over the cross-GPU link (Xe-Link / PCIe). Use an
+// Intel GPU LSC store with explicit cache control (L1WB_L3WB) so contiguous
+// remote writes get combined through L3 into larger burst transactions instead
+// of many small write-through transactions (same lever measured ~18% faster on
+// the reduce-scatter push path). Enabled by default; define
+// EPCOMBINE_NO_LSC_STORE to fall back to the plain vectorized store.
+#if !defined(EPCOMBINE_LSC_STORE) && !defined(EPCOMBINE_NO_LSC_STORE)
+#define EPCOMBINE_LSC_STORE 1
+#endif
+
+#if defined(EPCOMBINE_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && \
+    defined(__SPIR__)
+typedef uint32_t ep_lsc_u4 __attribute__((ext_vector_type(4)));
+enum EpLscStcc { EP_LSC_STCC_L1WB_L3WB = 7 };
+SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
+    __attribute__((opencl_global)) ep_lsc_u4* base,
+    int off,
+    ep_lsc_u4 val,
+    enum EpLscStcc cc);
+#endif
+
+// Remote store of a POD vector to the peer buffer. Implemented inline at the
+// kernel store site (see EpCombineRingWGKernel) via EP_VEC_STORE so the LSC
+// builtin is called directly from the SYCL kernel body (a free function called
+// straight from a kernel would require SYCL_EXTERNAL). When LSC is available
+// the vector is split into 16-byte (uint4) chunks, each written with L1WB_L3WB
+// cache control so the peer-directed writes coalesce through L3.
+// `sizeof(Vec)` is a multiple of 16 for every enabled combination
+// (bf16x8=16B, bf16x16=32B, fp32x8=32B, fp32x16=64B).
+#if defined(EPCOMBINE_LSC_STORE) && defined(__SYCL_DEVICE_ONLY__) && \
+    defined(__SPIR__)
+#define EP_VEC_STORE(DST_PTR, VEC_VAL)                                        \
+  do {                                                                        \
+    using _EpVecT = std::remove_reference_t<decltype(VEC_VAL)>;               \
+    if constexpr (sizeof(_EpVecT) % 16 == 0) {                                \
+      const ep_lsc_u4* _ep_s = reinterpret_cast<const ep_lsc_u4*>(&(VEC_VAL));\
+      _Pragma("unroll")                                                       \
+      for (int _ep_i = 0; _ep_i < static_cast<int>(sizeof(_EpVecT) / 16);     \
+           ++_ep_i) {                                                         \
+        __builtin_IB_lsc_store_global_uint4(                                  \
+            ((__attribute__((opencl_global)) ep_lsc_u4*)(DST_PTR)) + _ep_i,   \
+            0, _ep_s[_ep_i], EP_LSC_STCC_L1WB_L3WB);                          \
+      }                                                                       \
+    } else {                                                                  \
+      *(DST_PTR) = (VEC_VAL);                                                 \
+    }                                                                         \
+  } while (0)
+#else
+#define EP_VEC_STORE(DST_PTR, VEC_VAL) (*(DST_PTR) = (VEC_VAL))
+#endif
+
 // TP+EP combine kernel (reverse of ep_dispatch, ring-ordered push).
 //
 // ep_dispatch: ring-ordered PULL from remote hidden → ownership check → write to local remap
@@ -225,7 +277,7 @@ struct EpCombineRingWGKernel {
       for (int i = 0; i < VEC_SIZE; ++i) {
         out.data[i] = static_cast<scalar_t>(acc[i]);
       }
-      *reinterpret_cast<Vec*>(dst_row + h_start) = out;
+      EP_VEC_STORE(reinterpret_cast<Vec*>(dst_row + h_start), out);
     }
   }
 };
@@ -615,12 +667,422 @@ at::Tensor ep_combine_local_(
   return output;
 }
 
+// ===========================================================================
+// PULL / gather-based combine (two-phase, owner-side pre-aggregation).
+//
+// The naive "pull topk" gathers TOP_K scattered remote rows per output token
+// (8 remote loads, gather via scatter_idx) -> far too many expensive remote
+// loads. Instead we split combine into two phases so each puller reads AT MOST
+// `world_size` DENSE remote rows per token:
+//
+//   Phase 1 (EpCombinePartialKernel, LOCAL): every rank aggregates the experts
+//   IT OWNS for every global token into a single partial row, applying the
+//   softmax weights locally:
+//       partial_local[gtok] = sum_{k : owner(topk_idx[gtok,k])==rank}
+//                                 topk_weights[gtok,k] * expert_output[scatter_idx[gtok,k]]
+//   Reads are local (expert_output), the store is local into this rank's
+//   symmetric `partial` buffer laid out as [num_global_tokens, hidden].
+//
+//   Phase 2 (EpCombineGatherKernel, PULL): every rank, for each of ITS OWN
+//   output tokens, reads the pre-aggregated partial row from each contributing
+//   owner rank and sums them:
+//       output[t] = sum_{r in owners(t)} partial_of[r][global_token(t)]
+//   Remote traffic is now <= world_size dense, coalesced reads per token (no
+//   weights, no scatter gather) and the only writes are local -> no incast.
+//
+// `partial_rank_ptrs[r]` points to rank r's symmetric partial buffer base.
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombinePartialKernel {
+  const scalar_t* expert_output_ptr;  // local [num_tokens * topk, hidden]
+  scalar_t* partial_ptr;              // local symmetric [num_global_tokens, hidden]
+  const int32_t* topk_idx_ptr;
+  const int32_t* scatter_idx_ptr;
+  const float* topk_weights_ptr;
+  int32_t num_global_tokens;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t hidden_vecs;
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
+
+  void operator()(sycl::nd_item<1> item) const {
+    using Vec = EpVec<scalar_t, VEC_SIZE>;
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));  // global token
+    if (wg >= num_global_tokens) return;
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
+    const int64_t topk_base = static_cast<int64_t>(wg) * topk;
+
+    // Resolve owned experts ONCE for this token.
+    float owned_w[kEpCombineMaxTopK];
+    int32_t owned_row[kEpCombineMaxTopK];
+    int32_t num_owned = 0;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = topk_idx_ptr[topk_base + k];
+      int32_t owner;
+      if (expert < boundary) {
+        owner = expert / (base_experts + 1);
+      } else {
+        owner = rem_experts + (expert - boundary) / base_experts;
+      }
+      if (owner == rank) {
+        owned_w[num_owned] = topk_weights_ptr[topk_base + k];
+        owned_row[num_owned] = scatter_idx_ptr[topk_base + k];
+        ++num_owned;
+      }
+    }
+
+    scalar_t* out_row = partial_ptr + static_cast<int64_t>(wg) * hidden_size;
+    for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+      const int32_t h_start = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+
+      for (int32_t j = 0; j < num_owned; ++j) {
+        const float weight = owned_w[j];
+        const Vec src = *reinterpret_cast<const Vec*>(
+            expert_output_ptr +
+            static_cast<int64_t>(owned_row[j]) * hidden_size + h_start);
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          acc[i] += weight * static_cast<float>(src.data[i]);
+        }
+      }
+
+      Vec out;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) out.data[i] = static_cast<scalar_t>(acc[i]);
+      // Local store into this rank's symmetric partial buffer (always write,
+      // so empty tokens store zeros and the gather phase reads valid data).
+      *reinterpret_cast<Vec*>(out_row + h_start) = out;
+    }
+  }
+};
+
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombineGatherKernel {
+  const int64_t* partial_ptrs;  // [world_size] symmetric partial bases
+  const int32_t* topk_idx_ptr;
+  scalar_t* output_ptr;  // local [num_tokens_per_rank, hidden]
+  int32_t num_tokens_per_rank;
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
+
+  void operator()(sycl::nd_item<1> item) const {
+    using Vec = EpVec<scalar_t, VEC_SIZE>;
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    if (wg >= num_tokens_per_rank) return;
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
+
+    const int32_t global_token_idx = rank * num_tokens_per_rank + wg;
+    const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
+
+    // Build the set of contributing owner ranks for this token (dedup) so we
+    // only read partial rows that are actually non-zero. world_size <= 32.
+    uint32_t owner_mask = 0;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = topk_idx_ptr[topk_base + k];
+      int32_t owner;
+      if (expert < boundary) {
+        owner = expert / (base_experts + 1);
+      } else {
+        owner = rem_experts + (expert - boundary) / base_experts;
+      }
+      owner_mask |= (1u << owner);
+    }
+
+    const int64_t row_off = static_cast<int64_t>(global_token_idx) * hidden_size;
+    scalar_t* out_row = output_ptr + static_cast<int64_t>(wg) * hidden_size;
+
+    for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+      const int32_t h_start = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+
+      for (int32_t i = 0; i < world_size; ++i) {
+        // Ring order: each rank starts reading from a different owner so the
+        // read traffic is spread across links instead of all ranks hammering
+        // owner 0 first (read-side incast).
+        const int32_t r = (rank + 1 + i) % world_size;
+        if (!(owner_mask & (1u << r))) continue;
+        const scalar_t* src =
+            reinterpret_cast<const scalar_t*>(partial_ptrs[r]);
+        const Vec v = *reinterpret_cast<const Vec*>(src + row_off + h_start);
+        #pragma unroll
+        for (int i2 = 0; i2 < VEC_SIZE; ++i2) {
+          acc[i2] += static_cast<float>(v.data[i2]);
+        }
+      }
+
+      Vec out;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) out.data[i] = static_cast<scalar_t>(acc[i]);
+      *reinterpret_cast<Vec*>(out_row + h_start) = out;  // local store
+    }
+  }
+};
+
+// Two-phase pull combine. `partial_rank_ptrs[rank]` must point to THIS rank's
+// symmetric partial buffer [num_global_tokens, hidden]; the other entries point
+// to the peers' buffers. Caller is responsible for the cross-rank barrier
+// between phase 1 and phase 2 (all ranks' partial buffers must be visible
+// before any gather reads them).
+at::Tensor ep_combine_pull(
+    const at::Tensor& expert_output,
+    const at::Tensor& partial_local,
+    const at::Tensor& partial_rank_ptrs,
+    const at::Tensor& topk_idx,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_weights,
+    at::Tensor output,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      partial_rank_ptrs.dim() == 1 && partial_rank_ptrs.size(0) == world_size,
+      "ep_combine_pull: partial_rank_ptrs must be 1D with size == world_size");
+  TORCH_CHECK(partial_rank_ptrs.scalar_type() == at::kLong,
+              "ep_combine_pull: partial_rank_ptrs must be int64");
+  TORCH_CHECK(partial_local.is_contiguous() &&
+                  partial_local.scalar_type() == output.scalar_type(),
+              "ep_combine_pull: partial_local must be contiguous, match output dtype");
+  TORCH_CHECK(expert_output.dim() == 2 && expert_output.is_contiguous(),
+              "ep_combine_pull: expert_output must be 2D contiguous");
+  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.scalar_type() == at::kInt &&
+                  topk_idx.is_contiguous(),
+              "ep_combine_pull: topk_idx must be 2D contiguous int32");
+  TORCH_CHECK(scatter_idx.dim() == 2 && scatter_idx.scalar_type() == at::kInt &&
+                  scatter_idx.is_contiguous() &&
+                  scatter_idx.sizes() == topk_idx.sizes(),
+              "ep_combine_pull: scatter_idx must match topk_idx (int32)");
+  TORCH_CHECK(topk_weights.dim() == 2 &&
+                  topk_weights.scalar_type() == at::kFloat &&
+                  topk_weights.is_contiguous() &&
+                  topk_weights.sizes() == topk_idx.sizes(),
+              "ep_combine_pull: topk_weights must match topk_idx (float32)");
+  TORCH_CHECK(output.dim() == 2 && output.is_contiguous(),
+              "ep_combine_pull: output must be 2D contiguous");
+  TORCH_CHECK(world_size <= 32, "ep_combine_pull: world_size must be <= 32");
+  TORCH_CHECK(rank >= 0 && rank < world_size);
+
+  const int64_t num_tokens = topk_idx.size(0);
+  const int64_t topk = topk_idx.size(1);
+  const int64_t hidden_size = output.size(1);
+  TORCH_CHECK(topk <= kEpCombineMaxTopK,
+              "ep_combine_pull: topk exceeds kEpCombineMaxTopK");
+  TORCH_CHECK(num_tokens % world_size == 0,
+              "ep_combine_pull: num_tokens must be divisible by world_size");
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
+  TORCH_CHECK(output.size(0) == num_tokens_per_rank,
+              "ep_combine_pull: output first dim must be num_tokens_per_rank");
+  TORCH_CHECK(expert_output.size(1) == hidden_size,
+              "ep_combine_pull: expert_output hidden must match output");
+
+  if (num_tokens_per_rank == 0 || hidden_size == 0 || topk == 0) return output;
+
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+
+  int vec_sel = 8;
+  if (const char* v = std::getenv("EPCOMBINE_VEC")) vec_sel = std::atoi(v);
+  int64_t threads = 256;
+  if (const char* t = std::getenv("EPCOMBINE_THREADS")) threads = std::atoi(t);
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "ep_combine_pull", [&]() {
+        auto* partial_local_ptr = partial_local.data_ptr<scalar_t>();
+        auto launch = [&](auto vec_tag) {
+          constexpr int VEC_SIZE = decltype(vec_tag)::value;
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+
+          // Phase 1: local owner-side pre-aggregation (one WG per global token).
+          auto pfn = EpCombinePartialKernel<scalar_t, VEC_SIZE>{
+              expert_output.data_ptr<scalar_t>(),
+              partial_local_ptr,
+              topk_idx.data_ptr<int32_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              static_cast<int32_t>(num_tokens),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts,
+              rem_experts,
+              boundary};
+          sycl_kernel_submit(
+              sycl::range<1>(num_tokens * threads),
+              sycl::range<1>(threads), queue, pfn);
+
+          // Phase 2: gather pre-aggregated partials (one WG per output token).
+          auto gfn = EpCombineGatherKernel<scalar_t, VEC_SIZE>{
+              partial_rank_ptrs.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
+              output.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts,
+              rem_experts,
+              boundary};
+          sycl_kernel_submit(
+              sycl::range<1>(num_tokens_per_rank * threads),
+              sycl::range<1>(threads), queue, gfn);
+        };
+
+        TORCH_CHECK(hidden_size % 8 == 0,
+                    "ep_combine_pull: hidden must be divisible by 8");
+        if (vec_sel == 16 && hidden_size % 16 == 0) {
+          launch(std::integral_constant<int, 16>{});
+        } else {
+          launch(std::integral_constant<int, 8>{});
+        }
+      });
+
+  return output;
+}
+
+// Phase-1-only: owner-side pre-aggregation into this rank's local partial
+// buffer. Purely local (local reads + local store); no cross-rank traffic.
+at::Tensor ep_combine_pull_partial(
+    const at::Tensor& expert_output,
+    at::Tensor partial_local,
+    const at::Tensor& topk_idx,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_weights,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size) {
+  const int64_t num_tokens = topk_idx.size(0);
+  const int64_t topk = topk_idx.size(1);
+  const int64_t hidden_size = partial_local.size(1);
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+  int vec_sel = 8;
+  if (const char* v = std::getenv("EPCOMBINE_VEC")) vec_sel = std::atoi(v);
+  int64_t threads = 256;
+  if (const char* t = std::getenv("EPCOMBINE_THREADS")) threads = std::atoi(t);
+  c10::Device device(c10::DeviceType::XPU, partial_local.device().index());
+  c10::DeviceGuard guard(device);
+  auto& queue = at::xpu::getCurrentXPUStream().queue();
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      partial_local.scalar_type(), "ep_combine_pull_partial", [&]() {
+        auto launch = [&](auto vec_tag) {
+          constexpr int VEC_SIZE = decltype(vec_tag)::value;
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          auto pfn = EpCombinePartialKernel<scalar_t, VEC_SIZE>{
+              expert_output.data_ptr<scalar_t>(),
+              partial_local.data_ptr<scalar_t>(),
+              topk_idx.data_ptr<int32_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              static_cast<int32_t>(num_tokens),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts, rem_experts, boundary};
+          sycl_kernel_submit(sycl::range<1>(num_tokens * threads),
+                             sycl::range<1>(threads), queue, pfn);
+        };
+        if (vec_sel == 16 && hidden_size % 16 == 0)
+          launch(std::integral_constant<int, 16>{});
+        else
+          launch(std::integral_constant<int, 8>{});
+      });
+  return partial_local;
+}
+
+// Phase-2-only: gather pre-aggregated partial rows from the (already-populated)
+// symmetric partial buffers of every owner rank into `output`. Remote reads.
+at::Tensor ep_combine_pull_gather(
+    const at::Tensor& partial_rank_ptrs,
+    const at::Tensor& topk_idx,
+    at::Tensor output,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size) {
+  const int64_t num_tokens = topk_idx.size(0);
+  const int64_t topk = topk_idx.size(1);
+  const int64_t hidden_size = output.size(1);
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+  int vec_sel = 8;
+  if (const char* v = std::getenv("EPCOMBINE_VEC")) vec_sel = std::atoi(v);
+  int64_t threads = 256;
+  if (const char* t = std::getenv("EPCOMBINE_THREADS")) threads = std::atoi(t);
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto& queue = at::xpu::getCurrentXPUStream().queue();
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "ep_combine_pull_gather", [&]() {
+        auto launch = [&](auto vec_tag) {
+          constexpr int VEC_SIZE = decltype(vec_tag)::value;
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          auto gfn = EpCombineGatherKernel<scalar_t, VEC_SIZE>{
+              partial_rank_ptrs.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
+              output.data_ptr<scalar_t>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts, rem_experts, boundary};
+          sycl_kernel_submit(sycl::range<1>(num_tokens_per_rank * threads),
+                             sycl::range<1>(threads), queue, gfn);
+        };
+        if (vec_sel == 16 && hidden_size % 16 == 0)
+          launch(std::integral_constant<int, 16>{});
+        else
+          launch(std::integral_constant<int, 8>{});
+      });
+  return output;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ep_combine(Tensor expert_output, Tensor rank_output_ptrs, "
       "Tensor topk_idx, Tensor scatter_idx, Tensor topk_weights, "
       "Tensor(a!) output, int num_experts, "
       "int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "ep_combine_pull(Tensor expert_output, Tensor partial_local, "
+      "Tensor partial_rank_ptrs, Tensor topk_idx, Tensor scatter_idx, "
+      "Tensor topk_weights, Tensor(a!) output, int num_experts, int rank, "
+      "int world_size) -> Tensor(a!)");
+  m.def(
+      "ep_combine_pull_partial(Tensor expert_output, Tensor(a!) partial_local, "
+      "Tensor topk_idx, Tensor scatter_idx, Tensor topk_weights, "
+      "int num_experts, int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "ep_combine_pull_gather(Tensor partial_rank_ptrs, Tensor topk_idx, "
+      "Tensor(a!) output, int num_experts, int rank, int world_size) "
+      "-> Tensor(a!)");
   m.def(
       "ep_combine_reduce(Tensor recv, Tensor(a!) output, int world_size) "
       "-> Tensor(a!)");
@@ -634,6 +1096,9 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ep_combine", ep_combine);
+  m.impl("ep_combine_pull", ep_combine_pull);
+  m.impl("ep_combine_pull_partial", ep_combine_pull_partial);
+  m.impl("ep_combine_pull_gather", ep_combine_pull_gather);
   m.impl("ep_combine_reduce", ep_combine_reduce);
   m.impl("ep_combine_local_", ep_combine_local_);
 }

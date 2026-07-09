@@ -55,17 +55,17 @@ def main():
         torch.xpu.synchronize()
         ts = sorted(ev0[i].elapsed_time(ev1[i]) for i in range(ITERS))
         med = ts[len(ts)//2]
-        if rank == 0:
-            print(f"[{label}] median={med:.3f} ms  min={ts[0]:.3f} max={ts[-1]:.3f}")
+        print(f"[{rank}] [{label}] median={med:.3f} ms  min={ts[0]:.3f} max={ts[-1]:.3f} all={ts}")
 
     timeit(lambda: torch.ops.symm_mem.ep_combine(eo, rank_ptrs, topk_idx, scatter_idx, tw, out, NUM_EXPERTS, rank, ws), "kernel_only")
+    '''
     timeit(lambda: recv.barrier(), "barrier")
     def reduce():
         out.zero_()
         for i in range(ws):
             out.add_(my_buf[i])
     timeit(reduce, "reduce_py")
-
+    '''
     dist.destroy_process_group()
 
 
