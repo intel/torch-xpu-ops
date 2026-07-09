@@ -14,40 +14,22 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/IndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/ops/_assert_async.h>
+#include <ATen/ops/aminmax.h>
 
 namespace at::native::xpu {
 
 static Tensor wrapIndexOnce(
     const Tensor& index,
-    int64_t dim,
+    [[maybe_unused]] int64_t dim,
     int64_t dim_size,
     bool check_range = true) {
   // we don't need to check range in backward - if there were out of bounds
   // indices forward should already have errored out
   if (index.numel() != 0 && check_range) {
-    auto [min_idx_tensor, max_idx_tensor] = index.aminmax();
-    auto max_idx = max_idx_tensor.item<int64_t>();
-    auto min_idx = min_idx_tensor.item<int64_t>();
-    if (max_idx >= dim_size) {
-      TORCH_CHECK_INDEX(
-          false,
-          "index ",
-          max_idx,
-          " is out of bounds for dimension ",
-          dim,
-          " with size ",
-          dim_size);
-    }
-    if (min_idx < -dim_size) {
-      TORCH_CHECK_INDEX(
-          false,
-          "index ",
-          min_idx,
-          " is out of bounds for dimension ",
-          dim,
-          " with size ",
-          dim_size);
-    }
+    auto [index_min, index_max] = at::aminmax(index);
+    at::_assert_async(index_max < dim_size);
+    at::_assert_async(index_min >= -dim_size);
   }
   return index.remainder(dim_size);
 }
@@ -153,12 +135,12 @@ makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
        dims_before,
        dims_indexed] = computeLinearIndex(self, indices, check_range);
   return std::make_tuple(
-      linearIndex,
-      self,
+      std::move(linearIndex),
+      std::move(self),
       nElemBefore,
       strideBefore,
       nElemAfter,
-      inversePerm,
+      std::move(inversePerm),
       dims_before,
       dims_indexed);
 }
