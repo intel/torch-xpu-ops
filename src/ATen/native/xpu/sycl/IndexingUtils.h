@@ -25,8 +25,9 @@ static Tensor wrapIndexOnce(
   // we don't need to check range in backward - if there were out of bounds
   // indices forward should already have errored out
   if (index.numel() != 0 && check_range) {
-    auto max_idx = index.max().item<int64_t>();
-    auto min_idx = index.min().item<int64_t>();
+    auto [min_idx_tensor, max_idx_tensor] = index.aminmax();
+    auto max_idx = max_idx_tensor.item<int64_t>();
+    auto min_idx = min_idx_tensor.item<int64_t>();
     if (max_idx >= dim_size) {
       TORCH_CHECK_INDEX(
           false,
