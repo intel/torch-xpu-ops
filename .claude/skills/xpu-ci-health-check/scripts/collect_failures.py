@@ -45,12 +45,6 @@ TIMESTAMP_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+\s+")
 TARGET_PLATFORM = "xpu"
 TORCH_CI_FAILURE_BASE = "https://www.torch-ci.com/failure?failureCaptures="
 DISABLE_LABELS = ["module: xpu", "triaged"]
-DISABLE_CC_LINE = (
-    "cc [@gujinghui](https://github.com/gujinghui) "
-    "[@EikanWang](https://github.com/EikanWang) "
-    "[@fengyuan14](https://github.com/fengyuan14) "
-    "[@guangyey](https://github.com/guangyey)"
-)
 
 
 @dataclass(frozen=True)
@@ -162,7 +156,6 @@ def build_disable_issue(case_id: str) -> dict:
                 f"([recent examples]({_recent_examples_url(case_id)}))."
             ),
             "",
-            DISABLE_CC_LINE,
         ]
     )
     return {"title": title, "body": body, "labels": list(DISABLE_LABELS)}
