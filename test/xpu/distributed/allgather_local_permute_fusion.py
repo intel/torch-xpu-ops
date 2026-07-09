@@ -517,3 +517,44 @@ def allgather_permute_ishmem(
         rank,
         world_size,
     )
+
+
+def allgather_ishmem(
+    input_shard: torch.Tensor,
+    gathered_out: torch.Tensor,
+    group: dist.ProcessGroup = None,
+):
+    """Pure allgather via the ISHMEM kernel (no permute).
+
+    gathered_out must be a contiguous [world_size * tokens_per_rank, hidden]
+    tensor with the same dtype as input_shard. Used to isolate the ISHMEM
+    communication cost from the permute compute.
+    """
+    if not _HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL:
+        raise RuntimeError(
+            "allgather_ishmem kernel is unavailable; build "
+            "test/xpu/csrc/liballgather_permute_ishmem.so first"
+        )
+    if group is None:
+        group = dist.group.WORLD
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+    return torch.ops.symm_mem.allgather_ishmem(
+        input_shard.contiguous(),
+        gathered_out,
+        rank,
+        world_size,
+    )
+
+
+def allgather_permute_ishmem_finalize(device: torch.device = None):
+    """Tear down the ISHMEM runtime (stops the host proxy thread).
+
+    Must be called collectively by every rank before process/MPI teardown;
+    otherwise the still-running ISHMEM proxy thread races with MPI finalize and
+    the processes crash on exit.
+    """
+    if not _HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL:
+        return
+    dummy = torch.empty(0, device=device) if device is not None else torch.empty(0)
+    torch.ops.symm_mem.allgather_permute_ishmem_finalize(dummy)
