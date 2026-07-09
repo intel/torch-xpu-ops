@@ -37,6 +37,7 @@ from torch.testing._internal.common_device_type import (
     largeTensorTest,
     onlyCPU,
     onlyOn,
+    onlyXPU,
     OpDTypes,
     ops,
     precisionOverride,
@@ -4789,6 +4790,83 @@ class TestSparseCSR(TestCase):
                 sample.args = (sample.args[0].squeeze(-1),)
             out = torch.linalg.solve(sample.input, *sample.args, **sample.kwargs)
             self.assertEqual(expect, out)
+
+    @onlyXPU
+    @dtypes(*floating_types())
+    def test_spsolve_xpu(self, device, dtype):
+        # Solve A @ x = b with A a sparse CSR matrix using the XPU backend
+        # (torch.sparse.spsolve / aten::_spsolve). Correctness is checked against
+        # the dense torch.linalg.solve reference on both XPU and CPU.
+        def make_spd(n):
+            # Build a well-conditioned, diagonally dominant matrix so that the
+            # system has a unique solution.
+            m = make_tensor((n, n), dtype=dtype, device=device, low=-1, high=1)
+            return m @ m.mT + n * torch.eye(n, dtype=dtype, device=device)
+
+        test_matrices = [
+            torch.eye(5, dtype=dtype, device=device),  # identity
+            make_spd(1),  # 1x1
+            make_spd(4),  # dense-ish
+            make_spd(16),  # larger
+            # diagonal (extreme sparsity)
+            torch.diag(
+                make_tensor((7,), dtype=dtype, device=device, low=1, high=2)
+            ),
+            # tridiagonal (banded sparsity pattern)
+            torch.diag(torch.full((6,), 4.0, dtype=dtype, device=device))
+            + torch.diag(torch.full((5,), -1.0, dtype=dtype, device=device), 1)
+            + torch.diag(torch.full((5,), -1.0, dtype=dtype, device=device), -1),
+        ]
+
+        for A_dense in test_matrices:
+            n = A_dense.size(0)
+            b = make_tensor((n,), dtype=dtype, device=device, low=-1, high=1)
+            A_csr = A_dense.to_sparse_csr()
+
+            x = torch.sparse.spsolve(A_csr, b)
+            expect = torch.linalg.solve(A_dense, b)
+            self.assertEqual(x, expect)
+
+            # Residual check: A @ x should reconstruct b.
+            self.assertEqual(A_dense @ x, b)
+
+            # Correctness against the CPU reference.
+            x_cpu = torch.linalg.solve(A_dense.cpu(), b.cpu())
+            self.assertEqual(x.cpu(), x_cpu)
+
+        # Empty system: a 0x0 matrix with an empty rhs yields an empty result.
+        empty_A = torch.zeros(0, 0, dtype=dtype, device=device).to_sparse_csr()
+        empty_b = torch.zeros(0, dtype=dtype, device=device)
+        empty_x = torch.sparse.spsolve(empty_A, empty_b)
+        self.assertEqual(empty_x.shape, torch.Size([0]))
+
+    @onlyXPU
+    @dtypes(*floating_types())
+    def test_spsolve_xpu_errors(self, device, dtype):
+        A_dense = torch.eye(4, dtype=dtype, device=device)
+        A_csr = A_dense.to_sparse_csr()
+        b = make_tensor((4,), dtype=dtype, device=device, low=-1, high=1)
+
+        # left=False is not supported by the Sparse CSR backend (matches CUDA).
+        with self.assertRaisesRegex(
+            RuntimeError, "only left == true is supported"
+        ):
+            torch.sparse.spsolve(A_csr, b, left=False)
+
+        # b must be a 1D tensor.
+        B2d = make_tensor((4, 2), dtype=dtype, device=device, low=-1, high=1)
+        with self.assertRaisesRegex(RuntimeError, "b must be a 1D tensor"):
+            torch.sparse.spsolve(A_csr, B2d)
+
+        # System size mismatch between A and b.
+        b_bad = make_tensor((5,), dtype=dtype, device=device, low=-1, high=1)
+        with self.assertRaisesRegex(RuntimeError, "linear system size mismatch"):
+            torch.sparse.spsolve(A_csr, b_bad)
+
+        # Singular matrix has no unique solution.
+        singular = torch.zeros(4, 4, dtype=dtype, device=device).to_sparse_csr()
+        with self.assertRaises(torch.linalg.LinAlgError):
+            torch.sparse.spsolve(singular, b)
 
 
 def skipIfNoTriton(cls):
