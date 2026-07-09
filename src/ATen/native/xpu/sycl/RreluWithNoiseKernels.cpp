@@ -8,12 +8,15 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/native/xpu/sycl/RreluWithNoiseKernels.h>
 
@@ -22,13 +25,12 @@ namespace at::native::xpu {
 template <typename scalar_t, int unroll_factor, typename transform_t>
 struct RreluWithNoiseKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
     int group_size = item.get_local_range(0);
     int num_groups = item.get_group_range(0);
     int idx = item.get_global_linear_id();
 
     randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+    rand_init(philox_args_.first, idx, philox_args_.second, &state);
 
     int full_tile_work_size = group_size * num_groups * unroll_factor;
     int rounded_size =
@@ -63,7 +65,7 @@ struct RreluWithNoiseKernelFunctor {
   }
   RreluWithNoiseKernelFunctor(
       int numel,
-      PhiloxXpuState rng_engine_inputs,
+      std::pair<uint64_t, uint64_t> rng_engine_inputs,
       scalar_t* output,
       const scalar_t* input,
       scalar_t* noise,
@@ -81,7 +83,7 @@ struct RreluWithNoiseKernelFunctor {
 
  private:
   int numel_;
-  PhiloxXpuState philox_args_;
+  std::pair<uint64_t, uint64_t> philox_args_;
   scalar_t* output_;
   const scalar_t* input_;
   scalar_t* noise_;
@@ -110,12 +112,12 @@ inline void _rrelu_with_noise_xpu_train(
   auto group_size = std::get<2>(execution_policy);
 
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      generator, at::xpu::detail::getDefaultXPUGenerator());
-  PhiloxXpuState rng_engine_inputs;
+      generator, at::Generator(xpu_hal::getDefaultGenerator(-1)));
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
+    rng_engine_inputs = xpu_hal::philoxState(gen, counter_offset);
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();

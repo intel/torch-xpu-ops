@@ -18,6 +18,8 @@
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #endif
 
+#include <utility>
+
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
@@ -29,6 +31,7 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <ATen/xpu/XPUGraphsUtils.h>
 #include <c10/core/InferenceMode.h>
+#include <hal/XPUHal.h>
 #include <torch/autograd.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -409,17 +412,18 @@ _scaled_dot_product_efficient_attention_xpu(
   Tensor philox_seed_tensor, philox_offset_tensor;
   if (dropout_p > 0.0) {
     auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-        std::nullopt, at::xpu::detail::getDefaultXPUGenerator());
+        std::nullopt,
+        at::Generator(xpu_hal::getDefaultGenerator(-1)));
     if (at::xpu::currentStreamCaptureStatus() !=
         at::xpu::CaptureStatus::Executing) {
       // Graph capture path: output device tensors that alias the extragraph
       // seed/offset buffers, updated on each replay by replay_prologue().
       philox_seed_tensor = at::empty({1}, query.options().dtype(at::kLong));
       philox_offset_tensor = at::empty({1}, query.options().dtype(at::kLong));
-      PhiloxXpuState pstate;
+      xpu_hal::PhiloxCaptureState pstate;
       {
         std::lock_guard<std::mutex> lock(gen->mutex_);
-        pstate = gen->philox_xpu_state(0);
+        pstate = xpu_hal::philoxCaptureState(gen, 0);
       }
       auto dev_opts =
           at::TensorOptions().dtype(at::kLong).device(query.device());

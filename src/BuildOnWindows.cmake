@@ -18,11 +18,40 @@ macro(setup_common_libraries)
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS})
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
   target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
   target_link_libraries(torch_xpu_ops PUBLIC c10)
 endmacro()
 
+# Shared library that stores function pointers for generator operations.
+# kernel DLLs call xpu_hal.dll instead of linking torch_xpu.dll directly,
+# breaking the cyclic dependency.  torch_xpu.dll registers the real
+# implementations at init time via xpu_hal::registerXPUGeneratorBridge().
+# xpu_hal.dll only links c10 — no dependency on torch_xpu.
+set(xpu_hal_srcs ${TORCH_XPU_OPS_ROOT}/src/hal/XPUHal.cpp)
+if(NOT TARGET xpu_hal)
+  if(NOT BUILD_SEPARATE_OPS)
+    add_library(xpu_hal STATIC ${xpu_hal_srcs})
+    target_include_directories(
+      xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src
+    )
+  else()
+    add_library(xpu_hal SHARED ${xpu_hal_srcs})
+    target_include_directories(
+      xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS} ${TORCH_XPU_OPS_ROOT}/src
+    )
+    target_compile_definitions(
+      xpu_hal PRIVATE XPU_HAL_BUILD XPU_HAL_EMIT_ALIAS_WRAPPERS
+    )
+    target_link_libraries(xpu_hal PRIVATE c10)
+    install(TARGETS xpu_hal EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  endif()
+
+  torch_compile_options(xpu_hal)
+  target_compile_options_if_supported(xpu_hal "-Wno-deprecated-copy")
+  target_compile_options(xpu_hal PRIVATE ${TORCH_XPU_OPS_FLAGS})
+  target_include_directories(xpu_hal PRIVATE ${SYCL_INCLUDE_DIR})
+  target_include_directories(xpu_hal PRIVATE ${ATen_XPU_INCLUDE_DIRS})
+endif()
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
@@ -32,12 +61,61 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    target_link_libraries(torch_xpu_ops PRIVATE ${sycl_lib})
+    # On Windows, DLL symbols are not exported by default. Each kernel DLL
+    # must export its host-side SYCL entry points so consumers (torch_xpu.dll)
+    # can resolve them from the import lib.
+    set_target_properties(${sycl_lib} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+    # Kernel DLLs depend on xpu_hal.dll instead of torch_xpu.dll, which
+    # breaks the reverse dependency edge.
+    target_link_libraries(${sycl_lib} PRIVATE xpu_hal)
+    target_compile_definitions(${sycl_lib} PRIVATE XPU_HAL_IMPORT)
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
+  if(TARGET torch-xpu-ops-sycl-BinaryDivFloorKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-BinaryDivFloorKernel
+      PRIVATE
+      torch-xpu-ops-sycl-BinaryDivTrueKernel
+      torch-xpu-ops-sycl-BinaryDivTruncKernel
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-PowKernels)
+    target_link_libraries(
+      torch-xpu-ops-sycl-PowKernels
+      PRIVATE
+      torch-xpu-ops-sycl-UnaryFractionKernels
+      torch-xpu-ops-sycl-UnaryKernels
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-TensorTopKSbtopkKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel
+      PRIVATE
+      torch-xpu-ops-sycl-TensorTopKSingleWgKernel
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k1
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k2
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k4
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel_k8
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-TensorTopKKernel)
+    target_link_libraries(
+      torch-xpu-ops-sycl-TensorTopKKernel
+      PRIVATE
+      torch-xpu-ops-sycl-TensorTopKSbtopkKernel
+    )
+  endif()
+  if(TARGET torch-xpu-ops-sycl-UnaryComplexKernels)
+    target_link_libraries(
+      torch-xpu-ops-sycl-UnaryComplexKernels
+      PRIVATE
+      torch-xpu-ops-sycl-CopyKernel
+    )
+  endif()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 else()
   # On Windows, it is not possible to combine all obj files into one library

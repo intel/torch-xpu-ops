@@ -18,6 +18,7 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 #include <comm/xpu_aten.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 
@@ -31,7 +32,7 @@ void uniform_kernel(
     double to,
     std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen, at::xpu::detail::getDefaultXPUGenerator());
+      gen, at::Generator(xpu_hal::getDefaultGenerator(-1)));
   at::native::templates::xpu::uniform_kernel(iter, from, to, generator);
 }
 

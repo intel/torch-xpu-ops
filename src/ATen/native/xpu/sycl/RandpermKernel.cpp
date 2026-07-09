@@ -8,12 +8,15 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <utility>
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/ops/arange.h>
 
@@ -48,7 +51,7 @@ struct HandleDuplicateKeysKernelFunctor {
     // do random permutation inside each island.
     auto data = data_;
     data += tid;
-    auto seeds = at::xpu::philox::unpack(philox_args_);
+    auto seeds = philox_args_;
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), tid, std::get<1>(seeds), &state);
 
@@ -66,7 +69,7 @@ struct HandleDuplicateKeysKernelFunctor {
       scalar_t* data,
       T mask,
       int n,
-      PhiloxXpuState philox_args)
+      std::pair<uint64_t, uint64_t> philox_args)
       : keys_(keys),
         data_(data),
         mask_(mask),
@@ -78,7 +81,7 @@ struct HandleDuplicateKeysKernelFunctor {
   scalar_t* data_;
   const T mask_;
   const int n_;
-  const PhiloxXpuState philox_args_;
+  const std::pair<uint64_t, uint64_t> philox_args_;
 };
 
 // See note [Algorithm of randperm]
@@ -90,15 +93,15 @@ void randperm_handle_duplicate_keys(
     int64_t n,
     std::optional<at::Generator>& gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      gen_, at::xpu::detail::getDefaultXPUGenerator());
+      gen_, at::Generator(xpu_hal::getDefaultGenerator(-1)));
 
   int64_t counter_offset = n;
 
-  PhiloxXpuState rng_engine_inputs;
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
+    rng_engine_inputs = xpu_hal::philoxState(gen, counter_offset);
   }
 
   T mask = static_cast<T>((1UL << bits) - 1);
