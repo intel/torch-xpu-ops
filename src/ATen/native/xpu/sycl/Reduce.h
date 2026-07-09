@@ -121,13 +121,9 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       for (int i = 0; i < out_vec_sz; ++i) {
         value[i] = (sg_lid < sg_range) ? shared_[sg_lid][i] : ident;
       }
-      for (int offset = 1; offset < sg_size; offset <<= 1) {
-#pragma unroll(out_vec_sz)
-        for (int i = 0; i < out_vec_sz; ++i) {
-          value[i] =
-              combine(value[i], sycl::shift_group_left(sg, value[i], offset));
-        }
-      }
+      // subgroup tree reduce
+      subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
+          sg, value, combine);
     }
   } else {
     // work item tree reduce
@@ -182,6 +178,8 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
   }
 
   // sub-group reduction
+  // when dim_x < sg_size, a single sub-group may spans multiple rows
+  // and each row needs an independent x-direction reduction
   for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
