@@ -827,28 +827,9 @@ jobs:
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
-            Read the file /tmp/ut_data.json which contains UT (unit test) results
-            for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
-
-            Produce a report in this markdown format and post it as a PR comment:
-
-            ## UT Result Check
-
-            ### New Failures
-            <count> new failure(s) or "No new failures detected."
-            If there are failures, include a table:
-            | Test | Category | Status | Related to PR? |
-
-            ### Failure Relevance Analysis
-            For each failure, classify as Related, Possibly related, or Unrelated
-            to the PR changes. Map operator source files to test modules.
-
-            ### New Test Coverage
-            If the PR adds/modifies test files, report which new tests ran and
-            passed, which failed, and which were NOT RUN.
-
-            ### Summary
-            One-sentence verdict.
+            Use the /ut-check skill to analyze UT results for
+            PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
+            The UT data JSON file is at /tmp/ut_data.json.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
