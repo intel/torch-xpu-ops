@@ -10,6 +10,7 @@ on:
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1
+  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill
   COST_TRACKING_ISSUE: 4251
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue.pull_request
-      && contains(github.event.comment.body, '@torchxpubot')
+      && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
       pull-requests: read
       issues: read
@@ -62,7 +63,7 @@ jobs:
             const prNumber = context.payload.issue.number;
 
             // Extract the @torchxpubot command line
-            const match = body.match(/@torchxpubot\s+(\S+)(.*)/i);
+            const match = body.match(/^@torchxpubot\s+(\S+)(.*)/i);
             if (!match) {
               core.setOutput('command', '');
               core.setFailed('No valid command found after @torchxpubot');
@@ -709,13 +710,34 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 30 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 30 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post review comment
+        if: steps.ai-review.outputs.execution_file
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: header + result.result
+            });
 
       - name: "Verify: AI review succeeded"
         uses: actions/github-script@v7
@@ -803,33 +825,35 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools Bash,Read,Glob,Grep,WebFetch --disallowedTools \"Edit,Write,NotebookEdit,Bash(git push:*),Bash(git add:*),Bash(git commit:*),Bash(git rm:*)\""
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
-            Read the file /tmp/ut_data.json which contains UT (unit test) results
-            for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
-
-            Produce a report in this markdown format and post it as a PR comment:
-
-            ## UT Result Check
-
-            ### New Failures
-            <count> new failure(s) or "No new failures detected."
-            If there are failures, include a table:
-            | Test | Category | Status | Related to PR? |
-
-            ### Failure Relevance Analysis
-            For each failure, classify as Related, Possibly related, or Unrelated
-            to the PR changes. Map operator source files to test modules.
-
-            ### New Test Coverage
-            If the PR adds/modifies test files, report which new tests ran and
-            passed, which failed, and which were NOT RUN.
-
-            ### Summary
-            One-sentence verdict.
+            Use the /ut-check skill to analyze UT results for
+            PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
+            The UT data JSON file is at /tmp/ut_data.json.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post analysis comment
+        if: steps.collect.outputs.has_data == 'true' && steps.ai-analysis.outputs.execution_file
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: header + result.result
+            });
 
       - name: "Verify: AI analysis succeeded"
         if: steps.collect.outputs.has_data == 'true'

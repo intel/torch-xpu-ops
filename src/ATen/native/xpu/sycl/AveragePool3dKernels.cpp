@@ -30,14 +30,6 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 namespace at::native::xpu {
 
-inline int min(int a, int b) {
-  return a <= b ? a : b;
-}
-
-inline int max(int a, int b) {
-  return a >= b ? a : b;
-}
-
 template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
@@ -52,17 +44,20 @@ struct AvgPool3dKernelFunctor {
       index_t tstart = oFrame * dT_ - padT_;
       index_t hstart = oRow * dH_ - padH_;
       index_t wstart = oCol * dW_ - padW_;
-      index_t tend = min(tstart + kT_, input_.size(1) + padT_);
-      index_t hend = min(hstart + kH_, input_.size(2) + padH_);
-      index_t wend = min(wstart + kW_, input_.size(3) + padW_);
+      index_t tend =
+          sycl::min(tstart + kT_, static_cast<index_t>(input_.size(1) + padT_));
+      index_t hend =
+          sycl::min(hstart + kH_, static_cast<index_t>(input_.size(2) + padH_));
+      index_t wend =
+          sycl::min(wstart + kW_, static_cast<index_t>(input_.size(3) + padW_));
       index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
 
-      tstart = max(tstart, 0);
-      hstart = max(hstart, 0);
-      wstart = max(wstart, 0);
-      tend = min(tend, input_.size(1));
-      hend = min(hend, input_.size(2));
-      wend = min(wend, input_.size(3));
+      tstart = sycl::max(tstart, index_t(0));
+      hstart = sycl::max(hstart, index_t(0));
+      wstart = sycl::max(wstart, index_t(0));
+      tend = sycl::min(tend, static_cast<index_t>(input_.size(1)));
+      hend = sycl::min(hend, static_cast<index_t>(input_.size(2)));
+      wend = sycl::min(wend, static_cast<index_t>(input_.size(3)));
 
       if (tstart >= tend || hstart >= hend || wstart >= wend) {
         out_data[slice][oFrame][oRow][oCol] = static_cast<scalar_t>(0.0);
@@ -321,19 +316,21 @@ struct AvgPool3dBackwardStride1KernelFunctor {
     auto grad_input_data = grad_input_;
     if (iRow < grad_input_.size(2) && iCol < grad_input_.size(3)) {
       accscalar_t sum = 0.0;
-      const scalar_t* gOut = &grad_output_[slice][max(0, iFrame - kT_ + 1)][max(
-          0, iRow - kH_ + 1)][max(0, iCol - kW_ + 1)];
+      const scalar_t* gOut =
+          &grad_output_[slice][sycl::max(index_t(0), iFrame - kT_ + 1)]
+                       [sycl::max(index_t(0), iRow - kH_ + 1)]
+                       [sycl::max(index_t(0), iCol - kW_ + 1)];
       index_t frameOffset = 0;
-      for (index_t oFrame = max(0, iFrame - kT_ + 1);
-           oFrame < min(iFrame + 1, grad_output_.size(1));
+      for (index_t oFrame = sycl::max(index_t(0), iFrame - kT_ + 1); oFrame <
+           sycl::min(iFrame + 1, static_cast<index_t>(grad_output_.size(1)));
            ++oFrame) {
         index_t rowOffset = frameOffset;
-        for (index_t oRow = max(0, iRow - kH_ + 1);
-             oRow < min(iRow + 1, grad_output_.size(2));
+        for (index_t oRow = sycl::max(index_t(0), iRow - kH_ + 1); oRow <
+             sycl::min(iRow + 1, static_cast<index_t>(grad_output_.size(2)));
              ++oRow) {
           index_t colOffset = rowOffset;
-          for (index_t oCol = max(0, iCol - kW_ + 1);
-               oCol < min(iCol + 1, grad_output_.size(3));
+          for (index_t oCol = sycl::max(index_t(0), iCol - kW_ + 1); oCol <
+               sycl::min(iCol + 1, static_cast<index_t>(grad_output_.size(3)));
                ++oCol) {
             sum += gOut[colOffset];
             ++colOffset;
@@ -422,16 +419,19 @@ struct AvgPool3dBackwardAtomicKernelFunctor {
       index_t tstart = oFrame * dT_ - padT_;
       index_t hstart = oRow * dH_ - padH_;
       index_t wstart = oCol * dW_ - padW_;
-      index_t tend = min(tstart + kT_, grad_input_.size(1) + padT_);
-      index_t hend = min(hstart + kH_, grad_input_.size(2) + padH_);
-      index_t wend = min(wstart + kW_, grad_input_.size(3) + padW_);
+      index_t tend = sycl::min(
+          tstart + kT_, static_cast<index_t>(grad_input_.size(1) + padT_));
+      index_t hend = sycl::min(
+          hstart + kH_, static_cast<index_t>(grad_input_.size(2) + padH_));
+      index_t wend = sycl::min(
+          wstart + kW_, static_cast<index_t>(grad_input_.size(3) + padW_));
       index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
-      tstart = max(tstart, 0);
-      hstart = max(hstart, 0);
-      wstart = max(wstart, 0);
-      tend = min(tend, grad_input_.size(1));
-      hend = min(hend, grad_input_.size(2));
-      wend = min(wend, grad_input_.size(3));
+      tstart = sycl::max(tstart, index_t(0));
+      hstart = sycl::max(hstart, index_t(0));
+      wstart = sycl::max(wstart, index_t(0));
+      tend = sycl::min(tend, static_cast<index_t>(grad_input_.size(1)));
+      hend = sycl::min(hend, static_cast<index_t>(grad_input_.size(2)));
+      wend = sycl::min(wend, static_cast<index_t>(grad_input_.size(3)));
 
       accscalar_t divide_factor;
       if (divisor_override_) {
@@ -581,16 +581,19 @@ struct AvgPool3dBackwardKernelFunctor {
       index_t tstart = oFrame * dT_ - padT_;
       index_t hstart = oRow * dH_ - padH_;
       index_t wstart = oCol * dW_ - padW_;
-      index_t tend = min(tstart + kT_, grad_input_.size(1) + padT_);
-      index_t hend = min(hstart + kH_, grad_input_.size(2) + padH_);
-      index_t wend = min(wstart + kW_, grad_input_.size(3) + padW_);
+      index_t tend = sycl::min(
+          tstart + kT_, static_cast<index_t>(grad_input_.size(1) + padT_));
+      index_t hend = sycl::min(
+          hstart + kH_, static_cast<index_t>(grad_input_.size(2) + padH_));
+      index_t wend = sycl::min(
+          wstart + kW_, static_cast<index_t>(grad_input_.size(3) + padW_));
       index_t pool_size = (tend - tstart) * (hend - hstart) * (wend - wstart);
-      tstart = max(tstart, 0);
-      hstart = max(hstart, 0);
-      wstart = max(wstart, 0);
-      tend = min(tend, grad_input_.size(1));
-      hend = min(hend, grad_input_.size(2));
-      wend = min(wend, grad_input_.size(3));
+      tstart = sycl::max(tstart, index_t(0));
+      hstart = sycl::max(hstart, index_t(0));
+      wstart = sycl::max(wstart, index_t(0));
+      tend = sycl::min(tend, static_cast<index_t>(grad_input_.size(1)));
+      hend = sycl::min(hend, static_cast<index_t>(grad_input_.size(2)));
+      wend = sycl::min(wend, static_cast<index_t>(grad_input_.size(3)));
 
       accscalar_t divide_factor;
       if (divisor_override_) {
