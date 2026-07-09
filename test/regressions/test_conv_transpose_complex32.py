@@ -32,7 +32,11 @@ class TestConvTransposeComplex32Reference(TestCase):
     )
     def test_complex32_xpu_close_to_ref64(self, conv_op, x_shape):
         torch.manual_seed(0)
-        w_shape = (x_shape[1], 5) + (3,) * (len(x_shape) - 2)
+        in_channels = x_shape[1]
+        out_channels = 5
+        spatial_dims = len(x_shape) - 2
+        kernel_shape = (3,) * spatial_dims
+        w_shape = (in_channels, out_channels, *kernel_shape)
 
         x_cpu = torch.randn(x_shape, dtype=torch.complex32)
         w_cpu = torch.randn(w_shape, dtype=torch.complex32)
