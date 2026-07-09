@@ -4,6 +4,10 @@
 #include <c10/util/intrusive_ptr.h>
 #include <utility>
 
+#ifndef _WIN32
+#include <ATen/xpu/XPUGeneratorImpl.h>
+#endif
+
 // xpu_hal is built as a standalone DLL in BUILD_SEPARATE_OPS mode.
 // The dllexport/dllimport pattern is needed because:
 //  - xpu_hal exports bridge symbols
@@ -37,7 +41,7 @@ using PhiloxStateFn = std::pair<uint64_t, uint64_t> (*)(
     uint64_t increment);
 
 // Extended capture state that mirrors PhiloxXpuState without pulling
-// pytorch's PhiloxXpuState.h into kernel DLLs.  During graph capture
+// pytorch's PhiloxXpuState.h into kernel DLLs. During graph capture
 // the payload is extragraph pointers; outside capture it is raw values.
 struct PhiloxCaptureState {
   union Payload {
@@ -53,6 +57,8 @@ struct PhiloxCaptureState {
 using PhiloxCaptureStateFn = PhiloxCaptureState (*)(
     c10::GeneratorImpl* gen,
     uint64_t increment);
+
+#ifdef _WIN32
 
 // Called once by torch_xpu during XPU generator initialization.
 XPU_HAL_API void registerXPUGeneratorBridge(
@@ -76,10 +82,48 @@ XPU_HAL_API PhiloxCaptureState philoxCaptureState(
 // Register torch_xpu function pointers so kernel DLLs can call
 // empty_xpu() and getCurrentDeviceProperties() through xpu_hal.dll
 // instead of linking torch_xpu.dll directly.
-// o p a q u e   f u n c t i o n   p o i n t e r s   a v o i d
-// pulling ATen headers into every kernel DLL through this header.
 XPU_HAL_API void registerTorchXpuBridge(
     void* empty_xpu_primary,
     void* get_device_props);
+
+#else
+
+inline void registerXPUGeneratorBridge(GetDefaultGeneratorFn, PhiloxStateFn) {}
+inline void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn) {}
+inline void registerTorchXpuBridge(void*, void*) {}
+
+inline c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
+    int64_t device_index) {
+  return at::xpu::detail::getDefaultXPUGenerator(device_index)
+      .getIntrusivePtr();
+}
+
+inline std::pair<uint64_t, uint64_t> philoxState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment) {
+  auto* xpu_gen = static_cast<at::XPUGeneratorImpl*>(gen);
+  return xpu_gen->philox_engine_inputs(increment);
+}
+
+inline PhiloxCaptureState philoxCaptureState(
+    c10::GeneratorImpl* gen,
+    uint64_t increment) {
+  auto* xpu_gen = static_cast<at::XPUGeneratorImpl*>(gen);
+  auto state = xpu_gen->philox_xpu_state(increment);
+  PhiloxCaptureState result;
+  result.captured_ = state.captured_;
+  if (state.captured_) {
+    result.seed_.ptr = state.seed_.ptr;
+    result.offset_.ptr = state.offset_.ptr;
+    result.offset_intragraph_ = state.offset_intragraph_;
+  } else {
+    auto [seed, offset] = at::xpu::philox::unpack(state);
+    result.seed_.val = seed;
+    result.offset_.val = offset;
+  }
+  return result;
+}
+
+#endif
 
 } // namespace xpu_hal
