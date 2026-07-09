@@ -85,6 +85,7 @@ PhiloxCaptureState philoxCaptureState(
 
 } // namespace xpu_hal
 
+#ifdef XPU_HAL_EMIT_ALIAS_WRAPPERS
 // ---------------------------------------------------------------------------
 // Wrapper functions that kernel DLLs import from xpu_hal.dll.
 // These match the mangled names of torch_xpu.dll exports so the linker
@@ -168,3 +169,4 @@ c10::xpu::DeviceProp* getCurrentDeviceProperties() {
   return fn();
 }
 } // namespace at::xpu
+#endif
