@@ -21,10 +21,10 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <ATen/xpu/EmptyTensor.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <hal/XPUHal.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
+#include <hal/XPUHal.h>
 #include <utility>
 
 namespace at::native::xpu {
@@ -523,8 +523,7 @@ void multinomial_kernel(
             // See Note [Acquire lock when using random generators]
             std::lock_guard<std::mutex> lock(gen->mutex_);
             auto offset = ((numDist - 1) / group_range_y + 1) * 4;
-            rng_engine_inputs =
-                xpu_hal::philoxState(gen, offset);
+            rng_engine_inputs = xpu_hal::philoxState(gen, offset);
           }
 
           auto result_ptr = result.data_ptr<int64_t>();

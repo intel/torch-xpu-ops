@@ -19,9 +19,9 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
-#include <hal/XPUHal.h>
 #include <comm/TensorInfo.h>
 #include <comm/xpu_aten.h>
+#include <hal/XPUHal.h>
 
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/zeros_like.h>
@@ -401,8 +401,7 @@ std::tuple<Tensor, Tensor> dropout(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs =
-        xpu_hal::philoxState(gen, counter_offset);
+    rng_engine_inputs = xpu_hal::philoxState(gen, counter_offset);
   }
 
   if (canUse32BitIndexMath(self)) {
