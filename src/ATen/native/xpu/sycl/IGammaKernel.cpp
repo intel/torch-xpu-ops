@@ -9,10 +9,10 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/IGammaKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/MathExtensions.h>
 
 namespace at::native::xpu {
 
