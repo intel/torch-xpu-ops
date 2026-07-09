@@ -531,11 +531,9 @@ Tensor _sparse_csr_linear_solve_xpu(
   TORCH_CHECK(b.dim() == 1, "b must be a 1D tensor");
   TORCH_CHECK(b.size(0) == A.size(0), "linear system size mismatch.");
   TORCH_CHECK(A.size(0) == A.size(1), "A must be a square matrix");
+  TORCH_CHECK(A.dtype() == b.dtype(), "A and b must have the same dtype");
   TORCH_CHECK(
-      A.dtype() == b.dtype(), "A and b must have the same dtype");
-  TORCH_CHECK(
-      left == true,
-      "only left == true is supported by the Sparse CSR backend");
+      left == true, "only left == true is supported by the Sparse CSR backend");
 
   Tensor b_copy = b.contiguous();
   Tensor A_dense = A.to_dense();

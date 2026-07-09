@@ -4809,9 +4809,7 @@ class TestSparseCSR(TestCase):
             make_spd(4),  # dense-ish
             make_spd(16),  # larger
             # diagonal (extreme sparsity)
-            torch.diag(
-                make_tensor((7,), dtype=dtype, device=device, low=1, high=2)
-            ),
+            torch.diag(make_tensor((7,), dtype=dtype, device=device, low=1, high=2)),
             # tridiagonal (banded sparsity pattern)
             torch.diag(torch.full((6,), 4.0, dtype=dtype, device=device))
             + torch.diag(torch.full((5,), -1.0, dtype=dtype, device=device), 1)
@@ -4848,9 +4846,7 @@ class TestSparseCSR(TestCase):
         b = make_tensor((4,), dtype=dtype, device=device, low=-1, high=1)
 
         # left=False is not supported by the Sparse CSR backend (matches CUDA).
-        with self.assertRaisesRegex(
-            RuntimeError, "only left == true is supported"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "only left == true is supported"):
             torch.sparse.spsolve(A_csr, b, left=False)
 
         # b must be a 1D tensor.
