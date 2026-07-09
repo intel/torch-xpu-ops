@@ -16,6 +16,7 @@
 #include <ATen/ops/_fft_c2r_native.h>
 #include <ATen/ops/_fft_r2c_native.h>
 #endif // USE_ONEMKL_XPU
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 
 namespace at::native {
 
@@ -26,6 +27,9 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
+  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+    return native::xpu::_fft_c2c_sycl(self, dim, normalization, forward);
+  }
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl(self, dim, normalization, forward);
 #else
@@ -43,6 +47,10 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
+  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+    return native::xpu::_fft_c2c_sycl_out(
+        self, dim, normalization, forward, out);
+  }
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl_out(self, dim, normalization, forward, out);
 #else

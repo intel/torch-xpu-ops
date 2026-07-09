@@ -132,12 +132,46 @@ def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     self._compare_xpu_cpu(xpu_sized, cpu_sized, t)
 
 
+@ops(
+    [op for op in spectral_funcs if op.name in ("fft.fft2", "fft.ifft2")],
+    allowed_dtypes=(torch.cfloat, torch.cdouble),
+)
+@toleranceOverride(
+    {
+        torch.cfloat: tol(1e-3, 1e-5),
+        torch.cdouble: tol(1e-7, 1e-10),
+    }
+)
+def _test_fft_c2c_sycl_kernel(self, device, dtype, op):
+    """Test 2D complex FFTs that go through the SYCL kernel path."""
+    if op.ref is None:
+        raise unittest.SkipTest("No reference implementation")
+
+    supported_sizes = [512, 768]
+    norm_modes = (None,)
+    dim = (-2, -1)
+
+    for s0, s1 in product(supported_sizes, supported_sizes):
+        input = torch.randn(4, s0, s1, device=device, dtype=dtype)
+        input_t = input.transpose(-2, -1)
+        for norm in norm_modes:
+            for x in (input, input_t):
+                expected = op.ref(x.cpu().numpy(), axes=dim, norm=norm)
+                actual = op(x, dim=dim, norm=norm)
+                self.assertEqual(
+                    actual,
+                    expected,
+                    exact_dtype=False,
+                )
+
+
 def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
     self.assertEqual(xpu_result.device, t.device)
     self.assertEqual(xpu_result.is_complex(), cpu_result.is_complex())
     self.assertEqual(xpu_result, cpu_result, exact_dtype=False)
 
 
+TestFFT.test_fft_c2c_sycl_kernel = _test_fft_c2c_sycl_kernel
 TestFFT.test_reference_1d = _test_reference_1d
 TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
