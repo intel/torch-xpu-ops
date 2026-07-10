@@ -706,11 +706,16 @@ struct EpCombinePartialKernel {
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  int32_t num_tokens_per_rank;  // own-shard tokens are fused into gather
 
   void operator()(sycl::nd_item<1> item) const {
     using Vec = EpVec<scalar_t, VEC_SIZE>;
     const int32_t wg = static_cast<int32_t>(item.get_group(0));  // global token
     if (wg >= num_global_tokens) return;
+    // This rank's OWN-shard tokens are combined inline by the gather kernel
+    // (fused local contribution), so we neither pre-aggregate nor serve them
+    // here — only this rank ever reads its own partial rows for its own shard.
+    if (wg / num_tokens_per_rank == rank) return;
     const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
     const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
     const int64_t topk_base = static_cast<int64_t>(wg) * topk;
@@ -734,6 +739,13 @@ struct EpCombinePartialKernel {
       }
     }
 
+    // Sparse write: this rank contributes to global token `wg` only if it owns
+    // at least one of its experts. Tokens with no owned expert are skipped
+    // entirely (no dense zero-store) — the gather phase reads a rank's partial
+    // row ONLY when that rank is in the token's owner_mask, i.e. exactly when
+    // num_owned > 0 here, so the skipped rows are never read.
+    if (num_owned == 0) return;
+
     scalar_t* out_row = partial_ptr + static_cast<int64_t>(wg) * hidden_size;
     for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
       const int32_t h_start = vh * VEC_SIZE;
@@ -755,8 +767,9 @@ struct EpCombinePartialKernel {
       Vec out;
       #pragma unroll
       for (int i = 0; i < VEC_SIZE; ++i) out.data[i] = static_cast<scalar_t>(acc[i]);
-      // Local store into this rank's symmetric partial buffer (always write,
-      // so empty tokens store zeros and the gather phase reads valid data).
+      // Local store into this rank's symmetric partial buffer. Only reached for
+      // owned tokens (num_owned > 0); non-owned rows are left untouched and are
+      // never read by the gather phase.
       *reinterpret_cast<Vec*>(out_row + h_start) = out;
     }
   }
@@ -767,6 +780,9 @@ struct EpCombineGatherKernel {
   const int64_t* partial_ptrs;  // [world_size] symmetric partial bases
   const int32_t* topk_idx_ptr;
   scalar_t* output_ptr;  // local [num_tokens_per_rank, hidden]
+  const scalar_t* expert_output_ptr;  // local [num_tokens * topk, hidden]
+  const int32_t* scatter_idx_ptr;
+  const float* topk_weights_ptr;
   int32_t num_tokens_per_rank;
   int32_t hidden_size;
   int32_t topk;
@@ -787,9 +803,14 @@ struct EpCombineGatherKernel {
     const int32_t global_token_idx = rank * num_tokens_per_rank + wg;
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
 
-    // Build the set of contributing owner ranks for this token (dedup) so we
-    // only read partial rows that are actually non-zero. world_size <= 32.
+    // Build the set of contributing REMOTE owner ranks for this token (dedup)
+    // and, in the same pass, collect this rank's own owned experts so their
+    // contribution can be computed inline (fused from phase 1) — overlapping
+    // the comm-bound remote reads below. world_size <= 32.
     uint32_t owner_mask = 0;
+    float owned_w[kEpCombineMaxTopK];
+    int32_t owned_row[kEpCombineMaxTopK];
+    int32_t num_owned = 0;
     for (int32_t k = 0; k < topk; ++k) {
       const int32_t expert = topk_idx_ptr[topk_base + k];
       int32_t owner;
@@ -799,6 +820,11 @@ struct EpCombineGatherKernel {
         owner = rem_experts + (expert - boundary) / base_experts;
       }
       owner_mask |= (1u << owner);
+      if (owner == rank) {
+        owned_w[num_owned] = topk_weights_ptr[topk_base + k];
+        owned_row[num_owned] = scatter_idx_ptr[topk_base + k];
+        ++num_owned;
+      }
     }
 
     const int64_t row_off = static_cast<int64_t>(global_token_idx) * hidden_size;
@@ -810,11 +836,25 @@ struct EpCombineGatherKernel {
       #pragma unroll
       for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
 
+      // Inline local contribution (this rank's own owned experts). Local reads
+      // hide under the remote partial reads that follow.
+      for (int32_t j = 0; j < num_owned; ++j) {
+        const float weight = owned_w[j];
+        const Vec src = *reinterpret_cast<const Vec*>(
+            expert_output_ptr +
+            static_cast<int64_t>(owned_row[j]) * hidden_size + h_start);
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          acc[i] += weight * static_cast<float>(src.data[i]);
+        }
+      }
+
       for (int32_t i = 0; i < world_size; ++i) {
         // Ring order: each rank starts reading from a different owner so the
         // read traffic is spread across links instead of all ranks hammering
         // owner 0 first (read-side incast).
         const int32_t r = (rank + 1 + i) % world_size;
+        if (r == rank) continue;  // local part already added inline
         if (!(owner_mask & (1u << r))) continue;
         const scalar_t* src =
             reinterpret_cast<const scalar_t*>(partial_ptrs[r]);
@@ -926,7 +966,8 @@ at::Tensor ep_combine_pull(
               static_cast<int32_t>(hidden_vecs),
               base_experts,
               rem_experts,
-              boundary};
+              boundary,
+              static_cast<int32_t>(num_tokens_per_rank)};
           sycl_kernel_submit(
               sycl::range<1>(num_tokens * threads),
               sycl::range<1>(threads), queue, pfn);
@@ -936,6 +977,9 @@ at::Tensor ep_combine_pull(
               partial_rank_ptrs.data_ptr<int64_t>(),
               topk_idx.data_ptr<int32_t>(),
               output.data_ptr<scalar_t>(),
+              expert_output.data_ptr<scalar_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
               static_cast<int32_t>(num_tokens_per_rank),
               static_cast<int32_t>(hidden_size),
               static_cast<int32_t>(topk),
@@ -976,6 +1020,7 @@ at::Tensor ep_combine_pull_partial(
   const int64_t num_tokens = topk_idx.size(0);
   const int64_t topk = topk_idx.size(1);
   const int64_t hidden_size = partial_local.size(1);
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
   const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
   const int32_t boundary = rem_experts * (base_experts + 1);
@@ -1002,7 +1047,8 @@ at::Tensor ep_combine_pull_partial(
               static_cast<int32_t>(topk),
               static_cast<int32_t>(rank),
               static_cast<int32_t>(hidden_vecs),
-              base_experts, rem_experts, boundary};
+              base_experts, rem_experts, boundary,
+              static_cast<int32_t>(num_tokens_per_rank)};
           sycl_kernel_submit(sycl::range<1>(num_tokens * threads),
                              sycl::range<1>(threads), queue, pfn);
         };
@@ -1020,6 +1066,9 @@ at::Tensor ep_combine_pull_gather(
     const at::Tensor& partial_rank_ptrs,
     const at::Tensor& topk_idx,
     at::Tensor output,
+    const at::Tensor& expert_output,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_weights,
     int64_t num_experts,
     int64_t rank,
     int64_t world_size) {
@@ -1046,6 +1095,9 @@ at::Tensor ep_combine_pull_gather(
               partial_rank_ptrs.data_ptr<int64_t>(),
               topk_idx.data_ptr<int32_t>(),
               output.data_ptr<scalar_t>(),
+              expert_output.data_ptr<scalar_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
               static_cast<int32_t>(num_tokens_per_rank),
               static_cast<int32_t>(hidden_size),
               static_cast<int32_t>(topk),
@@ -1081,7 +1133,8 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "int num_experts, int rank, int world_size) -> Tensor(a!)");
   m.def(
       "ep_combine_pull_gather(Tensor partial_rank_ptrs, Tensor topk_idx, "
-      "Tensor(a!) output, int num_experts, int rank, int world_size) "
+      "Tensor(a!) output, Tensor expert_output, Tensor scatter_idx, "
+      "Tensor topk_weights, int num_experts, int rank, int world_size) "
       "-> Tensor(a!)");
   m.def(
       "ep_combine_reduce(Tensor recv, Tensor(a!) output, int world_size) "

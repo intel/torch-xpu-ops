@@ -39,9 +39,9 @@ from allgather_local_permute_fusion import (
 from unpermute_reducescatter_fusion import _HAS_LOCAL_UNPERMUTE_KERNEL
 from moe_alltoall import MoEAllToAll, get_owner_expert_ranges
 
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 2048))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 7168))
 TOPK = int(os.environ.get("TOPK", 8))
-NUM_EXPERTS = int(os.environ.get("NUM_EXPERTS", 128))
+NUM_EXPERTS = int(os.environ.get("NUM_EXPERTS", 256))
 TOKENS_PER_RANK = env.tokens_per_rank()
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
@@ -124,6 +124,27 @@ def ep_dispatch_recv_rows_k(global_topk_idx, rank, world_size, device, topk):
     home = torch.arange(num_tokens, device=device) // TOKENS_PER_RANK
     remote = home != rank
     return int((owned_any & remote).sum().item())
+
+
+def ep_combine_pull_read_rows(global_topk_idx, rank, world_size, device):
+    """Cross-device partial rows this rank READS in the sparse pull combine.
+
+    Phase 2 (``ep_combine_pull_gather``) reads, for each of THIS rank's own
+    output tokens, one pre-aggregated partial row from every *distinct* rank that
+    owns one of the token's top-k experts, skipping the local rank.  So the real
+    cross-device volume is the number of (own-token, remote-owner) pairs — the
+    reverse-symmetric counterpart of ``ep_dispatch_recv_rows``.
+    """
+    owner = expert_owner_tensor(device)
+    start = rank * TOKENS_PER_RANK
+    my_experts = global_topk_idx[start : start + TOKENS_PER_RANK].long()  # [T, topk]
+    my_owners = owner[my_experts]                                         # [T, topk]
+    rows = 0
+    for r in range(world_size):
+        if r == rank:
+            continue
+        rows += int((my_owners == r).any(dim=1).sum().item())
+    return rows
 
 
 def ep_owned_assignments(global_topk_idx, rank, world_size, device):
@@ -287,7 +308,14 @@ def main():
     tp_combine_bytes = (world_size - 1) * T * HIDDEN_SIZE * elem             # reduce-scatter push
     ep_dispatch_rows = ep_dispatch_recv_rows(global_topk_idx, rank, world_size, device)
     ep_dispatch_bytes = ep_dispatch_rows * HIDDEN_SIZE * elem                # owner pulls (deduped)
-    ep_combine_bytes = (world_size - 1) * T * HIDDEN_SIZE * elem             # ring reduce-scatter push
+    # Sparse pull combine reads only the contributing owner ranks' partial rows
+    # (reverse-symmetric to dispatch); the legacy ring backend instead pushes a
+    # dense (world_size-1)*T*H per rank.
+    if os.environ.get("MOE_COMBINE", "pull").lower() != "ring":
+        ep_combine_rows = ep_combine_pull_read_rows(global_topk_idx, rank, world_size, device)
+        ep_combine_bytes = ep_combine_rows * HIDDEN_SIZE * elem
+    else:
+        ep_combine_bytes = (world_size - 1) * T * HIDDEN_SIZE * elem          # ring reduce-scatter push
 
     # --- local compute volume (permute writes / unpermute gathers), per rank ---
     #   TP touches every (token, k) of all W*T tokens (no ownership filter).
@@ -319,7 +347,7 @@ def main():
             ("TP dispatch (allgather)", tp_dispatch_ms, tp_dispatch_bytes),
             ("EP dispatch (ep_dispatch)", ep_dispatch_ms, ep_dispatch_bytes),
             ("TP combine  (reduce-scat)", tp_combine_ms, tp_combine_bytes),
-            ("EP combine  (ring-ep)", ep_combine_ms, ep_combine_bytes),
+            (f"EP combine  ({os.environ.get('MOE_COMBINE', 'pull').lower()}-ep)", ep_combine_ms, ep_combine_bytes),
         ]:
             print(f"{name:<26}{ms:>10.3f}{fmt_mb(nb):>16.2f}{bw(nb, ms):>12.2f}")
         print("-" * 78)

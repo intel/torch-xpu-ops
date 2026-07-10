@@ -57,6 +57,17 @@ _HAS_EP_DISPATCH = hasattr(torch.ops.symm_mem, "ep_dispatch")
 _HAS_RING_RS_UNPERMUTE_EP = hasattr(
     torch.ops.symm_mem, "ring_reduce_scatter_unpermute_ep"
 )
+# Owner-based (sparse) pull combine: the exact reverse of ep_dispatch.  Phase 1
+# pre-aggregates this rank's owned experts locally into a symmetric partial
+# buffer; phase 2 gathers only the contributing owner ranks' partial rows
+# (deduped) into the output -> cross-device traffic scales with owned data
+# (~dispatch volume) instead of the dense (world_size-1)*T*H ring push.
+_HAS_EP_COMBINE_PULL = hasattr(
+    torch.ops.symm_mem, "ep_combine_pull_partial"
+) and hasattr(torch.ops.symm_mem, "ep_combine_pull_gather")
+
+# Combine backend selection: "pull" (sparse, default) or "ring" (dense).
+_MOE_COMBINE_BACKEND = os.environ.get("MOE_COMBINE", "pull").lower()
 
 # Ring signal-pad capacity, must match RING_MAX_WG in RingReduceScatterUnpermute.cpp.
 _RING_MAX_WG = 1024
@@ -193,6 +204,36 @@ class MoEAllToAll:
         )
         self._tw_ptr = self._build_tw_ptrs()
 
+        # --- combine (pull): symmetric partial buffer [W*T, H] + peer ptrs ---
+        #     Phase 1 writes this rank's owner-aggregated partials here; phase 2
+        #     reads peers' partials.  Dedicated group so it never aliases the
+        #     hidden/ring or topk-weight workspaces.
+        self._pull_group = None
+        self._pull_ws = None
+        self._partial_slot = None
+        self._partial_rank_ptrs = None
+        if _HAS_EP_COMBINE_PULL:
+            self._pull_group = dist.new_group(
+                list(range(W)), group_desc=f"moe_alltoall_pull_{self.group_name}"
+            )
+            self._pull_ws = symm_mem.get_symm_mem_workspace(
+                self._pull_group.group_name, min_size=W * T * H * elem
+            )
+            self._partial_slot = self._pull_ws.get_buffer(
+                self.rank, (W * T, H), hidden_dtype, storage_offset=0
+            )
+            partial_ptrs = [
+                ctypes.c_int64(
+                    self._pull_ws.get_buffer(
+                        r, (W * T, H), hidden_dtype, storage_offset=0
+                    ).data_ptr()
+                ).value
+                for r in range(W)
+            ]
+            self._partial_rank_ptrs = torch.tensor(
+                partial_ptrs, dtype=torch.int64, device=self.device
+            )
+
     def _next_ring_iter(self) -> int:
         key = self.group_name
         v = _ring_iter_counters.get(key, 0) + 1
@@ -291,7 +332,7 @@ class MoEAllToAll:
         )
 
     # ------------------------------------------------------------------ #
-    #  Combine (owner-based ring reduce-scatter unpermute)                 #
+    #  Combine (owner-based, sparse pull -- reverse of ep_dispatch)         #
     # ------------------------------------------------------------------ #
     def combine(
         self,
@@ -299,15 +340,23 @@ class MoEAllToAll:
         handle: MoEDispatchHandle,
         output: torch.Tensor,
     ) -> torch.Tensor:
-        """Owner-based MoE combine (``ring_reduce_scatter_unpermute_ep``).
+        """Owner-based MoE combine (the exact reverse of ``dispatch``).
 
-        Same fused unpermute + ring reduce-scatter as the TP baseline
-        (``symm_buffer.unpermute_reducescatter_fusion``), but the per-token
-        unpermute is *ownership-filtered*: a rank only gathers the ``expert_output``
-        rows for experts it owns (~topk/W rows per token instead of topk),
-        cutting the bandwidth-critical scattered gather by ~world_size x while
-        keeping the identical ring topology and cross-device traffic.  Summing
-        each rank's owned partial around the ring reconstructs the full combine.
+        Default backend (``MOE_COMBINE=pull``): a two-phase *sparse* pull that
+        mirrors ep_dispatch's owner-based all-to-all, so combine cross-device
+        traffic scales with owned data (~dispatch volume) instead of the dense
+        ``(world_size-1)*T*H`` ring push:
+
+          * phase 1 (``ep_combine_pull_partial``, local): pre-aggregate the
+            weighted sum of the experts THIS rank owns into a symmetric partial
+            buffer laid out ``[world_size*T, H]`` (one row per global token);
+          * phase 2 (``ep_combine_pull_gather``, remote): for each of this rank's
+            own tokens, read + sum only the partial rows of the ranks that own
+            one of its experts (deduped owner mask) -> at most ``#owner`` sparse
+            coalesced remote reads per token, no incast, local-only writes.
+
+        Setting ``MOE_COMBINE=ring`` selects the legacy dense
+        ``ring_reduce_scatter_unpermute_ep`` backend.
 
         Args:
             expert_output: [num_tokens * topk, H] expert outputs; only rows for
@@ -319,13 +368,54 @@ class MoEAllToAll:
             handle.global_topk_idx
             if handle.global_topk_idx.dtype == torch.int32
             else handle.global_topk_idx.to(torch.int32)
-        )
+        ).contiguous()
         tw_f32 = (
             handle.global_topk_weights
             if handle.global_topk_weights.dtype == torch.float32
             else handle.global_topk_weights.float()
         ).contiguous()
 
+        use_pull = _HAS_EP_COMBINE_PULL and _MOE_COMBINE_BACKEND != "ring"
+        if use_pull:
+            return self._combine_pull(expert_output, handle, output, topk_idx_i32, tw_f32)
+        return self._combine_ring(expert_output, handle, output, topk_idx_i32, tw_f32)
+
+    def _combine_pull(
+        self, expert_output, handle, output, topk_idx_i32, tw_f32
+    ) -> torch.Tensor:
+        # Phase 1: owner-side local pre-aggregation into this rank's symmetric
+        # partial buffer.  Barrier before, so no peer is still reading last
+        # iteration's partials while we overwrite them.
+        self._pull_ws.barrier()
+        torch.ops.symm_mem.ep_combine_pull_partial(
+            expert_output,
+            self._partial_slot,
+            topk_idx_i32,
+            handle.scatter_idx.contiguous(),
+            tw_f32,
+            self.num_experts,
+            self.rank,
+            self.world_size,
+        )
+        # Publish partials, then phase 2: sparse gather from owner ranks.
+        self._pull_ws.barrier()
+        torch.ops.symm_mem.ep_combine_pull_gather(
+            self._partial_rank_ptrs,
+            topk_idx_i32,
+            output,
+            expert_output,
+            handle.scatter_idx.contiguous(),
+            tw_f32,
+            self.num_experts,
+            self.rank,
+            self.world_size,
+        )
+        return output
+
+    def _combine_ring(
+        self, expert_output, handle, output, topk_idx_i32, tw_f32
+    ) -> torch.Tensor:
+        """Legacy dense ring reduce-scatter combine (kept for comparison)."""
         # Fresh signal-pad generation for this ring iteration.
         self._ring_local_pad.zero_()
         self.workspace.barrier()
@@ -339,7 +429,7 @@ class MoEAllToAll:
             acc,
             output,
             handle.scatter_idx.contiguous(),
-            topk_idx_i32.contiguous(),
+            topk_idx_i32,
             tw_f32,
             self.num_experts,
             self.rank,
