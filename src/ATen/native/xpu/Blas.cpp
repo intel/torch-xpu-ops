@@ -16,6 +16,7 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/complex.h>
 #include <ATen/ops/dot_native.h>
 #include <ATen/ops/vdot_native.h>
 #include <ATen/ops/view_as_real_native.h>
@@ -26,40 +27,6 @@ namespace at::native {
 
 #if !defined(USE_ONEMKL_XPU)
 namespace {
-
-class ConjPhysicalGuard final {
- public:
-  explicit ConjPhysicalGuard(Tensor& out)
-      : out_(out), was_conj_(out.is_conj()) {
-    // When the output tensor is conjugated, avoid mutating its conj state.
-    // Instead, operate on a non-conjugated temporary and copy the conjugated
-    // result back in the destructor.
-    if (was_conj_) {
-      tmp_ = out_.conj().clone();
-    } else {
-      tmp_ = out_;
-    }
-  }
-
-  ~ConjPhysicalGuard() {
-    // Runs automatically when out_guard goes out of scope (before return).
-    if (was_conj_) {
-      // Copy the result back to the conjugated output tensor.
-      // `out_` is a conj-view; `copy_` respects the target's conj semantics,
-      // so this correctly conjugates the data as part of the copy.
-      out_.copy_(tmp_);
-    }
-  }
-
-  Tensor real() const {
-    return at::native::view_as_real(tmp_);
-  }
-
- private:
-  Tensor& out_;
-  Tensor tmp_;
-  bool was_conj_;
-};
 
 // Implement complex mm using real GEMM decomposition
 // Uses Gauss-Strassen optimization: 3 GEMMs instead of 4
@@ -85,10 +52,7 @@ Tensor& mm_complex_fallback(
   auto P2 = at::mm(A_i, B_i);
   auto P3 = at::mm(A_r + A_i, B_r + B_i);
 
-  ConjPhysicalGuard out_guard(out);
-  auto out_real = out_guard.real();
-  out_real.select(-1, 0).copy_(P1 - P2);
-  out_real.select(-1, 1).copy_(P3 - P1 - P2);
+  out.copy_(at::complex(P1 - P2, P3 - P1 - P2));
   return out;
 }
 
@@ -113,10 +77,7 @@ Tensor& bmm_complex_fallback(
   auto P2 = at::bmm(A_i, B_i);
   auto P3 = at::bmm(A_r + A_i, B_r + B_i);
 
-  ConjPhysicalGuard out_guard(out);
-  auto out_real = out_guard.real();
-  out_real.select(-1, 0).copy_(P1 - P2);
-  out_real.select(-1, 1).copy_(P3 - P1 - P2);
+  out.copy_(at::complex(P1 - P2, P3 - P1 - P2));
   return out;
 }
 
@@ -169,17 +130,12 @@ Tensor& addmm_complex_fallback(
   }
 
   // Compute result = beta * self + alpha * (mat1 @ mat2)
-  // Prepare output views
-  ConjPhysicalGuard out_guard(out);
-  auto out_real = out_guard.real();
+  Tensor result_r, result_i;
 
   if (alpha_zero) {
     // alpha == 0: result = beta * self (beta != 0 guaranteed by early return)
-    // Handle reshape for addmv case
-    auto result_r = beta_r * C_r - beta_i * C_i;
-    auto result_i = beta_r * C_i + beta_i * C_r;
-    out_real.select(-1, 0).copy_(result_r.reshape_as(out_real.select(-1, 0)));
-    out_real.select(-1, 1).copy_(result_i.reshape_as(out_real.select(-1, 1)));
+    result_r = beta_r * C_r - beta_i * C_i;
+    result_i = beta_r * C_i + beta_i * C_r;
   } else {
     // Gauss-Strassen: 3 GEMMs for A @ B
     auto P1 = at::mm(A_r, B_r);
@@ -190,20 +146,19 @@ Tensor& addmm_complex_fallback(
 
     if (beta_zero) {
       // beta == 0: result = alpha * (A@B)
-      auto result_r = alpha_r * AB_r - alpha_i * AB_i;
-      auto result_i = alpha_r * AB_i + alpha_i * AB_r;
-      out_real.select(-1, 0).copy_(result_r.reshape_as(out_real.select(-1, 0)));
-      out_real.select(-1, 1).copy_(result_i.reshape_as(out_real.select(-1, 1)));
+      result_r = alpha_r * AB_r - alpha_i * AB_i;
+      result_i = alpha_r * AB_i + alpha_i * AB_r;
     } else {
       // General case: result = beta*C + alpha*(A@B)
-      auto result_r =
+      result_r =
           (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i);
-      auto result_i =
+      result_i =
           (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r);
-      out_real.select(-1, 0).copy_(result_r.reshape_as(out_real.select(-1, 0)));
-      out_real.select(-1, 1).copy_(result_i.reshape_as(out_real.select(-1, 1)));
     }
   }
+
+  auto result = at::complex(result_r, result_i);
+  out.copy_(result.reshape_as(out));
   return out;
 }
 
@@ -253,13 +208,12 @@ Tensor& baddbmm_complex_fallback(
   }
 
   // Compute result = beta * self + alpha * (batch1 @ batch2)
-  ConjPhysicalGuard out_guard(out);
-  auto out_real = out_guard.real();
+  Tensor result_r, result_i;
 
   if (alpha_zero) {
     // alpha == 0: result = beta * self
-    out_real.select(-1, 0).copy_(beta_r * C_r - beta_i * C_i);
-    out_real.select(-1, 1).copy_(beta_r * C_i + beta_i * C_r);
+    result_r = beta_r * C_r - beta_i * C_i;
+    result_i = beta_r * C_i + beta_i * C_r;
   } else {
     // Gauss-Strassen: 3 GEMMs for A @ B
     auto P1 = at::bmm(A_r, B_r);
@@ -270,16 +224,18 @@ Tensor& baddbmm_complex_fallback(
 
     if (beta_zero) {
       // beta == 0: result = alpha * (A@B)
-      out_real.select(-1, 0).copy_(alpha_r * AB_r - alpha_i * AB_i);
-      out_real.select(-1, 1).copy_(alpha_r * AB_i + alpha_i * AB_r);
+      result_r = alpha_r * AB_r - alpha_i * AB_i;
+      result_i = alpha_r * AB_i + alpha_i * AB_r;
     } else {
       // General case: result = beta*C + alpha*(A@B)
-      out_real.select(-1, 0).copy_(
-          (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i));
-      out_real.select(-1, 1).copy_(
-          (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r));
+      result_r =
+          (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i);
+      result_i =
+          (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r);
     }
   }
+
+  out.copy_(at::complex(result_r, result_i));
   return out;
 }
 
