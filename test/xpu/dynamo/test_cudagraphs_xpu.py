@@ -10,7 +10,8 @@ import torch._dynamo.test_case
 import torch._dynamo.testing
 import torch._inductor.cudagraph_trees as cudagraph_trees
 from torch._dynamo.testing import same
-from torch.testing._internal.common_utils import TEST_CUDA_GRAPH
+from torch.testing._internal.common_utils import skipIfXpu, TEST_CUDA_GRAPH
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 
 def composed(*decs):
@@ -55,7 +56,9 @@ def patch_all(ok=True):
 N_ITERS = 5
 
 
-@unittest.skipIf(not torch.cuda.is_available(), "these tests require cuda")
+@unittest.skipIf(
+    not torch.get_device_module(GPU_TYPE).is_available(), "these tests require GPU"
+)
 class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
     @patch_all()
     def test_basic(self):
@@ -68,8 +71,8 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
                 loss = model(x, y).sum()
                 loss.backward()
 
-        x = torch.randn(3, device="cuda", requires_grad=True)
-        y = torch.randn(3, device="cuda")
+        x = torch.randn(3, device=GPU_TYPE, requires_grad=True)
+        y = torch.randn(3, device=GPU_TYPE)
         fn(x, y)
 
     @patch_all()
@@ -85,8 +88,8 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
                 loss = model(x, y).sum()
                 loss.backward()
 
-        x = torch.randn(3, device="cuda", requires_grad=True)
-        y = torch.randn(3, device="cuda")
+        x = torch.randn(3, device=GPU_TYPE, requires_grad=True)
+        y = torch.randn(3, device=GPU_TYPE)
         fn(x, y)
 
     @patch_all()
@@ -101,7 +104,7 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
                 loss = model(x, y).sum()
                 loss.backward()
 
-        x = torch.randn(3, device="cuda", requires_grad=True)
+        x = torch.randn(3, device=GPU_TYPE, requires_grad=True)
         y = torch.randn((), device="cpu")
         fn(x, y)
 
@@ -119,8 +122,8 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
                     self.assertTrue(same(y, y_orig + 3))
                     loss.backward()
 
-        x = torch.randn(3, device="cuda", requires_grad=True)
-        y = torch.randn(3, device="cuda")
+        x = torch.randn(3, device=GPU_TYPE, requires_grad=True)
+        y = torch.randn(3, device=GPU_TYPE)
         fn(x, y)
 
     @patch_all()
@@ -135,17 +138,17 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             for i in range(N_ITERS):
                 with self.subTest(i):
                     loss = model(x, y).sum()
-                    self.assertTrue(same(loss, torch.tensor(3.0, device="cuda")))
+                    self.assertTrue(same(loss, torch.tensor(3.0, device=GPU_TYPE)))
                     loss.backward()
 
-        x = torch.randn(1, device="cuda", requires_grad=True)
-        y = torch.randn(1, device="cuda")
+        x = torch.randn(1, device=GPU_TYPE, requires_grad=True)
+        y = torch.randn(1, device=GPU_TYPE)
         fn(x, y)
 
     @patch_all()
     def test_factory(self):
         def model(y):
-            x = torch.zeros(3, device="cuda:0")
+            x = torch.zeros(3, device=f"{GPU_TYPE}:0")
             x.add_(3)
             return x * y
 
@@ -156,7 +159,7 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
                     loss = model(y).sum()
                     loss.backward()
 
-        y = torch.randn(3, device="cuda:0", requires_grad=True)
+        y = torch.randn(3, device=f"{GPU_TYPE}:0", requires_grad=True)
         fn(y)
 
     @patch_all()
@@ -174,9 +177,11 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             for i in range(N_ITERS):
                 with self.subTest(i):
                     rx = model(x)
-                    self.assertTrue(same(rx, torch.full((20,), 2.0, device="cuda:0")))
+                    self.assertTrue(
+                        same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0"))
+                    )
 
-        x = torch.empty(0, device="cuda:0")
+        x = torch.empty(0, device=f"{GPU_TYPE}:0")
         fn(x)
 
     @patch_all()
@@ -193,10 +198,12 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             for i in range(N_ITERS):
                 with self.subTest(i):
                     rx, ry = model(x)
-                    self.assertTrue(same(rx, torch.full((20,), 2.0, device="cuda:0")))
-                    self.assertTrue(same(ry, torch.empty(0, device="cuda:0")))
+                    self.assertTrue(
+                        same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0"))
+                    )
+                    self.assertTrue(same(ry, torch.empty(0, device=f"{GPU_TYPE}:0")))
 
-        x = torch.empty(20, device="cuda:0")
+        x = torch.empty(20, device=f"{GPU_TYPE}:0")
         fn(x)
 
     @unittest.skipIf(not TEST_CUDA_GRAPH, "cuda graph test is skipped")
@@ -212,7 +219,7 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             with torch.inference_mode():
                 return x.sin()
 
-        x = torch.randn(4, device="cuda", requires_grad=False)
+        x = torch.randn(4, device=GPU_TYPE, requires_grad=False)
 
         compiled_foo = torch.compile(foo, backend="cudagraphs")
 
@@ -228,6 +235,7 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             "Replaying inference workload should not warn about repeated graph captures",
         )
 
+    @skipIfXpu(msg="cudagraph is not supported on xpu")
     def test_compile_during_capture_errors(self):
         # https://github.com/pytorch/pytorch/issues/185074
         from torch._dynamo.exc import TorchRuntimeError
@@ -237,15 +245,15 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
 
         comp_fn = torch.compile(backend="eager")(fn)
 
-        x = torch.randn(10, device="cuda")
+        x = torch.randn(10, device=GPU_TYPE)
 
         # Should raise TorchRuntimeError when trying to compile during capture
         with self.assertRaisesRegex(
             TorchRuntimeError,
             r"cannot JIT compile during CUDA graph capture",
         ):
-            g = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(g):
+            g = torch.get_device_module(GPU_TYPE).CUDAGraph()
+            with torch.get_device_module(GPU_TYPE).graph(g):
                 comp_fn(x)
 
         self.assertEqual(comp_fn(x), fn(x))

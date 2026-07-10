@@ -1,5 +1,7 @@
 # Owner(s): ["module: dynamo"]
 
+import ast
+import math
 import os
 from unittest.mock import patch
 
@@ -8,6 +10,7 @@ import torch._dynamo
 import torch._dynamo.config
 from torch._dynamo import debug_utils
 from torch._dynamo.debug_utils import (
+    _serialize_storage_nbytes,
     aot_graph_input_parser,
     generate_env_vars_string,
     NNModuleToString,
@@ -15,7 +18,7 @@ from torch._dynamo.debug_utils import (
 from torch._dynamo.test_case import TestCase
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 f32 = torch.float32
 i64 = torch.int64
@@ -23,6 +26,63 @@ i32 = torch.int32
 
 
 class TestDebugUtils(TestCase):
+    def test_serialize_symbolic_storage_nbytes(self):
+        from sympy import floor
+        from torch._dynamo.source import ConstantSource
+        from torch.fx.experimental.sym_node import SymNode
+        from torch.fx.experimental.symbolic_shapes import ShapeEnv
+        from torch.utils._sympy.functions import Max
+
+        shape_env = ShapeEnv()
+        symbol = shape_env.create_symbol(4, ConstantSource("storage_size"))
+        expr = 4 * symbol + 18428 * Max(1, symbol)
+        nbytes = torch.SymInt(SymNode(expr, shape_env, int, hint=73728))
+        source = _serialize_storage_nbytes(nbytes)
+
+        self.assertNotIn("Max", source)
+        for value in (0, 1, 4):
+            self.assertEqual(
+                eval(source, {"max": max}, {str(symbol): value}),
+                int(expr.subs(symbol, value)),
+            )
+
+        floor_expr = floor(symbol / 2)
+        floor_nbytes = torch.SymInt(SymNode(floor_expr, shape_env, int, hint=2))
+        floor_source = _serialize_storage_nbytes(floor_nbytes)
+        self.assertIn("math.floor", floor_source)
+        self.assertEqual(
+            eval(floor_source, {"math": math}, {str(symbol): 4}),
+            2,
+        )
+
+    def test_repro_templates_import_symexpr_dependencies(self):
+        from torch._dynamo.repro.after_aot import generate_compiler_repro_string
+        from torch._dynamo.repro.after_dynamo import generate_dynamo_fx_repro_string
+
+        gm = torch.fx.symbolic_trace(lambda x: x + 1)
+        args = [torch.ones(1)]
+
+        repros = {
+            "after_aot": generate_compiler_repro_string(gm, args),
+            "after_dynamo": generate_dynamo_fx_repro_string(
+                gm, args, compiler_name="eager"
+            ),
+        }
+        for name, source in repros.items():
+            with self.subTest(name=name):
+                tree = ast.parse(source)
+                imports = ast.Module(
+                    body=[
+                        node
+                        for node in tree.body
+                        if isinstance(node, (ast.Import, ast.ImportFrom))
+                    ],
+                    type_ignores=[],
+                )
+                namespace = {}
+                exec(compile(imports, f"<{name}>", "exec"), namespace)
+                self.assertEqual(eval("math.floor(3 / 2)", namespace), 1)
+
     def test_cast_model_to_fp64_dtype_args(self):
         # Test that dtype arguments are converted to fp64
 
@@ -146,40 +206,40 @@ class TestDebugUtilsDevice(TestCase):
             primals_6: "f32[1739, 4190]",
             primals_48: "f32[6144, 4191]",
         ):
-            _tensor_constant0: "i64[4190]" = self._tensor_constant0
-            lift_fresh_copy: "i64[4190]" = torch.ops.aten.lift_fresh_copy.default(
+            _tensor_constant0: i64[4190] = self._tensor_constant0
+            lift_fresh_copy: i64[4190] = torch.ops.aten.lift_fresh_copy.default(
                 _tensor_constant0
             )
             _tensor_constant0 = None
-            index: "f32[6144, 4190]" = torch.ops.aten.index.Tensor(  # noqa: F841
+            index: f32[6144, 4190] = torch.ops.aten.index.Tensor(  # noqa: F841
                 primals_48, [None, lift_fresh_copy]
             )
             lift_fresh_copy = None
 
-            _tensor_constant1: "i64[6]" = self._tensor_constant1
-            lift_fresh_copy_1: "i64[6]" = torch.ops.aten.lift_fresh_copy.default(
+            _tensor_constant1: i64[6] = self._tensor_constant1
+            lift_fresh_copy_1: i64[6] = torch.ops.aten.lift_fresh_copy.default(
                 _tensor_constant1
             )
             _tensor_constant1 = None
-            index_1: "f32[6144, 6]" = torch.ops.aten.index.Tensor(
+            index_1: f32[6144, 6] = torch.ops.aten.index.Tensor(
                 primals_48, [None, lift_fresh_copy_1]
             )
             primals_48 = lift_fresh_copy_1 = None
-            permute: "f32[6, 1001]" = torch.ops.aten.permute.default(primals_1, [1, 0])
+            permute: f32[6, 1001] = torch.ops.aten.permute.default(primals_1, [1, 0])
             primals_1 = None
-            addmm: "f32[6144, 1001]" = torch.ops.aten.addmm.default(
+            addmm: f32[6144, 1001] = torch.ops.aten.addmm.default(
                 primals_2, index_1, permute
             )
             primals_2 = permute = None
-            amax: "f32[6144, 1]" = torch.ops.aten.amax.default(addmm, [-1], True)
-            sub: "f32[6144, 1001]" = torch.ops.aten.sub.Tensor(addmm, amax)
-            exp: "f32[6144, 1001]" = torch.ops.aten.exp.default(sub)
+            amax: f32[6144, 1] = torch.ops.aten.amax.default(addmm, [-1], True)
+            sub: f32[6144, 1001] = torch.ops.aten.sub.Tensor(addmm, amax)
+            exp: f32[6144, 1001] = torch.ops.aten.exp.default(sub)
             sub = None
-            sum_1: "f32[6144, 1]" = torch.ops.aten.sum.dim_IntList(exp, [-1], True)
-            div: "f32[6144, 1001]" = torch.ops.aten.div.Tensor(exp, sum_1)
+            sum_1: f32[6144, 1] = torch.ops.aten.sum.dim_IntList(exp, [-1], True)
+            div: f32[6144, 1001] = torch.ops.aten.div.Tensor(exp, sum_1)
             exp = None
 
-            full_default: "i32[6144, 1001]" = torch.ops.aten.full.default(
+            full_default: i32[6144, 1001] = torch.ops.aten.full.default(
                 [6144, 1001],
                 1,
                 dtype=torch.int32,
@@ -188,7 +248,7 @@ class TestDebugUtilsDevice(TestCase):
                 pin_memory=False,
             )
 
-            iota: "i32[1001]" = torch.ops.prims.iota.default(
+            iota: i32[1001] = torch.ops.prims.iota.default(
                 1001,
                 start=0,
                 step=1,
@@ -197,10 +257,10 @@ class TestDebugUtilsDevice(TestCase):
                 requires_grad=False,
             )
 
-            mul: "i32[6144, 1001]" = torch.ops.aten.mul.Tensor(full_default, iota)
+            mul: i32[6144, 1001] = torch.ops.aten.mul.Tensor(full_default, iota)
             full_default = iota = None
 
-            iota_1: "i32[6144]" = torch.ops.prims.iota.default(
+            iota_1: i32[6144] = torch.ops.prims.iota.default(
                 6144,
                 start=0,
                 step=1001,
@@ -208,9 +268,9 @@ class TestDebugUtilsDevice(TestCase):
                 device=device,
                 requires_grad=False,
             )
-            view: "i32[6150144]" = torch.ops.aten.reshape.default(mul, [-1])
+            view: i32[6150144] = torch.ops.aten.reshape.default(mul, [-1])
             mul = None
-            view_1: "f32[6150144]" = torch.ops.aten.reshape.default(div, [-1])
+            view_1: f32[6150144] = torch.ops.aten.reshape.default(div, [-1])
             div = None
             _embedding_bag = torch.ops.aten._embedding_bag.default(
                 primals_3, view, iota_1, False, 0, False, view_1
@@ -231,7 +291,7 @@ class TestDebugUtilsDevice(TestCase):
             primals_4: "f32[s1]",  # noqa: F821,
             primals_5: "Sym(s1)",  # noqa: F821,
         ):
-            _tensor_constant0: "i64[4190]" = self._tensor_constant0
+            _tensor_constant0: i64[4190] = self._tensor_constant0
 
         kwargs = aot_graph_input_parser(
             forward, device=device, sym_shapes={"s0": 10}, default_sym_shape=5
@@ -256,7 +316,7 @@ class TestNNModuleToStringBufferDevice(TestCase):
         else:
             expected_device = str(torch.empty(1, device=device).device)
             self.assertIn(f'.to("{expected_device}")', result)
-            self.assertNotIn(".cuda()", result)
+            self.assertNotIn(f".{GPU_TYPE}()", result)
 
     def test_nn_module_to_string_param_device(self, device):
         gm = torch.fx.symbolic_trace(torch.nn.Identity())
@@ -271,7 +331,7 @@ class TestNNModuleToStringBufferDevice(TestCase):
         else:
             expected_device = str(torch.empty(1, device=device).device)
             self.assertIn(f'device="{expected_device}"', result)
-            self.assertNotIn(', device="cuda")', result)
+            self.assertNotIn(f', device="{GPU_TYPE}")', result)
 
 
 instantiate_device_type_tests(
@@ -280,7 +340,9 @@ instantiate_device_type_tests(
 
 instantiate_device_type_tests(TestDebugUtils, globals())
 
-instantiate_device_type_tests(TestDebugUtilsDevice, globals(), except_for="mps")
+instantiate_device_type_tests(
+    TestDebugUtilsDevice, globals(), except_for="mps", allow_xpu=True
+)
 
 
 class TestBackendOverrideIntegration(TestCase):
@@ -819,7 +881,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
             patch.object(compile_fx_mod, "compile_fx", tracking_compile_fx),
             patch.object(torch._functorch.config, "enable_autograd_cache", False),
         ):
-            compiled_fn = torch.compile(fn)
+            compiled_fn = torch.compile(fn)  # noqa: UNSPECIFIED_BACKEND
             x = torch.randn(10, device=device, requires_grad=True)
             result = compiled_fn(x)
             result.backward()
@@ -827,8 +889,16 @@ class TestInductorConfigOverrideIntegration(TestCase):
         # Verify each graph has fwd+bwd, correct overrides, no cross-graph
         # leak, and identical configs for forward and backward.
         for gid in range(3):
-            self.assertIn((gid, False), configs_at_compile, f"graph {gid} fwd missing")
-            self.assertIn((gid, True), configs_at_compile, f"graph {gid} bwd missing")
+            self.assertIn(
+                (gid, False),
+                configs_at_compile,
+                lambda msg: f"{msg}\ngraph {gid} fwd missing",
+            )
+            self.assertIn(
+                (gid, True),
+                configs_at_compile,
+                lambda msg: f"{msg}\ngraph {gid} bwd missing",
+            )
             expected = {**baseline, **expected_overrides[gid]}
             for is_bw in [False, True]:
                 phase = "backward" if is_bw else "forward"
@@ -842,7 +912,10 @@ class TestInductorConfigOverrideIntegration(TestCase):
 
 
 instantiate_device_type_tests(
-    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", "cuda"]
+    TestInductorConfigOverrideIntegration,
+    globals(),
+    only_for=["cpu", "cuda", "xpu"],
+    allow_xpu=True,
 )
 
 

@@ -17,6 +17,8 @@ from collections.abc import Sequence
 from enum import Enum
 from unittest.mock import patch
 
+sys.path.append("../../../../test/dynamo")
+
 import torch
 import torch._dynamo
 import torch._dynamo.test_case
@@ -4589,6 +4591,7 @@ class ExportTestsSubprocess(torch._dynamo.test_case.TestCase):
     def test_strict_export_under_pythonoptimize(self):
         env = dict(os.environ)
         env["PYTHONOPTIMIZE"] = "1"
+        env["PYTHONPATH"] = env["PYTHONPATH"] + ";" + os.path.dirname(sys.executable)
         code = """\
 import torch
 model = torch.nn.Linear(2, 3)
@@ -4681,7 +4684,9 @@ class ExportTestsDevice(torch._dynamo.test_case.TestCase):
 
 
 common_utils.instantiate_parametrized_tests(ExportTests)
-instantiate_device_type_tests(ExportTestsDevice, globals(), except_for="cpu")
+instantiate_device_type_tests(
+    ExportTestsDevice, globals(), except_for="cpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     from torch._dynamo.test_case import run_tests
