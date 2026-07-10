@@ -64,6 +64,26 @@ SYCL_EXTERNAL extern "C" void __builtin_IB_lsc_store_global_uint4(
 #define EP_VEC_STORE(DST_PTR, VEC_VAL) (*(DST_PTR) = (VEC_VAL))
 #endif
 
+// Cross-GPU signalling (same proven pattern as RingReduceScatter.cpp /
+// src/xccl/Signal.hpp). A system-scope release fence AFTER the data write and
+// BEFORE the flag store flushes the producer's writes to the shared coherence
+// point; a system-scope acquire fence BEFORE each flag load re-reads from that
+// point (a plain load is not coherent across devices on PCIe and can spin on a
+// cached value forever).
+inline void ep_store_release_sys(uint32_t* addr, uint32_t val) {
+  *addr = val;
+  sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::system);
+}
+
+inline void ep_wait_eq_sys(uint32_t* addr, uint32_t val) {
+  for (;;) {
+    sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
+    if (*addr == val)
+      break;
+  }
+}
+
+
 // TP+EP combine kernel (reverse of ep_dispatch, ring-ordered push).
 //
 // ep_dispatch: ring-ordered PULL from remote hidden → ownership check → write to local remap
@@ -707,15 +727,23 @@ struct EpCombinePartialKernel {
   int32_t rem_experts;
   int32_t boundary;
   int32_t num_tokens_per_rank;  // own-shard tokens are fused into gather
+  int32_t world_size;
+  int32_t tok_start;  // intra-shard slice start (pipeline chunking)
+  int32_t tok_count;  // intra-shard slice length; WGs = world_size * tok_count
 
   void operator()(sycl::nd_item<1> item) const {
     using Vec = EpVec<scalar_t, VEC_SIZE>;
-    const int32_t wg = static_cast<int32_t>(item.get_group(0));  // global token
-    if (wg >= num_global_tokens) return;
+    const int32_t wg_raw = static_cast<int32_t>(item.get_group(0));
+    if (wg_raw >= world_size * tok_count) return;
+    // Map WG -> (shard, intra-shard token) for the current slice, then to the
+    // global token index. Chunking lets a caller pipeline phase1 across slices.
+    const int32_t shard = wg_raw / tok_count;
+    const int32_t local_t = tok_start + (wg_raw % tok_count);
     // This rank's OWN-shard tokens are combined inline by the gather kernel
     // (fused local contribution), so we neither pre-aggregate nor serve them
     // here — only this rank ever reads its own partial rows for its own shard.
-    if (wg / num_tokens_per_rank == rank) return;
+    if (shard == rank) return;
+    const int32_t wg = shard * num_tokens_per_rank + local_t;  // global token
     const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
     const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
     const int64_t topk_base = static_cast<int64_t>(wg) * topk;
@@ -792,15 +820,18 @@ struct EpCombineGatherKernel {
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  int32_t tok_start;  // intra-shard slice start (pipeline chunking)
+  int32_t tok_count;  // number of this rank's output tokens in the slice
 
   void operator()(sycl::nd_item<1> item) const {
     using Vec = EpVec<scalar_t, VEC_SIZE>;
     const int32_t wg = static_cast<int32_t>(item.get_group(0));
-    if (wg >= num_tokens_per_rank) return;
+    if (wg >= tok_count) return;
+    const int32_t local_row = tok_start + wg;  // row in this rank's [T, H] output
     const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
     const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
 
-    const int32_t global_token_idx = rank * num_tokens_per_rank + wg;
+    const int32_t global_token_idx = rank * num_tokens_per_rank + local_row;
     const int64_t topk_base = static_cast<int64_t>(global_token_idx) * topk;
 
     // Build the set of contributing REMOTE owner ranks for this token (dedup)
@@ -828,7 +859,7 @@ struct EpCombineGatherKernel {
     }
 
     const int64_t row_off = static_cast<int64_t>(global_token_idx) * hidden_size;
-    scalar_t* out_row = output_ptr + static_cast<int64_t>(wg) * hidden_size;
+    scalar_t* out_row = output_ptr + static_cast<int64_t>(local_row) * hidden_size;
 
     for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
       const int32_t h_start = vh * VEC_SIZE;
@@ -869,6 +900,180 @@ struct EpCombineGatherKernel {
       #pragma unroll
       for (int i = 0; i < VEC_SIZE; ++i) out.data[i] = static_cast<scalar_t>(acc[i]);
       *reinterpret_cast<Vec*>(out_row + h_start) = out;  // local store
+    }
+  }
+};
+
+// Fused single-kernel pull combine. Overlaps phase-1 (owner pre-aggregation,
+// local-HBM/compute bound) with phase-2 (remote gather, PCIe bound) by running
+// BOTH as different work-groups of ONE grid, so the XPU scheduler fills phase-2's
+// PCIe-stall bubbles with phase-1 compute on the same tile (cross-stream kernels
+// do NOT overlap on this HW; same-grid WGs do).
+//
+// WG layout: grid = world_size * num_tokens_per_rank. For token t in [0,T):
+//   wg = t*world_size + j.  j == rank  -> PHASE-2 consumer (produces output[t]).
+//                           j != rank  -> PHASE-1 producer (partial for shard j,
+//                                         global token j*T + t).
+// Consumers are 1-in-world_size and interleaved, so producers (which never spin)
+// dominate residency and always make forward progress, freeing EU slots -> no
+// producer/consumer deadlock. Correctness across ranks uses per-global-token
+// ready flags: a producer publishes partial[g] then sets ready_local[g]=tag; a
+// consumer waits ready_peer[g]==tag before reading peer partial[g]. Each consumer
+// waits on <= world_size-1 INDEPENDENT peer flags (flat, no multi-hop chain), so
+// no accumulated ring-style tail latency.
+template <typename scalar_t, int VEC_SIZE>
+struct EpCombineFusedKernel {
+  const scalar_t* expert_output_ptr;  // local [num_tokens*topk, hidden]
+  scalar_t* partial_local_ptr;        // this rank's symmetric [W*T, hidden]
+  const int64_t* partial_ptrs;        // [world_size] peer partial bases
+  uint32_t* ready_local_ptr;          // this rank's symmetric ready [W*T]
+  const int64_t* ready_ptrs;          // [world_size] peer ready bases
+  const int32_t* topk_idx_ptr;
+  scalar_t* output_ptr;               // local [num_tokens_per_rank, hidden]
+  const int32_t* scatter_idx_ptr;
+  const float* topk_weights_ptr;
+  int32_t num_tokens_per_rank;  // T
+  int32_t hidden_size;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t hidden_vecs;
+  int32_t base_experts;
+  int32_t rem_experts;
+  int32_t boundary;
+  uint32_t tag;
+
+  inline int32_t owner_of(int32_t expert) const {
+    if (expert < boundary) return expert / (base_experts + 1);
+    return rem_experts + (expert - boundary) / base_experts;
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    using Vec = EpVec<scalar_t, VEC_SIZE>;
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    const int32_t T = num_tokens_per_rank;
+    const int32_t t = wg / world_size;
+    if (t >= T) return;
+    const int32_t j = wg % world_size;
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t nthreads = static_cast<int32_t>(item.get_local_range(0));
+
+    if (j != rank) {
+      // ---------------- PHASE 1 (producer for shard j) ----------------
+      const int32_t g = j * T + t;  // global token in a peer's shard
+      const int64_t topk_base = static_cast<int64_t>(g) * topk;
+      float owned_w[kEpCombineMaxTopK];
+      int32_t owned_row[kEpCombineMaxTopK];
+      int32_t num_owned = 0;
+      for (int32_t k = 0; k < topk; ++k) {
+        const int32_t expert = topk_idx_ptr[topk_base + k];
+        if (owner_of(expert) == rank) {
+          owned_w[num_owned] = topk_weights_ptr[topk_base + k];
+          owned_row[num_owned] = scatter_idx_ptr[topk_base + k];
+          ++num_owned;
+        }
+      }
+      // Not an owner of this token -> consumer (rank j) won't wait on us.
+      if (num_owned == 0) return;
+
+      scalar_t* out_row =
+          partial_local_ptr + static_cast<int64_t>(g) * hidden_size;
+      for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+        const int32_t h_start = vh * VEC_SIZE;
+        float acc[VEC_SIZE];
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+        for (int32_t jj = 0; jj < num_owned; ++jj) {
+          const float weight = owned_w[jj];
+          const Vec src = *reinterpret_cast<const Vec*>(
+              expert_output_ptr +
+              static_cast<int64_t>(owned_row[jj]) * hidden_size + h_start);
+          #pragma unroll
+          for (int i = 0; i < VEC_SIZE; ++i)
+            acc[i] += weight * static_cast<float>(src.data[i]);
+        }
+        Vec out;
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i)
+          out.data[i] = static_cast<scalar_t>(acc[i]);
+        *reinterpret_cast<Vec*>(out_row + h_start) = out;
+      }
+      // Publish: flush partial writes, then set the ready flag for peer rank j.
+      sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::system);
+      item.barrier(sycl::access::fence_space::local_space);
+      if (lid == 0)
+        ep_store_release_sys(ready_local_ptr + g, tag);
+      return;
+    }
+
+    // ------------------- PHASE 2 (consumer, output[t]) -------------------
+    const int32_t local_row = t;
+    const int32_t g2 = rank * T + t;  // this rank's global token
+    const int64_t topk_base = static_cast<int64_t>(g2) * topk;
+    uint32_t owner_mask = 0;
+    float owned_w[kEpCombineMaxTopK];
+    int32_t owned_row[kEpCombineMaxTopK];
+    int32_t num_owned = 0;
+    for (int32_t k = 0; k < topk; ++k) {
+      const int32_t expert = topk_idx_ptr[topk_base + k];
+      const int32_t owner = owner_of(expert);
+      owner_mask |= (1u << owner);
+      if (owner == rank) {
+        owned_w[num_owned] = topk_weights_ptr[topk_base + k];
+        owned_row[num_owned] = scatter_idx_ptr[topk_base + k];
+        ++num_owned;
+      }
+    }
+
+    // Wait for every contributing REMOTE owner's partial[g2] to be published.
+    // Flat wait: <= world_size-1 independent flags, no chain.
+    if (lid == 0) {
+      for (int32_t i = 0; i < world_size; ++i) {
+        const int32_t r = (rank + 1 + i) % world_size;
+        if (r == rank) continue;
+        if (!(owner_mask & (1u << r))) continue;
+        uint32_t* rflag =
+            reinterpret_cast<uint32_t*>(ready_ptrs[r]) + g2;
+        ep_wait_eq_sys(rflag, tag);
+      }
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+    sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
+
+    const int64_t row_off = static_cast<int64_t>(g2) * hidden_size;
+    scalar_t* out_row =
+        output_ptr + static_cast<int64_t>(local_row) * hidden_size;
+    for (int32_t vh = lid; vh < hidden_vecs; vh += nthreads) {
+      const int32_t h_start = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) acc[i] = 0.0f;
+      // Inline local contribution (this rank's own owned experts).
+      for (int32_t jj = 0; jj < num_owned; ++jj) {
+        const float weight = owned_w[jj];
+        const Vec src = *reinterpret_cast<const Vec*>(
+            expert_output_ptr +
+            static_cast<int64_t>(owned_row[jj]) * hidden_size + h_start);
+        #pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i)
+          acc[i] += weight * static_cast<float>(src.data[i]);
+      }
+      // Remote partials (ring order spreads read traffic across links).
+      for (int32_t i = 0; i < world_size; ++i) {
+        const int32_t r = (rank + 1 + i) % world_size;
+        if (r == rank) continue;
+        if (!(owner_mask & (1u << r))) continue;
+        const scalar_t* src = reinterpret_cast<const scalar_t*>(partial_ptrs[r]);
+        const Vec v = *reinterpret_cast<const Vec*>(src + row_off + h_start);
+        #pragma unroll
+        for (int i2 = 0; i2 < VEC_SIZE; ++i2)
+          acc[i2] += static_cast<float>(v.data[i2]);
+      }
+      Vec out;
+      #pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i)
+        out.data[i] = static_cast<scalar_t>(acc[i]);
+      *reinterpret_cast<Vec*>(out_row + h_start) = out;
     }
   }
 };
@@ -967,6 +1172,9 @@ at::Tensor ep_combine_pull(
               base_experts,
               rem_experts,
               boundary,
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(world_size),
+              /*tok_start=*/0,
               static_cast<int32_t>(num_tokens_per_rank)};
           sycl_kernel_submit(
               sycl::range<1>(num_tokens * threads),
@@ -988,7 +1196,9 @@ at::Tensor ep_combine_pull(
               static_cast<int32_t>(hidden_vecs),
               base_experts,
               rem_experts,
-              boundary};
+              boundary,
+              /*tok_start=*/0,
+              static_cast<int32_t>(num_tokens_per_rank)};
           sycl_kernel_submit(
               sycl::range<1>(num_tokens_per_rank * threads),
               sycl::range<1>(threads), queue, gfn);
@@ -1016,11 +1226,14 @@ at::Tensor ep_combine_pull_partial(
     const at::Tensor& topk_weights,
     int64_t num_experts,
     int64_t rank,
-    int64_t world_size) {
+    int64_t world_size,
+    int64_t tok_start,
+    int64_t tok_count) {
   const int64_t num_tokens = topk_idx.size(0);
   const int64_t topk = topk_idx.size(1);
   const int64_t hidden_size = partial_local.size(1);
   const int64_t num_tokens_per_rank = num_tokens / world_size;
+  if (tok_count < 0) tok_count = num_tokens_per_rank - tok_start;
   const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
   const int32_t boundary = rem_experts * (base_experts + 1);
@@ -1031,6 +1244,7 @@ at::Tensor ep_combine_pull_partial(
   c10::Device device(c10::DeviceType::XPU, partial_local.device().index());
   c10::DeviceGuard guard(device);
   auto& queue = at::xpu::getCurrentXPUStream().queue();
+  const int64_t num_wgs = world_size * tok_count;
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       partial_local.scalar_type(), "ep_combine_pull_partial", [&]() {
         auto launch = [&](auto vec_tag) {
@@ -1048,8 +1262,11 @@ at::Tensor ep_combine_pull_partial(
               static_cast<int32_t>(rank),
               static_cast<int32_t>(hidden_vecs),
               base_experts, rem_experts, boundary,
-              static_cast<int32_t>(num_tokens_per_rank)};
-          sycl_kernel_submit(sycl::range<1>(num_tokens * threads),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(tok_start),
+              static_cast<int32_t>(tok_count)};
+          sycl_kernel_submit(sycl::range<1>(num_wgs * threads),
                              sycl::range<1>(threads), queue, pfn);
         };
         if (vec_sel == 16 && hidden_size % 16 == 0)
@@ -1071,11 +1288,14 @@ at::Tensor ep_combine_pull_gather(
     const at::Tensor& topk_weights,
     int64_t num_experts,
     int64_t rank,
-    int64_t world_size) {
+    int64_t world_size,
+    int64_t tok_start,
+    int64_t tok_count) {
   const int64_t num_tokens = topk_idx.size(0);
   const int64_t topk = topk_idx.size(1);
   const int64_t hidden_size = output.size(1);
   const int64_t num_tokens_per_rank = num_tokens / world_size;
+  if (tok_count < 0) tok_count = num_tokens_per_rank - tok_start;
   const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
   const int32_t boundary = rem_experts * (base_experts + 1);
@@ -1104,9 +1324,124 @@ at::Tensor ep_combine_pull_gather(
               static_cast<int32_t>(rank),
               static_cast<int32_t>(world_size),
               static_cast<int32_t>(hidden_vecs),
-              base_experts, rem_experts, boundary};
-          sycl_kernel_submit(sycl::range<1>(num_tokens_per_rank * threads),
+              base_experts, rem_experts, boundary,
+              static_cast<int32_t>(tok_start),
+              static_cast<int32_t>(tok_count)};
+          sycl_kernel_submit(sycl::range<1>(tok_count * threads),
                              sycl::range<1>(threads), queue, gfn);
+        };
+        if (vec_sel == 16 && hidden_size % 16 == 0)
+          launch(std::integral_constant<int, 16>{});
+        else
+          launch(std::integral_constant<int, 8>{});
+      });
+  return output;
+}
+
+// Fused single-kernel pull combine (overlaps phase-1 producer WGs with phase-2
+// consumer WGs in one grid). `partial_rank_ptrs[r]`/`ready_rank_ptrs[r]` point
+// to peer r's symmetric partial [W*T,H] / ready [W*T] buffers (index rank ==
+// this rank's own). `tag` must strictly increase per combine call so consumers
+// distinguish this iteration's flags from stale ones. Caller must issue ONE
+// cross-rank barrier BEFORE this kernel (so no peer is still reading last
+// iteration's partials and all ranks enter together); the per-token ready flags
+// replace the phase1/phase2 mid-barrier.
+at::Tensor ep_combine_pull_fused(
+    const at::Tensor& expert_output,
+    const at::Tensor& partial_local,
+    const at::Tensor& partial_rank_ptrs,
+    const at::Tensor& ready_local,
+    const at::Tensor& ready_rank_ptrs,
+    const at::Tensor& topk_idx,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_weights,
+    at::Tensor output,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size,
+    int64_t tag) {
+  TORCH_CHECK(partial_rank_ptrs.dim() == 1 &&
+                  partial_rank_ptrs.size(0) == world_size &&
+                  partial_rank_ptrs.scalar_type() == at::kLong,
+              "ep_combine_pull_fused: partial_rank_ptrs must be int64[world_size]");
+  TORCH_CHECK(ready_rank_ptrs.dim() == 1 &&
+                  ready_rank_ptrs.size(0) == world_size &&
+                  ready_rank_ptrs.scalar_type() == at::kLong,
+              "ep_combine_pull_fused: ready_rank_ptrs must be int64[world_size]");
+  TORCH_CHECK(ready_local.scalar_type() == at::kInt &&
+                  ready_local.is_contiguous(),
+              "ep_combine_pull_fused: ready_local must be contiguous int32");
+  TORCH_CHECK(expert_output.dim() == 2 && expert_output.is_contiguous(),
+              "ep_combine_pull_fused: expert_output must be 2D contiguous");
+  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.scalar_type() == at::kInt &&
+                  topk_idx.is_contiguous(),
+              "ep_combine_pull_fused: topk_idx must be 2D contiguous int32");
+  TORCH_CHECK(scatter_idx.scalar_type() == at::kInt &&
+                  scatter_idx.is_contiguous() &&
+                  scatter_idx.sizes() == topk_idx.sizes(),
+              "ep_combine_pull_fused: scatter_idx must match topk_idx (int32)");
+  TORCH_CHECK(topk_weights.scalar_type() == at::kFloat &&
+                  topk_weights.is_contiguous() &&
+                  topk_weights.sizes() == topk_idx.sizes(),
+              "ep_combine_pull_fused: topk_weights must match topk_idx (float32)");
+  TORCH_CHECK(output.dim() == 2 && output.is_contiguous(),
+              "ep_combine_pull_fused: output must be 2D contiguous");
+  TORCH_CHECK(world_size <= 32, "ep_combine_pull_fused: world_size must be <= 32");
+  TORCH_CHECK(rank >= 0 && rank < world_size);
+
+  const int64_t num_tokens = topk_idx.size(0);
+  const int64_t topk = topk_idx.size(1);
+  const int64_t hidden_size = output.size(1);
+  TORCH_CHECK(topk <= kEpCombineMaxTopK,
+              "ep_combine_pull_fused: topk exceeds kEpCombineMaxTopK");
+  TORCH_CHECK(num_tokens % world_size == 0,
+              "ep_combine_pull_fused: num_tokens must be divisible by world_size");
+  const int64_t num_tokens_per_rank = num_tokens / world_size;
+  TORCH_CHECK(output.size(0) == num_tokens_per_rank,
+              "ep_combine_pull_fused: output rows must be num_tokens_per_rank");
+  TORCH_CHECK(ready_local.numel() >= num_tokens,
+              "ep_combine_pull_fused: ready_local must have >= num_tokens elems");
+  if (num_tokens_per_rank == 0 || hidden_size == 0 || topk == 0) return output;
+
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+
+  int vec_sel = 8;
+  if (const char* v = std::getenv("EPCOMBINE_VEC")) vec_sel = std::atoi(v);
+  int64_t threads = 256;
+  if (const char* t = std::getenv("EPCOMBINE_THREADS")) threads = std::atoi(t);
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto& queue = at::xpu::getCurrentXPUStream().queue();
+  const int64_t num_wgs = world_size * num_tokens_per_rank;
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "ep_combine_pull_fused", [&]() {
+        auto launch = [&](auto vec_tag) {
+          constexpr int VEC_SIZE = decltype(vec_tag)::value;
+          const int64_t hidden_vecs = hidden_size / VEC_SIZE;
+          auto fn = EpCombineFusedKernel<scalar_t, VEC_SIZE>{
+              expert_output.data_ptr<scalar_t>(),
+              partial_local.data_ptr<scalar_t>(),
+              partial_rank_ptrs.data_ptr<int64_t>(),
+              reinterpret_cast<uint32_t*>(ready_local.data_ptr<int32_t>()),
+              ready_rank_ptrs.data_ptr<int64_t>(),
+              topk_idx.data_ptr<int32_t>(),
+              output.data_ptr<scalar_t>(),
+              scatter_idx.data_ptr<int32_t>(),
+              topk_weights.data_ptr<float>(),
+              static_cast<int32_t>(num_tokens_per_rank),
+              static_cast<int32_t>(hidden_size),
+              static_cast<int32_t>(topk),
+              static_cast<int32_t>(rank),
+              static_cast<int32_t>(world_size),
+              static_cast<int32_t>(hidden_vecs),
+              base_experts, rem_experts, boundary,
+              static_cast<uint32_t>(tag)};
+          sycl_kernel_submit(sycl::range<1>(num_wgs * threads),
+                             sycl::range<1>(threads), queue, fn);
         };
         if (vec_sel == 16 && hidden_size % 16 == 0)
           launch(std::integral_constant<int, 16>{});
@@ -1130,12 +1465,19 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ep_combine_pull_partial(Tensor expert_output, Tensor(a!) partial_local, "
       "Tensor topk_idx, Tensor scatter_idx, Tensor topk_weights, "
-      "int num_experts, int rank, int world_size) -> Tensor(a!)");
+      "int num_experts, int rank, int world_size, int tok_start=0, "
+      "int tok_count=-1) -> Tensor(a!)");
   m.def(
       "ep_combine_pull_gather(Tensor partial_rank_ptrs, Tensor topk_idx, "
       "Tensor(a!) output, Tensor expert_output, Tensor scatter_idx, "
-      "Tensor topk_weights, int num_experts, int rank, int world_size) "
-      "-> Tensor(a!)");
+      "Tensor topk_weights, int num_experts, int rank, int world_size, "
+      "int tok_start=0, int tok_count=-1) -> Tensor(a!)");
+  m.def(
+      "ep_combine_pull_fused(Tensor expert_output, Tensor partial_local, "
+      "Tensor partial_rank_ptrs, Tensor(a!) ready_local, Tensor ready_rank_ptrs, "
+      "Tensor topk_idx, Tensor scatter_idx, Tensor topk_weights, "
+      "Tensor(a!) output, int num_experts, int rank, int world_size, "
+      "int tag) -> Tensor(a!)");
   m.def(
       "ep_combine_reduce(Tensor recv, Tensor(a!) output, int world_size) "
       "-> Tensor(a!)");
@@ -1152,6 +1494,7 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ep_combine_pull", ep_combine_pull);
   m.impl("ep_combine_pull_partial", ep_combine_pull_partial);
   m.impl("ep_combine_pull_gather", ep_combine_pull_gather);
+  m.impl("ep_combine_pull_fused", ep_combine_pull_fused);
   m.impl("ep_combine_reduce", ep_combine_reduce);
   m.impl("ep_combine_local_", ep_combine_local_);
 }

@@ -66,8 +66,28 @@ _HAS_EP_COMBINE_PULL = hasattr(
     torch.ops.symm_mem, "ep_combine_pull_partial"
 ) and hasattr(torch.ops.symm_mem, "ep_combine_pull_gather")
 
+# Fused single-kernel pull combine: overlaps phase-1 (owner pre-aggregation) and
+# phase-2 (remote gather) as producer/consumer work-groups of ONE grid, using
+# per-token cross-rank ready flags instead of a mid barrier (same-grid WGs DO
+# overlap on this HW, unlike cross-stream kernels).  Enabled by default when the
+# op is available.
+_HAS_EP_COMBINE_PULL_FUSED = hasattr(torch.ops.symm_mem, "ep_combine_pull_fused")
+
 # Combine backend selection: "pull" (sparse, default) or "ring" (dense).
 _MOE_COMBINE_BACKEND = os.environ.get("MOE_COMBINE", "pull").lower()
+
+# Use the fused overlapped single-kernel pull combine (default on when built).
+_MOE_COMBINE_FUSED = os.environ.get("MOE_COMBINE_FUSED", "1") == "1"
+
+# Pull-combine pipelining: split each rank's tokens into this many slices and
+# overlap phase-1 (owner pre-aggregation, compute stream) of later slices with
+# phase-2 (remote gather, comm stream) of earlier slices.  1 = no pipeline.
+#
+# NOTE: measured on this XPU, kernels from different streams do NOT execute
+# concurrently (each phase already saturates the tile), so chunking only adds
+# per-slice barrier overhead and regresses.  Left configurable for other HW /
+# experimentation, but defaults to 1 (serial two-barrier path).
+_MOE_COMBINE_CHUNKS = int(os.environ.get("MOE_COMBINE_CHUNKS", "1"))
 
 # Ring signal-pad capacity, must match RING_MAX_WG in RingReduceScatterUnpermute.cpp.
 _RING_MAX_WG = 1024
@@ -233,6 +253,39 @@ class MoEAllToAll:
             self._partial_rank_ptrs = torch.tensor(
                 partial_ptrs, dtype=torch.int64, device=self.device
             )
+            # Dedicated compute stream so pipelined phase-1 (owner aggregation)
+            # can run ahead of phase-2 (remote gather) on the default stream.
+            self._pull_compute_stream = torch.xpu.Stream(device=self.device)
+
+            # --- fused combine: per-global-token ready flags [W*T] int32 ---
+            #     Producers set ready[g]=tag after publishing partial[g];
+            #     consumers spin until the owner's ready[g]==tag before reading.
+            self._fused_tag = 0
+            self._ready_slot = None
+            self._ready_rank_ptrs = None
+            if _HAS_EP_COMBINE_PULL_FUSED:
+                self._ready_group = dist.new_group(
+                    list(range(W)),
+                    group_desc=f"moe_alltoall_ready_{self.group_name}",
+                )
+                self._ready_ws = symm_mem.get_symm_mem_workspace(
+                    self._ready_group.group_name, min_size=W * T * 4
+                )
+                self._ready_slot = self._ready_ws.get_buffer(
+                    self.rank, (W * T,), torch.int32, storage_offset=0
+                )
+                self._ready_slot.zero_()
+                ready_ptrs = [
+                    ctypes.c_int64(
+                        self._ready_ws.get_buffer(
+                            r, (W * T,), torch.int32, storage_offset=0
+                        ).data_ptr()
+                    ).value
+                    for r in range(W)
+                ]
+                self._ready_rank_ptrs = torch.tensor(
+                    ready_ptrs, dtype=torch.int64, device=self.device
+                )
 
     def _next_ring_iter(self) -> int:
         key = self.group_name
@@ -383,6 +436,49 @@ class MoEAllToAll:
     def _combine_pull(
         self, expert_output, handle, output, topk_idx_i32, tw_f32
     ) -> torch.Tensor:
+        scatter = handle.scatter_idx.contiguous()
+        if _MOE_COMBINE_FUSED and self._ready_slot is not None:
+            return self._combine_pull_fused(
+                expert_output, output, topk_idx_i32, tw_f32, scatter
+            )
+        T = output.size(0)
+        chunks = _MOE_COMBINE_CHUNKS
+        if chunks > 1 and T % chunks == 0:
+            return self._combine_pull_pipelined(
+                expert_output, output, topk_idx_i32, tw_f32, scatter, chunks
+            )
+        return self._combine_pull_serial(
+            expert_output, output, topk_idx_i32, tw_f32, scatter
+        )
+
+    def _combine_pull_fused(
+        self, expert_output, output, topk_idx_i32, tw_f32, scatter
+    ) -> torch.Tensor:
+        # Single-kernel overlapped combine.  ONE start barrier protects the
+        # previous iteration's readers and aligns all ranks; the per-token ready
+        # flags (monotonic tag) replace the phase1/phase2 mid barrier.
+        self._fused_tag += 1
+        self._pull_ws.barrier()
+        torch.ops.symm_mem.ep_combine_pull_fused(
+            expert_output,
+            self._partial_slot,
+            self._partial_rank_ptrs,
+            self._ready_slot,
+            self._ready_rank_ptrs,
+            topk_idx_i32,
+            scatter,
+            tw_f32,
+            output,
+            self.num_experts,
+            self.rank,
+            self.world_size,
+            self._fused_tag,
+        )
+        return output
+
+    def _combine_pull_serial(
+        self, expert_output, output, topk_idx_i32, tw_f32, scatter
+    ) -> torch.Tensor:
         # Phase 1: owner-side local pre-aggregation into this rank's symmetric
         # partial buffer.  Barrier before, so no peer is still reading last
         # iteration's partials while we overwrite them.
@@ -391,7 +487,7 @@ class MoEAllToAll:
             expert_output,
             self._partial_slot,
             topk_idx_i32,
-            handle.scatter_idx.contiguous(),
+            scatter,
             tw_f32,
             self.num_experts,
             self.rank,
@@ -404,12 +500,67 @@ class MoEAllToAll:
             topk_idx_i32,
             output,
             expert_output,
-            handle.scatter_idx.contiguous(),
+            scatter,
             tw_f32,
             self.num_experts,
             self.rank,
             self.world_size,
         )
+        return output
+
+    def _combine_pull_pipelined(
+        self, expert_output, output, topk_idx_i32, tw_f32, scatter, chunks
+    ) -> torch.Tensor:
+        # Overlap phase-1 (owner aggregation, local) of later token slices with
+        # phase-2 (remote gather) of earlier slices.  phase-1 runs on a compute
+        # stream that races ahead; the comm (default) stream gates each slice's
+        # gather on (a) local phase-1 completion via an event and (b) all-rank
+        # phase-1 completion via a per-slice symmetric barrier.  No in-kernel
+        # peer spin -> no cross-rank dependency chain / tail latency.
+        T = output.size(0)
+        step = T // chunks
+        ws = self.world_size
+        comm_stream = torch.xpu.current_stream()
+        compute_stream = self._pull_compute_stream
+
+        # Protect previous iteration's readers before overwriting partials, and
+        # make the compute stream observe the inputs produced on the comm stream.
+        self._pull_ws.barrier()
+        compute_stream.wait_stream(comm_stream)
+
+        events = [torch.xpu.Event() for _ in range(chunks)]
+        with torch.xpu.stream(compute_stream):
+            for c in range(chunks):
+                torch.ops.symm_mem.ep_combine_pull_partial(
+                    expert_output,
+                    self._partial_slot,
+                    topk_idx_i32,
+                    scatter,
+                    tw_f32,
+                    self.num_experts,
+                    self.rank,
+                    ws,
+                    c * step,
+                    step,
+                )
+                events[c].record(compute_stream)
+
+        for c in range(chunks):
+            comm_stream.wait_event(events[c])
+            self._pull_ws.barrier(channel=c + 1)
+            torch.ops.symm_mem.ep_combine_pull_gather(
+                self._partial_rank_ptrs,
+                topk_idx_i32,
+                output,
+                expert_output,
+                scatter,
+                tw_f32,
+                self.num_experts,
+                self.rank,
+                ws,
+                c * step,
+                step,
+            )
         return output
 
     def _combine_ring(
