@@ -12,7 +12,7 @@ permissions: read-all
 
 jobs:
   get-params:
-    runs-on: ubuntu-24.04
+    runs-on: build
     outputs:
       node_name: ${{ steps.params.outputs.node_name }}
     steps:
@@ -33,11 +33,21 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Check env
+      - name: Basic infos
         run: |
+          cat /etc/os-release
+          uname -r
+          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc|ocloc'
+          lspci -nn |grep  -Ei 'VGA|DISPLAY'
+          xpu-smi discovery -d 0 |grep -E 'Stepping|PCI Device ID'
+          clinfo |grep 'Device IP'
+          lscpu |grep 'Model name'
           clinfo -l
           df -h
+          free -h
           ip a
+      - name: Check env
+        run: |
           export GCC_VERSION=13
           apt-get update
           apt-get install -y wget curl vim libgomp1 pciutils ca-certificates \
