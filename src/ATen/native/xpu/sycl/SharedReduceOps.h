@@ -184,7 +184,13 @@ struct AbsMaxOps {
 // of a set of numbers.
 // `scalar_t` is the type of the input and `acc_t` is the type of the
 // accumulated value. These types differ for complex number input support.
-template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
+// `apply_root` controls whether to apply the final root: if true, returns
+// (sum(|x|^p))^(1/p); if false, returns sum(|x|^p) (used by linalg._powsum).
+template <
+    typename scalar_t,
+    typename acc_t = scalar_t,
+    typename out_t = acc_t,
+    bool apply_root = true>
 struct NormOps {
   acc_t norm_;
 
@@ -197,7 +203,11 @@ struct NormOps {
   }
 
   inline out_t project(acc_t a) const {
-    return compat_pow(a, static_cast<acc_t>(1.0) / norm_);
+    if constexpr (apply_root) {
+      return compat_pow(a, static_cast<acc_t>(1.0) / norm_);
+    } else {
+      return a;
+    }
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
@@ -277,7 +287,13 @@ inline acc_t abs_if_complex(c10::complex<scalar_t> data, AbsSwitch<acc_t>) {
 // absolute value of a set of numbers.
 // `scalar_t` is the type of the input and `acc_t` is the type of the
 // accumulated value. These types differ for complex number input support.
-template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
+// `apply_root` controls whether to apply the final sqrt: if true, returns
+// sqrt(sum(|x|^2)); if false, returns sum(|x|^2) (used by linalg._powsum).
+template <
+    typename scalar_t,
+    typename acc_t = scalar_t,
+    typename out_t = acc_t,
+    bool apply_root = true>
 struct NormTwoOps {
   inline acc_t reduce(acc_t acc, scalar_t data, int64_t /*idx*/) const {
     acc_t data_ = abs_if_complex(data, AbsSwitch<acc_t>());
@@ -289,7 +305,11 @@ struct NormTwoOps {
   }
 
   inline out_t project(acc_t a) const {
-    return device_sqrt(a);
+    if constexpr (apply_root) {
+      return device_sqrt(a);
+    } else {
+      return a;
+    }
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {

@@ -88,4 +88,57 @@ void norm_kernel(TensorIterator& iter, const Scalar& val) {
   }
 }
 
+// powsum: computes sum(|x|^p) without the final root
+template <
+    typename scalar_t,
+    typename acc_t = typename scalar_value_type<scalar_t>::type,
+    typename out_t = typename scalar_value_type<scalar_t>::type>
+void powsum_kernel_xpu_impl(TensorIterator& iter, double p) {
+  if (p == static_cast<double>(2)) {
+    gpu_reduce_kernel<scalar_t, out_t>(
+        iter, NormTwoOps<scalar_t, acc_t, out_t, false>(), 0);
+  } else {
+    gpu_reduce_kernel<scalar_t, out_t>(
+        iter, NormOps<scalar_t, acc_t, out_t, false>{acc_t(p)}, 0);
+  }
+}
+
+void powsum_launch_kernel(TensorIterator& iter, double ord) {
+  if (iter.dtype(0) == kHalf) {
+    return powsum_kernel_xpu_impl<at::Half, float>(iter, ord);
+  } else if (iter.input_dtype() == kHalf && iter.dtype(0) == kFloat) {
+    // type promotion that does cast and reduction in a single kernel
+    return powsum_kernel_xpu_impl<at::Half, float, float>(iter, ord);
+  } else if (iter.dtype(0) == kBFloat16) {
+    return powsum_kernel_xpu_impl<at::BFloat16, float>(iter, ord);
+  } else if (iter.input_dtype() == kBFloat16 && iter.dtype(0) == kFloat) {
+    // type promotion that does cast and reduction in a single kernel
+    return powsum_kernel_xpu_impl<at::BFloat16, float, float>(iter, ord);
+  }
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(iter.input_dtype(), "powsum_xpu", [&] {
+    powsum_kernel_xpu_impl<scalar_t>(iter, ord);
+  });
+}
+
+void powsum_kernel(TensorIterator& iter, const Scalar& val) {
+  double p;
+  if (val.isIntegral(false)) {
+    p = val.to<int64_t>();
+  } else if (val.isFloatingPoint()) {
+    p = val.to<double>();
+  } else {
+    TORCH_CHECK(false, "powsum_kernel expects ord to be integer or float");
+  }
+  if (iter.numel() == 0) {
+    iter.output().fill_(0);
+    return;
+  }
+
+  powsum_launch_kernel(iter, p);
+
+  if (isComplexType(iter.output().scalar_type())) {
+    at::imag(iter.output()).zero_();
+  }
+}
+
 } // namespace at::native::xpu
