@@ -203,6 +203,9 @@ jobs:
             source /opt/rh/gcc-toolset-13/enable
             dnf install -y zlib-devel
             pip install cmake ninja pybind11
+            if [ "${{ inputs.category }}" = "dpclang" ]; then
+              sed -i 's@github\.com/intel@github\.com/dvrogozh@' .github/scripts/build_triton_wheel.py
+            fi
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
             if [ $(ls |grep -c "triton_xpu-.*.whl") -eq 0 ];then

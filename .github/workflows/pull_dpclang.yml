@@ -108,6 +108,7 @@ jobs:
       category: dpclang
       runner: build
       pytorch: ${{ github.base_ref }}
+      triton: 60f8e6257c1ef8fc8836e8c3c6fbd8f5eb7503aa
 
   linux-ut:
     needs: build-wheels
