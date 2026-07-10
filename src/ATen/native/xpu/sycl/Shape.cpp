@@ -8,7 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/WrapDimUtils.h>
@@ -613,6 +612,7 @@ void cat_out_kernel(
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16,
@@ -650,6 +650,7 @@ void cat_out_kernel(
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16,

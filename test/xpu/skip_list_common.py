@@ -13,16 +13,16 @@ skip_dict = {
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
-    "nn/test_embedding_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
     "nn/test_lazy_modules_xpu.py": None,
-    "nn/test_load_state_dict_xpu.py": None,
-    "nn/test_module_hooks_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "nn/test_pooling_xpu.py": None,
-    "nn/test_pruning_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
@@ -90,6 +90,14 @@ skip_dict = {
         "test_quick_core_backward_baddbmm_xpu_float64",
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_comprehensive_grid_sampler_2d_xpu_float32",
+        "test_comprehensive_grid_sampler_2d_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward_clamp_max_xpu_float64",
+        "test_quick_core_backward_clamp_min_xpu_float64",
+        # Slow test case: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
@@ -138,7 +146,7 @@ skip_dict = {
         "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
-    "test_native_functions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     "test_native_mha_xpu.py": None,
     "test_nn_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
@@ -270,7 +278,7 @@ skip_dict = {
         "test_cudnn_rnn",
     ),
     "test_compile_benchmark_util_xpu.py": None,
-    "test_hub_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_hub.py": None,
     "test_matmul_cuda_xpu.py": None,
     "test_custom_ops_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3644
@@ -329,7 +337,7 @@ skip_dict = {
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
-    "dynamo/test_functions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_regional_inductor_xpu.py": None,

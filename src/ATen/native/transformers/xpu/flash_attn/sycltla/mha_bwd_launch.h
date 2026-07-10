@@ -25,7 +25,7 @@ template <typename T, int Headdim, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
 template <bool Is_even_M, class T>
-CUTLASS_DEVICE void compute_o_dot_do(
+void compute_o_dot_do(
     T& trait,
     Param<typename T::DType>& param,
     const int m_block,
@@ -179,14 +179,14 @@ void mha_dot_do_o(T trait, Param<typename T::DType> param) {
 }
 
 template <typename Layout>
-CUTLASS_DEVICE auto convert_layout_2d_layout(Layout layout) {
+auto convert_layout_2d_layout(Layout layout) {
   auto l =
       make_layout(make_layout(get<0>(layout), get<1>(layout)), get<2>(layout));
   return l;
 }
 
 template <typename Layout>
-CUTLASS_DEVICE auto convert_layout_acc_layout(Layout acc_layout) {
+auto convert_layout_acc_layout(Layout acc_layout) {
   static_assert(decltype(size<0>(acc_layout))::value == 8);
   static_assert(decltype(rank(acc_layout))::value == 3);
   auto l = logical_divide(acc_layout, Shape<_1>{});
@@ -196,7 +196,7 @@ CUTLASS_DEVICE auto convert_layout_acc_layout(Layout acc_layout) {
 }
 
 template <typename T, class Trait, class MTensor, class TiledMMA>
-CUTLASS_DEVICE auto create_reg(
+auto create_reg(
     Trait const& trait,
     MTensor const& C,
     TiledMMA const& tiled_mma) {
@@ -229,7 +229,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-CUTLASS_DEVICE void gemm_kernel(
+void gemm_kernel(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -315,7 +315,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-CUTLASS_DEVICE void gemm_SdP(
+void gemm_SdP(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -334,7 +334,7 @@ template <
     class Layout2,
     class TVLayout2,
     class TiledMMA>
-CUTLASS_DEVICE void gemm_dKV(
+void gemm_dKV(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -352,7 +352,7 @@ template <
     class Engine2,
     class Layout2,
     class TiledMMA>
-CUTLASS_DEVICE void gemm_dQ(
+void gemm_dQ(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A,
     Tensor<Engine1, Layout1> const& B,
@@ -556,7 +556,7 @@ CUTLASS_DEVICE void mha_reorder_copy(
 }
 
 template <bool Is_even_N, bool is_dropout, class Trait>
-CUTLASS_DEVICE void dq_dk_dv_1colblock(
+void dq_dk_dv_1colblock(
     Trait& trait,
     Param<typename Trait::DType>& param,
     const int bidb,
@@ -863,7 +863,7 @@ CUTLASS_DEVICE void convert_type(
 }
 
 template <bool Is_even_M, class T>
-CUTLASS_DEVICE void convert_dq(
+void convert_dq(
     T& trait,
     Param<typename T::DType>& param,
     int m_block,
