@@ -16,6 +16,7 @@ from torch.testing._internal.jit_utils import JitTestCase
 from torch.testing._internal.common_device_type import ops, OpDTypes, instantiate_device_type_tests
 from torch.testing._internal.common_utils import IS_WINDOWS, slowTestIf
 pytorch_test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 sys.path.append(pytorch_test_dir)
 
 

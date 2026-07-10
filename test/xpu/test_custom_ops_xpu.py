@@ -465,7 +465,7 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
         @custom_op(f"{self.test_ns}::foo")
         def foo(x: torch.Tensor) -> torch.Tensor: ...
 
-        @foo.impl(["cpu", GPU_TYPE])
+        @foo.impl(["cpu", "cuda"])
         def foo_impl(x):
             return x.sum()
 
@@ -3565,7 +3565,7 @@ with warnings.catch_warnings(record=True) as w:
     @skipIfTorchDynamo("Expected to fail due to no FakeTensor support; not a bug")
     @unittest.skipIf(not TEST_CUDA, "requires CUDA")
     def test_library_register_autocast_multiple_times(self):
-        for device in [GPU_TYPE, "cpu"]:
+        for device in ["cuda", "cpu"]:
 
             @torch.library.custom_op("mylib::my_sin", mutates_args=())
             def my_sin(x: Tensor) -> Tensor:

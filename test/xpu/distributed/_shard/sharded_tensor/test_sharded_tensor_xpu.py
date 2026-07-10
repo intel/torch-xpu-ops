@@ -62,6 +62,7 @@ from torch.testing._internal.distributed._shard.sharded_tensor._test_st_common i
     _chunk_sharding_specs_list_for_test,
     MyShardedModel1,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 if TEST_WITH_DEV_DBG_ASAN:

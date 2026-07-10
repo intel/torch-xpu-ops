@@ -58,7 +58,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchInductor,
     skipIfXpu,
 )
-from torch.testing._internal.inductor_utils import HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
 
 

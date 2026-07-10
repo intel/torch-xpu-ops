@@ -9,6 +9,7 @@ from functools import partial, wraps
 import torch
 import torch.distributed as dist
 from torch.distributed.c10d_logger import _c10d_logger, _exception_logger
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 if not dist.is_available():
@@ -18,6 +19,7 @@ if not dist.is_available():
 from torch.testing._internal.common_distributed import DistributedTestBase, TEST_SKIPS
 from torch.testing._internal.common_fsdp import get_devtype
 from torch.testing._internal.common_utils import run_tests, TEST_WITH_DEV_DBG_ASAN
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 device_type = get_devtype().type

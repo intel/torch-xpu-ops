@@ -31,6 +31,7 @@ import unittest.mock as mock
 import warnings
 import weakref
 from unittest.mock import patch
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 # Make upstream `test/dynamo/utils.py` importable as `utils` for tests like
 # test_nested_function_resuming_with_correct_globals (its fallback

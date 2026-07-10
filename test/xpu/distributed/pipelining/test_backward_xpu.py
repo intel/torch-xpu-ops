@@ -22,7 +22,6 @@ batch_size = 256
 
 
 class StageBackwardTests(TestCase):
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/1682")
     def test_stage_backward(self, device):
         # MLP as a stage module
         mod = MLPModule(d_hid).to(device)
@@ -118,7 +117,6 @@ class StageBackwardTests(TestCase):
         torch.testing.assert_close(x.grad, ref_x.grad)
         torch.testing.assert_close(dinputs[1], ref_x.grad)
 
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/1682")
     def test_stage_backward_weight(self, device):
         # MLP as a stage module
         mod = MLPModule(d_hid).to(device)
@@ -159,7 +157,6 @@ class StageBackwardTests(TestCase):
                 print(f"Gradient test failed for {name}: {p.grad} vs {ref_p.grad}")
                 raise
 
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/1682")
     def test_stage_backward_weight_multiple_iters(self, device):
         # MLP as a stage module
         mod = MLPModule(d_hid).to(device)
@@ -324,7 +321,7 @@ class StageBackwardTests(TestCase):
             torch.testing.assert_close(p.grad, ref_p.grad)
 
 
-devices = ["cpu", GPU_TYPE, "hpu", "xpu"]
+devices = ["cpu", "cuda", "hpu", "xpu"]
 instantiate_device_type_tests(
     StageBackwardTests, globals(), only_for=devices, allow_xpu=True
 )

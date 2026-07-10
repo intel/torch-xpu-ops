@@ -71,6 +71,7 @@ from torch.testing._internal.common_utils import (
     TEST_XPU,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 if TYPE_CHECKING:
     from torch.autograd.profiler_util import FunctionEvent
@@ -163,7 +164,7 @@ class TestProfilerCUDA(TestCase):
         def custom_layer(input_ten):
             return MyFunc.apply(input_ten)
 
-        # emit_nvtx is CUDA-only and triggers torch.get_device_module(GPU_TYPE).synchronize() on enter.
+        # emit_nvtx is CUDA-only and triggers torch.cuda.synchronize() on enter.
         # For XPU, use emit_itt when available.
         if torch.get_device_module(GPU_TYPE).is_available():
             emitter = torch.autograd.profiler.emit_nvtx

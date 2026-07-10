@@ -65,7 +65,7 @@ from torch.testing._internal.common_utils import (
     TEST_XPU,
     xfailIf,
 )
-from torch.testing._internal.inductor_utils import HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.utils._python_dispatch import TorchDispatchMode
 
 

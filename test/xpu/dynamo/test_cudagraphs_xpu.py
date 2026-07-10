@@ -11,6 +11,7 @@ import torch._dynamo.testing
 import torch._inductor.cudagraph_trees as cudagraph_trees
 from torch._dynamo.testing import same
 from torch.testing._internal.common_utils import TEST_CUDA_GRAPH
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 def composed(*decs):

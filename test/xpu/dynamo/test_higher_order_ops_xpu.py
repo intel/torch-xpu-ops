@@ -7387,7 +7387,7 @@ class TestHigherOrderOpsOpInfo(torch._dynamo.test_case.TestCase):
 
 
 instantiate_device_type_tests(
-    TestHigherOrderOpsOpInfo, globals(), only_for=(GPU_TYPE, "xpu"), allow_xpu=True
+    TestHigherOrderOpsOpInfo, globals(), only_for=("cuda", "xpu"), allow_xpu=True
 )
 
 if __name__ == "__main__":
