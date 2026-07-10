@@ -667,37 +667,37 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
     @unittest.skipIf(not TEST_MULTIGPU, "Requires multiple gpus")
     def test_cuda__exchange_device(self):
         def fn(x):
-            dev = torch.cuda._exchange_device(0)
+            dev = torch.get_device_module(GPU_TYPE)._exchange_device(0)
             x = torch.sin(x + dev)
-            torch.cuda._maybe_exchange_device(dev)
+            torch.get_device_module(GPU_TYPE)._maybe_exchange_device(dev)
             return x
 
-        initial_dev = torch.cuda.current_device()
-        x = torch.randn((2, 2), device="cuda")
+        initial_dev = torch.get_device_module(GPU_TYPE).current_device()
+        x = torch.randn((2, 2), device=GPU_TYPE)
         ref = fn(x)
         opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
         res = opt_fn(x)
         self.assertEqual(ref, res)
 
         # make sure we recompile if device changes
-        with torch.cuda.device(1):
+        with torch.get_device_module(GPU_TYPE).device(1):
             ref = fn(x)
             res = opt_fn(x)
         self.assertEqual(ref, res)
-        self.assertEqual(torch.cuda.current_device(), initial_dev)
+        self.assertEqual(torch.get_device_module(GPU_TYPE).current_device(), initial_dev)
 
     @unittest.skipIf(not TEST_MULTIGPU, "need multiple GPU")
     def test_device_guard(self):
-        current_device = torch.cuda.current_device()
+        current_device = torch.get_device_module(GPU_TYPE).current_device()
 
         device_guard = DeviceGuard(CudaInterface, 1)
 
         with device_guard as _:
-            self.assertEqual(torch.cuda.current_device(), 1)
+            self.assertEqual(torch.get_device_module(GPU_TYPE).current_device(), 1)
             self.assertEqual(device_guard.prev_idx, 0)
             self.assertEqual(device_guard.idx, 1)
 
-        self.assertEqual(torch.cuda.current_device(), current_device)
+        self.assertEqual(torch.get_device_module(GPU_TYPE).current_device(), current_device)
         self.assertEqual(device_guard.prev_idx, 0)
         self.assertEqual(device_guard.idx, 1)
 
@@ -708,7 +708,7 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
 
         def event_generation_backend(gm, *args, **kwargs):  # type: ignore[no-untyped-def]
             e0_ind = new_event()
-            with torch.Stream(device="cuda:1"):
+            with torch.Stream(device=f"{GPU_TYPE}:1"):
                 get_external_object_by_index(e0_ind).record()
             e1_ind = new_event()
             self.assertNotEqual(e0_ind, e1_ind)
@@ -726,18 +726,18 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
         def fn(x):
             return x + 1
 
-        fn(torch.ones(2, 2, device="cuda:0"))
+        fn(torch.ones(2, 2, device=f"{GPU_TYPE}:0"))
 
     @unittest.skipIf(not TEST_MULTIGPU, "need multiple GPU")
     def test_get_current_stream_return_no_index(self):
         def fn(x, s0, s1):
             with s1:
                 with s0:
-                    s = torch.accelerator.current_stream(torch.device("cuda"))
+                    s = torch.accelerator.current_stream(torch.device(GPU_TYPE))
             return s
 
-        s0 = torch.Stream(device="cuda:0")
-        s1 = torch.Stream(device="cuda:1")
+        s0 = torch.Stream(device=f"{GPU_TYPE}:0")
+        s1 = torch.Stream(device=f"{GPU_TYPE}:1")
         inp = (torch.ones(2, 2) + 1, s0, s1)
         fn_opt = torch.compile(fn, fullgraph=True)
         s_act = fn_opt(*inp)
@@ -749,11 +749,11 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
         def fn(x, s0, s1):
             with s1:
                 with s0:
-                    s = torch.accelerator.current_stream(torch.device("cuda:1"))
+                    s = torch.accelerator.current_stream(torch.device(f"{GPU_TYPE}:1"))
             return s
 
-        s0 = torch.Stream(device="cuda:0")
-        s1 = torch.Stream(device="cuda:1")
+        s0 = torch.Stream(device=f"{GPU_TYPE}:0")
+        s1 = torch.Stream(device=f"{GPU_TYPE}:1")
         inp = (torch.ones(2, 2) + 1, s0, s1)
         fn_opt = torch.compile(fn, fullgraph=True)
         s_act = fn_opt(*inp)
@@ -829,20 +829,20 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
 
         @torch.compile(backend="inductor")
         def f():
-            y = torch.tensor([5], device="cuda")
+            y = torch.tensor([5], device=GPU_TYPE)
             return (y,)
 
-        with torch.cuda._DeviceGuard(0):
-            torch.cuda.set_device(0)
+        with torch.get_device_module(GPU_TYPE)._DeviceGuard(0):
+            torch.get_device_module(GPU_TYPE).set_device(0)
             result = f()
-            self.assertEqual(result[0].device, torch.device("cuda:0"))
+            self.assertEqual(result[0].device, torch.device(f"{GPU_TYPE}:0"))
 
         self._clear_dynamo_and_codecache()
 
-        with torch.cuda._DeviceGuard(1):
-            torch.cuda.set_device(1)
+        with torch.get_device_module(GPU_TYPE)._DeviceGuard(1):
+            torch.get_device_module(GPU_TYPE).set_device(1)
             result = f()
-            self.assertEqual(result[0].device, torch.device("cuda:1"))
+            self.assertEqual(result[0].device, torch.device(f"{GPU_TYPE}:1"))
 
 
 class TestMultiGPUDevice(torch._inductor.test_case.TestCase):
@@ -862,7 +862,7 @@ class TestMultiGPUDevice(torch._inductor.test_case.TestCase):
             self.assertEqual(counter.frame_count, 2)
 
 
-devices = ("cuda", "hpu", "xpu")
+devices = (GPU_TYPE, "hpu", "xpu")
 instantiate_device_type_tests(
     TestMultiGPUDevice, globals(), only_for=devices, allow_xpu=True
 )
@@ -1040,7 +1040,7 @@ class TestMultiProc(DynamoDistributedMultiProcTestCase):
 
             for _ in range(10):
                 optimizer.zero_grad()
-                data = torch.randn((16, 46, 8, 8), dtype=torch.float32, device="cuda")
+                data = torch.randn((16, 46, 8, 8), dtype=torch.float32, device=GPU_TYPE)
                 opt_net(data).sum().backward()
 
             # 2 fwd and 2 bwd graph such that 4 graphs in total

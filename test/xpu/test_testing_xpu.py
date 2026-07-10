@@ -516,7 +516,7 @@ if __name__ == '__main__':
             for op in op_db
             if len(
                 op.supported_dtypes("cpu").symmetric_difference(
-                    op.supported_dtypes("cuda")
+                    op.supported_dtypes(GPU_TYPE)
                 )
             )
             > 0
@@ -524,11 +524,11 @@ if __name__ == '__main__':
         dtypes=OpDTypes.none,
     )
     def test_supported_dtypes(self, device, op):
-        self.assertNotEqual(op.supported_dtypes("cpu"), op.supported_dtypes("cuda"))
-        self.assertEqual(op.supported_dtypes("cuda"), op.supported_dtypes("cuda:0"))
+        self.assertNotEqual(op.supported_dtypes("cpu"), op.supported_dtypes(GPU_TYPE))
+        self.assertEqual(op.supported_dtypes(GPU_TYPE), op.supported_dtypes(f"{GPU_TYPE}:0"))
         self.assertEqual(
-            op.supported_dtypes(torch.device("cuda")),
-            op.supported_dtypes(torch.device("cuda", index=1)),
+            op.supported_dtypes(torch.device(GPU_TYPE)),
+            op.supported_dtypes(torch.device(GPU_TYPE, index=1)),
         )
 
     def test_setup_and_teardown_run_for_device_specific_tests(self, device):
@@ -1021,7 +1021,7 @@ class TestAssertCloseMultiDevice(TestCase):
 
 
 instantiate_device_type_tests(
-    TestAssertCloseMultiDevice, globals(), only_for=("cuda", "xpu"), allow_xpu=True
+    TestAssertCloseMultiDevice, globals(), only_for=(GPU_TYPE, "xpu"), allow_xpu=True
 )
 
 

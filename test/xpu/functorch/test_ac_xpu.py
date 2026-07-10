@@ -27,9 +27,9 @@ def compile_with_ac(f, memory_budget):
 def get_act_mem(f):
     out = f()
     out.backward()
-    start_mem = torch.cuda.memory_stats()["requested_bytes.all.current"]
+    start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
     out = f()
-    cur_mem = torch.cuda.memory_stats()["requested_bytes.all.current"]
+    cur_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
     act_mem = (cur_mem - start_mem) / (1024 * 1024)
     out.backward()
     return act_mem
@@ -67,7 +67,7 @@ def get_mem_and_flops(f, memory_budget=None):
 class MemoryBudgetTest(TestCase):
     def setUp(self):
         super().setUp()
-        torch.set_default_device("cuda")
+        torch.set_default_device(GPU_TYPE)
 
     def tearDown(self):
         torch.set_default_device(None)
@@ -246,9 +246,9 @@ class MemoryBudgetTest(TestCase):
                 x = torch.ops.testac.triton_relu(torch.mm(x, w))
             return x.sum()
 
-        x = torch.randn(512, 512, requires_grad=True, device="cuda")
+        x = torch.randn(512, 512, requires_grad=True, device=GPU_TYPE)
         ws = [
-            torch.randn(512, 512, requires_grad=True, device="cuda") for _ in range(5)
+            torch.randn(512, 512, requires_grad=True, device=GPU_TYPE) for _ in range(5)
         ]
 
         def call():

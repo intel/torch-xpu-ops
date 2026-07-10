@@ -29,7 +29,7 @@ with patch.dict(os.environ, {"PYTORCH_NVML_BASED_CUDA_CHECK": "1"}):
     # to bypass that method here which should be irrelevant to the parameterized tests in this module.
     torch.testing._internal.common_utils.remove_device_and_dtype_suffixes = lambda x: x
 
-    TEST_CUDA = torch.cuda.is_available()
+    TEST_CUDA = torch.get_device_module(GPU_TYPE).is_available()
     if not TEST_CUDA:
         print("CUDA not available, skipping tests", file=sys.stderr)
         TestCase = NoTest  # type: ignore[misc, assignment]
@@ -45,17 +45,17 @@ class TestExtendedCUDAIsAvail(TestCase):
 
     def setUp(self):
         super().setUp()
-        torch.cuda._cached_device_count = (
+        torch.get_device_module(GPU_TYPE)._cached_device_count = (
             None  # clear the lru_cache on this method before our test
         )
 
     @staticmethod
     def in_bad_fork_test() -> bool:
-        _ = torch.cuda.is_available()
-        return torch.cuda._is_in_bad_fork()
+        _ = torch.get_device_module(GPU_TYPE).is_available()
+        return torch.get_device_module(GPU_TYPE)._is_in_bad_fork()
 
     # These tests validate the behavior and activation of the weaker, NVML-based, user-requested
-    # `torch.cuda.is_available()` assessment. The NVML-based assessment should be attempted when
+    # `torch.get_device_module(GPU_TYPE).is_available()` assessment. The NVML-based assessment should be attempted when
     # `PYTORCH_NVML_BASED_CUDA_CHECK` is set to 1, reverting to the default CUDA Runtime API check otherwise.
     # If the NVML-based assessment is attempted but fails, the CUDA Runtime API check should be executed
     @unittest.skipIf(IS_WINDOWS, "Needs fork")
@@ -67,10 +67,10 @@ class TestExtendedCUDAIsAvail(TestCase):
         patch_env = {"PYTORCH_NVML_BASED_CUDA_CHECK": avoid_init} if avoid_init else {}
         with patch.dict(os.environ, **patch_env):
             if nvml_avail:
-                _ = torch.cuda.is_available()
+                _ = torch.get_device_module(GPU_TYPE).is_available()
             else:
                 with patch.object(torch.cuda, "_device_count_nvml", return_value=-1):
-                    _ = torch.cuda.is_available()
+                    _ = torch.get_device_module(GPU_TYPE).is_available()
             with multiprocessing.get_context("fork").Pool(1) as pool:
                 in_bad_fork = pool.apply(TestExtendedCUDAIsAvail.in_bad_fork_test)
             if os.getenv("PYTORCH_NVML_BASED_CUDA_CHECK") == "1" and nvml_avail:

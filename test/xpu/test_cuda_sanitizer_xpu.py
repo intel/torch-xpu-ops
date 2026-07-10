@@ -19,8 +19,8 @@ if not TEST_CUDA:
 class TestArgumentHandler(TestCase):
     def test_add(self):
         add_func = torch.ops.aten.add.Tensor
-        a = torch.ones(5, 3, device="cuda")
-        b = torch.randn(5, 3, device="cuda")
+        a = torch.ones(5, 3, device=GPU_TYPE)
+        b = torch.randn(5, 3, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(add_func._schema, (a, b), {}, is_factory=False)
@@ -32,9 +32,9 @@ class TestArgumentHandler(TestCase):
 
     def test_cat(self):
         cat_func = torch.ops.aten.cat.default
-        a = torch.ones(2, 4, 5, device="cuda")
-        b = torch.zeros(2, 1, 5, device="cuda")
-        c = torch.rand(2, 7, 5, device="cuda")
+        a = torch.ones(2, 4, 5, device=GPU_TYPE)
+        b = torch.zeros(2, 1, 5, device=GPU_TYPE)
+        c = torch.rand(2, 7, 5, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(
@@ -50,7 +50,7 @@ class TestArgumentHandler(TestCase):
 
     def test_split(self):
         split_func = torch.ops.aten.split.Tensor
-        a = torch.arange(10, device="cuda").reshape(5, 2)
+        a = torch.arange(10, device=GPU_TYPE).reshape(5, 2)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(split_func._schema, (a, 2), {}, is_factory=False)
@@ -63,7 +63,7 @@ class TestArgumentHandler(TestCase):
 
     def test_inplace(self):
         add_inplace_func = torch.ops.aten.add_.Tensor
-        a = torch.rand(4, 2, device="cuda")
+        a = torch.rand(4, 2, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(
@@ -77,8 +77,8 @@ class TestArgumentHandler(TestCase):
 
     def test_out(self):
         mul_out_func = torch.ops.aten.mul.out
-        a = torch.arange(8, device="cuda")
-        b = torch.empty(8, device="cuda")
+        a = torch.arange(8, device=GPU_TYPE)
+        b = torch.empty(8, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(
@@ -92,7 +92,7 @@ class TestArgumentHandler(TestCase):
 
     def test_nonzero(self):
         nonzero_func = torch.ops.aten.nonzero.default
-        a = torch.ones(5, 3, 2, device="cuda")
+        a = torch.ones(5, 3, 2, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(
@@ -107,8 +107,8 @@ class TestArgumentHandler(TestCase):
 
     def test_tensor_names(self):
         addr_func = torch.ops.aten.addr.default
-        vec = torch.arange(1, 4, device="cuda")
-        M = torch.zeros(3, 3, device="cuda")
+        vec = torch.arange(1, 4, device=GPU_TYPE)
+        M = torch.zeros(3, 3, device=GPU_TYPE)
 
         argument_handler = csan.ArgumentHandler()
         argument_handler.parse_inputs(

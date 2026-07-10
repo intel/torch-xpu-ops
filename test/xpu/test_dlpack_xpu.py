@@ -116,7 +116,7 @@ class TestTorchDlPack(TestCase):
         return z
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_dlpack_conversion_with_streams(self, device, dtype):
         # Create a stream where the tensor will reside
@@ -128,7 +128,7 @@ class TestTorchDlPack(TestCase):
         self.assertEqual(z, x)
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     @dtypes(
         torch.float8_e5m2,
         torch.float8_e5m2fnuz,
@@ -207,13 +207,13 @@ class TestTorchDlPack(TestCase):
     @onlyCUDA
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_dlpack_conversion_with_diff_streams(self, device, dtype):
-        stream_a = torch.cuda.Stream()
-        stream_b = torch.cuda.Stream()
+        stream_a = torch.get_device_module(GPU_TYPE).Stream()
+        stream_b = torch.get_device_module(GPU_TYPE).Stream()
         # DLPack protocol helps establish a correct stream order
         # (hence data dependency) at the exchange boundary.
         # the `tensor.__dlpack__` method will insert a synchronization event
         # in the current stream to make sure that it was correctly populated.
-        with torch.cuda.stream(stream_a):
+        with torch.get_device_module(GPU_TYPE).stream(stream_a):
             x = make_tensor((5,), dtype=dtype, device=device) + 1
             z = torch.from_dlpack(x.__dlpack__(stream=stream_b.cuda_stream))
             stream_a.synchronize()
@@ -231,9 +231,9 @@ class TestTorchDlPack(TestCase):
         torch.float4_e2m1fn_x2,
     )
     def test_dlpack_conversion_with_diff_streams_narrow_precision(self, device, dtype):
-        stream_a = torch.cuda.Stream()
-        stream_b = torch.cuda.Stream()
-        with torch.cuda.stream(stream_a):
+        stream_a = torch.get_device_module(GPU_TYPE).Stream()
+        stream_b = torch.get_device_module(GPU_TYPE).Stream()
+        with torch.get_device_module(GPU_TYPE).stream(stream_a):
             x = make_tensor((5,), dtype=torch.uint8, device=device) + 1
             x = x.view(dtype)
             z = torch.from_dlpack(x.__dlpack__(stream=stream_b.cuda_stream))
@@ -281,7 +281,7 @@ class TestTorchDlPack(TestCase):
                 return capsule
 
         # CUDA-based tests runs on non-default streams
-        with torch.cuda.stream(torch.cuda.default_stream()):
+        with torch.get_device_module(GPU_TYPE).stream(torch.get_device_module(GPU_TYPE).default_stream()):
             x = DLPackTensor(make_tensor((5,), dtype=torch.float32, device=device))
             from_dlpack(x)
 
@@ -291,19 +291,19 @@ class TestTorchDlPack(TestCase):
         # tests run on non-default stream, so _sleep call
         # below will run on a non-default stream, causing
         # default stream to wait due to inserted syncs
-        torch.cuda.default_stream().synchronize()
+        torch.get_device_module(GPU_TYPE).default_stream().synchronize()
         # run _sleep call on a non-default stream, causing
         # default stream to wait due to inserted syncs
-        side_stream = torch.cuda.Stream()
-        with torch.cuda.stream(side_stream):
+        side_stream = torch.get_device_module(GPU_TYPE).Stream()
+        with torch.get_device_module(GPU_TYPE).stream(side_stream):
             x = torch.zeros(1, device=device)
-            torch.cuda._sleep(2**20)
-            self.assertTrue(torch.cuda.default_stream().query())
+            torch.get_device_module(GPU_TYPE)._sleep(2**20)
+            self.assertTrue(torch.get_device_module(GPU_TYPE).default_stream().query())
             # ROCm uses stream 0 for default stream, CUDA uses stream 1
             default_stream_id = 0 if torch.version.hip else 1
             x.__dlpack__(stream=default_stream_id)
         # check that the default stream has work (a pending cudaStreamWaitEvent)
-        self.assertFalse(torch.cuda.default_stream().query())
+        self.assertFalse(torch.get_device_module(GPU_TYPE).default_stream().query())
 
     @skipMeta
     @onlyNativeDeviceTypes
@@ -369,7 +369,7 @@ class TestTorchDlPack(TestCase):
             x.__dlpack__(stream=0)
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     @deviceCountAtLeast(2)
     def test_dlpack_tensor_on_different_device(self, devices):
         dev0, dev1 = devices[:2]
@@ -529,7 +529,7 @@ class TestTorchDlPack(TestCase):
         self._test_from_dlpack(device, out_device="cpu", copy=True)
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/3077")
     def test_no_copy(self, device):
         # No copy, since tensor lives in the same device.
@@ -812,21 +812,21 @@ class TestTorchDlPack(TestCase):
             cpp_sources=[source],
             functions=["test_dlpack_exchange_api"],
             verbose=False,
-            with_cuda=device.startswith("cuda"),
+            with_cuda=device.startswith(GPU_TYPE),
             with_sycl=device.startswith("xpu"),
         )
 
         # Run the comprehensive C++ test
         module.test_dlpack_exchange_api(
-            tensor, api_capsule, device.startswith(("cuda", "xpu"))
+            tensor, api_capsule, device.startswith((GPU_TYPE, "xpu"))
         )
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     def test_numpy_cross_device_transfer(self, device):
         """Test cross-device transfer from NumPy (CPU) to PyTorch (CUDA/XPU).
 
-        This tests the fix for issue #169186 where torch.from_dlpack(numpy_array, device="cuda")
+        This tests the fix for issue #169186 where torch.from_dlpack(numpy_array, device=GPU_TYPE)
         would fail with "unsupported device requested" because PyTorch incorrectly asked
         NumPy to create a CUDA DLPack capsule instead of handling the device transfer itself.
 
@@ -873,7 +873,7 @@ class TestTorchDlPack(TestCase):
         self.assertEqual(np_array2[0], 999)
 
     @skipMeta
-    @onlyOn(["xpu", "cuda"])
+    @onlyOn(["xpu", GPU_TYPE])
     @deviceCountAtLeast(2)
     def test_numpy_cross_device_multi_gpu(self, devices):
         """Test cross-device transfer to specific CUDA devices (cuda:0, cuda:1, etc)."""

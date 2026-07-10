@@ -279,8 +279,8 @@ class MiscTests(torch._inductor.test_case.TestCase):
 
             return cumsum.sum()
 
-        a = torch.rand(100, 30, device="cuda")
-        b = torch.rand(100, 30, device="cuda")
+        a = torch.rand(100, 30, device=GPU_TYPE)
+        b = torch.rand(100, 30, device=GPU_TYPE)
 
         torch._dynamo.decorators.mark_unbacked(a, 0)
         torch._dynamo.decorators.mark_unbacked(a, 1)
@@ -14401,19 +14401,19 @@ class MiscTestsDevice(torch._inductor.test_case.TestCase):
             opt_fn2 = torch.compile(fn2, backend="eager", fullgraph=True)
             res = opt_fn2(x2)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     @torch._dynamo.config.patch(recompile_limit=999)
     def test_legacy_cuda_tensor(self):
         typs = [
-            torch.cuda.FloatTensor,
-            torch.cuda.DoubleTensor,
-            torch.cuda.HalfTensor,
-            torch.cuda.BFloat16Tensor,
-            torch.cuda.ByteTensor,
-            torch.cuda.CharTensor,
-            torch.cuda.IntTensor,
-            torch.cuda.ShortTensor,
-            torch.cuda.LongTensor,
+            torch.get_device_module(GPU_TYPE).FloatTensor,
+            torch.get_device_module(GPU_TYPE).DoubleTensor,
+            torch.get_device_module(GPU_TYPE).HalfTensor,
+            torch.get_device_module(GPU_TYPE).BFloat16Tensor,
+            torch.get_device_module(GPU_TYPE).ByteTensor,
+            torch.get_device_module(GPU_TYPE).CharTensor,
+            torch.get_device_module(GPU_TYPE).IntTensor,
+            torch.get_device_module(GPU_TYPE).ShortTensor,
+            torch.get_device_module(GPU_TYPE).LongTensor,
         ]
 
         def f2(typ):
@@ -14592,7 +14592,7 @@ class MiscTestsDevice(torch._inductor.test_case.TestCase):
 
 instantiate_parametrized_tests(MiscTestsPyTree)
 
-devices = ("cuda", "hpu", "xpu")
+devices = (GPU_TYPE, "hpu", "xpu")
 instantiate_device_type_tests(
     MiscTestsDevice, globals(), only_for=devices, allow_xpu=True
 )
@@ -14605,9 +14605,9 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
             result = x_bool * sentinel
             return result
 
-        x_true = torch.tensor([True], device="cuda")
-        x_false = torch.tensor([False], device="cuda")
-        sentinel = torch.tensor(2.0, requires_grad=True, device="cuda")
+        x_true = torch.tensor([True], device=GPU_TYPE)
+        x_false = torch.tensor([False], device=GPU_TYPE)
+        sentinel = torch.tensor(2.0, requires_grad=True, device=GPU_TYPE)
         eager_result_true = symbool_mul_fn(x_true, sentinel)
         eager_result_false = symbool_mul_fn(x_false, sentinel)
         compiled_fn = torch.compile(symbool_mul_fn, fullgraph=True, dynamic=True)
@@ -14631,9 +14631,9 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
         compiled_guard_fn = torch.compile(
             symbool_guard_fn, backend="eager", dynamic=True
         )
-        a_true = torch.tensor(True, device="cuda")
-        a_false = torch.tensor(False, device="cuda")
-        b = torch.randn(6, device="cuda")
+        a_true = torch.tensor(True, device=GPU_TYPE)
+        a_false = torch.tensor(False, device=GPU_TYPE)
+        b = torch.randn(6, device=GPU_TYPE)
         eager_res_true = symbool_guard_fn(a_true, b)
         compiled_res_true = compiled_guard_fn(a_true, b)
         self.assertEqual(eager_res_true, compiled_res_true)
@@ -14654,8 +14654,8 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
                 result = result.real
             return result
 
-        sentinel = torch.tensor(1.0, requires_grad=True, device="cuda")
-        arg_0 = torch.tensor([True], dtype=torch.bool, device="cuda")
+        sentinel = torch.tensor(1.0, requires_grad=True, device=GPU_TYPE)
+        arg_0 = torch.tensor([True], dtype=torch.bool, device=GPU_TYPE)
         args = (arg_0,) + (sentinel,)
         try:
             compiled_program = torch.compile(
@@ -14721,7 +14721,7 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
                 self.mod = Model()
 
             def forward(self, x):
-                if "cuda" in str(x.device):
+                if GPU_TYPE in str(x.device):
                     mod = self.mod.to(x.device)
                     return mod(x)
                 else:
@@ -14732,7 +14732,7 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
         with torch._dynamo.config.patch(graph_break_on_nn_param_ctor=False):
             compiled = torch.compile(container, backend="eager", fullgraph=True)
 
-            inp1 = torch.randn(4, 4, 4, device="cuda")
+            inp1 = torch.randn(4, 4, 4, device=GPU_TYPE)
 
             # First call with CUDA input
             compiled_result1 = compiled(inp1)
@@ -14757,10 +14757,10 @@ class DynamoOpPromotionTests(torch._dynamo.test_case.TestCase):
                 self.to("cpu")
                 return x
 
-        mod = Model().cuda()
+        mod = Model().to(device=GPU_TYPE)
         with torch._dynamo.config.patch(graph_break_on_nn_param_ctor=False):
             fn = torch.compile(mod, backend="aot_eager", fullgraph=True)
-            x = torch.randn(10, 10, device="cuda")
+            x = torch.randn(10, 10, device=GPU_TYPE)
             ref = fn(x)
             self.assertEqual(str(mod.fc.weight.device), "cpu")
             mod.cuda()

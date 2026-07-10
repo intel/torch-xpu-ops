@@ -1423,11 +1423,11 @@ partial_fn = functools.partial(fn, scale=2)
         if x.device.type == "cpu":
             return x + 1
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     @make_test
     def test_get_device_properties_tensor_device(a):
-        x = a.to("cuda")
-        prop = torch.cuda.get_device_properties(x.device)
+        x = a.to(GPU_TYPE)
+        prop = torch.get_device_module(GPU_TYPE).get_device_properties(x.device)
         if prop.major == 8:
             return x + prop.multi_processor_count
         return x + prop.max_threads_per_multi_processor
@@ -2673,7 +2673,7 @@ partial_fn = functools.partial(fn, scale=2)
                 return x + 2
             elif is_mtia_available():
                 return x + 3
-            elif torch.cuda.is_available():
+            elif torch.get_device_module(GPU_TYPE).is_available():
                 return x + 4
             elif torch.xpu.is_available():
                 return x + 5
@@ -3634,15 +3634,15 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(foo(), foo())
         self.assertEqual(foo(), foo())
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     def test_cuda_manual_seed(self):
         import torch._inductor.config as inductor_config
 
         seed_fns = (
-            torch.cuda.manual_seed,
-            torch.cuda.manual_seed_all,
-            torch.cuda.random.manual_seed,
-            torch.cuda.random.manual_seed_all,
+            torch.get_device_module(GPU_TYPE).manual_seed,
+            torch.get_device_module(GPU_TYPE).manual_seed_all,
+            torch.get_device_module(GPU_TYPE).random.manual_seed,
+            torch.get_device_module(GPU_TYPE).random.manual_seed_all,
         )
 
         with inductor_config.patch("fallback_random", True):
@@ -3653,7 +3653,7 @@ class GraphModule(torch.nn.Module):
                     @torch.compile
                     def foo():
                         seed_fn(3)
-                        return torch.rand(4, device="cuda")
+                        return torch.rand(4, device=GPU_TYPE)
 
                     self.assertEqual(foo(), foo())
                     self.assertEqual(foo(), foo())

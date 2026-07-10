@@ -74,7 +74,7 @@ def _check_cudnn_varlen_supported(device):
 
     device_index = torch.device(device).index
     if device_index is None:
-        device_index = torch.cuda.current_device()
+        device_index = torch.get_device_module(GPU_TYPE).current_device()
     if not varlen_attention._should_use_cudnn(device_index):
         raise unittest.SkipTest(
             "cuDNN varlen attention is not supported on this device"
@@ -1313,7 +1313,7 @@ class TestVarlenAttention(NNTestCase):
             self.assertEqual(out_buf, out)
 
 
-device_types = ("cuda",)
+device_types = (GPU_TYPE,)
 
 instantiate_device_type_tests(TestVarlenAttention, globals(), only_for=device_types)
 
