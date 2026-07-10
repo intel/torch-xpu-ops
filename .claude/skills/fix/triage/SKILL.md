@@ -75,6 +75,14 @@ See domain skill (loaded by orchestrator) for upstream path mappings.
 3. **Check if already fixed upstream.** Search for recent commits touching the
    relevant file(s)/function(s). If a fix already exists, report it and do NOT
    duplicate it.
+3a. **Check referenced PRs / issues.** If the issue body contains a
+   github.com PR URL or an `owner/repo#N` reference, fetch its state and
+   merge-diff (`gh pr view`, `gh pr diff`) before continuing. If the
+   referenced PR is merged and touches the same file/test named in the
+   failure, note that in the triage output — it usually pins
+   `target_repo`. A merged PR that only adds a skip/xfail on the failing
+   test is NOT a fix (see rule 6), but it does confirm the fix location
+   is upstream.
 4. **Trace the failing code path** with `read`/`grep`. Stop when you have
    enough to make a call.
 5. **Determine root cause by where the fix must be made**, not by keywords:
@@ -159,3 +167,7 @@ Return to the orchestrator:
 - NEVER submit a torch-xpu-ops PR for a bug whose root cause is in pytorch.
 - NEVER recommend adding skip decorators as the fix strategy.
 - NEVER conclude "already fixed" solely because a skip decorator exists.
+- If the reproducer script uses a different assertion than the failing
+  test (e.g. `torch.allclose` when the test uses `assertEqual`), treat
+  the reproduction as INVALID. Ask `fix/reproduce` to re-run through
+  the test's own assertion before triaging.

@@ -23,6 +23,9 @@ orchestrator's job).
   - `true` (**nightly-ci-fix**): may add a skip with tracking issue when the
     fix requires significant implementation work beyond the current scope.
     Stale skips must still be removed.
+- `patch_proposal_mode` (optional, default `false`) — set by the
+  orchestrator when the fix must land in a repo the current run is not
+  allowed to open a PR against. See "Patch-proposal mode" below.
 - `commit_message_template` (optional) — orchestrator-provided format. If
   absent, use a concise imperative message.
 
@@ -84,6 +87,23 @@ git diff --cached --stat   # verify only intended files are staged
 
 Never stage `third_party/xpu.txt` or unrelated files.
 
+## Patch-proposal mode
+
+When `patch_proposal_mode=true`, the fix must land in a repo the current
+run is not allowed to open a PR against (usually `pytorch` when the issue
+is on `torch-xpu-ops`, or vice versa). In this mode:
+
+- Apply the fix in the `target_repo`'s local checkout exactly as normal
+  (Step 1 through Step 3).
+- **Do NOT commit.** Leave the change staged only. The orchestrator's
+  Stage 6 will read it back via `git -C <target_repo_dir> diff --cached`
+  and post the diff as a comment on the issue.
+- Do NOT branch, tag, or push anything.
+- Do NOT invoke any PR-creation skill downstream.
+- The default "leave staged but uncommitted" contract already matches this
+  requirement; `patch_proposal_mode` just reinforces it and forbids any
+  future PR handoff.
+
 ## Output
 
 Return to the orchestrator:
@@ -107,3 +127,4 @@ changes to be present when verify is called.
 - NEVER modify unrelated files.
 - NEVER cherry-pick upstream commits. Rebase instead.
 - NEVER submit a torch-xpu-ops PR for a pytorch-core bug.
+- NEVER commit when `patch_proposal_mode=true`.

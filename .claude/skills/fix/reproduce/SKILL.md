@@ -35,6 +35,59 @@ pip3 install --pre torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
 
+### Working directory
+
+Do NOT run the nightly-wheel reproducer with `cwd` inside any pytorch
+source checkout. Python resolves `import torch` against the local `torch/`
+package before site-packages, so it will load the in-tree `torch/_C.so`
+built at whatever revision that tree happens to be — typically stale
+relative to the installed wheel — and fail with
+`ImportError: undefined symbol: ...`. Either `cd $(mktemp -d)` (or any
+non-pytorch dir) before running, or invoke the reproducer with an
+absolute path from outside the tree.
+
+### torch-xpu-ops test invocation
+
+Tests under `torch-xpu-ops/test/xpu/` use
+`sys.path.append("../../../../test/functorch")` and pull `common_utils`,
+`common_methods_invocations`, etc. from `pytorch/test/`. That relative
+path only resolves when `cwd` is
+`<pytorch_dir>/third_party/torch-xpu-ops/test/xpu/`. Standard setup:
+
+- pytorch checkout at `agent_space_xpu/pytorch/`
+- `third_party/torch-xpu-ops/` inside it symlinked (or cloned) to the
+  working torch-xpu-ops tree
+- run `pytest` from `<pytorch_dir>/third_party/torch-xpu-ops/test/xpu/`
+
+The pytorch tree does NOT need to be built for the nightly-wheel path —
+the wheel provides the runtime, the source tree only supplies the test
+support modules.
+
+### Use the test's own assertion
+
+When writing a standalone reproducer for a `TestCase.assertEqual`
+failure, use the test's own assertion. **Do NOT substitute**
+`torch.allclose`, `torch.equal`, or bare `==` — they have different
+(usually stricter) default tolerances and will manufacture false
+positives.
+
+If the failure log says `AssertionError: Tensor-likes are not close`,
+the assertion is `torch.testing._comparison.assert_close`, which has
+dtype-specific defaults (bf16: `rtol=0.016, atol=1e-5`). Reproduce
+through `assert_close` or via `TestCase.assertEqual`:
+
+```python
+import sys; sys.path.insert(0, "<pytorch>/test")
+from torch._dynamo.test_case import TestCase   # or the base class the failing test uses
+
+class T(TestCase):
+    def test_x(self, device):
+        ...
+        self.assertEqual(out_ref, out)
+
+T().test_x(device='xpu')
+```
+
 ### Run test
 
 Run the test. Result interpretation: if `all skipped` by `@skipIfXpu`, load

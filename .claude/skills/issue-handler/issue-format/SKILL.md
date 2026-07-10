@@ -52,17 +52,17 @@ Return ONLY this JSON object, no markdown fences, no explanation:
 - `platform`: `"xpu"` unless a specific GPU is mentioned (e.g. BMG).
 - Do NOT hallucinate — if info isn't in the issue, use `""`.
 
-In pipeline mode, populate `formatted_body` using the templates under
-`.github/ISSUE_TEMPLATE/agent/` (`agent-issue-body.yml` for bug,
-`agent-issue-body-nonbug.yml` for non-bug).
+In pipeline mode, populate `formatted_body` as a string that
+`issue-handler` will use as the discovery section of the state
+comment (posted to the issue as a GitHub comment, never written into
+the issue body).
 
-## Pipeline mode: issue body
+## Pipeline mode: issue body is read-only
 
-In interactive mode (default), do not touch the issue body. In pipeline mode,
-this stage owns:
-- the top status marker `<!-- agent:status:DISCOVERED -->`,
-- canonical section headings,
-- the `<!-- agent:discovery-log -->` slot,
-- checking the "Issue formatted" Action Item.
+**Do not modify the issue body in either mode.** The
+`issue-handler`-owned state comment (marker `<!-- agent:state -->`)
+carries all agent-side state (stage, discovery log, etc.). This stage
+owns the "Discovery log" section inside that state comment, not the
+issue body.
 
-See the pipeline mode contract in `issue-handler/SKILL.md`.
+See the pipeline mode comment contract in `issue-handler/SKILL.md`.
