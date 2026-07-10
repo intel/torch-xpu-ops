@@ -80,6 +80,8 @@ def make_inputs(rank, world_size, device):
 
 
 def timed_loop(fn, loop=LOOP, warmup=WARMUP):
+    torch.xpu.synchronize()
+    dist.barrier()
     begin = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     end = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     for i in range(loop):

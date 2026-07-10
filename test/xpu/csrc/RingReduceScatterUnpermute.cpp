@@ -369,6 +369,27 @@ struct RingReduceScatterUnpermuteEpKernel {
     return owner == rank;
   }
 
+  // Resolve, ONCE per token, which top-k slots this rank must actually gather:
+  // a slot counts only if its expert is owned by this rank AND its scatter row
+  // is valid (>= 0).  The result is a bitmask over the (small) top-k slots.
+  // Two wins over checking ownership inside the hidden loop:
+  //   1. The ownership integer-divisions run topk times per token instead of
+  //      hidden_vecs*topk times (they don't depend on the hidden position).
+  //   2. mask == 0 means this token contributes nothing on this rank, so we can
+  //      skip the bandwidth-critical scattered HBM gather entirely and just
+  //      pass the incoming partial through (see the fast path below).
+  inline uint32_t resolve_owned_mask(int64_t topk_base) const {
+    uint32_t mask = 0;
+    for (int32_t k = 0; k < topk; ++k) {
+      if (!owns(topk_idx_ptr[topk_base + k]))
+        continue;
+      if (scatter_idx_ptr[topk_base + k] < 0)
+        continue;
+      mask |= (1u << k);
+    }
+    return mask;
+  }
+
   inline void unpermute_token(
       int64_t gt,
       const scalar_t* acc_row,
@@ -377,6 +398,31 @@ struct RingReduceScatterUnpermuteEpKernel {
       int32_t lsize) const {
     const int64_t hidden_vecs = hidden / VEC_SIZE;
     const int64_t topk_base = gt * topk;
+    const uint32_t owned_mask = resolve_owned_mask(topk_base);
+
+    // Fast path: this rank owns none of the token's experts, so its partial is
+    // unchanged.  Copy the incoming acc straight to dst (or write zero when
+    // seeding in phase 0) -- no scattered expert_output gather at all.
+    if (owned_mask == 0) {
+      for (int64_t vh = lid; vh < hidden_vecs; vh += lsize) {
+        const int64_t h_start = vh * VEC_SIZE;
+        vec_t vd;
+        if (acc_row != nullptr) {
+          vd = *reinterpret_cast<const vec_t*>(acc_row + h_start);
+        } else {
+#pragma unroll
+          for (int i = 0; i < VEC_SIZE; ++i)
+            vd[i] = vec_elem_t(0);
+        }
+        ring_vec_store(reinterpret_cast<vec_t*>(dst_row + h_start), vd);
+      }
+      for (int64_t h = hidden_vecs * VEC_SIZE + lid; h < hidden; h += lsize) {
+        dst_row[h] =
+            (acc_row != nullptr) ? acc_row[h] : static_cast<scalar_t>(0);
+      }
+      return;
+    }
+
     for (int64_t vh = lid; vh < hidden_vecs; vh += lsize) {
       const int64_t h_start = vh * VEC_SIZE;
       float acc[VEC_SIZE];
@@ -390,10 +436,10 @@ struct RingReduceScatterUnpermuteEpKernel {
           acc[i] = 0.0f;
       }
       for (int32_t k = 0; k < topk; ++k) {
-        // Ownership filter: skip the gather entirely for non-owned experts.
-        if (!owns(topk_idx_ptr[topk_base + k])) continue;
+        // Ownership + validity already resolved into owned_mask (no division,
+        // no negative-row check here on the hidden-bandwidth-critical path).
+        if (!((owned_mask >> k) & 1u)) continue;
         const int32_t src_row = scatter_idx_ptr[topk_base + k];
-        if (src_row < 0) continue;
         const float w = topk_weights_ptr[topk_base + k];
         const scalar_t* src =
             expert_output_ptr + static_cast<int64_t>(src_row) * hidden + h_start;
@@ -416,9 +462,8 @@ struct RingReduceScatterUnpermuteEpKernel {
     for (int64_t h = hidden_vecs * VEC_SIZE + lid; h < hidden; h += lsize) {
       float a = (acc_row != nullptr) ? static_cast<float>(acc_row[h]) : 0.0f;
       for (int32_t k = 0; k < topk; ++k) {
-        if (!owns(topk_idx_ptr[topk_base + k])) continue;
+        if (!((owned_mask >> k) & 1u)) continue;
         const int32_t src_row = scatter_idx_ptr[topk_base + k];
-        if (src_row < 0) continue;
         const float w = topk_weights_ptr[topk_base + k];
         a += w *
             static_cast<float>(
@@ -773,6 +818,9 @@ at::Tensor ring_reduce_scatter_unpermute_ep(
   const int32_t r = static_cast<int32_t>(rank);
   const int32_t right = (r + 1) % ws;
   const int32_t topk = static_cast<int32_t>(scatter_idx.size(1));
+  TORCH_CHECK(
+      topk <= 32,
+      "ep: topk must be <= 32 (owned-expert slots are tracked in a uint32 mask)");
   const uint32_t tag = static_cast<uint32_t>(iteration);
   const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
