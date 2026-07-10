@@ -893,9 +893,9 @@ from user code:
     return x + y""",
         )
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     def test_fx_node_error_cross_device(self):
-        linear = torch.nn.Linear(10, 20, device="cuda").eval()
+        linear = torch.nn.Linear(10, 20, device=GPU_TYPE).eval()
 
         def fn(x):
             return linear(x)
@@ -907,7 +907,7 @@ from user code:
         self.assertIn("Tensor device mismatch", msg)
         self.assertIn("Expected all tensors to be on the same device", msg)
         self.assertIn("cpu", msg)
-        self.assertIn("cuda", msg)
+        self.assertIn(GPU_TYPE, msg)
         self.assertNotIn("Dynamo failed to run FX node with fake tensors", msg)
         self.assertNotIn("Unhandled FakeTensor Device Propagation", msg)
 

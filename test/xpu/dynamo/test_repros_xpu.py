@@ -100,7 +100,7 @@ lib.define("foo(Tensor self) -> Tensor")
 lib.impl("foo", torch.sin, "CPU")
 
 
-requires_cuda = unittest.skipUnless(torch.cuda.is_available(), "requires cuda")
+requires_cuda = unittest.skipUnless(torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
 
 
 _GLOBAL_CPU_TENSOR = torch.randn(3)
@@ -4744,7 +4744,7 @@ class ReproTests(torch._dynamo.test_case.TestCase):
     @requires_cuda
     def test_tensor_set_data_cross_device(self):
         def func(x):
-            x.data = x.data.to("cuda")
+            x.data = x.data.to(GPU_TYPE)
             return x + 1
 
         x_eager = torch.randn(4, device="cpu")
@@ -4759,7 +4759,7 @@ class ReproTests(torch._dynamo.test_case.TestCase):
     @requires_cuda
     def test_tensor_set_data_cross_device_shape_mismatch_graphbreaks(self):
         def func(x):
-            x.data = torch.randn(8, device="cuda")
+            x.data = torch.randn(8, device=GPU_TYPE)
             return x + 1
 
         x = torch.randn(4, device="cpu")
@@ -4771,7 +4771,7 @@ class ReproTests(torch._dynamo.test_case.TestCase):
         backend = torch._dynamo.testing.EagerAndRecordGraphs()
 
         def func(x):
-            x.data = x.data.to("cuda")
+            x.data = x.data.to(GPU_TYPE)
             return x + 1
 
         x = torch.randn(4, device="cpu")
@@ -9553,7 +9553,7 @@ class ReproTestsDevice(torch._dynamo.test_case.TestCase):
 
 
 class CUDAReproTests(torch._dynamo.test_case.TestCase):
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     @torch._dynamo.config.patch(capture_scalar_outputs=False)
     def test_aot_backward_context_reentry_after_graph_break(self):
         def fn(x, y, scalar):
@@ -9564,48 +9564,48 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
             after_break = y.cos()
             return before_break, after_break
 
-        x = torch.randn(8, device="cuda", requires_grad=True)
-        y = torch.randn(8, device="cuda", requires_grad=True)
-        scalar = torch.randn((), device="cuda")
+        x = torch.randn(8, device=GPU_TYPE, requires_grad=True)
+        y = torch.randn(8, device=GPU_TYPE, requires_grad=True)
+        scalar = torch.randn((), device=GPU_TYPE)
 
         before_break, after_break = torch.compile(fn, backend="aot_eager")(x, y, scalar)
-        loss = before_break.sum().to("cuda") + after_break.sum()
+        loss = before_break.sum().to(GPU_TYPE) + after_break.sum()
         loss.backward()
 
         self.assertEqual(x.grad, torch.ones_like(x))
         self.assertEqual(y.grad, -y.detach().sin())
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     def test_cuda_sync(self):
         def fn(x):
             y = x + 1
-            torch.cuda.synchronize()
+            torch.get_device_module(GPU_TYPE).synchronize()
             return y * 2
 
-        x = torch.ones(2, device="cuda")
+        x = torch.ones(2, device=GPU_TYPE)
         cnt = torch._dynamo.testing.CompileCounter()
         opt_fn = torch.compile(fn, backend=cnt)
         self.assertEqual(fn(x), opt_fn(x))
         self.assertEqual(cnt.frame_count, 1)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     def test_torch_cuda_is_initialized(self):
         @torch.compile(fullgraph=True, backend="eager")
         def f(x):
-            if torch.cuda.is_initialized():
+            if torch.get_device_module(GPU_TYPE).is_initialized():
                 return x + 1
             return x + 2
 
         inp = torch.randn(3)
         self.assertEqual(f(inp), inp + 1)
 
-        with mock.patch("torch.cuda.is_initialized", lambda: False):
+        with mock.patch("torch.get_device_module(GPU_TYPE).is_initialized", lambda: False):
             self.assertEqual(f(inp), inp + 2)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     def test_graph_metadata_does_not_retain_cuda_fake_constants(self):
         def f():
-            x = torch.tensor(5, dtype=torch.float32, device="cuda")
+            x = torch.tensor(5, dtype=torch.float32, device=GPU_TYPE)
             copy.deepcopy(x)
 
         def clear_cuda_memory(*, reset_dynamo):
@@ -9613,28 +9613,28 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
                 torch._dynamo.reset()
             gc.collect()
             torch._C._cuda_clearCublasWorkspaces()
-            torch.cuda.empty_cache()
+            torch.get_device_module(GPU_TYPE).empty_cache()
 
         clear_cuda_memory(reset_dynamo=True)
-        memory_before = torch.cuda.memory_allocated()
+        memory_before = torch.get_device_module(GPU_TYPE).memory_allocated()
 
         opt_f = torch.compile(f, backend="eager")
         opt_f()
         clear_cuda_memory(reset_dynamo=False)
 
-        self.assertEqual(torch.cuda.memory_allocated(), memory_before)
+        self.assertEqual(torch.get_device_module(GPU_TYPE).memory_allocated(), memory_before)
         # Keep the compiled callable alive through the assertion. Before the
         # fix, it retained the compiled FX graph, whose FakeTensor metadata
         # retained the real CUDA scalar through FakeTensor.constant.
         self.assertIsNotNone(opt_f)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     @unittest.skipIf(not PLATFORM_SUPPORTS_BF16, "requires CUDA bf16 support")
     def test_layer_norm_mixed_dtype_aot_eager_decomp_partition_errors(self):
         # https://github.com/pytorch/pytorch/issues/151478
         x = torch.tensor(
             [[1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 6.0, 8.0]],
-            device="cuda",
+            device=GPU_TYPE,
             dtype=torch.bfloat16,
         )
 
@@ -9681,7 +9681,7 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
             "expected scalar type BFloat16 but found Long",
         )
 
-    @unittest.skipIf(not torch.cuda.is_available(), "requires cuda")
+    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
     @unittest.skipIf(not dist.is_available(), "test requires distributed")
     # TODO: Remoe this skip once nccl issue if fixed
     @unittest.skip(
@@ -9738,12 +9738,12 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
             os.environ["MASTER_ADDR"] = "localhost"
             os.environ["MASTER_PORT"] = "12355"
             dist.init_process_group(backend="nccl", world_size=1, rank=0)
-            model = model.to("cuda")
+            model = model.to(GPU_TYPE)
             model = nn.parallel.DistributedDataParallel(model)
 
             for batch in dataloader:
                 x, y = batch
-                x = x.to("cuda")
+                x = x.to(GPU_TYPE)
                 output = model(x)
                 loss = output.sum()
                 loss.backward()
@@ -9762,7 +9762,7 @@ class CUDAReproTests(torch._dynamo.test_case.TestCase):
 
 instantiate_parametrized_tests(ReproTests)
 
-devices = ["cuda", "hpu", "xpu"]
+devices = [GPU_TYPE, "hpu", "xpu"]
 instantiate_device_type_tests(
     ReproTestsDevice, globals(), only_for=devices, allow_xpu=True
 )

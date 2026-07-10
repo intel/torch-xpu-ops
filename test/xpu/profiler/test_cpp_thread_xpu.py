@@ -94,10 +94,10 @@ class CppThreadTestCUDA(TestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        if not torch.cuda.is_available():
+        if not torch.get_device_module(GPU_TYPE).is_available():
             self.skipTest("Test machine does not have cuda")
         global device
-        device = "cuda"
+        device = GPU_TYPE
 
         # this clears off events from initialization
         self.start_profiler(False)

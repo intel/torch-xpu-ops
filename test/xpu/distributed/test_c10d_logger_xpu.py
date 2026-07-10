@@ -109,7 +109,7 @@ class C10dErrorLoggerTest(DistributedTestBase):
 
             if self.backend(device_type) == dist.Backend.NCCL:
                 self.assertIn("nccl_version", error_msg_dict.keys())
-                nccl_ver = torch.cuda.nccl.version()
+                nccl_ver = torch.get_device_module(GPU_TYPE).nccl.version()
                 self.assertEqual(
                     ".".join(str(v) for v in nccl_ver), error_msg_dict["nccl_version"]
                 )

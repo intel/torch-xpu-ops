@@ -99,7 +99,7 @@ class DeviceMeshTestGlooBackend(DTensorTestBase):
         mesh = init_device_mesh(self.device_type, (self.world_size,))
         mesh_group = mesh.get_group()
         default_group = _get_default_group()
-        if torch.cuda.is_available():
+        if torch.get_device_module(GPU_TYPE).is_available():
             self.assertNotEqual(mesh_group, default_group)
             self.assertEqual(get_world_size(mesh_group), get_world_size(default_group))
         else:
@@ -203,7 +203,7 @@ class DeviceMeshTest(DTensorTestBase):
         # when eager init is used, the subgroup is created from nccl comm split and
         # there would be bound_device_id immediately assigned for the subgroup.
         if self.backend == "nccl":
-            curr_device = torch.cuda.current_device()
+            curr_device = torch.get_device_module(GPU_TYPE).current_device()
             self.assertEqual(mesh_2d.get_group(0).bound_device_id.index, curr_device)
             self.assertEqual(mesh_2d.get_group(1).bound_device_id.index, curr_device)
 
@@ -324,7 +324,7 @@ class DeviceMeshTest(DTensorTestBase):
         # This should NOT fail even on CPU-only machines because
         # the fake backend skips device setup
         device_mesh = init_device_mesh(
-            "cuda",
+            GPU_TYPE,
             (1,),
             mesh_dim_names=("dp",),
         )
@@ -333,7 +333,7 @@ class DeviceMeshTest(DTensorTestBase):
         self.assertEqual(device_mesh.ndim, 1)
         self.assertEqual(device_mesh.size(), 1)
         self.assertEqual(device_mesh.mesh_dim_names, ("dp",))
-        backend = device_mesh.get_all_groups()[0]._get_backend(torch.device("cuda"))
+        backend = device_mesh.get_all_groups()[0]._get_backend(torch.device(GPU_TYPE))
         self.assertIsInstance(backend, torch._C._distributed_c10d.FakeProcessGroup)
 
     @with_comms
@@ -1098,7 +1098,7 @@ class TestDeviceMeshGetItem(DTensorTestBase):
         w = spmd_pg.allreduce(torch.rand(10).cuda(self.rank))
         self.assertTrue(
             spmd_pg._get_backend(
-                torch.device(f"cuda:{self.rank}")
+                torch.device(f"{GPU_TYPE}:{self.rank}")
             )._verify_work_timeout(w, timedelta(seconds=30))
         )
         w.wait()
@@ -1106,7 +1106,7 @@ class TestDeviceMeshGetItem(DTensorTestBase):
         self.assertEqual(tp_pg._get_backend_name(), "nccl")
         w = tp_pg.allreduce(torch.rand(10).cuda(self.rank))
         self.assertTrue(
-            tp_pg._get_backend(torch.device(f"cuda:{self.rank}"))._verify_work_timeout(
+            tp_pg._get_backend(torch.device(f"{GPU_TYPE}:{self.rank}"))._verify_work_timeout(
                 w, timedelta(seconds=60)
             )
         )
@@ -1631,10 +1631,10 @@ class DeviceMeshCollectiveTest(DTensorTestBase):
         pg = dist.distributed_c10d._get_default_group()
 
         pg_ranks_by_dim = torch.arange(self.world_size).view(2, 4)
-        ng = dist.split_group(pg, pg_ranks_by_dim.tolist(), backend="cuda:nccl")
+        ng = dist.split_group(pg, pg_ranks_by_dim.tolist(), backend=f"{GPU_TYPE}:nccl")
         self.assertIsNotNone(ng)
         self.assertEqual(
-            dist.distributed_c10d._world.pg_backend_config[ng], "cuda:nccl"
+            dist.distributed_c10d._world.pg_backend_config[ng], f"{GPU_TYPE}:nccl"
         )
         gpu_tensor = torch.ones(3, 3, device=self.device_type)
         dist.all_reduce(gpu_tensor, group=ng)
@@ -1646,7 +1646,7 @@ class DeviceMeshCollectiveTest(DTensorTestBase):
 
         # Backend name mismatch (parent has cuda:nccl, request cuda:gloo).
         with self.assertRaisesRegex(ValueError, "Backend mismatch"):
-            dist.split_group(pg, [ranks], backend="cuda:gloo")
+            dist.split_group(pg, [ranks], backend=f"{GPU_TYPE}:gloo")
 
         # Device type not present in parent.
         with self.assertRaisesRegex(ValueError, "is not present in the parent"):

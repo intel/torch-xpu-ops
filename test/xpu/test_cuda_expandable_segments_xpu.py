@@ -49,7 +49,7 @@ from tools.stats.import_test_stats import get_disabled_tests
 sys.path.remove(str(REPO_ROOT))
 
 if __name__ == "__main__":
-    if torch.cuda.is_available() and not IS_JETSON and not IS_WINDOWS:
+    if torch.get_device_module(GPU_TYPE).is_available() and not IS_JETSON and not IS_WINDOWS:
         get_disabled_tests(".")
-        torch.cuda.memory._set_allocator_settings("expandable_segments:True")
+        torch.get_device_module(GPU_TYPE).memory._set_allocator_settings("expandable_segments:True")
         run_tests()

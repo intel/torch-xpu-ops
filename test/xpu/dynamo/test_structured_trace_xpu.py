@@ -60,7 +60,7 @@ def inductor_error_fn(a):
 
 
 def inductor_schedule_fn(a):
-    output = a.add(torch.ones(1000, 1000, device="cuda"))
+    output = a.add(torch.ones(1000, 1000, device=GPU_TYPE))
     return output
 
 
@@ -324,7 +324,7 @@ class StructuredTraceTest(TestCase):
     @requires_cuda_and_triton
     def test_schedule(self):
         fn_opt = torch.compile(inductor_schedule_fn, backend="inductor")
-        fn_opt(torch.ones(1000, 1000, device="cuda"))
+        fn_opt(torch.ones(1000, 1000, device=GPU_TYPE))
         self.assertExpectedInline(
             self.buffer.getvalue(),
             """\
@@ -359,7 +359,7 @@ class StructuredTraceTest(TestCase):
     @requires_cuda_and_triton
     def test_cudagraphs(self):
         fn_opt = torch.compile(mode="reduce-overhead")(inductor_schedule_fn)
-        fn_opt(torch.ones(1000, 1000, device="cuda"))
+        fn_opt(torch.ones(1000, 1000, device=GPU_TYPE))
         self.assertExpectedInline(
             self.buffer.getvalue(),
             """\
@@ -689,10 +689,10 @@ class StructuredTraceTest(TestCase):
         os.environ["MASTER_PORT"] = str(find_free_port())
         dist.init_process_group("gloo", rank=0, world_size=1)
 
-        model = DDP(ToyModel().to("cuda:0"), device_ids=[0], bucket_cap_mb=4)
+        model = DDP(ToyModel().to(f"{GPU_TYPE}:0"), device_ids=[0], bucket_cap_mb=4)
         ddp_model = torch.compile(model, backend="inductor")
 
-        ddp_model(torch.randn(1024, 1024, device="cuda:0"))
+        ddp_model(torch.randn(1024, 1024, device=f"{GPU_TYPE}:0"))
 
         dist.destroy_process_group()
 
@@ -1328,9 +1328,9 @@ def forward(self, x_1: "f32[2][1]cpu"):
             with self._setup_runtime_estimates_capture() as payload_buffer:
                 torch._dynamo.reset()
 
-                mod = SimpleModule().cuda()
+                mod = SimpleModule().to(device=GPU_TYPE)
                 compiled = torch.compile(mod, backend="inductor")
-                compiled(torch.randn(4, 4, device="cuda"))
+                compiled(torch.randn(4, 4, device=GPU_TYPE))
 
                 # Verify runtime + tensor meta artifact was logged
                 self.assertIn(
@@ -1395,9 +1395,9 @@ def forward(self, x_1: "f32[2][1]cpu"):
             with self._setup_runtime_estimates_capture() as payload_buffer:
                 torch._dynamo.reset()
 
-                mod = MixedModule().cuda()
+                mod = MixedModule().to(device=GPU_TYPE)
                 compiled = torch.compile(mod, backend="inductor")
-                compiled(torch.randn(4, 4, device="cuda"))
+                compiled(torch.randn(4, 4, device=GPU_TYPE))
 
                 # Verify artifact was logged
                 self.assertIn(
@@ -1449,9 +1449,9 @@ def forward(self, x_1: "f32[2][1]cpu"):
         try:
             with self._setup_runtime_estimates_capture() as payload_buffer:
                 torch._dynamo.reset()
-                mod = Mixed().cuda()
+                mod = Mixed().to(device=GPU_TYPE)
                 compiled = torch.compile(mod, backend="inductor")
-                compiled(torch.randn(4, 4, device="cuda"))
+                compiled(torch.randn(4, 4, device=GPU_TYPE))
                 payload = payload_buffer.getvalue().strip()
                 if payload:
                     data = json.loads(payload)

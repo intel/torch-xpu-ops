@@ -171,7 +171,7 @@ class TestBucketingTrace(torch._dynamo.test_case.TestCase):
                 2,
                 "sum",
                 torch.float32,
-                torch.device("cuda"),
+                torch.device(GPU_TYPE),
             ),
             (x, y),
         )
@@ -444,7 +444,7 @@ class TestCollectivesMultiProc(DynamoDistributedMultiProcTestCase):
             )
             for _ in range(3):  # warmup iters before cudagraph capture kicks in
                 self.assertEqual(compiled(inp), expected)
-            torch.cuda.synchronize(device=self.device)
+            torch.get_device_module(GPU_TYPE).synchronize(device=self.device)
 
     def test_c10d_functional_tagged_pt2_compliant(self):
         op = torch.ops._c10d_functional.all_reduce.default
@@ -1907,12 +1907,12 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
             ag_3_out = torch.ops.c10d_functional.wait_tensor(ag_3_out)
             return y, ag_0_out, ag_1_out, ag_2_out, ag_3_out
 
-        x = torch.ones(4, 384, device="cuda", dtype=torch.float32)
-        w = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ag_0 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ag_1 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ag_2 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ag_3 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
+        x = torch.ones(4, 384, device=GPU_TYPE, dtype=torch.float32)
+        w = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ag_0 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ag_1 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ag_2 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ag_3 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
         inputs = [x, w, ag_0, ag_1, ag_2, ag_3]
         correct = func(*inputs, **self.get_world_trs())
 
@@ -1971,7 +1971,7 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
                 torch.ops.c10d_functional.wait_tensor(ag_2_out),
             )
 
-        inputs = [torch.ones(64, device="cuda") for _ in range(3)]
+        inputs = [torch.ones(64, device=GPU_TYPE) for _ in range(3)]
         with torch._inductor.config.patch(
             {
                 "bucket_all_gathers_fx": "all",
@@ -2077,10 +2077,10 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
             return y, rs_0_out.to(torch.float32), rs_1_out.to(torch.float32)
 
         for f in [func, func2]:
-            x = torch.ones(4, 384, device="cuda", dtype=torch.float32)
-            w = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-            rs_0 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-            rs_1 = torch.ones(384, 256, device="cuda", dtype=torch.float32)
+            x = torch.ones(4, 384, device=GPU_TYPE, dtype=torch.float32)
+            w = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+            rs_0 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+            rs_1 = torch.ones(384, 256, device=GPU_TYPE, dtype=torch.float32)
             inputs = [x, w, rs_0, rs_1]
             f(*inputs, **self.get_world_trs())
 
@@ -2130,8 +2130,8 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
             rs_1_out = torch.ops._c10d_functional.wait_tensor(rs_1_out)
             return rs_0_out + rs_1_out
 
-        rs_0 = torch.ones(4, 128, device="cuda")
-        rs_1 = torch.ones(4, 128, device="cuda")
+        rs_0 = torch.ones(4, 128, device=GPU_TYPE)
+        rs_1 = torch.ones(4, 128, device=GPU_TYPE)
         inputs = [rs_0, rs_1]
 
         with torch._inductor.config.patch(
@@ -2179,10 +2179,10 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
 
         f = func
 
-        x = torch.ones(4, 384, device="cuda", dtype=torch.float32)
-        w = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ar_0 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ar_1 = torch.ones(384, 256, device="cuda", dtype=torch.float32)
+        x = torch.ones(4, 384, device=GPU_TYPE, dtype=torch.float32)
+        w = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ar_0 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ar_1 = torch.ones(384, 256, device=GPU_TYPE, dtype=torch.float32)
         inputs = [x, w, ar_0, ar_1]
         f(*inputs, **self.get_world_trs())
 
@@ -2237,10 +2237,10 @@ class TestCollectivesInductor(DynamoDistributedSingleProcTestCase):
 
             return y, ag_0_out, ag_1_out
 
-        x = torch.ones(4, 384, device="cuda", dtype=torch.float32)
-        w = torch.ones(384, 512, device="cuda", dtype=torch.float32)
-        ag_0 = torch.ones(384, 512, device="cuda", dtype=torch.bfloat16)
-        ag_1 = torch.ones(384, 512, device="cuda", dtype=torch.float32)
+        x = torch.ones(4, 384, device=GPU_TYPE, dtype=torch.float32)
+        w = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
+        ag_0 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.bfloat16)
+        ag_1 = torch.ones(384, 512, device=GPU_TYPE, dtype=torch.float32)
         inputs = [x, w, ag_0, ag_1]
         correct = func(*inputs, **self.get_world_trs())
 
@@ -2853,7 +2853,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_all_gather_comm_analysis(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -2977,7 +2977,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_reduce_scatter_comm_analysis(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -3100,7 +3100,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_all_reduce_comm_analysis(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -3218,7 +3218,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_all_to_all_comm_analysis(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -3398,7 +3398,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
     @unittest.skipIf(not SM80OrLater, "bfloat16")
     def test_schedule_overlap_benchmark(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -3532,7 +3532,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
         correctly with overlap scheduling.
         """
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )
@@ -3678,7 +3678,7 @@ class TestSyncDecisionCrossRanks(MultiProcessTestCase):
         before calling the collective.
         """
         store = c10d.FileStore(self.file_name, self.world_size)
-        torch.cuda.set_device(self.rank)
+        torch.get_device_module(GPU_TYPE).set_device(self.rank)
         c10d.init_process_group(
             backend="nccl", store=store, rank=self.rank, world_size=self.world_size
         )

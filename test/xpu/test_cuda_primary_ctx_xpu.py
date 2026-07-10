@@ -25,7 +25,7 @@ class TestCudaPrimaryCtx(TestCase):
 
     def setUp(self):
         super().setUp()
-        for device in range(torch.cuda.device_count()):
+        for device in range(torch.get_device_module(GPU_TYPE).device_count()):
             # Ensure context has not been created beforehand
             self.assertFalse(
                 torch._C._cuda_hasPrimaryContext(device),
@@ -37,16 +37,16 @@ class TestCudaPrimaryCtx(TestCase):
     )
     def test_set_device_0(self):
         # In CUDA 12 the behavior of cudaSetDevice has changed. It eagerly creates context on target.
-        # The behavior of `torch.cuda.set_device(0)` should also create context on the device 0.
+        # The behavior of `torch.get_device_module(GPU_TYPE).set_device(0)` should also create context on the device 0.
         # Initially, we should not have any context on device 0.
         self.assertFalse(torch._C._cuda_hasPrimaryContext(0))
-        torch.cuda.set_device(0)
+        torch.get_device_module(GPU_TYPE).set_device(0)
         # Now after the device was set, the context should present in CUDA 12.
         self.assertTrue(torch._C._cuda_hasPrimaryContext(0))
 
     @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
     def test_str_repr(self):
-        x = torch.randn(1, device="cuda:1")
+        x = torch.randn(1, device=f"{GPU_TYPE}:1")
 
         # We should have only created context on 'cuda:1'
         self.assertFalse(torch._C._cuda_hasPrimaryContext(0))
@@ -61,7 +61,7 @@ class TestCudaPrimaryCtx(TestCase):
 
     @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
     def test_copy(self):
-        x = torch.randn(1, device="cuda:1")
+        x = torch.randn(1, device=f"{GPU_TYPE}:1")
 
         # We should have only created context on 'cuda:1'
         self.assertFalse(torch._C._cuda_hasPrimaryContext(0))
@@ -76,7 +76,7 @@ class TestCudaPrimaryCtx(TestCase):
 
     @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
     def test_pin_memory(self):
-        x = torch.randn(1, device="cuda:1")
+        x = torch.randn(1, device=f"{GPU_TYPE}:1")
 
         # We should have only created context on 'cuda:1'
         self.assertFalse(torch._C._cuda_hasPrimaryContext(0))

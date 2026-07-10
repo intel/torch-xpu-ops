@@ -324,7 +324,7 @@ class StageBackwardTests(TestCase):
             torch.testing.assert_close(p.grad, ref_p.grad)
 
 
-devices = ["cpu", "cuda", "hpu", "xpu"]
+devices = ["cpu", GPU_TYPE, "hpu", "xpu"]
 instantiate_device_type_tests(
     StageBackwardTests, globals(), only_for=devices, allow_xpu=True
 )
