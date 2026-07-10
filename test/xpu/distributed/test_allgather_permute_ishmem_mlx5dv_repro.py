@@ -7,6 +7,8 @@ Usage:
 """
 
 import os
+import sys
+import time
 
 os.environ.setdefault("ISHMEM_IB_ENABLE_IBGDA", "1")
 os.environ.setdefault("ISHMEM_IBGDA_DIRECT_DOORBELL", "1")
@@ -23,7 +25,11 @@ os.environ.setdefault("ISHMEM_DEBUG", "0")
 import torch
 import torch.distributed as dist
 
-from allgather_local_permute_fusion import allgather_permute_ishmem, compute_scatter_idx
+from allgather_local_permute_fusion import (
+    allgather_permute_ishmem,
+    allgather_permute_ishmem_finalize,
+    compute_scatter_idx,
+)
 
 
 def init_distributed():
@@ -48,9 +54,9 @@ def main():
             flush=True,
         )
 
-    num_tokens_per_rank = 4
-    hidden_size = 16
-    topk = 2
+    num_tokens_per_rank = int(os.environ.get("TOKENS_PER_RANK", "4"))
+    hidden_size = int(os.environ.get("HIDDEN_SIZE", "16"))
+    topk = int(os.environ.get("TOPK", "2"))
     num_tokens = num_tokens_per_rank * world_size
 
     torch.manual_seed(1234 + rank)
@@ -88,6 +94,70 @@ def main():
 
     if rank == 0:
         print("[mlx5dv repro] completed without hitting the expected failure", flush=True)
+
+    # ---------------- Performance measurement ----------------
+    warmup = int(os.environ.get("PERF_WARMUP", "20"))
+    iters = int(os.environ.get("PERF_ITERS", "100"))
+
+    print("[perf] starting performance measurement", flush=True)
+    for _ in range(warmup):
+        allgather_permute_ishmem(hidden_shard, scatter_idx, output, group=dist.group.WORLD)
+    torch.xpu.synchronize()
+    dist.barrier()
+
+    per_iter_ms = []
+    for _ in range(iters):
+        torch.xpu.synchronize()
+        dist.barrier()
+        start = time.perf_counter()
+        allgather_permute_ishmem(hidden_shard, scatter_idx, output, group=dist.group.WORLD)
+        torch.xpu.synchronize()
+        end = time.perf_counter()
+        per_iter_ms.append((end - start) * 1e3)
+    print(f"[perf] completed {iters} iterations", flush=True)
+    per_iter_ms.sort()
+    avg_ms = sum(per_iter_ms) / len(per_iter_ms)
+    p50_ms = per_iter_ms[len(per_iter_ms) // 2]
+    p99_ms = per_iter_ms[min(len(per_iter_ms) - 1, int(len(per_iter_ms) * 0.99))]
+    min_ms = per_iter_ms[0]
+    max_ms = per_iter_ms[-1]
+
+    # Per-PE NIC traffic per call: this PE pushes its shard to (world_size-1) peers.
+    shard_bytes = hidden_shard.numel() * hidden_shard.element_size()
+    nic_bytes_per_iter = shard_bytes * (world_size - 1)
+    nic_gbps = (nic_bytes_per_iter / (avg_ms * 1e-3)) / 1e9 if avg_ms > 0 else 0.0
+
+    stats = torch.tensor([avg_ms, min_ms, max_ms, p50_ms, p99_ms], device=device)
+    dist.all_reduce(stats, op=dist.ReduceOp.MAX)
+    if rank == 0:
+        print(
+            "[perf] allgather_permute_ishmem  "
+            f"world_size={world_size} tokens/rank={num_tokens_per_rank} "
+            f"hidden={hidden_size} topk={topk} dtype={hidden_shard.dtype}",
+            flush=True,
+        )
+        print(
+            f"[perf] iters={iters} warmup={warmup}  "
+            f"shard={shard_bytes/1024:.1f}KiB  nic_push/iter={nic_bytes_per_iter/1024:.1f}KiB",
+            flush=True,
+        )
+        print(
+            "[perf] latency ms (max over ranks): "
+            f"avg={stats[0].item():.4f} min={stats[1].item():.4f} "
+            f"max={stats[2].item():.4f} p50={stats[3].item():.4f} p99={stats[4].item():.4f}",
+            flush=True,
+        )
+        print(
+            f"[perf] per-PE NIC push BW ~= {nic_gbps:.2f} GB/s (avg-latency based)",
+            flush=True,
+        )
+    # ---------------------------------------------------------
+
+    # Cleanly stop the ISHMEM runtime/proxy thread before MPI teardown to avoid
+    # a crash-on-exit. This is collective across all ranks.
+    dist.barrier()
+    allgather_permute_ishmem_finalize(device)
+    dist.barrier()
 
 
 if __name__ == "__main__":

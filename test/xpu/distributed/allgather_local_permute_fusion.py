@@ -547,6 +547,33 @@ def allgather_ishmem(
     )
 
 
+def allgather_ishmem_ring(
+    input_shard: torch.Tensor,
+    gathered_out: torch.Tensor,
+    group: dist.ProcessGroup = None,
+):
+    """Ring allgather via ISHMEM (no permute), bandwidth-optimal schedule.
+
+    Same result as allgather_ishmem but sends one slot to the right neighbour
+    per step over world_size-1 steps, avoiding receiver incast.
+    """
+    if not _HAS_ALLGATHER_PERMUTE_ISHMEM_KERNEL:
+        raise RuntimeError(
+            "allgather_ishmem_ring kernel is unavailable; build "
+            "test/xpu/csrc/liballgather_permute_ishmem.so first"
+        )
+    if group is None:
+        group = dist.group.WORLD
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+    return torch.ops.symm_mem.allgather_ishmem_ring(
+        input_shard.contiguous(),
+        gathered_out,
+        rank,
+        world_size,
+    )
+
+
 def allgather_permute_ishmem_finalize(device: torch.device = None):
     """Tear down the ISHMEM runtime (stops the host proxy thread).
 

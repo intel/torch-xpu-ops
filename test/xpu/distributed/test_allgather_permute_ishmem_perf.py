@@ -20,6 +20,7 @@ import torch.distributed as dist
 
 from allgather_local_permute_fusion import (
     allgather_permute_ishmem,
+    allgather_ishmem,
     compute_scatter_idx,
 )
 
@@ -30,6 +31,7 @@ NUM_EXPERTS = int(os.environ.get("NUM_EXPERTS", 128))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 RUN_REFERENCE = os.environ.get("RUN_REFERENCE", "1") != "0"
+RUN_NO_PERMUTE = os.environ.get("RUN_NO_PERMUTE", "1") != "0"
 PCIE_DISCOUNT = 0.7
 CROSS_GPU_BW_GBPS = 31.5 * PCIE_DISCOUNT
 HBM_BW_GBPS = 437.0
@@ -177,8 +179,6 @@ def benchmark():
     torch.xpu.synchronize()
     dist.barrier()
     print("!!!!!!!!!!!!!! finish to run ishmem \n", flush=True)
-    
-    return
 
     ishmem_latencies = timed_loop(run_ishmem, LOOP, WARMUP)
 
@@ -222,6 +222,41 @@ def benchmark():
     else:
         avg_ref = None
 
+    # ---- No-permute comparison: pure allgather (ISHMEM vs XCCL) ----
+    avg_ishmem_ag = None
+    avg_ref_ag = None
+    ishmem_ag_latencies = []
+    ref_ag_latencies = []
+    if RUN_NO_PERMUTE:
+        gathered_flat = torch.empty(
+            (num_tokens, HIDDEN_SIZE),
+            device=device,
+            dtype=hidden_shard.dtype,
+        )
+
+        def run_ishmem_allgather():
+            allgather_ishmem(hidden_shard, gathered_flat, group=group)
+
+        # warmup + timed
+        run_ishmem_allgather()
+        run_ishmem_allgather()
+        torch.xpu.synchronize()
+        dist.barrier()
+        ishmem_ag_latencies = timed_loop(run_ishmem_allgather, LOOP, WARMUP)
+        avg_ishmem_ag = print_latency_summary(
+            "ISHMEM allgather (no permute)", ishmem_ag_latencies, rank
+        )
+
+        gathered_list = [torch.empty_like(hidden_shard) for _ in range(world_size)]
+
+        def run_xccl_allgather():
+            dist.all_gather(gathered_list, hidden_shard, group=group)
+
+        ref_ag_latencies = timed_loop(run_xccl_allgather, LOOP, WARMUP)
+        avg_ref_ag = print_latency_summary(
+            "XCCL all_gather (no permute)", ref_ag_latencies, rank
+        )
+
     if rank == 0:
         elem_size = hidden_shard.element_size()
         allgather_bytes = (world_size - 1) * TOKENS_PER_RANK * HIDDEN_SIZE * elem_size
@@ -255,6 +290,24 @@ def benchmark():
                 print(f"  speedup_vs_reference={speedup:.2f}x")
         else:
             print("  XCCL reference: skipped (RUN_REFERENCE=0)")
+
+        if avg_ishmem_ag is not None:
+            print(f"\n  --- No-permute (pure allgather) ---")
+            print(
+                f"  ISHMEM allgather: avg={avg_ishmem_ag:.3f} ms  "
+                f"min={min(ishmem_ag_latencies):.3f} ms  "
+                f"max={max(ishmem_ag_latencies):.3f} ms"
+            )
+            print(
+                f"  XCCL all_gather:  avg={avg_ref_ag:.3f} ms  "
+                f"min={min(ref_ag_latencies):.3f} ms  "
+                f"max={max(ref_ag_latencies):.3f} ms"
+            )
+            if avg_ref_ag > 0:
+                print(
+                    f"  speedup_vs_xccl (allgather only)="
+                    f"{avg_ref_ag / avg_ishmem_ag:.2f}x"
+                )
 
         print(
             f"\n  [Projection] allgather={bytes_to_mb(allgather_bytes):.1f} MB "

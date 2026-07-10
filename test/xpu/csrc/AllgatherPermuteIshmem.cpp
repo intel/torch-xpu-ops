@@ -156,6 +156,24 @@ struct PushShardKernel {
   }
 };
 
+// Ring-allgather step: leader pushes a single slot to the right neighbour.
+struct RingPutKernel {
+  uint8_t* symm_base;
+  int64_t slot_offset;   // byte offset of the slot to send
+  int64_t shard_bytes;
+  int32_t peer;          // right neighbour
+
+  void operator()(sycl::nd_item<1> item) const {
+    if (item.get_local_id(0) == 0) {
+      ishmem_putmem_nbi(
+          static_cast<void*>(symm_base + slot_offset),
+          static_cast<const void*>(symm_base + slot_offset),
+          static_cast<size_t>(shard_bytes),
+          peer);
+    }
+  }
+};
+
 template <typename scalar_t>
 struct PermuteFromGatheredKernel {
   const scalar_t* gathered_ptr;
@@ -282,7 +300,6 @@ at::Tensor allgather_permute_ishmem(
   constexpr int64_t threads = 256;
   debug_log(rank, "submit PushShardKernel");
   auto push_event = queue.submit([&](sycl::handler& cgh) {
-    cgh.depends_on(copy_event);
     cgh.parallel_for(
         sycl::nd_range<1>(
             sycl::range<1>(static_cast<size_t>(world_size) * threads),
@@ -420,6 +437,95 @@ at::Tensor allgather_ishmem(
   return gathered_out;
 }
 
+// Ring allgather (no permute). Same result as allgather_ishmem but uses the
+// bandwidth-optimal ring schedule: in world_size-1 steps each PE sends one
+// slot to its right neighbour and receives one from its left neighbour, so no
+// receiver ever takes incast from more than one sender at a time.
+at::Tensor allgather_ishmem_ring(
+    const at::Tensor& input_shard,
+    at::Tensor gathered_out,
+    int64_t rank,
+    int64_t world_size) {
+  TORCH_CHECK(
+      input_shard.dim() == 2, "allgather_ishmem_ring: input_shard must be 2D");
+  TORCH_CHECK(
+      input_shard.is_contiguous(),
+      "allgather_ishmem_ring: input_shard must be contiguous");
+  TORCH_CHECK(
+      gathered_out.is_contiguous(),
+      "allgather_ishmem_ring: gathered_out must be contiguous");
+  TORCH_CHECK(
+      input_shard.scalar_type() == gathered_out.scalar_type(),
+      "allgather_ishmem_ring: dtype mismatch");
+  TORCH_CHECK(
+      rank >= 0 && rank < world_size,
+      "allgather_ishmem_ring: rank must be in [0, world_size)");
+  TORCH_CHECK(
+      gathered_out.numel() == input_shard.numel() * world_size,
+      "allgather_ishmem_ring: gathered_out numel must equal input_shard.numel() * world_size");
+
+  if (input_shard.numel() == 0) {
+    return gathered_out;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, input_shard.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  ensure_ishmem_initialized(input_shard.device().index());
+  TORCH_CHECK(
+      ishmem_my_pe() == rank,
+      "allgather_ishmem_ring: ISHMEM PE does not match rank");
+  TORCH_CHECK(
+      ishmem_n_pes() == world_size,
+      "allgather_ishmem_ring: ISHMEM PE count does not match world_size");
+
+  const size_t shard_bytes =
+      static_cast<size_t>(input_shard.numel() * input_shard.element_size());
+  const size_t gathered_bytes = shard_bytes * static_cast<size_t>(world_size);
+  ensure_symmetric_input(gathered_bytes);
+  auto* symm_base = static_cast<uint8_t*>(current_symmetric_input());
+
+  // Stage local shard into its own slot.
+  const int64_t local_offset = static_cast<int64_t>(rank) * shard_bytes;
+  sycl::event dep = queue.memcpy(
+      symm_base + local_offset, input_shard.data_ptr(), shard_bytes);
+
+  const int32_t right = static_cast<int32_t>((rank + 1) % world_size);
+  constexpr int64_t threads = 256;
+
+  // world_size-1 ring steps. At step s, forward the slot that just landed
+  // (or the local one at s=0): send_slot = (rank - s) mod world_size.
+  for (int64_t s = 0; s < world_size - 1; ++s) {
+    const int64_t send_slot =
+        ((rank - s) % world_size + world_size) % world_size;
+    const int64_t slot_offset = send_slot * static_cast<int64_t>(shard_bytes);
+
+    auto put_event = queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(dep);
+      cgh.parallel_for(
+          sycl::nd_range<1>(sycl::range<1>(threads), sycl::range<1>(threads)),
+          RingPutKernel{
+              symm_base,
+              slot_offset,
+              static_cast<int64_t>(shard_bytes),
+              right});
+    });
+    // Barrier ends the step: guarantees this step's slot has landed on the
+    // right neighbour before it forwards that slot in the next step.
+    dep = ishmemx_barrier_all_on_queue(queue, {put_event});
+  }
+
+  auto out_event = queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on(dep);
+    cgh.memcpy(gathered_out.data_ptr(), symm_base, gathered_bytes);
+  });
+  out_event.wait_and_throw();
+
+  return gathered_out;
+}
+
 void allgather_permute_ishmem_finalize(const at::Tensor&) {
   auto& state = get_state();
   std::lock_guard<std::mutex> lock(state.mutex);
@@ -439,12 +545,16 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "allgather_ishmem(Tensor input_shard, Tensor(a!) gathered_out, "
       "int rank, int world_size) -> Tensor(a!)");
+  m.def(
+      "allgather_ishmem_ring(Tensor input_shard, Tensor(a!) gathered_out, "
+      "int rank, int world_size) -> Tensor(a!)");
   m.def("allgather_permute_ishmem_finalize(Tensor dummy) -> ()");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("allgather_permute_ishmem", allgather_permute_ishmem);
   m.impl("allgather_ishmem", allgather_ishmem);
+  m.impl("allgather_ishmem_ring", allgather_ishmem_ring);
   m.impl(
       "allgather_permute_ishmem_finalize",
       allgather_permute_ishmem_finalize);
