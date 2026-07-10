@@ -158,8 +158,9 @@ jobs:
                   test/xpu/skip_list_common.py|test/xpu/expect/*|test/xpu/test_decomp_xpu.py|test/xpu/extended/skip_list_*.py) ;;
                   *) ONLY_SKIP_EXPECT=false ;;
                 esac ;;
-              .github/workflows/auto_label.yml|.github/workflows/auto_merge_by_comment.yml|.github/workflows/issue_operator.yml) HAS_GITHUB_META=true ;;
+              .github/workflows/auto_label.yml|.github/workflows/auto_merge_by_comment.yml|.github/workflows/issue_operator.yml|.github/workflows/bot.yml) HAS_GITHUB_META=true ;;
               .github/workflows/*) HAS_WORKFLOW=true ;;
+              .github/scripts/bot_*.py) HAS_GITHUB_META=true ;;
               .github/actions/*|.github/scripts/*) HAS_CI_SCRIPTS=true ;;
               .github/*) HAS_GITHUB_META=true ;;
               .claude/*) HAS_GITHUB_META=true ;;

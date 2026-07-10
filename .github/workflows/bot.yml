@@ -8,6 +8,11 @@ on:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
 
+env:
+  BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1
+  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill
+  COST_TRACKING_ISSUE: 4251
+
 permissions:
   contents: read
 
@@ -21,7 +26,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue.pull_request
-      && contains(github.event.comment.body, '@torchxpubot')
+      && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
       pull-requests: read
       issues: read
@@ -58,7 +63,7 @@ jobs:
             const prNumber = context.payload.issue.number;
 
             // Extract the @torchxpubot command line
-            const match = body.match(/@torchxpubot\s+(\S+)(.*)/i);
+            const match = body.match(/^@torchxpubot\s+(\S+)(.*)/i);
             if (!match) {
               core.setOutput('command', '');
               core.setFailed('No valid command found after @torchxpubot');
@@ -690,6 +695,7 @@ jobs:
   review:
     needs: parse-command
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
@@ -698,11 +704,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run AI review
+        id: ai-review
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 10"
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 30 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -710,9 +718,88 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      - name: Post review comment
+        if: steps.ai-review.outputs.execution_file
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: header + result.result
+            });
+
+      - name: "Verify: AI review succeeded"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            let ok = false;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+              ok = result && !result.is_error && result.total_cost_usd > 0;
+            }
+            if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ needs.parse-command.outputs.pr_number }},
+                body: '@chuanqi129 `@torchxpubot review` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+              });
+              core.setFailed('AI review failed.');
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'review');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`review\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
+
   ut-check:
     needs: parse-command
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: >-
       needs.parse-command.outputs.command == 'ut-check'
       && needs.parse-command.outputs.authorized == 'true'
@@ -731,12 +818,14 @@ jobs:
             --output /tmp/ut_data.json
 
       - name: AI analysis
+        id: ai-analysis
         if: steps.collect.outputs.has_data == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 5"
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Read the file /tmp/ut_data.json which contains UT (unit test) results
             for PR #${{ needs.parse-command.outputs.pr_number }} on intel/torch-xpu-ops.
@@ -763,6 +852,85 @@ jobs:
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post analysis comment
+        if: steps.collect.outputs.has_data == 'true' && steps.ai-analysis.outputs.execution_file
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              body: header + result.result
+            });
+
+      - name: "Verify: AI analysis succeeded"
+        if: steps.collect.outputs.has_data == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            let ok = false;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+              ok = result && !result.is_error && result.total_cost_usd > 0;
+            }
+            if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ needs.parse-command.outputs.pr_number }},
+                body: '@chuanqi129 `@torchxpubot ut-check` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+              });
+              core.setFailed('AI analysis failed.');
+            }
+
+      - name: Report usage cost
+        if: always() && steps.collect.outputs.has_data == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-analysis.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'ut-check');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`ut-check\`](${jobUrl}) on #${{ needs.parse-command.outputs.pr_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
 
       - name: Deterministic fallback
         if: steps.collect.outputs.has_data == 'true' && failure()
@@ -840,15 +1008,43 @@ jobs:
             }
 
       - name: "Test: AWS Bedrock connectivity via Claude Code Action"
+        id: bedrock-test
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
-          claude_args: "--model us.anthropic.claude-opus-4-6-20250617-v1:0 --max-turns 1"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 1"
           use_sticky_comment: "true"
+          show_full_output: "true"
           prompt: |
             Reply with exactly: "Bedrock connectivity test passed."
             Do not do anything else.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: "Verify: Bedrock test actually succeeded"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.bedrock-test.outputs.execution_file }}';
+            let ok = false;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+              ok = result && !result.is_error && result.total_cost_usd > 0;
+            }
+            if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: '@chuanqi129 Bedrock connectivity test failed. Please check AWS token validity.'
+              });
+              core.setFailed('Bedrock test failed.');
+            } else {
+              console.log('Bedrock connectivity verified.');
+            }
