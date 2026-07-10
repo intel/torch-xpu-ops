@@ -48,37 +48,40 @@ jobs:
           ip a
       - name: Check env
         run: |
-          export GCC_VERSION=13
-          apt-get update
-          apt-get install -y wget curl vim libgomp1 pciutils ca-certificates \
-                  gnupg \
-                  software-properties-common \
-                  apt-transport-https \
-                  lsb-release wget \
-                  curl \
-                  sudo \
-                  git \
-                  unzip \
-                  zip \
-                  gh \
-                  numactl \
-                  rsync \
-                  jq gcc g++ \
-                  gcc-${GCC_VERSION} g++-${GCC_VERSION} \
-                  build-essential \
-                  cmake \
-                  ninja-build \
-                  pkg-config \
-                  autoconf \
-                  automake \
-                  libtool libgl1 \
-                  libglib2.0-0 \
-                  libglib2.0-dev \
-                  zlib1g \
-                  zlib1g-dev python3 \
-                  python3-dev \
-                  python3
-          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
-              update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
-              update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
-              gcc -v && g++ -v && gcov -v
+          sudo sh -c ' \
+            export GCC_VERSION=13 && \
+            apt-get update && \
+            apt-get install -y wget curl vim libgomp1 pciutils ca-certificates \
+                    gnupg \
+                    software-properties-common \
+                    apt-transport-https \
+                    lsb-release wget \
+                    curl \
+                    sudo \
+                    git \
+                    unzip \
+                    zip \
+                    gh \
+                    numactl \
+                    rsync \
+                    jq gcc g++ \
+                    gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+                    build-essential \
+                    cmake \
+                    ninja-build \
+                    pkg-config \
+                    autoconf \
+                    automake \
+                    libtool libgl1 \
+                    libglib2.0-0 \
+                    libglib2.0-dev \
+                    zlib1g \
+                    zlib1g-dev python3 \
+                    python3-dev \
+                    python3 && \
+            update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
+                update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
+                update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
+                gcc -v && g++ -v && gcov -v \
+          '
+
