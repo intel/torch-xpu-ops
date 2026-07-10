@@ -285,7 +285,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: stock_dist
+      pytorch: nightly
       torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
