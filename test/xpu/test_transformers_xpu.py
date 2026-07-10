@@ -5469,7 +5469,6 @@ class TestSDPACudaOnly(NNTestCase):
             fudge_factors=fudge_factors,
         )
 
-    @skipIfXpu(msg="torch-xpu-ops: #3140")
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION,
         "Does not support SDPA or pre-SM80 hardware",
@@ -5480,7 +5479,7 @@ class TestSDPACudaOnly(NNTestCase):
     @parametrize("seq_len_k", [4, 127, 579, 2048])
     @parametrize("head_dim", [8, 203, 256])
     @parametrize("is_causal", [True, False])
-    @parametrize("dropout_p", [0.0, 0.22, 0.48])
+    @parametrize("dropout_p", [0.0] if TEST_XPU else [0.0, 0.22])  # torch-xpu-ops: #3140 is WIP
     @parametrize("dtype", [torch.float16, torch.bfloat16])
     @parametrize("scale", [None, "l1"])
     @parametrize("enable_gqa", [True, False])
