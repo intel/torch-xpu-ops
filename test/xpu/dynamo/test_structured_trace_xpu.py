@@ -23,6 +23,7 @@ from torch._logging._internal import TorchLogsFormatter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing._internal.common_utils import find_free_port
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 if torch.distributed.is_available():

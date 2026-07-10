@@ -39,6 +39,7 @@ from torch.testing._internal.distributed._tensor.common_dtensor import (
 )
 from torch.testing._internal.distributed.fake_pg import FakeProcessGroup, FakeStore
 from torch.utils._typing_utils import not_none
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 device_type = (

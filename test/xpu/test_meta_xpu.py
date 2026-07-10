@@ -304,7 +304,7 @@ meta_function_device_expected_failures["cpu"] = {
     torch.native_layer_norm: {bf16, f16},
 }
 
-meta_function_device_expected_failures[GPU_TYPE] = {
+meta_function_device_expected_failures["cuda"] = {
     torch.corrcoef: {bf16, f16},  # aten::_local_scalar_dense
     torch.cov: {f16},  # aten::_local_scalar_dense
     torch.functional.unique: {f16},  # aten::_unique2, aten::unique_dim
@@ -320,7 +320,7 @@ meta_function_device_skips["cpu"] = {
     torch.ops.aten._batch_norm_with_update: {f32, f64},
 }
 
-meta_function_device_skips[GPU_TYPE] = {
+meta_function_device_skips["cuda"] = {
     torch.inner: {f16},
     torch.linalg.matrix_rank: {f32, f64},
     torch.linalg.svd: {f32, f64},
@@ -331,9 +331,9 @@ meta_function_device_skips[GPU_TYPE] = {
 }
 
 meta_function_device_expected_failures["xpu"] = meta_function_device_expected_failures[
-    GPU_TYPE
+    "cuda"
 ]
-meta_function_device_skips["xpu"] = meta_function_device_skips[GPU_TYPE]
+meta_function_device_skips["xpu"] = meta_function_device_skips["cuda"]
 
 
 # This is a __torch_function__ mode that, when enabled, interposes every
@@ -635,7 +635,7 @@ meta_dispatch_device_expected_failures["cpu"] = {
     aten.native_layer_norm.default: {bf16, f16},
 }
 
-meta_dispatch_device_expected_failures[GPU_TYPE] = {
+meta_dispatch_device_expected_failures["cuda"] = {
     aten._unique2.default: {f16},  # aten::_unique2
     aten._use_cudnn_ctc_loss.default: {f32, f64},  # aten::_use_cudnn_ctc_loss
     aten._use_cudnn_ctc_loss.Tensor: {f32, f64},  # aten::_use_cudnn_ctc_loss.Tensor
@@ -668,7 +668,7 @@ meta_dispatch_device_skips["cpu"] = {
     aten.native_batch_norm.out: {bf16, f16, f32, f64},
 }
 
-meta_dispatch_device_skips[GPU_TYPE] = {
+meta_dispatch_device_skips["cuda"] = {
     aten._conj.default: {c32, f16},  # file issue
     aten._linalg_svd.default: {c64, c128},  # aten::linalg_eigvalsh.out
     aten.cudnn_batch_norm.default: {f32, f64},
@@ -680,9 +680,9 @@ meta_dispatch_device_skips[GPU_TYPE] = {
     aten.miopen_batch_norm.default: {f32},
 }
 
-meta_dispatch_device_skips["xpu"] = meta_dispatch_device_skips[GPU_TYPE]
+meta_dispatch_device_skips["xpu"] = meta_dispatch_device_skips["cuda"]
 meta_dispatch_device_expected_failures["xpu"] = meta_dispatch_device_expected_failures[
-    GPU_TYPE
+    "cuda"
 ]
 
 
@@ -1108,7 +1108,7 @@ class TestMeta(TestCase):
     # only test one dtype, as output stride behavior is the same for all dtypes
     @ops(itertools.chain(op_db, foreach_op_db), dtypes=OpDTypes.any_common_cpu_cuda_one)
     # Only test on CUDA, as CUDA kernel's stride is the reference
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_dispatch_symbolic_meta_outplace_all_strides(self, device, dtype, op):
         self._run_dispatch_meta_test(
             device,
@@ -1124,7 +1124,7 @@ class TestMeta(TestCase):
     # only test one dtype, as output stride behavior is the same for all dtypes
     @ops(itertools.chain(op_db, foreach_op_db), dtypes=OpDTypes.any_common_cpu_cuda_one)
     # Only test on CUDA, as CUDA kernel's stride is the reference
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_dispatch_symbolic_meta_inplace_all_strides(self, device, dtype, op):
         self._run_dispatch_meta_test(
             device,
@@ -1140,7 +1140,7 @@ class TestMeta(TestCase):
     # only test one dtype, as output stride behavior is the same for all dtypes
     @ops(binary_ufuncs, allowed_dtypes=(torch.float32,))
     # Only test on CUDA, as CUDA kernel's stride is the reference
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_binary_ufuncs_mixed_dtype(self, device, dtype, op):
         make_arg = partial(
             make_tensor,
@@ -1653,7 +1653,7 @@ class TestMeta(TestCase):
         self.assertEqual(grad_weight.to("meta"), meta_grad_weight)
 
     # opinfo test is using aten.fill_, it's not testing aten.fill
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_fill_stride(self):
         to_meta = MetaConverter()
         sample_args = [torch.rand(2, 2, 2, 2), 1.0]

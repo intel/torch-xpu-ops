@@ -26,6 +26,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
     xfailIfTorchDynamo,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 def _torchVersionLessThan(major, minor):

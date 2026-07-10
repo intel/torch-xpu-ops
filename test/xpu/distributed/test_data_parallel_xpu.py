@@ -27,6 +27,7 @@ from torch.testing._internal.common_utils import (
     skip_but_pass_in_sandcastle_if,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 NO_NCCL = not hasattr(torch.distributed, "ProcessGroupNCCL")
@@ -1075,7 +1076,7 @@ class TestDataParallelDeviceType(TestCase):
         self.assertEqual(out, expected_out, atol=dtype2prec_DONTUSE[dtype], rtol=0)
 
 
-instantiate_device_type_tests(TestDataParallelDeviceType, globals())
+instantiate_device_type_tests(TestDataParallelDeviceType, globals(), allow_xpu=True)
 
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True

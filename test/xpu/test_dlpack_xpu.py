@@ -33,6 +33,7 @@ from torch.utils.dlpack import (
     ReadOnlyTensorWrapper,
     to_dlpack,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 # Wraps a tensor, exposing only DLPack methods:

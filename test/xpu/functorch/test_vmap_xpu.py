@@ -82,6 +82,7 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.custom_op_db import custom_op_db
 from torch.utils import _pytree as pytree
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 device_type = (
     acc.type
@@ -5000,7 +5001,7 @@ class TestVmapOperatorsOpInfo(TestCase):
 
         self.vmap_outplace_test(f, (x, gy), {}, in_dims=(None, 0))
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @parametrize("inplace", [True, False])
     def test_0d_tensor_index_put(self, device, inplace):
         def f(t, idx, v):

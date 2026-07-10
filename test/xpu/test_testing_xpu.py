@@ -1021,7 +1021,7 @@ class TestAssertCloseMultiDevice(TestCase):
 
 
 instantiate_device_type_tests(
-    TestAssertCloseMultiDevice, globals(), only_for=(GPU_TYPE, "xpu"), allow_xpu=True
+    TestAssertCloseMultiDevice, globals(), only_for=("cuda", "xpu"), allow_xpu=True
 )
 
 

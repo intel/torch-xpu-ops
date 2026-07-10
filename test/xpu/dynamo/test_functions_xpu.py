@@ -43,6 +43,7 @@ from torch.testing._internal.inductor_utils import HAS_GPU
 
 # Defines all the kernels for tests
 from torch.testing._internal.triton_utils import *  # noqa: F403
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 device_type = (

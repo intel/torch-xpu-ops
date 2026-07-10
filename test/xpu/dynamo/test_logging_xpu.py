@@ -38,6 +38,7 @@ from torch.testing._internal.logging_utils import (
     make_settings_test,
 )
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 requires_gpu = unittest.skipUnless(

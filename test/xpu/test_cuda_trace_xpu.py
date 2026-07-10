@@ -7,6 +7,7 @@ import unittest.mock
 import torch
 import torch.cuda._gpu_trace as gpu_trace
 from torch.testing._internal.common_utils import NoTest, run_tests, TEST_CUDA, TestCase
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 # NOTE: Each test needs to be run in a brand new process, to reset the registered hooks

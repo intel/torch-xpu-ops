@@ -17,6 +17,7 @@ import torch
 import torch.utils.cpp_extension
 from torch._environment import is_fbcode
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _CPP_THREAD_SOURCE = os.path.abspath(

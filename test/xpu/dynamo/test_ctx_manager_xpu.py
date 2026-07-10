@@ -30,7 +30,7 @@ z_glb = 0
 k_glb = 0
 
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
-requires_gpu = torch.get_device_module(GPU_TYPE).is_available() or torch.xpu.is_available()
+requires_gpu = torch.cuda.is_available() or torch.xpu.is_available()
 
 
 @contextlib.contextmanager
@@ -1271,7 +1271,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(ref, res)
 
     def test_graph_break_inlining_autocast(self):
-        for device in [GPU_TYPE, "cpu", "xpu"]:
+        for device in ["cuda", "cpu", "xpu"]:
             if device == GPU_TYPE and not (
                 torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).is_bf16_supported()
             ):

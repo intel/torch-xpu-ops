@@ -41,7 +41,7 @@ for optim in optim_db:
     ]:
         if optim.optim_cls is c:
             if (
-                GPU_TYPE in optim.supports_fused_on
+                "cuda" in optim.supports_fused_on
                 and "xpu" not in optim.supports_fused_on
             ):
                 optim.supports_fused_on = ("xpu",) + optim.supports_fused_on

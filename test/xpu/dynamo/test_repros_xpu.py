@@ -90,6 +90,7 @@ from torch.testing._internal.common_utils import (
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils._python_dispatch import TorchDispatchMode
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 _orig_module_call = torch.nn.Module.__call__

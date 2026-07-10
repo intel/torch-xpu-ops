@@ -74,6 +74,7 @@ from torch.testing._internal.common_utils import (
     skipIfSlowGradcheckEnv,
     skipIfTorchDynamo,
     subtest,
+    TEST_CUDA,
     TEST_WITH_ROCM,
     xfailIfTorchDynamo,
 )
@@ -87,6 +88,7 @@ from torch.testing._internal.opinfo.core import (
 from torch.testing._internal.opinfo.definitions.nested import _sample_njts, njt_op_db
 from torch.utils._pytree import tree_flatten, tree_map_only
 from torch.utils.checkpoint import checkpoint
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 # Tests are ported from pytorch/nestedtensor.
 # This makes porting as_nested_tensor easier in the future.
@@ -650,7 +652,7 @@ class TestNestedTensor(NestedTensorTestCase):
 
         test_data_ptr(lambda nt: nt.data_ptr())
 
-        if torch.get_device_module(GPU_TYPE).is_available():
+        if torch.accelerator.is_available():
             for non_blocking in [True, False]:
                 for cuda in [
                     GPU_TYPE,
@@ -1384,7 +1386,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
     @skipMeta
     def test_device_checks(self, device):
         nt = torch.nested.nested_tensor([], device=device)
-        is_cuda = GPU_TYPE in str(device)
+        is_cuda = "cuda" in str(device)
         self.assertEqual(nt.is_cuda, is_cuda)
 
     @skipIfTorchDynamo("Not a suitable test for TorchDynamo")
@@ -1394,7 +1396,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
         nt = torch.nested.nested_tensor([a, b], layout=torch.jagged)
 
         # Guard CUDA tensors
-        if device.split(":")[0] in [GPU_TYPE, "xpu"]:
+        if device.split(":")[0] in ["cuda", "xpu"]:
             result = nt.share_memory_()
             self.assertIs(result, nt)
             return
@@ -1757,7 +1759,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
         out = nt1 - nt2
         self.assertEqual(ref, out)
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float, torch.float16)
     @torch.inference_mode()
     @parametrize("embedding_dim", [8, 128, 256, 384])
@@ -2261,7 +2263,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
         else:
             self.assertEqual(actual, expect)
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float, torch.double, torch.float16, torch.bfloat16)
     @tf32_on_and_off(0.005)
     def test_bmm_cuda(self, device, dtype):
@@ -4065,7 +4067,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
             grad_test_func, inputs=(a, b, c, weight, bias), check_batched_grad=False
         )
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float32)
     @serialTest()
     def test_linear_backward_memory_usage(self, device, dtype):
@@ -4088,11 +4090,11 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
         # (B, j1, D) -> (B, j1, 1, D) for a higher dim input size
         nt = nt.unsqueeze(-2)
         # linear_backward() should not explode the max memory usage
-        if device == GPU_TYPE:
+        if device == "cuda":
             torch.get_device_module(GPU_TYPE).reset_max_memory_allocated()
         m(nt).sum().backward()
         # expect under a GB for max memory allocated
-        max_after_gb = torch.get_device_module(GPU_TYPE).max_memory_allocated(0) // (1024**3)
+        max_after_gb = torch.accelerator.max_memory_allocated.max_memory_allocated(0) // (1024**3)
         self.assertEqual(max_after_gb, 0)
 
     def test_unary_pointwise(self, device):
@@ -4580,12 +4582,13 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
 
         def fn(record_stream):
             nt, data_ptrs = _create_nt()
-            s = torch.get_device_module(GPU_TYPE).Stream()
+            s = torch.Stream()
 
             with torch.get_device_module(GPU_TYPE).stream(s):
                 # emulate doing something long via sleep
                 per_ms = 2e7
-                torch.get_device_module(GPU_TYPE)._sleep(int(per_ms * 100))
+				if TEST_CUDA:
+	                torch.get_device_module(GPU_TYPE)._sleep(int(per_ms * 100))
                 if record_stream:
                     nt.record_stream(s)
             return data_ptrs
@@ -4595,7 +4598,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
         nt, nt_data_ptrs = _create_nt()
         self.assertEqual(data_ptrs, nt_data_ptrs)
         del nt
-        torch.get_device_module(GPU_TYPE).synchronize()
+        torch.accelerator.synchronize()
 
         # expect memory to be preserved (no reuse) when record_stream() is run
         data_ptrs = fn(record_stream=True)
@@ -5539,7 +5542,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
     @unittest.skipIf(
         PYTORCH_CUDA_MEMCHECK, "is_pinned uses failure to detect pointer property"
     )
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_pin_memory(self, device):
         nt_contiguous, nt_noncontiguous = random_nt_noncontiguous_pair((2, 3, 6, 7))
         for nt in [nt_contiguous, nt_noncontiguous]:
@@ -5710,7 +5713,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
     @unittest.skipIf(
         PYTORCH_CUDA_MEMCHECK, "is_pinned uses failure to detect pointer property"
     )
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_jagged_layout_construction_with_pinned_memory(self, device):
         for tensor_list in self._get_example_tensor_lists():
             nt = torch.nested.nested_tensor(
@@ -6119,7 +6122,7 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
             )
 
     @dtypes(torch.double, torch.half)
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     def test_device_dtype_transfer_updates_offsets(self, device, dtype):
         for tensor_list in self._get_example_tensor_lists():
             orig_device = torch.device("cpu")
@@ -6424,14 +6427,14 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
             # only test changing dtype / device from CUDA -> CPU because CUDA might not be
             # available when running this test for CPU
             change_dtype_device_settings = (
-                [False, True] if GPU_TYPE in device else [False]
+                [False, True] if device in ("cuda", "xpu") else [False]
             )
             for change_dtype_device in change_dtype_device_settings:
                 if change_dtype_device:
                     new_dtype = (
                         torch.float64 if func is not torch.randint_like else torch.int64
                     )
-                    new_device = "cpu" if GPU_TYPE in device else device
+                    new_device = "cpu" if device in ("cuda", "xpu") else device
                     new_layout = torch.strided
                     for extra_kwargs in extra_kwarg_sets:
                         extra_kwargs.update(
@@ -6611,7 +6614,7 @@ a = torch.nested.nested_tensor_from_jagged(
     torch.zeros(7, 3, device='cuda'), offsets, lengths
 )
 a[indices] = 1.0
-torch.get_device_module(GPU_TYPE).synchronize()
+torch.accelerator.synchronize()
 """,
                 ]
             )
@@ -7010,7 +7013,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
                 check_forward_backward()
         check_cudnn = os.getenv("TORCH_CUDNN_SDPA_NESTED_TENSOR_ENABLED", "0") == "1"
         if (
-            GPU_TYPE in str(device)
+            "cuda" in str(device)
             and check_cudnn
             and (dtype == torch.float16 or dtype == torch.bfloat16)
         ):
@@ -7024,7 +7027,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
     # Guarding with sqrt() doesn't work on ROCm?
     @skipCUDAIfRocm
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
@@ -7151,7 +7154,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
         output_dense.sum().backward()
         torch._dynamo.disable(self.assertEqual)(query.grad, query_dense.grad)
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FUSED_ATTENTION,
         "Platform doesn't support flash or mem-efficient attention",
@@ -7215,7 +7218,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
     # mha_varlen_fwd not supported on ROCm
     @skipCUDAIfRocm
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
@@ -7247,7 +7250,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
     )
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
     @skipCUDAIfRocm
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
     @unittest.skipIf(IS_WINDOWS, reason="Windows not yet supported for torch.compile")
     @skipXPUIf(
@@ -7335,7 +7338,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
     )
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
     @skipCUDAIfRocm
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
     @skipXPUIf(
         True,
@@ -7569,7 +7572,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
         self.assertIsNone(nt.grad)
         self.assertIsNone(nt._values.grad_fn)
 
-    @onlyOn([GPU_TYPE, "xpu"])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float64, torch.float32, torch.half)
     @parametrize(
         "contiguity",
@@ -8062,7 +8065,7 @@ torch.get_device_module(GPU_TYPE).synchronize()
         )
 
         # NB: Fusion isn't supported on CPU.
-        self.assertEqual(GPU_TYPE in device, not fallback_op_calls_present)
+        self.assertEqual(device in ("cuda", "xpu"), not fallback_op_calls_present)
 
         for i in range(len(generated_code)):
             # Examine buffer construction lines in the generated code to determine
@@ -8666,7 +8669,7 @@ BACKWARD_SKIPS_AND_XFAILS = [
             "for outputs with complex dtype"
         ),
         op_match_fn=lambda device, op: (op.full_name in {"cdouble", "cfloat", "chalf"}),
-        name="no_complex_autodif",
+        name="no_complex_autodiff",
     ),
     # Bug: need to use the correct nested int in the return shape
     XFailRule(

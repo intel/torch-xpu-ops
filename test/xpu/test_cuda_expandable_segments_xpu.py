@@ -29,6 +29,7 @@ from test_cuda import (  # noqa: F401
 import torch
 from torch.testing._internal.common_cuda import IS_JETSON, IS_WINDOWS
 from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 # Restore prior env state. EXPANDABLE_SEGMENTS has already been resolved at

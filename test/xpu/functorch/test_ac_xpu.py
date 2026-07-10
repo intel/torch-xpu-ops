@@ -10,6 +10,7 @@ from torch.testing._internal.inductor_utils import HAS_CUDA_AND_TRITON
 from torch.utils._triton import has_triton
 from torch.utils.checkpoint import checkpoint
 from torch.utils.flop_counter import FlopCounterMode, register_flop_formula
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 if has_triton():
