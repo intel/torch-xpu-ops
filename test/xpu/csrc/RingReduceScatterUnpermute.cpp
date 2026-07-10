@@ -320,6 +320,207 @@ struct RingReduceScatterUnpermuteSingleKernel {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Owner-based (Expert-Parallel) variant.
+//
+// Identical ring reduce-scatter topology and signalling as the kernel above,
+// but the fused unpermute is OWNERSHIP-FILTERED: for each token it accumulates
+// only the top-k slots whose expert is owned by this rank (contiguous owner
+// partition of `num_experts` across `world_size`).  Each rank therefore reads
+// ~topk/world_size expert_output rows per token instead of all topk, cutting
+// the HBM-bandwidth-critical scattered gather by ~world_size x.  Correctness is
+// unchanged: every expert is owned by exactly one rank, so summing each rank's
+// owned partial around the ring reconstructs the full weighted combine.
+// ---------------------------------------------------------------------------
+template <typename scalar_t, int VEC_SIZE>
+struct RingReduceScatterUnpermuteEpKernel {
+  using vec_elem_t =
+      std::conditional_t<sizeof(scalar_t) == 2, uint16_t, uint32_t>;
+  using vec_t = sycl::vec<vec_elem_t, VEC_SIZE>;
+
+  const scalar_t* expert_output_ptr;
+  const int64_t* rank_buffers_ptr;
+  const int64_t* signal_pads_ptr;
+  scalar_t* acc_ptr;
+  scalar_t* output_ptr;
+  const int32_t* scatter_idx_ptr;
+  const int32_t* topk_idx_ptr;       // [world_size*tokens, topk] expert ids
+  const float* topk_weights_ptr;
+  int64_t hidden;
+  int64_t num_tokens_per_rank;
+  int64_t tokens_per_wg;
+  int32_t topk;
+  int32_t rank;
+  int32_t world_size;
+  int32_t right;
+  int32_t num_wg;
+  uint32_t tag;
+  int32_t base_experts;              // num_experts / world_size
+  int32_t rem_experts;               // num_experts % world_size
+  int32_t boundary;                  // rem_experts * (base_experts + 1)
+
+  inline bool owns(int32_t expert) const {
+    int32_t owner;
+    if (expert < boundary) {
+      owner = expert / (base_experts + 1);
+    } else {
+      owner = rem_experts + (expert - boundary) / base_experts;
+    }
+    return owner == rank;
+  }
+
+  inline void unpermute_token(
+      int64_t gt,
+      const scalar_t* acc_row,
+      scalar_t* dst_row,
+      int32_t lid,
+      int32_t lsize) const {
+    const int64_t hidden_vecs = hidden / VEC_SIZE;
+    const int64_t topk_base = gt * topk;
+    for (int64_t vh = lid; vh < hidden_vecs; vh += lsize) {
+      const int64_t h_start = vh * VEC_SIZE;
+      float acc[VEC_SIZE];
+      if (acc_row != nullptr) {
+#pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i)
+          acc[i] = static_cast<float>(acc_row[h_start + i]);
+      } else {
+#pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i)
+          acc[i] = 0.0f;
+      }
+      for (int32_t k = 0; k < topk; ++k) {
+        // Ownership filter: skip the gather entirely for non-owned experts.
+        if (!owns(topk_idx_ptr[topk_base + k])) continue;
+        const int32_t src_row = scatter_idx_ptr[topk_base + k];
+        if (src_row < 0) continue;
+        const float w = topk_weights_ptr[topk_base + k];
+        const scalar_t* src =
+            expert_output_ptr + static_cast<int64_t>(src_row) * hidden + h_start;
+        const vec_t sv = *reinterpret_cast<const vec_t*>(src);
+#pragma unroll
+        for (int i = 0; i < VEC_SIZE; ++i) {
+          const vec_elem_t bits = sv[i];
+          acc[i] += w *
+              static_cast<float>(*reinterpret_cast<const scalar_t*>(&bits));
+        }
+      }
+      vec_t vd;
+#pragma unroll
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        const scalar_t s = static_cast<scalar_t>(acc[i]);
+        vd[i] = *reinterpret_cast<const vec_elem_t*>(&s);
+      }
+      ring_vec_store(reinterpret_cast<vec_t*>(dst_row + h_start), vd);
+    }
+    for (int64_t h = hidden_vecs * VEC_SIZE + lid; h < hidden; h += lsize) {
+      float a = (acc_row != nullptr) ? static_cast<float>(acc_row[h]) : 0.0f;
+      for (int32_t k = 0; k < topk; ++k) {
+        if (!owns(topk_idx_ptr[topk_base + k])) continue;
+        const int32_t src_row = scatter_idx_ptr[topk_base + k];
+        if (src_row < 0) continue;
+        const float w = topk_weights_ptr[topk_base + k];
+        a += w *
+            static_cast<float>(
+                 expert_output_ptr[static_cast<int64_t>(src_row) * hidden + h]);
+      }
+      dst_row[h] = static_cast<scalar_t>(a);
+    }
+  }
+
+  inline void wg_unpermute_block(
+      int32_t block,
+      const scalar_t* acc_base,
+      scalar_t* dst_base,
+      int64_t token_base,
+      int64_t token_cnt,
+      int32_t lid,
+      int32_t lsize) const {
+    for (int64_t lt = 0; lt < token_cnt; ++lt) {
+      const int64_t local_t = token_base + lt;
+      const int64_t gt =
+          static_cast<int64_t>(block) * num_tokens_per_rank + local_t;
+      const int64_t row_off =
+          (static_cast<int64_t>(block) * num_tokens_per_rank + local_t) * hidden;
+      const scalar_t* acc_row =
+          (acc_base != nullptr) ? acc_base + row_off : nullptr;
+      scalar_t* dst_row = dst_base + row_off;
+      unpermute_token(gt, acc_row, dst_row, lid, lsize);
+    }
+  }
+
+  inline void wg_unpermute_final(
+      int32_t block,
+      const scalar_t* acc_base,
+      int64_t token_base,
+      int64_t token_cnt,
+      int32_t lid,
+      int32_t lsize) const {
+    for (int64_t lt = 0; lt < token_cnt; ++lt) {
+      const int64_t local_t = token_base + lt;
+      const int64_t gt =
+          static_cast<int64_t>(block) * num_tokens_per_rank + local_t;
+      const int64_t acc_off =
+          (static_cast<int64_t>(block) * num_tokens_per_rank + local_t) * hidden;
+      const scalar_t* acc_row = acc_base + acc_off;
+      scalar_t* dst_row = output_ptr + local_t * hidden;
+      unpermute_token(gt, acc_row, dst_row, lid, lsize);
+    }
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+
+    const int64_t token_base = static_cast<int64_t>(wg) * tokens_per_wg;
+    int64_t token_cnt = num_tokens_per_rank - token_base;
+    if (token_cnt > tokens_per_wg) token_cnt = tokens_per_wg;
+    if (token_cnt < 0) token_cnt = 0;
+
+    uint32_t* my_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[rank]);
+    uint32_t* right_pad = reinterpret_cast<uint32_t*>(signal_pads_ptr[right]);
+    scalar_t* right_acc =
+        reinterpret_cast<scalar_t*>(rank_buffers_ptr[right]);
+
+    {
+      const int32_t b0 = (rank - 1 + world_size) % world_size;
+      wg_unpermute_block(
+          b0, nullptr, right_acc, token_base, token_cnt, lid, lsize);
+      sycl::atomic_fence(
+          sycl::memory_order::release, sycl::memory_scope::system);
+      item.barrier(sycl::access::fence_space::local_space);
+      if (lid == 0) {
+        store_release_sys(right_pad + (0 * num_wg + wg), tag);
+      }
+    }
+
+    for (int32_t t = 1; t < world_size; ++t) {
+      if (lid == 0) {
+        wait_eq_sys(my_pad + ((t - 1) * num_wg + wg), tag);
+      }
+      item.barrier(sycl::access::fence_space::local_space);
+      sycl::atomic_fence(
+          sycl::memory_order::acquire, sycl::memory_scope::system);
+
+      const int32_t b_t = (rank - 1 - t + 2 * world_size) % world_size;
+
+      if (t < world_size - 1) {
+        wg_unpermute_block(
+            b_t, acc_ptr, right_acc, token_base, token_cnt, lid, lsize);
+        sycl::atomic_fence(
+            sycl::memory_order::release, sycl::memory_scope::system);
+        item.barrier(sycl::access::fence_space::local_space);
+        if (lid == 0) {
+          store_release_sys(right_pad + (t * num_wg + wg), tag);
+        }
+      } else {
+        wg_unpermute_final(b_t, acc_ptr, token_base, token_cnt, lid, lsize);
+      }
+    }
+  }
+};
+
 inline int32_t ring_max_wg_runtime() {
   static const int32_t v = [] {
     const char* e = std::getenv("RING_MAX_WG_OVERRIDE");
@@ -507,14 +708,135 @@ at::Tensor ring_reduce_scatter_unpermute(
   return output;
 }
 
+// Owner-based (EP) variant: same ring reduce-scatter, ownership-filtered
+// unpermute.  Extra `topk_idx` (expert ids) + `num_experts` drive the filter.
+at::Tensor ring_reduce_scatter_unpermute_ep(
+    const at::Tensor& expert_output,
+    const at::Tensor& rank_buffers_ptr,
+    const at::Tensor& signal_pads_ptr,
+    at::Tensor acc,
+    at::Tensor output,
+    const at::Tensor& scatter_idx,
+    const at::Tensor& topk_idx,
+    const at::Tensor& topk_weights,
+    int64_t num_experts,
+    int64_t rank,
+    int64_t world_size,
+    int64_t iteration,
+    int64_t num_wg_hint) {
+  TORCH_CHECK(expert_output.dim() == 2, "ep: expert_output must be 2D [rows, hidden]");
+  TORCH_CHECK(expert_output.is_contiguous(), "ep: expert_output must be contiguous");
+  TORCH_CHECK(acc.dim() == 1 && acc.is_contiguous(), "ep: acc must be 1D contiguous");
+  TORCH_CHECK(output.dim() == 2 && output.is_contiguous(), "ep: output must be 2D contiguous");
+  TORCH_CHECK(
+      rank_buffers_ptr.dim() == 1 && rank_buffers_ptr.size(0) == world_size &&
+          rank_buffers_ptr.scalar_type() == at::kLong,
+      "ep: rank_buffers_ptr must be int64 1D size world_size");
+  TORCH_CHECK(
+      signal_pads_ptr.dim() == 1 && signal_pads_ptr.size(0) == world_size &&
+          signal_pads_ptr.scalar_type() == at::kLong,
+      "ep: signal_pads_ptr must be int64 1D size world_size");
+  TORCH_CHECK(scatter_idx.dim() == 2 && scatter_idx.scalar_type() == at::kInt &&
+      scatter_idx.is_contiguous(), "ep: scatter_idx must be int32 2D contiguous");
+  TORCH_CHECK(topk_idx.dim() == 2 && topk_idx.sizes() == scatter_idx.sizes() &&
+      topk_idx.scalar_type() == at::kInt && topk_idx.is_contiguous(),
+      "ep: topk_idx must be int32 and match scatter_idx shape");
+  TORCH_CHECK(topk_weights.dim() == 2 && topk_weights.sizes() == scatter_idx.sizes() &&
+      topk_weights.scalar_type() == at::kFloat && topk_weights.is_contiguous(),
+      "ep: topk_weights must be float32 and match scatter_idx shape");
+  TORCH_CHECK(rank >= 0 && rank < world_size, "ep: rank out of range");
+  TORCH_CHECK(
+      expert_output.scalar_type() == output.scalar_type() &&
+          expert_output.scalar_type() == acc.scalar_type(),
+      "ep: expert_output/acc/output must share dtype");
+  TORCH_CHECK(iteration > 0, "ep: iteration must be > 0");
+
+  const int64_t num_tokens_per_rank = output.size(0);
+  const int64_t hidden = output.size(1);
+  const int64_t chunk = num_tokens_per_rank * hidden;
+  TORCH_CHECK(expert_output.size(1) == hidden, "ep: expert_output hidden mismatch");
+  TORCH_CHECK(acc.numel() == chunk * world_size, "ep: acc.numel mismatch");
+  TORCH_CHECK(
+      scatter_idx.size(0) == num_tokens_per_rank * world_size,
+      "ep: scatter_idx first dim must equal world_size * tokens");
+
+  if (chunk == 0) {
+    return output;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, output.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  const int32_t ws = static_cast<int32_t>(world_size);
+  const int32_t r = static_cast<int32_t>(rank);
+  const int32_t right = (r + 1) % ws;
+  const int32_t topk = static_cast<int32_t>(scatter_idx.size(1));
+  const uint32_t tag = static_cast<uint32_t>(iteration);
+  const int32_t base_experts = static_cast<int32_t>(num_experts / world_size);
+  const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
+  const int32_t boundary = rem_experts * (base_experts + 1);
+
+  constexpr int VEC_SIZE = 8;
+  int64_t threads = hidden / VEC_SIZE;
+  if (threads < 1) threads = 1;
+  if (threads > 1024) threads = 1024;
+  const int64_t eu_count = static_cast<int64_t>(
+      queue.get_device().get_info<sycl::info::device::max_compute_units>());
+  int32_t num_wg = 1;
+  int64_t tokens_per_wg = num_tokens_per_rank;
+  compute_launch_tokens(
+      num_tokens_per_rank, hidden, threads, VEC_SIZE, eu_count, num_wg_hint,
+      num_wg, tokens_per_wg);
+
+  AT_DISPATCH_FLOAT_AND_BFLOAT16(
+      output.scalar_type(), "ring_reduce_scatter_unpermute_ep", [&]() {
+        auto kfn = RingReduceScatterUnpermuteEpKernel<scalar_t, VEC_SIZE>{
+            expert_output.data_ptr<scalar_t>(),
+            rank_buffers_ptr.data_ptr<int64_t>(),
+            signal_pads_ptr.data_ptr<int64_t>(),
+            acc.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            scatter_idx.data_ptr<int32_t>(),
+            topk_idx.data_ptr<int32_t>(),
+            topk_weights.data_ptr<float>(),
+            hidden,
+            num_tokens_per_rank,
+            tokens_per_wg,
+            topk,
+            r,
+            ws,
+            right,
+            num_wg,
+            tag,
+            base_experts,
+            rem_experts,
+            boundary};
+        sycl_kernel_submit(
+            sycl::range<1>(static_cast<size_t>(num_wg) * threads),
+            sycl::range<1>(threads),
+            queue,
+            kfn);
+      });
+
+  return output;
+}
+
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
       "ring_reduce_scatter_unpermute(Tensor expert_output, Tensor rank_buffers_ptr, "
       "Tensor signal_pads_ptr, Tensor(a!) acc, Tensor(b!) output, "
       "Tensor scatter_idx, Tensor topk_weights, "
       "int rank, int world_size, int iteration, int num_wg_hint=-1) -> Tensor(b!)");
+  m.def(
+      "ring_reduce_scatter_unpermute_ep(Tensor expert_output, Tensor rank_buffers_ptr, "
+      "Tensor signal_pads_ptr, Tensor(a!) acc, Tensor(b!) output, "
+      "Tensor scatter_idx, Tensor topk_idx, Tensor topk_weights, "
+      "int num_experts, int rank, int world_size, int iteration, int num_wg_hint=-1) -> Tensor(b!)");
 }
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl("ring_reduce_scatter_unpermute", ring_reduce_scatter_unpermute);
+  m.impl("ring_reduce_scatter_unpermute_ep", ring_reduce_scatter_unpermute_ep);
 }
