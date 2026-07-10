@@ -7,8 +7,7 @@ import unittest.mock
 import torch
 import torch.cuda._gpu_trace as gpu_trace
 from torch.testing._internal.common_utils import NoTest, run_tests, TEST_CUDA, TestCase
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 # NOTE: Each test needs to be run in a brand new process, to reset the registered hooks
 # and make sure the CUDA streams are initialized for each test that uses them.
@@ -47,7 +46,8 @@ class TestCudaTrace(TestCase):
         event = torch.get_device_module(GPU_TYPE).Event()
         event.record()
         self.mock.assert_called_once_with(
-            event._as_parameter_.value, torch.get_device_module(GPU_TYPE).default_stream().cuda_stream
+            event._as_parameter_.value,
+            torch.get_device_module(GPU_TYPE).default_stream().cuda_stream,
         )
 
     def test_event_wait_callback(self):
@@ -57,7 +57,8 @@ class TestCudaTrace(TestCase):
         event.record()
         event.wait()
         self.mock.assert_called_once_with(
-            event._as_parameter_.value, torch.get_device_module(GPU_TYPE).default_stream().cuda_stream
+            event._as_parameter_.value,
+            torch.get_device_module(GPU_TYPE).default_stream().cuda_stream,
         )
 
     def test_memory_allocation_callback(self):
@@ -113,7 +114,9 @@ class TestCudaTrace(TestCase):
 
         tensor = torch.rand(5, device=GPU_TYPE)
         tensor.nonzero()
-        self.mock.assert_called_once_with(torch.get_device_module(GPU_TYPE).default_stream().cuda_stream)
+        self.mock.assert_called_once_with(
+            torch.get_device_module(GPU_TYPE).default_stream().cuda_stream
+        )
 
     def test_all_trace_callbacks_called(self):
         other = unittest.mock.MagicMock()

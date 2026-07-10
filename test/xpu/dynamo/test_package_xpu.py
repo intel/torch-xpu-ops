@@ -24,10 +24,10 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
 )
 from torch.testing._internal.inductor_utils import (
+    GPU_TYPE,
     HAS_CUDA_AND_TRITON,
     HAS_XPU_AND_TRITON,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 def compute_loss_helper(x):

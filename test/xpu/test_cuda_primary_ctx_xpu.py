@@ -6,8 +6,7 @@ import unittest
 import torch
 from torch.testing._internal.common_cuda import TEST_CUDA, TEST_MULTIGPU
 from torch.testing._internal.common_utils import NoTest, run_tests, skipIfRocm, TestCase
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 # NOTE: this needs to be run in a brand new process
 

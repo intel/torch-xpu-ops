@@ -22,7 +22,6 @@ from torch.testing._internal.common_utils import (
     TEST_XPU,
 )
 
-
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 device_module = torch.get_device_module(device_type)
 

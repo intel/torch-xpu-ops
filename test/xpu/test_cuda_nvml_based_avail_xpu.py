@@ -7,8 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import torch
-
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 # NOTE: Each of the tests in this module need to be run in a brand new process to ensure CUDA is uninitialized
 # prior to test initiation.
@@ -46,7 +45,9 @@ class TestExtendedCUDAIsAvail(TestCase):
 
     def setUp(self):
         super().setUp()
-        torch.get_device_module(GPU_TYPE)._cached_device_count = (
+        torch.get_device_module(
+            GPU_TYPE
+        )._cached_device_count = (
             None  # clear the lru_cache on this method before our test
         )
 

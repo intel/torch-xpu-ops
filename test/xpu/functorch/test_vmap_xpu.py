@@ -81,8 +81,8 @@ from torch.testing._internal.common_utils import (
     xfailIfTorchDynamo,
 )
 from torch.testing._internal.custom_op_db import custom_op_db
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.utils import _pytree as pytree
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 device_type = (
     acc.type
@@ -4837,9 +4837,9 @@ class TestVmapOperatorsOpInfo(TestCase):
         op = torch.ops.aten._convolution_double_backward
 
         generator = get_fallback_and_vmap_exhaustive(op, args, {})
-        is_cuda_sm86 = device.startswith(GPU_TYPE) and torch.get_device_module(GPU_TYPE).get_device_capability(
-            0
-        ) == (8, 6)
+        is_cuda_sm86 = device.startswith(GPU_TYPE) and torch.get_device_module(
+            GPU_TYPE
+        ).get_device_capability(0) == (8, 6)
         atol, rtol = (1e-3, 1e-3) if is_cuda_sm86 or TEST_XPU else (1e-4, 1e-4)
 
         def test():

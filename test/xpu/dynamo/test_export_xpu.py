@@ -37,7 +37,6 @@ from torch.fx.experimental.symbolic_shapes import (
 from torch.testing._internal import common_utils
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import IS_LINUX, TEST_WITH_SLOW
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 @torch._dynamo.assume_constant_result

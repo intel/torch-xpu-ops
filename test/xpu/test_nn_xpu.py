@@ -119,8 +119,8 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.types import _TensorOrTensors
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.get_device_module(GPU_TYPE).is_tf32_supported()
 
@@ -7363,7 +7363,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                             .transpose(0, 1)
                             .requires_grad_(input_requires_grad)
                         )
-                        grid_cuda = get_grid(GPU_TYPE, grid_cpu.detach()).requires_grad_()
+                        grid_cuda = get_grid(
+                            GPU_TYPE, grid_cpu.detach()
+                        ).requires_grad_()
                         out_cuda = F.grid_sample(
                             input_cuda,
                             grid_cuda,
@@ -9484,7 +9486,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         input_2 = torch.rand([5, 0], dtype=torch.float32)
         torch.nn.CrossEntropyLoss()(input_1, input_2)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
+    )
     def test_convert_sync_batchnorm(self):
         module = torch.nn.Sequential(
             torch.nn.BatchNorm1d(100), torch.nn.InstanceNorm1d(100)

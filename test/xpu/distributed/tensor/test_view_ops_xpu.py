@@ -40,7 +40,6 @@ from torch.testing._internal.distributed._tensor.common_dtensor import (
     LocalDTensorContinuousTestBase,
 )
 from torch.utils import _pytree as pytree
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 class TestViewOps(DTensorContinuousTestBase):

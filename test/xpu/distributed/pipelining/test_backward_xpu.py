@@ -2,20 +2,15 @@
 # Owner(s): ["oncall: distributed"]
 import copy
 
-from model_registry import MLPModule, MultiInterMediateModel
-
 import torch
+from model_registry import MLPModule, MultiInterMediateModel
 from torch.distributed.pipelining._backward import (
     stage_backward,
     stage_backward_input,
     stage_backward_weight,
 )
-from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests,
-    skipXPUIf,
-)
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests, TestCase
-
 
 d_hid = 512
 batch_size = 256

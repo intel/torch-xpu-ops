@@ -27,8 +27,7 @@ from torch.testing._internal.common_utils import (
     skip_but_pass_in_sandcastle_if,
     TestCase,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 NO_NCCL = not hasattr(torch.distributed, "ProcessGroupNCCL")
 
@@ -253,7 +252,9 @@ class TestDataParallel(TestCase):
 
         def test(inner_m, dp_device, inp, device_ids, should_fail):
             if device_ids is None:
-                device_ids = list(range(torch.get_device_module(GPU_TYPE).device_count()))
+                device_ids = list(
+                    range(torch.get_device_module(GPU_TYPE).device_count())
+                )
 
             if isinstance(device_ids[0], torch.device):
                 expect_device = device_ids[0]
@@ -692,8 +693,12 @@ class TestDataParallel(TestCase):
 
     def _test_gather(self, output_device):
         inputs = (
-            torch.randn(2, 4, device=f"{GPU_TYPE}:0", requires_grad=True, dtype=torch.double),
-            torch.randn(2, 4, device=f"{GPU_TYPE}:1", requires_grad=True, dtype=torch.double),
+            torch.randn(
+                2, 4, device=f"{GPU_TYPE}:0", requires_grad=True, dtype=torch.double
+            ),
+            torch.randn(
+                2, 4, device=f"{GPU_TYPE}:1", requires_grad=True, dtype=torch.double
+            ),
         )
         result = dp.gather(inputs, output_device)
         self.assertEqual(result.size(), torch.Size([4, 4]))
@@ -715,8 +720,12 @@ class TestDataParallel(TestCase):
 
         # test scalar inputs, should stack into a vector in this case
         inputs = (
-            torch.randn((), device=f"{GPU_TYPE}:0", requires_grad=True, dtype=torch.double),
-            torch.randn((), device=f"{GPU_TYPE}:1", requires_grad=True, dtype=torch.double),
+            torch.randn(
+                (), device=f"{GPU_TYPE}:0", requires_grad=True, dtype=torch.double
+            ),
+            torch.randn(
+                (), device=f"{GPU_TYPE}:1", requires_grad=True, dtype=torch.double
+            ),
         )
         result = dp.gather(inputs, output_device)
         self.assertEqual(result.size(), torch.Size([2]))
@@ -875,8 +884,12 @@ class TestDataParallel(TestCase):
         )
 
         ndevs = torch.get_device_module(GPU_TYPE).device_count()
-        input = torch.randn(ndevs * 8, 8, 8, 8, device=f"{GPU_TYPE}:0", dtype=torch.float)
-        target = torch.randn(ndevs * 8, 8, 4, 4, device=f"{GPU_TYPE}:0", dtype=torch.float)
+        input = torch.randn(
+            ndevs * 8, 8, 8, 8, device=f"{GPU_TYPE}:0", dtype=torch.float
+        )
+        target = torch.randn(
+            ndevs * 8, 8, 4, 4, device=f"{GPU_TYPE}:0", dtype=torch.float
+        )
         device_ids = list(range(ndevs))
 
         with torch.backends.cudnn.flags(
@@ -974,7 +987,9 @@ class TestDataParallel(TestCase):
 
         key0 = "0"
         key1 = "1"
-        module = MyMod(torch.nn.ParameterDict({"0": p1, "1": p2}), check_fn).to(device=GPU_TYPE)
+        module = MyMod(torch.nn.ParameterDict({"0": p1, "1": p2}), check_fn).to(
+            device=GPU_TYPE
+        )
         model = dp.DataParallel(module)
         input = torch.randn((8, 8), device=GPU_TYPE)
 

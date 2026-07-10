@@ -38,9 +38,8 @@ from torch.testing._internal.distributed._tensor.common_dtensor import (
     with_comms,
 )
 from torch.testing._internal.distributed.fake_pg import FakeProcessGroup, FakeStore
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.utils._typing_utils import not_none
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 device_type = (
     acc.type
@@ -1107,9 +1106,9 @@ class TestDeviceMeshGetItem(DTensorTestBase):
         self.assertEqual(tp_pg._get_backend_name(), "nccl")
         w = tp_pg.allreduce(torch.rand(10).cuda(self.rank))
         self.assertTrue(
-            tp_pg._get_backend(torch.device(f"{GPU_TYPE}:{self.rank}"))._verify_work_timeout(
-                w, timedelta(seconds=60)
-            )
+            tp_pg._get_backend(
+                torch.device(f"{GPU_TYPE}:{self.rank}")
+            )._verify_work_timeout(w, timedelta(seconds=60))
         )
         w.wait()
 

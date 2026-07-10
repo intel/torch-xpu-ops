@@ -32,8 +32,8 @@ from torch.testing._internal.common_utils import (
     skipIfRocm,
     TEST_WITH_ROCM,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.utils._python_dispatch import TorchDispatchMode
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 @contextmanager
@@ -1316,7 +1316,9 @@ class TestVarlenAttention(NNTestCase):
 
 device_types = ("cuda", "xpu")
 
-instantiate_device_type_tests(TestVarlenAttention, globals(), only_for=device_types, allow_xpu=True)
+instantiate_device_type_tests(
+    TestVarlenAttention, globals(), only_for=device_types, allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()

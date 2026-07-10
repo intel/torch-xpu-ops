@@ -12,7 +12,6 @@ from io import StringIO
 from unittest.mock import patch
 
 import numpy as np
-
 import torch
 import torch._dynamo
 import torch._dynamo.logging
@@ -60,7 +59,6 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
-
 
 try:
     from importlib.metadata import version as pkg_version
@@ -684,7 +682,9 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
             ref = fn(x)
             res = opt_fn(x)
         self.assertEqual(ref, res)
-        self.assertEqual(torch.get_device_module(GPU_TYPE).current_device(), initial_dev)
+        self.assertEqual(
+            torch.get_device_module(GPU_TYPE).current_device(), initial_dev
+        )
 
     @unittest.skipIf(not TEST_MULTIGPU, "need multiple GPU")
     def test_device_guard(self):
@@ -697,7 +697,9 @@ class TestMultiGPU(torch._inductor.test_case.TestCase):
             self.assertEqual(device_guard.prev_idx, 0)
             self.assertEqual(device_guard.idx, 1)
 
-        self.assertEqual(torch.get_device_module(GPU_TYPE).current_device(), current_device)
+        self.assertEqual(
+            torch.get_device_module(GPU_TYPE).current_device(), current_device
+        )
         self.assertEqual(device_guard.prev_idx, 0)
         self.assertEqual(device_guard.idx, 1)
 

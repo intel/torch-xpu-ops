@@ -58,6 +58,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.opinfo.core import DecorateInfo, OpInfo, SampleInput
 
 device_type = (
@@ -525,7 +526,9 @@ if __name__ == '__main__':
     )
     def test_supported_dtypes(self, device, op):
         self.assertNotEqual(op.supported_dtypes("cpu"), op.supported_dtypes(GPU_TYPE))
-        self.assertEqual(op.supported_dtypes(GPU_TYPE), op.supported_dtypes(f"{GPU_TYPE}:0"))
+        self.assertEqual(
+            op.supported_dtypes(GPU_TYPE), op.supported_dtypes(f"{GPU_TYPE}:0")
+        )
         self.assertEqual(
             op.supported_dtypes(torch.device(GPU_TYPE)),
             op.supported_dtypes(torch.device(GPU_TYPE, index=1)),

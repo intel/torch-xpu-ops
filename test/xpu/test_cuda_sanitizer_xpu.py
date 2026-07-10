@@ -8,9 +8,8 @@ import torch
 import torch.cuda._sanitizer as csan
 from torch.cuda._sanitizer import DataPtr, EventId, StreamId
 from torch.testing._internal.common_utils import NoTest, run_tests, TEST_CUDA, TestCase
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.two_tensor import TwoTensor
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 if not TEST_CUDA:
     print("CUDA not available, skipping tests", file=sys.stderr)

@@ -6,12 +6,10 @@ from math import prod
 import torch
 import torch._functorch.config as config
 from torch.testing._internal.common_utils import run_tests, TEST_WITH_ROCM, TestCase
-from torch.testing._internal.inductor_utils import HAS_CUDA_AND_TRITON
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_CUDA_AND_TRITON
 from torch.utils._triton import has_triton
 from torch.utils.checkpoint import checkpoint
 from torch.utils.flop_counter import FlopCounterMode, register_flop_formula
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 if has_triton():
     # note: if we only import triton in the test, the test fails:
@@ -28,9 +26,13 @@ def compile_with_ac(f, memory_budget):
 def get_act_mem(f):
     out = f()
     out.backward()
-    start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+    start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+        "requested_bytes.all.current"
+    ]
     out = f()
-    cur_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+    cur_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+        "requested_bytes.all.current"
+    ]
     act_mem = (cur_mem - start_mem) / (1024 * 1024)
     out.backward()
     return act_mem

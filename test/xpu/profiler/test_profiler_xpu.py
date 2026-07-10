@@ -71,7 +71,7 @@ from torch.testing._internal.common_utils import (
     TEST_XPU,
     TestCase,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 if TYPE_CHECKING:
     from torch.autograd.profiler_util import FunctionEvent
@@ -1045,7 +1045,9 @@ class TestProfiler(TestCase):
             sort_by="cpu_time_total", row_limit=10
         )
         self.assertRegex(profiler_output, "Total M?FLOPs")
-        if not (kineto_available() and torch.get_device_module(GPU_TYPE).is_available()):
+        if not (
+            kineto_available() and torch.get_device_module(GPU_TYPE).is_available()
+        ):
             return
 
         with profile(
@@ -2401,7 +2403,8 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
 
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     @unittest.skipIf(
-        torch.get_device_module(GPU_TYPE).is_available(), "CUDA complains about forking after init"
+        torch.get_device_module(GPU_TYPE).is_available(),
+        "CUDA complains about forking after init",
     )
     @unittest.skipIf(torch.xpu.is_available(), "XPU complains about forking after init")
     @unittest.skipIf(IS_WINDOWS, "can't use os.fork() on Windows")
@@ -2828,7 +2831,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
             gpu_events = [e for e in events if e.device_type == DeviceType.CUDA]
             self.assertGreater(len(gpu_events), 0, "No GPU events captured by profiler")
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     @unittest.skipIf(TEST_WITH_ROCM, "not supported on ROCm")
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_activity_filter_dict_syntax(self):
@@ -2851,7 +2856,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
         has_overhead = any("Lazy Function Loading" in e.name for e in events)
         self.assertFalse(has_overhead)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_activity_filter_mixed_syntax(self):
         """Enum and dict entries can coexist for different activity groups."""
@@ -2884,7 +2891,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 x = torch.randn(10, 10)
                 y = torch.mm(x, x)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_activity_filter_nonmember_type_name(self):
         """Activity type name that is not a member of the requested activity group raises RuntimeError."""
@@ -2895,7 +2904,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 x = torch.randn(10, 10)
                 y = torch.mm(x, x)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     @unittest.skipIf(not kineto_available(), "Kineto is required")
     def test_activity_filter_empty_list(self):
         """Passing an empty list to activities means not collecting for the specified activity."""
@@ -3182,7 +3193,9 @@ class TestExperimentalUtils(TestCase):
 
         check_metadata(prof, op_name="aten::add", metadata_key="Ev Idx")
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     def test_profiler_debug_autotuner(self):
         """
         This test makes sure that profiling events will be present when the kernel is run using the DebugAutotuner.
@@ -3287,7 +3300,9 @@ class TestPrivateUse1ProfilerState(TestCase):
 
 
 @unittest.skipIf(not kineto_available(), "Kineto is required")
-@unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA is required")
+@unittest.skipIf(
+    not torch.get_device_module(GPU_TYPE).is_available(), "CUDA is required"
+)
 class TestProfilerEventsParity(TestCase):
     """Tests validating parity between events() and export_chrome_trace() JSON."""
 

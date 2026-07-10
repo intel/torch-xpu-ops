@@ -39,7 +39,7 @@ from torch.testing._internal.common_cuda import (
 )
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import IS_WINDOWS, parametrize, skipIfHpu
-from torch.testing._internal.inductor_utils import HAS_CUDA_AND_TRITON
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_CUDA_AND_TRITON
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils.checkpoint import (
@@ -47,8 +47,6 @@ from torch.utils.checkpoint import (
     CheckpointPolicy,
     create_selective_checkpoint_contexts,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 if HAS_CUDA_AND_TRITON:
     import triton
@@ -2430,7 +2428,9 @@ sum_1: aten.sum.default -> PREFER_RECOMPUTE
 cos: aten.cos.default -> PREFER_RECOMPUTE""",
         )
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     def test_region_activation_memory_budget_reduces_act_mem(self):
         N, NUM_LAYERS = 1000, 4
 
@@ -2458,10 +2458,15 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         def get_act_mem(f):
             out = f()
             out.backward()
-            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+                "requested_bytes.all.current"
+            ]
             out = f()
             act_mem = (
-                torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.get_device_module(GPU_TYPE).memory_stats()[
+                    "requested_bytes.all.current"
+                ]
+                - start_mem
             )
             out.backward()
             return act_mem
@@ -2473,10 +2478,14 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         self.assertGreater(get_act_mem(lambda: compiled(x)), 0)
 
         torch._dynamo.reset()
-        compiled = torch.compile(Model(budget=0.0).to(device=GPU_TYPE), backend="aot_eager")
+        compiled = torch.compile(
+            Model(budget=0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         self.assertEqual(get_act_mem(lambda: compiled(x)), 0)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     def test_region_activation_memory_budget_per_region(self):
         """Different graphs (separated by a graph break) can have different
         memory budgets."""
@@ -2511,10 +2520,15 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         def get_act_mem(f):
             out = f()
             out.backward()
-            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+                "requested_bytes.all.current"
+            ]
             out = f()
             act_mem = (
-                torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.get_device_module(GPU_TYPE).memory_stats()[
+                    "requested_bytes.all.current"
+                ]
+                - start_mem
             )
             out.backward()
             return act_mem
@@ -2522,19 +2536,27 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         x = torch.randn(N, N, device=GPU_TYPE)
 
         torch._dynamo.reset()
-        both_save = torch.compile(Model(1.0, 1.0).to(device=GPU_TYPE), backend="aot_eager")
+        both_save = torch.compile(
+            Model(1.0, 1.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_both_save = get_act_mem(lambda: both_save(x))
 
         torch._dynamo.reset()
-        a_recomp = torch.compile(Model(0.0, 1.0).to(device=GPU_TYPE), backend="aot_eager")
+        a_recomp = torch.compile(
+            Model(0.0, 1.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_a_recomp = get_act_mem(lambda: a_recomp(x))
 
         torch._dynamo.reset()
-        b_recomp = torch.compile(Model(1.0, 0.0).to(device=GPU_TYPE), backend="aot_eager")
+        b_recomp = torch.compile(
+            Model(1.0, 0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_b_recomp = get_act_mem(lambda: b_recomp(x))
 
         torch._dynamo.reset()
-        both_recomp = torch.compile(Model(0.0, 0.0).to(device=GPU_TYPE), backend="aot_eager")
+        both_recomp = torch.compile(
+            Model(0.0, 0.0).to(device=GPU_TYPE), backend="aot_eager"
+        )
         mem_both_recomp = get_act_mem(lambda: both_recomp(x))
 
         # Both save > either one recomputing > both recomputing
@@ -2594,7 +2616,9 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         with self.assertRaisesRegex(RuntimeError, "must cover the entire forward"):
             cfn(x, y).sum().backward()
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+    )
     @torch._dynamo.config.patch(inline_single_use_invoke_subgraph=False)
     def test_region_activation_memory_budget_covers_invoke_subgraph(self):
         """A budget covering a forward that contains an invoke_subgraph
@@ -2628,10 +2652,15 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         def get_act_mem(f):
             out = f()
             out.backward()
-            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"]
+            start_mem = torch.get_device_module(GPU_TYPE).memory_stats()[
+                "requested_bytes.all.current"
+            ]
             out = f()
             act_mem = (
-                torch.get_device_module(GPU_TYPE).memory_stats()["requested_bytes.all.current"] - start_mem
+                torch.get_device_module(GPU_TYPE).memory_stats()[
+                    "requested_bytes.all.current"
+                ]
+                - start_mem
             )
             out.backward()
             return act_mem
@@ -2707,7 +2736,9 @@ class RematerializeACNodesPassTests(torch._dynamo.test_case.TestCase):
 
         return result, captured_gm
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
+    )
     def test_ac_rematerialize_simple_forward_backward(self):
         x = torch.randn(4, 4, requires_grad=True)
         y = torch.randn(4, 4, requires_grad=True)
@@ -2890,7 +2921,9 @@ def forward(self, arg0_1, arg1_1):
 
                     self.assertEqual(is_rng_op(node), expected)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
+    )
     def test_ac_rematerialize_with_sdpa_dropout_zero(self):
         from torch.nn.attention import sdpa_kernel, SDPBackend
 
@@ -3221,7 +3254,9 @@ def forward(self, arg0_1):
         self.assertEqual(ref, result)
         self.assertEqual(x_ref.grad, x_test.grad)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
+    )
     def test_multiple_user_phase_annotations_errors(self):
         x = torch.randn(4, 4, requires_grad=True)
         w = torch.randn(4, 4, requires_grad=True)
@@ -3242,7 +3277,9 @@ def forward(self, arg0_1):
         with self.assertRaisesRegex(RuntimeError, "backward regions annotated"):
             self._compile_and_capture(fn, True, (x, w))
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
+    )
     def test_user_phase_annotation_with_extra_autograd_grad(self):
         """Only the user-annotated backward region gets rematerialization."""
         x = torch.randn(4, 4, requires_grad=True)

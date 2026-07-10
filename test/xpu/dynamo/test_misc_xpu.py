@@ -31,6 +31,7 @@ import unittest.mock as mock
 import warnings
 import weakref
 from unittest.mock import patch
+
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 # Make upstream `test/dynamo/utils.py` importable as `utils` for tests like
@@ -14402,7 +14403,9 @@ class MiscTestsDevice(torch._inductor.test_case.TestCase):
             opt_fn2 = torch.compile(fn2, backend="eager", fullgraph=True)
             res = opt_fn2(x2)
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda"
+    )
     @torch._dynamo.config.patch(recompile_limit=999)
     def test_legacy_cuda_tensor(self):
         typs = [

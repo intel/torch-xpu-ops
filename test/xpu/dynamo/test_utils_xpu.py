@@ -22,8 +22,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TEST_WITH_SLOW,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 _IS_WINDOWS = sys.platform == "win32"
 

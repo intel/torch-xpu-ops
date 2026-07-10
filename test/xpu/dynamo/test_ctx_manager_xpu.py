@@ -17,6 +17,7 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 try:
     from . import test_functions
@@ -613,7 +614,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
     def test_autocast(self):
-        if not torch.get_device_module(GPU_TYPE).is_bf16_supported() and device_type != "xpu":
+        if (
+            not torch.get_device_module(GPU_TYPE).is_bf16_supported()
+            and device_type != "xpu"
+        ):
             raise unittest.SkipTest("requires bf16")
 
         class MyModule(torch.nn.Module):
@@ -1273,7 +1277,8 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
     def test_graph_break_inlining_autocast(self):
         for device in ["cuda", "cpu", "xpu"]:
             if device == GPU_TYPE and not (
-                torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).is_bf16_supported()
+                torch.get_device_module(GPU_TYPE).is_available()
+                and torch.get_device_module(GPU_TYPE).is_bf16_supported()
             ):
                 continue
             if device == "xpu" and not torch.xpu.is_available():
