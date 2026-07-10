@@ -22,7 +22,9 @@ if(NOT __XCCL_INCLUDED)
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_INCLUDE_DIRECTORIES
     ${XCCL_INCLUDE_DIR})
+  # Wrap with --no-as-needed,...,--as-needed so it remains in NEEDED.
+  # Once the weak attribute is removed upstream, this wrapper can be dropped.
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
-    ${XCCL_LIBRARY} ${XCCL_LIBRARY_2_0})
+    "-Wl,--no-as-needed,${XCCL_LIBRARY},--as-needed")
 endif()
