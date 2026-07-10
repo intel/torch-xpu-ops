@@ -1,0 +1,13 @@
+{
+  "traceEvents": [
+    {"ph": "X", "cat": "cpu_op", "name": "aten::linear", "ts": 1000, "dur": 800, "args": {"External id": 10, "Input Dims": "[[64, 768], [3072, 768]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::addmm", "ts": 1050, "dur": 700, "args": {"External id": 11, "Input Dims": "[[64, 768], [768, 3072]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::gelu", "ts": 2000, "dur": 200, "args": {"External id": 12, "Input Dims": "[[64, 3072]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::linear", "ts": 3000, "dur": 600, "args": {"External id": 13, "Input Dims": "[[64, 3072], [768, 3072]]"}},
+    {"ph": "X", "cat": "cpu_op", "name": "aten::addmm", "ts": 3050, "dur": 550, "args": {"External id": 14, "Input Dims": "[[64, 3072], [3072, 768]]"}},
+    {"ph": "X", "cat": "kernel", "name": "gemm_kernel", "ts": 1200, "dur": 6000, "args": {"External id": 11}},
+    {"ph": "X", "cat": "kernel", "name": "GeluKernelVec", "ts": 7300, "dur": 1500, "args": {"External id": 12}},
+    {"ph": "X", "cat": "kernel", "name": "gemm_kernel", "ts": 8900, "dur": 4500, "args": {"External id": 14}},
+    {"ph": "X", "cat": "gpu_memcpy", "name": "Memcpy DtoH", "ts": 13500, "dur": 200, "args": {"External id": 15}}
+  ]
+}
