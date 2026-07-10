@@ -380,8 +380,8 @@ static inline float2 _rand_box_muller(unsigned int x, unsigned int y) {
   float u = x * RAND_2POW32_INV + (RAND_2POW32_INV / 2);
   float v = y * RAND_2POW32_INV_2PI + (RAND_2POW32_INV_2PI / 2);
   float s = sycl::sqrt(-2.0f * sycl::log(u));
-  result.x = std::sin(v);
-  result.y = std::cos(v);
+  result.x = sycl::sin(v);
+  result.y = sycl::cos(v);
   result.x *= s;
   result.y *= s;
   return result;
@@ -415,8 +415,8 @@ static inline double2 _rand_box_muller_double(
   double v = zy * (RAND_2POW53_INV_DOUBLE * 2.0) + RAND_2POW53_INV_DOUBLE;
   double s = sycl::sqrt(-2.0 * sycl::log(u));
 
-  result.x = std::sin(v * RAND_PI_DOUBLE);
-  result.y = std::cos(v * RAND_PI_DOUBLE);
+  result.x = sycl::sin(v * RAND_PI_DOUBLE);
+  result.y = sycl::cos(v * RAND_PI_DOUBLE);
   result.x *= s;
   result.y *= s;
 
