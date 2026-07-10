@@ -178,7 +178,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
   }
 
   // sub-group reduction
-  // when dim_x < sg_size, a single sub-group may spans multiple rows
+  // when dim_x < sg_size, a single sub-group may span multiple rows
   // and each row needs an independent x-direction reduction
   for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(out_vec_sz)
