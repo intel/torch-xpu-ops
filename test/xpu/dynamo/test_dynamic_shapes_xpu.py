@@ -5,8 +5,6 @@ from torch._dynamo import config
 from torch._dynamo.testing import make_test_cls_with_patches
 from torch.fx.experimental import _config as fx_config
 from torch.testing._internal.common_utils import slowTest, TEST_Z3
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 try:
     from . import (
@@ -28,7 +26,6 @@ except ImportError:
     import test_functions
     import test_higher_order_ops
     import test_misc
-
     import test_modules
     import test_repros
     import test_sdpa

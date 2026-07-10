@@ -18,9 +18,8 @@ from torch._dynamo.exc import ResumePrologueTracingError, TorchRuntimeError, Uns
 from torch._dynamo.testing import skipIfNotPy312, skipIfOnlyNotPy312
 from torch._dynamo.utils import counters
 from torch.testing._internal.common_utils import IS_FBCODE, munge_exc
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 """
 NOTE Adding tests to this file:
@@ -894,7 +893,9 @@ from user code:
     return x + y""",
         )
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda"
+    )
     def test_fx_node_error_cross_device(self):
         linear = torch.nn.Linear(10, 20, device=GPU_TYPE).eval()
 

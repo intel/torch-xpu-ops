@@ -29,6 +29,7 @@ from torch.testing._internal.common_utils import (
     xfailIf,
 )
 from torch.testing._internal.inductor_utils import (
+    GPU_TYPE,
     HAS_CUDA_AND_TRITON,
     HAS_XPU_AND_TRITON,
 )
@@ -38,8 +39,6 @@ from torch.testing._internal.logging_utils import (
     make_settings_test,
 )
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 
 requires_gpu = unittest.skipUnless(
     HAS_CUDA_AND_TRITON or HAS_XPU_AND_TRITON, "requires cuda or xpu with triton"

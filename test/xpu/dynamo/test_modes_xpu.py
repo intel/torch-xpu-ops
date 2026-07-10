@@ -27,7 +27,6 @@ from torch.testing._internal.inductor_utils import HAS_GPU
 from torch.utils._device import DeviceContext
 from torch.utils._python_dispatch import TorchDispatchMode
 
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )

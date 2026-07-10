@@ -11,7 +11,7 @@ import torch._dynamo.testing
 import torch._inductor.cudagraph_trees as cudagraph_trees
 from torch._dynamo.testing import same
 from torch.testing._internal.common_utils import TEST_CUDA_GRAPH
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 
 def composed(*decs):
@@ -56,7 +56,9 @@ def patch_all(ok=True):
 N_ITERS = 5
 
 
-@unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "these tests require cuda")
+@unittest.skipIf(
+    not torch.get_device_module(GPU_TYPE).is_available(), "these tests require cuda"
+)
 class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
     @patch_all()
     def test_basic(self):
@@ -175,7 +177,9 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             for i in range(N_ITERS):
                 with self.subTest(i):
                     rx = model(x)
-                    self.assertTrue(same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0")))
+                    self.assertTrue(
+                        same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0"))
+                    )
 
         x = torch.empty(0, device=f"{GPU_TYPE}:0")
         fn(x)
@@ -194,7 +198,9 @@ class TestAotCudagraphs(torch._dynamo.test_case.TestCase):
             for i in range(N_ITERS):
                 with self.subTest(i):
                     rx, ry = model(x)
-                    self.assertTrue(same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0")))
+                    self.assertTrue(
+                        same(rx, torch.full((20,), 2.0, device=f"{GPU_TYPE}:0"))
+                    )
                     self.assertTrue(same(ry, torch.empty(0, device=f"{GPU_TYPE}:0")))
 
         x = torch.empty(20, device=f"{GPU_TYPE}:0")

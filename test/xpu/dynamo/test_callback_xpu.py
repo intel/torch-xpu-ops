@@ -10,7 +10,6 @@ from torch._guards import CompileId
 from torch.testing._internal.inductor_utils import HAS_GPU
 from torch.testing._internal.triton_utils import HAS_CUDA_AND_TRITON
 
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )

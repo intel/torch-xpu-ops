@@ -16,11 +16,9 @@ import typing
 import unittest
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
-from typing_extensions import NamedTuple
 from unittest.mock import patch
 
 import numpy as np
-
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing
@@ -39,12 +37,11 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
 )
-from torch.testing._internal.inductor_utils import HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 # Defines all the kernels for tests
 from torch.testing._internal.triton_utils import *  # noqa: F403
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from typing_extensions import NamedTuple
 
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
@@ -1424,7 +1421,9 @@ partial_fn = functools.partial(fn, scale=2)
         if x.device.type == "cpu":
             return x + 1
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda"
+    )
     @make_test
     def test_get_device_properties_tensor_device(a):
         x = a.to(GPU_TYPE)
@@ -3635,7 +3634,9 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(foo(), foo())
         self.assertEqual(foo(), foo())
 
-    @unittest.skipIf(not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda")
+    @unittest.skipIf(
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires cuda"
+    )
     def test_cuda_manual_seed(self):
         import torch._inductor.config as inductor_config
 

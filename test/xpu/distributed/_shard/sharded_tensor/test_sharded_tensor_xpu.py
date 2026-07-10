@@ -62,8 +62,7 @@ from torch.testing._internal.distributed._shard.sharded_tensor._test_st_common i
     _chunk_sharding_specs_list_for_test,
     MyShardedModel1,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 if TEST_WITH_DEV_DBG_ASAN:
     print(
@@ -531,7 +530,9 @@ class TestShardedTensorChunked(ShardedTensorTestBase):
             local_shards = st.local_shards()
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             if self.rank == 3:
                 self.assertEqual((1, 20), local_shard.size())
             else:
@@ -850,7 +851,9 @@ class TestShardedTensorChunked(ShardedTensorTestBase):
         if self.rank >= 2:
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             self.assertEqual((5, 20), local_shard.size())
         else:
             self.assertEqual(0, len(local_shards))
@@ -906,7 +909,9 @@ class TestShardedTensorChunked(ShardedTensorTestBase):
         if self.rank >= 2:
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             self.assertEqual((5, 20), local_shard.size())
         else:
             self.assertEqual(0, len(local_shards))
@@ -1015,7 +1020,9 @@ class TestShardedTensorChunked(ShardedTensorTestBase):
             local_shards = st.local_shards()
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             self.assertEqual((10, 8), local_shard.size())
 
             # Validate global metadata.
@@ -1141,12 +1148,16 @@ class TestShardedTensorChunked(ShardedTensorTestBase):
         if self.rank <= 1:
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             self.assertEqual((1, 20), local_shard.size())
         else:
             self.assertEqual(1, len(local_shards))
             local_shard = local_shards[0].tensor
-            self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device)
+            self.assertEqual(
+                torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.device
+            )
             self.assertEqual(local_shard.numel(), 0)
 
         # Validate global metadata.
@@ -1517,7 +1528,9 @@ class TestShardedTensorEnumerable(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((5, 5), local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -1589,7 +1602,9 @@ class TestShardedTensorEnumerable(ShardedTensorTestBase):
 
         # Verify local shard is initialized with torch.ones
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((5, 5), local_shard.tensor.size())
         self.assertEqual(local_shard.tensor, torch.ones(5, 5))
 
@@ -1916,7 +1931,9 @@ class TestShardedTensorEnumerable(ShardedTensorTestBase):
         # CUDA sharded tensor should return a new ShardedTensor, but same
         # local shards(no movements)
         st = sharded_tensor.zeros(spec, h, w)
-        current_device = torch.device(torch.get_device_module(GPU_TYPE).current_device())
+        current_device = torch.device(
+            torch.get_device_module(GPU_TYPE).current_device()
+        )
         self.assertEqual(current_device, st.device)
 
         # test after to cpu, device get changed
@@ -1980,7 +1997,9 @@ class TestShardedTensorEnumerable(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         verify_size(self.rank, local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -2255,7 +2274,9 @@ class TestShardedTensorEnumerable(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((5, 5), local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -2324,7 +2345,9 @@ class TestShardedTensorFromLocalTensor(ShardedTensorTestBase):
         # Verify local shard.
         local_shard = st.local_shards()[0]
         self.assertEqual(st.local_tensor(), local_tensor)
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
 
         # Verify local shard metadata.
         self.assertEqual(
@@ -2443,7 +2466,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         local_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
         ]
 
@@ -2455,7 +2479,9 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((5, 5), local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -2504,7 +2530,9 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
             local_shards = [
                 sharded_tensor.Shard(
-                    torch.randn(shard_size, shard_size, device=f"{GPU_TYPE}:{self.rank}"),
+                    torch.randn(
+                        shard_size, shard_size, device=f"{GPU_TYPE}:{self.rank}"
+                    ),
                     local_shard_metadata,
                 )
             ]
@@ -2572,7 +2600,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         local_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
         ]
         with self.assertRaises(ValueError):
@@ -2591,7 +2620,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         local_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
         ]
 
@@ -2699,7 +2729,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         local_shards = [
             sharded_tensor.Shard(
-                torch.randn(0, 0, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(0, 0, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
         ]
 
@@ -2727,7 +2758,9 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((0, 0), local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -2777,7 +2810,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
             local_shards = [
                 sharded_tensor.Shard(
-                    torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                    torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                    local_shard_metadata,
                 )
             ]
 
@@ -2871,7 +2905,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         local_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
         ]
 
@@ -2899,7 +2934,9 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         # Verify local shard.
         local_shard = st.local_shards()[0]
-        self.assertEqual(torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device)
+        self.assertEqual(
+            torch.device(f"{GPU_TYPE}:{self.rank}"), local_shard.tensor.device
+        )
         self.assertEqual((5, 5), local_shard.tensor.size())
 
         # Verify local shard metadata.
@@ -2947,7 +2984,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
             )
             local_shards = [
                 sharded_tensor.Shard(
-                    torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                    torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                    local_shard_metadata,
                 )
             ]
 
@@ -3017,7 +3055,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         wrong_memory_format_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}").t(), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}").t(),
+                local_shard_metadata,
             )
         ]
         with self.assertRaisesRegex(
@@ -3030,7 +3069,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         with self.assertRaisesRegex(ValueError, "Shard tensor size does not match"):
             sharded_tensor.Shard(
-                torch.randn(2, 3, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(2, 3, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
 
         with self.assertRaisesRegex(
@@ -3080,7 +3120,10 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
         wrong_requires_grad_shards = [
             sharded_tensor.Shard(
                 torch.randn(
-                    5, 5, device=f"{GPU_TYPE}:{self.rank}", requires_grad=tensor_requires_grad
+                    5,
+                    5,
+                    device=f"{GPU_TYPE}:{self.rank}",
+                    requires_grad=tensor_requires_grad,
                 ),
                 local_shard_metadata,
             )
@@ -3230,10 +3273,12 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         wrong_num_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             ),
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             ),
         ]
         with self.assertRaisesRegex(
@@ -3247,7 +3292,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
             ValueError, "Shard tensor size does not match with metadata.shard_lengths"
         ):
             sharded_tensor.Shard(
-                torch.randn(2, 3, device=f"{GPU_TYPE}:{self.rank}"), local_shard_metadata
+                torch.randn(2, 3, device=f"{GPU_TYPE}:{self.rank}"),
+                local_shard_metadata,
             )
 
         with self.assertRaisesRegex(
@@ -3301,7 +3347,8 @@ class TestShardedTensorFromLocalShards(ShardedTensorTestBase):
 
         wrong_memory_format_shards = [
             sharded_tensor.Shard(
-                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}").t(), local_shard_metadata
+                torch.randn(5, 5, device=f"{GPU_TYPE}:{self.rank}").t(),
+                local_shard_metadata,
             )
         ]
         with self.assertRaisesRegex(

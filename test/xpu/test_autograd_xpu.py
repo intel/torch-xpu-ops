@@ -40,7 +40,7 @@ from torch.utils.checkpoint import (
     create_selective_checkpoint_contexts,
 )
 from torch.utils.flop_counter import FlopCounterMode
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 
 @onlyXPU

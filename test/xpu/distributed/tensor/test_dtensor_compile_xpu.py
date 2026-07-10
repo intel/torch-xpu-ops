@@ -72,7 +72,6 @@ from torch.testing._internal.inductor_utils import HAS_GPU
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils.checkpoint import checkpoint
 
-
 dev_type = torch.device(get_devtype())
 
 
@@ -142,7 +141,6 @@ class PytreeTuple(torch._custom_class_base.CustomClassBase):
 # instances created during tracing
 from torch._library.opaque_object import MemberType, register_custom_class
 
-
 register_custom_class(
     PytreeTuple,
     typ="constant",
@@ -179,7 +177,6 @@ bw_compiler = functools.partial(extract_graph, graph_cell=bw_graph_cell)
 
 from functorch.compile import min_cut_rematerialization_partition
 from torch._dynamo.backends.common import aot_autograd
-
 
 aot_eager_graph = aot_autograd(
     fw_compiler=fw_compiler,

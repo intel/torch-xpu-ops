@@ -78,6 +78,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     xfailIfTorchDynamo,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.opinfo.core import (
     BinaryUfuncInfo,
     ReductionOpInfo,
@@ -88,7 +89,6 @@ from torch.testing._internal.opinfo.core import (
 from torch.testing._internal.opinfo.definitions.nested import _sample_njts, njt_op_db
 from torch.utils._pytree import tree_flatten, tree_map_only
 from torch.utils.checkpoint import checkpoint
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 # Tests are ported from pytorch/nestedtensor.
 # This makes porting as_nested_tensor easier in the future.
@@ -624,8 +624,12 @@ class TestNestedTensor(NestedTensorTestCase):
             devices = [t.device]
             if t.device.type == GPU_TYPE:
                 if t.device.index == -1:
-                    devices.append(f"{GPU_TYPE}:{torch.get_device_module(GPU_TYPE).current_device()}")
-                elif t.device.index == torch.get_device_module(GPU_TYPE).current_device():
+                    devices.append(
+                        f"{GPU_TYPE}:{torch.get_device_module(GPU_TYPE).current_device()}"
+                    )
+                elif (
+                    t.device.index == torch.get_device_module(GPU_TYPE).current_device()
+                ):
                     devices.append(GPU_TYPE)
             for device in devices:
                 self.assertIs(t, t.to(device, non_blocking=non_blocking))
@@ -656,7 +660,9 @@ class TestNestedTensor(NestedTensorTestCase):
             for non_blocking in [True, False]:
                 for cuda in [
                     GPU_TYPE,
-                    f"{GPU_TYPE}:0" if torch.get_device_module(GPU_TYPE).device_count() == 1 else f"{GPU_TYPE}:1",
+                    f"{GPU_TYPE}:0"
+                    if torch.get_device_module(GPU_TYPE).device_count() == 1
+                    else f"{GPU_TYPE}:1",
                 ]:
                     nt2 = random_nt(cuda, torch.float32, ntensors, (4, 4))
                     test_copy_behavior(nt2, non_blocking)
@@ -704,7 +710,9 @@ class TestNestedTensor(NestedTensorTestCase):
             nt = random_nt(torch.device(GPU_TYPE), torch.float32, ntensors, (4, 4))
             nt_copy = torch.empty_like(nt, device=torch.device("cpu"))
             nt_copy.copy_(nt, non_blocking=True)
-            torch.get_device_module(GPU_TYPE).current_stream(torch.get_device_module(GPU_TYPE).current_device()).synchronize()
+            torch.get_device_module(GPU_TYPE).current_stream(
+                torch.get_device_module(GPU_TYPE).current_device()
+            ).synchronize()
             for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy):
                 self.assertEqual(nt_ub, nt_copy_ub)
 
@@ -4094,7 +4102,9 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
             torch.get_device_module(GPU_TYPE).reset_max_memory_allocated()
         m(nt).sum().backward()
         # expect under a GB for max memory allocated
-        max_after_gb = torch.accelerator.max_memory_allocated.max_memory_allocated(0) // (1024**3)
+        max_after_gb = torch.accelerator.max_memory_allocated.max_memory_allocated(
+            0
+        ) // (1024**3)
         self.assertEqual(max_after_gb, 0)
 
     def test_unary_pointwise(self, device):
@@ -4587,8 +4597,8 @@ class TestNestedTensorSubclass(NestedTensorTestCase):
             with torch.get_device_module(GPU_TYPE).stream(s):
                 # emulate doing something long via sleep
                 per_ms = 2e7
-				if TEST_CUDA:
-	                torch.get_device_module(GPU_TYPE)._sleep(int(per_ms * 100))
+                if TEST_CUDA:
+                    torch.get_device_module(GPU_TYPE)._sleep(int(per_ms * 100))
                 if record_stream:
                     nt.record_stream(s)
             return data_ptrs

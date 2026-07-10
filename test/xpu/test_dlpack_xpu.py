@@ -27,13 +27,13 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.utils.dlpack import (
     DLDeviceType,
     from_dlpack,
     ReadOnlyTensorWrapper,
     to_dlpack,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 # Wraps a tensor, exposing only DLPack methods:
@@ -282,7 +282,9 @@ class TestTorchDlPack(TestCase):
                 return capsule
 
         # CUDA-based tests runs on non-default streams
-        with torch.get_device_module(GPU_TYPE).stream(torch.get_device_module(GPU_TYPE).default_stream()):
+        with torch.get_device_module(GPU_TYPE).stream(
+            torch.get_device_module(GPU_TYPE).default_stream()
+        ):
             x = DLPackTensor(make_tensor((5,), dtype=torch.float32, device=device))
             from_dlpack(x)
 

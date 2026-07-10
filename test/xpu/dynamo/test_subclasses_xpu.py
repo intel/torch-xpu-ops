@@ -36,7 +36,6 @@ from torch.testing._internal.common_utils import (
 from torch.testing._internal.triton_utils import requires_cuda_and_triton
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils._python_dispatch import return_and_correct_aliasing
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
 def nontraceable_subclass(c):

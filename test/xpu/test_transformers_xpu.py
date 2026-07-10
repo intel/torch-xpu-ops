@@ -59,7 +59,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TEST_XPU,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 if TEST_FAIRSEQ:
     import fairseq.models.transformer as fairseq_transformer
@@ -109,22 +109,32 @@ def cudnn_attention_if_supported():
 default_atol = {torch.float16: 1e-3, torch.bfloat16: 1e-3, torch.float32: 1e-5}
 default_rtol = {torch.float16: 1e-3, torch.bfloat16: 1.6e-2, torch.float32: 1.3e-6}
 
-isSM8XDevice = torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
+isSM8XDevice = torch.get_device_module(
+    GPU_TYPE
+).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
     (8, 6),
     (8, 7),
     (8, 9),
 ]
-isSM90Device = torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() == (
+isSM90Device = torch.get_device_module(
+    GPU_TYPE
+).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() == (
     9,
     0,
 )
-isSM120Device = torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
+isSM120Device = torch.get_device_module(
+    GPU_TYPE
+).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
     (12, 0),
     (12, 1),
 ]
-isSM5xDevice = torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability()[0] == 5
+isSM5xDevice = (
+    torch.get_device_module(GPU_TYPE).is_available()
+    and torch.get_device_module(GPU_TYPE).get_device_capability()[0] == 5
+)
 isLessThanSM80Device = (
-    torch.get_device_module(GPU_TYPE).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability()[0] < 8
+    torch.get_device_module(GPU_TYPE).is_available()
+    and torch.get_device_module(GPU_TYPE).get_device_capability()[0] < 8
 )
 
 TEST_WITH_CK = (
@@ -2850,7 +2860,9 @@ def _get_block_size_n(device, head_dim, is_dropout, is_causal):
     if head_dim > 256:
         raise AssertionError(f"head_dim should be <= 256, got {head_dim}")
     major, minor = (
-        torch.accelerator.get_device_capability(device) if device == GPU_TYPE else (0, 0)
+        torch.accelerator.get_device_capability(device)
+        if device == GPU_TYPE
+        else (0, 0)
     )
     is_sm8x = (
         major == 8 and minor > 0
@@ -3794,7 +3806,8 @@ class TestSDPACudaOnly(NNTestCase):
             torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else 0
         )
         if device != GPU_TYPE or (
-            torch.get_device_module(GPU_TYPE).get_device_capability() == (9, 0) and cudnn_version >= 91000
+            torch.get_device_module(GPU_TYPE).get_device_capability() == (9, 0)
+            and cudnn_version >= 91000
         ):
             test()
         else:
@@ -4743,7 +4756,9 @@ class TestSDPACudaOnly(NNTestCase):
             torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else 0
         )
         is_hopper_or_newer = device_capability and (
-            device == GPU_TYPE and device_capability[0] == 9 or device_capability[0] == 10
+            device == GPU_TYPE
+            and device_capability[0] == 9
+            or device_capability[0] == 10
         )
         prefer_cudnn = prefer_cudnn and is_hopper_or_newer and cudnn_version > 91500
 

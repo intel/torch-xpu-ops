@@ -3,7 +3,6 @@
 
 import os
 
-
 # Must precede the test_cuda import: EXPANDABLE_SEGMENTS in
 # torch.testing._internal.common_utils reads PYTORCH_CUDA_ALLOC_CONF once at
 # import time. Setting it here lets the @skipIf(not EXPANDABLE_SEGMENTS, ...)
@@ -18,19 +17,11 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import pathlib
 import sys
 
-from test_cuda import (  # noqa: F401
-    TestBlockStateAbsorption,
-    TestCuda,
-    TestCudaAllocator,
-    TestMemPool,
-    TestResizeStorageWithAddr,
-)
-
 import torch
+from test_cuda import TestCuda  # noqa: F401
 from torch.testing._internal.common_cuda import IS_JETSON, IS_WINDOWS
 from torch.testing._internal.common_utils import run_tests
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
+from torch.testing._internal.inductor_utils import GPU_TYPE
 
 # Restore prior env state. EXPANDABLE_SEGMENTS has already been resolved at
 # import time above; the runtime allocator is forced into expandable mode
@@ -45,12 +36,17 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from tools.stats.import_test_stats import get_disabled_tests
 
-
 # Make sure to remove REPO_ROOT after import is done
 sys.path.remove(str(REPO_ROOT))
 
 if __name__ == "__main__":
-    if torch.get_device_module(GPU_TYPE).is_available() and not IS_JETSON and not IS_WINDOWS:
+    if (
+        torch.get_device_module(GPU_TYPE).is_available()
+        and not IS_JETSON
+        and not IS_WINDOWS
+    ):
         get_disabled_tests(".")
-        torch.get_device_module(GPU_TYPE).memory._set_allocator_settings("expandable_segments:True")
+        torch.get_device_module(GPU_TYPE).memory._set_allocator_settings(
+            "expandable_segments:True"
+        )
         run_tests()
