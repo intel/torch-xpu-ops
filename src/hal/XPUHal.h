@@ -54,9 +54,8 @@ struct PhiloxCaptureState {
   uint32_t offset_intragraph_ = 0;
   bool captured_ = false;
 };
-using PhiloxCaptureStateFn = PhiloxCaptureState (*)(
-    c10::GeneratorImpl* gen,
-    uint64_t increment);
+using PhiloxCaptureStateFn =
+    PhiloxCaptureState (*)(c10::GeneratorImpl* gen, uint64_t increment);
 
 #ifdef _WIN32
 
@@ -75,9 +74,8 @@ XPU_HAL_API std::pair<uint64_t, uint64_t> philoxState(
     c10::GeneratorImpl* gen,
     uint64_t increment);
 
-XPU_HAL_API PhiloxCaptureState philoxCaptureState(
-    c10::GeneratorImpl* gen,
-    uint64_t increment);
+XPU_HAL_API PhiloxCaptureState
+philoxCaptureState(c10::GeneratorImpl* gen, uint64_t increment);
 
 // Register torch_xpu function pointers so kernel DLLs can call
 // empty_xpu(), resize_impl_xpu_(), and getCurrentDeviceProperties()
@@ -92,7 +90,7 @@ XPU_HAL_API void registerTorchXpuBridge(
 
 inline void registerXPUGeneratorBridge(GetDefaultGeneratorFn, PhiloxStateFn) {}
 inline void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn) {}
-inline void registerTorchXpuBridge(void*, void*) {}
+inline void registerTorchXpuBridge(void*, void*, void*) {}
 
 inline c10::intrusive_ptr<c10::GeneratorImpl> getDefaultGenerator(
     int64_t device_index) {

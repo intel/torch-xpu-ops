@@ -1,16 +1,16 @@
-#include <hal/XPUHal.h>
-#include <c10/util/Exception.h>
-#include <c10/core/DeviceType.h>
-#include <c10/core/ScalarType.h>
-#include <c10/core/Device.h>
-#include <c10/core/MemoryFormat.h>
-#include <c10/core/Layout.h>
-#include <c10/core/TensorOptions.h>
-#include <c10/util/ArrayRef.h>
-#include <c10/util/Optional.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TensorBase.h>
+#include <c10/core/Device.h>
+#include <c10/core/DeviceType.h>
+#include <c10/core/Layout.h>
+#include <c10/core/MemoryFormat.h>
+#include <c10/core/ScalarType.h>
+#include <c10/core/TensorOptions.h>
+#include <c10/util/ArrayRef.h>
+#include <c10/util/Exception.h>
+#include <c10/util/Optional.h>
 #include <c10/xpu/XPUDeviceProp.h>
+#include <hal/XPUHal.h>
 
 namespace xpu_hal {
 namespace {
@@ -25,11 +25,10 @@ using EmptyXpuPrimaryFn = at::TensorBase (*)(
     c10::ScalarType dtype,
     c10::optional<c10::Device> device_opt,
     c10::optional<c10::MemoryFormat> memory_format_opt);
-using ResizeImplXpuFn = at::TensorImpl* (*)(
-    at::TensorImpl* self,
-    c10::IntArrayRef size,
-    at::OptionalIntArrayRef stride,
-    bool device_guard);
+using ResizeImplXpuFn = at::TensorImpl* (*)(at::TensorImpl* self,
+                                            c10::IntArrayRef size,
+                                            at::OptionalIntArrayRef stride,
+                                            bool device_guard);
 using GetDevicePropFn = c10::xpu::DeviceProp* (*)();
 
 EmptyXpuPrimaryFn g_empty_xpu_primary = nullptr;
@@ -37,9 +36,15 @@ ResizeImplXpuFn g_resize_impl_xpu = nullptr;
 GetDevicePropFn g_get_device_props = nullptr;
 
 // Accessors used by the wrapper functions in at::detail / at::xpu.
-EmptyXpuPrimaryFn getEmptyXpuPrimaryFn() { return g_empty_xpu_primary; }
-ResizeImplXpuFn getResizeImplXpuFn() { return g_resize_impl_xpu; }
-GetDevicePropFn getDevicePropFn() { return g_get_device_props; }
+EmptyXpuPrimaryFn getEmptyXpuPrimaryFn() {
+  return g_empty_xpu_primary;
+}
+ResizeImplXpuFn getResizeImplXpuFn() {
+  return g_resize_impl_xpu;
+}
+GetDevicePropFn getDevicePropFn() {
+  return g_get_device_props;
+}
 
 } // anonymous namespace
 
@@ -50,8 +55,7 @@ void registerXPUGeneratorBridge(
   g_philox_state = philox;
 }
 
-void registerXPUGeneratorCaptureBridge(
-    PhiloxCaptureStateFn capture_fn) {
+void registerXPUGeneratorCaptureBridge(PhiloxCaptureStateFn capture_fn) {
   g_philox_capture_state = capture_fn;
 }
 
@@ -147,9 +151,8 @@ XPU_HAL_API TensorBase empty_xpu(
   return at::detail::empty_xpu(size, dtype, device_opt, memory_format_opt);
 }
 
-XPU_HAL_API TensorBase empty_xpu(
-    c10::IntArrayRef size,
-    const c10::TensorOptions& options) {
+XPU_HAL_API TensorBase
+empty_xpu(c10::IntArrayRef size, const c10::TensorOptions& options) {
   // c10::TensorOptions stores dtype as caffe2::TypeMeta; convert to
   // optional<ScalarType> for the underlying bridge call.
   auto dtype_opt = options.dtype_opt();
