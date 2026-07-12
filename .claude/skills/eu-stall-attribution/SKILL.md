@@ -49,10 +49,12 @@ If stall sampling is unavailable, run a controlled `ComputeBasic` sweep with low
 
 Classify the dominant stall class from per-IP counts when possible.
 
-| Stage | Typical classes | Meaning |
-|---|---|---|
-| Stage-1 candidate starvation | Dist, Sbid, PSDep, Control, InstrFetch, Sync | The scheduler lacks ready candidates |
-| Stage-2 resource contention | Pipe, Send | Candidates exist but a resource is busy |
+Use this two-stage model for routing:
+
+| Stage | Where the stall happens | Typical classes | Meaning | Optimization implication |
+|---|---|---|---|---|
+| Stage-1 candidate starvation | Before issue selection | Dist, Sbid, PSDep, Control, InstrFetch, Sync | The scheduler lacks ready instructions because dependencies, control flow, synchronization, or instruction fetch prevent candidates from becoming issue-ready | Add independent work, improve dependency distance, or add thread-level parallelism when occupancy is low |
+| Stage-2 resource contention | During issue to an execution resource | Pipe, Send | Ready candidates exist, but the target execution pipe, SEND path, or memory path is busy | Fix instruction shape, pipe balance, memory locality, or SEND pressure; adding threads can worsen contention |
 
 Use occupancy to refine routing:
 - Stage-1 with low/moderate occupancy often routes to `eu-tlp-occupancy`.
