@@ -1,6 +1,6 @@
 ---
 name: eu-ilp-coissue
-description: Analyze Xe2 EU instruction-level parallelism and co-issue for one XPU target kernel. Use when stall is not dominant but XVE_MULTIPLE_PIPE_ACTIVE is low, ALU pipe utilization is imbalanced, or ASM evidence is needed to find interleave opportunities.
+description: Analyze Intel GPU EU instruction-level parallelism and co-issue for one XPU target kernel. Use when stall is not dominant but XVE_MULTIPLE_PIPE_ACTIVE is low, ALU pipe utilization is imbalanced, or ASM evidence is needed to find interleave opportunities.
 ---
 
 # EU ILP and Co-Issue Analysis
@@ -8,6 +8,8 @@ description: Analyze Xe2 EU instruction-level parallelism and co-issue for one X
 Analyze low co-issue in one XPU target kernel and identify whether instruction-level parallelism can raise execution from mostly single-pipe active cycles to multi-pipe active cycles.
 
 This skill is for the S1-to-S2 problem: the EU is active, but too much active time uses only one physical pipe.
+
+Co-issue is the measurable result; ILP is the source-code technique. The EU issues one instruction at a time, but multi-cycle execution windows from adjacent instructions can overlap on different execution pipes. The goal is to move independent source-level work so the hot loop has useful instructions for more than one pipe in flight.
 
 ## When to Use
 
@@ -85,14 +87,18 @@ Look for serialization patterns:
 
 ### Step 4: Recommend a Concrete Interleave Pattern
 
-| Evidence | Possible fix |
-|---|---|
-| DPAS chain starves FP pipe | Interleave independent FP work, rescale, or epilogue preparation between DPAS tiles |
-| FP burst then DPAS burst | Split FP work into smaller chunks and pipeline with matrix tiles |
-| Address math blocks SEND | Precompute next addresses while current math or DPAS is in flight |
-| Epilogue dominates single pipe | Pipeline convert/store/address work and check write-side counters |
+Choose a source-code pattern from the ASM evidence. The fix must name the source loop or epilogue to change, not only the pipe that is idle.
 
-Do not break a hardware-optimized DPAS chain blindly. The goal is to place independent work around it, not to destroy useful tensor-pipe scheduling.
+| Evidence | Source-code pattern | Before | After | Expected counter movement |
+|---|---|---|---|---|
+| Long FP `mul/add/math.*` burst, then matrix/tensor work | Rescale-GEMM interleave | Rescale a whole tile, then run the matrix tile | Split rescale into smaller blocks and run each block next to the corresponding matrix tile | Co-issue share rises because FP work overlaps matrix-pipe work |
+| Long matrix/tensor chain with no independent FP or INT work nearby | Deferred epilogue/address preparation | Finish the whole matrix chain before preparing epilogue, addresses, or next-tile metadata | Move independent epilogue prep, address prep, or next-tile metadata between matrix tiles without breaking true dependencies | Idle FP/INT pipe utilization improves while matrix utilization stays stable |
+| `mov :bf` / convert plus store chain at loop end | Epilogue split store | Convert all outputs, then store, or store rows serially with no overlapped prep | Split convert/store into chunks and overlap next address/prep work with current convert/store sequence | Epilogue single-pipe region shrinks; check SEND pressure and write-side counters |
+| Address math appears immediately before each load/store SEND | Address pre-computation | Compute `ptr + offset` just before SEND, then wait for data | Precompute next addresses during current independent math or matrix work; issue SEND earlier when legal | ALU1 address work and SEND latency overlap with useful work; Stage-1/SBID waits may fall |
+| Math function loop has repeated same-operation waits | Loop unroll for cross-iteration ILP | Issue one expensive math op, then wait for its result before the next independent element | Unroll independent elements so several math ops are in flight on different registers | Distance stalls fall; math pipe utilization and co-issue opportunity improve |
+| Softmax/math phase and following matrix phase are strictly sequential | Math-matrix interleave | Finish all `exp/mul/reduce` work before starting the next matrix accumulation | Start matrix work for completed rows/blocks while later rows/blocks continue math work | MATH/FP work overlaps matrix-pipe work; total phase time can shrink |
+
+Do not break a hardware-optimized matrix chain blindly. The goal is to place independent work around it, not to destroy useful tensor-pipe scheduling. If the candidate work has a true data dependency on the chain result, report that ILP is not available and route to algorithm restructuring or TLP analysis instead.
 
 ### Step 5: Emit ILP Card
 
