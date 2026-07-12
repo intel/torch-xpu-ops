@@ -111,6 +111,18 @@ git add <your_files>
 git diff --cached --stat  # verify only intended files
 ```
 
+## Lint Check (mandatory)
+
+Before committing, run lintrunner to auto-fix all style and lint issues:
+
+```bash
+lintrunner -a
+```
+
+Fix any reported issues. CI will block PRs with lint failures, so do NOT skip
+this step. If `lintrunner` is not available, install it with
+`pip install lintrunner && lintrunner init`.
+
 ## Step 5: Update Issue Description
 After fixing, summarize what was changed and why, plus the test results
 (pass/fail). In **interactive mode** (default), report this to the user. In

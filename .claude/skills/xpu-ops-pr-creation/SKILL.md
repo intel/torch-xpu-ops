@@ -83,20 +83,21 @@ The `Test:` line is required in every PR body. CI reviewers look for it.
 
 ---
 
-## Step 4: Run linting checks
+## Step 4: Run linting checks (mandatory)
 
-Before pushing, run pre-commit and/or lintrunner to catch style and lint issues:
+Before committing, run lintrunner to catch style and lint issues:
 
 ```bash
-# Option A — pre-commit (if configured)
-pre-commit run --files $(git diff main --name-only)
+# Auto-fix all lint issues
+lintrunner -a
 
-# Option B — lintrunner (if configured)
-lintrunner --take FLAKE8,MYPY,CLANGFORMAT -a $(git diff main --name-only)
+# Or to check specific files changed vs main:
+lintrunner -m main
 ```
 
-Fix any reported issues and amend your commit before proceeding.
-If neither tool is configured in the repo, skip this step and note it in your summary.
+Fix all reported issues before committing. Do NOT skip this step — CI will block
+PRs with lint failures. If lintrunner is not available, install it via pip:
+`pip install lintrunner` and run `lintrunner init` first.
 
 ---
 
