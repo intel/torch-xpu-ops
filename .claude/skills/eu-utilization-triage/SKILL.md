@@ -1,6 +1,6 @@
 ---
 name: eu-utilization-triage
-description: Lightweight entry workflow for Xe2 EU efficiency triage. Use when asked whether an XPU kernel is EU-bound, where EU time is going, how to interpret stall/single-pipe/co-issue, or which focused EU analysis skill to run next.
+description: Lightweight entry workflow for EU efficiency triage. Use when asked whether an XPU kernel is EU-bound, where EU time is going, how to interpret stall/single-pipe/co-issue, or which focused EU analysis skill to run next.
 ---
 
 # EU Utilization Triage
