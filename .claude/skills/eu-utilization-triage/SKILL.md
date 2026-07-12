@@ -17,8 +17,6 @@ Use this skill when:
 - The question is whether EU time is dominated by stall, single-pipe execution, low co-issue, or low occupancy.
 - You need to choose between stall attribution, ILP/co-issue analysis, and TLP/occupancy analysis.
 
-Do not use this as the first step for broad workload triage, multi-kernel analysis, or roofline memory-hierarchy closure.
-
 ## Inputs
 
 | Input | Meaning |
