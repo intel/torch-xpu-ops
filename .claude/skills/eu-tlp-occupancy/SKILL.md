@@ -1,6 +1,6 @@
 ---
 name: eu-tlp-occupancy
-description: Decide whether more Xe2 thread-level parallelism will help one XPU target kernel. Use when occupancy is low or moderate, Stage-1 stalls suggest candidate starvation, or a proposed work-group/vectorization change may trade occupancy against register pressure and Stage-2 contention.
+description: Decide whether more Intel GPU thread-level parallelism will help one XPU target kernel. Use when occupancy is low or moderate, Stage-1 stalls suggest candidate starvation, or a proposed work-group/vectorization change may trade occupancy against register pressure and Stage-2 contention.
 ---
 
 # EU TLP and Occupancy Analysis
@@ -67,12 +67,14 @@ Use platform-specific thresholds when available. Otherwise use qualitative bucke
 
 Use `eu-stall-attribution` output when available.
 
-| Stall stage | TLP implication |
-|---|---|
-| Stage-1 candidate starvation | More resident independent work may help |
-| Stage-2 Pipe contention | More resident work may worsen pipe contention |
-| Stage-2 Send contention | More resident work may worsen memory/SEND contention |
-| Sync or Control | More resident work may not fix the root cause |
+Use the same two-stage model as stall attribution:
+
+| Stall stage | Where the stall happens | TLP implication |
+|---|---|---|
+| Stage-1 candidate starvation | Before issue selection; the scheduler lacks ready instructions because dependencies, control flow, synchronization, or instruction fetch prevent candidates from becoming issue-ready | More resident independent work may help the scheduler find a ready instruction |
+| Stage-2 Pipe contention | During issue to an execution pipe; ready candidates exist but the target pipe is busy | More resident work may worsen pipe contention |
+| Stage-2 Send contention | During issue to the SEND path; ready candidates exist but the SEND path is busy | More resident work may worsen SEND issue or transaction pressure |
+| Sync or Control | Candidate availability is blocked by synchronization or control flow | More resident work may not fix the root cause; prefer algorithm or synchronization restructuring |
 
 If stall stage is unknown, do not recommend a TLP change as final. First collect stall reason or per-IP evidence.
 
@@ -97,9 +99,11 @@ Produce one of these verdicts:
 | Verdict | Meaning |
 |---|---|
 | `add-threads-helps` | Occupancy is low/moderate, stalls are Stage-1, and resource pressure is not already saturated |
-| `occupancy-saturated` | Occupancy is already high enough; extra threads are unlikely to move time |
+| `occupancy-saturated` | Occupancy is already near the platform's resident-thread limit or additional residency is blocked by registers/SLM/workgroup resources; extra threads are unlikely to move time |
 | `tlp-would-worsen-stage2` | Dominant issue is Pipe/Send contention; more threads likely increase contention |
 | `need-stall-attribution-first` | Occupancy is suspicious but stall stage is unknown |
+
+Use platform-specific maximum resident-thread limits when they are known. Otherwise, report occupancy as low/moderate/high qualitatively and avoid claiming saturation from `XVE_THREADS_OCCUPANCY_ALL` alone.
 
 ### Step 6: Emit TLP Card
 
@@ -129,11 +133,11 @@ Produce one of these verdicts:
 ### Step 7: Validate a TLP Change
 
 After applying a candidate change:
-- Compare kernel time.
+- Compare kernel time; this is the primary success criterion.
 - Re-collect `ComputeBasic`.
 - Confirm occupancy moved in the expected direction.
 - Confirm Stage-1 stalls decreased if the verdict was `add-threads-helps`.
-- Confirm Stage-2 Pipe/Send did not rise enough to erase the gain.
+- Check whether Stage-2 Pipe/Send rose. Some Stage-2 increase can be acceptable if kernel time improves, because useful work may have replaced Stage-1 idle distance bubbles; treat it as a problem only when throughput does not improve or a new Stage-2 bottleneck dominates.
 - Check memory hierarchy counters and ASM/GRF spill if register pressure changed.
 
 ## Pitfalls
