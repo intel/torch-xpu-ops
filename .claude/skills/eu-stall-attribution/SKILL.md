@@ -1,6 +1,6 @@
 ---
 name: eu-stall-attribution
-description: Attribute Xe2 EU stall for one XPU target kernel. Use when XVE_STALL is high, stall reason or per-IP stall data is needed, or roofline/counter analysis shows a gap that requires ASM plus source mapping to explain the stalled instruction path.
+description: Attribute Intel GPU EU stall for one XPU target kernel. Use when XVE_STALL is high, stall reason or per-IP stall data is needed, or roofline/counter analysis shows a gap that requires ASM plus source mapping to explain the stalled instruction path.
 ---
 
 # EU Stall Attribution
@@ -54,12 +54,12 @@ Use this two-stage model for routing:
 | Stage | Where the stall happens | Typical classes | Meaning | Optimization implication |
 |---|---|---|---|---|
 | Stage-1 candidate starvation | Before issue selection | Dist, Sbid, PSDep, Control, InstrFetch, Sync | The scheduler lacks ready instructions because dependencies, control flow, synchronization, or instruction fetch prevent candidates from becoming issue-ready | Add independent work, improve dependency distance, or add thread-level parallelism when occupancy is low |
-| Stage-2 resource contention | During issue to an execution resource | Pipe, Send | Ready candidates exist, but the target execution pipe, SEND path, or memory path is busy | Fix instruction shape, pipe balance, memory locality, or SEND pressure; adding threads can worsen contention |
+| Stage-2 resource contention | During issue to an execution resource | Pipe, Send | Ready candidates exist, but the target execution pipe, SEND path, or memory path is busy | Reduce pipe pressure, rebalance instruction mix, improve memory locality, or reduce SEND pressure; adding threads can worsen contention |
 
 Use occupancy to refine routing:
 - Stage-1 with low/moderate occupancy often routes to `eu-tlp-occupancy`.
 - Stage-1 with high occupancy and dependency distance issues often routes to `eu-ilp-coissue`.
-- Stage-2 Pipe routes to instruction-shape or pipe-balance work.
+- Stage-2 Pipe routes to pipe-pressure reduction or instruction-mix rebalancing.
 - Stage-2 Send routes to memory/locality/coalescing work.
 
 ### Step 3: Emit a Preliminary Attribution
@@ -150,7 +150,7 @@ Mapping priority:
 |---|---|
 | Stage-1 dependency distance, high occupancy | `eu-ilp-coissue` |
 | Stage-1 candidate starvation, low/moderate occupancy | `eu-tlp-occupancy` |
-| Stage-2 Pipe | instruction-shape fix or pipe balancing |
+| Stage-2 Pipe | reduce pipe pressure or rebalance instruction mix |
 | Stage-2 Send | memory hierarchy / locality / coalescing optimization |
 | Sync or Control dominant | algorithm or synchronization restructure |
 | InstrFetch dominant | kernel size or instruction-cache investigation |
