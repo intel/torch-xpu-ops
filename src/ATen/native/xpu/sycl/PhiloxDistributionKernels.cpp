@@ -16,6 +16,7 @@
 #include <ATen/ExpandUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TransformationHelper.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/PhiloxDistributionKernels.h>
 #include <ATen/native/xpu/sycl/StatelessPhilox4x32.h>
 #include <comm/SYCLContext.h>
@@ -110,12 +111,17 @@ inline double2 box_muller_double(philox_uint4 r) {
 template <typename scalar_t, bool is_uniform>
 struct PhiloxSingleKeyFunctor {
   void operator()(sycl::nd_item<1> item) const {
+    auto key_vec = memory::ld_vec<16>(key_);
+    auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
+    uint64_t seed = key_vals[0];
+    uint64_t offset = key_vals[1];
+
     int64_t chunk = static_cast<int64_t>(item.get_global_id(0));
     constexpr int epc = elems_per_call<scalar_t>;
     int64_t num_full_chunks = num_elems_ / epc;
 
     if (chunk < num_full_chunks) {
-      auto r = philox_4x32(seed_, offset_ + static_cast<uint64_t>(chunk));
+      auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
       int64_t base = chunk * epc;
       write_values(r, base, epc);
     }
@@ -125,8 +131,8 @@ struct PhiloxSingleKeyFunctor {
       int64_t tail_start = num_full_chunks * epc;
       int remaining = static_cast<int>(num_elems_ - tail_start);
       if (remaining > 0) {
-        auto r = philox_4x32(
-            seed_, offset_ + static_cast<uint64_t>(num_full_chunks));
+        auto r =
+            philox_4x32(seed, offset + static_cast<uint64_t>(num_full_chunks));
         write_values(r, tail_start, remaining);
       }
     }
@@ -134,14 +140,12 @@ struct PhiloxSingleKeyFunctor {
 
   PhiloxSingleKeyFunctor(
       scalar_t* output,
-      uint64_t seed,
-      uint64_t offset,
+      const uint64_t* key,
       int64_t num_elems,
       scalar_t param0,
       scalar_t param1)
       : output_(output),
-        seed_(seed),
-        offset_(offset),
+        key_(key),
         num_elems_(num_elems),
         param0_(param0),
         param1_(param1) {}
@@ -209,8 +213,7 @@ struct PhiloxSingleKeyFunctor {
   }
 
   scalar_t* output_;
-  uint64_t seed_;
-  uint64_t offset_;
+  const uint64_t* key_;
   int64_t num_elems_;
   scalar_t param0_; // low or mean
   scalar_t param1_; // high or stddev
@@ -218,13 +221,10 @@ struct PhiloxSingleKeyFunctor {
 
 // ─── Distribution dispatch ───────────────────────────────────────
 
-template <bool is_uniform>
-void philox_distribution_kernel(
+void philox_distribution_validate(
     const char* op_name,
-    Tensor& self,
-    const Tensor& key,
-    double param0,
-    double param1) {
+    const Tensor& self,
+    const Tensor& key) {
   TORCH_CHECK(
       self.is_floating_point(),
       op_name,
@@ -289,11 +289,6 @@ void philox_distribution_launch(
   auto output = self.contiguous();
   auto key_contig = key.contiguous();
 
-  // Key is on device — copy to host to read seed/offset.
-  auto key_cpu = key_contig.cpu();
-  uint64_t seed = key_cpu.data_ptr<uint64_t>()[0];
-  uint64_t offset = key_cpu.data_ptr<uint64_t>()[1];
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,
       kBFloat16,
@@ -308,8 +303,7 @@ void philox_distribution_launch(
 
         auto functor = PhiloxSingleKeyFunctor<scalar_t, is_uniform>(
             output.mutable_data_ptr<scalar_t>(),
-            seed,
-            offset,
+            key_contig.const_data_ptr<uint64_t>(),
             self.numel(),
             static_cast<scalar_t>(param0),
             static_cast<scalar_t>(param1));
@@ -331,8 +325,7 @@ Tensor& _philox_uniform_xpu_(
     const Tensor& key,
     double low,
     double high) {
-  philox_distribution_kernel</*is_uniform=*/true>(
-      "_philox_uniform_", self, key, low, high);
+  philox_distribution_validate("_philox_uniform_", self, key);
   if (self.numel() > 0) {
     philox_distribution_launch</*is_uniform=*/true>(self, key, low, high);
   }
@@ -344,8 +337,7 @@ Tensor& _philox_normal_xpu_(
     const Tensor& key,
     double mean,
     double stddev) {
-  philox_distribution_kernel</*is_uniform=*/false>(
-      "_philox_normal_", self, key, mean, stddev);
+  philox_distribution_validate("_philox_normal_", self, key);
   if (self.numel() > 0) {
     philox_distribution_launch</*is_uniform=*/false>(self, key, mean, stddev);
   }
