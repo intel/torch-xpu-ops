@@ -54,13 +54,13 @@ Use this two-stage model for routing:
 | Stage | Where the stall happens | Typical classes | Meaning | Optimization implication |
 |---|---|---|---|---|
 | Stage-1 candidate starvation | Before issue selection | Dist, Sbid, PSDep, Control, InstrFetch, Sync | The scheduler lacks ready instructions because dependencies, control flow, synchronization, or instruction fetch prevent candidates from becoming issue-ready | Add independent work, improve dependency distance, or add thread-level parallelism when occupancy is low |
-| Stage-2 resource contention | During issue to an execution resource | Pipe, Send | Ready candidates exist, but the target execution pipe, SEND path, or memory path is busy | Reduce pipe pressure, rebalance instruction mix, improve memory locality, or reduce SEND pressure; adding threads can worsen contention |
+| Stage-2 resource contention | During issue to an execution resource | Pipe, Send | Ready candidates exist, but the target execution pipe or SEND path is busy | Reduce pressure on the contended pipe or SEND path, reduce unnecessary SEND operations, or rebalance instruction mix; adding threads can worsen contention |
 
 Use occupancy to refine routing:
 - Stage-1 with low/moderate occupancy often routes to `eu-tlp-occupancy`.
 - Stage-1 with high occupancy and dependency distance issues often routes to `eu-ilp-coissue`.
 - Stage-2 Pipe routes to pipe-pressure reduction or instruction-mix rebalancing.
-- Stage-2 Send routes to memory/locality/coalescing work.
+- Stage-2 Send routes to reducing SEND issue or transaction pressure. If the proposed fix is to use data locality or a faster memory layer, treat that as Stage-1/SBID latency work instead.
 
 ### Step 3: Emit a Preliminary Attribution
 
@@ -151,7 +151,7 @@ Mapping priority:
 | Stage-1 dependency distance, high occupancy | `eu-ilp-coissue` |
 | Stage-1 candidate starvation, low/moderate occupancy | `eu-tlp-occupancy` |
 | Stage-2 Pipe | reduce pipe pressure or rebalance instruction mix |
-| Stage-2 Send | memory hierarchy / locality / coalescing optimization |
+| Stage-2 Send | reduce SEND issue or transaction pressure |
 | Sync or Control dominant | algorithm or synchronization restructure |
 | InstrFetch dominant | kernel size or instruction-cache investigation |
 
