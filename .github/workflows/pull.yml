@@ -49,6 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number && format('refs/pull/{0}/head', github.event.inputs.pr_number) || '' }}
       - name: Run lint check
         id: lint-python
         continue-on-error: true
@@ -189,7 +190,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LABELS=$(gh pr view ${{ github.event.pull_request.number }} \
+          PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
+          LABELS=$(gh pr view "$PR_NUM" \
             --repo ${{ github.repository }} \
             --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
           echo "Live PR labels: $LABELS"
@@ -202,7 +204,7 @@ jobs:
           echo "force_win_ut=$(has windows_ci)" >> "$GITHUB_OUTPUT"
 
   conditions-filter-win:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+    if: ${{ github.repository_owner == 'intel' && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -225,7 +227,7 @@ jobs:
 
   linux-build:
     needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
+    if: ${{ github.repository_owner == 'intel' && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch') && needs.preci-lint-check.outputs.skip_all != 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -234,7 +236,7 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
@@ -247,7 +249,7 @@ jobs:
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
@@ -266,7 +268,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
@@ -285,7 +287,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
@@ -303,7 +305,7 @@ jobs:
     with:
       runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
       suite: ${{ matrix.suite }}
       scenario: ${{ matrix.scenario }}
   linux-e2e-summary:
@@ -323,14 +325,14 @@ jobs:
     name: windows-build
     needs: preci-lint-check
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
+      ${{ github.repository_owner == 'intel' && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch')
       && needs.preci-lint-check.outputs.skip_all != 'true'
       && needs.preci-lint-check.outputs.skip_win != 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
       runner: windows-build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
 
   windows-ut:
     name: windows-ut
@@ -346,4 +348,4 @@ jobs:
     with:
       ut: op_extended,test_xpu
       runner: windows-test
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ github.event.inputs.pytorch_ref || contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref || 'main' }}
