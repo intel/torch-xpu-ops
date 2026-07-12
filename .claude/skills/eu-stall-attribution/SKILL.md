@@ -16,6 +16,7 @@ Use this skill when:
 - `eu-utilization-triage` routes to stall attribution.
 - Roofline/counter comparison identifies a suspicious gap but not the stalled instruction path.
 - You need a PR-ready attribution card with stall class, stage, hot IPs, source lines, and next lever.
+- You need to distinguish Dist/Pipe/Send/Sbid/PSDep/Control/InstrFetch/Sync stall reasons and map hot stall IPs back to source.
 
 Do not use this skill when stall is low and the main issue is low co-issue; use `eu-ilp-coissue`. Do not use it for broad workload analysis.
 
@@ -41,7 +42,9 @@ Collect as much of the following as the platform supports:
 | `VectorEngineStalls` | Class-level stall ranking; use for ranking, not additive totals |
 | Stall sampling | Per-IP absolute stall counts; preferred source for hot instruction attribution |
 
-If `VectorEngineStalls` or stall sampling is unavailable, report the limitation and use `ComputeBasic` plus controlled sweeps only as weaker evidence.
+Treat stall sampling per-IP absolute counts as the primary evidence when available. Use `VectorEngineStalls` for class ranking only because stall classes can overlap and should not be added together.
+
+If `VectorEngineStalls` and stall sampling are unavailable, run a controlled `ComputeBasic` sweep with lower vs higher resident-thread configurations. If `XVE_STALL` drops with more resident threads, classify the stall as likely Stage-1 candidate starvation; if it stays high, classify it as likely Stage-2 resource contention. Mark this fallback as lower confidence than per-IP attribution.
 
 ### Step 2: Determine Dominant Stall Class and Stage
 
