@@ -481,7 +481,7 @@ void radixSelect(
 
     // All threads participate in the comparisons below to know the
     // final result
-    if (Order) {
+    if constexpr (Order) {
       // Process in descending order
       for (int i = RADIX_SIZE - 1; i >= 0; --i) {
         int count = counts[i];
