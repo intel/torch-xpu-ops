@@ -798,6 +798,11 @@ def cond_errors_and_warnings(self, device, dtype):
 def linalg_lstsq_out_cpu_fallback(self, device, dtype):
     # XPU currently executes lstsq via CPU-backed implementation; ensure
     # out= variant is wired and returns consistent values on XPU tensors.
+    if str(device).startswith("xpu") and "has_fp64=0" in str(
+        torch.xpu.get_device_properties(0)
+    ):
+        self.skipTest("XPU device does not support fp64 required by linalg.lstsq")
+
     a = torch.randn(6, 4, dtype=dtype, device=device)
     b = torch.randn(6, 3, dtype=dtype, device=device)
 

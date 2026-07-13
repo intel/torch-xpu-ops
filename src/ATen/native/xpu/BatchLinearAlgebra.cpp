@@ -12,6 +12,7 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -119,6 +120,21 @@ void lstsq_kernel_xpu(
     Tensor& infos,
     double rcond,
     std::string driver_name) {
+#if defined(USE_ONEMKL_XPU)
+  if (driver_name == "gels") {
+    // oneMKL gels path can require fp64 device aspect even for fp32/cfp32.
+    // On fp64-limited devices, use the CPU fallback implementation instead.
+    auto* dev_prop = at::xpu::getDeviceProperties(at::xpu::current_device());
+    if (!dev_prop->has_fp64) {
+      lstsq_kernel_fallback(
+          A, B, rank, singular_values, infos, rcond, std::move(driver_name));
+      return;
+    }
+    native::xpu::linalg_lstsq_gels_mkl(A, B);
+    return;
+  }
+#endif // USE_ONEMKL_XPU
+
   lstsq_kernel_fallback(A, B, rank, singular_values, infos, rcond, driver_name);
 }
 

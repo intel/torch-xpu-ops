@@ -30,6 +30,8 @@
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl/lapack.hpp>
 
+#include <type_traits>
+
 namespace at::native::xpu {
 
 #define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
@@ -327,6 +329,323 @@ void lu_solve_mkl(
     using T = get_mkl_type<scalar_t>::type;
     apply_lu_solve_xpu_<T>(LU, pivots, B, trans);
   });
+}
+
+template <typename scalar_t>
+int64_t mkl_geqrf_batch_scratchpad(
+    sycl::queue& queue,
+    int64_t m,
+    int64_t n,
+    int64_t lda,
+    int64_t stride_a,
+    int64_t stride_tau,
+    int64_t batch_size) {
+  return oneapi::mkl::lapack::geqrf_batch_scratchpad_size<scalar_t>(
+      queue, m, n, lda, stride_a, stride_tau, batch_size);
+}
+
+template <typename scalar_t>
+void mkl_geqrf_batch(
+    sycl::queue& queue,
+    int64_t m,
+    int64_t n,
+    scalar_t* a,
+    int64_t lda,
+    int64_t stride_a,
+    scalar_t* tau,
+    int64_t stride_tau,
+    int64_t batch_size,
+    scalar_t* scratchpad,
+    int64_t scratchpad_size) {
+  SYCL_ONEMKL_SUBMIT(
+      queue,
+      oneapi::mkl::lapack::geqrf_batch,
+      queue,
+      m,
+      n,
+      a,
+      lda,
+      stride_a,
+      tau,
+      stride_tau,
+      batch_size,
+      scratchpad,
+      scratchpad_size);
+}
+
+template <typename scalar_t>
+void geqrf_mkl(const Tensor& A, const Tensor& tau) {
+  if (A.numel() == 0) {
+    return;
+  }
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const int64_t m = A.size(-2);
+  const int64_t n = A.size(-1);
+  const int64_t lda = std::max<int64_t>(1, m);
+  const int64_t stride_a = matrixStride(A);
+  const int64_t stride_tau = tau.size(-1);
+  const int64_t batch_size = batchCount(A);
+
+  auto* a_data = reinterpret_cast<scalar_t*>(A.data_ptr());
+  auto* tau_data = reinterpret_cast<scalar_t*>(tau.data_ptr());
+
+  const int64_t scratchpad_size = mkl_geqrf_batch_scratchpad<scalar_t>(
+      queue, m, n, lda, stride_a, stride_tau, batch_size);
+  Tensor scratchpad_at = at::empty({scratchpad_size}, A.options());
+
+  mkl_geqrf_batch<scalar_t>(
+      queue,
+      m,
+      n,
+      a_data,
+      lda,
+      stride_a,
+      tau_data,
+      stride_tau,
+      batch_size,
+      reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+      scratchpad_size);
+}
+
+template <typename scalar_t>
+oneapi::mkl::transpose to_qr_apply_transpose(bool transpose) {
+  if (!transpose) {
+    return oneapi::mkl::transpose::nontrans;
+  }
+
+  if constexpr (
+      std::is_same_v<scalar_t, std::complex<float>> ||
+      std::is_same_v<scalar_t, std::complex<double>>) {
+    return oneapi::mkl::transpose::conjtrans;
+  } else {
+    return oneapi::mkl::transpose::trans;
+  }
+}
+
+template <typename scalar_t>
+int64_t mkl_qr_apply_scratchpad_size(
+    sycl::queue& queue,
+    oneapi::mkl::side side,
+    oneapi::mkl::transpose trans,
+    int64_t m,
+    int64_t n,
+    int64_t k,
+    int64_t lda,
+    int64_t ldc) {
+  if constexpr (
+      std::is_same_v<scalar_t, std::complex<float>> ||
+      std::is_same_v<scalar_t, std::complex<double>>) {
+    return oneapi::mkl::lapack::unmqr_scratchpad_size<scalar_t>(
+        queue, side, trans, m, n, k, lda, ldc);
+  } else {
+    return oneapi::mkl::lapack::ormqr_scratchpad_size<scalar_t>(
+        queue, side, trans, m, n, k, lda, ldc);
+  }
+}
+
+template <typename scalar_t>
+void mkl_qr_apply(
+    sycl::queue& queue,
+    oneapi::mkl::side side,
+    oneapi::mkl::transpose trans,
+    int64_t m,
+    int64_t n,
+    int64_t k,
+    const scalar_t* a,
+    int64_t lda,
+    const scalar_t* tau,
+    scalar_t* c,
+    int64_t ldc,
+    scalar_t* scratchpad,
+    int64_t scratchpad_size) {
+  if constexpr (
+      std::is_same_v<scalar_t, std::complex<float>> ||
+      std::is_same_v<scalar_t, std::complex<double>>) {
+    SYCL_ONEMKL_SUBMIT(
+        queue,
+        oneapi::mkl::lapack::unmqr,
+        queue,
+        side,
+        trans,
+        m,
+        n,
+        k,
+        a,
+        lda,
+        tau,
+        c,
+        ldc,
+        scratchpad,
+        scratchpad_size);
+  } else {
+    SYCL_ONEMKL_SUBMIT(
+        queue,
+        oneapi::mkl::lapack::ormqr,
+        queue,
+        side,
+        trans,
+        m,
+        n,
+        k,
+        a,
+        lda,
+        tau,
+        c,
+        ldc,
+        scratchpad,
+        scratchpad_size);
+  }
+}
+
+template <typename scalar_t>
+void apply_q_mkl(
+    const Tensor& A,
+    const Tensor& tau,
+    const Tensor& C,
+    bool left,
+    bool transpose) {
+  if (A.numel() == 0 || C.numel() == 0) {
+    return;
+  }
+
+  TORCH_INTERNAL_ASSERT(batchCount(A) == batchCount(C));
+  TORCH_INTERNAL_ASSERT(tau.dim() >= 1);
+  const int64_t tau_batch_count = tau.numel() / tau.size(-1);
+  TORCH_INTERNAL_ASSERT(tau_batch_count == batchCount(C));
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const oneapi::mkl::side side =
+      left ? oneapi::mkl::side::left : oneapi::mkl::side::right;
+  const oneapi::mkl::transpose trans =
+      to_qr_apply_transpose<scalar_t>(transpose);
+
+  const int64_t m = C.size(-2);
+  const int64_t n = C.size(-1);
+  const int64_t k = tau.size(-1);
+  const int64_t lda = std::max<int64_t>(1, A.size(-2));
+  const int64_t ldc = std::max<int64_t>(1, C.size(-2));
+
+  const int64_t batch_size = batchCount(C);
+  const int64_t stride_a = matrixStride(A);
+  const int64_t stride_tau = tau.size(-1);
+  const int64_t stride_c = matrixStride(C);
+
+  const auto* a_data = reinterpret_cast<const scalar_t*>(A.const_data_ptr());
+  const auto* tau_data =
+      reinterpret_cast<const scalar_t*>(tau.const_data_ptr());
+  auto* c_data = reinterpret_cast<scalar_t*>(C.data_ptr());
+
+  const int64_t scratchpad_size = mkl_qr_apply_scratchpad_size<scalar_t>(
+      queue, side, trans, m, n, k, lda, ldc);
+  Tensor scratchpad_at = at::empty({scratchpad_size}, C.options());
+  auto* scratchpad = reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr());
+
+  for (const auto i : c10::irange(batch_size)) {
+    mkl_qr_apply<scalar_t>(
+        queue,
+        side,
+        trans,
+        m,
+        n,
+        k,
+        &a_data[i * stride_a],
+        lda,
+        &tau_data[i * stride_tau],
+        &c_data[i * stride_c],
+        ldc,
+        scratchpad,
+        scratchpad_size);
+  }
+}
+
+void linalg_lstsq_gels_mkl(const Tensor& A, const Tensor& B) {
+  const auto m = A.size(-2);
+  const auto n = A.size(-1);
+  const auto mn = std::min(m, n);
+
+  IntArrayRef A_batch_sizes(A.sizes().data(), A.dim() - 2);
+  IntArrayRef B_batch_sizes(B.sizes().data(), B.dim() - 2);
+  std::vector<int64_t> expand_batch_portion =
+      at::infer_size(A_batch_sizes, B_batch_sizes);
+
+  auto tau_shape = A.sizes().vec();
+  tau_shape.pop_back();
+  tau_shape.back() = mn;
+  Tensor tau = at::empty(tau_shape, A.options());
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+      A.scalar_type(), "linalg_lstsq_gels_mkl", [&] {
+        using mkl_t = get_mkl_type<scalar_t>::type;
+
+        if (m >= n) {
+          geqrf_mkl<mkl_t>(A, tau);
+
+          auto A_expand_batch = expand_batch_portion;
+          A_expand_batch.insert(
+              A_expand_batch.end(), {A.size(-2), A.size(-1)});
+          Tensor A_expanded = A.expand({A_expand_batch});
+          bool is_fortran_contiguous = A_expanded.mT().is_contiguous();
+          Tensor A_broadcasted =
+              is_fortran_contiguous ? A_expanded
+                                    : cloneBatchedColumnMajor(A_expanded);
+
+          auto tau_expand_batch = expand_batch_portion;
+          tau_expand_batch.push_back(tau.size(-1));
+          Tensor tau_broadcasted = tau.expand({tau_expand_batch}).contiguous();
+
+          apply_q_mkl<mkl_t>(
+              A_broadcasted,
+              tau_broadcasted,
+              B,
+              /*left=*/true,
+              /*transpose=*/true);
+
+          triangular_solve_mkl(
+              A_broadcasted,
+              B,
+              /*left=*/true,
+              /*upper=*/true,
+              /*transpose=*/TransposeType::NoTranspose,
+              /*unitriangular=*/false);
+        } else {
+          Tensor Ah = cloneBatchedColumnMajor(A.mH());
+          geqrf_mkl<mkl_t>(Ah, tau);
+
+          auto Ah_expand_batch = expand_batch_portion;
+          Ah_expand_batch.insert(
+              Ah_expand_batch.end(), {Ah.size(-2), Ah.size(-1)});
+          Tensor Ah_expanded = Ah.expand({Ah_expand_batch});
+          bool is_fortran_contiguous = Ah_expanded.mT().is_contiguous();
+          Tensor Ah_broadcasted =
+              is_fortran_contiguous ? Ah_expanded
+                                    : cloneBatchedColumnMajor(Ah_expanded);
+
+          const auto trans = Ah_broadcasted.is_complex()
+              ? TransposeType::ConjTranspose
+              : TransposeType::Transpose;
+          triangular_solve_mkl(
+              Ah_broadcasted,
+              B,
+              /*left=*/true,
+              /*upper=*/true,
+              trans,
+              /*unitriangular=*/false);
+
+          B.narrow(-2, m, n - m).zero_();
+
+          auto tau_expand_batch = expand_batch_portion;
+          tau_expand_batch.push_back(tau.size(-1));
+          Tensor tau_broadcasted = tau.expand({tau_expand_batch}).contiguous();
+
+          apply_q_mkl<mkl_t>(
+              Ah_broadcasted,
+              tau_broadcasted,
+              B,
+              /*left=*/true,
+              /*transpose=*/false);
+        }
+      });
 }
 
 // Create NaN value that works for both real and complex types
