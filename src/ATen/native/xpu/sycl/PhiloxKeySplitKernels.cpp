@@ -109,21 +109,21 @@ Tensor _philox_key_split_xpu(const Tensor& key, int64_t num_splits) {
     return output;
   }
 
-  int64_t total_threads = num_keys * num_splits;
-  constexpr int block_size = 256;
-  int num_blocks =
-      static_cast<int>((total_threads + block_size - 1) / block_size);
+  int64_t total_work_items = num_keys * num_splits;
+  constexpr int work_group_size = 256;
+  int work_group_num = static_cast<int>(
+      (total_work_items + work_group_size - 1) / work_group_size);
 
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeySplitFunctor(
       key_contig.data_ptr<uint64_t>(),
       output.data_ptr<uint64_t>(),
       num_keys,
-      total_threads);
+      total_work_items);
 
   sycl_kernel_submit(
-      sycl::range<1>(num_blocks * block_size),
-      sycl::range<1>(block_size),
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
       at::xpu::getCurrentSYCLQueue(),
       functor);
 
@@ -146,8 +146,9 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
     return output;
   }
 
-  constexpr int block_size = 256;
-  int num_blocks = static_cast<int>((num_keys + block_size - 1) / block_size);
+  constexpr int work_group_size = 256;
+  int work_group_num =
+      static_cast<int>((num_keys + work_group_size - 1) / work_group_size);
 
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeyFoldInFunctor(
@@ -157,8 +158,8 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
       data);
 
   sycl_kernel_submit(
-      sycl::range<1>(num_blocks * block_size),
-      sycl::range<1>(block_size),
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
       at::xpu::getCurrentSYCLQueue(),
       functor);
 
