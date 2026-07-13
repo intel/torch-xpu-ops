@@ -16,6 +16,12 @@ if not c10d.is_available():
     print("c10d not available, skipping tests", file=sys.stderr)
     sys.exit(0)
 
+_upstream_dist_test_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../../../test/distributed")
+)
+if _upstream_dist_test_path not in sys.path:
+    sys.path.append(_upstream_dist_test_path)
+
 from test_c10d_common import LOOPBACK
 
 from torch.testing._internal.common_distributed import (

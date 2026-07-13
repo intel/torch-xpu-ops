@@ -27,7 +27,7 @@ from torch.testing._internal.common_utils import (
     skip_but_pass_in_sandcastle_if,
     TestCase,
     TEST_XPU,
-    TEST_MULTIGPU,
+    TEST_MULTIACCELERATOR,
     skipIfXpu,
 )
 from torch.testing._internal.common_distributed import requires_accelerator_dist_backend
@@ -543,7 +543,7 @@ class TestDataParallel(TestCase):
         self._test_scatter(torch.randn((4, 4), dtype=torch.double).to(device_type))
 
     @requires_accelerator_dist_backend(["nccl", "xccl"])
-    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "multi-GPU not supported")
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIACCELERATOR, "multi-GPU not supported")
     @skipIfXpu(msg="torch._C._scatter Not implemented on XPU, issue #143239")
     def test_data_parallel_complex_parameters(self):
         # test that complex parameters are handled correctly by DataParallel
@@ -618,7 +618,7 @@ class TestDataParallel(TestCase):
                 )
 
     @requires_accelerator_dist_backend(["nccl", "xccl"])
-    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "multi-GPU not supported")
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIACCELERATOR, "multi-GPU not supported")
     @skipIfXpu(msg="torch._C._scatter Not implemented on XPU, issue #143239")
     def test_data_parallel_complex_mixed_parameters(self):
         # test that mix complex and real parameters are handled correctly by DataParallel
