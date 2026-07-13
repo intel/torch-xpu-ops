@@ -1993,7 +1993,6 @@ class TestSparse(TestSparseBase):
         test_shape(1000, 0, 100, 0)
         test_shape(1000, 100, 0, 0)
 
-    @onlyCPU
     @coalescedonoff
     # adding a graph break before self.assertFalse(weight._indices().is_contiguous())
     # makes the test pass so some existent sparse related bug
@@ -2051,7 +2050,6 @@ class TestSparse(TestSparseBase):
         true_result = (bias.to_dense() + torch.matmul(weight.to_dense(), x)).to_sparse()
         self.assertEqual(self.safeToDense(res), self.safeToDense(true_result))
 
-    @onlyOn("xpu")
     @coalescedonoff
     @dtypes(torch.double, torch.float)
     def test_sspaddmm_out(self, device, dtype, coalesced):
