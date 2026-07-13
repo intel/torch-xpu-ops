@@ -434,7 +434,7 @@ struct GNFusedForwardSmallFunctor {
   static constexpr int DS = LANES_PER_GROUP * VEC_SIZE;
   static constexpr int GROUPS_PER_SG = SIMD / LANES_PER_GROUP;
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -446,6 +446,7 @@ struct GNFusedForwardSmallFunctor {
     // into one SG when G < GROUPS_PER_SG.
     const index_t flat_base =
         static_cast<index_t>(wg_id) * GROUPS_PER_SG + group_in_sg;
+    // g = flat_base % G_. Since G_ = 2^k, this is equivalent to flat_base & (G_ - 1).
     const index_t g = flat_base & (G_ - 1);
     const index_t total_groups = N_ * G_;
     const index_t stride =
@@ -574,7 +575,7 @@ struct GNFusedForwardMediumFunctor {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
   static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -720,7 +721,7 @@ template <typename T, typename T_ACC, int SIMD, int VEC_SIZE, typename index_t>
 struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
     const index_t ng = item.get_group(0);
     const int lid = item.get_local_id(0);
@@ -1181,7 +1182,7 @@ void group_norm_kernel_impl(
     using K = GNFusedForwardMediumFunctor<
         T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
     int64_t n_wgs =
-        std::max((int64_t)1, std::min(N * G, thread_slots));
+        std::max(G, std::min(N * G, thread_slots));
     constexpr int64_t wg_sz = SIMD32;
     auto kfn = K(
         static_cast<index_t>(D),
