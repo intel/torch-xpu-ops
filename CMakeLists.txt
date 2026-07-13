@@ -30,13 +30,12 @@ cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 # Avoid SYCL compiler error
 if(NOT WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
   if("$ENV{IS_XPU_CI}" STREQUAL "1")
     string(APPEND CMAKE_CXX_FLAGS " -Werror=unused-variable")
   endif()
 endif()
 
-project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.14.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
@@ -67,7 +66,7 @@ if(USE_XCCL)
 endif()
 
 set(USE_SYCLTLA ON)
-if(WIN32 OR NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 13.0)
+if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
   set(USE_SYCLTLA OFF)
   message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
 endif()
@@ -99,7 +98,6 @@ set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
   set(BUILD_SEPARATE_OPS TRUE)
 endif()
-set(BUILD_SPLIT_KERNEL_LIB $ENV{BUILD_SPLIT_KERNEL_LIB})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)

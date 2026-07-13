@@ -172,7 +172,7 @@ void _fft_with_size(
         ? _mkl_dft<precision::DOUBLE, domain::COMPLEX, double>
         : _mkl_dft<precision::DOUBLE, domain::REAL, double>;
   } else {
-    AT_ERROR("MKL FFT doesn't support tensor of type");
+    TORCH_CHECK(false, "MKL FFT doesn't support tensor of type");
   }
 
   dft_func(
@@ -321,7 +321,8 @@ const Tensor& _fft_apply_normalization(
 
 // TODO: Remove this work-around in future.
 Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half)
+  if (input.scalar_type() == ScalarType::Half ||
+      input.scalar_type() == ScalarType::BFloat16)
     return input.to(ScalarType::Float);
   if (input.scalar_type() == ScalarType::ComplexHalf)
     return input.to(ScalarType::ComplexFloat);

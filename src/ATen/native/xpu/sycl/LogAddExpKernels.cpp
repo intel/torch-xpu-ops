@@ -35,7 +35,7 @@ c10::complex<scalar_t> _logaddexp_minmax(
     return y;
   } else if (sycl::isnan(xr) || (sycl::isnan(std::imag(x)))) {
     return x;
-  } else if (min) {
+  } else if constexpr (min) {
     return (xr < yr) ? x : y;
   } else {
     return (xr >= yr) ? x : y;
@@ -121,7 +121,7 @@ struct LogAddExpFunctor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + sycl::log1p(sycl::exp(-std::abs(a - b)));
+      return m + sycl::log1p(sycl::exp(-sycl::fabs(a - b)));
     }
   }
 };
@@ -159,7 +159,7 @@ struct LogAddExp2Functor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + sycl::log1p(sycl::exp2(-std::abs(a - b))) * inv_log_2;
+      return m + sycl::log1p(sycl::exp2(-sycl::fabs(a - b))) * inv_log_2;
     }
   }
 };
