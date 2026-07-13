@@ -509,10 +509,17 @@ void apply_q_mkl(
     return;
   }
 
+  // k = 0 means there are no Householder reflectors to apply.
+  if (tau.numel() == 0 || tau.size(-1) == 0) {
+    return;
+  }
+
   TORCH_INTERNAL_ASSERT(batchCount(A) == batchCount(C));
   TORCH_INTERNAL_ASSERT(tau.dim() >= 1);
-  const int64_t tau_batch_count = tau.numel() / tau.size(-1);
-  TORCH_INTERNAL_ASSERT(tau_batch_count == batchCount(C));
+  const int64_t tau_cols = tau.size(-1);
+  const int64_t tau_batch_count = tau.numel() / tau_cols;
+  TORCH_INTERNAL_ASSERT(
+      tau_batch_count == 1 || tau_batch_count == batchCount(C));
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const oneapi::mkl::side side =
@@ -528,7 +535,7 @@ void apply_q_mkl(
 
   const int64_t batch_size = batchCount(C);
   const int64_t stride_a = matrixStride(A);
-  const int64_t stride_tau = tau.size(-1);
+  const int64_t stride_tau = tau_cols;
   const int64_t stride_c = matrixStride(C);
 
   const auto* a_data = reinterpret_cast<const scalar_t*>(A.const_data_ptr());
@@ -542,6 +549,7 @@ void apply_q_mkl(
   auto* scratchpad = reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr());
 
   for (const auto i : c10::irange(batch_size)) {
+    const auto tau_batch_index = (tau_batch_count == 1) ? 0 : i;
     mkl_qr_apply<scalar_t>(
         queue,
         side,
@@ -551,7 +559,7 @@ void apply_q_mkl(
         k,
         &a_data[i * stride_a],
         lda,
-        &tau_data[i * stride_tau],
+        &tau_data[tau_batch_index * stride_tau],
         &c_data[i * stride_c],
         ldc,
         scratchpad,

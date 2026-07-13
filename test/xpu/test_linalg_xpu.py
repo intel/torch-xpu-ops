@@ -835,6 +835,57 @@ def linalg_lstsq_out_cpu_fallback(self, device, dtype):
     self.assertEqual(actual.singular_values, expected.singular_values)
 
 
+@dtypes(torch.float, torch.cfloat)
+def linalg_lstsq_driver_semantics_xpu(self, device, dtype):
+    a = torch.randn(6, 4, dtype=dtype, device=device)
+    b = torch.randn(6, 3, dtype=dtype, device=device)
+
+    # XPU should match CUDA semantics: default driver is gels.
+    default_res = torch.linalg.lstsq(a, b)
+    gels_res = torch.linalg.lstsq(a, b, driver="gels")
+    self.assertEqual(default_res.solution, gels_res.solution)
+    self.assertEqual(default_res.residuals, gels_res.residuals)
+    self.assertEqual(default_res.rank, gels_res.rank)
+    self.assertEqual(default_res.singular_values, gels_res.singular_values)
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "driver` other than `gels` is not supported on XPU",
+    ):
+        torch.linalg.lstsq(a, b, driver="gelsy")
+
+
+@dtypes(torch.float, torch.cfloat)
+def linalg_lstsq_batched_gels_xpu(self, device, dtype):
+    # Batch dimensions already match.
+    a = torch.tensor(
+        [
+            [[2.0], [1.0]],
+            [[1.0], [3.0]],
+        ],
+        dtype=dtype,
+        device=device,
+    )
+    b = torch.tensor(
+        [
+            [[1.0], [2.0]],
+            [[4.0], [5.0]],
+        ],
+        dtype=dtype,
+        device=device,
+    )
+
+    res = torch.linalg.lstsq(a, b, driver="gels")
+    expected = a.pinverse() @ b
+    self.assertEqual(res.solution, expected, atol=1e-4, rtol=1e-4)
+
+    # Broadcast A over batched rhs.
+    a_broadcast = a[:1]
+    res_broadcast = torch.linalg.lstsq(a_broadcast, b, driver="gels")
+    expected_broadcast = a_broadcast.pinverse() @ b
+    self.assertEqual(res_broadcast.solution, expected_broadcast, atol=1e-4, rtol=1e-4)
+
+
 # Skip Float8_e4m3fnuz rowwise scaled GEMM on XPU: oneDNN lacks FNUZ support.
 # Note: the primary CUDA test is already limited to ROCm (onlyCUDA + skipCUDAIfNotRocm),
 # so this XPU variant is intentionally skipped for the same unsupported dtype.
@@ -992,6 +1043,8 @@ TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg.test_linalg_lstsq_out_cpu_fallback = linalg_lstsq_out_cpu_fallback
+TestLinalg.test_linalg_lstsq_driver_semantics_xpu = linalg_lstsq_driver_semantics_xpu
+TestLinalg.test_linalg_lstsq_batched_gels_xpu = linalg_lstsq_batched_gels_xpu
 TestLinalg._tunableop_ctx = __tunableop_ctx
 TestLinalg.test_matrix_rank_out_errors_and_warnings = (
     matrix_rank_out_errors_and_warnings
