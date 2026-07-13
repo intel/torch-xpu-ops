@@ -15,6 +15,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/ops/aminmax.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
@@ -212,9 +213,7 @@ Tensor _histc_template(
     int64_t nbins,
     at::acc_type_device<input_t, kXPU> min,
     at::acc_type_device<input_t, kXPU> max) {
-  if (nbins <= 0) {
-    AT_ERROR("bins must be > 0");
-  }
+  TORCH_CHECK(nbins > 0, "bins must be > 0");
   Tensor output = at::zeros(
       {nbins},
       self.scalar_type(),
@@ -227,8 +226,9 @@ Tensor _histc_template(
   bounds_t maxvalue = max;
 
   if (min == max && self.numel() > 0) {
-    minvalue = *self.min().cpu().const_data_ptr<input_t>();
-    maxvalue = *self.max().cpu().const_data_ptr<input_t>();
+    auto [min_tensor, max_tensor] = self.aminmax();
+    minvalue = min_tensor.item<input_t>();
+    maxvalue = max_tensor.item<input_t>();
   }
   if (minvalue == maxvalue) {
     minvalue = minvalue - 1;
@@ -275,19 +275,24 @@ Tensor bincount_template(
   if (self.dim() == 1 && self.numel() == 0) {
     return at::zeros({minlength}, device(kXPU).dtype(kLong));
   }
-  if (self.dim() != 1 ||
-      (!std::is_same_v<input_t, uint8_t> &&
-       *self.min().cpu().data_ptr<input_t>() < 0)) {
-    TORCH_CHECK(0, "bincount only supports 1-d non-negative integral inputs.");
-  }
+  TORCH_CHECK(
+      self.dim() == 1,
+      "bincount only supports 1-d non-negative integral inputs.");
 
   bool has_weights = weights.defined();
   if (has_weights && (weights.dim() != 1 || weights.size(0) != self.size(0))) {
     TORCH_CHECK(0, "weights should be 1-d and have the same length as input");
   }
 
+  auto [self_min, self_max] = at::aminmax(self);
+  if constexpr (!std::is_same_v<input_t, uint8_t>) {
+    TORCH_CHECK(
+        *self_min.cpu().const_data_ptr<input_t>() >= 0,
+        "bincount only supports 1-d non-negative integral inputs.");
+  }
+
   const int64_t nbins =
-      std::max(self.max().item<input_t>() + (int64_t)1, minlength);
+      std::max(self_max.item<input_t>() + (int64_t)1, minlength);
   using bounds_t = at::acc_type_device<input_t, kXPU>;
   const bounds_t min_value = 0;
   const bounds_t max_value = nbins;
@@ -309,10 +314,8 @@ Tensor bincount_template(
         std::nullopt /* layout */,
         DeviceType::XPU,
         std::nullopt /* pin_memory */);
-    tensor_histogram<
-        typename c10::impl::ScalarTypeToCPPType<kLong>::type,
-        input_t,
-        false>(output, self, weights, nbins, min_value, max_value);
+    tensor_histogram<int64_t, input_t, false>(
+        output, self, weights, nbins, min_value, max_value);
   }
   return output;
 }

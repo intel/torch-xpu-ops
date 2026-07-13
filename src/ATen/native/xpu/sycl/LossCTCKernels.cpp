@@ -176,7 +176,7 @@ struct CTCLossLogAlphaKernelFunctor {
           opmath_t exp_la3 = sycl::exp(static_cast<opmath_t>(la3 - lamax));
           log_alpha_data_
               [la_batch_offset + la_input_stride_ * t +
-               la_target_stride_ * s] = std::log(exp_la1 + exp_la2 + exp_la3) +
+               la_target_stride_ * s] = sycl::log(exp_la1 + exp_la2 + exp_la3) +
               lamax +
               log_probs_data_[lp_batch_offset + t * lp_input_stride_ +
                               lp_char_stride_ * current_char];
@@ -208,7 +208,7 @@ struct CTCLossLogAlphaKernelFunctor {
       m = ((m == neginf) ? 0 : m);
       opmath_t exp_l1 = sycl::exp(static_cast<opmath_t>(l1 - m));
       opmath_t exp_l2 = sycl::exp(static_cast<opmath_t>(l2 - m));
-      scalar_t log_likelihood = std::log(exp_l1 + exp_l2) + m;
+      scalar_t log_likelihood = sycl::log(exp_l1 + exp_l2) + m;
       neg_log_likelihood_data_[b] = -log_likelihood;
     }
   }
@@ -559,7 +559,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
           opmath_t exp_lb1 = sycl::exp(static_cast<opmath_t>(lb1 - lbmax));
           opmath_t exp_lb2 = sycl::exp(static_cast<opmath_t>(lb2 - lbmax));
           opmath_t exp_lb3 = sycl::exp(static_cast<opmath_t>(lb3 - lbmax));
-          scalar_t lb = std::log(exp_lb1 + exp_lb2 + exp_lb3) + lbmax +
+          scalar_t lb = sycl::log(exp_lb1 + exp_lb2 + exp_lb3) + lbmax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
                    lp_char_stride_ * current_target_prime];
@@ -814,7 +814,7 @@ struct CTCLossBackwardCollectKernelFunctor {
           opmath_t exp_lcab = sycl::exp(static_cast<opmath_t>(lcab - max));
           opmath_t exp_lab =
               sycl::exp(static_cast<opmath_t>(log_alpha_beta - max));
-          lcab = std::log(exp_lcab + exp_lab) + max;
+          lcab = sycl::log(exp_lcab + exp_lab) + max;
         }
       }
     }

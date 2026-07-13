@@ -19,6 +19,7 @@
 #include <ATen/native/cpu/zmath.h>
 #include <c10/macros/Macros.h>
 #include <comm/XPUPair.h>
+#include <sycl/sycl.hpp>
 #include <cmath>
 #include <complex>
 #include <type_traits>
@@ -26,8 +27,8 @@
 #define MAX(X, Y) max_impl(X, Y)
 #define MIN(X, Y) min_impl(X, Y)
 
-#define device_sqrt std::sqrt
-#define compat_pow std::pow
+#define device_sqrt sycl::sqrt
+#define compat_pow sycl::pow
 
 namespace at {
 namespace native {
