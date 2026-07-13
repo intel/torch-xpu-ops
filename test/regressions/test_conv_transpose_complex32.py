@@ -20,7 +20,6 @@ from torch.testing._internal.common_utils import (
 
 
 # Regression test for https://github.com/intel/torch-xpu-ops/issues/3030
-@instantiate_parametrized_tests
 class TestConvTransposeComplex32Reference(TestCase):
     @parametrize(
         "conv_op, x_shape",
@@ -49,6 +48,9 @@ class TestConvTransposeComplex32Reference(TestCase):
             b_cpu.to(torch.complex64),
         )
         self.assertEqual(xpu_out.to(torch.complex64), ref64, atol=2e-2, rtol=1e-3)
+
+
+instantiate_parametrized_tests(TestConvTransposeComplex32Reference)
 
 
 if __name__ == "__main__":
