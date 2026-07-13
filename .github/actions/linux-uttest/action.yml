@@ -154,6 +154,11 @@ runs:
         export BACKEND="xccl"
         export WORLD_SIZE=4
         export USE_CCL_V2=1
+        PYTHON_BIN="$(uv run --no-project python -c 'import sys; print(sys.executable)')"
+        export PATH="$(dirname "$PYTHON_BIN"):$PATH"
+        export CCL_ROOT="$(dirname "$PYTHON_BIN")/.."
+        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
+        export LD_LIBRARY_PATH="${CCL_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
         sed -i '51d' run_distributed_local.py
         uv pip install transformers pulp
