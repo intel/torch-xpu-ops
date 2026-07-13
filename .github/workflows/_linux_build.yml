@@ -78,6 +78,18 @@ jobs:
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools==81.0.0
+      - name: Install oneAPI DLE 26.1
+        run: |
+          rm -rf /opt/intel/oneapi
+          rm -rf intel-deep-learning-essentials-2026.1.0.197_offline.sh
+          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/185b3f71-836d-43fa-8afa-bd6bf08b3441/intel-deep-learning-essentials-2026.1.0.197_offline.sh
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action remove || true
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action install
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action repair
+          rm -rf intel-deep-learning-essentials-2026.1.0.197_offline.sh
+          source /opt/intel/oneapi/setvars.sh
+          icpx --version
+          sycl-ls
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -112,7 +124,7 @@ jobs:
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
       - name: Build Pytorch
         run: |
-          export USE_XCCL=1
+          export USE_XCCL=0
           export IS_XPU_CI=1
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
