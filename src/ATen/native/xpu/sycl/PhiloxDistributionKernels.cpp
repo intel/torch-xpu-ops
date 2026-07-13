@@ -297,9 +297,9 @@ void philox_distribution_launch(
       [&] {
         constexpr int epc = elems_per_call<scalar_t>;
         int64_t num_chunks = (self.numel() + epc - 1) / epc;
-        constexpr int block_size = 256;
-        int num_blocks =
-            static_cast<int>((num_chunks + block_size - 1) / block_size);
+        constexpr int work_group_size = 256;
+        int work_group_num = static_cast<int>(
+            (num_chunks + work_group_size - 1) / work_group_size);
 
         auto functor = PhiloxSingleKeyFunctor<scalar_t, is_uniform>(
             output.mutable_data_ptr<scalar_t>(),
@@ -309,8 +309,8 @@ void philox_distribution_launch(
             static_cast<scalar_t>(param1));
 
         sycl_kernel_submit(
-            sycl::range<1>(num_blocks * block_size),
-            sycl::range<1>(block_size),
+            sycl::range<1>(work_group_num * work_group_size),
+            sycl::range<1>(work_group_size),
             at::xpu::getCurrentSYCLQueue(),
             functor);
 
