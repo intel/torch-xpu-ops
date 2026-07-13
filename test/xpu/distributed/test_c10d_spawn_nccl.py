@@ -1,15 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
-import os
-import sys
-
-_upstream_dist_test_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../../../../test/distributed")
-)
-if _upstream_dist_test_path not in sys.path:
-    sys.path.append(_upstream_dist_test_path)
-
-from test_c10d_spawn import _torch_dist_nn_available, TestDistributedNNFunctions
+from .test_c10d_spawn import _torch_dist_nn_available, TestDistributedNNFunctions
 
 import torch
 import torch.distributed as c10d
