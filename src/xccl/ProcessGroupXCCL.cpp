@@ -104,7 +104,7 @@ ReduceOp applyPreMulSumIfNeeded(
 
 int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
   TORCH_CHECK_WITH(
-      ValueError, tensors.size() != 0, "Tensor list must be nonempty");
+      ValueError, !tensors.empty(), "Tensor list must be nonempty");
 
   const auto& first = tensors.front();
 
@@ -127,17 +127,8 @@ int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
 }
 
 bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
-  switch (reduceOp) {
-    case ReduceOp::SUM:
-      return true;
-    case ReduceOp::AVG:
-      return true;
-    case ReduceOp::UNUSED:
-      return true;
-    default:
-      return false;
-  }
-  return false;
+  return reduceOp == ReduceOp::SUM || reduceOp == ReduceOp::AVG ||
+      reduceOp == ReduceOp::UNUSED;
 }
 
 void syncStream(
@@ -377,7 +368,6 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
       store_(std::move(store)),
-      xcclCommCounter_(0),
       local_id_(process_group_id++),
       options_(std::move(options)) {
   this->setGroupUid(options_->group_name);
@@ -1190,7 +1180,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
     outputs = outputTensors[0];
   } else {
     // if not in the root rank, initialize outputs as empty list
-    if (outputTensors.size() != 0) {
+    if (!outputTensors.empty()) {
       invalidArgument("requires empty output on non-root");
     }
     outputs = {};
@@ -1271,7 +1261,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
   } else {
     // if not in the root rank, initialize inputTensors as empty place holder
     // with an empty list
-    if (inputTensors.size() != 0) {
+    if (!inputTensors.empty()) {
       invalidArgument("requires empty input on non-root");
     }
     inputs = {};
@@ -1985,7 +1975,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     const AllToAllOptions& opts) {
   checkSingleTensor(outputTensor);
   checkSingleTensor(inputTensor);
-  if (outputSplitSizes.size() == 0 && inputSplitSizes.size() == 0) {
+  if (outputSplitSizes.empty() && inputSplitSizes.empty()) {
     RECORD_PARAM_COMMS_DATA_WITH_LOG(
         static_cast<int>(
             this->getSequenceNumberForGroup() +

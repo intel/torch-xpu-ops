@@ -483,12 +483,12 @@ SYCL_ATOMIC_FP_LOCAL(Add, std::plus<at::BFloat16>()(a, b), at::BFloat16)
 
 // Atomic add implementation.
 SYCL_ATOMIC_INTEGER(Add, a || b, bool)
-SYCL_ATOMIC_INTEGER(Add, std::plus<uint8_t>()(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Add, std::plus<int8_t>()(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Add, std::plus<int16_t>()(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Add, std::plus<>()(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Add, std::plus<>()(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Add, std::plus<>()(a, b), int16_t)
 
-SYCL_ATOMIC_FP(Add, std::plus<at::Half>()(a, b), at::Half)
-SYCL_ATOMIC_FP(Add, std::plus<at::BFloat16>()(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Add, std::plus<>()(a, b), at::Half)
+SYCL_ATOMIC_FP(Add, std::plus<>()(a, b), at::BFloat16)
 
 template <typename T>
 static inline void atomicAdd(
@@ -507,18 +507,18 @@ static inline void atomicAddLocal(
 }
 
 // Atomic multiplication implementation.
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint8_t>()(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int8_t>()(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int16_t>()(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int32_t>()(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int64_t>()(a, b), int64_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint32_t>()(a, b), uint32_t)
-SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint64_t>()(a, b), uint64_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), int64_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), uint32_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<>()(a, b), uint64_t)
 
-SYCL_ATOMIC_FP(Mul, std::multiplies<float>()(a, b), float)
-SYCL_ATOMIC_FP(Mul, std::multiplies<double>()(a, b), double)
-SYCL_ATOMIC_FP(Mul, std::multiplies<at::Half>()(a, b), at::Half)
-SYCL_ATOMIC_FP(Mul, std::multiplies<at::BFloat16>()(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Mul, std::multiplies<>()(a, b), float)
+SYCL_ATOMIC_FP(Mul, std::multiplies<>()(a, b), double)
+SYCL_ATOMIC_FP(Mul, std::multiplies<>()(a, b), at::Half)
+SYCL_ATOMIC_FP(Mul, std::multiplies<>()(a, b), at::BFloat16)
 
 // Atomic maximum implementation.
 

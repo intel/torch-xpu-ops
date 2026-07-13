@@ -104,8 +104,8 @@ template <
     typename index_t = int64_t>
 static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
 get_packed_accessor(const Tensor& t, std::string_view var_name) {
-  constexpr auto expect_type = c10::CppTypeToScalarType<
-      typename std::remove_const<scalar_t>::type>::value;
+  constexpr auto expect_type =
+      c10::CppTypeToScalarType<std::remove_const_t<scalar_t>>::value;
   const auto actual_type = t.scalar_type();
   TORCH_CHECK(
       actual_type == expect_type,
@@ -227,7 +227,7 @@ int get_prefer_simd(int numPlane, int nHw) {
 template <typename scalar_t, typename accscalar_t>
 struct Float2 {
   accscalar_t v1, v2;
-  Float2() {}
+  Float2() = default;
 
   Float2(scalar_t v1, scalar_t v2)
       : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
