@@ -251,8 +251,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: bmg-test
-      pytorch: release/2.13
-      torch_xpu_ops: dist_2.13
+      pytorch: nightly
+      torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:

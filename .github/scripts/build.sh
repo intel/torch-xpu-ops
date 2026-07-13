@@ -19,7 +19,7 @@ done
 
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
-git clone https://github.com/daisyden/pytorch.git ${WORKSPACE}/pytorch
+git clone ${PYTORCH_REPO} ${WORKSPACE}/pytorch
 cd ${WORKSPACE}/pytorch
 git checkout ${PYTORCH_COMMIT}
 git remote -v && git branch && git show -s
@@ -44,6 +44,7 @@ git remote -v && git branch && git show -s
 # Pre Build
 cd ${WORKSPACE}/pytorch
 python -m pip install requests
+python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 
 # Optional component overrides (used by the acceptance / comparison workflow).

@@ -3,11 +3,11 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'https://github.com/daisyden/pytorch.git@release/2.13'
+    default: 'nightly'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'dist_2.13'
+    default: 'daisyden/distributed_2.13'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -75,9 +75,9 @@ runs:
         fi
         TORCH_COMMIT_ID=$(uv run python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
+          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
         else
-          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
