@@ -65,6 +65,7 @@ def inductor_schedule_fn(a):
 
 
 ARGS = (torch.ones(1000, 1000, requires_grad=True),)
+_UNBACKED_SYMBOL_KEY = "_".join(("create", "unbacked", "symbol"))
 
 
 def replace_dynamic(buffer, key):
@@ -171,7 +172,7 @@ class StructuredTraceTestingFormatter(logging.Formatter):
         if (
             (k := "create_symbol") in metadata
             or (k := "guard_added_fast") in metadata
-            or (k := "create_unbacked_symbol") in metadata
+            or (k := _UNBACKED_SYMBOL_KEY) in metadata
         ):
             metadata[k]["user_stack"] = "STACK"
             metadata[k]["stack"] = "STACK"

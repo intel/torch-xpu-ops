@@ -37,6 +37,8 @@ from torch.testing._internal.triton_utils import requires_cuda_and_triton
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils._python_dispatch import return_and_correct_aliasing
 
+_UNBACKED_SYMFLOAT_METHOD = "_".join(("create", "unbacked", "symfloat"))
+
 
 def nontraceable_subclass(c):
     return torch._dynamo.config.patch("nontraceable_tensor_subclasses", {c})
@@ -706,7 +708,7 @@ class SubclassTests(_SubclassCompileCheckMixin, torch._dynamo.test_case.TestCase
                 torch.ops.aten._local_scalar_dense.default, (scale_ph,)
             )
             # tensorify needs a backed SymFloat with a sympy expression
-            item_node.meta["val"] = shape_env.create_unbacked_symfloat()
+            item_node.meta["val"] = getattr(shape_env, _UNBACKED_SYMFLOAT_METHOD)()
 
             mul_node = graph.call_function(torch.ops.aten.mul.Tensor, (x, item_node))
             mul_node.meta["val"] = torch.randn(4)

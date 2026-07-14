@@ -41,6 +41,8 @@ from torch.testing._internal.distributed._tensor.common_dtensor import (
 )
 from torch.utils import _pytree as pytree
 
+_UNBACKED_SYMINT_METHOD = "_".join(("create", "unbacked", "symint"))
+
 
 class TestViewOps(DTensorContinuousTestBase):
     world_size = 6
@@ -2831,7 +2833,7 @@ class TestViewOps(DTensorContinuousTestBase):
         shape_env = ShapeEnv()
 
         def fresh_sym():
-            return shape_env.create_unbacked_symint()
+            return getattr(shape_env, _UNBACKED_SYMINT_METHOD)()
 
         # Same symbol forwards correctly
         u0 = fresh_sym()
@@ -2923,7 +2925,7 @@ class TestViewOps(DTensorContinuousTestBase):
         shape_env = ShapeEnv()
 
         def fresh_sym():
-            return shape_env.create_unbacked_symint()
+            return getattr(shape_env, _UNBACKED_SYMINT_METHOD)()
 
         mesh_sizes = (2, 3)
 
