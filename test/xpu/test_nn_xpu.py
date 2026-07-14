@@ -13353,37 +13353,34 @@ class TestNNDeviceType(NNTestCase):
 
                     self.assertEqual(a_cuda.grad, a_cpu.grad)
 
-    def test_upsamplingBilinear2d_backward_nonsquare(self, device):
-        # Regression test for intel/torch-xpu-ops#4322: the bilinear2d backward
-        # kernel computed the width index using the input *height* extent
-        # ((point_w - input_height_) instead of (point_w - input_width_)), so
-        # the gradient was wrong for NON-SQUARE inputs. The bug only shows on
-        # the optimized backward path (float32, align_corners=False, integer
-        # upscale), so the case below is chosen to exercise exactly that path.
+    # Regression test for intel/torch-xpu-ops#4322: the bilinear2d backward
+    # kernel computed the width index using the input *height* extent
+    # ((point_w - input_height_) instead of (point_w - input_width_)), so the
+    # gradient was wrong for NON-SQUARE inputs. The bug only shows on the
+    # optimized backward path (float32, align_corners=False, integer upscale),
+    # so the cases below are chosen to exercise exactly that path. The (4, 4, 3)
+    # case is a square (H == W) control unaffected by the mixup; the non-square
+    # cases are wrong on the old kernel and correct now.
+    @parametrize_test("in_h, in_w, scale", [(4, 4, 3), (9, 5, 2), (28, 7, 4)])
+    def test_upsamplingBilinear2d_backward_nonsquare(
+        self, device, in_h, in_w, scale
+    ):
         nondet_tol = 1e-4 if torch.device(device).type in ("cuda", "xpu") else 0.0
+        out_h, out_w = in_h * scale, in_w * scale
+        a_dev = torch.randn(
+            1, 3, in_h, in_w, device=device, dtype=torch.float32
+        ).requires_grad_()
+        a_cpu = a_dev.detach().cpu().requires_grad_()
+        grad = torch.randn(1, 3, out_h, out_w)
 
-        def _check(in_h, in_w, scale):
-            out_h, out_w = in_h * scale, in_w * scale
-            a_dev = torch.randn(
-                1, 3, in_h, in_w, device=device, dtype=torch.float32
-            ).requires_grad_()
-            a_cpu = a_dev.detach().cpu().requires_grad_()
-            grad = torch.randn(1, 3, out_h, out_w)
+        F.interpolate(
+            a_dev, size=(out_h, out_w), mode="bilinear", align_corners=False
+        ).backward(grad.to(device))
+        F.interpolate(
+            a_cpu, size=(out_h, out_w), mode="bilinear", align_corners=False
+        ).backward(grad)
 
-            F.interpolate(
-                a_dev, size=(out_h, out_w), mode="bilinear", align_corners=False
-            ).backward(grad.to(device))
-            F.interpolate(
-                a_cpu, size=(out_h, out_w), mode="bilinear", align_corners=False
-            ).backward(grad)
-
-            self.assertEqual(a_dev.grad, a_cpu.grad, atol=nondet_tol, rtol=0)
-
-        # Square control (H == W): unaffected by the height/width mixup.
-        _check(4, 4, 3)
-        # Non-square regression guards: wrong on the old kernel, correct now.
-        _check(9, 5, 2)
-        _check(28, 7, 4)
+        self.assertEqual(a_dev.grad, a_cpu.grad, atol=nondet_tol, rtol=0)
 
     @parametrize_test("antialias", [True, False])
     @parametrize_test("num_channels", [3, 5])
