@@ -379,9 +379,9 @@ static inline float2 _rand_box_muller(unsigned int x, unsigned int y) {
   float2 result;
   float u = x * RAND_2POW32_INV + (RAND_2POW32_INV / 2);
   float v = y * RAND_2POW32_INV_2PI + (RAND_2POW32_INV_2PI / 2);
-  float s = std::sqrt(-2.0f * sycl::log(u));
-  result.x = std::sin(v);
-  result.y = std::cos(v);
+  float s = sycl::sqrt(-2.0f * sycl::log(u));
+  result.x = sycl::sin(v);
+  result.y = sycl::cos(v);
   result.x *= s;
   result.y *= s;
   return result;
@@ -413,10 +413,10 @@ static inline double2 _rand_box_muller_double(
   unsigned long long zy =
       (unsigned long long)y0 ^ ((unsigned long long)y1 << (53 - 32));
   double v = zy * (RAND_2POW53_INV_DOUBLE * 2.0) + RAND_2POW53_INV_DOUBLE;
-  double s = std::sqrt(-2.0 * sycl::log(u));
+  double s = sycl::sqrt(-2.0 * sycl::log(u));
 
-  result.x = std::sin(v * RAND_PI_DOUBLE);
-  result.y = std::cos(v * RAND_PI_DOUBLE);
+  result.x = sycl::sin(v * RAND_PI_DOUBLE);
+  result.y = sycl::cos(v * RAND_PI_DOUBLE);
   result.x *= s;
   result.y *= s;
 
@@ -514,9 +514,9 @@ static inline float pgammainc(float a, float x) {
 
   /* Second level parametrization constants (depends only on a) */
 
-  alpha = 1 / sqrtf(a - ma2);
+  alpha = 1 / sycl::sqrt(a - ma2);
   alpha = ma1 * alpha + ma3;
-  beta = 1 / sqrtf(a - mb2);
+  beta = 1 / sycl::sqrt(a - mb2);
   beta = mb1 * beta + mb3;
 
   /* Final approximation (depends on a and x) */
@@ -544,14 +544,14 @@ static inline float pgammaincinv(float a, float y) {
 
   /* Second level parametrization constants (depends only on a) */
 
-  alpha = 1.0f / sqrtf(a - ma2);
+  alpha = 1.0f / sycl::sqrt(a - ma2);
   alpha = ma1 * alpha + ma3;
-  beta = 1.0f / sqrtf(a - mb2);
+  beta = 1.0f / sycl::sqrt(a - mb2);
   beta = mb1 * beta + mb3;
 
   /* Final approximation (depends on a and y) */
 
-  t = 1.0f / sqrtf(y) - 1.0f;
+  t = 1.0f / sycl::sqrt(y) - 1.0f;
   t = logf(t);
   t = beta + t;
   t = -t * (1 / alpha) + a;
@@ -601,7 +601,7 @@ static inline unsigned int rand_poisson(
   if (lambda < 64)
     return rand_poisson_knuth(state, (float)lambda);
   if (lambda > 4000)
-    return (unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) +
+    return (unsigned int)((sycl::sqrt(lambda) * rand_normal_double(state)) +
                           lambda + 0.5); // Round to nearest
   return rand_poisson_gammainc(state, (float)lambda);
 }

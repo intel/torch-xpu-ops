@@ -103,6 +103,8 @@ macro(set_build_flags)
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -foffload-fp32-prec-div)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -foffload-fp32-prec-sqrt)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # On Windows icx uses the clang-cl driver, which ignores -std= with
     # only a warning; spell it as -Qstd= so device code is really C++20.
@@ -128,10 +130,18 @@ macro(set_build_flags)
     endif()
   endif()
 
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
+  # -- Device debug flags (aligned with CUDA behavior)
+  # XPU_DEVICE_DEBUG=1: full device debug, disables optimization (like CUDA's -g -G)
+  #   Orthogonal to build type, always forces device debug.
+  # DEBUG_XPU=1: line-table-only debug info (like CUDA's -lineinfo)
+  #   Only effective in Debug/RelWithDebInfo builds.
+  # DEBUG=1 alone: does NOT affect device code (same as CUDA).
+  if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
-  elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
+  elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
+    if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
+    endif()
   endif()
 
   CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
@@ -154,10 +164,11 @@ macro(set_build_flags)
   endif()
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} --offload-compress)
+  set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -foffload-fp32-prec-sqrt)
+  set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -foffload-fp32-prec-div)
 
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-poison-unsupported-fp64-kernels")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-enable-auto-large-GRF-mode")
-  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
 
   if(REPLACE_FLAGS_FOR_SYCLTLA)
@@ -203,3 +214,21 @@ macro(set_build_flags)
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 endmacro()
+
+# Shared options/includes/links for every torch_xpu_ops target.
+# ARGN = extra PUBLIC libs (Windows: c10_xpu torch_cpu).
+function(torch_xpu_ops_finalize_targets)
+  foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
+    # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
+    torch_compile_options(${lib})
+    target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
+    target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
+
+    target_include_directories(${lib} PUBLIC
+        ${TORCH_XPU_OPS_INCLUDE_DIRS} ${ATen_XPU_INCLUDE_DIRS} ${SYCL_INCLUDE_DIR})
+
+    target_link_libraries(${lib}
+        PUBLIC  ${SYCL_LIBRARY} ${ARGN}
+        PRIVATE ATEN_XPU_FILES_GEN_LIB)
+  endforeach()
+endfunction()

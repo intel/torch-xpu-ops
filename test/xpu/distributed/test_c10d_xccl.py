@@ -22,6 +22,7 @@ import sys
 import tempfile
 import threading
 import time
+import unittest
 from datetime import datetime, timedelta
 from enum import auto, Enum
 from unittest import mock
@@ -111,159 +112,6 @@ def simple_reduce_tests(rank, world_size):
     ]
 
     return tests
-
-
-TEST_MULTIXPU = torch.xpu.device_count() > 1
-
-# ------------------------------------------------------------------
-# XPU SymmetricMemory tests (SYCL IPC backend)
-# ------------------------------------------------------------------
-
-# XPU does not support multicast.
-os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
-
-device_type = "xpu"
-
-try:
-    from torch.testing._internal.inductor_utils import (
-        HAS_XPU_AND_TRITON as _HAS_XPU_AND_TRITON,
-    )
-except ImportError:
-    _HAS_XPU_AND_TRITON = False
-
-
-@instantiate_parametrized_tests
-class SymmetricMemoryTest(MultiProcContinuousTest):
-    """XPU SymmetricMemory tests (SYCL IPC backend)."""
-
-    @property
-    def device(self) -> torch.device:
-        return torch.device("xpu", self.rank)
-
-    def _init_process(self):
-        torch.xpu.set_device(self.device)
-        torch.manual_seed(42 + self.rank)
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    def test_rendezvous_basic(self) -> None:
-        """Smoke-test the SYCL IPC rendezvous path: allocate → rendezvous →
-        write → barrier → read peer buffer."""
-        self._init_process()
-
-        numel = 1024
-        t = symm_mem.empty(numel, dtype=torch.float32, device=self.device)
-        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
-
-        self.assertEqual(hdl.rank, self.rank)
-        self.assertEqual(hdl.world_size, self.world_size)
-        self.assertEqual(len(hdl.buffer_ptrs), self.world_size)
-
-        t.fill_(float(self.rank))
-        hdl.barrier()
-
-        for r in range(self.world_size):
-            buf = hdl.get_buffer(r, (numel,), torch.float32)
-            self.assertTrue(
-                buf.eq(float(r)).all().item(),
-                f"peer {r} buffer != {r} (seen from rank {self.rank})",
-            )
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    def test_get_signal_pad(self) -> None:
-        """Verify that signal-pad views (dtype, numel, data_ptr) match the
-        handle's metadata, and that buffer writes do not corrupt the pad."""
-        self._init_process()
-
-        t = symm_mem.empty(1, device="xpu")
-        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
-        peer = (self.rank + 1) % self.world_size
-
-        # Local pad pointer must match what the handle advertises.
-        local_pad = hdl.get_signal_pad(self.rank)
-        self.assertEqual(local_pad.data_ptr(), hdl.signal_pad_ptrs[hdl.rank])
-
-        # Default: uint32, signal_pad_size // 4 elements.
-        pad = hdl.get_signal_pad(peer)
-        self.assertEqual(pad.dtype, torch.uint32)
-        self.assertEqual(pad.numel(), hdl.signal_pad_size // 4)
-
-        # Sizes only.
-        pad = hdl.get_signal_pad(peer, (8, 8))
-        self.assertEqual(pad.dtype, torch.uint32)
-        self.assertEqual(pad.numel(), 64)
-
-        # dtype only.
-        pad = hdl.get_signal_pad(peer, dtype=torch.uint64)
-        self.assertEqual(pad.dtype, torch.uint64)
-        self.assertEqual(pad.numel(), hdl.signal_pad_size // 8)
-
-        # Sizes + dtype.
-        pad = hdl.get_signal_pad(peer, (8, 8), dtype=torch.uint64)
-        self.assertEqual(pad.dtype, torch.uint64)
-        self.assertEqual(pad.numel(), 64)
-
-        # Writes to buffer must not corrupt the signal pad.
-        t2 = symm_mem.empty(1, device="xpu")
-        hdl2 = symm_mem.rendezvous(t2, group=dist.group.WORLD)
-        local_pad2 = hdl2.get_signal_pad(self.rank)
-        local_pad2.fill_(42)
-        t2.fill_(0)
-        self.assertTrue(local_pad2.eq(42).all().item())
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(4)
-    def test_subgroup(self) -> None:
-        """Two disjoint subgroups rendezvous on the same tensor; each can
-        observe its peers correctly via the SYCL IPC mapping."""
-        self._init_process()
-
-        ranks = list(range(self.world_size))
-        subgroup_0 = dist.new_group(ranks[: len(ranks) // 2])
-        subgroup_1 = dist.new_group(ranks[len(ranks) // 2 :])
-
-        world = dist.group.WORLD
-        subgroup = subgroup_0 if world.rank() < world.size() // 2 else subgroup_1
-
-        t = symm_mem.empty(64, device="xpu")
-        sm_world = symm_mem.rendezvous(t, group=world)
-        sm_sub = symm_mem.rendezvous(t, group=subgroup)
-
-        self.assertEqual(sm_world.world_size, world.size())
-        self.assertEqual(sm_world.rank, world.rank())
-        self.assertEqual(sm_sub.world_size, world.size() // 2)
-        self.assertEqual(sm_sub.rank, world.rank() % subgroup.size())
-
-        t.fill_(world.rank())
-        sm_world.barrier()
-
-        peer = (world.rank() + 1) % world.size()
-        buf = sm_world.get_buffer(peer, (64,), torch.float32)
-        self.assertTrue(buf.eq(peer).all().item())
-
-        peer_sub = (subgroup.rank() + 1) % subgroup.size()
-        buf = sm_sub.get_buffer(peer_sub, (64,), torch.float32)
-        if world.rank() < world.size() // 2:
-            self.assertTrue(buf.eq(peer_sub).all().item())
-        else:
-            self.assertTrue(buf.eq(peer_sub + world.size() // 2).all().item())
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    def test_put_wait_signal(self) -> None:
-        """Verify put_signal / wait_signal over the SYCL IPC peer mapping."""
-        self._init_process()
-
-        t = symm_mem.empty(1, device="xpu")
-        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
-
-        # Ring: each rank sends a signal to its right neighbor and waits for
-        # a signal from its left neighbor.
-        dst = (self.rank + 1) % self.world_size
-        src = (self.rank - 1) % self.world_size
-        hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
-        hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
 
 
 class RendezvousEnvTest(TestCase):
@@ -476,7 +324,9 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         dist.destroy_process_group()
 
     @requires_xccl()
-    @skip_but_pass_in_sandcastle_if(not TEST_MULTIXPU, "XCCL test requires 2+ GPUs")
+    @skip_but_pass_in_sandcastle_if(
+        torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
+    )
     def test_set_process_group_desc(self):
         device = torch.device(f"xpu:{self.rank}")
         pg_default = self._create_process_group_xccl(device_id=device)
@@ -1070,6 +920,12 @@ class XCCLTraceTestBase(MultiProcessTestCase):
             os.remove(self.file_name)
         except OSError:
             pass
+        for _k in (
+            "TORCH_FR_BUFFER_SIZE",
+            "TORCH_FR_DUMP_TEMP_FILE",
+            "TORCH_FR_DEBUG_INFO_PIPE_FILE",
+        ):
+            os.environ.pop(_k, None)
 
     @property
     def world_size(self):
@@ -1573,6 +1429,349 @@ class XCCLTraceTest(XCCLTraceTestBase):
             self.assertTrue(0.001 < duration < 10000, duration)
         else:
             self.assertTrue("duration_ms" not in t["entries"][0])
+
+
+# ------------------------------------------------------------------
+# XPU SymmetricMemory tests (SYCL IPC backend)
+# ------------------------------------------------------------------
+
+# XPU does not support multicast.
+os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] = "1"
+
+device_type = "xpu"
+
+try:
+    from torch.testing._internal.inductor_utils import (
+        HAS_XPU_AND_TRITON as _HAS_XPU_AND_TRITON,
+    )
+except ImportError:
+    _HAS_XPU_AND_TRITON = False
+
+
+@instantiate_parametrized_tests
+class SymmetricMemoryTest(MultiProcContinuousTest):
+    """XPU SymmetricMemory tests (SYCL IPC backend)."""
+
+    @classmethod
+    def backend_str(cls) -> str:
+        return "xccl"
+
+    @classmethod
+    def setUpClass(cls):
+        for _k in ("TORCH_FR_DUMP_TEMP_FILE", "TORCH_FR_DEBUG_INFO_PIPE_FILE"):
+            os.environ.pop(_k, None)
+        super().setUpClass()
+
+    @property
+    def device(self) -> torch.device:
+        return torch.device("xpu", self.rank)
+
+    def _init_process(self):
+        torch.xpu.set_device(self.device)
+        torch.manual_seed(42 + self.rank)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_rendezvous_basic(self) -> None:
+        """Smoke-test the SYCL IPC rendezvous path: allocate → rendezvous →
+        write → barrier → read peer buffer."""
+        self._init_process()
+
+        numel = 1024
+        t = symm_mem.empty(numel, dtype=torch.float32, device=self.device)
+        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+
+        self.assertEqual(hdl.rank, self.rank)
+        self.assertEqual(hdl.world_size, self.world_size)
+        self.assertEqual(len(hdl.buffer_ptrs), self.world_size)
+
+        t.fill_(float(self.rank))
+        hdl.barrier()
+
+        for r in range(self.world_size):
+            buf = hdl.get_buffer(r, (numel,), torch.float32)
+            self.assertTrue(
+                buf.eq(float(r)).all().item(),
+                f"peer {r} buffer != {r} (seen from rank {self.rank})",
+            )
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_get_signal_pad(self) -> None:
+        """Verify that signal-pad views (dtype, numel, data_ptr) match the
+        handle's metadata, and that buffer writes do not corrupt the pad."""
+        self._init_process()
+
+        t = symm_mem.empty(1, device="xpu")
+        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+        peer = (self.rank + 1) % self.world_size
+
+        # Local pad pointer must match what the handle advertises.
+        local_pad = hdl.get_signal_pad(self.rank)
+        self.assertEqual(local_pad.data_ptr(), hdl.signal_pad_ptrs[hdl.rank])
+
+        # Default: uint32, signal_pad_size // 4 elements.
+        pad = hdl.get_signal_pad(peer)
+        self.assertEqual(pad.dtype, torch.uint32)
+        self.assertEqual(pad.numel(), hdl.signal_pad_size // 4)
+
+        # Sizes only.
+        pad = hdl.get_signal_pad(peer, (8, 8))
+        self.assertEqual(pad.dtype, torch.uint32)
+        self.assertEqual(pad.numel(), 64)
+
+        # dtype only.
+        pad = hdl.get_signal_pad(peer, dtype=torch.uint64)
+        self.assertEqual(pad.dtype, torch.uint64)
+        self.assertEqual(pad.numel(), hdl.signal_pad_size // 8)
+
+        # Sizes + dtype.
+        pad = hdl.get_signal_pad(peer, (8, 8), dtype=torch.uint64)
+        self.assertEqual(pad.dtype, torch.uint64)
+        self.assertEqual(pad.numel(), 64)
+
+        # Writes to buffer must not corrupt the signal pad.
+        t2 = symm_mem.empty(1, device="xpu")
+        hdl2 = symm_mem.rendezvous(t2, group=dist.group.WORLD)
+        local_pad2 = hdl2.get_signal_pad(self.rank)
+        local_pad2.fill_(42)
+        t2.fill_(0)
+        self.assertTrue(local_pad2.eq(42).all().item())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(4)
+    def test_subgroup(self) -> None:
+        """Two disjoint subgroups rendezvous on the same tensor; each can
+        observe its peers correctly via the SYCL IPC mapping."""
+        self._init_process()
+
+        ranks = list(range(self.world_size))
+        subgroup_0 = dist.new_group(ranks[: len(ranks) // 2])
+        subgroup_1 = dist.new_group(ranks[len(ranks) // 2 :])
+
+        world = dist.group.WORLD
+        subgroup = subgroup_0 if world.rank() < world.size() // 2 else subgroup_1
+
+        t = symm_mem.empty(64, device="xpu")
+        sm_world = symm_mem.rendezvous(t, group=world)
+        sm_sub = symm_mem.rendezvous(t, group=subgroup)
+
+        self.assertEqual(sm_world.world_size, world.size())
+        self.assertEqual(sm_world.rank, world.rank())
+        self.assertEqual(sm_sub.world_size, world.size() // 2)
+        self.assertEqual(sm_sub.rank, world.rank() % subgroup.size())
+
+        t.fill_(world.rank())
+        sm_world.barrier()
+
+        peer = (world.rank() + 1) % world.size()
+        buf = sm_world.get_buffer(peer, (64,), torch.float32)
+        self.assertTrue(buf.eq(peer).all().item())
+
+        peer_sub = (subgroup.rank() + 1) % subgroup.size()
+        buf = sm_sub.get_buffer(peer_sub, (64,), torch.float32)
+        if world.rank() < world.size() // 2:
+            self.assertTrue(buf.eq(peer_sub).all().item())
+        else:
+            self.assertTrue(buf.eq(peer_sub + world.size() // 2).all().item())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_put_wait_signal(self) -> None:
+        """Verify put_signal / wait_signal over the SYCL IPC peer mapping."""
+        self._init_process()
+
+        t = symm_mem.empty(1, device="xpu")
+        hdl = symm_mem.rendezvous(t, group=dist.group.WORLD)
+
+        # Ring: each rank sends a signal to its right neighbor and waits for
+        # a signal from its left neighbor.
+        dst = (self.rank + 1) % self.world_size
+        src = (self.rank - 1) % self.world_size
+        hdl.put_signal(dst_rank=dst, channel=0, timeout_ms=10_000)
+        hdl.wait_signal(src_rank=src, channel=0, timeout_ms=10_000)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_fused_all_gather_matmul(self) -> None:
+        """Smoke-test torch.ops.symm_mem.fused_all_gather_matmul on XPU.
+
+        On upstream there is no XPU-specific kernel yet, so the op resolves
+        to the python decomposition (`_fused_all_gather_matmul_fallback`);
+        this exercises the XPU dispatch registration and the underlying
+        all_gather_into_tensor + matmul path.
+        """
+        self._init_process()
+
+        M = 1024
+        N = 1024
+        K = 1024
+        group = dist.group.WORLD
+        group_name = group.group_name
+
+        A_shard = torch.rand(
+            M // self.world_size, K, dtype=torch.bfloat16, device=self.device
+        )
+        Bs = [
+            torch.rand(K, N, dtype=torch.bfloat16, device=self.device) for _ in range(3)
+        ]
+
+        ag_output_0, mm_outputs_0 = symm_mem._fused_all_gather_matmul_fallback(
+            A_shard, Bs, gather_dim=0, group_name=group_name
+        )
+        ag_output_1, mm_outputs_1 = torch.ops.symm_mem.fused_all_gather_matmul(
+            A_shard, Bs, gather_dim=0, group_name=group_name
+        )
+
+        torch.testing.assert_close(ag_output_0, ag_output_1)
+        self.assertEqual(ag_output_0.stride(), ag_output_1.stride())
+        for mm_output_0, mm_output_1 in zip(mm_outputs_0, mm_outputs_1):
+            torch.testing.assert_close(mm_output_0, mm_output_1)
+            self.assertEqual(mm_output_0.stride(), mm_output_1.stride())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_fused_matmul_reduce_scatter(self) -> None:
+        """Smoke-test torch.ops.symm_mem.fused_matmul_reduce_scatter on XPU.
+
+        On upstream there is no XPU-specific kernel yet, so the op resolves
+        to the python decomposition (`_fused_matmul_reduce_scatter_fallback`);
+        this exercises the XPU dispatch registration and the underlying
+        matmul + reduce_scatter_tensor path.
+        """
+        self._init_process()
+
+        M = 1024
+        N = 1024
+        K = 1024
+        group = dist.group.WORLD
+        group_name = group.group_name
+
+        A = torch.rand(M, K, dtype=torch.bfloat16, device=self.device)
+        B = torch.rand(K, N, dtype=torch.bfloat16, device=self.device)
+
+        output_0 = symm_mem._fused_matmul_reduce_scatter_fallback(
+            A, B, "sum", scatter_dim=0, group_name=group_name
+        )
+        output_1 = torch.ops.symm_mem.fused_matmul_reduce_scatter(
+            A, B, "sum", scatter_dim=0, group_name=group_name
+        )
+
+        torch.testing.assert_close(output_0, output_1)
+        self.assertEqual(output_0.stride(), output_1.stride())
+
+
+# ------------------------------------------------------------------
+# Inductor micro-pipeline TP FX-pass tests (single-process, FakeStore)
+# ------------------------------------------------------------------
+
+
+@instantiate_parametrized_tests
+class MicroPipelineTPXpuTest(TestCase):
+    def setUp(self):
+        from torch.testing._internal.distributed.fake_pg import FakeStore
+
+        torch._inductor.config._micro_pipeline_tp = True
+
+        self.rank = 0
+        self.world_size = 2
+        torch.xpu.set_device("xpu:0")
+
+        store = FakeStore()
+        dist.init_process_group(
+            backend="fake",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+
+    def tearDown(self):
+        dist.destroy_process_group()
+
+    @unittest.skipIf(
+        not _HAS_XPU_AND_TRITON,
+        "Inductor+XPU needs triton and a recent XPU arch",
+    )
+    @parametrize("A_dims", [2, 3])
+    @parametrize("gather_dim", [0, 1, 2])
+    @parametrize("return_A", [True, False])
+    def test_fuse_all_gather_matmul(self, A_dims, gather_dim, return_A):
+        from torch._inductor.utils import fresh_cache, run_and_get_triton_code
+        from torch.distributed._functional_collectives import all_gather_tensor
+        from torch.distributed._symmetric_memory import _test_mode
+
+        if gather_dim >= A_dims:
+            return
+
+        group = dist.group.WORLD
+
+        def func(A_shard: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+            A = all_gather_tensor(A_shard, gather_dim=gather_dim, group=group)
+            if return_A:
+                return A, A @ B
+            else:
+                return None, A @ B
+
+        if A_dims == 2:
+            A_shard_shape = [64, 32]
+        elif A_dims == 3:
+            A_shard_shape = [2, 64, 32]
+        else:
+            raise AssertionError(f"Invalid A_dims: {A_dims}")
+
+        A_shard_shape[gather_dim] //= self.world_size
+        A_shard = torch.rand(*A_shard_shape, device="xpu")
+        B = torch.rand(32, 16, device="xpu")
+
+        with _test_mode(), fresh_cache():
+            compiled = torch.compile(func)
+            code = run_and_get_triton_code(compiled, A_shard, B)
+
+            eager_stride = func(A_shard, B)[1].stride()
+            compiled_stride = compiled(A_shard, B)[1].stride()
+            self.assertEqual(eager_stride, compiled_stride)
+
+        if gather_dim == A_dims - 1:
+            # Decomposing the matmul on the K dimension is not supported.
+            self.assertNotIn("fused_all_gather_matmul", code)
+        else:
+            self.assertIn("fused_all_gather_matmul", code)
+            self.assertNotIn("all_gather_into_tensor", code)
+            self.assertEqual("return_A=True" in code, return_A)
+
+    @unittest.skipIf(
+        not _HAS_XPU_AND_TRITON,
+        "Inductor+XPU needs triton and a recent XPU arch",
+    )
+    @parametrize("A_dims", [2, 3])
+    @parametrize("scatter_dim", [0, 1, 2])
+    def test_fuse_matmul_reduce_scatter(self, A_dims, scatter_dim):
+        from torch._inductor.utils import fresh_cache, run_and_get_triton_code
+        from torch.distributed._functional_collectives import reduce_scatter_tensor
+        from torch.distributed._symmetric_memory import _test_mode
+
+        if scatter_dim >= A_dims:
+            return
+
+        group = dist.group.WORLD
+
+        def func(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+            return reduce_scatter_tensor(A @ B, "avg", scatter_dim, group)
+
+        if A_dims == 2:
+            A = torch.rand(64, 32, device="xpu")
+        elif A_dims == 3:
+            A = torch.rand(2, 64, 32, device="xpu")
+        else:
+            raise AssertionError(f"Invalid A_dims: {A_dims}")
+        B = torch.rand(32, 16, device="xpu")
+
+        with _test_mode(), fresh_cache():
+            compiled = torch.compile(func)
+            code = run_and_get_triton_code(compiled, A, B)
+
+        self.assertIn("fused_matmul_reduce_scatter", code)
+        self.assertNotIn("reduce_scatter_tensor", code)
 
 
 instantiate_parametrized_tests(XCCLTraceTest)

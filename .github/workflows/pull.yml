@@ -10,11 +10,21 @@ on:
     branches:
       - main
       - release/*
+  workflow_dispatch:
+    inputs:
+      pytorch_ref:
+        description: 'PyTorch branch or commit to build against'
+        required: false
+        default: ''
+      pr_number:
+        description: 'PR number to checkout (for bot-triggered reruns)'
+        required: false
+        default: ''
 
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('pull-rerun-{0}', github.event.inputs.pr_number) || format('{0}-{1}', github.workflow, github.event.pull_request.number) }}
   cancel-in-progress: true
 
 jobs:
@@ -25,8 +35,15 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: read
     outputs:
       pr_body_cmd: ${{ steps.reproducer-check.outputs.pr_cmd }}
+      skip_all: ${{ steps.live-labels.outputs.skip_all }}
+      skip_ut: ${{ steps.live-labels.outputs.skip_ut }}
+      skip_e2e: ${{ steps.live-labels.outputs.skip_e2e }}
+      skip_distributed: ${{ steps.live-labels.outputs.skip_distributed }}
+      skip_win: ${{ steps.live-labels.outputs.skip_win }}
+      force_win_ut: ${{ steps.live-labels.outputs.force_win_ut }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -166,9 +183,26 @@ jobs:
             echo "::error::${FAIL_MSG}"
             exit 1
           fi
+      - name: Read live PR labels
+        if: ${{ !cancelled() }}
+        id: live-labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABELS=$(gh pr view ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+          echo "Live PR labels: $LABELS"
+          has() { echo "$LABELS" | tr ',' '\n' | grep -qx "$1" && echo "true" || echo "false"; }
+          echo "skip_all=$(has disable_all)" >> "$GITHUB_OUTPUT"
+          echo "skip_ut=$(has disable_ut)" >> "$GITHUB_OUTPUT"
+          echo "skip_e2e=$(has disable_e2e)" >> "$GITHUB_OUTPUT"
+          echo "skip_distributed=$(has disable_distributed)" >> "$GITHUB_OUTPUT"
+          echo "skip_win=$(has disable_win)" >> "$GITHUB_OUTPUT"
+          echo "force_win_ut=$(has windows_ci)" >> "$GITHUB_OUTPUT"
 
   conditions-filter-win:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -191,7 +225,7 @@ jobs:
 
   linux-build:
     needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && needs.preci-lint-check.outputs.skip_all != 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -204,7 +238,7 @@ jobs:
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' }}
     secrets: inherit
     permissions:
       contents: read
@@ -218,8 +252,8 @@ jobs:
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
   linux-ut:
-    needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+    needs: [linux-build, reproducer-test, preci-lint-check]
+    if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_ut != 'true' }}
     secrets: inherit
     permissions:
       contents: read
@@ -237,8 +271,8 @@ jobs:
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+    needs: [linux-build, reproducer-test, preci-lint-check]
+    if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_distributed != 'true' }}
     secrets: inherit
     permissions:
       contents: read
@@ -257,8 +291,8 @@ jobs:
 
   linux-e2e:
     name: linux-e2e
-    needs: [linux-build, reproducer-test]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') && !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+    needs: [linux-build, reproducer-test, preci-lint-check]
+    if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_e2e != 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -274,8 +308,8 @@ jobs:
       scenario: ${{ matrix.scenario }}
   linux-e2e-summary:
     name: linux-e2e-summary
-    needs: [linux-e2e]
-    if: ${{ !cancelled() && !contains(github.event.pull_request.labels.*.name, 'disable_all') && !endsWith(needs.linux-e2e.result, 'ed') }}
+    needs: [linux-e2e, preci-lint-check]
+    if: ${{ !cancelled() && needs.preci-lint-check.outputs.skip_all != 'true' && !endsWith(needs.linux-e2e.result, 'ed') }}
     permissions:
       actions: read
       contents: read
@@ -290,8 +324,8 @@ jobs:
     needs: preci-lint-check
     if: >-
       ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all')
-      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+      && needs.preci-lint-check.outputs.skip_all != 'true'
+      && needs.preci-lint-check.outputs.skip_win != 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_windows_build.yml
     with:
@@ -300,12 +334,12 @@ jobs:
 
   windows-ut:
     name: windows-ut
-    needs: [windows-build, conditions-filter-win]
+    needs: [windows-build, conditions-filter-win, preci-lint-check]
     if: >-
-      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
-      && !contains(github.event.pull_request.labels.*.name, 'disable_win')
-      && (contains(github.event.pull_request.labels.*.name, 'windows_ci')
-      || (!contains(github.event.pull_request.labels.*.name, 'disable_ut')
+      ${{ needs.preci-lint-check.outputs.skip_all != 'true'
+      && needs.preci-lint-check.outputs.skip_win != 'true'
+      && (needs.preci-lint-check.outputs.force_win_ut == 'true'
+      || (needs.preci-lint-check.outputs.skip_ut != 'true'
       && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
