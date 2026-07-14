@@ -254,6 +254,15 @@ def build():
             "AllgatherPermuteIshmem",
         )
     )
+    outputs.append(
+        build_one_ishmem(
+            cfg,
+            ishmem_cfg,
+            "RingAllgatherIshmem.cpp",
+            "libring_allgather_ishmem.so",
+            "RingAllgatherIshmem",
+        )
+    )
     return outputs
 
 
@@ -272,6 +281,7 @@ def clean():
         os.path.join(base_dir, "libring_reduce_scatter_unpermute.so"),
         os.path.join(base_dir, "libring_reduce_scatter_unpermute_two_stage.so"),
         os.path.join(base_dir, "liballgather_permute_ishmem.so"),
+        os.path.join(base_dir, "libring_allgather_ishmem.so"),
     ]
 
     removed = False

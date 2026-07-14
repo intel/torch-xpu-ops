@@ -3,13 +3,19 @@
 // Standalone ring-allgather implemented purely with ISHMEM device/host APIs,
 // as a SINGLE on-device kernel (modeled after RingAllgather.cpp's
 // RingAllgatherSingleKernel). The entire ring -- all world_size-1 hops -- runs
-// inside ONE kernel launch: the leader work-item PUSHes one slot to the right
-// neighbour per step, quiets to guarantee the RDMA write has landed remotely,
-// then sets the neighbour's signal pad; it waits on its own signal pad before
-// forwarding a freshly-received slot. There are no per-step host launches and
+// inside ONE kernel launch. Faithfully mirroring the P2P reference, the shard
+// is split into `num_wg` contiguous byte-slices and EACH work-group runs a
+// fully independent ring pipeline over its own slice: per step the work-group
+// cooperatively PUSHes one slice to the right neighbour (data put), a
+// work-group quiet guarantees the data has landed remotely, and only then the
+// leader writes a SEPARATE flag into the neighbour's signal pad; the leader
+// waits on its own signal-pad slot before forwarding a freshly-received slice.
+// Because work-groups only ever wait on the SAME wg index of the LEFT peer and
+// only signal the SAME wg index of the RIGHT peer, they never wait on each
+// other and the kernel cannot deadlock. There are no per-step host launches and
 // no per-step host barriers -- cross-rank step ordering is done on-device with
-// ISHMEM signal pads, exactly mirroring the P2P reference but with all
-// communication going through the ISHMEM NIC (IBGDA) path.
+// ISHMEM signal pads, with all communication going through the ISHMEM NIC
+// (IBGDA) path.
 //
 // Ring schedule (bandwidth-optimal, no receiver incast):
 //   The symmetric buffer holds `world_size` slots of `shard_bytes` each; slot r
@@ -17,16 +23,20 @@
 //   world_size-1 steps sends one slot to its RIGHT neighbour and receives one
 //   from its LEFT neighbour. At step t a PE forwards the block the left peer
 //   just delivered:
-//       phase 0 : push our own block `rank`  -> right; signal right pad[0]
+//       phase 0 : push our own block `rank`  -> right; quiet; flag right pad
 //       step  t : wait our pad[t-1] (left delivered block idx=(rank-t)%ws),
-//                 then (t < ws-1) forward block idx -> right; signal pad[t]
+//                 then (t < ws-1) forward block idx -> right; quiet; flag pad
+//   Signal-pad slot layout (per PE): slot(phase, wg) = phase * num_wg + wg.
 //   After world_size-1 steps every slot is present on every PE.
 //
 // Only ISHMEM APIs are used for communication:
-//   - ishmem_putmem_nbi        (GPU-issued RDMA write of one slot to neighbour)
-//   - ishmem_quiet             (device-side completion of outstanding puts)
-//   - ishmem_uint64_atomic_set (device-side signal to neighbour's pad)
-//   - ishmem_uint64_wait_until (device-side wait on our own pad)
+//   - ishmemx_putmem_nbi_work_group  (work-group-collective RDMA write of one
+//                                     slice to the neighbour -- data only)
+//   - ishmemx_quiet_work_group       (device-side completion of the data put,
+//                                     ordering the flag AFTER the data)
+//   - ishmem_uint64_atomic_set       (leader writes the separate flag to the
+//                                     neighbour's pad)
+//   - ishmem_uint64_wait_until       (device-side wait on our own pad)
 //   - ishmem_malloc / ishmem_free / ishmem_barrier_all (symmetric heap)
 //
 // Registered op: symm_mem::ring_allgather_ishmem
@@ -135,13 +145,14 @@ void* current_symmetric() {
   return state.symm;
 }
 
-// Ensure the symmetric signal pad holds `pes` uint64 entries, zero-initialised.
+// Ensure the symmetric signal pad holds `slots` uint64 entries, zero-init.
 // Collective on first allocation / resize. The pad is written across PEs with
-// device-side ishmem atomic_set and polled with ishmem_uint64_wait_until.
-uint64_t* ensure_pad(int pes, sycl::queue& queue) {
+// the ISHMEM put-with-signal carried by each transfer and polled on-device
+// with ishmem_uint64_wait_until.
+uint64_t* ensure_pad(int slots, sycl::queue& queue) {
   auto& state = get_state();
   std::lock_guard<std::mutex> lock(state.mutex);
-  if (state.pad != nullptr && state.pad_pes >= pes) {
+  if (state.pad != nullptr && state.pad_pes >= slots) {
     return state.pad;
   }
   if (state.pad != nullptr) {
@@ -151,14 +162,14 @@ uint64_t* ensure_pad(int pes, sycl::queue& queue) {
     state.pad = nullptr;
     state.pad_pes = 0;
   }
-  const size_t bytes = static_cast<size_t>(pes) * sizeof(uint64_t);
+  const size_t bytes = static_cast<size_t>(slots) * sizeof(uint64_t);
   state.pad = static_cast<uint64_t*>(ishmem_malloc(bytes));
   TORCH_CHECK(
       state.pad != nullptr,
       "ring_allgather_ishmem: ishmem_malloc failed for signal pad (",
       bytes,
       " bytes)");
-  state.pad_pes = pes;
+  state.pad_pes = slots;
   // Zero the pad once; the strictly-increasing tag means it never needs
   // clearing again between calls.
   queue.memset(state.pad, 0, bytes).wait_and_throw();
@@ -166,55 +177,121 @@ uint64_t* ensure_pad(int pes, sycl::queue& queue) {
   return state.pad;
 }
 
-// Single-kernel ISHMEM ring allgather. Only the leader work-item runs the ring;
-// all communication is via ISHMEM device APIs (NIC/IBGDA path). Mirrors
-// RingAllgatherSingleKernel's phase-0-then-forward pipeline, with ISHMEM
-// signal pads replacing the P2P signal-pad stores.
+// Upper bound on work-groups. The signal pad is sized world_size * this so
+// the runtime (shard-dependent) num_wg can vary per call without reallocating,
+// and must never exceed this value.
+constexpr int32_t RING_MAX_WG = 64;
+
+// Deterministic (rank-independent) work-group count / byte-slice for a shard.
+// Must be identical on every PE because the signal-pad slot layout
+// (slot = phase * num_wg + wg) depends on it; shard_bytes is identical across
+// PEs (same input shape), so this is safe.
+inline void compute_launch(
+    int64_t shard_bytes,
+    int64_t threads,
+    int32_t& num_wg,
+    int64_t& slice_bytes) {
+  constexpr int64_t kAlign = 16;  // keep every slice offset 16B-aligned
+  const int64_t per_wg = threads * kAlign;
+  int64_t nwg = (shard_bytes + per_wg - 1) / per_wg;
+  if (nwg < 1) nwg = 1;
+  if (nwg > RING_MAX_WG) nwg = RING_MAX_WG;
+  int64_t sb = (shard_bytes + nwg - 1) / nwg;
+  sb = ((sb + kAlign - 1) / kAlign) * kAlign;  // round up to alignment
+  nwg = (shard_bytes + sb - 1) / sb;
+  if (nwg < 1) nwg = 1;
+  num_wg = static_cast<int32_t>(nwg);
+  slice_bytes = sb;
+}
+
+// Single-kernel ISHMEM ring allgather. Faithfully mirrors
+// RingAllgatherSingleKernel: the shard/slot is split into `num_wg` contiguous
+// byte-slices, one per work-group, and EACH work-group runs a fully
+// independent ring pipeline over its own slice (it only ever waits on the SAME
+// wg index of the LEFT peer and only signals the SAME wg index of the RIGHT
+// peer, so work-groups never wait on each other and the kernel cannot
+// deadlock). The P2P direct load/store copies are replaced by the ISHMEM
+// work-group-collective data put (all work-items of the group cooperate to
+// issue one RDMA transfer), and the P2P signal-pad stores are replaced by a
+// SEPARATE flag put: a work-group quiet guarantees the data has landed, then
+// the leader writes the neighbour's pad with ishmem_uint64_atomic_set.
+// Signal-pad layout (per PE): slot(phase, wg) = phase * num_wg + wg.
 struct RingAllgatherIshmemSingleKernel {
   uint8_t* symm_base;   // symmetric data region: world_size slots
-  uint64_t* pad;        // symmetric signal pad: world_size uint64 (same VA all PEs)
+  uint64_t* pad;        // symmetric signal pad: world_size * num_wg uint64
   int64_t shard_bytes;
+  int64_t slice_bytes;
   int32_t rank;
   int32_t world_size;
   int32_t right;
+  int32_t num_wg;
   uint64_t tag;
 
   void operator()(sycl::nd_item<1> item) const {
-    // Leader work-item of the leader work-group drives the entire ring.
-    if (item.get_global_id(0) != 0) {
-      return;
-    }
+    auto grp = item.get_group();
+    const int32_t wg = static_cast<int32_t>(item.get_group(0));
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
 
-    // Phase 0: push our own block `rank` to the right neighbour, quiet so the
-    // RDMA write has landed remotely, then signal the neighbour's pad[0].
+    // This work-group's byte-slice of a single world_size-strided slot.
+    const int64_t base = static_cast<int64_t>(wg) * slice_bytes;
+    int64_t cnt = shard_bytes - base;
+    if (cnt > slice_bytes) cnt = slice_bytes;
+    if (cnt < 0) cnt = 0;
+
+    // Phase 0: the whole work-group cooperatively pushes our own slot `rank`
+    // slice into the right neighbour's same slot (data put), then a work-group
+    // quiet guarantees that data has landed remotely, and only THEN the leader
+    // writes the flag: bump the neighbour's pad[0*num_wg+wg] to `tag`. Keeping
+    // the data put and the flag put separate makes the "data before flag"
+    // ordering explicit via the intervening quiet.
     {
-      const int64_t off = static_cast<int64_t>(rank) * shard_bytes;
-      ishmem_putmem_nbi(
+      const int64_t off = static_cast<int64_t>(rank) * shard_bytes + base;
+      ishmemx_putmem_nbi_work_group(
           static_cast<void*>(symm_base + off),
           static_cast<const void*>(symm_base + off),
-          static_cast<size_t>(shard_bytes),
-          right);
-      ishmem_quiet();
-      ishmem_uint64_atomic_set(pad + 0, tag, right);
-    }
-
-    // Steps 1..ws-1: wait for the left peer to deliver block idx=(rank-t)%ws
-    // into our slot, then forward it to the right (the last received block is
-    // final for us and is not forwarded).
-    for (int32_t t = 1; t < world_size; ++t) {
-      ishmem_uint64_wait_until(pad + (t - 1), ISHMEM_CMP_EQ, tag);
-      if (t < world_size - 1) {
-        const int32_t idx = (rank - t + world_size) % world_size;
-        const int64_t off = static_cast<int64_t>(idx) * shard_bytes;
-        ishmem_putmem_nbi(
-            static_cast<void*>(symm_base + off),
-            static_cast<const void*>(symm_base + off),
-            static_cast<size_t>(shard_bytes),
-            right);
-        ishmem_quiet();
-        ishmem_uint64_atomic_set(pad + t, tag, right);
+          static_cast<size_t>(cnt),
+          right,
+          grp);
+      // Ensure the data slice has landed on the right neighbour before the flag.
+      ishmemx_quiet_work_group(grp);
+      if (lid == 0) {
+        ishmem_uint64_atomic_set(pad + (0 * num_wg + wg), tag, right);
       }
     }
+
+    // Steps 1..ws-1: at step t the left peer has delivered slot
+    // idx=(rank-t) mod ws into our buffer and bumped our pad[(t-1)*num_wg+wg].
+    // Wait on that signal, then (unless it is the final slice for us) forward
+    // the same slice to the right neighbour and signal its pad[t*num_wg+wg].
+    for (int32_t t = 1; t < world_size; ++t) {
+      if (lid == 0) {
+        ishmem_uint64_wait_until(pad + ((t - 1) * num_wg + wg), ISHMEM_CMP_EQ, tag);
+      }
+      item.barrier(sycl::access::fence_space::local_space);
+      // Make the left peer's RDMA-delivered slice visible to all work-items
+      // (the leader's wait_until only orders the leader).
+      sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
+
+      if (t < world_size - 1) {
+        const int32_t idx = (rank - t + world_size) % world_size;
+        const int64_t off = static_cast<int64_t>(idx) * shard_bytes + base;
+        // Data put, then quiet, then the leader writes the flag (see phase 0).
+        ishmemx_putmem_nbi_work_group(
+            static_cast<void*>(symm_base + off),
+            static_cast<const void*>(symm_base + off),
+            static_cast<size_t>(cnt),
+            right,
+            grp);
+        ishmemx_quiet_work_group(grp);
+        if (lid == 0) {
+          ishmem_uint64_atomic_set(pad + (t * num_wg + wg), tag, right);
+        }
+      }
+    }
+
+    // Complete all device-issued puts locally before the host-side
+    // ishmem_barrier_all() recycles the pads with the next call's tag.
+    ishmemx_quiet_work_group(grp);
   }
 };
 
@@ -266,15 +343,23 @@ at::Tensor ring_allgather_ishmem(
   const size_t gathered_bytes = shard_bytes * static_cast<size_t>(world_size);
   ensure_symmetric(gathered_bytes);
   auto* symm_base = static_cast<uint8_t*>(current_symmetric());
-  auto* pad = ensure_pad(static_cast<int>(world_size), queue);
+
+  const int32_t right = static_cast<int32_t>((rank + 1) % world_size);
+  constexpr int64_t threads = 256;
+
+  // Deterministic (same on every PE) work-group count / byte-slice, and the
+  // matching pad slot count (world_size phases * num_wg).
+  int32_t num_wg = 1;
+  int64_t slice_bytes = static_cast<int64_t>(shard_bytes);
+  compute_launch(
+      static_cast<int64_t>(shard_bytes), threads, num_wg, slice_bytes);
+  auto* pad = ensure_pad(
+      static_cast<int>(world_size) * RING_MAX_WG, queue);
 
   // Seed our own slot.
   const int64_t local_offset = static_cast<int64_t>(rank) * shard_bytes;
   sycl::event dep = queue.memcpy(
       symm_base + local_offset, input_shard.data_ptr(), shard_bytes);
-
-  const int32_t right = static_cast<int32_t>((rank + 1) % world_size);
-  constexpr int64_t threads = 256;
 
   // Fresh strictly-increasing signal tag for this call (pads never reused).
   uint64_t tag;
@@ -283,31 +368,45 @@ at::Tensor ring_allgather_ishmem(
     std::lock_guard<std::mutex> lock(state.mutex);
     tag = ++state.iteration;
   }
-
   debug_log(rank, "launch single-kernel ring");
-  print("start to do ring allgather", flush=True);
-  // Entire ring runs in ONE kernel launch; the leader work-item drives all
-  // world_size-1 hops with device-side ISHMEM put/quiet/signal/wait.
+  // Entire ring runs in ONE kernel launch; each work-group drives an
+  // independent ring pipeline over its slice with work-group-collective ISHMEM
+  // put-with-signal and an on-device wait on its own pad slot.
   auto ring_event = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(dep);
     cgh.parallel_for(
-        sycl::nd_range<1>(sycl::range<1>(threads), sycl::range<1>(threads)),
+        sycl::nd_range<1>(
+            sycl::range<1>(static_cast<size_t>(num_wg) * threads),
+            sycl::range<1>(threads)),
         RingAllgatherIshmemSingleKernel{
             symm_base,
             pad,
             static_cast<int64_t>(shard_bytes),
+            slice_bytes,
             static_cast<int32_t>(rank),
             static_cast<int32_t>(world_size),
             right,
+            num_wg,
             tag});
   });
-  //ring_event.wait_and_throw();
+
+  // The ring kernel issues all device-side ISHMEM put-with-signal transfers.
+  // The host-side ishmem_barrier_all() below is the cross-call fence that lets
+  // the reused signal pads (world_size * num_wg slots) be recycled with the
+  // next strictly-increasing tag. That fence is only meaningful once the kernel
+  // that produces / consumes this call's pad values has actually completed on
+  // the device -- otherwise a pipelined next call (e.g. a timed loop with no
+  // per-iteration synchronize) can signal a pad slot with the next tag before a
+  // peer's wait_until(EQ, this_tag) observes it, overwriting the value it is
+  // spinning on and deadlocking. So we chain the copy-out on the ring kernel
+  // and wait for it below.
   debug_log(rank, "ring kernel done");
 
   auto out_event = queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on(ring_event);
     cgh.memcpy(gathered_out.data_ptr(), symm_base, gathered_bytes);
   });
-  //out_event.wait_and_throw();
+  out_event.wait_and_throw();
   // Cross-call safety: make sure every PE has finished consuming this call's
   // signal pads / slots before any PE reuses them with the next tag.
   ishmem_barrier_all();

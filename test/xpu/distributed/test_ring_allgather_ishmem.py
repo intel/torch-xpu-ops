@@ -25,14 +25,14 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(1024 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 4096))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 4096))
+TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 1024))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 2048))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 COMPARE_PUSH = os.environ.get("COMPARE_PUSH", "0") != "0"
 # Enable the PTI-based torch.profiler to capture a chrome trace of the timed
 # loops. Set ENABLE_PROFILE=1 to turn on; a per-rank trace is exported.
-ENABLE_PROFILE = 1 #os.environ.get("ENABLE_PROFILE", "0") != "0"
+ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "0") != "0"
 # Print a progress line every PROGRESS_EVERY iterations of the timed loop so a
 # slow run (each ring op can take ~1.8s) does not look like a hang. Set to 0 to
 # disable. A progress print forces an xpu.synchronize(), so it also gives a

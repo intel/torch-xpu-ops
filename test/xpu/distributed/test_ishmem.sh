@@ -3,6 +3,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# --- Runtime environment ----------------------------------------------------
+# Source Intel oneAPI (compiler/MPI/ISHMEM/MKL) and select the conda env whose
+# torch the prebuilt libring_allgather_ishmem.so was linked against (hanchao).
+# setvars.sh references unbound vars, so relax `set -u` only around the source.
+set +u
+source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1
+set -u
+export PATH=/root/miniforge3/envs/hanchao/bin:$PATH
+# ----------------------------------------------------------------------------
+
 #. /root/cherry/ishmem_ws/ishmem_ibgda/build/_install/env/vars.sh
 
 export ISHMEM_IB_ENABLE_IBGDA=1
@@ -59,8 +69,8 @@ export ISHMEM_NIC_MAP="${ISHMEM_NIC_MAP:-mlx5_4 mlx5_5 mlx5_6 mlx5_7}"
 #     mpirun -np 4 --prepend-rank python _nic_traffic_check.py
 
 # Build liballgather_permute_ishmem.so only if it is missing.
-export ISHMEM_HOME="${ISHMEM_HOME:-/root/jiafuzha/ishmem_ibgda/build/_install}"
-if [ ! -f ../csrc/liballgather_permute_ishmem.so ]; then
+export ISHMEM_HOME="${ISHMEM_HOME:-/root/jiafuzha/code-repo/ishmem_ibgda/build/_install}"
+if [ ! -f ../csrc/libring_allgather_ishmem.so ]; then
   ( cd ../csrc && python - <<'PY'
 import build
 cfg = build.get_build_config()
@@ -68,20 +78,24 @@ ishmem_cfg = build.get_ishmem_config()
 build.build_one_ishmem(
     cfg,
     ishmem_cfg,
-    "AllgatherPermuteIshmem.cpp",
-    "liballgather_permute_ishmem.so",
-    "AllgatherPermuteIshmem",
+    "RingAllgatherIshmem.cpp",
+    "libring_allgather_ishmem.so",
+    "RingAllgatherIshmem",
 )
 PY
   )
 fi
 
 
+mpirun -np 2 --prepend-rank python test_ring_allgather_ishmem.py
+
+'''
 if [ "$PIN_NIC" = "1" ]; then
   echo "[test_ishmem] PIN_NIC=1  mapping: ISHMEM_NIC_MAP=\"$ISHMEM_NIC_MAP\""
-  mpirun -np 2 --prepend-rank ./_pin_nic_launch.sh python test_allgather_permute_ishmem_perf.py
+  RING_ALLGATHER_ISHMEM_DEBUG=0 mpirun -np 2 --prepend-rank ./_pin_nic_launch.sh python test_ring_allgather_ishmem.py
 else
-  mpirun -np 2 --prepend-rank python test_allgather_permute_ishmem_perf.py
+  echo "[test_ishmem] PIN_NIC=0  (ISHMEM automatic PCIe/NUMA NIC affinity)"
+  RING_ALLGATHER_ISHMEM_DEBUG=0 mpirun -np 2 --prepend-rank python test_ring_allgather_ishmem.py
 fi
-
+'''
 #mpirun -np 4 --prepend-rank python test_allgather_permute_ishmem_mlx5dv_repro.py
