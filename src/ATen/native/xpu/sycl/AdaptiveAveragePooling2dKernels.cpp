@@ -106,14 +106,17 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   }
 
  private:
-  int ib_;
-  int ic_;
-  int ih_;
-  int iw_;
-  int oh_;
-  int ow_;
+  // 64-bit dims so `numel_ = ib_ * ic_ * ih_ * iw_` is computed in 64-bit; for
+  // large tensors the int32 product overflowed, truncating numel_ and leaving
+  // the tail of grad_input unwritten.
+  int64_t ib_;
+  int64_t ic_;
+  int64_t ih_;
+  int64_t iw_;
+  int64_t oh_;
+  int64_t ow_;
   int64_t numel_;
-  int global_range_;
+  int64_t global_range_;
   int local_range_;
   PackedTensorAccessor64<const scalar_t, 4> gyacc_;
   PackedTensorAccessor64<scalar_t, 4> gxacc_;
@@ -223,15 +226,18 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   }
 
  private:
-  int ib_;
-  int ic_;
-  int ih_;
-  int iw_;
-  int oh_;
-  int ow_;
+  // 64-bit dims so `numel_ = ib_ * ic_ * ih_ * iw_` is computed in 64-bit; for
+  // large tensors the int32 product overflowed, truncating numel_ and leaving
+  // the tail of grad_input unwritten.
+  int64_t ib_;
+  int64_t ic_;
+  int64_t ih_;
+  int64_t iw_;
+  int64_t oh_;
+  int64_t ow_;
   int64_t numel_;
   int local_range_;
-  int global_range_;
+  int64_t global_range_;
   PackedTensorAccessor64<const scalar_t, 4> gyacc_;
   PackedTensorAccessor64<scalar_t, 4> gxacc_;
   sycl_local_acc_t<int> _oh0_cached_;
