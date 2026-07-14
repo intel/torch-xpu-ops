@@ -3948,7 +3948,7 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
         if (
             backend == SDPBackend.CUDNN_ATTENTION
             and randomness == "different"
-            and device == GPU_TYPE
+            and device == "cuda"
         ):
             if 91100 <= TEST_CUDNN_VERSION <= 91300:
                 raise unittest.SkipTest(
@@ -4839,7 +4839,7 @@ class TestVmapOperatorsOpInfo(TestCase):
         op = torch.ops.aten._convolution_double_backward
 
         generator = get_fallback_and_vmap_exhaustive(op, args, {})
-        is_cuda_sm86 = device.startswith(GPU_TYPE) and torch.get_device_module(
+        is_cuda_sm86 = device.startswith("cuda") and torch.get_device_module(
             GPU_TYPE
         ).get_device_capability(0) == (8, 6)
         atol, rtol = (1e-3, 1e-3) if is_cuda_sm86 or TEST_XPU else (1e-4, 1e-4)
