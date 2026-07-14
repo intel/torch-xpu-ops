@@ -13,126 +13,122 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/Exception.h>
 #include <sycl/sycl.hpp>
-
-#define __MATH_FUNCTIONS_DECL__ static inline
+#include <numbers>
 
 namespace c10::xpu::compat {
 
-__MATH_FUNCTIONS_DECL__ float abs(float x) {
+static inline float abs(float x) {
   return sycl::fabs(x);
 }
-__MATH_FUNCTIONS_DECL__ double abs(double x) {
+static inline double abs(double x) {
   return sycl::fabs(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float exp(float x) {
+static inline float exp(float x) {
   return sycl::exp(x);
 }
-__MATH_FUNCTIONS_DECL__ double exp(double x) {
+static inline double exp(double x) {
   return sycl::exp(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float ceil(float x) {
+static inline float ceil(float x) {
   return sycl::ceil(x);
 }
-__MATH_FUNCTIONS_DECL__ double ceil(double x) {
+static inline double ceil(double x) {
   return sycl::ceil(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float copysign(float x, float y) {
+static inline float copysign(float x, float y) {
   return sycl::copysign(x, y);
 }
-__MATH_FUNCTIONS_DECL__ double copysign(double x, double y) {
+static inline double copysign(double x, double y) {
   return sycl::copysign(x, y);
 }
 
-__MATH_FUNCTIONS_DECL__ float floor(float x) {
+static inline float floor(float x) {
   return sycl::floor(x);
 }
-__MATH_FUNCTIONS_DECL__ double floor(double x) {
+static inline double floor(double x) {
   return sycl::floor(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float log(float x) {
+static inline float log(float x) {
   return sycl::log(x);
 }
-__MATH_FUNCTIONS_DECL__ double log(double x) {
+static inline double log(double x) {
   return sycl::log(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float log1p(float x) {
+static inline float log1p(float x) {
   return sycl::log1p(x);
 }
-__MATH_FUNCTIONS_DECL__ double log1p(double x) {
+static inline double log1p(double x) {
   return sycl::log1p(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float max(float x, float y) {
+static inline float max(float x, float y) {
   return sycl::fmax(x, y);
 }
-__MATH_FUNCTIONS_DECL__ double max(double x, double y) {
+static inline double max(double x, double y) {
   return sycl::fmax(x, y);
 }
 
-__MATH_FUNCTIONS_DECL__ float min(float x, float y) {
+static inline float min(float x, float y) {
   return sycl::fmin(x, y);
 }
-__MATH_FUNCTIONS_DECL__ double min(double x, double y) {
+static inline double min(double x, double y) {
   return sycl::fmin(x, y);
 }
 
-__MATH_FUNCTIONS_DECL__ float pow(float x, float y) {
+static inline float pow(float x, float y) {
   return sycl::pow(x, y);
 }
-__MATH_FUNCTIONS_DECL__ double pow(double x, double y) {
+static inline double pow(double x, double y) {
   return sycl::pow(x, y);
 }
 
-__MATH_FUNCTIONS_DECL__ void sincos(float x, float* sptr, float* cptr) {
+static inline void sincos(float x, float* sptr, float* cptr) {
   *sptr = sycl::sin(x);
   *cptr = sycl::cos(x);
 }
-__MATH_FUNCTIONS_DECL__ void sincos(double x, double* sptr, double* cptr) {
+static inline void sincos(double x, double* sptr, double* cptr) {
   *sptr = sycl::sin(x);
   *cptr = sycl::cos(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float sqrt(float x) {
+static inline float sqrt(float x) {
   return sycl::sqrt(x);
 }
-__MATH_FUNCTIONS_DECL__ double sqrt(double x) {
+static inline double sqrt(double x) {
   return sycl::sqrt(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float rsqrt(float x) {
+static inline float rsqrt(float x) {
   return sycl::rsqrt(x);
 }
-__MATH_FUNCTIONS_DECL__ double rsqrt(double x) {
+static inline double rsqrt(double x) {
   return sycl::rsqrt(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float tan(float x) {
+static inline float tan(float x) {
   return sycl::tan(x);
 }
-__MATH_FUNCTIONS_DECL__ double tan(double x) {
+static inline double tan(double x) {
   return sycl::tan(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float tanh(float x) {
+static inline float tanh(float x) {
   return sycl::tanh(x);
 }
-__MATH_FUNCTIONS_DECL__ double tanh(double x) {
+static inline double tanh(double x) {
   return sycl::tanh(x);
 }
 
-// https://github.com/intel/llvm/blob/HEAD/libc/include/llvm-libc-macros/math-macros.h
-constexpr double kSqrt1_2 = 0x1.6a09e667f3bcdp-1; // 1/sqrt(2) M_SQRT1_2
-
-__MATH_FUNCTIONS_DECL__ float normcdf(float x) {
-  return 0.5f * sycl::erfc(-x * static_cast<float>(kSqrt1_2));
+static inline float normcdf(float x) {
+  return 0.5f * sycl::erfc(-x * static_cast<float>(std::numbers::inv_sqrt2));
 }
-__MATH_FUNCTIONS_DECL__ double normcdf(double x) {
-  return 0.5 * sycl::erfc(-x * kSqrt1_2);
+static inline double normcdf(double x) {
+  return 0.5 * sycl::erfc(-x * std::numbers::inv_sqrt2);
 }
 
 // To walk around SYCL compiler optimization on data type promotion.

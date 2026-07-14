@@ -22,6 +22,7 @@
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
 #include <comm/xpu_aten.h>
+#include <numbers>
 
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
 
@@ -128,8 +129,7 @@ struct Exp2Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
     // There is no std::exp2 overload for complex, so instead
     // use the identity 2^x = e^(ln(2) * x)
-    const auto ln_2 = static_cast<T>(0.693147180559945309417232121458176);
-    return std::exp(ln_2 * x);
+    return std::exp(static_cast<T>(std::numbers::ln2) * x);
   }
 };
 
