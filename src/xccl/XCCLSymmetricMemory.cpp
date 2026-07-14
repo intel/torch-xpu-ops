@@ -18,10 +18,10 @@
 namespace c10d {
 namespace symmetric_memory {
 
-static StoreExchange storeExchange = StoreExchange("ONECCLSymmetricMemory");
+static StoreExchange storeExchange = StoreExchange("XCCLSymmetricMemory");
 
 // Resolve the ccl::communicator that the XCCL ProcessGroup has created for
-// `device_idx` within `group_name`. The ONECCL symmetric-memory backend reuses
+// `device_idx` within `group_name`. The XCCL symmetric-memory backend reuses
 // the XCCL backend's communicator rather than bootstrapping its own, so the
 // XCCL comm must already exist (i.e. a collective has run on the group, or the
 // backend was eagerly initialized via `device_id` in `init_process_group`).
@@ -33,14 +33,14 @@ static ccl::communicator& getCclComm(
   auto* pg = dynamic_cast<ProcessGroupXCCL*>(backend.get());
   TORCH_CHECK(
       pg != nullptr,
-      "ONECCL symmetric memory requires the XCCL backend, but the process "
+      "XCCL symmetric memory requires the XCCL backend, but the process "
       "group '",
       group_name,
       "' does not use it.");
   auto comm = pg->getXCCLComm(std::to_string(device_idx));
   TORCH_CHECK(
       comm != nullptr && comm->cclComm.has_value(),
-      "ONECCL symmetric memory: the XCCL communicator for device ",
+      "XCCL symmetric memory: the XCCL communicator for device ",
       device_idx,
       " is not initialized yet. Run a collective on group '",
       group_name,
@@ -54,13 +54,13 @@ static ccl::communicator& getCclComm(
 //   [round_up(buffer_size, 16), total_size)        - signal pad
 // A single ccl::mem_alloc region backs both, so a single window registration
 // (done lazily at rendezvous) covers the whole thing.
-struct ONECCLAllocation {
+struct XCCLAllocation {
   void* ptr;
   size_t buffer_size; // user-requested buffer size in bytes
   size_t signal_pad_size;
   int device_idx;
 
-  ONECCLAllocation(
+  XCCLAllocation(
       void* ptr,
       size_t buffer_size,
       size_t signal_pad_size,
@@ -71,12 +71,12 @@ struct ONECCLAllocation {
         device_idx(device_idx) {}
 
   // Non-copyable / non-movable to avoid a double free of `ptr`.
-  ONECCLAllocation(const ONECCLAllocation&) = delete;
-  ONECCLAllocation& operator=(const ONECCLAllocation&) = delete;
-  ONECCLAllocation(ONECCLAllocation&&) = delete;
-  ONECCLAllocation& operator=(ONECCLAllocation&&) = delete;
+  XCCLAllocation(const XCCLAllocation&) = delete;
+  XCCLAllocation& operator=(const XCCLAllocation&) = delete;
+  XCCLAllocation(XCCLAllocation&&) = delete;
+  XCCLAllocation& operator=(XCCLAllocation&&) = delete;
 
-  ~ONECCLAllocation() {
+  ~XCCLAllocation() {
     if (is_finalizing()) {
       return;
     }
@@ -89,12 +89,12 @@ struct ONECCLAllocation {
 };
 
 // Holds the per-group window registration and the resolved peer buffer / signal
-// pad pointers for one allocation. Shared by all `ONECCLSymmetricMemory` handles
+// pad pointers for one allocation. Shared by all `XCCLSymmetricMemory` handles
 // that view the same allocation under the same group (they differ only in
 // offset).
-class ONECCLPeerAllocInfo : public c10::intrusive_ptr_target {
+class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
  public:
-  ONECCLPeerAllocInfo(ONECCLAllocation* allocation, std::string group_name)
+  XCCLPeerAllocInfo(XCCLAllocation* allocation, std::string group_name)
       : buffer_size_(allocation->buffer_size),
         device_idx_(allocation->device_idx),
         group_name_(std::move(group_name)) {
@@ -144,12 +144,12 @@ class ONECCLPeerAllocInfo : public c10::intrusive_ptr_target {
     queue.memcpy(signal_pads_dev_, signal_pads_.data(), arr_size).wait();
   }
 
-  ONECCLPeerAllocInfo(const ONECCLPeerAllocInfo&) = delete;
-  ONECCLPeerAllocInfo& operator=(const ONECCLPeerAllocInfo&) = delete;
-  ONECCLPeerAllocInfo(ONECCLPeerAllocInfo&&) = delete;
-  ONECCLPeerAllocInfo& operator=(ONECCLPeerAllocInfo&&) = delete;
+  XCCLPeerAllocInfo(const XCCLPeerAllocInfo&) = delete;
+  XCCLPeerAllocInfo& operator=(const XCCLPeerAllocInfo&) = delete;
+  XCCLPeerAllocInfo(XCCLPeerAllocInfo&&) = delete;
+  XCCLPeerAllocInfo& operator=(XCCLPeerAllocInfo&&) = delete;
 
-  ~ONECCLPeerAllocInfo() override {
+  ~XCCLPeerAllocInfo() override {
     if (is_finalizing()) {
       return;
     }
@@ -191,17 +191,17 @@ class ONECCLPeerAllocInfo : public c10::intrusive_ptr_target {
   ccl::window_t win_ = nullptr;
   bool world_within_xpu_p2p_ = false;
 
-  friend class ONECCLSymmetricMemory;
+  friend class XCCLSymmetricMemory;
 };
 
-class ONECCLSymmetricMemory : public SymmetricMemory {
+class XCCLSymmetricMemory : public SymmetricMemory {
  public:
-  ONECCLSymmetricMemory(
-      c10::intrusive_ptr<ONECCLPeerAllocInfo> pai,
+  XCCLSymmetricMemory(
+      c10::intrusive_ptr<XCCLPeerAllocInfo> pai,
       size_t offset)
       : pai_(std::move(pai)), offset_(offset) {}
 
-  ~ONECCLSymmetricMemory() override = default;
+  ~XCCLSymmetricMemory() override = default;
 
   std::vector<void*> get_buffer_ptrs() override {
     return pai_->buffers_;
@@ -264,20 +264,20 @@ class ONECCLSymmetricMemory : public SymmetricMemory {
     return pai_->world_within_xpu_p2p_;
   }
 
-  // ONECCL-specific accessor: the registered oneCCL window backing this
+  // XCCL-specific accessor: the registered oneCCL window backing this
   // allocation. Exposed for symmetric-memory ops that call the device API.
   ccl::window_t get_window() {
     return pai_->win_;
   }
 
  private:
-  c10::intrusive_ptr<ONECCLPeerAllocInfo> pai_;
+  c10::intrusive_ptr<XCCLPeerAllocInfo> pai_;
   size_t offset_{0}; // in bytes
 
-  friend class ONECCLSymmetricMemoryAllocator;
+  friend class XCCLSymmetricMemoryAllocator;
 };
 
-class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
+class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
  public:
   void* alloc(
       size_t size,
@@ -285,7 +285,7 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       const std::optional<std::string>& group_name) override {
     TORCH_CHECK(
         !group_name.has_value(),
-        "ONECCLSymmetricMemoryAllocator::alloc must not be called with a "
+        "XCCLSymmetricMemoryAllocator::alloc must not be called with a "
         "group_name");
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
@@ -310,7 +310,7 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     std::lock_guard<std::mutex> lock(mutex_);
     allocations_.try_emplace(
         ptr,
-        std::make_unique<ONECCLAllocation>(
+        std::make_unique<XCCLAllocation>(
             ptr, size, signal_pad_size, device_idx));
     return ptr;
   }
@@ -333,7 +333,7 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     TORCH_CHECK(
         it != allocations_.end(),
         ptr,
-        " is not allocated with ONECCLSymmetricMemoryAllocator");
+        " is not allocated with XCCLSymmetricMemoryAllocator");
     return it->second->buffer_size;
   }
 
@@ -342,7 +342,7 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       const std::optional<std::string>& group_name) override {
     TORCH_CHECK(
         group_name.has_value(),
-        "ONECCLSymmetricMemoryAllocator::rendezvous requires a group_name");
+        "XCCLSymmetricMemoryAllocator::rendezvous requires a group_name");
     std::lock_guard<std::mutex> lock(mutex_);
 
     {
@@ -368,18 +368,18 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
 
     auto& allocation = alloc_it->second;
 
-    // One `ONECCLPeerAllocInfo` (and its window registration) per
+    // One `XCCLPeerAllocInfo` (and its window registration) per
     // (allocation base, group). Handles at different offsets share it.
     auto base_key = std::make_tuple(allocation->ptr, *group_name);
-    c10::intrusive_ptr<ONECCLPeerAllocInfo> pai;
+    c10::intrusive_ptr<XCCLPeerAllocInfo> pai;
     auto base_it = symm_mems_.find(base_key);
     if (base_it != symm_mems_.end()) {
       pai = base_it->second->pai_;
     } else {
-      pai = c10::make_intrusive<ONECCLPeerAllocInfo>(
+      pai = c10::make_intrusive<XCCLPeerAllocInfo>(
           allocation.get(), *group_name);
       auto base_symm_mem =
-          c10::make_intrusive<ONECCLSymmetricMemory>(pai, /*offset=*/0);
+          c10::make_intrusive<XCCLSymmetricMemory>(pai, /*offset=*/0);
       symm_mems_[base_key] = base_symm_mem;
       if (ptr == allocation->ptr) {
         return base_symm_mem;
@@ -388,7 +388,7 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
 
     const size_t offset = reinterpret_cast<uintptr_t>(ptr) -
         reinterpret_cast<uintptr_t>(allocation->ptr);
-    auto symm_mem = c10::make_intrusive<ONECCLSymmetricMemory>(pai, offset);
+    auto symm_mem = c10::make_intrusive<XCCLSymmetricMemory>(pai, offset);
     symm_mems_[std::make_tuple(ptr, *group_name)] = symm_mem;
     return symm_mem;
   }
@@ -402,31 +402,31 @@ class ONECCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
   }
 
   std::string name() override {
-    return "ONECCL";
+    return "XCCL";
   }
 
  private:
   std::mutex mutex_;
-  std::unordered_map<void*, std::unique_ptr<ONECCLAllocation>> allocations_;
+  std::unordered_map<void*, std::unique_ptr<XCCLAllocation>> allocations_;
   std::map<
       std::tuple<void*, std::string>,
-      c10::intrusive_ptr<ONECCLSymmetricMemory>>
+      c10::intrusive_ptr<XCCLSymmetricMemory>>
       symm_mems_;
 };
 
-struct RegisterONECCLSymmetricMemoryAllocator {
-  RegisterONECCLSymmetricMemoryAllocator() {
-    auto allocator = c10::make_intrusive<ONECCLSymmetricMemoryAllocator>();
-    // Always advertise availability so `set_backend("ONECCL")` can find it.
-    register_availability("ONECCL", allocator);
+struct RegisterXCCLSymmetricMemoryAllocator {
+  RegisterXCCLSymmetricMemoryAllocator() {
+    auto allocator = c10::make_intrusive<XCCLSymmetricMemoryAllocator>();
+    // Always advertise availability so `set_backend("XCCL")` can find it.
+    register_availability("XCCL", allocator);
     // Become the active XPU allocator when explicitly selected.
-    if (getSymmMemBackendXPU() == "ONECCL") {
+    if (getSymmMemBackendXPU() == "XCCL") {
       register_allocator(c10::DeviceType::XPU, allocator);
     }
   }
 };
 
-static RegisterONECCLSymmetricMemoryAllocator register_allocator_;
+static RegisterXCCLSymmetricMemoryAllocator register_allocator_;
 
 } // namespace symmetric_memory
 } // namespace c10d
