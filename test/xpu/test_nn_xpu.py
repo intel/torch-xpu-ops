@@ -62,6 +62,7 @@ from torch.testing._internal.common_device_type import (
     onlyNativeDeviceTypes,
     onlyOn,
     precisionOverride,
+    skipCPUIf,
     skipCUDAIf,
     skipCUDAIfNotRocm,
     skipCUDAIfRocm,
@@ -122,6 +123,15 @@ from torch.testing._internal.common_utils import (
 from torch.types import _TensorOrTensors
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
+
+# Based on third_party/ideep/mkl-dnn/src/cpu/x64/cpu_isa_traits.hpp
+IS_AVX2_VNNI_2 = (
+    torch.cpu.get_capabilities().get("avx2", False)
+    and torch.cpu.get_capabilities().get("avx_vnni", False)
+    and torch.cpu.get_capabilities().get("avx_vnni_int8", False)
+    and torch.cpu.get_capabilities().get("avx_ne_convert", False)
+    and not torch.cpu.get_capabilities().get("avx512_f", False)
+)
 
 if TEST_WITH_ROCM:
     os.environ["PYTORCH_MIOPEN_SUGGEST_NHWC"] = "1"
@@ -348,6 +358,9 @@ class TestNN(NNTestCase):
 
     def test_no_grad(self):
         for dtype in [torch.bfloat16, torch.float, torch.double]:
+            if dtype == torch.bfloat16 and IS_AVX2_VNNI_2:
+                # oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA
+                continue
             module = nn.Conv2d(2, 5, kernel_size=3, padding=1).to(dtype)
             input = torch.randn(1, 2, 10, 10).to(dtype)
             x = input
@@ -15743,6 +15756,10 @@ class TestNNDeviceType(NNTestCase):
 
     @onlyCPU
     @dtypes(torch.bfloat16, torch.float16)
+    @skipCPUIf(
+        IS_AVX2_VNNI_2,
+        "oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA",
+    )
     def test_activations_bfloat16_half_cpu(self, device, dtype):
         def test_helper(fn, device, inp_dims, prec=None):
             torch.manual_seed(37)
