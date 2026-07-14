@@ -2144,7 +2144,9 @@ class TestSparse(TestSparseBase):
             if dj * dk == 0:
                 mat2 = torch.empty((dj, dk), dtype=dtype, device=device)
             else:
-                mat2 = torch.arange(1, dj * dk + 1, dtype=dtype, device=device).reshape(dj, dk)
+                mat2 = torch.arange(1, dj * dk + 1, dtype=dtype, device=device).reshape(
+                    dj, dk
+                )
 
             self_input = make_sparse(case["self_size"], case["self_entries"])
             mat1 = make_sparse(case["mat1_size"], case["mat1_entries"])
@@ -2210,7 +2212,11 @@ class TestSparse(TestSparseBase):
             device=device,
         )
         mat2 = torch.tensor(
-            [[1.0, 0.0, 2.0, -1.0, 0.5], [0.0, 1.0, -1.0, 0.0, 3.0], [2.0, -1.0, 0.0, 1.0, -2.0]],
+            [
+                [1.0, 0.0, 2.0, -1.0, 0.5],
+                [0.0, 1.0, -1.0, 0.0, 3.0],
+                [2.0, -1.0, 0.0, 1.0, -2.0],
+            ],
             dtype=dtype,
             device=device,
         )
@@ -2226,7 +2232,7 @@ class TestSparse(TestSparseBase):
                 mat2[:2],
                 out=out,
             )
-        
+
         with self.assertRaisesRegex(
             RuntimeError,
             r"(mat1.*sparse|sparse.*mat1)",

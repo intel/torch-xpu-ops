@@ -30,9 +30,9 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/ops/bmm.h>
 #include <ATen/ops/hspmm_native.h>
 #include <ATen/ops/matmul.h>
-#include <ATen/ops/zeros.h>
-#include <ATen/ops/sspaddmm_native.h>
 #include <ATen/ops/mm.h>
+#include <ATen/ops/sspaddmm_native.h>
+#include <ATen/ops/zeros.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
@@ -337,7 +337,8 @@ Tensor& _sspaddmm_out_only_sparse_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& result) {
-  TORCH_CHECK(false, "tensor.sspaddmm(...) can only be called on sparse tensors");
+  TORCH_CHECK(
+      false, "tensor.sspaddmm(...) can only be called on sparse tensors");
 }
 
 Tensor& _sspaddmm_out_xpu(
@@ -349,19 +350,17 @@ Tensor& _sspaddmm_out_xpu(
     Tensor& result) {
   // Validate all inputs are on XPU
   TORCH_CHECK(
-      self.is_xpu(),
-      "sspaddmm: expected 'self' to be XPU tensor, but got CPU");
+      self.is_xpu(), "sspaddmm: expected 'self' to be XPU tensor, but got CPU");
   TORCH_CHECK(
-      mat1.is_xpu(),
-      "sspaddmm: expected 'mat1' to be XPU tensor, but got CPU");
+      mat1.is_xpu(), "sspaddmm: expected 'mat1' to be XPU tensor, but got CPU");
   TORCH_CHECK(
-      mat2.is_xpu(),
-      "sspaddmm: expected 'mat2' to be XPU tensor, but got CPU");
+      mat2.is_xpu(), "sspaddmm: expected 'mat2' to be XPU tensor, but got CPU");
   TORCH_CHECK(
       result.is_xpu(),
       "sspaddmm: expected 'result' to be XPU tensor, but got CPU");
 
-  TORCH_CHECK(at::xpu::check_device({self, mat1, mat2, result}), 
+  TORCH_CHECK(
+      at::xpu::check_device({self, mat1, mat2, result}),
       "sspaddmm: all tensors must be on the same XPU device");
 
   // Validate input types and dimensions
