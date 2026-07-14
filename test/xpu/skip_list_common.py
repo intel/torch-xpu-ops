@@ -359,7 +359,6 @@ skip_dict = {
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
     "test_fx_experimental_xpu.py": None,
-    
     "cpp_extensions/test_libtorch_agnostic_xpu.py": None,
     "distributed/_composable/test_replicate_xpu.py": None,
     "distributed/_shard/sharded_tensor/test_sharded_tensor_xpu.py": None,
