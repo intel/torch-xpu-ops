@@ -115,6 +115,18 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Source oneAPI env
+        shell: bash -xe {0}
+        run: |
+          set +u
+          source /home/jenkins/intel/oneapi/setvars.sh
+          set -u
+          for v in PATH LD_LIBRARY_PATH LIBRARY_PATH CPATH PKG_CONFIG_PATH CMAKE_PREFIX_PATH CMPLR_ROOT ONEAPI_ROOT; do
+            eval "value=\${$v:-}"
+            if [ -n "${value}" ]; then
+              echo "${v}=${value}" >> ${GITHUB_ENV}
+            fi
+          done
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:

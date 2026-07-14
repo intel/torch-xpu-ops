@@ -142,6 +142,9 @@ runs:
       shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
+        set +u
+        source /home/jenkins/intel/oneapi/setvars.sh
+        set -u
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu
