@@ -14,6 +14,7 @@ Env:
 """
 import os
 import sys
+from contextlib import nullcontext
 
 os.environ.setdefault("ISHMEM_IB_ENABLE_IBGDA", "1")
 os.environ.setdefault("ISHMEM_IBGDA_DIRECT_DOORBELL", "1")
@@ -25,10 +26,18 @@ import torch
 import torch.distributed as dist
 
 TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 4096))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 5120))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 4096))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 COMPARE_PUSH = os.environ.get("COMPARE_PUSH", "0") != "0"
+# Enable the PTI-based torch.profiler to capture a chrome trace of the timed
+# loops. Set ENABLE_PROFILE=1 to turn on; a per-rank trace is exported.
+ENABLE_PROFILE = 1 #os.environ.get("ENABLE_PROFILE", "0") != "0"
+# Print a progress line every PROGRESS_EVERY iterations of the timed loop so a
+# slow run (each ring op can take ~1.8s) does not look like a hang. Set to 0 to
+# disable. A progress print forces an xpu.synchronize(), so it also gives a
+# rough running latency estimate.
+PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 5))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CSRC = os.path.join(_HERE, "..", "csrc")
@@ -64,15 +73,33 @@ def init_distributed():
     return rank, world_size, dev
 
 
-def timed_loop(fn, loop, warmup):
+def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
     begin = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     end = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
+    import time as _time
+
+    wall0 = _time.time()
     for i in range(loop):
         if i >= warmup:
             begin[i].record()
         fn()
         if i >= warmup:
             end[i].record()
+        # Periodic progress so a slow run does not look frozen. Forces a
+        # synchronize so the printed count reflects real device progress.
+        if (
+            PROGRESS_EVERY
+            and progress_rank is not None
+            and (i + 1) % PROGRESS_EVERY == 0
+        ):
+            torch.xpu.synchronize()
+            elapsed = _time.time() - wall0
+            print(
+                f"[progress rank {progress_rank}] {label} "
+                f"{i + 1}/{loop} iters done ({elapsed:.1f}s, "
+                f"{elapsed / (i + 1) * 1000:.1f} ms/iter avg)",
+                flush=True,
+            )
     torch.xpu.synchronize()
     dist.barrier()
     return [begin[i].elapsed_time(end[i]) for i in range(warmup, loop)]
@@ -92,10 +119,11 @@ def main():
     gathered = torch.empty(
         TOKENS_PER_RANK * world_size, HIDDEN_SIZE, device=device, dtype=dtype
     )
-
+    print("start to verify correctness \n", flush=True)
     # ---- correctness vs dist.all_gather ----
     torch.ops.symm_mem.ring_allgather_ishmem(shard, gathered, rank, world_size)
     torch.xpu.synchronize()
+    print("correctness verify done \n", flush=True)
 
     ref_list = [torch.empty_like(shard) for _ in range(world_size)]
     dist.all_gather(ref_list, shard)
@@ -118,24 +146,43 @@ def main():
     torch.xpu.synchronize()
     dist.barrier()
     print("starting timed loop for ring allgather...", flush=True)
-    ring_lat = timed_loop(run_ring, LOOP, WARMUP)
+    if ENABLE_PROFILE:
+        prof = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.XPU,
+            ]
+        )
+    else:
+        prof = nullcontext()
+
+    with prof:
+        ring_lat = timed_loop(run_ring, LOOP, WARMUP, progress_rank=rank, label="ring")
+
+        push_avg = None
+        if COMPARE_PUSH:
+            print("starting timed loop for push allgather...", flush=True)
+            gathered2 = torch.empty_like(gathered)
+
+            def run_push():
+                torch.ops.symm_mem.allgather_ishmem(shard, gathered2, rank, world_size)
+
+            run_push()
+            run_push()
+            torch.xpu.synchronize()
+            dist.barrier()
+            push_lat = timed_loop(
+                run_push, LOOP, WARMUP, progress_rank=rank, label="push"
+            )
+            push_avg = sum(push_lat) / len(push_lat)
+
+    if ENABLE_PROFILE:
+        trace_path = f"./profile_ring_allgather_ishmem_rank{rank}.json"
+        prof.export_chrome_trace(trace_path)
+        print(f"[ring rank {rank}] profiler trace written to {trace_path}", flush=True)
+
     ring_avg = sum(ring_lat) / len(ring_lat)
     print(f"ring allgather average latency: {ring_avg:.3f} ms", flush=True)
-
-    push_avg = None
-    if COMPARE_PUSH:
-        print("starting timed loop for push allgather...", flush=True)
-        gathered2 = torch.empty_like(gathered)
-
-        def run_push():
-            torch.ops.symm_mem.allgather_ishmem(shard, gathered2, rank, world_size)
-
-        run_push()
-        run_push()
-        torch.xpu.synchronize()
-        dist.barrier()
-        push_lat = timed_loop(run_push, LOOP, WARMUP)
-        push_avg = sum(push_lat) / len(push_lat)
 
     if rank == 0:
         elem = shard.element_size()
