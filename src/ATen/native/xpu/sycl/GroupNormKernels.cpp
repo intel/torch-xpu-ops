@@ -390,9 +390,10 @@ inline WelfordState<T_ACC> welford_combine_symmetric(
     WelfordState<T_ACC> a,
     WelfordState<T_ACC> b) {
   T_ACC delta = b.mean - a.mean;
-  return {a.mean + delta * T_ACC(0.5),
-          a.m2 + b.m2 + delta * delta * a.nf * T_ACC(0.5),
-          a.nf + b.nf};
+  return {
+      a.mean + delta * T_ACC(0.5),
+      a.m2 + b.m2 + delta * delta * a.nf * T_ACC(0.5),
+      a.nf + b.nf};
 }
 
 template <typename T_ACC>
@@ -446,7 +447,8 @@ struct GNFusedForwardSmallFunctor {
     // into one SG when G < GROUPS_PER_SG.
     const index_t flat_base =
         static_cast<index_t>(wg_id) * GROUPS_PER_SG + group_in_sg;
-    // g = flat_base % G_. Since G_ = 2^k, this is equivalent to flat_base & (G_ - 1).
+    // g = flat_base % G_. Since G_ = 2^k, this is equivalent to flat_base & (G_
+    // - 1).
     const index_t g = flat_base & (G_ - 1);
     const index_t total_groups = N_ * G_;
     const index_t stride =
@@ -460,20 +462,16 @@ struct GNFusedForwardSmallFunctor {
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; v++) {
       const index_t cv = (local_lid * VEC_SIZE + v) >> log2_S_;
-      my_gamma[v] = gamma_
-          ? static_cast<T_ACC>(gamma_[g_offset + cv])
-          : T_ACC(1);
-      my_beta[v] = beta_
-          ? static_cast<T_ACC>(beta_[g_offset + cv])
-          : T_ACC(0);
+      my_gamma[v] =
+          gamma_ ? static_cast<T_ACC>(gamma_[g_offset + cv]) : T_ACC(1);
+      my_beta[v] = beta_ ? static_cast<T_ACC>(beta_[g_offset + cv]) : T_ACC(0);
     }
 
     for (index_t ng = flat_base; ng < total_groups; ng += stride) {
       const T* x_base = X_ + ng * DS;
       T* y_base = Y_ + ng * DS;
 
-      vec_t xv = *reinterpret_cast<const vec_t*>(
-          x_base + local_lid * VEC_SIZE);
+      vec_t xv = *reinterpret_cast<const vec_t*>(x_base + local_lid * VEC_SIZE);
 
       T_ACC x0 = static_cast<T_ACC>(xv[0]);
       T_ACC x1 = static_cast<T_ACC>(xv[1]);
@@ -482,8 +480,7 @@ struct GNFusedForwardSmallFunctor {
       constexpr T_ACC inv_vec =
           static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
       T_ACC batch_sum = (x0 + x1) + (x2 + x3);
-      T_ACC batch_sum_sq =
-          (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
+      T_ACC batch_sum_sq = (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
       T_ACC batch_mean = batch_sum * inv_vec;
       WelfordState<T_ACC> st = {
           batch_mean,
@@ -495,8 +492,7 @@ struct GNFusedForwardSmallFunctor {
         st = welford_combine_symmetric(st, welford_shfl_xor(sg, st, off));
 
       // XOR all-reduce: all lanes have the final result, no broadcast needed.
-      constexpr T_ACC inv_DS =
-          static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS);
+      constexpr T_ACC inv_DS = static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS);
       const T_ACC mean_val = st.mean;
       const T_ACC rstd_val =
           sycl::rsqrt(st.m2 * inv_DS + static_cast<T_ACC>(eps_));
@@ -514,12 +510,10 @@ struct GNFusedForwardSmallFunctor {
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; v++) {
         yv[v] = static_cast<T>(
-            rstd_val * my_gamma[v] *
-                (static_cast<T_ACC>(xv[v]) - mean_val) +
+            rstd_val * my_gamma[v] * (static_cast<T_ACC>(xv[v]) - mean_val) +
             my_beta[v]);
       }
-      *reinterpret_cast<vec_t*>(
-          y_base + local_lid * VEC_SIZE) = yv;
+      *reinterpret_cast<vec_t*>(y_base + local_lid * VEC_SIZE) = yv;
     }
   }
 
@@ -609,8 +603,7 @@ struct GNFusedForwardMediumFunctor {
         T_ACC x2 = static_cast<T_ACC>(xv_cache[li][2]);
         T_ACC x3 = static_cast<T_ACC>(xv_cache[li][3]);
         T_ACC batch_sum = (x0 + x1) + (x2 + x3);
-        T_ACC batch_sum_sq =
-            (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
+        T_ACC batch_sum_sq = (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
         T_ACC batch_mean = batch_sum * inv_vec;
         WelfordState<T_ACC> batch = {
             batch_mean,
@@ -624,8 +617,8 @@ struct GNFusedForwardMediumFunctor {
 
       // XOR all-reduce: all lanes have the final result.
       const T_ACC mean_val = st.mean;
-      const T_ACC rstd_val = sycl::rsqrt(
-          st.m2 * inv_DS + static_cast<T_ACC>(eps_));
+      const T_ACC rstd_val =
+          sycl::rsqrt(st.m2 * inv_DS + static_cast<T_ACC>(eps_));
 
       if (sg_lid == 0) {
         mean_[ng] = static_cast<T>(mean_val);
@@ -643,19 +636,15 @@ struct GNFusedForwardMediumFunctor {
           const int pos = (sg_lid + li * SIMD) * VEC_SIZE + v;
           const index_t c = static_cast<index_t>(
               s_divider_.div(static_cast<unsigned_index_t>(pos)));
-          T_ACC gv = gamma_
-              ? static_cast<T_ACC>(gamma_[g_offset + c])
-              : T_ACC(1);
-          T_ACC bv = beta_
-              ? static_cast<T_ACC>(beta_[g_offset + c])
-              : T_ACC(0);
+          T_ACC gv =
+              gamma_ ? static_cast<T_ACC>(gamma_[g_offset + c]) : T_ACC(1);
+          T_ACC bv = beta_ ? static_cast<T_ACC>(beta_[g_offset + c]) : T_ACC(0);
           yv[v] = static_cast<T>(
-              rstd_val * gv *
-                  (static_cast<T_ACC>(xv_cache[li][v]) - mean_val) +
+              rstd_val * gv * (static_cast<T_ACC>(xv_cache[li][v]) - mean_val) +
               bv);
         }
-        *reinterpret_cast<vec_t*>(
-            y_base + (sg_lid + li * SIMD) * VEC_SIZE) = yv;
+        *reinterpret_cast<vec_t*>(y_base + (sg_lid + li * SIMD) * VEC_SIZE) =
+            yv;
       }
     }
   }
@@ -734,8 +723,7 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Compute aligned region for vectorized access
     const int ptr_elem =
         static_cast<int>(reinterpret_cast<uintptr_t>(x_base) / sizeof(T));
-    const index_t head =
-        ((VEC_SIZE - ptr_elem % VEC_SIZE) % VEC_SIZE);
+    const index_t head = ((VEC_SIZE - ptr_elem % VEC_SIZE) % VEC_SIZE);
     const index_t n_vecs = (DS_ - head) / VEC_SIZE;
     const index_t tail_start = head + n_vecs * VEC_SIZE;
 
@@ -763,8 +751,7 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     constexpr T_ACC inv_vec =
         static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
     for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
-      vec_t xv = *reinterpret_cast<const vec_t*>(
-          x_base + head + vi * VEC_SIZE);
+      vec_t xv = *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
       T_ACC x0 = static_cast<T_ACC>(xv[0]);
       T_ACC x1 = static_cast<T_ACC>(xv[1]);
       T_ACC x2 = static_cast<T_ACC>(xv[2]);
@@ -784,8 +771,7 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       T_ACC ht_nf = static_cast<T_ACC>(ht_count);
       T_ACC ht_mean = ht_sum / ht_nf;
       T_ACC ht_M2 = ht_sum_sq - ht_sum * ht_mean;
-      st = welford_combine(
-          st, WelfordState<T_ACC>{ht_mean, ht_M2, ht_nf});
+      st = welford_combine(st, WelfordState<T_ACC>{ht_mean, ht_M2, ht_nf});
     }
 
     // Reduce across workgroup via Welford parallel merge
@@ -810,12 +796,9 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // First subgroup reduces all partial results
     if (sg_id == 0) {
-      st.mean = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3]
-                                : T_ACC(0);
-      st.m2 = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 1]
-                               : T_ACC(0);
-      st.nf = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 2]
-                               : T_ACC(0);
+      st.mean = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3] : T_ACC(0);
+      st.m2 = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 1] : T_ACC(0);
+      st.nf = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 2] : T_ACC(0);
       for (int off = SIMD / 2; off > 0; off >>= 1) {
         WelfordState<T_ACC> r = welford_shfl(sg, st, off);
         st = welford_combine(st, r);
@@ -825,8 +808,7 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Work-item 0 computes final rstd and broadcasts via SLM
     if (lid == 0) {
       T_ACC var = st.m2 / st.nf;
-      T_ACC rstd_val =
-          sycl::rsqrt(var + static_cast<T_ACC>(eps_));
+      T_ACC rstd_val = sycl::rsqrt(var + static_cast<T_ACC>(eps_));
       mean_[ng] = static_cast<T>(st.mean);
       rstd_[ng] = static_cast<T>(rstd_val);
       if constexpr (!std::is_same_v<T, T_ACC>) {
@@ -893,12 +875,10 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       } else {
         for (index_t c = lid; c < D_; c += wg_size) {
           const index_t gc = g_offset + c;
-          const T_ACC gv = (gamma_ != nullptr)
-              ? static_cast<T_ACC>(gamma_[gc])
-              : T_ACC(1);
-          const T_ACC bv = (beta_ != nullptr)
-              ? static_cast<T_ACC>(beta_[gc])
-              : T_ACC(0);
+          const T_ACC gv =
+              (gamma_ != nullptr) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
+          const T_ACC bv =
+              (beta_ != nullptr) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
           const T_ACC a_c = g_rstd * gv;
           coeff_[c] = a_c;
           coeff_[D_ + c] = bv - g_mean * a_c;
@@ -920,8 +900,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
         const index_t j = head + vi * VEC_SIZE;
-        vec_t xv = *reinterpret_cast<const vec_t*>(
-            x_base + head + vi * VEC_SIZE);
+        vec_t xv =
+            *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
         vec_t yv;
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; v++) {
@@ -956,8 +936,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
         const index_t j = head + vi * VEC_SIZE;
-        vec_t xv = *reinterpret_cast<const vec_t*>(
-            x_base + head + vi * VEC_SIZE);
+        vec_t xv =
+            *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
         vec_t yv;
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; v++) {
@@ -1089,10 +1069,8 @@ void group_norm_kernel_impl(
   constexpr int64_t kElemsPerWorkItem = 16;
 
   T* Y_data = Y.mutable_data_ptr<T>();
-  const T* gamma_data =
-      gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
-  const T* beta_data =
-      beta.defined() ? beta.const_data_ptr<T>() : nullptr;
+  const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
+  const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
   const bool needMeanAcc{!std::is_same_v<T, T_ACC>};
   T_ACC* mean_acc_data = nullptr;
   T_ACC* rstd_acc_data = nullptr;
@@ -1139,35 +1117,50 @@ void group_norm_kernel_impl(
     auto launch = [&](auto lanes_tag) {
       constexpr int LANES = decltype(lanes_tag)::value;
       using K = GNFusedForwardSmallFunctor<
-          T, T_ACC, SIMD32, FUSED_VEC_SIZE, LANES, index_t>;
-      auto kfn = K(
-          static_cast<index_t>(D),
-          log2_S,
-          static_cast<index_t>(G),
-          static_cast<index_t>(N),
-          eps,
-          X_data,
-          Y_data,
-          gamma_data,
-          beta_data,
-          mean_data,
-          rstd_data,
-          mean_acc_data,
-          rstd_acc_data);
+          T,
+          T_ACC,
+          SIMD32,
+          FUSED_VEC_SIZE,
+          LANES,
+          index_t>;
+      auto kfn =
+          K(static_cast<index_t>(D),
+            log2_S,
+            static_cast<index_t>(G),
+            static_cast<index_t>(N),
+            eps,
+            X_data,
+            Y_data,
+            gamma_data,
+            beta_data,
+            mean_data,
+            rstd_data,
+            mean_acc_data,
+            rstd_acc_data);
       sycl_kernel_submit(
-          sycl::range<1>(n_wgs * wg_sz),
-          sycl::range<1>(wg_sz),
-          queue,
-          kfn);
+          sycl::range<1>(n_wgs * wg_sz), sycl::range<1>(wg_sz), queue, kfn);
     };
     switch (lanes) {
-      case 1: launch(std::integral_constant<int, 1>{}); break;
-      case 2: launch(std::integral_constant<int, 2>{}); break;
-      case 4: launch(std::integral_constant<int, 4>{}); break;
-      case 8: launch(std::integral_constant<int, 8>{}); break;
-      case 16: launch(std::integral_constant<int, 16>{}); break;
-      case 32: launch(std::integral_constant<int, 32>{}); break;
-      default: return false;
+      case 1:
+        launch(std::integral_constant<int, 1>{});
+        break;
+      case 2:
+        launch(std::integral_constant<int, 2>{});
+        break;
+      case 4:
+        launch(std::integral_constant<int, 4>{});
+        break;
+      case 8:
+        launch(std::integral_constant<int, 8>{});
+        break;
+      case 16:
+        launch(std::integral_constant<int, 16>{});
+        break;
+      case 32:
+        launch(std::integral_constant<int, 32>{});
+        break;
+      default:
+        return false;
     }
     return true;
   };
@@ -1180,31 +1173,27 @@ void group_norm_kernel_impl(
     int64_t loads = DS / elems_per_sg;
     if (loads < 1 || loads > MAX_LOADS)
       return false;
-    using K = GNFusedForwardMediumFunctor<
-        T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
-    int64_t n_wgs =
-        std::max(G, std::min(N * G, thread_slots));
+    using K =
+        GNFusedForwardMediumFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
+    int64_t n_wgs = std::max(G, std::min(N * G, thread_slots));
     constexpr int64_t wg_sz = SIMD32;
-    auto kfn = K(
-        static_cast<index_t>(D),
-        static_cast<index_t>(HxW),
-        static_cast<index_t>(DS),
-        static_cast<index_t>(G),
-        static_cast<index_t>(N),
-        eps,
-        X_data,
-        Y_data,
-        gamma_data,
-        beta_data,
-        mean_data,
-        rstd_data,
-        mean_acc_data,
-        rstd_acc_data);
+    auto kfn =
+        K(static_cast<index_t>(D),
+          static_cast<index_t>(HxW),
+          static_cast<index_t>(DS),
+          static_cast<index_t>(G),
+          static_cast<index_t>(N),
+          eps,
+          X_data,
+          Y_data,
+          gamma_data,
+          beta_data,
+          mean_data,
+          rstd_data,
+          mean_acc_data,
+          rstd_acc_data);
     sycl_kernel_submit(
-        sycl::range<1>(n_wgs * wg_sz),
-        sycl::range<1>(wg_sz),
-        queue,
-        kfn);
+        sycl::range<1>(n_wgs * wg_sz), sycl::range<1>(wg_sz), queue, kfn);
     return true;
   };
   auto dispatch_packed = [&](auto index_tag) -> bool {
@@ -1239,8 +1228,7 @@ void group_norm_kernel_impl(
       int64_t ideal = (DS + kElemsPerWorkItem - 1) / kElemsPerWorkItem;
       int64_t min_wg_for_occ =
           ((thread_slots / 2 + n_groups - 1) / n_groups) * simd;
-      int64_t max_wg_from_ds =
-          std::min(max_wg, DS / FUSED_VEC_SIZE);
+      int64_t max_wg_from_ds = std::min(max_wg, DS / FUSED_VEC_SIZE);
       int64_t target_wg = std::max(ideal, min_wg_for_occ);
       for (int64_t w : wg_choices) {
         if (w <= max_wg_from_ds) {
@@ -1256,24 +1244,23 @@ void group_norm_kernel_impl(
       int64_t sgs_per_wg = wg_size / simd;
       int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
       int64_t slm_per_wg = syclLocalMemSize() / concurrent_wgs;
-      bool use_slm_coeff =
-          (2 * D * (int64_t)sizeof(T_ACC) <= slm_per_wg);
-      auto kfn = K(
-          static_cast<index_t>(D),
-          static_cast<index_t>(HxW),
-          static_cast<index_t>(DS),
-          static_cast<index_t>(G),
-          eps,
-          X_data,
-          Y_data,
-          gamma_data,
-          beta_data,
-          mean_data,
-          rstd_data,
-          mean_acc_data,
-          rstd_acc_data,
-          (int)wg_size,
-          use_slm_coeff);
+      bool use_slm_coeff = (2 * D * (int64_t)sizeof(T_ACC) <= slm_per_wg);
+      auto kfn =
+          K(static_cast<index_t>(D),
+            static_cast<index_t>(HxW),
+            static_cast<index_t>(DS),
+            static_cast<index_t>(G),
+            eps,
+            X_data,
+            Y_data,
+            gamma_data,
+            beta_data,
+            mean_data,
+            rstd_data,
+            mean_acc_data,
+            rstd_acc_data,
+            (int)wg_size,
+            use_slm_coeff);
       sycl_kernel_submit(
           sycl::range<1>(n_groups * wg_size),
           sycl::range<1>(wg_size),
