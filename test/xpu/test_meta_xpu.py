@@ -936,7 +936,6 @@ meta_function_device_expected_failures["cuda"] = {
 }
 
 
-
 meta_function_device_skips["cpu"] = {
     # TODO: The decomps for these batch norm ops return different dtypes depending
     # on the device. We should make this work better with meta tensors.
@@ -955,31 +954,35 @@ meta_function_device_skips["cuda"] = {
     torch.svd: {f32, f64},
 }
 
-meta_function_device_expected_failures["xpu"] = {**meta_function_device_expected_failures[
-    "cuda"
-],}
-meta_function_device_skips["xpu"] = {**meta_function_device_skips["cuda"],}
+meta_function_device_expected_failures["xpu"] = {
+    **meta_function_device_expected_failures["cuda"],
+}
+meta_function_device_skips["xpu"] = {
+    **meta_function_device_skips["cuda"],
+}
 
-meta_function_device_skips["xpu"].update({
-    torch.fft.fft: {f16},
-    torch.fft.ifft: {f16},
-    torch.fft.rfft: {f16},
-    torch.fft.ihfft: {f16},
-    torch.fft.fft2: {f16},
-    torch.fft.ifft2: {f16},
-    torch.fft.rfft2: {f16},
-    torch.fft.ihfft2: {f16},
-    torch.fft.fftn: {f16},
-    torch.fft.ifftn: {f16},
-    torch.fft.rfftn: {f16},
-    torch.fft.ihfftn: {f16},
-    torch.fft.hfft: {f16},
-    torch.fft.irfft: {f16},
-    torch.fft.irfft2: {f16},
-    torch.fft.hfft2: {f16},
-    torch.fft.irfftn: {f16},
-    torch.fft.hfftn: {f16},
-})
+meta_function_device_skips["xpu"].update(
+    {
+        torch.fft.fft: {f16},
+        torch.fft.ifft: {f16},
+        torch.fft.rfft: {f16},
+        torch.fft.ihfft: {f16},
+        torch.fft.fft2: {f16},
+        torch.fft.ifft2: {f16},
+        torch.fft.rfft2: {f16},
+        torch.fft.ihfft2: {f16},
+        torch.fft.fftn: {f16},
+        torch.fft.ifftn: {f16},
+        torch.fft.rfftn: {f16},
+        torch.fft.ihfftn: {f16},
+        torch.fft.hfft: {f16},
+        torch.fft.irfft: {f16},
+        torch.fft.irfft2: {f16},
+        torch.fft.hfft2: {f16},
+        torch.fft.irfftn: {f16},
+        torch.fft.hfftn: {f16},
+    }
+)
 
 
 # This is a __torch_function__ mode that, when enabled, interposes every
