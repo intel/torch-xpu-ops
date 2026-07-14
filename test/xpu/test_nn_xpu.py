@@ -14086,9 +14086,18 @@ class TestNNDeviceType(NNTestCase):
                         self.assertEqual(grad_input, ref_grad_input)
                         self.assertEqual(input.grad, ref_input.grad)
 
+    # The float32 output/grad buffers roughly double this test's peak memory
+    # relative to float16, so the XPU guard is dtype-dependent: float32 needs
+    # ~27GB and OOMs on ~24-26GB cards (e.g. Arc Pro B60), while float16 peaks
+    # ~18GB and must keep running. largeTensorTest accepts a callable size, so
+    # gate on the parametrized dtype instead of a single fixed threshold.
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float, torch.half)
-    @largeTensorTest("20GB")
+    @largeTensorTest("20GB", "cuda")
+    @largeTensorTest(
+        lambda self, device, dtype: (27 if dtype == torch.float else 20) * 1024**3,
+        "xpu",
+    )
     @largeTensorTest("64GB", "cpu")
     def test_warp_softmax_64bit_indexing(self, device, dtype):
         def run_test(*shape):
