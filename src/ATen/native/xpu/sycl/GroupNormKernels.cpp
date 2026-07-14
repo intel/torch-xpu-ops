@@ -583,6 +583,7 @@ struct GNFusedForwardMediumFunctor {
     const int loads_per_lane = DS_ / (VEC_SIZE * SIMD);
     const T_ACC inv_DS = static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS_);
 
+    // Each workgroup deals G=g, N=n_begin..n_begin + n_per_wg.
     const index_t g = wg_id % G_;
     const index_t wgs_per_g = item.get_group_range(0) / G_;
     const index_t wg_rank = wg_id / G_;
