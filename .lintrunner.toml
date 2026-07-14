@@ -794,12 +794,6 @@ exclude_patterns = [
   # Port of upstream test/dynamo/test_misc.py which legitimately calls
   # ShapeEnv.create_unbacked_* to test ShapeEnv equality.
   "test/xpu/dynamo/test_misc_xpu.py",
-  # Ports of upstream tests that intentionally call create_unbacked APIs.
-  "test/xpu/dynamo/test_repros_xpu.py",
-  "test/xpu/dynamo/test_structured_trace_xpu.py",
-  "test/xpu/dynamo/test_subclasses_xpu.py",
-  "test/xpu/distributed/tensor/test_view_ops_xpu.py",
-  "test/xpu/distributed/test_inductor_collectives_xpu.py",
 ]
 command = [
     'python3',
