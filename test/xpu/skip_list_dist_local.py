@@ -202,8 +202,6 @@
     "../../../../test/distributed/_shard/sharded_tensor/ops/test_embedding_bag.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/ops/test_init.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/ops/test_tensor_ops.py": None,
-    "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
-    "distributed/_shard/sharding_spec/test_sharding_spec.py": None,
     "distributed/_tools/test_fake_collectives.py": None,
     "distributed/_tools/test_runtime_estimator.py": None,
     "distributed/_tools/test_sac_estimator.py": None,
