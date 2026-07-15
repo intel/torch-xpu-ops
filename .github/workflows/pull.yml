@@ -234,7 +234,7 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
@@ -247,7 +247,7 @@ jobs:
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
       runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       pr_body_cmd: ${{ needs.preci-lint-check.outputs.pr_body_cmd }}
 
@@ -266,7 +266,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
@@ -285,7 +285,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
@@ -303,7 +303,7 @@ jobs:
     with:
       runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
       suite: ${{ matrix.suite }}
       scenario: ${{ matrix.scenario }}
   linux-e2e-summary:
@@ -330,7 +330,7 @@ jobs:
     uses: ./.github/workflows/_windows_build.yml
     with:
       runner: windows-build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
 
   windows-ut:
     name: windows-ut
@@ -346,4 +346,4 @@ jobs:
     with:
       ut: op_extended,test_xpu
       runner: windows-test
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'viable/strict' }}
