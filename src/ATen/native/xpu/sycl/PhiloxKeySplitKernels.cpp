@@ -145,10 +145,9 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
     return output;
   }
 
-  constexpr int work_group_size = 256;
-  int work_group_num =
-      static_cast<int>((num_keys + work_group_size - 1) / work_group_size);
-
+  constexpr int64_t work_group_size = 256;
+  const int64_t work_group_num =
+      (num_keys + work_group_size - 1) / work_group_size;
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeyFoldInFunctor(
       key_contig.data_ptr<uint64_t>(),
