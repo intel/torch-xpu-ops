@@ -28,6 +28,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
+#include <concepts>
+
 namespace at {
 namespace native {
 namespace xpu {
@@ -510,10 +512,10 @@ void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_full_64_bits_range_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, int64_t>::value ||
-            std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, float>::value ||
-            std::is_same<scalar_t, at::BFloat16>::value) {
+        if constexpr (
+            std::same_as<scalar_t, int64_t> || std::same_as<scalar_t, double> ||
+            std::same_as<scalar_t, float> ||
+            std::same_as<scalar_t, at::BFloat16>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -546,8 +548,8 @@ void random_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, int64_t>::value) {
+        if constexpr (
+            std::same_as<scalar_t, double> || std::same_as<scalar_t, int64_t>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -591,7 +593,7 @@ void uniform_and_transform(
     RNG gen,
     transform_t transform) {
   // Distribution backbone only handle two accumulate type.
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Uniform2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -624,7 +626,7 @@ void normal_and_transform(
     TensorIteratorBase& iter,
     RNG gen,
     transform_t transform) {
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Normal2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -803,7 +805,7 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       self.scalar_type(),
       "bernoulli_tensor_xpu_self_",
       [&] {
-        if (std::is_same<scalar_t, double>::value) {
+        if constexpr (std::same_as<scalar_t, double>) {
           return bernoulli_tensor_kernel<double, double>(
               const_cast<TensorBase&>(self),
               const_cast<TensorBase&>(*p),
