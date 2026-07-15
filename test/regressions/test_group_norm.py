@@ -157,15 +157,24 @@ class TestGroupNormFusedForward(TestCase):
                 )
 
                 self.assertEqual(
-                    y.float().cpu(), y_ref, atol=2e-3, rtol=1e-3,
+                    y.float().cpu(),
+                    y_ref,
+                    atol=2e-3,
+                    rtol=1e-3,
                     msg=f"Y mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
                 self.assertEqual(
-                    mean.float().cpu(), mean_ref, atol=2e-3, rtol=1e-3,
+                    mean.float().cpu(),
+                    mean_ref,
+                    atol=2e-3,
+                    rtol=1e-3,
                     msg=f"mean mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
                 self.assertEqual(
-                    rstd.float().cpu(), rstd_ref, atol=2e-3, rtol=1e-3,
+                    rstd.float().cpu(),
+                    rstd_ref,
+                    atol=2e-3,
+                    rtol=1e-3,
                     msg=f"rstd mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
 
@@ -174,9 +183,9 @@ class TestGroupNormFusedForward(TestCase):
         # Subset of shapes to keep runtime reasonable
         bf16_shapes = [
             (32, 128, 2, 2, 32),  # SmallDS
-            (32, 128, 2, 1, 1),   # MediumDS
-            (8, 96, 7, 7, 3),     # LargeDS non-aligned
-            (16, 64, 5, 5, 64),   # D=1
+            (32, 128, 2, 1, 1),  # MediumDS
+            (8, 96, 7, 7, 3),  # LargeDS non-aligned
+            (16, 64, 5, 5, 64),  # D=1
         ]
         for N, C, H, W, G in bf16_shapes:
             with self.subTest(N=N, C=C, H=H, W=W, G=G):
@@ -193,7 +202,10 @@ class TestGroupNormFusedForward(TestCase):
                 )
 
                 self.assertEqual(
-                    y.float().cpu(), y_ref, atol=2e-2, rtol=5e-3,
+                    y.float().cpu(),
+                    y_ref,
+                    atol=2e-2,
+                    rtol=5e-3,
                     msg=f"Y mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
 
@@ -224,13 +236,16 @@ class TestGroupNormFusedForward(TestCase):
                 y_ref, _, _ = self._ref_group_norm(x, weight, bias, G, eps)
 
                 self.assertEqual(
-                    y.float().cpu(), y_ref, atol=2e-3, rtol=1e-3,
+                    y.float().cpu(),
+                    y_ref,
+                    atol=2e-3,
+                    rtol=1e-3,
                 )
 
     def test_fused_forward_fp32(self):
         """Test fused kernel correctness for fp32 (no accumulation mismatch)."""
         shapes = [
-            (8, 64, 4, 4, 32),    # SmallDS
+            (8, 64, 4, 4, 32),  # SmallDS
             (4, 192, 28, 28, 1),  # LargeDS
         ]
         for N, C, H, W, G in shapes:
@@ -248,6 +263,9 @@ class TestGroupNormFusedForward(TestCase):
                 )
 
                 self.assertEqual(
-                    y.cpu(), y_ref, atol=1e-5, rtol=1e-5,
+                    y.cpu(),
+                    y_ref,
+                    atol=1e-5,
+                    rtol=1e-5,
                     msg=f"Y mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
