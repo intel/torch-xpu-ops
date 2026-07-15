@@ -88,27 +88,26 @@ class TestGroupNormFusedForward(TestCase):
     #   D=1 edge case: G == C
     SHAPES = [
         # --- SmallDS path (DS = D*HxW <= 128, pow2) ---
-        # DS=16: 1 lane/group (LANES=4, GROUPS_PER_SG=8)
-        (32, 128, 4, 4, 32),  # D=4, HxW=16 -> DS=64 (original comment wrong)
-        # DS=32
-        (64, 64, 2, 4, 32),  # D=2, HxW=8 -> DS=16... let me recalc
-        # Actually: D=C/G, DS=D*HxW
-        # (N=32, C=128, H=2, W=2, G=32): D=4, HxW=4, DS=16
+        # DS=16
+        (1024, 128, 4, 4, 128),
+        # DS=64
+        (1024, 128, 4, 4, 32), 
+        # DS=16
         (32, 128, 2, 2, 32),
-        # (N=32, C=64, H=4, W=4, G=32): D=2, HxW=16, DS=32
+        # DS=32
         (32, 64, 4, 4, 32),
-        # (N=32, C=32, H=8, W=4, G=32): D=1, HxW=32, DS=32
+        # DS=32
         (32, 32, 8, 4, 32),
-        # DS=128: (N=1024, C=1024, H=2, W=2, G=32): D=32, HxW=4, DS=128
+        # DS=128
         (64, 1024, 2, 2, 32),
         # --- MediumDS path (DS % 128 == 0, DS/128 in [1..4]) ---
-        # DS=256: (N=32, C=128, H=2, W=1, G=1): D=128, HxW=2, DS=256
+        # DS=256
         (32, 128, 2, 1, 1),
-        # DS=512: (N=32, C=64, H=4, W=2, G=1): D=64, HxW=8, DS=512
+        # DS=512
         (32, 64, 4, 2, 1),
         # MediumDS persistent loop (n_per_wg > 1): N*G > thread_slots
-        # (N=256, C=64, H=4, W=2, G=1): D=64, HxW=8, DS=512, n_per_wg=2
-        (256, 64, 4, 2, 1),
+        # DS=512
+        (8192, 64, 4, 2, 1),
         # --- LargeDS path ---
         # (N=32, C=64, H=14, W=14, G=1): D=64, HxW=196, DS=12544
         (32, 64, 14, 14, 1),
