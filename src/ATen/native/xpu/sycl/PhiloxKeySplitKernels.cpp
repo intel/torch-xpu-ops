@@ -109,11 +109,10 @@ Tensor _philox_key_split_xpu(const Tensor& key, int64_t num_splits) {
     return output;
   }
 
-  int64_t total_work_items = num_keys * num_splits;
-  constexpr int work_group_size = 256;
-  int work_group_num = static_cast<int>(
-      (total_work_items + work_group_size - 1) / work_group_size);
-
+  const int64_t total_work_items = num_keys * num_splits;
+  constexpr int64_t work_group_size = 256;
+  const int64_t work_group_num =
+      (total_work_items + work_group_size - 1) / work_group_size;
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeySplitFunctor(
       key_contig.data_ptr<uint64_t>(),
