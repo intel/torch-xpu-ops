@@ -105,11 +105,27 @@ macro(set_build_flags)
   list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
   list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-div)
   list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-sqrt)
+
+  # SYCL defaults fast-math ON, which strips the inf/NaN our kernels check.
+  # Probe the compiler for the strict-FP flag and fail if it is rejected. Keep
+  # it before /Qfma and -ffp-contract=fast, which re-add the FMA we do want.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(_sycl_strict_fp_flag /fp:strict)
+  else()
+    set(_sycl_strict_fp_flag -fno-fast-math)
+  endif()
+  CHECK_SYCL_FLAG("${_sycl_strict_fp_flag}" _supports_strict_fp)
+  if(NOT _supports_strict_fp)
+    message(FATAL_ERROR
+      "SYCL compiler ${SYCL_COMPILER} rejects ${_sycl_strict_fp_flag}; its "
+      "default fast-math would silently break kernel inf/NaN semantics.")
+  endif()
+  list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_strict_fp_flag})
+
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # On Windows icx uses the clang-cl driver, which ignores -std= with
     # only a warning; spell it as -Qstd= so device code is really C++20.
     list(APPEND SYCL_KERNEL_OPTIONS -Qstd=${CPP_STD})
-    list(APPEND SYCL_KERNEL_OPTIONS /fp:strict)
     list(APPEND SYCL_KERNEL_OPTIONS /Qfma)
     list(APPEND SYCL_KERNEL_OPTIONS /Qftz-)
     # Suppress warnings about dllexport.
@@ -117,7 +133,6 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_KERNEL_OPTIONS -std=${CPP_STD})
     list(APPEND SYCL_KERNEL_OPTIONS -Wno-absolute-value)
-    list(APPEND SYCL_KERNEL_OPTIONS -fno-fast-math)
     # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
     # with very old version of the ICX compiler. The -ffp-contract=fast is supported by both closed
     # source and open source DPC++ compiler versions.
