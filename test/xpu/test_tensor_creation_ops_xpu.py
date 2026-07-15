@@ -487,8 +487,11 @@ class TestTensorCreation(TestCase):
 
         expected_scipy_types = [
             torch.float64,
-            # windows scipy block_diag returns int32 types
-            torch.int32 if IS_WINDOWS else torch.int64,
+            # numpy < 2.0 on Windows used int32 as the default integer type
+            # numpy >= 2.0 uses int64 everywhere
+            torch.int32
+            if IS_WINDOWS and np.lib.NumpyVersion(np.__version__) < "2.0.0"
+            else torch.int64,
             torch.complex128,
             torch.float64,
         ]
