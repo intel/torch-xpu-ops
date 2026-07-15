@@ -102,11 +102,13 @@ class TestGroupNormFusedForward(TestCase):
         # DS=128: (N=1024, C=1024, H=2, W=2, G=32): D=32, HxW=4, DS=128
         (64, 1024, 2, 2, 32),
         # --- MediumDS path (DS % 128 == 0, DS/128 in [1..4]) ---
-        # DS=128: (N=32, C=64, H=8, W=8, G=2): D=32, HxW=64... DS=2048 too big
         # DS=256: (N=32, C=128, H=2, W=1, G=1): D=128, HxW=2, DS=256
         (32, 128, 2, 1, 1),
         # DS=512: (N=32, C=64, H=4, W=2, G=1): D=64, HxW=8, DS=512
         (32, 64, 4, 2, 1),
+        # MediumDS persistent loop (n_per_wg > 1): N*G > thread_slots
+        # (N=256, C=64, H=4, W=2, G=1): D=64, HxW=8, DS=512, n_per_wg=2
+        (256, 64, 4, 2, 1),
         # --- LargeDS path ---
         # (N=32, C=64, H=14, W=14, G=1): D=64, HxW=196, DS=12544
         (32, 64, 14, 14, 1),
