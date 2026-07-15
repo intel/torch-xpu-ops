@@ -320,7 +320,11 @@ Tensor& logspace_kernel(
       gpu_kernel_with_index(r, f);
     });
   } else {
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+    // EXPERIMENT: Drop complex dispatch so complex<float> won't be instantiated
+    // in this TU. Without complex<float> powf kernel, its ContractionOff no
+    // longer leaks onto the shared powf path, so float logspace should regress
+    // to 0x41200001 (1 ULP high) also on Linux.
+    AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, r.scalar_type(), "logspace_xpu", [&]() {
           scalar_t scalar_base = static_cast<scalar_t>(base);
           scalar_t scalar_start = start.to<scalar_t>();
