@@ -296,7 +296,21 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
             at::xpu::getCurrentXPUStream());
       }
     } else {
-      q.memcpy(dst, src, nbytes);
+      // D2H (Device-to-Host) non_blocking copy.
+      //
+      // Capture the SYCL event from q.memcpy() and chain it with an explicit
+      // barrier so the queue's command graph properly tracks the copy.
+      // On SYCL in-order queues the implicit ordering should guarantee that
+      // a subsequent ext_oneapi_submit_barrier() waits for the memcpy, but
+      // on hardware with dedicated copy engines (e.g., PVC) the runtime may
+      // route the memcpy through a separate DMA engine whose completion is
+      // not captured by the next queue-only barrier.  By submitting an
+      // explicit barrier that depends on the copy event we force the runtime
+      // to account for the DMA operation, so that torch.Event().record() /
+      // synchronize() (which internally calls ext_oneapi_submit_barrier())
+      // correctly waits for the D2H transfer to complete.
+      auto copy_event = q.memcpy(dst, src, nbytes);
+      q.ext_oneapi_submit_barrier({copy_event});
       if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(dst),
