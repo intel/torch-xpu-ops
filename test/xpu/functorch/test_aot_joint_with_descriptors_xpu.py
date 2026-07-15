@@ -13,10 +13,12 @@
 # Owner(s): ["module: intel"]
 # ruff: noqa: F401
 
+import unittest
+
 import torch
 import torch.fx.traceback as fx_traceback
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import run_tests, TEST_CUDA, TEST_XPU
 
 try:
     from xpu_test_utils import XPUImportCtx
@@ -31,10 +33,17 @@ with XPUImportCtx(False):
 
 
 # ======================================================================
-# Only changing one occurence of hardcoded "cuda" to "xpu".
+# Change hardcoded "cuda" to device_type.
+# Replace upstream requires_cuda decorator to run test both on CUDA and XPU.
 # ======================================================================
 
 
+device_type = (
+    acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
+)
+
+
+@unittest.skipUnless(TEST_CUDA or TEST_XPU, "Requires CUDA or XPU")
 def _test_preserve_annotate_flex_attention(self):
     def score_mod(score, b, h, m, n):
         return score
@@ -50,7 +59,7 @@ def _test_preserve_annotate_flex_attention(self):
     b = 24
     batch_size = 2
     seqlen = a * b
-    device = "xpu"  # CHANGED
+    device = device_type  # CHANGED
 
     # Create seq_idx tensor - maps each position to a document/sequence ID
     # Example: Split sequence into 2 documents for each batch
