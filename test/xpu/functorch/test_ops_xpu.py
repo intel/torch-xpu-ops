@@ -1098,6 +1098,7 @@ class TestOperators(TestCase):
         {
             xfail("as_strided", "partial_views"),
             xfail("as_strided_copy"),
+            xfail("native_group_norm"),
         },
     )
     def test_vmapvjpvjp(self, device, dtype, op):
@@ -1261,6 +1262,7 @@ class TestOperators(TestCase):
                 xfail("as_strided"),
                 xfail("as_strided_copy"),
                 xfail("as_strided", "partial_views"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1376,6 +1378,7 @@ class TestOperators(TestCase):
         vmapjvpall_fail.union(
             {
                 xfail("as_strided_copy"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1443,6 +1446,7 @@ class TestOperators(TestCase):
                 xfail("as_strided_scatter", ""),
                 xfail("masked.cumprod", ""),
                 xfail("renorm"),  # hit vmap fallback, which is disabled
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1563,6 +1567,7 @@ class TestOperators(TestCase):
                 xfail(
                     "index_fill"
                 ),  # aten::_unique hit the vmap fallback which is currently disabled
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1671,6 +1676,7 @@ class TestOperators(TestCase):
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
                 xfail("as_strided", "partial_views"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -2070,6 +2076,7 @@ class TestOperators(TestCase):
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
                 xfail("native_dropout_backward"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -2394,6 +2401,7 @@ class TestOperators(TestCase):
             skip("sparse.sampled_addmm", ""),
             skip("sparse.mm", "reduce"),
             skip("native_layer_norm", "", device_type="cpu"),
+            skip("native_group_norm", dtypes=(torch.float32,), device_type="cpu"),
         },
     )
     @opsToleranceOverride(
@@ -2431,6 +2439,7 @@ class TestOperators(TestCase):
             ),
             tol1("svd_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
             tol1("pca_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
+            tol1("native_group_norm", {torch.float32: tol(atol=5e-5, rtol=5e-6)}),
         ),
     )
     def test_vmap_autograd_grad(self, device, dtype, op):

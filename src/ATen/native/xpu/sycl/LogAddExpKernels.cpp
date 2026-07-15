@@ -35,7 +35,7 @@ c10::complex<scalar_t> _logaddexp_minmax(
     return y;
   } else if (sycl::isnan(xr) || (sycl::isnan(std::imag(x)))) {
     return x;
-  } else if (min) {
+  } else if constexpr (min) {
     return (xr < yr) ? x : y;
   } else {
     return (xr >= yr) ? x : y;
