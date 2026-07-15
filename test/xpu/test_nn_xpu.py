@@ -358,7 +358,7 @@ class TestNN(NNTestCase):
 
     def test_no_grad(self):
         for dtype in [torch.bfloat16, torch.float, torch.double]:
-            if dtype == torch.bfloat16 and IS_AVX2_VNNI_2:
+            if dtype == torch.bfloat16 and IS_AVX2_VNNI_2 and torch.backends.mkldnn.enabled:
                 # oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA
                 continue
             module = nn.Conv2d(2, 5, kernel_size=3, padding=1).to(dtype)
@@ -15757,7 +15757,7 @@ class TestNNDeviceType(NNTestCase):
     @onlyCPU
     @dtypes(torch.bfloat16, torch.float16)
     @skipCPUIf(
-        IS_AVX2_VNNI_2,
+        IS_AVX2_VNNI_2 and torch.backends.mkldnn.enabled,
         "oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA",
     )
     def test_activations_bfloat16_half_cpu(self, device, dtype):
