@@ -1088,7 +1088,7 @@ void group_norm_kernel_impl(
   // Small-DS path: single vec4 per lane (covers DS where lanes <= SIMD).
   // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
   auto try_single_vec = [&](auto index_tag) -> bool {
-    if (simd < 16)
+    if (simd != 16)
       return false;
     using index_t = decltype(index_tag);
     if (DS % FUSED_VEC_SIZE != 0)
@@ -1167,7 +1167,7 @@ void group_norm_kernel_impl(
     return true;
   };
   auto try_multi_vec = [&](auto index_tag) -> bool {
-    if (simd < 16)
+    if (simd != 32)
       return false;
     using index_t = decltype(index_tag);
     constexpr int64_t MAX_LOADS = 4;
