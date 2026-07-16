@@ -1665,7 +1665,7 @@ void batch_norm_elemt_channels_last_template(
               : nullptr;
 
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && stride < 1024) {
+          if (VEC_SIZE == 2 && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
@@ -1766,7 +1766,7 @@ void batch_norm_elemt_channels_last_template(
               : nullptr;
 
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && stride < 1024) {
+          if (VEC_SIZE == 2 && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
