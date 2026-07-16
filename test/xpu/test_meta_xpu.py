@@ -935,7 +935,6 @@ meta_function_device_expected_failures["cuda"] = {
     torch.geqrf: {f32, f64},  # aten::geqrf
 }
 
-
 meta_function_device_skips["cpu"] = {
     # TODO: The decomps for these batch norm ops return different dtypes depending
     # on the device. We should make this work better with meta tensors.
