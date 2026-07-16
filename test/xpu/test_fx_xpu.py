@@ -33,6 +33,15 @@ _FX_DIR = os.path.abspath(
 if _FX_DIR not in sys.path:
     sys.path.insert(0, _FX_DIR)
 
+# XPUPatchForImport restores sys.path on exit; keep test/ on it permanently
+# so Windows multiprocessing.spawn can re-import test_fx in test_getitem_subproc.
+if IS_WINDOWS:
+    _TEST_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../../../test")
+    )
+    if _TEST_DIR not in sys.path:
+        sys.path.insert(0, _TEST_DIR)
+
 with XPUPatchForImport(False):
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
