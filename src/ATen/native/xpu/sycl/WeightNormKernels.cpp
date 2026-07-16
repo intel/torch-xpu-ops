@@ -19,6 +19,8 @@
 
 #include <ATen/native/xpu/sycl/WeightNormKernels.h>
 
+#include <limits>
+
 namespace at::native::xpu {
 
 template <typename T>
@@ -69,7 +71,7 @@ struct WeightNormReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
       if (id.chunk_off == 0) {
-        oinfo_.data[str_off] = is_final_ ? sqrtf(value) : value;
+        oinfo_.data[str_off] = is_final_ ? sycl::sqrt(value) : value;
       }
     }
   }
@@ -284,7 +286,7 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     int n_slid = (int)id.glb_batch % batch_wg_range_;
     if (id.glb_batch < cfg_.problem_batch_ && id.chunk_off == 0) {
-      value = sqrtf(value);
+      value = sycl::sqrt(value);
       ninfo_.data[n_off] = value;
       shared_[n_slid] = value;
     }
@@ -392,6 +394,12 @@ std::tuple<Tensor, Tensor> weight_norm_kernel(
   auto norms = at::empty(
       g.sizes(), g.options().dtype(scalar_acc_t), g.suggest_memory_format());
   auto w = at::empty(v.sizes(), v.options(), v.suggest_memory_format());
+
+  // Empty v: w is empty, norm of an empty vector is 0 (matches CPU/CUDA).
+  if (v.numel() == 0) {
+    norms.zero_();
+    return {w, norms};
+  }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -890,6 +898,12 @@ std::tuple<Tensor, Tensor> weight_norm_backward_kernel(
     int64_t dim) {
   auto grad_v = at::empty_like(saved_v, c10::get_contiguous_memory_format());
   auto grad_g = at::empty_like(saved_g, c10::get_contiguous_memory_format());
+
+  // Empty saved_v: grad_v is empty, grad_g = 0/0 = NaN (matches CPU/CUDA).
+  if (saved_v.numel() == 0) {
+    grad_g.fill_(std::numeric_limits<double>::quiet_NaN());
+    return {grad_v, grad_g};
+  }
 
   at::ScalarType scalar_acc_t =
       (saved_g.scalar_type() == at::ScalarType::Half ||

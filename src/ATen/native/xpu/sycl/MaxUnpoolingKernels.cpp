@@ -39,7 +39,7 @@ struct MaxUnpooling2dForwardKernelFunctor {
           ? n * numChannels_ * outputHeight_ * outputWidth_ + c
           : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
       output += offset;
-      if (is_channels_last_) {
+      if constexpr (is_channels_last_) {
         output[maxind * numChannels_] = input_data_[linearIndex];
       } else {
         output[maxind] = input_data_[linearIndex];
@@ -462,22 +462,21 @@ static void max_unpooling3d_shape_check(
   int nslices = input.size(dimn);
 
   if (gradOutput.defined()) {
-    if (oT != gradOutput.size(dimt) || oH != gradOutput.size(dimh) ||
-        oW != gradOutput.size(dimw)) {
-      AT_ERROR(
-          "Inconsistent gradOutput size. oT= ",
-          oT,
-          ", oH= ",
-          oH,
-          ", oW= ",
-          oW,
-          ". gradOutput: ",
-          gradOutput.size(dimt),
-          "x",
-          gradOutput.size(dimh),
-          "x",
-          gradOutput.size(dimw));
-    }
+    TORCH_CHECK(
+        oT == gradOutput.size(dimt) && oH == gradOutput.size(dimh) &&
+            oW == gradOutput.size(dimw),
+        "Inconsistent gradOutput size. oT= ",
+        oT,
+        ", oH= ",
+        oH,
+        ", oW= ",
+        oW,
+        ". gradOutput: ",
+        gradOutput.size(dimt),
+        "x",
+        gradOutput.size(dimh),
+        "x",
+        gradOutput.size(dimw));
     TORCH_CHECK(
         gradOutput.ndimension() == input.ndimension() &&
             gradOutput.size(dimn) == nslices,

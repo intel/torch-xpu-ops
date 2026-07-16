@@ -323,8 +323,8 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
            point_h += input_height_ - 1) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ - 1) {
-          int distance_w = output_width_ - 1 - std::abs(point_w - in_index_w);
-          int distance_h = output_height_ - 1 - std::abs(point_h - in_index_h);
+          int distance_w = output_width_ - 1 - sycl::abs(point_w - in_index_w);
+          int distance_h = output_height_ - 1 - sycl::abs(point_h - in_index_h);
           accscalar_t scale =
               static_cast<accscalar_t>(distance_h * distance_w) /
               static_cast<accscalar_t>(
@@ -426,8 +426,8 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
            point_h += input_height_ * 2) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ * 2) {
-          int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
-          int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
+          int distance_w = output_width_ * 2 - sycl::abs(point_w - in_index_w);
+          int distance_h = output_height_ * 2 - sycl::abs(point_h - in_index_h);
           bool is_boundary_w =
               !((point_w >= output_width_) &&
                 (point_w <= output_width_ * input_width_ * 2 - output_width_));
@@ -1136,8 +1136,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
 
-    const int interp_height = (int)ceilf(support_h_) * 2 + 1;
-    const int interp_width = (int)ceilf(support_w_) * 2 + 1;
+    const int interp_height = (int)sycl::ceil(support_h_) * 2 + 1;
+    const int interp_width = (int)sycl::ceil(support_w_) * 2 + 1;
 
     auto ptr =
         (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()
@@ -1282,8 +1282,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
 
-    const int interp_height = (int)ceilf(support_h_) * 2 + 1;
-    const int interp_width = (int)ceilf(support_w_) * 2 + 1;
+    const int interp_height = (int)sycl::ceil(support_h_) * 2 + 1;
+    const int interp_width = (int)sycl::ceil(support_w_) * 2 + 1;
 
     auto ptr =
         (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()

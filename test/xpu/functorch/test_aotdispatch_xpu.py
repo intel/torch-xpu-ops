@@ -102,6 +102,9 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 SM80OrLater = True  # XPU equivalent, assume compatible
 
+device_type = (
+    acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
+)
 
 USE_TORCHVISION = False
 try:
@@ -4617,14 +4620,16 @@ class TestAOTExport(AOTTestCase):
         ):
             aot_export_module(mod, [inp], trace_joint=False, pre_dispatch=True)
 
-        gm, _ = aot_export_module(mod, [inp], trace_joint=False, pre_dispatch=False)
+        gm, graph_sig = aot_export_module(
+            mod, [inp], trace_joint=False, pre_dispatch=False
+        )
+        self.assertEqual(graph_sig.user_inputs_to_mutate, {"add": "arg1_1"})
         self.assertExpectedInline(
             str(gm.code).strip(),
             """\
 def forward(self, arg0_1, arg1_1):
-    clone = torch.ops.aten.clone.default(arg1_1);  arg1_1 = None
-    add = torch.ops.aten.add.Tensor(clone, 1);  clone = None
-    return (add,)""",
+    add = torch.ops.aten.add.Tensor(arg1_1, 1);  arg1_1 = None
+    return (add, add)""",
         )
 
         fw_graph_cell = [None]
@@ -4644,9 +4649,8 @@ def forward(self, arg0_1, arg1_1):
             str(fw_graph.code).strip(),
             """\
 def forward(self, arg0_1, arg1_1):
-    clone = torch.ops.aten.clone.default(arg1_1);  arg1_1 = None
-    add = torch.ops.aten.add.Tensor(clone, 1);  clone = None
-    return (add,)""",
+    add = torch.ops.aten.add.Tensor(arg1_1, 1);  arg1_1 = None
+    return (add, add)""",
         )
 
     def test_aot_export_predispatch_func_simple(self):
@@ -6163,13 +6167,13 @@ def forward(self, primals_1, tangents_1):
         aot_fn(x)
         self.assertTrue(inference_graph_cell[0] is not None)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
+    @unittest.skipIf(not torch.accelerator.is_available(), "GPU is unavailable")
     @unittest.skipIf(not USE_TORCHVISION, "test requires torchvision")
     def test_autocast(self):
-        mod = torchvision.models.resnet18().cuda()
+        mod = torchvision.models.resnet18().to(device_type)
         mod.train()
 
-        x = torch.randn(16, 3, 32, 32, device="cuda")
+        x = torch.randn(16, 3, 32, 32, device=device_type)
         aot_mod = memory_efficient_fusion(mod)
 
         # Ensure that AOT Autograd works with AMP
@@ -8422,7 +8426,7 @@ Expected a .* tangent but got a plain Tensor.""",
                 #     test_fn, inp_fn, [(pack_wrapper_two_tensor, unpack_wrapper_two_tensor)]
                 # )
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
+    @unittest.skipIf(not torch.accelerator.is_available(), "GPU is unavailable")
     @unittest.skipIf(not SM80OrLater, "bfloat16, float8")
     def test_saved_tensors_hooks_params(self):
         lib = torch.library.Library("_test_aotdispatch_lib", "FRAGMENT")
@@ -8438,7 +8442,7 @@ Expected a .* tangent but got a plain Tensor.""",
         def log_meta(x):
             return x.clone()
 
-        for backend in ["CPU", "CUDA"]:
+        for backend in ["CPU", device_type.upper()]:
             lib.impl(
                 "log",
                 log_impl,
@@ -8491,7 +8495,7 @@ Expected a .* tangent but got a plain Tensor.""",
             logged_shapes.clear()
             logged_dtypes.clear()
 
-        device = torch.device("cuda:0")
+        device = torch.device(f"{device_type}:0")
         m = M().to(device=device)
 
         def _test_m():
@@ -8542,7 +8546,7 @@ Expected a .* tangent but got a plain Tensor.""",
             self.assertTrue([2, 2, 2] in logged_shapes)
             self.assertTrue(torch.float64 in logged_dtypes)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
+    @unittest.skipIf(not torch.accelerator.is_available(), "GPU is unavailable")
     @unittest.skipIf(not SM80OrLater, "bfloat16, float8")
     @torch._functorch.config.patch(saved_tensors_hooks_filtering_mode="all")
     def test_saved_tensors_hooks_recompile(self):
@@ -8592,7 +8596,7 @@ Expected a .* tangent but got a plain Tensor.""",
                 x = AF.apply(x)
                 return x
 
-            device = torch.device("cuda:0")
+            device = torch.device(f"{device_type}:0")
 
             def inp_fn():
                 x = torch.ones(2, 3, device=device, requires_grad=True)

@@ -98,8 +98,6 @@ void upsample_linear1d_kernel(
   output.zero_();
   int input_width = input.size(2);
 
-  AT_ASSERT(input_width > 0 && output_width > 0);
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

@@ -9,7 +9,6 @@
  */
 
 // #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
@@ -151,6 +150,7 @@ void flip_kernel(TensorIterator& iter, bool quantized) {
       AT_EXPAND(AT_FLOAT8_TYPES),
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBool,
       kBFloat16);

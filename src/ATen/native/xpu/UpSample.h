@@ -185,16 +185,17 @@ static inline accscalar_t area_pixel_compute_source_index(
 struct NearestIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
     const int src_index =
-        min(static_cast<int>(floorf((dst_index)*scale)), input_size - 1);
+        min(static_cast<int>(sycl::floor((dst_index)*scale)), input_size - 1);
     return src_index;
   }
 };
 
 struct NearestExactIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
-    const int src_index = min(
-        static_cast<int>(floorf((dst_index + static_cast<float>(0.5)) * scale)),
-        input_size - 1);
+    const int src_index =
+        min(static_cast<int>(
+                sycl::floor((dst_index + static_cast<float>(0.5)) * scale)),
+            input_size - 1);
     return src_index;
   }
 };
@@ -279,8 +280,8 @@ static scalar_t upsample_get_value_bounded(
     int height,
     int x,
     int y) {
-  int access_x = max(min(x, width - 1), static_cast<int>(0));
-  int access_y = max(min(y, height - 1), static_cast<int>(0));
+  int access_x = sycl::clamp(x, 0, width - 1);
+  int access_y = sycl::clamp(y, 0, height - 1);
   return data[batch][channel][access_y][access_x];
 }
 
@@ -294,8 +295,8 @@ static void upsample_increment_value_bounded(
     int y,
     int x,
     accscalar_t value) {
-  int access_y = max(min(y, height - 1), 0);
-  int access_x = max(min(x, width - 1), 0);
+  int access_y = sycl::clamp(y, 0, height - 1);
+  int access_x = sycl::clamp(x, 0, width - 1);
   atomicAdd(
       (sycl_global_ptr<scalar_t>)(&data[batch][channel][access_y][access_x]),
       static_cast<scalar_t>(value));
@@ -347,7 +348,7 @@ struct BilinearFilterFunctor {
     return 0;
   }
 
-  static const int size = 2;
+  static constexpr int size = 2;
 };
 
 // taken from
@@ -370,7 +371,7 @@ struct BicubicFilterFunctor {
     return 0;
   }
 
-  static const int size = 4;
+  static constexpr int size = 4;
 };
 
 template <typename accscalar_t>
