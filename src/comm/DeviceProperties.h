@@ -20,6 +20,10 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 DISABLE_SYCL_DEPRECATED_WARNING_END
 
 #include <comm/Runtime.h>
+#include <sycl/sycl.hpp>
+
+namespace syclext = sycl::ext::oneapi;
+namespace syclexp = sycl::ext::oneapi::experimental;
 
 namespace xpu {
 namespace sycl {
@@ -48,6 +52,17 @@ static int64_t syclMaxWorkGroupSize(
     const KernelClass& /*kfn*/,
     at::DeviceIndex dev_id = at::xpu::current_device()) {
   return syclMaxWorkGroupSize<KernelClass>(dev_id);
+}
+
+// For SYCL free function
+template <auto* kptr>
+static int64_t syclMaxWorkGroupSize(
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+  auto& ctx = c10::xpu::get_device_context();
+  auto& dev = c10::xpu::get_raw_device(dev_id);
+  return ::syclexp::get_kernel_info<
+      kptr,
+      ::sycl::info::kernel_device_specific::work_group_size>(ctx, dev);
 }
 
 static inline int64_t syclDeviceMaxWorkGroupSize(

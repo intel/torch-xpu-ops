@@ -15,9 +15,13 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
+#include <sycl/ext/oneapi/work_group_static.hpp> // Remove it once the header is exposed by sycl.hpp
 #include <sycl/sycl.hpp>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
+
+namespace syclext = sycl::ext::oneapi;
+namespace syclexp = sycl::ext::oneapi::experimental;
 
 // sycl access address space
 static constexpr auto sycl_priv_space =
@@ -232,6 +236,68 @@ static inline void sycl_kernel_submit(
         wrapped);
   };
   q.submit(cgf);
+}
+
+// For SYCL free function
+// Submit a SYCL free function kernel via sycl_ext_oneapi_free_function_kernels.
+// See:
+// https://github.com/intel/llvm/blob/sycl/sycl/doc/extensions/experimental/sycl_ext_oneapi_free_function_kernels.asciidoc
+//
+// The spec defines a struct template and a corresponding variable template:
+//   template<auto *Func> struct kernel_function_s {};
+//   template<auto *Func> inline constexpr kernel_function_s<Func>
+//   kernel_function;
+//
+// `kernel_function<kptr>` is an inline constexpr instance of
+// `kernel_function_s<kptr>`. We use it instead of explicitly constructing
+// `kernel_function_s<kptr>{}` because:
+//   1. It is the idiomatic shorthand encouraged by the spec examples
+//      (e.g. `syclexp::nd_launch(q, ndr, syclexp::kernel_function<iota>,
+//      ...)`).
+//   2. Both forms are equivalent — `kernel_function<kptr>` simply evaluates to
+//      a default-constructed `kernel_function_s<kptr>` at compile time.
+template <auto* kptr, typename... Kargs>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    int slm_sz,
+    Kargs... args) {
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+  } else {
+    syclexp::nd_launch(
+        q,
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::kernel_function<kptr>,
+        args...);
+  }
+}
+
+template <auto* kptr, int dim, typename... Kargs>
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    int slm_sz,
+    Kargs... args) {
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<dim>(global_range, local_range),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+  } else {
+    syclexp::nd_launch(
+        q,
+        ::sycl::nd_range<dim>(global_range, local_range),
+        syclexp::kernel_function<kptr>,
+        args...);
+  }
 }
 
 #ifdef __SYCL_DEVICE_ONLY__
