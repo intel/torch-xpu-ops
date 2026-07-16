@@ -125,7 +125,10 @@ git -C agent_space_xpu/pytorch fetch origin
 
 Extract:
 - `report_date` (e.g. `20260608`)
-- `ci_commit` — pytorch commit hash; use `origin/main` if absent
+- `ci_commit` — pytorch commit hash. `fix/reproduce` reproduces on
+  `origin/main` first and only falls back to `ci_commit` if trunk
+  itself fails to build; this field is optional but should be
+  extracted when the report supplies it.
 - Failing test list: group by test file/module
 
 
@@ -133,26 +136,29 @@ Extract:
 
 For each failure, call `fix/reproduce` with:
 - `reproducer_command` — the CI test command
-- `ci_commit` — from Step 1
+- `ci_commit` — from Step 1 (used only as build fallback by reproduce)
 - `pytorch_dir` — `agent_space_xpu/pytorch/`
 
 Interpret output per failure:
 
 | Output | Action |
 |--------|--------|
-| `REPRODUCED` | Continue to Step 4 for this failure |
-| `NOT_REPRODUCED` | Mark in summary: "already fixed"; skip to next failure |
+| `REPRODUCED` | Continue to Step 4 for this failure. Record `base` from the output — it is `origin/main` normally, or `<ci_commit_sha>` if reproduce fell back. |
+| `NOT_REPRODUCED` | Mark in summary: "already fixed on trunk"; skip to next failure |
 | `CANNOT_VERIFY` | Mark in summary: "cannot verify (+ blocker)"; skip to next failure |
 
 ## Step 4: Triage each reproduced failure
 
-Before calling `fix/triage`, checkout a new branch for this failure. One
-branch per failure; name it `fix-<report_date>-<short_test_name>` where
-`short_test_name` is the last component of the test method name (e.g.
-`test_add` from `TestBinaryUfuncsXPU::test_add_xpu`):
+Before calling `fix/triage`, checkout a new branch for this failure off
+the `base` reproduce reported (so Step 6's rebuild lands on the same
+base as the reproduction). One branch per failure; name it
+`fix-<report_date>-<short_test_name>` where `short_test_name` is the
+last component of the test method name (e.g. `test_add` from
+`TestBinaryUfuncsXPU::test_add_xpu`):
 
 ```bash
-git checkout -b fix-<report_date>-<short_test_name>  # e.g. fix-20260608-test_add
+git checkout -b fix-<report_date>-<short_test_name> <base>
+# e.g. git checkout -b fix-20260608-test_add origin/main
 ```
 
 Call `fix/triage` with the failure description and error log.

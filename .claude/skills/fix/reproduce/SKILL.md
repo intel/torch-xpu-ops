@@ -19,8 +19,8 @@ the result.
 
 - `reproducer_command` — pytest/python command or test name. If absent, return
   `NO_REPRODUCER` immediately.
-- `ci_commit` — upstream commit hash from the CI report (optional but
-  recommended).
+- `ci_commit` — upstream commit hash from the CI report. Only used as a
+  fallback base when `origin/main` fails to build (optional).
 - `pytorch_dir` — path to a local PyTorch checkout (optional). If absent and
   stage 2 is needed, clone to `agent_space_xpu/pytorch/`.
 
@@ -105,29 +105,51 @@ environmental (not an XPU marker). `xfailed` → `FAILED`.
 
 ## Stage 2: Source Build at origin/main
 
-Nightly passing is not conclusive — it may lag behind CI or not reflect the
-exact environment. Build from `origin/main` to verify.
+Nightly passing is not conclusive — it may lag behind CI. Build from
+`origin/main` to verify. Even when the failure came from a specific CI
+commit, we only consider fixes on top of `origin/main` — downstream
+stages branch off it.
 
 ### Prepare pytorch checkout
 
 If `pytorch_dir` is provided: `git -C $pytorch_dir fetch origin`
 
-Checkout target commit: use `$ci_commit` if provided, otherwise `origin/main`:
-```bash
-git -C $pytorch_dir checkout ${ci_commit:-origin/main}
-```
-
-If not provided, clone and checkout:
+If not provided, clone:
 ```bash
 git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
   agent_space_xpu/pytorch
-git -C agent_space_xpu/pytorch checkout ${ci_commit:-origin/main}
-git -C agent_space_xpu/pytorch submodule update --init --recursive
 ```
+
+Then:
+```bash
+git -C $pytorch_dir checkout origin/main
+git -C $pytorch_dir submodule update --init --recursive
+```
+
+Leave HEAD on `origin/main` at exit.
 
 ### Build and run
 
-Build and run the test. Result interpretation: same `all skipped` handling as
+Load the `xpu-build-pytorch` skill and follow it for the build. Do not
+hand-roll the build here.
+
+If the `origin/main` build fails for a reason unrelated to the bug
+(broken trunk, upstream infra issue, etc.) and `ci_commit` is
+available, fall back once:
+
+```bash
+git -C $pytorch_dir checkout $ci_commit
+git -C $pytorch_dir submodule update --init --recursive
+```
+
+Rebuild via `xpu-build-pytorch`. If this succeeds, proceed with the
+test on `ci_commit` and record `base=<ci_commit_sha>` in the output so
+the orchestrator branches its fix off the same base. If the fallback
+build also fails, escalate as
+`CANNOT_VERIFY(blocker=trunk and ci_commit both fail to build)`
+rather than silently reproducing on some other base.
+
+Then run the test. Result interpretation: same `all skipped` handling as
 Stage 1 (try `fix/pytorch-skip` temp-removal first); `xfailed` → `FAILED`.
 
 ### Decision
@@ -135,7 +157,7 @@ Stage 1 (try `fix/pytorch-skip` temp-removal first); `xfailed` → `FAILED`.
 | Result | Action |
 |--------|--------|
 | `CANNOT_VERIFY` | Report to orchestrator, stop |
-| `REPRODUCED` | Return `REPRODUCED(stage=source_build, refined_command=...)` |
+| `REPRODUCED` | Return `REPRODUCED(stage=source_build, base=origin/main\|<ci_commit_sha>, refined_command=...)` |
 | `PASSED` | Proceed to stage 3 |
 
 ## Stage 3: CI Environment Alignment
@@ -185,6 +207,7 @@ Return one of these to the orchestrator:
 ```
 REPRODUCED
   stage: nightly | source_build | ci_env
+  base: origin/main | <ci_commit_sha>    # base for downstream build (default origin/main; ci_commit_sha only when source_build fell back)
   refined_command: <exact command that reproduced the failure>
   env_diff: <environment differences found, if stage=ci_env>
 

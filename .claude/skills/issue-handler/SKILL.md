@@ -71,6 +71,68 @@ Exceptions (do NOT force tmux):
   take under ~2 minutes and the user has not asked for tmux.
 - User explicitly says "no tmux" / "run inline".
 
+### Pipeline mode: per-issue branch isolation
+
+When pipeline mode processes multiple issues, each issue's fix lives on
+its own git branch `agent/issue-<N>` (`<N>` is the GitHub issue number)
+in the `target_repo` checkout, so runs do not stomp each other.
+
+Sequence:
+
+- **Before Stage 4**, branch off the base `fix/reproduce` used. That
+  is `origin/main` in the normal case; if reproduce reported
+  `base=<ci_commit_sha>` (fallback path used because trunk failed to
+  build), branch off that sha instead — the whole pipeline stays on it
+  through Stage 5 so verify's rebuild also succeeds.
+
+  ```bash
+  git -C <target_repo_dir> checkout -b agent/issue-<N> <base>
+  ```
+
+  `fix/reproduce` Stage 2 leaves HEAD on that base at exit, so this is
+  just a `checkout -b` from where reproduce stopped — no history is
+  lost. `-b` (not `-B`) so a pre-existing `agent/issue-<N>` from a
+  prior run fails loudly instead of silently discarding its history.
+  If it exists, decide explicitly: reuse it
+  (`git checkout agent/issue-<N>`) or delete it
+  (`git branch -D agent/issue-<N>`) after logging what gets thrown
+  away.
+
+- **Stages 4, 5, 5.5 run on this branch.** Changes stay staged and
+  uncommitted throughout (that is `fix/implement`'s contract and what
+  the reviewer and patch-proposal reads via `git diff --cached`). Do
+  not commit here.
+
+- **After Stage 6 decides the outcome, commit once** on
+  `agent/issue-<N>`:
+
+  | Outcome | Commit message |
+  |---|---|
+  | `IMPLEMENTING` (PR path)      | Real fix message (see AGENTS.md) |
+  | `PATCH_PROPOSED`              | `WIP: patch proposed for #<N>` |
+  | `NEEDS_HUMAN` after Stage 5/5.5 | `WIP: needs human — <reason>` |
+
+  Every terminal state commits. The branch is the audit trail; a
+  branch with no commit is not an audit trail.
+
+- **Then switch away** before starting the next issue:
+
+  ```bash
+  git -C <target_repo_dir> checkout main   # or wherever reproduce left it
+  ```
+
+  The next issue's Stage 4 will `checkout -b agent/issue-<M>` from
+  there.
+
+- **PR handoff.** For `IMPLEMENTING`, `xpu-ops-pr-creation` is invoked
+  with `agent/issue-<N>` already checked out and containing the fix
+  commit. That skill handles push, PR body, and any branch renaming it
+  needs. issue-handler does not push and does not rename.
+
+- **Never run `fix/implement` from `main` or another issue's branch.**
+  If the current branch is wrong at Stage 4 entry, abort with
+  `NEEDS_HUMAN`.
+
 ### Pipeline mode: comment contract
 
 Since the issue body is read-only (see the hard rule above), all
@@ -223,7 +285,16 @@ exists for the reported domain, proceed without it.
 
 ### Stage 4 — fix/implement
 
-Call `fix/implement` with:
+In pipeline mode with multiple issues, first switch to the per-issue
+branch in `target_repo` (see "Pipeline mode: per-issue branch
+isolation" above):
+
+```bash
+git -C <target_repo_dir> fetch origin
+git -C <target_repo_dir> checkout -B agent/issue-<N> origin/main
+```
+
+Then call `fix/implement` with:
 - `triage_result` from Stage 3
 - `pytorch_dir`
 - `allow_skip=false` — issue-handler never allows adding skip decorators
@@ -390,3 +461,7 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
   `pr_repo` is the repo that hosts the issue.
 - **Do not commit in `patch_proposal_mode`.** `fix/implement` leaves
   changes staged.
+- **Never run `fix/implement` from `main` or another issue's branch.**
+  In pipeline mode with multiple issues, each issue's fix lives on
+  `agent/issue-<N>`. If the branch is wrong, abort with `NEEDS_HUMAN`
+  rather than commit onto the wrong branch.
