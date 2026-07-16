@@ -19,19 +19,12 @@
 
 #pragma once
 
+#include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <cstdint>
 
 namespace at::native::xpu {
 
-struct philox_uint2 {
-  uint32_t x, y;
-};
-
-struct philox_uint4 {
-  uint32_t x, y, z, w;
-};
-
-inline philox_uint4 philox_round(philox_uint4 ctr, philox_uint2 key) {
+inline uint4 philox_round(uint4 ctr, uint2 key) {
   constexpr uint32_t kPhiloxSA = 0xD2511F53;
   constexpr uint32_t kPhiloxSB = 0xCD9E8D57;
 
@@ -52,10 +45,9 @@ inline philox_uint4 philox_round(philox_uint4 ctr, philox_uint2 key) {
 // determined entirely by (seed, offset). Each unique offset produces a
 // distinct 128-bit output.
 template <int N_ROUNDS = 10>
-inline philox_uint4 philox_4x32(uint64_t seed, uint64_t offset) {
-  philox_uint2 key = {
-      static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-  philox_uint4 ctr = {
+inline uint4 philox_4x32(uint64_t seed, uint64_t offset) {
+  uint2 key = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+  uint4 ctr = {
       static_cast<uint32_t>(offset),
       static_cast<uint32_t>(offset >> 32),
       // restrict subsequence=0
@@ -76,7 +68,7 @@ inline philox_uint4 philox_4x32(uint64_t seed, uint64_t offset) {
 
 // Derive a new (seed, offset) key from 4 random uint32 values.
 inline void philox_derive_key(
-    philox_uint4 r,
+    uint4 r,
     uint64_t* out_seed,
     uint64_t* out_offset) {
   *out_seed = static_cast<uint64_t>(r.x) | (static_cast<uint64_t>(r.y) << 32);
