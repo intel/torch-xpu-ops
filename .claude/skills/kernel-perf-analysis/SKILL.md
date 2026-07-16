@@ -145,11 +145,11 @@ Use this compact report structure:
 
 | Layer | Required content |
 |---|---|
-| L0 Identity / launch | Target kernel, launch grid, call count, time share |
-| L1 Compute state | Stall / active / co-issue / occupancy |
-| L2 Pipe / execution mix | Scalar/vector/tensor pipe utilization, load-store pressure, issue profile |
-| L3 Memory hierarchy | Intra-core on-chip, inter-core on-chip, global memory, queue, TLB/page behavior |
-| L4 Verdict | Primary bottleneck, secondary bottleneck, next measurable action |
+| Level 0 Identity / launch | Target kernel, launch grid, call count, time share |
+| Level 1 Compute state | Stall / active / co-issue / occupancy |
+| Level 2 Pipe / execution mix | Scalar/vector/tensor pipe utilization, load-store pressure, issue profile |
+| Level 3 Memory hierarchy | Intra-core on-chip, inter-core on-chip, global memory, queue, TLB/page behavior |
+| Level 4 Verdict | Primary bottleneck, secondary bottleneck, next measurable action |
 
 Assign evidence level:
 
@@ -231,38 +231,157 @@ For L4 evidence, use the repository's ASM extraction and ASM/source mapping skil
 
 ## Output Format
 
-Produce a concise analysis suitable for pasting into an issue or PR description:
+Produce a concise, metric-first analysis suitable for pasting into an issue or PR description. Every bottleneck claim must be backed by at least one numeric counter, source-derived estimate, or artifact path.
 
-```markdown
+Rules:
+- Prefer tables with concrete values over prose-only conclusions.
+- Include units for every numeric value, such as `us`, `ns`, `%`, `GB/s`, `bytes/call`, `GFLOP/call`, `workgroups`, or `calls`.
+- For byte counters, keep the raw byte value in `Metric value`, but present `Measured per call` in a consistent human-readable unit, preferably `MB/call` or `GB/call`. Use decimal units consistently inside one report: `1 MB = 1e6 bytes`, `1 GB = 1e9 bytes`, unless the source model explicitly uses `MiB`.
+- For percentage or rate counters aggregated across multiple calls, state that they are time-weighted averages.
+- For byte/event counters aggregated across multiple calls, include both total and per-call values when useful.
+- For each primary bottleneck, include the measured metric, the comparison point or threshold, and the next measurement or experiment that can confirm it.
+- If a required metric is unavailable or unreliable, write `N/A` and explain the counter limitation in one sentence.
+- For achieved TFLOPS, use target-kernel profiler time, such as `GpuTime[ns]`, as the primary timing source. Wall-clock or benchmark-table time is secondary context because profiler collection and Python/benchmark overhead can make it misleading.
+
+````markdown
 ## Kernel Perf Analysis
 
 ### Target
 - Hotspot operator:
-- Target kernel:
-- Launch grid:
-- Calls / time:
+- Reproducer:
+- Evidence artifacts:
+- Target kernel(s):
+
+| Kernel role | Runtime kernel name / signature | Source mapping | Calls | Total time | Avg time/call | Time share | Launch grid / WG count |
+|---|---|---|---:|---:|---:|---:|---|
+
+Notes:
+- State whether the report covers one kernel or multiple kernels from one operator.
+- If helper kernels are excluded, list the exclusion rule briefly.
+- If source-derived launch grid is used because profiler WG count is unavailable or zero, say so explicitly.
 
 ### Source-Code Based Roofline
-| Quantity | Read/Write | Estimate | Notes |
-|---|---|---:|---|
+| Phase | Source location | Work / traffic formula | Estimate per call | Key implementation detail |
+|---|---|---|---:|---|
+
+| Quantity | Direction / domain | Estimate per call | Formula / assumption | Closure expectation |
+|---|---|---:|---|---|
+| FLOPs or ops | compute |  |  |  |
+| Required input bytes | global read |  |  |  |
+| Required output bytes | global write |  |  |  |
+| Source logical read bytes | logical read |  |  |  |
+| Source logical write bytes | logical write |  |  |  |
+| Optimistic DRAM read bytes | DRAM read |  |  |  |
+| Expected DRAM write bytes | DRAM write |  |  |  |
+| Expected on-chip / LSC bytes | on-chip read/write |  |  |  |
+
+Derived ratios:
+- Arithmetic intensity from optimistic DRAM traffic:
+- Arithmetic intensity from measured DRAM traffic:
+- On-chip amplification, if visible: `measured_onchip_bytes / measured_dram_bytes`
 
 ### Measurement Snapshot
-| Layer | Metric | Value | Interpretation |
-|---|---|---:|---|
+State the aggregation method first:
+- Call count:
+- Percent/rate aggregation: time-weighted average
+- Byte/event aggregation: sum across matching target-kernel rows
+
+| Layer | Metric | Value | Derived / comparison | Interpretation |
+|---|---|---:|---:|---|
+| Runtime | `GpuTime[ns]` / avg time |  |  |  |
+| Runtime | `GPU_BUSY[%]` |  |  |  |
+| Compute state | `XVE_ACTIVE[%]` |  |  |  |
+| Compute state | `XVE_STALL[%]` |  |  |  |
+| Compute state | `XVE_MULTIPLE_PIPE_ACTIVE[%]` |  | `co_issue_ratio = multiple / active` |  |
+| Compute state | `XVE_THREADS_OCCUPANCY_ALL[%]` |  |  |  |
+| Pipe mix | ALU0 / ALU1 / ALU2 utilization |  |  |  |
+| Pipe mix | `XVE_INST_EXECUTED_SEND_ALL` / `XVE_INST_ISSUED_ALL` |  | send density |  |
+| L1 / LSC | `LOAD_STORE_CACHE_BYTE_READ/WRITE` |  | per-call bytes, hit ratio |  |
+| L3 | `L3_HIT`, `L3_MISS`, `L3_STALL[%]` |  | `l3_hit_ratio` |  |
+| DRAM | `GPU_MEMORY_BYTE_READ/WRITE` |  | per-call bytes, GB/s |  |
+| DRAM | `GPU_MEMORY_REQUEST_QUEUE_FULL[%]` |  |  |  |
+| Addressing | `TLB_MISS` |  | per-call misses |  |
+
+Optional ComputeBasic sanity metrics, when available:
+
+| Category | Metrics | Why record it |
+|---|---|---|
+| Quality / frequency | `ResultUncertainty[%]`, `GpuCoreClocks[cycles]`, `AvgGpuCoreFrequencyMHz[MHz]`, `CoreFrequencyMHz[MHz]` | Validate measurement quality and detect frequency drift or throttling |
+| Instruction cache | `ICACHE_HIT[events]`, `ICACHE_MISS[events]` | Support or rule out instruction-fetch pressure |
+| Finer pipe overlap | `XVE_PIPE_ALU0_AND_ALU1_ACTIVE[%]`, `XVE_PIPE_ALU0_AND_ALU2_ACTIVE[%]`, ALU0/ALU1/ALU2 event counts | Explain which pipes co-issue, beyond aggregate `XVE_MULTIPLE_PIPE_ACTIVE` |
+| Shared function hold | `XVE_SHARED_FUNCTION_ACCESS_HOLD[%]` | Detect shared-function or special-function unit holds |
+| SLM | `SLM_BYTE_READ[bytes]`, `SLM_BYTE_WRITE[bytes]`, `SLM_BANK_CONFLICT_COUNT[events]` | Separate explicit SLM traffic and bank conflicts from LSC/cache traffic |
+| L3 atomic | `L3_ATOMIC_ACCESS[events]` | Detect atomic/cache serialization |
+| Dispatch / frontend | `GPGPU_DISPATCH[%]`, `COMMAND_PARSER_COMPUTE_ENGINE_BUSY[%]`, `COMMAND_PARSER_COMPUTE_ENGINE_DISPATCH_KERNEL_COUNT[events]`, `COMMAND_PARSER_FLUSH_COUNT[events]`, `ASYNC_GPGPU_THREAD_EXIT_COUNT[messages]` | Detect dispatch, queue, flush, or async-exit overhead |
+| Engine interference | `COMMAND_PARSER_COPY_ENGINE_BUSY[%]`, `COMMAND_PARSER_RENDER_ENGINE_BUSY[%]`, `COMMAND_PARSER_RENDER_ENGINE_DISPATCH_KERNEL_COUNT[events]` | Rule out copy/render engine interference |
+| External/system traffic | `HOST_TO_GPUMEM_TRANSACTION_READ/WRITE[events]`, `SYSMEM_TRANSACTION_READ/WRITE[events]` | Detect host or system-memory traffic contaminating the kernel window |
+| Graphics/compression sanity | `IA_VERTEX[events]`, `RASTERIZER_SAMPLE_OUTPUT[events]`, `COMPRESSOR_INPUT[events]`, `COMPRESSOR_OUTPUT[events]` | Usually expected to be zero for compute kernels; nonzero values need explanation |
+
+Do not put optional sanity metrics in the primary bottleneck claim unless they are nonzero or directly explain the observed bottleneck. Otherwise, report them in one compact optional table or state that they were checked and were not material.
 
 ### Roofline Model vs Measurement
-| Path | Roofline estimate | Measured | Closure |
-|---|---:|---:|---|
+This table must make the raw metric-to-per-call derivation explicit. `Metric value` is the raw aggregated counter or profiler value used to derive `Measured per call`.
+
+| Path | Source estimate per call | Measured per call | Ratio | Metric value | Closure verdict |
+|---|---:|---:|---:|---|---|
+| FLOPs |  |  | achieved / expected or `N/A` | source FLOPs formula; target-kernel `GpuTime[ns] = <sum>; calls = <N>; kernel_time = sum / N`; wall-clock benchmark time only as secondary context if useful |  |
+| LSC Read |  |  | measured / estimate or `N/A` | `LOAD_STORE_CACHE_BYTE_READ[bytes] = <sum>; calls = <N>; measured = sum / N`; include `LOAD_STORE_CACHE_ACCESS`, `LOAD_STORE_CACHE_HIT`, `lsc_hit_ratio`; include partial-read counter if backend exposes one |  |
+| LSC Write |  |  | measured / estimate or `N/A` | `LOAD_STORE_CACHE_BYTE_WRITE[bytes] = <sum>; calls = <N>; measured = sum / N`; include `LOAD_STORE_CACHE_PARTIAL_WRITE_COUNT` or backend partial-write counter if available |  |
+| L3 Read |  |  | measured / estimate or `N/A` | `L3_READ[events]` and/or `GPU_MEMORY_L3_READ[events]`; include `L3_HIT`, `L3_MISS`, `l3_hit_ratio`, `L3_STALL[%]`; include event-to-byte assumption only if converting |  |
+| L3 Write |  |  | measured / estimate or `N/A` | `L3_WRITE[events]` and/or `GPU_MEMORY_L3_WRITE[events]`; include `L3_HIT`, `L3_MISS`, `l3_hit_ratio`, `L3_STALL[%]`; include event-to-byte assumption only if converting |  |
+| Global Memory Read |  |  | measured / estimate | `GPU_MEMORY_BYTE_READ[bytes] = <sum>; calls = <N>; measured = sum / N`; include `GPU_MEMORY_BYTE_READ_RATE[GBpS]`, `GPU_MEMORY_REQUEST_QUEUE_FULL[%]`, `TLB_MISS` |  |
+| Global Memory Write |  |  | measured / estimate | `GPU_MEMORY_BYTE_WRITE[bytes] = <sum>; calls = <N>; measured = sum / N`; include `GPU_MEMORY_BYTE_WRITE_RATE[GBpS]`, `GPU_MEMORY_REQUEST_QUEUE_FULL[%]`, partial-write/write-combine symptoms if exposed |  |
+
+Rules for this table:
+- Do not hide the raw counter. `Metric value` must include the exact counter name, summed value, call count, and formula used for `Measured per call`.
+- `Metric value` should be a compact counter bundle for that memory layer, not just the byte counter. Include hit/miss, hit ratio, partial read/write, stall, queue, and TLB counters when the backend exposes them.
+- Use readable normalized units such as `MB/call` or `GB/call` for byte-counter `Measured per call`, while preserving raw `bytes` in `Metric value`. Use `events/call` for event counters unless a documented event-to-byte conversion is available.
+- For TFLOPS, use target-kernel time by default: `tflops_kernel = source_flops_per_call / kernel_avg_seconds / 1e12`. Do not use wall-clock benchmark time for the primary TFLOPS when profiler collection overhead is present.
+- For XPU ComputeBasic, include `LOAD_STORE_CACHE_PARTIAL_WRITE_COUNT` for LSC write closure. There may be no partial-read counter; do not invent one. If another backend exposes partial reads, include it in the same row.
+- For cache rows, always include hit-ratio context when available: `lsc_hit_ratio = LOAD_STORE_CACHE_HIT / LOAD_STORE_CACHE_ACCESS`; `l3_hit_ratio = L3_HIT / (L3_HIT + L3_MISS)`.
+- For `L3_READ` and `L3_WRITE`, do not convert events to bytes unless the backend documentation or profiler output provides the transaction size. If no conversion is valid, keep `Measured per call` in `events/call` and set byte-ratio closure to `N/A`.
+- For `FLOPs`, source estimate is usually source-derived work. `Metric value` must name the target-kernel timing source used for primary achieved throughput, usually profiler `GpuTime[ns]`. Wall-clock benchmark `ms` may be listed only as secondary context when it differs.
+- If one operator launches multiple relevant kernels, either provide one table per kernel or add a `Kernel` column. Do not mix counters from different runtime kernels in one per-call row unless the row explicitly says it is operator-level aggregate.
+
+Required interpretation bullets:
+- DRAM-bound check: include DRAM bandwidth, request queue pressure, and whether measured DRAM bytes close with the source estimate.
+- Cache/on-chip pressure check: include LSC bytes, LSC hit ratio, L3 hit ratio, and L3 stall.
+- Compute/issue check: include active, stall, co-issue ratio, occupancy, and ALU/SEND mix.
 
 ### Top-Down Verdict
-| Layer | Observation | Verdict |
-|---|---|---|
+| Layer | Metrics that decide this layer | Threshold / comparison | Verdict | Next action |
+|---|---|---|---|---|
+| Level 0 Identity / launch | kernel name, calls, avg time, grid/WG count | source launch matches? |  |  |
+| Level 1 Compute state | active, stall, occupancy, GPU busy | high stall? low active? low occupancy? |  |  |
+| Level 2 Pipe / execution mix | co-issue ratio, ALU util, SEND/issued | pipe imbalance or low co-issue? |  |  |
+| Level 3 Memory hierarchy | LSC bytes/hit, L3 hit/miss/stall, DRAM bytes/BW, queue full, TLB | DRAM saturated or on-chip/cache pressure? |  |  |
+| Level 4 Root cause status | ASM/source mapping or missing evidence | ASM/source evidence available? |  |  |
+
+### Optimization Candidates
+| Priority | Candidate | Evidence | Expected headroom | Validation experiment | Stop / rollback criterion |
+|---:|---|---|---:|---|---|
+
+Guidance:
+- `Evidence` must name the deciding counters or source lines.
+- `Expected headroom` should be a bounded estimate, such as `up to 32% of FMHA device time` or `unknown until tile A/B`.
+- `Validation experiment` must be a rerunnable command, source knob, or metric group to collect next.
+
+### Reproducibility
+```bash
+# Command used to collect the evidence
+```
+
+Expected key output:
+```text
+# Include the key timing/counter lines that should reappear
+```
 
 ### Evidence Level
 - Current level:
-- Missing evidence:
+- Evidence that supports this level:
+- Missing evidence for the next level:
 - Next measurable action:
-```
+````
 
 ## Common Pitfalls
 
