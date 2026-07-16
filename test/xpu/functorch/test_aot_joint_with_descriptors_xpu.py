@@ -21,12 +21,12 @@ from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 from torch.testing._internal.common_utils import run_tests, TEST_CUDA, TEST_XPU
 
 try:
-    from xpu_test_utils import XPUImportCtx
-except Exception:
     from .xpu_test_utils import XPUImportCtx
+except Exception:
+    from ..xpu_test_utils import XPUImportCtx
 
 with XPUImportCtx(False):
-    from functorch.test_aot_joint_with_descriptors import (
+    from test_aot_joint_with_descriptors import (
         graph_capture,
         TestAOTJointWithDescriptors,
     )
