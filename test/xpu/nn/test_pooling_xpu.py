@@ -37,7 +37,7 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from .xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
+    from .xpu_test_utils import XPUImportCtx
 except Exception as e:
     from ..xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
 
