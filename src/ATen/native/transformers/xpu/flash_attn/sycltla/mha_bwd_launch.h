@@ -457,7 +457,7 @@ CUTLASS_DEVICE void scale_apply_exp2(
     const float row_max = max(m);
     const float max_scaled = row_max == -std::numeric_limits<float>::infinity()
         ? 0.f
-        : row_max * std::numbers::log2e_v<float>;
+        : row_max * std::numbers::log2e;
     CUTLASS_PRAGMA_UNROLL
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);
