@@ -16,6 +16,7 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
+#include <limits>
 #include <numbers>
 
 namespace cute {
@@ -454,9 +455,9 @@ CUTLASS_DEVICE void scale_apply_exp2(
       }
     }
     const float row_max = max(m);
-    const float max_scaled = (sycl::isinf(row_max) && row_max < 0.f)
+    const float max_scaled = row_max == -std::numeric_limits<float>::infinity()
         ? 0.f
-        : row_max * std::numbers::log2e;
+        : row_max * std::numbers::log2e_v<float>;
     CUTLASS_PRAGMA_UNROLL
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       tensor(mi, ni) = exp2f(tensor(mi, ni) * scale_softmax_log2 - max_scaled);

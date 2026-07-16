@@ -125,10 +125,10 @@ static inline double tanh(double x) {
 }
 
 static inline float normcdf(float x) {
-  return 0.5f * sycl::erfc(-x * static_cast<float>(std::numbers::inv_sqrt2));
+  return 0.5f * sycl::erfc(-x * (std::numbers::sqrt2_v<float> / 2));
 }
 static inline double normcdf(double x) {
-  return 0.5 * sycl::erfc(-x * std::numbers::inv_sqrt2);
+  return 0.5 * sycl::erfc(-x * (std::numbers::sqrt2_v<double> / 2));
 }
 
 // To walk around SYCL compiler optimization on data type promotion.

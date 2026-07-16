@@ -129,7 +129,7 @@ struct Exp2Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
     // There is no std::exp2 overload for complex, so instead
     // use the identity 2^x = e^(ln(2) * x)
-    return std::exp(static_cast<T>(std::numbers::ln2) * x);
+    return std::exp(std::numbers::ln2_v<T> * x);
   }
 };
 

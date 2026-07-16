@@ -134,7 +134,7 @@ struct AngleWrapper {
     if (at::_isnan(v)) {
       return v;
     }
-    return v < 0 ? std::numbers::pi : 0;
+    return v < 0 ? std::numbers::pi_v<scalar_t> : scalar_t(0);
   }
 };
 

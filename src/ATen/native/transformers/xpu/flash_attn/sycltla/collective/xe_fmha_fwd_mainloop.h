@@ -176,7 +176,7 @@ struct FMHAFwdMainloop<
   static constexpr Params to_underlying_arguments(
       Arguments const& args,
       void* /* workspace */) {
-    ElementS val = args.scale * static_cast<ElementS>(std::numbers::log2e);
+    ElementS val = args.scale * std::numbers::log2e_v<ElementS>;
     return Params{
         val,
         args.philox_args,

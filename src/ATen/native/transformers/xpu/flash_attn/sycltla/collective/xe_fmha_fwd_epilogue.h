@@ -22,6 +22,7 @@
 #include <flash_attention_v2/collective/copy_block_slm.hpp>
 #include <flash_attention_v2/collective/fmha_fusion.hpp>
 #include <sycl/sycl.hpp>
+#include <limits>
 #include <numbers>
 
 namespace cutlass::fmha::collective {
@@ -217,11 +218,11 @@ class FMHAFwdEpilogue {
             lane_id) { // only 1 lane contain the correct row maxima for that
                        // particular row
       // The softmax scale was multiplied by log2(e) in the mainloop
-      // Need to divide it to restore the value
-      tA_max[0] = tA_max[0] / std::numbers::log2e;
+      // Multiply by ln(2) == 1/log2(e) to restore the value
+      tA_max[0] = tA_max[0] * std::numbers::ln2_v<float>;
       float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
       *(pLSE + lse_offset + tile_row_idx) =
-          (sycl::isinf(lse_val) && lse_val < 0) ? 0 : lse_val;
+          lse_val == -std::numeric_limits<float>::infinity() ? 0 : lse_val;
     }
   }
 
