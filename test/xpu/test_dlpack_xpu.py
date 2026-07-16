@@ -117,7 +117,7 @@ class TestTorchDlPack(TestCase):
         return z
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_dlpack_conversion_with_streams(self, device, dtype):
         # Create a stream where the tensor will reside
@@ -129,7 +129,7 @@ class TestTorchDlPack(TestCase):
         self.assertEqual(z, x)
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     @dtypes(
         torch.float8_e5m2,
         torch.float8_e5m2fnuz,
@@ -372,7 +372,7 @@ class TestTorchDlPack(TestCase):
             x.__dlpack__(stream=0)
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     @deviceCountAtLeast(2)
     def test_dlpack_tensor_on_different_device(self, devices):
         dev0, dev1 = devices[:2]
@@ -532,7 +532,7 @@ class TestTorchDlPack(TestCase):
         self._test_from_dlpack(device, out_device="cpu", copy=True)
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/3077")
     def test_no_copy(self, device):
         # No copy, since tensor lives in the same device.
@@ -825,7 +825,7 @@ class TestTorchDlPack(TestCase):
         )
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     def test_numpy_cross_device_transfer(self, device):
         """Test cross-device transfer from NumPy (CPU) to PyTorch (CUDA/XPU).
 
@@ -876,7 +876,7 @@ class TestTorchDlPack(TestCase):
         self.assertEqual(np_array2[0], 999)
 
     @skipMeta
-    @onlyOn(["xpu", GPU_TYPE])
+    @onlyOn(["cuda", "xpu"])
     @deviceCountAtLeast(2)
     def test_numpy_cross_device_multi_gpu(self, devices):
         """Test cross-device transfer to specific CUDA devices (cuda:0, cuda:1, etc)."""
