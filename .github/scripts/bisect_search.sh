@@ -23,11 +23,17 @@ rm -rf "${WORKSPACE:?}/"* || sudo rm -rf "${WORKSPACE:?}/"*
 
 # Build pytorch
 pip uninstall -y torch
-source $(dirname $(realpath $0))/env.sh 2> /dev/null
+# shellcheck source=/dev/null
+source "$(dirname "$(realpath "$0")")/env.sh"
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+python "${SCRIPT_DIR}/prepare_pytorch.py" \
+    --workspace="${WORKSPACE}" \
+    --pytorch-repo="https://github.com/pytorch/pytorch.git" \
+    --pytorch-commit="${PYTORCH_VERSION}" \
+    --torch-xpu-ops-repo="https://github.com/intel/torch-xpu-ops.git" \
+    --torch-xpu-ops-commit="${TORCH_XPU_OPS_VERSION}"
 build_status="$($(dirname $(realpath $0))/build.sh \
     --WORKSPACE="${WORKSPACE}" \
-    --PYTORCH_VERSION="${PYTORCH_VERSION}" \
-    --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
     > ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
 if [ ${build_status} -ne 0 ];then
     tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
