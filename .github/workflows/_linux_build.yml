@@ -59,7 +59,7 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
-      image: 'intelgpu/manylinux2_28-builder:xpu_2619'
+      image: 'pytorch/manylinux2_28-builder:xpu-v2.12.0-rc1'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
