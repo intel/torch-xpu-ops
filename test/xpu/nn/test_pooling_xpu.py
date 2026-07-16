@@ -23,8 +23,12 @@ import torch.nn.functional as F
 from torch import inf, nan
 from torch.testing._internal.common_device_type import (
     dtypes,
+    dtypesIfXPU,
     instantiate_device_type_tests,
+    largeTensorTest,
+    onlyOn,
 )
+from torch.testing._internal.common_dtype import floating_types_and
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize as parametrize_test,
@@ -33,17 +37,91 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
 except Exception as e:
-    from ..xpu_test_utils import XPUPatchForImport
+    from ..xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
 
-with XPUPatchForImport(False):
+with XPUImportCtx(False):
     from test_pooling import (
         TestAvgPool,
         TestAvgPoolDeviceType,
         TestPoolingNN,
         TestPoolingNNDeviceType,
     )
+
+
+# ======================================================================
+# 1. dtypesIfXPU decorator additions
+# ======================================================================
+
+TestPoolingNNDeviceType.test_max_pool_nan_inf = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_max_pool_nan_inf)
+
+TestPoolingNNDeviceType.test_fractional_max_pool_nan_inf = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_fractional_max_pool_nan_inf)
+
+TestPoolingNNDeviceType.test_AdaptiveMaxPool1d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_AdaptiveMaxPool1d_indices)
+
+TestPoolingNNDeviceType.test_AdaptiveMaxPool2d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_AdaptiveMaxPool2d_indices)
+
+TestPoolingNNDeviceType.test_AdaptiveMaxPool3d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_AdaptiveMaxPool3d_indices)
+
+TestPoolingNNDeviceType.test_MaxPool1d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_MaxPool1d_indices)
+
+TestPoolingNNDeviceType.test_MaxPool2d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_MaxPool2d_indices)
+
+TestPoolingNNDeviceType.test_MaxPool3d_indices = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_MaxPool3d_indices)
+
+TestPoolingNNDeviceType.test_adaptive_pooling_empty_output_size = dtypesIfXPU(
+    torch.float32, torch.float64, torch.bfloat16, torch.float16
+)(TestPoolingNNDeviceType.test_adaptive_pooling_empty_output_size)
+
+TestPoolingNNDeviceType.test_avg_pool2d_nhwc = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_avg_pool2d_nhwc)
+
+TestPoolingNNDeviceType.test_avg_pool3d_nhwc = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_avg_pool3d_nhwc)
+
+TestPoolingNNDeviceType.test_max_pool2d_nhwc = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_max_pool2d_nhwc)
+
+TestPoolingNNDeviceType.test_max_pool3d_ndhwc = dtypesIfXPU(
+    torch.half, torch.float, torch.double
+)(TestPoolingNNDeviceType.test_max_pool3d_ndhwc)
+
+TestPoolingNNDeviceType.test_maxpool_indices_no_batch_dim = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_maxpool_indices_no_batch_dim)
+
+TestPoolingNNDeviceType.test_pool_invalid_size = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_pool_invalid_size)
+
+TestPoolingNNDeviceType.test_pool_large_size = dtypesIfXPU(
+    *floating_types_and(torch.half, torch.bfloat16)
+)(TestPoolingNNDeviceType.test_pool_large_size)
+
+
+# ======================================================================
+# 2. Method overrides (replace hardcoded "cuda" with device)
+# ======================================================================
 
 
 @parametrize_test(
@@ -154,45 +232,42 @@ torch.xpu.synchronize()
 TestPoolingNNDeviceType.test_MaxUnpool_index_errors = _test_MaxUnpool_index_errors
 
 
-@dtypes(torch.half, torch.float, torch.double)
-def _test_max_pool_nan_inf(self, device, dtype):
-    for adaptive in ["", "adaptive_"]:
-        for num_dim in [1, 2, 3]:
-            fn_name = f"{adaptive}max_pool{num_dim}d"
-            print("fn_name:", fn_name, flush=True)
-            fn = getattr(F, fn_name)
+@onlyOn(["cuda", "xpu"])
+@largeTensorTest("10GB", device="cuda")
+@largeTensorTest("10GB", device="xpu")
+def _test_adaptive_avg_pool2d_backward_large_index_offsets(self, device):
+    height = 32769
+    width = 65536
+    channels = 2
+    output_width = 1024
+    input = torch.as_strided(
+        torch.empty((1,), dtype=torch.half, device=device),
+        (1, channels, height, width),
+        (0, 0, 0, 0),
+    )
+    self.assertGreater(input.numel(), torch.iinfo(torch.int32).max)
+    grad_output = torch.ones(
+        (1, channels, height, output_width), dtype=torch.half, device=device
+    )
 
-            x = torch.full(
-                [1, 1] + num_dim * [3],
-                nan,
-                device=device,
-                dtype=dtype,
-                requires_grad=True,
-            )
-            res = fn(x, 1 if adaptive else 3)
-            res.backward(torch.randn_like(res))
-            self.assertTrue(math.isnan(res.item()))
-            x.requires_grad_(False)
-            res = fn(x, 1 if adaptive else 3)
-            self.assertTrue(math.isnan(res.item()))
-
-            x2 = torch.full(
-                [1, 1] + num_dim * [3],
-                -inf,
-                device=device,
-                dtype=dtype,
-                requires_grad=True,
-            )
-            res2 = fn(x2, 1 if adaptive else 3)
-            res2.backward(torch.randn_like(res2))
-            self.assertTrue(math.isinf(res2.item()))
-            x2.requires_grad_(False)
-            res2 = fn(x2, 1 if adaptive else 3)
-            self.assertTrue(math.isinf(res2.item()))
+    grad_input = torch.ops.aten._adaptive_avg_pool2d_backward(grad_output, input)
+    sample = grad_input[
+        0,
+        [0, 0, 1],
+        [0, height - 1, height - 1],
+        [0, 0, width - 1],
+    ]
+    expected = torch.full_like(sample, 1 / (width // output_width))
+    self.assertEqual(sample, expected)
 
 
-TestPoolingNNDeviceType.test_max_pool_nan_inf = _test_max_pool_nan_inf
+TestPoolingNNDeviceType.test_adaptive_avg_pool2d_backward_large_index_offsets = (
+    _test_adaptive_avg_pool2d_backward_large_index_offsets
+)
 
+# ======================================================================
+# 3. Instantiate tests
+# ======================================================================
 
 instantiate_device_type_tests(
     TestAvgPoolDeviceType, globals(), only_for="xpu", allow_xpu=True
