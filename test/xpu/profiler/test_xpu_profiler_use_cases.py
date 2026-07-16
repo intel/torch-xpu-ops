@@ -71,8 +71,8 @@ class XpuProfilerUseCasesTest(TestCase):
         ) as prof:
             _ = x @ weight
             prof.step()  # flush events for the current profiling iteration
-        # Sync before export so async XPU kernels have finished and are recorded.
-        torch.xpu.synchronize()
+            # Sync before export so async XPU kernels have finished and are recorded.
+            torch.xpu.synchronize()
 
         with TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
@@ -122,7 +122,7 @@ class XpuProfilerUseCasesTest(TestCase):
             ) as prof:
                 compiled_model(x)
                 prof.step()
-            torch.xpu.synchronize()
+                torch.xpu.synchronize()
 
         with TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
@@ -220,7 +220,7 @@ class XpuProfilerUseCasesTest(TestCase):
         ) as prof:
             _ = x @ weight
             prof.step()
-        torch.xpu.synchronize()
+            torch.xpu.synchronize()
 
         with TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
