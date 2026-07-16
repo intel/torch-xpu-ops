@@ -191,7 +191,7 @@ jobs:
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open >> issues.log
           if [ "${{ inputs.ut }}" == "basic" ];then
-            ut_list="op_regression op_extended op_regression_dev1"
+            ut_list="op_regression op_extended op_regression_dev1 torch_xpu"
           else
             ut_list="${{ inputs.ut }}"
           fi
@@ -214,7 +214,7 @@ jobs:
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
           ut_dir="${latest_dir}/${{ inputs.ut }}"
           if [ "${{ inputs.ut }}" == "basic" ]; then
-            ut_list="op_regression op_extended op_regression_dev1"
+            ut_list="op_regression op_extended op_regression_dev1 torch_xpu"
           else
             ut_list="${{ inputs.ut }}"
           fi
