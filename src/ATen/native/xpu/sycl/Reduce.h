@@ -26,6 +26,7 @@
 #include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
+#include <memory>
 #include <numeric>
 #include <type_traits>
 #include <utility>
@@ -516,8 +517,7 @@ template <
     int vt0 = 4>
 struct ReduceOp {
   using traits = function_traits<decltype(&ops_t::reduce)>;
-  using arg_t =
-      typename std::decay<typename traits::template arg<0>::type>::type;
+  using arg_t = std::decay_t<typename traits::template arg<0>::type>;
 
   using InputCalculator = OffsetCalculator<1, index_t>;
   using OutputCalculator = OffsetCalculator<2, index_t>;
@@ -528,8 +528,8 @@ struct ReduceOp {
       typename binary_function_traits<decltype(&ops_t::combine)>::arg2_t;
 
   static constexpr bool can_accumulate_in_output =
-      std::is_convertible<arg_t, out_scalar_t>::value &&
-      std::is_convertible<out_scalar_t, arg_t>::value;
+      std::is_convertible_v<arg_t, out_scalar_t> &&
+      std::is_convertible_v<out_scalar_t, arg_t>;
 
   static constexpr float acc_buffer_multiplier =
       (float)sizeof(arg_t) / sizeof(out_scalar_t);
@@ -1242,13 +1242,13 @@ inline void gpu_reduce_kernel(
             output_memory_size, iter.shape()[dim] * iter.strides(0)[dim]);
       }
       output_memory_size /= iter.element_size(0); // iter.strides is in bytes
-      owned_buf_ptr.reset(new AccumulationBuffer(
+      owned_buf_ptr = std::make_unique<AccumulationBuffer>(
           sizeof(arg_t),
           sizeof(out_scalar_t),
           (char*)iter.data_ptr(0),
-          output_memory_size * sizeof(arg_t)));
+          output_memory_size * sizeof(arg_t));
     } else {
-      owned_buf_ptr.reset(new AccumulationBuffer());
+      owned_buf_ptr = std::make_unique<AccumulationBuffer>();
     }
     acc_buf_ptr = owned_buf_ptr.get();
   }

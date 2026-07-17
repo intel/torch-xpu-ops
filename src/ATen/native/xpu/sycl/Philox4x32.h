@@ -78,12 +78,12 @@ struct alignas(sizeof(T) * 4) rand_vec4 {
   inline rand_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
 };
 
-typedef rand_vec4<float> float4;
-typedef rand_vec2<float> float2;
-typedef rand_vec2<double> double2;
-typedef rand_vec4<uint32_t> uint4;
-typedef rand_vec2<uint32_t> uint2;
-typedef rand_vec2<uint64_t> ulonglong2;
+using float4 = rand_vec4<float>;
+using float2 = rand_vec2<float>;
+using double2 = rand_vec2<double>;
+using uint4 = rand_vec4<uint32_t>;
+using uint2 = rand_vec2<uint32_t>;
+using ulonglong2 = rand_vec2<uint64_t>;
 
 constexpr uint32_t kPhiloxWeylSequence0 = 0x9E3779B9;
 constexpr uint32_t kPhiloxWeylSequence1 = 0xBB67AE85;
@@ -469,6 +469,7 @@ static inline double lgamma_integer(int a) {
       0.0, // a=0: undefined, but return 0
       0.0, // a=1: log(Gamma(1)) = log(0!) = 0
       0.0, // a=2: log(Gamma(2)) = log(1!) = 0
+      // NOLINTNEXTLINE(modernize-use-std-numbers)
       0.6931471805599453, // a=3: log(Gamma(3)) = log(2!) = log(2)
       1.7917594692280550, // a=4: log(Gamma(4)) = log(3!) = log(6)
       3.1780538303479458, // a=5: log(Gamma(5)) = log(4!) = log(24)
