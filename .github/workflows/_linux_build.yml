@@ -79,7 +79,7 @@ jobs:
           echo 'Acquire::https::Verify-Host "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
 
           apt-get update
-          apt-get install wget gpg gpg-agent -y
+          apt-get install wget curl gpg gpg-agent -y
           wget --no-check-certificate -qO - https://laurentides.igk.intel.com/repositories/intel-graphics.key | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
           echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://laurentides.igk.intel.com/repositories/ubuntu noble/testing-intel-omix-pvc/1.0 unified' | tee /etc/apt/sources.list.d/intel-gpu-noble.list
           apt-get update
