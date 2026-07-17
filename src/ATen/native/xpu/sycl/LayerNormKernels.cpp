@@ -501,34 +501,38 @@ struct VectorizedLayerNormKernelFunctor
       // Computation is performed in T_ACC, X is cast to T_ACC and result is
       // implicitly cast to T
       if (gamma_vec != nullptr && beta_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
+        vec_t beta_data = beta_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size<T>; ii++) {
           if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                     (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-                static_cast<T_ACC>(beta_vec[i].val[ii]);
+                static_cast<T_ACC>(beta_data.val[ii]);
           } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (gamma_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size<T>; ii++) {
           if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean));
           } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (beta_vec != nullptr) {
+        vec_t beta_data = beta_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size<T>; ii++) {
           out.val[ii] =
               (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-              static_cast<T_ACC>(beta_vec[i].val[ii]);
+              static_cast<T_ACC>(beta_data.val[ii]);
         }
       } else {
 #pragma unroll
