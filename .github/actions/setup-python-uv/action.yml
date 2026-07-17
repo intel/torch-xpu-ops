@@ -47,6 +47,6 @@ runs:
 
         # bootstrap base packages inside the venv
         source "${{ inputs.venv }}/bin/activate"
+        uv pip install -U pip wheel setuptools
         which python && python -V
         which pip && pip list
-        pip install -U pip wheel setuptools
