@@ -30,6 +30,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
+#include <ATen/native/xpu/sycl/TransposeKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
 
@@ -151,6 +152,10 @@ void copy_device_to_device(
 
   if (memcpy_eligible) {
     memcpyAsync(iter, copy_stream, p2p_enabled);
+  } else if (
+      same_type && same_conj && same_neg &&
+      can_use_channels_last_transpose_kernel(iter)) {
+    channels_last_transpose_kernel(iter);
   } else {
     if (same_neg) {
       if (!same_conj) {
