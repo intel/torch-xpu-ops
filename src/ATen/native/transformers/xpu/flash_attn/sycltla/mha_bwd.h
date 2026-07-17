@@ -30,6 +30,7 @@
 #include <sycl/sycl.hpp>
 #include <sycltla/dropout.h>
 #include <sycltla/mha_common.h>
+#include <numbers>
 
 #pragma clang diagnostic pop
 #pragma GCC diagnostic pop
@@ -138,7 +139,7 @@ struct Param {
         dv_ptr(dv),
         pb_ptr(pb),
         scale_softmax(softmax_scale),
-        scale_softmax_log2(softmax_scale * M_LOG2E),
+        scale_softmax_log2(softmax_scale * std::numbers::log2e),
         p_dropout(p_dropout),
         p_dropout_in_uint16_t(p_dropout_in_uint16_t),
         rp_dropout(rp_dropout) {}
