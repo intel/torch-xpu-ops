@@ -91,7 +91,7 @@ class TestGroupNormFusedForward(TestCase):
         # DS=16
         (1024, 128, 4, 4, 128),
         # DS=64
-        (1024, 128, 4, 4, 32), 
+        (1024, 128, 4, 4, 32),
         # DS=16
         (32, 128, 2, 2, 32),
         # DS=32
