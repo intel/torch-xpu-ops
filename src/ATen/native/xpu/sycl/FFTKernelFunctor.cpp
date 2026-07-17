@@ -15,6 +15,11 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+
 namespace at {
 namespace native {
 namespace xpu {
@@ -22,6 +27,44 @@ namespace xpu {
 namespace impl {
 
 namespace syclexp = sycl::ext::oneapi::experimental;
+
+// Process-lifetime in-memory cache of JIT-compiled FFT kernel bundles.
+// This cache stores the executable bundles keyed by the exact build
+// parameters that determine the binary, identical repeated
+// FFTs reuse a compiled bundle instead of recompiling.
+//
+// Bundles are owned here via shared_ptr for the lifetime of the process; the
+// fft_descriptor holds a shared reference rather than owning them. The set of
+// distinct keys is tiny (supported sizes x dims x directions x precisions per
+// device), so no eviction is needed for now.
+class FftKernelBundleCache {
+ public:
+  using bundle_t = sycl::kernel_bundle<sycl::bundle_state::executable>;
+
+  static FftKernelBundleCache& instance() {
+    static FftKernelBundleCache cache;
+    return cache;
+  }
+
+  std::shared_ptr<bundle_t> get(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cache_.find(key);
+    return it == cache_.end() ? nullptr : it->second;
+  }
+
+  void put(const std::string& key, std::shared_ptr<bundle_t> bundle) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cache_.emplace(key, std::move(bundle));
+  }
+
+  // NOTE: the critical section is guarded by std::lock_guard (RAII).
+  // It acquires the mutex on construction and releases it in its destructor when
+  // `lock` goes out of scope at the end of get()/put().
+  // Adding a manual unlock() would cause a double-unlock bug.
+ private:
+  std::mutex mutex_;
+  std::unordered_map<std::string, std::shared_ptr<bundle_t>> cache_;
+};
 
 struct fft_descriptor {
   std::vector<std::int64_t> fft_len;
@@ -43,8 +86,10 @@ struct fft_descriptor {
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
   std::array<std::array<size_t, 3>, 3> global_work_size{
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
-  sycl::kernel_bundle<sycl::bundle_state::executable>* exe_bundle[3][2] = {
-      {nullptr}}; // [dimension][direction]
+  // Shared references to cached executable bundles; ownership stays with
+  // FftKernelBundleCache. [dimension][direction]
+  std::shared_ptr<sycl::kernel_bundle<sycl::bundle_state::executable>>
+      exe_bundle[3][2];
   sycl::queue* queue = nullptr; // non-owning, for resource cleanup
 
   fft_descriptor() = default;
@@ -66,10 +111,9 @@ struct fft_descriptor {
           sycl::free(const_cast<void*>(twidl_table[dim][dir]), *queue);
           twidl_table[dim][dir] = nullptr;
         }
-        if (exe_bundle[dim][dir]) {
-          delete exe_bundle[dim][dir];
-          exe_bundle[dim][dir] = nullptr;
-        }
+        // exe_bundle holds shared references into FftKernelBundleCache; the
+        // cache retains ownership, so we just drop our reference here.
+        exe_bundle[dim][dir].reset();
       }
     }
     queue = nullptr;
@@ -462,8 +506,10 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     desc.bwd_strides = {1, desc.fft_len[0]};
   }
 
-  auto src_bundle = syclexp::create_kernel_bundle_from_source(
-      q.get_context(), syclexp::source_language::sycl, kernel_src);
+  // The source bundle is only needed on a cache miss; create it lazily so a
+  // fully-cached commit() skips create_kernel_bundle_from_source() as well.
+  std::optional<sycl::kernel_bundle<sycl::bundle_state::ext_oneapi_source>>
+      src_bundle;
 
   for (size_t dim = 0; dim < desc.fft_len.size(); ++dim) {
     for (int i = 0; i < sizeof(supported_sizes) / sizeof(supported_sizes[0]);
@@ -589,10 +635,30 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         throw std::runtime_error("Unsupported data type");
       };
 
-      auto exe_bundle = syclexp::build(
-          src_bundle,
-          syclexp::properties{syclexp::build_options{fft_build_opts}});
-      desc.exe_bundle[dim][dir_val] = new decltype(exe_bundle)(exe_bundle);
+      // Build options fully determine the compiled binary, so use them (plus
+      // the device index) as the cache key. A '\x1f' separator keeps distinct
+      // option lists from colliding.
+      std::string cache_key = std::to_string(at::xpu::current_device());
+      for (const auto& opt : fft_build_opts) {
+        cache_key += '\x1f';
+        cache_key += opt;
+      }
+
+      auto& bundle_cache = FftKernelBundleCache::instance();
+      auto cached = bundle_cache.get(cache_key);
+      if (!cached) {
+        if (!src_bundle) {
+          src_bundle = syclexp::create_kernel_bundle_from_source(
+              q.get_context(), syclexp::source_language::sycl, kernel_src);
+        }
+        auto exe_bundle = syclexp::build(
+            *src_bundle,
+            syclexp::properties{syclexp::build_options{fft_build_opts}});
+        cached = std::make_shared<FftKernelBundleCache::bundle_t>(
+            std::move(exe_bundle));
+        bundle_cache.put(cache_key, cached);
+      }
+      desc.exe_bundle[dim][dir_val] = cached;
     }
   }
   if (!desc.external_workspace) {
