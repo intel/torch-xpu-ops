@@ -9,7 +9,8 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
 
-#include <oneapi/ccl.hpp>
+// The oneCCL v2 C API (oneapi/ccl.h, incl. the device/LSA entry points) is
+// pulled in transitively via <xccl/ProcessGroupXCCL.hpp> -> <xccl/xccl.h>.
 
 #include <algorithm>
 #include <map>
@@ -20,12 +21,21 @@ namespace symmetric_memory {
 
 static StoreExchange storeExchange = StoreExchange("XCCLSymmetricMemory");
 
-// Resolve the ccl::communicator that the XCCL ProcessGroup has created for
+#define C10D_ONECCL_CHECK(cmd)                             \
+  do {                                                     \
+    onecclResult_t result = cmd;                           \
+    TORCH_CHECK(                                           \
+        result == onecclSuccess,                           \
+        #cmd " failed with oneCCL error code ",            \
+        static_cast<int>(result));                         \
+  } while (0)
+
+// Resolve the onecclComm_t that the XCCL ProcessGroup has created for
 // `device_idx` within `group_name`. The XCCL symmetric-memory backend reuses
 // the XCCL backend's communicator rather than bootstrapping its own, so the
 // XCCL comm must already exist (i.e. a collective has run on the group, or the
 // backend was eagerly initialized via `device_id` in `init_process_group`).
-static ccl::communicator& getCclComm(
+static onecclComm_t getCclComm(
     const std::string& group_name,
     int device_idx) {
   auto group = resolve_process_group(group_name);
@@ -39,20 +49,20 @@ static ccl::communicator& getCclComm(
       "' does not use it.");
   auto comm = pg->getXCCLComm(std::to_string(device_idx));
   TORCH_CHECK(
-      comm != nullptr && comm->cclComm.has_value(),
+      comm != nullptr && *comm != nullptr,
       "XCCL symmetric memory: the XCCL communicator for device ",
       device_idx,
       " is not initialized yet. Run a collective on group '",
       group_name,
       "' first, or eagerly initialize the backend by passing `device_id` to "
       "`init_process_group`.");
-  return comm->cclComm.value();
+  return *comm;
 }
 
 // Owns a combined oneCCL device allocation. Layout:
 //   [0, round_up(buffer_size, 16))                 - user data buffer
 //   [round_up(buffer_size, 16), total_size)        - signal pad
-// A single ccl::mem_alloc region backs both, so a single window registration
+// A single onecclMemAlloc region backs both, so a single window registration
 // (done lazily at rendezvous) covers the whole thing.
 struct XCCLAllocation {
   void* ptr;
@@ -82,9 +92,10 @@ struct XCCLAllocation {
     }
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
-    auto& queue = at::xpu::getCurrentSYCLQueue();
-    auto ccl_stream = ccl::create_stream(queue);
-    ccl::mem_free(ccl_stream, ptr);
+    // onecclMemFree resolves the buffer against oneCCL's currently selected
+    // device, so point oneCCL at this allocation's device first.
+    onecclSetDevice(static_cast<uint32_t>(device_idx));
+    onecclMemFree(ptr);
   }
 };
 
@@ -105,15 +116,19 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
     rank_ = group->getRank();
     world_size_ = group->getSize();
 
-    ccl::communicator& comm = getCclComm(group_name_, device_idx_);
+    onecclComm_t comm = getCclComm(group_name_, device_idx_);
 
     const size_t aligned_buffer_size = at::round_up(buffer_size_, 16UL);
     const size_t total_size = aligned_buffer_size + allocation->signal_pad_size;
 
     // Register a single window over the combined buffer + signal pad region.
-    win_ = ccl::comm_window_register(
-        comm, allocation->ptr, total_size, CCL_WIN_COLL_SYMMETRIC);
-    TORCH_CHECK(win_ != nullptr, "ccl::comm_window_register failed");
+    C10D_ONECCL_CHECK(onecclCommWindowRegister(
+        comm,
+        allocation->ptr,
+        total_size,
+        &win_,
+        ONECCL_WINDOW_COLL_SYMMETRIC));
+    TORCH_CHECK(win_ != nullptr, "onecclCommWindowRegister failed");
 
     // Resolve each peer's buffer pointer within the window. oneCCL returns
     // nullptr for peers that are not load/store accessible (e.g. over network).
@@ -121,7 +136,8 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
     signal_pads_.resize(world_size_);
     world_within_xpu_p2p_ = true;
     for (int r = 0; r < world_size_; ++r) {
-      ccl::get_peer_device_pointer(win_, 0, r, &buffers_[r]);
+      C10D_ONECCL_CHECK(
+          onecclGetPeerDevicePointer(comm, win_, 0, r, &buffers_[r]));
       if (buffers_[r] == nullptr) {
         world_within_xpu_p2p_ = false;
         signal_pads_[r] = nullptr;
@@ -160,8 +176,8 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
       // Best effort: the communicator may already be torn down at process
       // exit, in which case deregistration is unnecessary.
       try {
-        ccl::communicator& comm = getCclComm(group_name_, device_idx_);
-        ccl::comm_window_deregister(comm, win_); // sets win_ to nullptr
+        onecclComm_t comm = getCclComm(group_name_, device_idx_);
+        onecclCommWindowDeregister(comm, win_);
       } catch (const std::exception&) {
       }
       win_ = nullptr;
@@ -188,7 +204,7 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
   std::vector<void*> signal_pads_;
   void** buffers_dev_ = nullptr;
   void** signal_pads_dev_ = nullptr;
-  ccl::window_t win_ = nullptr;
+  onecclWindow_t win_ = nullptr;
   bool world_within_xpu_p2p_ = false;
 
   friend class XCCLSymmetricMemory;
@@ -237,7 +253,8 @@ class XCCLSymmetricMemory : public SymmetricMemory {
   }
 
   void barrier(int channel, size_t timeout_ms) override {
-    // TODO: implement via ccl::LsaBarrierSession once signals are enabled.
+    // TODO: implement via the oneCCL device communicator (onecclDevCommCreate +
+    // LSA barrier) once signals are enabled.
   }
 
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override {
@@ -266,7 +283,7 @@ class XCCLSymmetricMemory : public SymmetricMemory {
 
   // XCCL-specific accessor: the registered oneCCL window backing this
   // allocation. Exposed for symmetric-memory ops that call the device API.
-  ccl::window_t get_window() {
+  onecclWindow_t get_window() {
     return pai_->win_;
   }
 
@@ -295,12 +312,14 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     const size_t total_size = aligned_buffer_size + signal_pad_size;
 
     auto& queue = at::xpu::getCurrentSYCLQueue();
-    auto ccl_stream = ccl::create_stream(queue);
     void* ptr = nullptr;
-    ccl::mem_alloc(ccl_stream, total_size, &ptr);
-    TORCH_CHECK(ptr != nullptr || total_size == 0, "ccl::mem_alloc failed");
+    // onecclMemAlloc allocates on oneCCL's currently selected device; select
+    // this device before allocating so the buffer lands on `device_idx`.
+    C10D_ONECCL_CHECK(onecclSetDevice(static_cast<uint32_t>(device_idx)));
+    C10D_ONECCL_CHECK(onecclMemAlloc(&ptr, total_size));
+    TORCH_CHECK(ptr != nullptr || total_size == 0, "onecclMemAlloc failed");
 
-    // ccl::mem_alloc does not zero memory; clear the signal pad so the
+    // onecclMemAlloc does not zero memory; clear the signal pad so the
     // CAS-based signalling protocol starts from a known state.
     if (ptr != nullptr) {
       queue.memset(static_cast<char*>(ptr) + aligned_buffer_size, 0, signal_pad_size)

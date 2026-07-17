@@ -13,8 +13,8 @@ file(GLOB xccl_cpp "*.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/Signal.cpp")
 
-# XCCLSymmetricMemory.cpp uses the oneCCL device (LSA) API, which is only
-# available when CCL_ROOT ships device_api.hpp (see USE_ONECCL in the top-level
+# XCCLSymmetricMemory.cpp uses the oneCCL device (LSA) C API, which is only
+# available when the oneCCL in use ships it (see USE_ONECCL in the top-level
 # CMakeLists.txt). Exclude it otherwise so the build works against older oneCCL.
 if(NOT USE_ONECCL)
   list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/XCCLSymmetricMemory.cpp")
