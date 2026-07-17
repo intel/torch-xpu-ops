@@ -1006,6 +1006,7 @@ class XPUImportCtx:
             os.path.join(test_dir, "nn"),
             os.path.join(test_dir, "distributions"),
             os.path.join(test_dir, "quantization/core"),
+            os.path.join(test_dir, "functorch"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
@@ -1326,3 +1327,31 @@ def ensure_pytorch_test_path(test_dir):
     test_dir = os.path.abspath(test_dir)
     if test_dir not in sys.path:
         sys.path.insert(0, test_dir)
+
+
+def retarget_outermost_onlycuda_to_onlyon(test_method):
+    """Replaces an outermost onlyCUDA wrapper with onlyOn(['cuda', 'xpu'])."""
+
+    def is_onlycuda_wrapper(fn):
+        closure = getattr(fn, "__closure__", None)
+        if not closure:
+            return False
+
+        for cell in closure:
+            try:
+                obj = cell.cell_contents
+            except ValueError:
+                continue
+
+            if (
+                obj.__class__.__name__ == "onlyOn"
+                and getattr(obj, "device_type", None) == "cuda"
+            ):
+                return True
+
+        return False
+
+    if not is_onlycuda_wrapper(test_method):
+        return test_method
+
+    return common_device_type.onlyOn(["cuda", "xpu"])(test_method.__wrapped__)
