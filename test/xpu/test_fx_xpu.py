@@ -21,9 +21,9 @@ from torch.profiler import profile, ProfilerActivity
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 
 # test/fx is not in the XPUPatchForImport default search path; add it so
 # the TestCommonPass import works.
@@ -33,19 +33,13 @@ _FX_DIR = os.path.abspath(
 if _FX_DIR not in sys.path:
     sys.path.insert(0, _FX_DIR)
 
-# XPUPatchForImport restores sys.path on exit; keep test/ on it permanently
-# so Windows multiprocessing.spawn can re-import test_fx in test_getitem_subproc.
-if IS_WINDOWS:
-    _TEST_DIR = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../../../test")
-    )
-    if _TEST_DIR not in sys.path:
-        sys.path.insert(0, _TEST_DIR)
-
-with XPUPatchForImport(False):
+with XPUPatchForImport(False) as patcher:
     import test_common_passes
     from test_fx import _enrich_profiler_traces, TestFX
 
+# XPUPatchForImport restores sys.path on exit; keep test/ on it permanently
+# so multiprocessing.spawn (Windows) can re-import test_fx in test_getitem_subproc.
+ensure_pytorch_test_path(os.path.abspath(patcher.test_package[0]))
 
 # Canonical kernel launch event token used in test baselines.
 _XPU_KERNEL_LAUNCH_EVENT = "urEnqueueKernelLaunch"
