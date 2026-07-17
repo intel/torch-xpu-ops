@@ -9,6 +9,8 @@
 exclude:
   - "tools/linter/adapters/README.md" # Original README file (unmodified)
   - ".cmakelintrc"
+  # These files will be installed into PyTorch
+  - "src/ATen/xpu/Sleep.h"
   # Test files copied from PyTorch — do not add Intel headers
   # (these will be upstreamed back to PyTorch)
   - "test/xpu/dynamo/test_ctx_manager_xpu.py"
