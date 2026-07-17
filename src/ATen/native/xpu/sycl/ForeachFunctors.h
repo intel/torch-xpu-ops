@@ -228,7 +228,7 @@ struct PointwiseOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -296,7 +296,7 @@ struct PointwiseOpScalarListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -421,7 +421,7 @@ void binary_op_scalar(
     T** args,
     opmath_t scalar,
     int n,
-    int chunk_size,
+    int64_t chunk_size,
     bool all_aligned,
     Op op,
     size_t item_range,
@@ -478,7 +478,7 @@ void binary_op_scalar_tensor(
     scalar_t* scalar,
     opmath_t alpha,
     int n,
-    int chunk_size,
+    int64_t chunk_size,
     bool all_aligned,
     Op op,
     size_t item_range,
@@ -637,7 +637,7 @@ struct BinaryOpScalarListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -712,7 +712,7 @@ struct TernaryOpListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -779,7 +779,7 @@ struct TernaryOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -850,7 +850,7 @@ struct TernaryOpScalarListFunctor {
 
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
