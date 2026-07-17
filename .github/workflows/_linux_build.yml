@@ -48,13 +48,11 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: 'pytorch/manylinux2_28-builder:xpu-v2.13.0-rc1'
+      image: 'ubuntu:24.04'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
-        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+        no_proxy: localhost,laurentides.igk.intel.com
     env:
       GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300
@@ -63,41 +61,41 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # install gh
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf install -y gh --repo gh-cli
+          # install
+          export GCC_VERSION=13
+          apt-get update
+          apt-get install -y gh gcc g++ gcc-${GCC_VERSION} g++-${GCC_VERSION} build-essential cmake ninja-build pkg-config autoconf automake
           gh --version
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100
+          update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100
+          gcc -v && g++ -v && gcov -v
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
-      - name: Setup python-${{ inputs.python }}
-        run: |
-          rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools==81.0.0
+
+          # install driver
+          touch /etc/apt/apt.conf.d/99disable-ssl-verify
+          echo 'Acquire::https::Verify-Peer "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
+          echo 'Acquire::https::Verify-Host "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
+
+          apt-get update
+          apt-get install wget gpg gpg-agent -y
+          wget --no-check-certificate -qO - https://laurentides.igk.intel.com/repositories/intel-graphics.key | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+          echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://laurentides.igk.intel.com/repositories/ubuntu noble/testing-intel-omix-pvc/1.0 unified' | tee /etc/apt/sources.list.d/intel-gpu-noble.list
+          apt-get update
+          apt-get install -y intel-omix-dev          
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
-      - name: Snapshot open skipped issues at build start
-        run: |
-          touch known_issue_static.log issues_snapshot.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log
-      - name: Upload skipped issues snapshot
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: ./torch-xpu-ops/.github/actions/setup-python-uv
         with:
-          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          path: |
-            known_issue_static.log
-            issues_snapshot.log
+          python: ${{ inputs.python }}
+          venv: /tmp/xpu-tool/myvenv
       - name: Build Pytorch
         run: |
-          export USE_XCCL=1
+          export USE_XCCL=0
           export IS_XPU_CI=1
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
@@ -117,8 +115,7 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
+          # gcc 13 (configured via update-alternatives on Ubuntu)
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           export ONEDNN_COMMIT='${{ inputs.onednn }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
@@ -132,78 +129,12 @@ jobs:
             echo "Build pytorch got failed"
             exit 1
           fi
-      - name: Build Torchvision and Torchaudio
-        run: |
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
-          cd ./pytorch
-          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-          git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
-          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
-            echo "Build torchvision got failed"
-            exit 1
-          fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
-          git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
-          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
-            echo "Build torchaudio got failed"
-            exit 1
-          fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
-      - name: Build Triton
-        run: |
-          cd ./pytorch
-          rm -rf triton_xpu-*.whl
-          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
-            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
-                  triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
-            v = "None";
-          }{
-            for (i=1;i<=NF;i++) {if ($i ~ p) {v = $i;}};
-          }END{
-            printf("%s", v);
-          }')"
-          if [ "${built_version}" != "None" ];then
-            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu==${built_version} --dest ${{ github.workspace }}/
-            pip install ${{ github.workspace }}/*triton*.whl
-          else
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
-            dnf install -y zlib-devel
-            pip install cmake ninja pybind11
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
-              2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
-            if [ $(ls |grep -c "triton_xpu-.*.whl") -eq 0 ];then
-              echo "Build triton got failed"
-              exit 1
-            fi
-            pip install triton_xpu-*.whl
-            cp triton_xpu-*.whl ${{ github.workspace }}
-          fi
       - name: Torch Config
         run: |
           printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          python -c "import triton; print(triton.__version__)"
-          python -c "import torchvision; print(torchvision.__version__)"
-          python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
       - name: Upload Torch XPU Wheel
@@ -222,24 +153,3 @@ jobs:
         if: ${{ always() }}
         run: |
           chmod 777 /__w /github ./ -R
-
-  build-status-check:
-    needs: [build]
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Check build result
-        run: |
-          result="${{ needs.build.result }}"
-          echo "build result: $result"
-          if [ "$result" = "skipped" ]; then
-            echo "build was skipped, marking as pass"
-            exit 0
-          elif [ "$result" = "success" ]; then
-            echo "build passed"
-            exit 0
-          else
-            echo "build failed with result: $result"
-            exit 1
-          fi

@@ -1,0 +1,52 @@
+name: Setup Python (uv)
+description: Install uv and create a Python virtual environment shared by subsequent steps
+
+inputs:
+  python:
+    type: string
+    default: '3.10'
+    description: Python version to install
+  venv:
+    type: string
+    default: '/tmp/xpu-tool/myvenv'
+    description: Path of the virtual environment to create
+  uv-version:
+    type: string
+    default: ''
+    description: Pin a specific uv version (e.g. 0.5.11). Empty installs the latest
+
+runs:
+  using: composite
+  steps:
+    - name: Setup python-${{ inputs.python }} via uv
+      shell: bash -xe {0}
+      env:
+        UV_VERSION: ${{ inputs.uv-version }}
+        UV_INSTALL_DIR: /usr/local/bin
+      run: |
+        # install uv (idempotent, optionally pinned) into /usr/local/bin
+        if ! command -v uv >/dev/null 2>&1; then
+          if [ -n "${UV_VERSION}" ]; then
+            curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+          else
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          fi
+        fi
+        uv --version
+
+        # install the requested Python interpreter
+        uv python install "${{ inputs.python }}"
+
+        # (re)create the virtual environment
+        rm -rf "${{ inputs.venv }}"
+        uv venv "${{ inputs.venv }}" --python "${{ inputs.python }}" --clear
+
+        # expose the venv to all following steps in the job
+        echo "${{ inputs.venv }}/bin" >> "${GITHUB_PATH}"
+        echo "VIRTUAL_ENV=${{ inputs.venv }}" >> "${GITHUB_ENV}"
+
+        # bootstrap base packages inside the venv
+        source "${{ inputs.venv }}/bin/activate"
+        which python && python -V
+        which pip && pip list
+        pip install -U pip wheel setuptools
