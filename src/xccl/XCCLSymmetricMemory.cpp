@@ -16,8 +16,22 @@
 #include <map>
 #include <mutex>
 
+// The oneCCL device (LSA) C API this backend relies on -- onecclMemAlloc,
+// onecclCommWindowRegister, onecclGetPeerDevicePointer, ... -- is provided only
+// by oneCCL builds that also ship <oneapi/ccl/device_api.hpp>. Detect that at
+// compile time so this file always builds (mirroring the IPC-based XPU
+// backend): when the API is absent we compile a stub that fails at runtime with
+// an actionable message instead of gating the file out in CMake.
+#if defined(__has_include) && __has_include(<oneapi/ccl/device_api.hpp>)
+#define XCCL_SYMM_MEM_AVAILABLE 1
+#else
+#define XCCL_SYMM_MEM_AVAILABLE 0
+#endif
+
 namespace c10d {
 namespace symmetric_memory {
+
+#if XCCL_SYMM_MEM_AVAILABLE
 
 static StoreExchange storeExchange = StoreExchange("XCCLSymmetricMemory");
 
@@ -432,6 +446,62 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       c10::intrusive_ptr<XCCLSymmetricMemory>>
       symm_mems_;
 };
+
+#else // !XCCL_SYMM_MEM_AVAILABLE
+
+// Stub used when the oneCCL in use predates the device (LSA) C API
+// (<oneapi/ccl/device_api.hpp> is absent). The allocator is still registered so
+// the "XCCL" backend stays discoverable, but using it surfaces an actionable
+// upgrade message instead of a confusing missing-symbol build/link error.
+namespace {
+
+[[noreturn]] void throw_unsupported_oneccl() {
+  TORCH_CHECK(
+      false,
+      "XCCL SymmetricMemory requires a oneCCL build that ships the device "
+      "(LSA) C API (<oneapi/ccl/device_api.hpp> and the onecclCommWindowRegister "
+      "/ onecclGetPeerDevicePointer C entry points). The oneCCL used to build "
+      "torch-xpu-ops does not provide it. Please rebuild torch-xpu-ops against "
+      "a newer oneCCL, or select a different TORCH_SYMMMEM backend.");
+}
+
+} // namespace
+
+class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
+ public:
+  void* alloc(
+      size_t /*size*/,
+      int /*device_idx*/,
+      const std::optional<std::string>& /*group_name*/) override {
+    throw_unsupported_oneccl();
+  }
+
+  void free(void* /*ptr*/) override {}
+
+  size_t get_alloc_size(void* /*ptr*/) override {
+    throw_unsupported_oneccl();
+  }
+
+  c10::intrusive_ptr<SymmetricMemory> rendezvous(
+      void* /*ptr*/,
+      const std::optional<std::string>& /*group_name*/) override {
+    throw_unsupported_oneccl();
+  }
+
+  bool has_multicast_support(int /*device_idx*/) override {
+    return false;
+  }
+
+  c10::DeviceType supported_device_type() override {
+    return c10::DeviceType::XPU;
+  }
+
+  std::string name() override {
+    return "XCCL";
+  }
+};
+
+#endif // XCCL_SYMM_MEM_AVAILABLE
 
 struct RegisterXCCLSymmetricMemoryAllocator {
   RegisterXCCLSymmetricMemoryAllocator() {

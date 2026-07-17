@@ -65,23 +65,6 @@ if(USE_XCCL)
   endif()
 endif()
 
-# oneCCL LSA-backed symmetric memory. The XCCL backend already discovers and
-# links the oneCCL C core and adds its include dir -- and that is exactly where
-# the device (LSA) API lives -- so ONECCL needs no separate find/link. It is
-# enabled automatically whenever XCCL is on and the oneCCL in use actually ships
-# the device (LSA) C API (onecclGetPeerDevicePointer in oneapi/ccl.h); the guard
-# keeps the build working against older oneCCL that predates the LSA API.
-if(NOT DEFINED USE_ONECCL)
-  set(USE_ONECCL OFF)
-  if(USE_XCCL AND EXISTS "$ENV{CCL_ROOT}/include/oneapi/ccl.h")
-    file(READ "$ENV{CCL_ROOT}/include/oneapi/ccl.h" _oneccl_ccl_h)
-    if(_oneccl_ccl_h MATCHES "onecclGetPeerDevicePointer")
-      set(USE_ONECCL ON)
-    endif()
-    unset(_oneccl_ccl_h)
-  endif()
-endif()
-
 set(USE_SYCLTLA ON)
 if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
   set(USE_SYCLTLA OFF)
