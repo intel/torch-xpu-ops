@@ -103,7 +103,7 @@ struct FusedAdamMathFunctor {
   using opmath_t = at::opmath_type<scalar_type>;
   template <typename TLA, typename TLW>
   inline void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item,

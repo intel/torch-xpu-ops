@@ -19,6 +19,7 @@
 #include <cute/atom/mma_atom.hpp>
 
 #include <flash_attention_v2/collective/fmha_fusion.hpp>
+#include <numbers>
 
 #include <sycltla/dropout.h>
 
@@ -175,8 +176,7 @@ struct FMHAFwdMainloop<
   static constexpr Params to_underlying_arguments(
       Arguments const& args,
       void* /* workspace */) {
-    constexpr double kLog2e = 1.4426950408889634074; // log_2(e)
-    ElementS val = args.scale * static_cast<ElementS>(kLog2e);
+    ElementS val = args.scale * std::numbers::log2e_v<ElementS>;
     return Params{
         val,
         args.philox_args,
