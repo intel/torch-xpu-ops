@@ -10,6 +10,10 @@ on:
     - cron: '30 16 * * 5' # nightly wheel
   workflow_dispatch:
     inputs:
+      runner:
+        type: string
+        default: 'pvc'
+        description: What runner to use for tests
       pytorch:
         type: string
         default: 'main'
@@ -163,7 +167,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc
+      runner: ${{ github.event_name == 'schedule' && 'pvc' || inputs.runner }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -181,7 +185,7 @@ jobs:
         scenario: ${{ fromJSON(needs.Conditions-Filter.outputs.scenario) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: ${{ matrix.scenario == 'performance' && 'pvc-1550' || 'pvc' }}
+      runner: ${{ (inputs.runner == 'pvc' || github.event_name == 'schedule') && (matrix.scenario == 'performance' && 'pvc-1550' || 'pvc') || inputs.runner }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -219,7 +223,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc
+      runner: ${{ github.event_name == 'schedule' && 'pvc' || inputs.runner }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
