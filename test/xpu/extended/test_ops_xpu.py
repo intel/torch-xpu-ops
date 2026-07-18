@@ -18,8 +18,8 @@ from torch.testing._internal.common_device_type import (
     onlyXPU,
     OpDTypes,
     ops,
-    skipOps,
     skip,
+    skipOps,
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -200,10 +200,14 @@ class TestCompositeCompliance(TestCase):
     )
     @skipOps(
         {
-            skip("nn.functional.embedding"), # "nn.functional_embedding is not composite compliant"
-            skip("nn.functional.embedding_bag"), #"nn.functional.embedding_bag is not composite compliant"
-            skip("resize_"), # "resize is not composite compliant"
-            skip("resize_as_"), # "resize_as is not composite compliant"
+            skip(
+                "nn.functional.embedding"
+            ),  # "nn.functional_embedding is not composite compliant"
+            skip(
+                "nn.functional.embedding_bag"
+            ),  # "nn.functional.embedding_bag is not composite compliant"
+            skip("resize_"),  # "resize is not composite compliant"
+            skip("resize_as_"),  # "resize_as is not composite compliant"
         }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -221,7 +225,9 @@ class TestCompositeCompliance(TestCase):
     )
     @skipOps(
         {
-            skip("normal.number_mean"), # normal.number_mean output is not differentiable 
+            skip(
+                "normal.number_mean"
+            ),  # normal.number_mean output is not differentiable
         }
     )
     @ops(
