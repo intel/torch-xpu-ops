@@ -18,11 +18,6 @@ from torch.testing._internal.common_device_type import (
     onlyXPU,
     OpDTypes,
     ops,
-<<<<<<< HEAD
-    skip,
-    skipOps,
-=======
->>>>>>> parent of b55ef342 (Add skips to tests in extended/test_ops_xpu.py copied for XPU)
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -201,21 +196,6 @@ class TestCompositeCompliance(TestCase):
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
     )
-<<<<<<< HEAD
-    @skipOps(
-        {
-            skip(
-                "nn.functional.embedding"
-            ),  # "nn.functional_embedding is not composite compliant"
-            skip(
-                "nn.functional.embedding_bag"
-            ),  # "nn.functional.embedding_bag is not composite compliant"
-            skip("resize_"),  # "resize is not composite compliant"
-            skip("resize_as_"),  # "resize_as is not composite compliant"
-        }
-    )
-=======
->>>>>>> parent of b55ef342 (Add skips to tests in extended/test_ops_xpu.py copied for XPU)
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
     def test_operator(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
@@ -229,16 +209,6 @@ class TestCompositeCompliance(TestCase):
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
     )
-<<<<<<< HEAD
-    @skipOps(
-        {
-            skip(
-                "normal.number_mean"
-            ),  # normal.number_mean output is not differentiable
-        }
-    )
-=======
->>>>>>> parent of b55ef342 (Add skips to tests in extended/test_ops_xpu.py copied for XPU)
     @ops(
         [op for op in _xpu_computation_ops if op.supports_autograd],
         allowed_dtypes=(torch.float,),
