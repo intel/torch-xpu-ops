@@ -17,10 +17,7 @@
 
 import functools
 import itertools
-import sys
 import unittest
-
-sys.path.append("../../../../test/functorch")
 
 import torch
 import torch.autograd.forward_ad as fwAD
@@ -1421,7 +1418,6 @@ class TestOperators(TestCase):
                 ),  # RuntimeError: required rank 4 tensor to use channels_last format
                 xfail("cumprod"),
                 xfail("masked_fill"),
-                xfail("fill"),
                 skip("masked.mean"),  # ???
                 xfail("masked_scatter"),
                 xfail("put"),
@@ -1494,7 +1490,6 @@ class TestOperators(TestCase):
                 xfail("view_as_complex"),
                 xfail("cummax"),
                 xfail("cummin"),
-                xfail("fill"),
                 xfail(
                     "narrow"
                 ),  # Batching rule not implemented for `narrow.Tensor` (and view op)
