@@ -19,10 +19,11 @@
 
 namespace at::native::xpu {
 
-// Tiled transpose kernel for channels_last <-> contiguous conversion.
-// Treats each batch element as a 2D matrix transpose:
-//   NHWC -> NCHW: transpose (H*W, C) -> (C, H*W)
-//   NCHW -> NHWC: transpose (C, H*W) -> (H*W, C)
+// SLM-tiled batch transpose kernel.
+// Performs: dst[b][j][i] = src[b][i][j] for b in [0, batch), i in [0, rows), j in [0, cols)
+//
+// Any copy that can be viewed as a 3D tensor with the last two dims
+// transposed can use this kernel (channels_last conversion is a special case).
 //
 // Optimizations:
 // 1. 3D nd_range with batch as a separate dimension eliminates expensive
@@ -46,7 +47,7 @@ template <int VEC_SIZE>
 static constexpr int BRV = 256 * VEC_SIZE / TILE_DIM;
 
 template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
-struct ChannelsLastTransposeFunctor
+struct BatchTransposeFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr int kBRV = BRV<VEC_SIZE>;
   static constexpr int kSLM_STRIDE = SLM_STRIDE<scalar_t>;
@@ -117,7 +118,7 @@ struct ChannelsLastTransposeFunctor
     }
   }
 
-  ChannelsLastTransposeFunctor(
+  BatchTransposeFunctor(
       const scalar_t* src,
       scalar_t* dst,
       int rows,
@@ -159,7 +160,7 @@ static void launch_transpose_kernel(
       static_cast<size_t>(num_tiles_y) * kBRV,
       static_cast<size_t>(num_tiles_x) * (TILE_DIM / VEC_SIZE));
 
-  auto ker = ChannelsLastTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>(
+  auto ker = BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>(
       src, dst, rows, cols);
 
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), ker);
@@ -224,6 +225,114 @@ static void dispatch_transpose(
 #undef LAUNCH
 }
 
+// ============================================================
+// Detection: identify if a copy is a batch transpose of last 2 dims.
+//
+// A copy src -> dst is a batch transpose if the tensors can be viewed as
+// 3D [batch, rows, cols] where:
+//   - src is contiguous in [batch, rows, cols] order
+//   - dst is contiguous in [batch, cols, rows] order (last 2 dims swapped)
+// or vice versa.
+//
+// This covers:
+//   - 4D channels_last <-> contiguous (NHWC <-> NCHW)
+//   - Any ndim>=2 tensor with last 2 dims transposed
+// ============================================================
+
+// Try to decompose a copy into batch_transpose(batch, rows, cols).
+// Returns true and writes batch_size/rows/cols on success.
+static bool detect_batch_transpose(
+    const at::Tensor& src,
+    const at::Tensor& dst,
+    int& batch_size,
+    int& rows,
+    int& cols) {
+  int ndim = src.dim();
+  if (ndim < 2)
+    return false;
+  if (src.scalar_type() != dst.scalar_type())
+    return false;
+  if (!src.sizes().equals(dst.sizes()))
+    return false;
+
+  // --- Special case: 4D channels_last <-> contiguous ---
+  if (ndim == 4) {
+    int N = src.size(0);
+    int C = src.size(1);
+    int HW = src.size(2) * src.size(3);
+
+    if (HW >= TILE_DIM && C >= TILE_DIM) {
+      // NHWC -> NCHW
+      if (src.is_contiguous(at::MemoryFormat::ChannelsLast) &&
+          dst.is_contiguous(at::MemoryFormat::Contiguous)) {
+        batch_size = N;
+        rows = HW;
+        cols = C;
+        return true;
+      }
+      // NCHW -> NHWC
+      if (src.is_contiguous(at::MemoryFormat::Contiguous) &&
+          dst.is_contiguous(at::MemoryFormat::ChannelsLast)) {
+        batch_size = N;
+        rows = C;
+        cols = HW;
+        return true;
+      }
+    }
+  }
+
+  // --- General case: ndim >= 2, last two dims transposed ---
+  // Case A: src is contiguous, dst has last 2 strides swapped
+  // src strides: [..., size(-1), 1]
+  // dst strides: [..., 1, size(-2)]  (transposed last 2)
+  auto try_detect = [&](const at::Tensor& contig,
+                        const at::Tensor& transposed) -> bool {
+    if (!contig.is_contiguous())
+      return false;
+
+    int M = contig.size(ndim - 2);
+    int N = contig.size(ndim - 1);
+    if (M < TILE_DIM || N < TILE_DIM)
+      return false;
+
+    auto t_strides = transposed.strides();
+    // Last two strides must be [1, M] (transposed)
+    if (t_strides[ndim - 1] != M || t_strides[ndim - 2] != 1)
+      return false;
+
+    // Leading dims must be contiguous batch: stride[i] = product of sizes below
+    int64_t expected_stride = static_cast<int64_t>(M) * N;
+    for (int i = ndim - 3; i >= 0; i--) {
+      if (t_strides[i] != expected_stride)
+        return false;
+      expected_stride *= contig.size(i);
+    }
+
+    // Compute batch
+    int batch = 1;
+    for (int i = 0; i < ndim - 2; i++)
+      batch *= contig.size(i);
+
+    batch_size = batch;
+    rows = M;
+    cols = N;
+    return true;
+  };
+
+  // src contiguous, dst transposed
+  if (try_detect(src, dst))
+    return true;
+  // dst contiguous, src transposed
+  if (try_detect(dst, src)) {
+    // swap rows/cols: src is [batch, cols, rows] contiguous, dst is [batch, rows, cols] transposed
+    // kernel reads src as [batch, cols, rows], so rows_param=cols, cols_param=rows
+    std::swap(rows, cols);
+    return true;
+  }
+
+  return false;
+}
+
 bool can_use_channels_last_transpose_kernel(TensorIteratorBase& iter) {
   if (iter.ntensors() != 2)
     return false;
@@ -231,57 +340,22 @@ bool can_use_channels_last_transpose_kernel(TensorIteratorBase& iter) {
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
 
-  if (dst.dim() != 4)
-    return false;
-  if (dst.scalar_type() != src.scalar_type())
-    return false;
-  if (!dst.sizes().equals(src.sizes()))
-    return false;
-
-  int C = src.size(1);
-  int HW = src.size(2) * src.size(3);
-
-  // Skip if either dimension is too small for effective tiling
-  if (HW < TILE_DIM || C < TILE_DIM)
-    return false;
-
-  // NHWC -> NCHW
-  if (src.is_contiguous(at::MemoryFormat::ChannelsLast) &&
-      dst.is_contiguous(at::MemoryFormat::Contiguous)) {
-    return true;
-  }
-  // NCHW -> NHWC
-  if (src.is_contiguous(at::MemoryFormat::Contiguous) &&
-      dst.is_contiguous(at::MemoryFormat::ChannelsLast)) {
-    return true;
-  }
-  return false;
+  int batch_size, rows, cols;
+  return detect_batch_transpose(src, dst, batch_size, rows, cols);
 }
 
 void channels_last_transpose_kernel(TensorIteratorBase& iter) {
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
 
-  int N = src.size(0);
-  int C = src.size(1);
-  int H = src.size(2);
-  int W = src.size(3);
-  int HW = H * W;
-
-  bool nhwc_to_nchw =
-      src.is_contiguous(at::MemoryFormat::ChannelsLast) &&
-      dst.is_contiguous(at::MemoryFormat::Contiguous);
+  int batch_size, rows, cols;
+  detect_batch_transpose(src, dst, batch_size, rows, cols);
 
   AT_DISPATCH_ALL_TYPES_AND2(
-      kHalf, kBFloat16, src.scalar_type(), "channels_last_transpose_xpu", [&] {
+      kHalf, kBFloat16, src.scalar_type(), "batch_transpose_xpu", [&] {
         const scalar_t* src_data = src.const_data_ptr<scalar_t>();
         scalar_t* dst_data = dst.mutable_data_ptr<scalar_t>();
-
-        if (nhwc_to_nchw) {
-          dispatch_transpose(src_data, dst_data, N, HW, C);
-        } else {
-          dispatch_transpose(src_data, dst_data, N, C, HW);
-        }
+        dispatch_transpose(src_data, dst_data, batch_size, rows, cols);
       });
 }
 
