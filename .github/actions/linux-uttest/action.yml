@@ -12,8 +12,8 @@ runs:
     - name: Check Python
       shell: bash -xe {0}
       run: |
-        which python && python -V
-        which pip && pip list
+        uv run --no-project python -V
+        uv pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
@@ -142,15 +142,31 @@ runs:
       shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
+        set +u
+        source /home/jenkins/intel/oneapi/setvars.sh
+        set -u
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+        XCCL_ENABLE=$(uv run --no-project python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
-        python run_distributed.py \
+        export TEMP_DIR=/tmp
+        export BACKEND="xccl"
+        export WORLD_SIZE=4
+        export USE_CCL_V2=1
+        PYTHON_BIN="$(uv run --no-project python -c 'import sys; print(sys.executable)')"
+        export PATH="$(dirname "$PYTHON_BIN"):$PATH"
+        export CCL_ROOT="$(dirname "$PYTHON_BIN")/.."
+        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
+        export LD_LIBRARY_PATH="${CCL_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
+        sed -i '51d' run_distributed_local.py
+        uv pip install transformers pulp
+        sudo rm -rf /tmp/torchinductor_jenkins/
+        uv run --no-project python run_distributed_local.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
@@ -179,8 +195,8 @@ runs:
       if: ${{ !cancelled() }}
       shell: timeout 180 bash -xe {0}
       run: |
-        pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        uv pip install junitparser
+        uv run --no-project python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
           echo -e "Exist Failure logs"

@@ -9,11 +9,11 @@ on:
         description: Runner label for build job
       pytorch:
         type: string
-        default: 'main'
+        default: 'nightly'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'daisyden/distributed_2.13'
         description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
@@ -33,6 +33,16 @@ on:
         type: string
         default: ''
         description: 'Optional tag (e.g. target/baseline) appended to the wheel artifact name'
+      oneapi_volume:
+        required: false
+        type: string
+        default: '/opt/intel/oneapi:/opt/intel/oneapi'
+        description: 'Container volume mapping for oneAPI, e.g. /host/oneapi:/opt/intel/oneapi'
+      oneapi_path:
+        required: false
+        type: string
+        default: '/opt/intel/oneapi'
+        description: 'oneAPI root path inside container'
 
 permissions: read-all
 
@@ -51,6 +61,7 @@ jobs:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - ${{ inputs.oneapi_volume }}
       env:
         PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
@@ -135,6 +146,7 @@ jobs:
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
           if [ "${{inputs.category}}" != "dpclang" ]; then
+            export XPU_ONEAPI_PATH='${{ inputs.oneapi_path }}'
             source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           fi
           export ONEDNN_COMMIT='${{ inputs.onednn }}'
@@ -153,6 +165,8 @@ jobs:
         run: |
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
+          export XPU_ONEAPI_PATH='${{ inputs.oneapi_path }}'
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -176,6 +190,8 @@ jobs:
           cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
         run: |
+          export XPU_ONEAPI_PATH='${{ inputs.oneapi_path }}'
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           cd ./pytorch
           rm -rf triton_xpu-*.whl
           if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
@@ -214,6 +230,9 @@ jobs:
           fi
       - name: Torch Config
         run: |
+          set +u
+          source "${{ inputs.oneapi_path }}/setvars.sh"
+          set -u
           printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"

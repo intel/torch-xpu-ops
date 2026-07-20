@@ -233,8 +233,10 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: build
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      runner: BMG-816373
+      oneapi_volume: /home/jenkins/intel/oneapi:/home/jenkins/intel/oneapi
+      oneapi_path: /home/jenkins/intel/oneapi
+      pytorch: 3bda743
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
@@ -284,9 +286,9 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
+      runner: BMG-816373
+      pytorch: 3bda743
+      torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
