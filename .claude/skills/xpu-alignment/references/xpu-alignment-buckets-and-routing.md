@@ -1,21 +1,23 @@
 # Case Assessment, Routing, and Ledgers
 
-This reference owns semantic assessment and filing derivation. Runtime facts come
-from the evidence record; do not replace them with narrative judgment.
-
-**Contents:** assessment record, bug proof, XPU-fix proof, canonical proof,
-source/case ledgers, coverage.
+This reference owns semantic assessment, state vocabularies, filing derivation,
+and coverage. Runtime facts come only from audited evidence.
 
 ## Assessment record
 
-Write one `artifacts/assessments/<case_key>.json` per executed case:
+Write one `artifacts/assessments/<case_key>.json` per runtime-terminal case:
 
 ```json
 {
-  "schema_version": 3,
-  "case_key": "issue-123",
-  "evidence_path": "artifacts/evidence/issue-123.json",
+  "case_key": "pytorch-pytorch-issue-123",
+  "evidence_path": "artifacts/evidence/pytorch-pytorch-issue-123.json",
   "reproduction_status": "matched-upstream",
+  "proof_gates": {
+    "runtime": "pass",
+    "bug": "pass",
+    "xpu_fix": "pass",
+    "canonical": "pass"
+  },
   "oracle_audit": {
     "current_source": "<URL, test, docs, or diff>",
     "input_contract": "supported",
@@ -30,143 +32,206 @@ Write one `artifacts/assessments/<case_key>.json` per executed case:
   "resolution_proof": "<code owner and why a shared fix is insufficient>",
   "behavior_canonical_url": "<URL or null>",
   "xpu_tracking_canonical_url": null,
+  "tracker_origin": "none",
   "fix_pr_urls": [],
+  "canonical_audit": {
+    "tracking_searches": [
+      {"query": "<query>", "retrieved_at": "<ISO-8601>", "result_urls": []}
+    ],
+    "tracker_state": null,
+    "fix_pr_states": [],
+    "verdict": "complete"
+  },
   "tracking_repository": "intel/torch-xpu-ops",
   "implementation_repository": "intel/torch-xpu-ops",
   "final_verdict": "confirmed-xpu-issue",
   "filing_disposition": "file-xpu-tracker",
   "assessed_at": "<ISO-8601>",
   "live_state_refreshed_at": "<ISO-8601>",
-  "assessment_status": "PASS"
+  "assessment_status": "valid"
 }
 ```
 
+Runtime, bug, and XPU-fix gates are `pass`, `fail`, or `unresolved`; canonical is
+`pass` or `unresolved`. `assessment_status` is `pending`, `valid`, or `invalid`;
+it describes contract consistency, not whether the case is a bug. Set it to
+`valid` only after evidence is valid, every field uses an allowed value, proof
+citations resolve, and final fields match the ordered derivation below.
+
+Derive gates; never assign them independently:
+
+| Gate | `pass` | `fail` | `unresolved` |
+|---|---|---|---|
+| Runtime | `matched-upstream`, or `different-failure` with its own reference oracle; intended stage reached and fidelity valid | `not-reproduced` | `different-failure` without an independent oracle, `oracle-not-reached`, `blocked-script-error`, or `verification-gap` |
+| Bug | `actionable-bug` or `input-validation-defect` | feature, design, invalid, or undefined/nondeterministic behavior | `verification-gap` |
+| XPU fix | `xpu-fix-required` with `xpu-native` or `xpu-compiler` proof | `shared-fix-covers-xpu`, `upstream-design`, or `no-fix` | `unknown` path or scope |
+| Canonical | `canonical_audit.verdict: complete`; searches and live tracker/fix-PR states, including absence, are recorded | not used | audit absent, incomplete, or stale |
+
+For `oracle_audit`, use `input_contract: supported|invalid|unknown`,
+`determinism: repeatable|not-repeatable|unknown`, and
+`verdict: valid|invalid|unresolved`. Replacement checks and proof fields are
+cited free text or structured records, not enums.
+
 ## Bug proof
 
-Reconstruct the oracle from the current repro, API contract, issue body, linked
-tests, fix diff, and live discussion. Do not trust a title, old report bucket, or
-claimed exception class.
-
-Assign `issue_validity`:
+Assign one `issue_validity`:
 
 | Value | Meaning |
 |---|---|
 | `actionable-bug` | Supported deterministic behavior violates reference semantics. |
-| `input-validation-defect` | An invalid input exposes missing or inconsistent validation that itself needs a fix. |
-| `feature-request` | The requested behavior is not part of the current contract. |
-| `design-limitation` | The behavior depends on an unresolved API/performance/design choice. |
-| `invalid-repro` | The repro changes the upstream behavior or never tests its claim. |
-| `undefined-or-nondeterministic` | The conclusion depends on undefined, uninitialized, or uncontrolled data. |
+| `input-validation-defect` | Invalid input exposes missing or inconsistent validation that needs a fix. |
+| `feature-request` | Requested behavior is outside the current contract. |
+| `design-limitation` | Resolution requires an API, performance, or design decision. |
+| `invalid-repro` | The repro changes the scenario or never tests its claim. |
+| `undefined-or-nondeterministic` | The claim depends on uncontrolled data or behavior. |
 | `verification-gap` | Available facts cannot decide validity. |
 
-Before accepting a bug:
-
-- Check documented dtype, shape, stride, dimension, parameter, and device
-  preconditions. Separate a normal validation error from a missing-validation
-  defect.
-- Replace `torch.empty`, uninitialized values, unseeded randomness, non-Hermitian
-  linear-algebra inputs, and other undefined inputs with deterministic valid
-  equivalents. If the behavior disappears, do not call the original functional
-  claim a bug.
-- Confirm repeatability in clean attempts. A changing exception, stage, or result
-  is a verification gap.
-- Preserve the exact upstream scenario. A nearby failure is not confirmation.
+Reconstruct the oracle from current code, tests, docs, linked diffs, and live
+discussion. Check input preconditions; replace uninitialized values, unseeded
+randomness, non-Hermitian inputs, and other undefined inputs with deterministic
+valid equivalents. Preserve the upstream scenario. Require two clean attempts
+with the same decisive stage/signature before either actionable defect value.
 
 ## XPU-fix proof
 
 Assign one `execution_path`:
 
-- `xpu-native`: the decisive operation ran in an XPU kernel/dispatch path.
-- `xpu-compiler`: the decisive failure is in an XPU compiler/lowering path.
-- `shared-frontend`: behavior ends before backend-specific execution.
-- `cpu-fallback`: the decisive operation ran on CPU through fallback.
-- `unknown`: available evidence cannot prove the path.
+- `xpu-native`
+- `xpu-compiler`
+- `shared-frontend`
+- `cpu-fallback`
+- `unknown`
 
-Then assign `resolution_scope`:
+Assign one `resolution_scope`:
 
 - `xpu-fix-required`: XPU kernel, dispatch, lowering, or backend code needs an
-  independent change, even if that change belongs in `pytorch/pytorch`.
-- `shared-fix-covers-xpu`: one shared/CUDA-driven core fix naturally corrects
-  XPU without XPU-specific work.
-- `upstream-design`: resolution depends on upstream API or design ownership.
-- `no-fix`: no defect remains after validity review.
-- `unknown`: code path or fix effect is not proved.
+  independent change, even when that code is in `pytorch/pytorch`.
+- `shared-fix-covers-xpu`: one shared-core fix naturally corrects XPU.
+- `upstream-design`: upstream design ownership must decide.
+- `no-fix`: validity review leaves no defect.
+- `unknown`: ownership or fix effect is unproved.
 
-Compare CPU/reference behavior, CUDA behavior when available, dispatch ownership,
-affected files, and linked fix diffs. `shared-frontend` or `cpu-fallback` alone
-cannot prove `xpu-fix-required`. When ownership or fix effect is unknown, keep
-`resolution_scope: unknown` and do not file.
+Compare CPU/reference and CUDA behavior when available, dispatch ownership,
+affected files, and linked diffs. `shared-frontend` and `cpu-fallback` cannot
+prove `xpu-fix-required`.
 
 ## Canonical and filing proof
 
-Keep three concepts separate:
+Keep separate:
 
-- `behavior_canonical_url`: upstream issue/design record for the general behavior.
-- `xpu_tracking_canonical_url`: existing issue tracking the required XPU fix.
-- `fix_pr_urls`: live competing, merged, closed-unmerged, or superseded fixes.
+- `behavior_canonical_url`: general upstream behavior/design record
+- `xpu_tracking_canonical_url`: canonical issue tracking the XPU-specific fix
+- `tracker_origin`: `none`, `preexisting`, or `created-this-run`
+- `fix_pr_urls`: open, merged, closed-unmerged, or superseded fixes
+- `canonical_audit`: search queries/results, retrieval times, type-specific
+  tracker and fix-PR states, and `verdict: complete|incomplete`
 
-An upstream behavior issue does not replace an XPU tracking issue when
-`resolution_scope` is `xpu-fix-required`. Search the configured tracking
-repository independently. Default to `intel/torch-xpu-ops`; use a different
-repository only when the caller supplies an explicit experimental override.
-Choose `implementation_repository` from the code owner, independently of the
-tracking repository.
+Search the configured tracking repository independently. An upstream behavior
+issue does not replace an XPU tracker. Choose the implementation repository from
+code ownership, independently of the tracking repository.
 
-Derive the final fields:
+Apply the first matching row:
 
 | Condition | `final_verdict` | `filing_disposition` |
 |---|---|---|
-| `actionable-bug` or `input-validation-defect`, proved XPU-specific fix, no XPU tracker | `confirmed-xpu-issue` | `file-xpu-tracker` |
-| Same valid defect, but XPU tracker already exists | `track-upstream` | `duplicate` |
-| Valid defect, shared fix covers XPU | `track-upstream` | `track-upstream` |
-| Feature/design/invalid/undefined/no-fix | `non-issue` | `no-issue` |
 | Any proof gate unresolved | `verification-gap` | `needs-evidence` |
+| Runtime gate fails | `non-issue` | `no-issue` |
+| Runtime passes and bug gate fails | `non-issue` | `no-issue` |
+| Runtime/bug pass; XPU-fix fails with `shared-fix-covers-xpu` | `track-upstream` | `track-upstream` |
+| Runtime/bug pass; XPU-fix fails with `upstream-design` or `no-fix` | `non-issue` | `no-issue` |
+| All gates pass, no tracker | `confirmed-xpu-issue` | `file-xpu-tracker` |
+| All gates pass, preexisting tracker | `confirmed-xpu-issue` | `use-existing-xpu-tracker` |
+| All gates pass, tracker created this run | `confirmed-xpu-issue` | `filed-xpu-tracker` |
 
-An existing XPU-specific fix PR does not eliminate the tracking issue requirement,
-but it blocks duplicate implementation handoff. For a scanned case with an
-existing XPU tracker, use `track-upstream`/`duplicate`; when reviewing that
-canonical tracker itself, use the review object's verdict rather than changing
-the case derivation.
+Creating or finding a tracker never changes a proved XPU issue's final verdict.
+An active competing XPU fix PR blocks handler implementation but not confirmation.
+Refresh canonical and PR state immediately before every GitHub write and handoff.
 
-Refresh all canonical and PR states immediately before filing. Live state wins
-over a historical assessment: if a new shared fix supersedes an earlier
-XPU-specific plan, change `resolution_scope`, record the prior scope and
-reassessment reason, and derive the verdict again.
+## Ledgers and transitions
 
-## Source and case ledgers
+`candidate_ledger.jsonl` has one row per raw source:
 
-`candidate_ledger.jsonl` has exactly one row per raw source and contains only:
+- `id`, `kind`, `title`, `url`, selected timestamp/value
+- `details_path`: null only for title reject
+- `selection_status`: `title-reject`, `deep-reject`, or `selected`
+- `selection_reason`
+- `case_key`: required only for selected sources
+- reclassification source, reason, and time when applicable
 
-- `id`, `kind`, `title`, `url`
-- `details_path`
-- `selection_status`, `selection_reason`
-- `case_key`
-- reclassification audit fields when applicable
-
-Selection is `title-reject`, `deep-reject`, `repro-construction`, or
-`repro-ready`. Reclassification requires `reclassified_from`, a factual reason,
-and time.
-
-`case_ledger.jsonl` has exactly one row per `case_key` and contains:
+`case_ledger.jsonl` has one row per selected case:
 
 - `case_key`, `source_ids`, `upstream_refs`
-- `case_status`, structured construction limitation when present
+- `case_status`
+- `state_history`: ordered `{from, to, reason, time, incident_id}` records
+- `blocker_type` and structured blocker/incident reference when applicable
 - `environment_incident`
-- `evidence_path`, `evidence_status`, `reproduction_status`
-- `assessment_path`, `assessment_status`, `final_verdict`
-- canonical URLs, repositories, and `filing_disposition`
+- evidence/assessment paths and statuses
+- reproduction status, verdict, canonical URLs, repositories, and filing disposition
 
-Source rows never duplicate case evidence or verdict fields. Every `source_id`
-appears in one case row, and every case source points to a source-ledger row.
+`case_status` transitions only forward:
 
-## Coverage
+```text
+repro-construction -> repro-ready
+repro-construction -> blocked
+repro-ready -> blocked
+blocked -> repro-construction
+blocked -> repro-ready
+repro-ready -> runtime-terminal -> assessed
+```
 
-`artifacts/coverage.json` uses schema version 3 and records raw/source-ledger id
-counts and hashes, case-ledger key count and hash, selection counts, runtime
-status counts, validity/scope/verdict counts, valid evidence and assessment
-counts, pending case keys, and `run_status`.
+A case may start at `repro-construction` or `repro-ready`. Reclassification
+requires newly discovered source facts plus prior state, reason, and time.
+`evidence_status` and `assessment_status` are `pending`, `valid`, or `invalid`.
+Every selected source appears in exactly one case row; rejected sources never
+require a case row.
 
-`run_status` is `completed`, `partial`, or `blocked`. Completion requires exact
-source equality, complete ready cases, valid cross-artifact references, and a
-passing run audit. Partial runs may retain case-level PASS drafts but may not
-claim full-window completion or emit a batch handoff.
+Start history with `from: null` and either allowed initial state. The current
+`case_status` must equal the final history entry's `to`.
+
+Use `blocker_type: construction`, `environment`, `security`, `fetch`, `platform`,
+or `performance-harness`. A blocked case requires a structured blocker or
+incident but no fabricated evidence or assessment. Coverage derives blocked keys
+only from `case_status: blocked`; it derives pending keys from
+`repro-construction`, `repro-ready`, or `runtime-terminal`.
+
+After a remedy, mark the incident `retrying`, append a transition from `blocked`
+to the recorded resume state, clear the active blocker, and rerun the case. A
+successful clean retry resolves the incident; a failed retry reactivates it and
+returns the case to `blocked`. Audit every adjacent history pair against the
+graph.
+
+## Coverage and authoritative status
+
+`artifacts/coverage.json` records sorted raw and source-ledger id arrays, sorted
+selected and case-ledger key arrays, stage/status/verdict counts, pending and
+blocked case keys, active/retrying/resolved incident ids, `scan_audit_status`
+(`pending`, `pass`, or `fail`), `review_status`, and `workflow_status`.
+
+Derive status in this order:
+
+1. `blocked` when any current external, active environment, security, fetch,
+   platform, performance, or construction blocker prevents the next action.
+2. `completed` when all completion conditions below hold.
+3. `partial` when required work remains and can continue or retry now.
+
+Completion requires:
+
+- all collection shards completed and raw/source ids match
+- selected/case keys match and every case is `assessed`
+- all evidence and assessments are valid
+- no active/retrying incident or pending/blocked case remains; resolved incidents
+  may stay in history
+- scan audit and independent review both equal `pass`
+- coverage, scan report, review conclusions, and dashboard counts agree
+
+Reports render this value and never define or override workflow status.
+Any later filing, comment-driven reassessment, or live canonical-state change
+that modifies an assessment or review manifest first moves a completed workflow
+back to `partial`. Regenerate derived artifacts and repeat the full independent
+review before returning to `completed`.
+
+Candidate ledger owns source provenance/selection and case ledger owns membership
+and `case_status`. Evidence and assessment files own their detailed statuses,
+runtime result, verdict, canonical state, and filing disposition; corresponding
+case-ledger fields are a materialized index only. Any mismatch fails audit, and
+the index must be regenerated from its authoritative artifacts.
