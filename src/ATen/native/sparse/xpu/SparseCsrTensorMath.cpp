@@ -535,9 +535,8 @@ Tensor _sparse_csr_linear_solve_xpu(
   TORCH_CHECK(
       left == true, "only left == true is supported by the Sparse CSR backend");
 
-  Tensor b_copy = b.contiguous();
   Tensor A_dense = A.to_dense();
-  return at::linalg_solve(A_dense, b_copy, left);
+  return at::linalg_solve(A_dense, b, left);
 }
 
 } // namespace at::native
