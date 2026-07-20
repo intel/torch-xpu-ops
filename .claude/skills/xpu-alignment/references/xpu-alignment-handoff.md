@@ -8,6 +8,7 @@ creation. Alignment prepares but does not start it without separate authorizatio
 Include a case only when:
 
 - the run-level audit is `PASS`
+- independent `review_status` is `PASS`
 - `final_verdict` is `confirmed-xpu-issue`
 - the XPU tracking issue exists and is canonical
 - runtime evidence and assessment are valid

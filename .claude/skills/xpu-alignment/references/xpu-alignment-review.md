@@ -4,6 +4,48 @@ Review filed alignment objects after case assessment, or caller-supplied objects
 directly. Runtime evidence and semantic assessment remain authoritative; review
 refreshes public state and fix claims.
 
+## Independent review subagent
+
+Delegate the entire review phase to one fresh subagent. The subagent, not the
+main agent, must inspect the evidence, refresh live state, derive per-object
+verdicts, and write all review artifacts.
+
+- Select a model whose advertised capability tier is equal to or higher than
+  the main agent's model. Prefer the strongest available review/reasoning model.
+  Never select a smaller, faster, or economy tier.
+- Record the main-agent model, reviewer model, comparison basis, subagent run
+  identifier, and review time in `artifacts/review_state.json`.
+- If the runtime cannot expose or guarantee the comparison, set
+  `review_status` to `blocked-model-requirement`; do not silently fall back,
+  claim review completion, or emit a final dashboard.
+- Give the reviewer the exact in-scope object manifest, run directory, this
+  reference, case assessments, evidence, logs, environment fingerprint, and
+  permission to query current public state. Do not include the main agent's
+  expected verdicts or an answer key.
+- Use a reviewer that did not produce the alignment assessments or handler
+  fixes under review. Start with a fresh context to limit confirmation bias.
+
+The main agent verifies that every manifest object has exactly one conclusion,
+all cited artifacts exist, counts agree, and the model requirement is recorded.
+Return incomplete or inconsistent work to the same review subagent for
+correction. If that subagent is unavailable, start the entire review again with
+a fresh compliant subagent; do not combine verdicts from multiple reviewers.
+Record every attempt and identify the final reviewer in `reviewer` metadata.
+The main agent must not author, silently edit, or override a technical verdict.
+
+If review changes `resolution_scope`, `final_verdict`, or canonical fields, the
+review subagent preserves the previous value and records the live evidence and
+reason. It then updates the authoritative assessment, case ledger, coverage,
+scan report, drafts, and any other derived artifact, and reruns the run audit.
+Review cannot record `PASS` while those artifacts disagree or the refreshed
+audit is not `PASS`.
+
+If no compliant subagent is available, the main agent may write only a minimal
+`review_state.json` containing `review_status=blocked-model-requirement`, the
+requested capability, available capability or `unknown`, comparison basis, and
+time. It must not write conclusions or a dashboard; preserve scan outputs and
+end with `STATUS=blocked`.
+
 ## Review rules
 
 1. Confirm the object describes the assessed behavior and XPU execution path.
@@ -41,9 +83,16 @@ commenting, closing, or handoff.
 
 ## Review artifacts
 
-Store one entry per object in `artifacts/review_state.json` with URL, type, live
-state, labels, linked objects, retrieval time, and PR head/base/merge/review
-state.
+Store top-level `review_status` (`PASS`, `partial`, or
+`blocked-model-requirement`) and `reviewer` metadata in
+`artifacts/review_state.json`, followed by one entry per object with URL, type,
+live state, labels, linked objects, retrieval time, and PR
+head/base/merge/review state.
+
+Set `review_status=PASS` only when the capability comparison passes, every
+manifest object has exactly one conclusion, all review rules were applied, any
+assessment changes were recorded, cited evidence resolves, and dashboard counts
+match the conclusions.
 
 Write one section per object in `reports/review_conclusions.md`:
 

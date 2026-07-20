@@ -60,17 +60,19 @@ may be filed with separate authorization while the run is partial.
 
 ### 5. Review and hand off
 
-Read [review](references/xpu-alignment-review.md), then
-[handler handoff](references/xpu-alignment-handoff.md). Refresh live state and
-prepare only eligible XPU-fix work. **Complete when:** each reviewed object has
+Delegate review exactly as required by
+[review](references/xpu-alignment-review.md), then read
+[handler handoff](references/xpu-alignment-handoff.md) and prepare only eligible
+XPU-fix work. **Complete when:** `review_status=PASS`, each reviewed object has
 one canonical verdict, the batch review dashboard is written, and each eligible
 case has an evidence-backed next action.
 
 ## Run Completion
 
-Write `STATUS=completed`, the final dashboard, and batch handoff only on run
-audit `PASS`. Otherwise write `STATUS=partial|blocked` and remaining case keys.
-All GitHub writes require action-specific authorization.
+Write `STATUS=completed`, the final dashboard, and batch handoff only when the
+run audit and independent review both record `PASS`. Otherwise write
+`STATUS=partial|blocked` and the unmet conditions. All GitHub writes require
+action-specific authorization.
 
 ## Outputs
 
