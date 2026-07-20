@@ -134,11 +134,11 @@ Apply the first matching row:
 
 | Condition | `final_verdict` | `filing_disposition` |
 |---|---|---|
-| Any proof gate unresolved | `verification-gap` | `needs-evidence` |
 | Runtime gate fails | `non-issue` | `no-issue` |
 | Runtime passes and bug gate fails | `non-issue` | `no-issue` |
 | Runtime/bug pass; XPU-fix fails with `shared-fix-covers-xpu` | `track-upstream` | `track-upstream` |
 | Runtime/bug pass; XPU-fix fails with `upstream-design` or `no-fix` | `non-issue` | `no-issue` |
+| Any gate required by the remaining rows is unresolved | `verification-gap` | `needs-evidence` |
 | All gates pass, no tracker | `confirmed-xpu-issue` | `file-xpu-tracker` |
 | All gates pass, preexisting tracker | `confirmed-xpu-issue` | `use-existing-xpu-tracker` |
 | All gates pass, tracker created this run | `confirmed-xpu-issue` | `filed-xpu-tracker` |

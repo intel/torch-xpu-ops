@@ -14,6 +14,7 @@ tracking issues, behavior issues, and fix PRs:
 ```json
 {
   "mode": "full-window-scan",
+  "empty_reason": null,
   "units": [
     {
       "unit_id": "pytorch-pytorch-issue-123",
@@ -26,9 +27,10 @@ tracking issues, behavior issues, and fix PRs:
 }
 ```
 
-The manifest case-key set must equal the assessed case-key set. A passing empty
-manifest requires `empty_reason: no-selected-cases`. If selected cases exist but
-none are assessed because the workflow is blocked, use
+`empty_reason` belongs at the top level of `review_manifest.json`. The manifest
+case-key set must equal the assessed case-key set. A passing empty manifest
+requires `empty_reason: no-selected-cases`. If selected cases exist but none are
+assessed because the workflow is blocked, use
 `empty_reason: no-assessed-cases-workflow-blocked` and keep review status
 `partial`. Any other unexplained empty manifest cannot pass.
 
@@ -181,7 +183,7 @@ For full-window units, also enforce this assessment crosswalk:
 | `confirmed-xpu-issue` with no effective fix or an active fix | `needs-xpu-fix` with `unfixed` or `fix-open` |
 | `confirmed-xpu-issue` with merged but untested fix | `verification-gap` with `merged-upstream` |
 | `confirmed-xpu-issue` with tested passing fix | `fixed` with `verified-in-tested-build` |
-| `track-upstream` / `shared-fix-covers-xpu` | `track-shared-fix` |
+| `track-upstream` | `track-shared-fix` |
 | `non-issue` | `non-issue` |
 | `verification-gap` | `verification-gap` |
 

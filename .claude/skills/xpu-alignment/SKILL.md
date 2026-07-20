@@ -73,13 +73,15 @@ Derive each assessment from its evidence and live state. **Complete when:** ever
 runtime-terminal case has a valid assessment and the scan report agrees with the
 ledgers. Generate drafts, but do not file before independent review.
 
+## Review and handoff
+
 ### 5. Review and hand off
 
-Build the review manifest and delegate review exactly as required by
-[independent review](references/xpu-alignment-review.md). For full-window scans,
-then apply [handler handoff](references/xpu-alignment-handoff.md). **Complete
-when:** `review_status=pass`, every manifest unit has one conclusion, and all
-assessment changes have been re-audited.
+Both modes enter here. Build the review manifest and delegate review exactly as
+required by [independent review](references/xpu-alignment-review.md). For
+full-window scans, then apply [handler handoff](references/xpu-alignment-handoff.md).
+**Complete when:** `review_status=pass`, every manifest unit has one conclusion,
+and all assessment changes have been re-audited.
 
 ## Completion
 
