@@ -17,13 +17,18 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/TransposeKernel.h>
 
+#include <algorithm>
+#include <numeric>
+
 namespace at::native::xpu {
 
 // SLM-tiled batch transpose kernel.
-// Performs: dst[b][j][i] = src[b][i][j] for b in [0, batch), i in [0, rows), j in [0, cols)
+// Performs: dst[b][j][i] = src[b][i][j]
+//   for b in [0, batch), i in [0, rows), j in [0, cols)
 //
-// Any copy that can be viewed as a 3D tensor with the last two dims
-// transposed can use this kernel (channels_last conversion is a special case).
+// Any copy between two dense tensors whose physical dimension orders differ
+// by a swap of two contiguous groups can be expressed as a batch transpose
+// and handled by this kernel.
 //
 // Optimizations:
 // 1. 3D nd_range with batch as a separate dimension eliminates expensive
@@ -33,38 +38,26 @@ namespace at::native::xpu {
 
 static constexpr int TILE_DIM = 32;
 
-// SLM padding: +2 for 2-byte types avoids paired-element bank conflicts,
-// +1 for 4-byte types is the classic conflict-free padding.
-template <typename scalar_t>
-static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
-
-template <typename scalar_t>
-static constexpr int SLM_STRIDE = TILE_DIM + SLM_PAD<scalar_t>;
-
-// Work-group thread count = 256, regardless of VEC_SIZE:
-//   local(dim1) = BRV rows, local(dim2) = TILE_DIM/VEC_SIZE cols
-template <int VEC_SIZE>
-static constexpr int BRV = 256 * VEC_SIZE / TILE_DIM;
-
 template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
 struct BatchTransposeFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  static constexpr int kBRV = BRV<VEC_SIZE>;
-  static constexpr int kSLM_STRIDE = SLM_STRIDE<scalar_t>;
+  static constexpr int WG_SIZE = 256;
+  static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
+  static constexpr int SLM_STRIDE = TILE_DIM + SLM_PAD;
+  static constexpr int ROWS_PER_ITER = WG_SIZE * VEC_SIZE / TILE_DIM;
   using vec_t = at::native::memory::aligned_vector<scalar_t, VEC_SIZE>;
 
   void operator()(sycl::nd_item<3> item) const {
-    int tx = item.get_local_id(2);   // col within tile
-    int ty = item.get_local_id(1);   // row within tile
-    int batch = item.get_group(0);   // batch index (no division!)
-    int tile_y = item.get_group(1);  // row-tile index
-    int tile_x = item.get_group(2);  // col-tile index
+    int tx = item.get_local_id(2);
+    int ty = item.get_local_id(1);
+    int batch = item.get_group(0);
+    int tile_y = item.get_group(1);
+    int tile_x = item.get_group(2);
 
     int batch_off = batch * rows_ * cols_;
 
-    // READ: coalesced vec loads along cols (source fast dim)
 #pragma unroll
-    for (int i = 0; i < TILE_DIM; i += kBRV) {
+    for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
       int src_row = tile_y * TILE_DIM + ty + i;
       int src_col = tile_x * TILE_DIM + tx * VEC_SIZE;
 
@@ -73,14 +66,14 @@ struct BatchTransposeFunctor
             src_ + batch_off + src_row * cols_ + src_col);
 #pragma unroll
         for (int k = 0; k < VEC_SIZE; k++) {
-          slm_[(ty + i) * kSLM_STRIDE + tx * VEC_SIZE + k] = v.val[k];
+          slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] = v.val[k];
         }
       } else {
         if (src_row < rows_) {
 #pragma unroll
           for (int k = 0; k < VEC_SIZE; k++) {
             if (src_col + k < cols_) {
-              slm_[(ty + i) * kSLM_STRIDE + tx * VEC_SIZE + k] =
+              slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] =
                   src_[batch_off + src_row * cols_ + src_col + k];
             }
           }
@@ -90,9 +83,8 @@ struct BatchTransposeFunctor
 
     sycl::group_barrier(item.get_group());
 
-    // WRITE: transposed gather from SLM, coalesced vec stores
 #pragma unroll
-    for (int i = 0; i < TILE_DIM; i += kBRV) {
+    for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
       int dst_row = tile_x * TILE_DIM + ty + i;
       int dst_col = tile_y * TILE_DIM + tx * VEC_SIZE;
 
@@ -100,7 +92,7 @@ struct BatchTransposeFunctor
         vec_t v;
 #pragma unroll
         for (int k = 0; k < VEC_SIZE; k++) {
-          v.val[k] = slm_[(tx * VEC_SIZE + k) * kSLM_STRIDE + (ty + i)];
+          v.val[k] = slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
         }
         *reinterpret_cast<vec_t*>(
             dst_ + batch_off + dst_row * rows_ + dst_col) = v;
@@ -110,7 +102,7 @@ struct BatchTransposeFunctor
           for (int k = 0; k < VEC_SIZE; k++) {
             if (dst_col + k < rows_) {
               dst_[batch_off + dst_row * rows_ + dst_col + k] =
-                  slm_[(tx * VEC_SIZE + k) * kSLM_STRIDE + (ty + i)];
+                  slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
             }
           }
         }
@@ -131,7 +123,7 @@ struct BatchTransposeFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     slm_ = sycl::local_accessor<scalar_t, 1>(
-        sycl::range<1>(TILE_DIM * kSLM_STRIDE), cgh);
+        sycl::range<1>(TILE_DIM * SLM_STRIDE), cgh);
   }
 
  private:
@@ -149,15 +141,14 @@ static void launch_transpose_kernel(
     int batch_size,
     int rows,
     int cols) {
-  constexpr int kBRV = BRV<VEC_SIZE>;
+  constexpr int kROWS_PER_ITER = BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>::ROWS_PER_ITER;
   int num_tiles_x = (cols + TILE_DIM - 1) / TILE_DIM;
   int num_tiles_y = (rows + TILE_DIM - 1) / TILE_DIM;
 
-  // 3D: (batch, row-tiles * BRV, col-tiles * TILE_DIM/VEC_SIZE)
-  sycl::range<3> local_range(1, kBRV, TILE_DIM / VEC_SIZE);
+  sycl::range<3> local_range(1, kROWS_PER_ITER, TILE_DIM / VEC_SIZE);
   sycl::range<3> global_range(
       static_cast<size_t>(batch_size),
-      static_cast<size_t>(num_tiles_y) * kBRV,
+      static_cast<size_t>(num_tiles_y) * kROWS_PER_ITER,
       static_cast<size_t>(num_tiles_x) * (TILE_DIM / VEC_SIZE));
 
   auto ker = BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>(
@@ -175,7 +166,6 @@ static void dispatch_transpose(
     int cols) {
   bool full_tile = (rows % TILE_DIM == 0) && (cols % TILE_DIM == 0);
 
-  // Max vector width: 16 bytes, capped at 4 elements
   constexpr int kMaxVec =
       sizeof(scalar_t) * 4 <= 16 ? 4 : (sizeof(scalar_t) * 2 <= 16 ? 2 : 1);
 
@@ -195,30 +185,18 @@ static void dispatch_transpose(
 
   if (full_tile) {
     if constexpr (kMaxVec >= 4) {
-      if (vec_size == 4) {
-        LAUNCH(4, true);
-        return;
-      }
+      if (vec_size == 4) { LAUNCH(4, true); return; }
     }
     if constexpr (kMaxVec >= 2) {
-      if (vec_size == 2) {
-        LAUNCH(2, true);
-        return;
-      }
+      if (vec_size == 2) { LAUNCH(2, true); return; }
     }
     LAUNCH(1, true);
   } else {
     if constexpr (kMaxVec >= 4) {
-      if (vec_size == 4) {
-        LAUNCH(4, false);
-        return;
-      }
+      if (vec_size == 4) { LAUNCH(4, false); return; }
     }
     if constexpr (kMaxVec >= 2) {
-      if (vec_size == 2) {
-        LAUNCH(2, false);
-        return;
-      }
+      if (vec_size == 2) { LAUNCH(2, false); return; }
     }
     LAUNCH(1, false);
   }
@@ -226,21 +204,21 @@ static void dispatch_transpose(
 }
 
 // ============================================================
-// Detection: identify if a copy is a batch transpose of last 2 dims.
+// Detection: determine if a copy src->dst is a batch transpose.
 //
-// A copy src -> dst is a batch transpose if the tensors can be viewed as
-// 3D [batch, rows, cols] where:
-//   - src is contiguous in [batch, rows, cols] order
-//   - dst is contiguous in [batch, cols, rows] order (last 2 dims swapped)
-// or vice versa.
-//
-// This covers:
-//   - 4D channels_last <-> contiguous (NHWC <-> NCHW)
-//   - Any ndim>=2 tensor with last 2 dims transposed
+// Algorithm:
+// 1. Check both tensors are non-overlapping and dense (using PyTorch's
+//    built-in is_non_overlapping_and_dense()).
+// 2. Compute physical dimension order by sorting dims by stride
+//    (descending), skipping size-1 dims.
+// 3. Find the longest common prefix (batch dims).
+// 4. Check if the remaining dims in dst are a swap of two contiguous
+//    groups from src: src=[...batch | groupA | groupB]
+//                     dst=[...batch | groupB | groupA]
+// 5. Compute batch = product(batch_dims), rows = product(groupA),
+//    cols = product(groupB).
 // ============================================================
 
-// Try to decompose a copy into batch_transpose(batch, rows, cols).
-// Returns true and writes batch_size/rows/cols on success.
 static bool detect_batch_transpose(
     const at::Tensor& src,
     const at::Tensor& dst,
@@ -255,79 +233,110 @@ static bool detect_batch_transpose(
   if (!src.sizes().equals(dst.sizes()))
     return false;
 
-  // --- Special case: 4D channels_last <-> contiguous ---
-  if (ndim == 4) {
-    int N = src.size(0);
-    int C = src.size(1);
-    int HW = src.size(2) * src.size(3);
+  // Both must be densely packed (no holes in memory).
+  // This is equivalent to: sorting dims by stride and checking
+  // stride[i] == size[i+1] * stride[i+1] for all adjacent pairs.
+  if (!src.is_non_overlapping_and_dense())
+    return false;
+  if (!dst.is_non_overlapping_and_dense())
+    return false;
 
-    if (HW >= TILE_DIM && C >= TILE_DIM) {
-      // NHWC -> NCHW
-      if (src.is_contiguous(at::MemoryFormat::ChannelsLast) &&
-          dst.is_contiguous(at::MemoryFormat::Contiguous)) {
-        batch_size = N;
-        rows = HW;
-        cols = C;
-        return true;
-      }
-      // NCHW -> NHWC
-      if (src.is_contiguous(at::MemoryFormat::Contiguous) &&
-          dst.is_contiguous(at::MemoryFormat::ChannelsLast)) {
-        batch_size = N;
-        rows = C;
-        cols = HW;
-        return true;
-      }
+  auto sizes = src.sizes();
+  auto src_strides = src.strides();
+  auto dst_strides = dst.strides();
+
+  // Build physical dim order for each tensor (skip size-1 dims)
+  c10::SmallVector<int, 8> src_order, dst_order;
+  for (int i = 0; i < ndim; i++) {
+    if (sizes[i] > 1) {
+      src_order.push_back(i);
+      dst_order.push_back(i);
     }
   }
 
-  // --- General case: ndim >= 2, last two dims transposed ---
-  // Case A: src is contiguous, dst has last 2 strides swapped
-  // src strides: [..., size(-1), 1]
-  // dst strides: [..., 1, size(-2)]  (transposed last 2)
-  auto try_detect = [&](const at::Tensor& contig,
-                        const at::Tensor& transposed) -> bool {
-    if (!contig.is_contiguous())
-      return false;
+  std::sort(src_order.begin(), src_order.end(), [&](int a, int b) {
+    return src_strides[a] > src_strides[b];
+  });
+  std::sort(dst_order.begin(), dst_order.end(), [&](int a, int b) {
+    return dst_strides[a] > dst_strides[b];
+  });
 
-    int M = contig.size(ndim - 2);
-    int N = contig.size(ndim - 1);
-    if (M < TILE_DIM || N < TILE_DIM)
-      return false;
+  int n = static_cast<int>(src_order.size());
+  if (n < 2)
+    return false;
 
-    auto t_strides = transposed.strides();
-    // Last two strides must be [1, M] (transposed)
-    if (t_strides[ndim - 1] != M || t_strides[ndim - 2] != 1)
-      return false;
+  // Find longest common prefix in physical order (batch dimensions)
+  int batch_end = 0;
+  while (batch_end < n && src_order[batch_end] == dst_order[batch_end])
+    batch_end++;
 
-    // Leading dims must be contiguous batch: stride[i] = product of sizes below
-    int64_t expected_stride = static_cast<int64_t>(M) * N;
-    for (int i = ndim - 3; i >= 0; i--) {
-      if (t_strides[i] != expected_stride)
-        return false;
-      expected_stride *= contig.size(i);
+  int remaining = n - batch_end;
+  if (remaining < 2)
+    return false;
+
+  // Check if dst_remaining is src_remaining with two groups swapped:
+  //   src: [groupA (split items) | groupB (remaining-split items)]
+  //   dst: [groupB | groupA]
+  for (int split = 1; split < remaining; split++) {
+    int groupB_len = remaining - split;
+    bool match = true;
+    // dst[batch_end .. batch_end+groupB_len) == src[batch_end+split .. n)
+    for (int i = 0; i < groupB_len && match; i++) {
+      if (dst_order[batch_end + i] != src_order[batch_end + split + i])
+        match = false;
     }
+    // dst[batch_end+groupB_len .. n) == src[batch_end .. batch_end+split)
+    for (int i = 0; i < split && match; i++) {
+      if (dst_order[batch_end + groupB_len + i] != src_order[batch_end + i])
+        match = false;
+    }
+    if (match) {
+      // Compute batch, rows (= product of groupA sizes), cols (= product of groupB sizes)
+      int64_t b = 1, r = 1, c = 1;
+      for (int i = 0; i < batch_end; i++)
+        b *= sizes[src_order[i]];
+      for (int i = 0; i < split; i++)
+        r *= sizes[src_order[batch_end + i]];
+      for (int i = 0; i < groupB_len; i++)
+        c *= sizes[src_order[batch_end + split + i]];
 
-    // Compute batch
-    int batch = 1;
-    for (int i = 0; i < ndim - 2; i++)
-      batch *= contig.size(i);
+      if (r < TILE_DIM || c < TILE_DIM)
+        return false;
 
-    batch_size = batch;
-    rows = M;
-    cols = N;
-    return true;
-  };
+      // Occupancy check: ensure enough parallelism and SLM fits.
+      constexpr int WG_SIZE = 256;
+      int64_t num_tiles_x = (c + TILE_DIM - 1) / TILE_DIM;
+      int64_t num_tiles_y = (r + TILE_DIM - 1) / TILE_DIM;
+      int64_t total_wgs = b * num_tiles_y * num_tiles_x;
 
-  // src contiguous, dst transposed
-  if (try_detect(src, dst))
-    return true;
-  // dst contiguous, src transposed
-  if (try_detect(dst, src)) {
-    // swap rows/cols: src is [batch, cols, rows] contiguous, dst is [batch, rows, cols] transposed
-    // kernel reads src as [batch, cols, rows], so rows_param=cols, cols_param=rows
-    std::swap(rows, cols);
-    return true;
+      int64_t simd = syclMaxSubGroupSize();
+      int64_t sgs_per_wg = WG_SIZE / simd;
+      int64_t total_sgs = total_wgs * sgs_per_wg;
+
+      // 1) Total subgroups must fill all GPU thread slots
+      int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+      if (total_sgs < thread_slots)
+        return false;
+
+      // 2) SLM per WG must not exceed per-subslice budget at max
+      //    thread-slot-limited concurrency
+      int64_t elem_size = src.element_size();
+      int64_t slm_pad = (elem_size <= 2) ? 2 : 1;
+      int64_t slm_per_wg = TILE_DIM * (TILE_DIM + slm_pad) * elem_size;
+
+      int64_t eu_per_xc = syclGpuEUCountPerSubslice();
+      int64_t hw_thr = syclGpuHWThreadsPerEU();
+      int64_t slots_per_xc = eu_per_xc * hw_thr;
+      int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
+      int64_t slm_per_wg_upbound = syclLocalMemSize() / concurrent_wgs;
+      if (slm_per_wg > slm_per_wg_upbound)
+        return false;
+
+      batch_size = static_cast<int>(b);
+      rows = static_cast<int>(r);
+      cols = static_cast<int>(c);
+      return true;
+    }
   }
 
   return false;
@@ -336,10 +345,8 @@ static bool detect_batch_transpose(
 bool can_use_channels_last_transpose_kernel(TensorIteratorBase& iter) {
   if (iter.ntensors() != 2)
     return false;
-
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
-
   int batch_size, rows, cols;
   return detect_batch_transpose(src, dst, batch_size, rows, cols);
 }
