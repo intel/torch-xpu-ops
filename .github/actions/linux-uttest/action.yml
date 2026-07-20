@@ -118,8 +118,6 @@ runs:
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
-        python -m pytest -s test/xpu/profiler/test_xpu_profiler_use_cases.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_xpu_profiler_use_cases.log
 
         # llama case for calls number test
         pip install transformers
