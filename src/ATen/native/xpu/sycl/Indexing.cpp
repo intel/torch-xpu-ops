@@ -28,6 +28,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
+#include <ATen/ops/aminmax.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/gather.h>
@@ -1205,6 +1206,17 @@ bool indexShouldBeMajor(
   return false;
 }
 
+static void check_index_bounds(const Tensor& index, int64_t dim_size) {
+  if (index.numel() == 0) {
+    return;
+  }
+
+  const auto [min_index, max_index] = at::aminmax(index);
+  TORCH_CHECK_INDEX(
+      min_index.item<int64_t>() >= 0 && max_index.item<int64_t>() < dim_size,
+      "index out of range in self");
+}
+
 template <typename func_t>
 void index_reduce_add_xpu_template(
     const Tensor& self,
@@ -1226,6 +1238,7 @@ void index_reduce_add_xpu_template(
   // Scalars are treated as 1-d tensor
   const Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
   const Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+  check_index_bounds(index, self_.size(dim));
 
   TORCH_CHECK(
       result.dim() <= XPU_MAX_TENSORINFO_DIMS,
@@ -1498,6 +1511,7 @@ void index_reduce_func_xpu_template(
   // Scalars are treated as 1-d tensor
   Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
   Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+  check_index_bounds(index, self_.size(dim));
 
   TORCH_CHECK(
       result.dim() <= XPU_MAX_TENSORINFO_DIMS,

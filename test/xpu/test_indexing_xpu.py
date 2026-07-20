@@ -196,6 +196,26 @@ with XPUPatchForImport(False):
 
         self.assertEqual(out, dst)
 
+    def index_add_reduce_out_of_range_index(self, device):
+        dim_size = 4
+        source = torch.ones(1, device=device)
+
+        for bad_index in (-1, 4):
+            index = torch.tensor([bad_index], device=device, dtype=torch.int64)
+            with self.assertRaisesRegex(IndexError, "index out of range in self"):
+                torch.zeros(dim_size, device=device).index_add(0, index, source)
+            with self.assertRaisesRegex(IndexError, "index out of range in self"):
+                torch.zeros(dim_size, device=device).index_reduce(
+                    0, index, source, "prod", include_self=True
+                )
+
+        for valid_index in (0, dim_size - 1):
+            index = torch.tensor([valid_index], device=device, dtype=torch.int64)
+            torch.zeros(dim_size, device=device).index_add(0, index, source)
+            torch.zeros(dim_size, device=device).index_reduce(
+                0, index, source, "prod", include_self=True
+            )
+
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
@@ -203,6 +223,9 @@ with XPUPatchForImport(False):
     TestIndexing.test_index_select = index_select
     TestIndexing.test_index_add_empty_index_1d = index_add_empty_index_1d
     TestIndexing.test_index_add_empty_index_2d = index_add_empty_index_2d
+    TestIndexing.test_index_add_reduce_out_of_range_index = (
+        index_add_reduce_out_of_range_index
+    )
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 
