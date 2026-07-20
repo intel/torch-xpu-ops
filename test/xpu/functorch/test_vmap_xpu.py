@@ -94,7 +94,9 @@ TEST_GPU = TEST_CUDA or TEST_XPU
 
 def get_platform_specific_sdpa():
     ret = [SDPBackend.MATH]
-    if PLATFORM_SUPPORTS_FLASH_ATTENTION:
+    if PLATFORM_SUPPORTS_FLASH_ATTENTION and (
+        not TEST_XPU or torch._C._is_flash_attention_available()
+    ):
         ret.append(SDPBackend.FLASH_ATTENTION)
     if PLATFORM_SUPPORTS_MEM_EFF_ATTENTION:
         ret.append(SDPBackend.EFFICIENT_ATTENTION)

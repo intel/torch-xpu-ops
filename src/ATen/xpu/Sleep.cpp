@@ -12,6 +12,11 @@
 #include <c10/xpu/XPUStream.h>
 #include <comm/SYCLContext.h>
 
+#if !defined(SYCL_COMPILER_VERSION)
+#error \
+    "SYCL_COMPILER_VERSION is not defined. Ensure SYCLToolkit is found before building torch-xpu-ops."
+#endif
+
 namespace at::xpu {
 
 void sleep(uint64_t cycles) {
@@ -38,7 +43,7 @@ void sleep(uint64_t cycles) {
   // the driver ships a newer IGC, migrate to a functor-based implementation.
   TORCH_CHECK_NOT_IMPLEMENTED(
       c10::xpu::get_raw_device(c10::xpu::current_device())
-          .has(sycl::aspect::ext_oneapi_device_clock),
+          .has(sycl::aspect::ext_oneapi_clock_device),
       "Requires the sycl_ext_oneapi_device_clock extension, "
       "which is not supported on this device. ",
       "Please upgrade to a newer driver.");

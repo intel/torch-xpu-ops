@@ -37,12 +37,22 @@ macro(set_build_flags)
     return()
   endif()
   set(SYCL_HOST_FLAGS)
+  set(SYCL_DEVICE_COMPILE_DEFINITIONS)
   set(SYCL_KERNEL_OPTIONS)
   set(SYCL_COMPILE_FLAGS ${SYCL_FLAGS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_LINK_FLAGS})
   set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS)
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS)
   set(SYCL_OFFLINE_COMPILER_FLAGS)
+
+  # Definitions that must reach the SYCL device compiler only, not the
+  # host C++ compilation. Consumed by SYCL_WRAP_SRCS in FindSYCL.cmake.
+  if(NOT DEFINED SYCL_COMPILER_VERSION OR NOT DEFINED USE_XPU)
+    message(FATAL_ERROR "SYCL_COMPILER_VERSION and USE_XPU must be defined. "
+      "Ensure SYCLToolkit is found before building torch-xpu-ops.")
+  endif()
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
 
   set(CPP_STD c++20)
   # -- Host flags (SYCL_CXX_FLAGS)
@@ -94,7 +104,7 @@ macro(set_build_flags)
   #
   # PSEUDO of separate compilation with DPCPP compiler.
   # 1. Kernel source compilation:
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} ${SYCL_DEVICE_COMPILE_DEFINITIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
   # 2. Device code linkage:
   # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
   # 3. Host only source compilation:
