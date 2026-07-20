@@ -54,3 +54,14 @@ class TestNNMethod(TestCase):
         self.assertTrue((values == 0.0).all())
         # Indices must be valid positions within the input dimension.
         self.assertTrue((indices >= 0).all() and (indices < n).all())
+
+    @largeTensorTest("8GB", device="xpu")
+    def test_topk_dimension_larger_than_int_max(self):
+        n = 2**31
+        k = 10
+        data = torch.zeros((1, n), device="xpu", dtype=torch.float16)
+        values, indices = torch.topk(data, k, dim=1, sorted=False)
+        self.assertEqual(values.shape, (1, k))
+        self.assertEqual(indices.shape, (1, k))
+        self.assertTrue((values == 0.0).all())
+        self.assertTrue((indices >= 0).all() and (indices < n).all())

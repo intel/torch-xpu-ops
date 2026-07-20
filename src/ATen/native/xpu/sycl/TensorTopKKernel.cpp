@@ -62,10 +62,6 @@ void topk_kernel(
   int64_t nelements = self.sizes()[dim];
   int64_t nsegments = numel / nelements;
 
-  TORCH_CHECK(
-      nelements <= std::numeric_limits<int>::max(),
-      "The dimension being select can not have more than INT_MAX elements.");
-
   const auto self_dtype = self.dtype();
   TORCH_CHECK(
       self_dtype != ScalarType::ComplexFloat &&
