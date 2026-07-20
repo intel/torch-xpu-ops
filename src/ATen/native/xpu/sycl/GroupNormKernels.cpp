@@ -23,6 +23,8 @@
 
 #include <ATen/native/xpu/sycl/GroupNormKernels.h>
 
+namespace syclex = sycl::ext::oneapi::experimental;
+
 namespace at::native::xpu {
 
 #define PREFERRED_VEC_SIZE \
@@ -435,7 +437,7 @@ struct GNFusedForwardSmallFunctor {
   static constexpr int DS = LANES_PER_GROUP * VEC_SIZE;
   static constexpr int GROUPS_PER_SG = SIMD / LANES_PER_GROUP;
 
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
+  void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -568,7 +570,7 @@ struct GNFusedForwardMediumFunctor {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
   static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
 
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
+  void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -709,7 +711,7 @@ template <typename T, typename T_ACC, int SIMD, int VEC_SIZE, typename index_t>
 struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
+  void operator()(sycl::nd_item<1> item) const {
     static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
     const index_t ng = item.get_group(0);
     const int lid = item.get_local_id(0);
@@ -1127,7 +1129,11 @@ void group_norm_kernel_impl(
             mean_acc_data,
             rstd_acc_data);
       sycl_kernel_submit(
-          sycl::range<1>(n_wgs * wg_sz), sycl::range<1>(wg_sz), queue, kfn);
+          sycl::range<1>(n_wgs * wg_sz),
+          sycl::range<1>(wg_sz),
+          queue,
+          syclex::properties{syclex::sub_group_size<SIMD32>},
+          kfn);
     };
     switch (lanes) {
       case 1:
@@ -1186,7 +1192,11 @@ void group_norm_kernel_impl(
           mean_acc_data,
           rstd_acc_data);
     sycl_kernel_submit(
-        sycl::range<1>(n_wgs * wg_sz), sycl::range<1>(wg_sz), queue, kfn);
+        sycl::range<1>(n_wgs * wg_sz),
+        sycl::range<1>(wg_sz),
+        queue,
+        syclex::properties{syclex::sub_group_size<SIMD32>},
+        kfn);
     return true;
   };
   auto dispatch_packed = [&](auto index_tag) -> bool {
@@ -1257,6 +1267,7 @@ void group_norm_kernel_impl(
           sycl::range<1>(n_groups * wg_size),
           sycl::range<1>(wg_size),
           queue,
+          syclex::properties{syclex::sub_group_size<SIMD32>},
           kfn);
     };
     if (can_use_int32) {
