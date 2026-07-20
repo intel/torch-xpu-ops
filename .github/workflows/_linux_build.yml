@@ -65,7 +65,7 @@ jobs:
           export GCC_VERSION=13
           apt-get update
           apt-get install -y gh gcc g++ gcc-${GCC_VERSION} g++-${GCC_VERSION} build-essential cmake ninja-build pkg-config autoconf automake
-          apt-get install -y python3-dev git
+          apt-get install -y python3-dev git zip unzip rsync jq
           gh --version
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100
