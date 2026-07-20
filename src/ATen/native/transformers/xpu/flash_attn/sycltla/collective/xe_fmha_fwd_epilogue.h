@@ -22,6 +22,8 @@
 #include <flash_attention_v2/collective/copy_block_slm.hpp>
 #include <flash_attention_v2/collective/fmha_fusion.hpp>
 #include <sycl/sycl.hpp>
+#include <limits>
+#include <numbers>
 
 namespace cutlass::fmha::collective {
 
@@ -91,9 +93,11 @@ class FMHAFwdEpilogue {
   using TiledCopyO =
       conditional_t<is_void_v<TiledCopyO_>, DefaultTiledCopyO, TiledCopyO_>;
 
-  // Stateless design -- no arguments or parameters.
-  struct Arguments {};
-  struct Params {};
+  struct Arguments {
+    float rp_dropout;
+  };
+
+  using Params = Arguments;
 
   // Shared memory storage
   // Note sum/max tiles are padded to 16 elements, due to limitations in CuTe
@@ -115,13 +119,14 @@ class FMHAFwdEpilogue {
       SharedStorageNone>;
 
  private:
+  Params params;
   SharedStorage& shared;
 
  public:
   static constexpr Params to_underlying_arguments(
       Arguments const& args,
       void* /* workspace */) {
-    return {};
+    return args;
   }
 
   CUTLASS_HOST_DEVICE static bool can_implement(Arguments const&) {
@@ -129,7 +134,8 @@ class FMHAFwdEpilogue {
   }
 
   CUTLASS_HOST_DEVICE
-  FMHAFwdEpilogue(Params const&, SharedStorage& shared_) : shared(shared_) {}
+  FMHAFwdEpilogue(Params const& params_, SharedStorage& shared_)
+      : params(params_), shared(shared_) {}
 
   template <typename QVCoord>
   CUTLASS_DEVICE void operator()(
@@ -141,7 +147,8 @@ class FMHAFwdEpilogue {
       int thr_id, // Work-item ID
       float* pLSE, // Global LSE Ptr
       const std::tuple<int, int, int, int, int, int, int>&
-          metadata_for_lse // Metadata for LSE to calculate offset
+          metadata_for_lse, // Metadata for LSE to calculate offset
+      bool is_dropout // Whether dropout is enabled
   ) {
     using namespace cute;
     using ElementA = typename FragA::element_type;
@@ -162,6 +169,8 @@ class FMHAFwdEpilogue {
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA.size(); i++) {
       rA(i) *= broadcast<0>(rA_sum, rA, i);
+      if (is_dropout)
+        rA(i) *= params.rp_dropout;
       if (std::isnan(rA(i))) {
         rA(i) =
             0; // Handle the -nan when the whole sequence is completely masked
@@ -208,12 +217,12 @@ class FMHAFwdEpilogue {
         (tile_row_idx % rows_of_maxima) ==
             lane_id) { // only 1 lane contain the correct row maxima for that
                        // particular row
-      // The softmax scale was multiplied by the kLog2e in the mainloop
+      // The softmax scale was multiplied by log2(e) in the mainloop
       // Need to divide it to restore the value
-      double kLog2e = 1.4426950408889634074;
-      tA_max[0] = tA_max[0] / kLog2e;
+      tA_max[0] = tA_max[0] / std::numbers::log2e;
       float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
-      *(pLSE + lse_offset + tile_row_idx) = lse_val == -INFINITY ? 0 : lse_val;
+      *(pLSE + lse_offset + tile_row_idx) =
+          lse_val == -std::numeric_limits<float>::infinity() ? 0 : lse_val;
     }
   }
 
