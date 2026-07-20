@@ -13,16 +13,12 @@
 # Owner(s): ["module: intel"]
 # ruff: noqa: F401
 
-import math
 import os
 import subprocess
 import sys
 
 import torch
-import torch.nn.functional as F
-from torch import inf, nan
 from torch.testing._internal.common_device_type import (
-    dtypes,
     dtypesIfXPU,
     instantiate_device_type_tests,
     largeTensorTest,
@@ -39,7 +35,7 @@ from torch.testing._internal.common_utils import (
 try:
     from .xpu_test_utils import XPUImportCtx
 except Exception as e:
-    from ..xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
+    from ..xpu_test_utils import XPUImportCtx
 
 with XPUImportCtx(False):
     from test_pooling import (
