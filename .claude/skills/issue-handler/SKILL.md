@@ -14,6 +14,41 @@ a fresh-context **review subagent** into a single pipeline for one GitHub
 issue. Leaf-skill logic lives in those files; this skill owns the
 scheduling, mode handling, review-loop orchestration, and reporting.
 
+## Prerequisites
+
+This skill shells out to the `gh` CLI at every stage (fetch issue, post
+comments, apply labels, edit the state comment). Authenticate `gh` **before**
+invoking the skill — it does not prompt for credentials.
+
+Required GitHub token scopes:
+
+| Mode        | Classic PAT scope                  | Fine-grained equivalent                                        |
+|-------------|-------------------------------------|-----------------------------------------------------------------|
+| Interactive | `repo` (min `read:issues`)          | Issues: **Read**, Metadata: Read                                |
+| Pipeline    | `repo` (must include `write:issues`)| Issues: **Read & Write**, Metadata: Read, Pull requests: Read   |
+
+Pipeline mode additionally needs write access to add/remove `agent:*` labels,
+post comments (Stage 5.5, Stage 6), and `PATCH` the state comment via
+`gh api /repos/<owner>/<repo>/issues/comments/<id>`. A read-only token
+silently degrades pipeline mode; if `write:issues` is missing, fall back to
+interactive.
+
+Preflight at Stage 0:
+
+```bash
+gh auth status                              # must show "Logged in to github.com"
+gh auth status -t 2>&1 | grep -i 'scopes'   # confirm 'repo' or 'write:issues'
+```
+
+If either check fails, do not enter the pipeline. Emit `NEEDS_HUMAN` naming
+the missing scope. User fixes with:
+
+```bash
+gh auth refresh -s repo
+# or regenerate a fine-grained PAT with Issues: Read & Write
+# https://github.com/settings/personal-access-tokens
+```
+
 ## Execution modes
 
 Decide mode once at the start and keep it for every stage.
