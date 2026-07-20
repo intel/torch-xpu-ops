@@ -462,9 +462,8 @@ struct GNFusedForwardSmallFunctor {
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; v++) {
       const index_t cv = (local_lid * VEC_SIZE + v) >> log2_S_;
-      my_gamma[v] =
-          gamma_ ? static_cast<T_ACC>(gamma_[g_offset + cv]) : T_ACC(1);
-      my_beta[v] = beta_ ? static_cast<T_ACC>(beta_[g_offset + cv]) : T_ACC(0);
+      my_gamma[v] = static_cast<T_ACC>(gamma_[g_offset + cv]);
+      my_beta[v] = static_cast<T_ACC>(beta_[g_offset + cv]);
     }
 
     for (index_t ng = flat_base; ng < total_groups; ng += stride) {
@@ -636,9 +635,8 @@ struct GNFusedForwardMediumFunctor {
           const int pos = (sg_lid + li * SIMD) * VEC_SIZE + v;
           const index_t c = static_cast<index_t>(
               s_divider_.div(static_cast<unsigned_index_t>(pos)));
-          T_ACC gv =
-              gamma_ ? static_cast<T_ACC>(gamma_[g_offset + c]) : T_ACC(1);
-          T_ACC bv = beta_ ? static_cast<T_ACC>(beta_[g_offset + c]) : T_ACC(0);
+          T_ACC gv = static_cast<T_ACC>(gamma_[g_offset + c]);
+          T_ACC bv = static_cast<T_ACC>(beta_[g_offset + c]);
           yv[v] = static_cast<T>(
               rstd_val * gv * (static_cast<T_ACC>(xv_cache[li][v]) - mean_val) +
               bv);
@@ -826,60 +824,46 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const index_t g = ng % G_;
     const index_t g_offset = g * D_;
     if (use_slm_coeff_) {
-      if (gamma_ != nullptr && beta_ != nullptr) {
-        const T* gp = gamma_ + g_offset;
-        const T* bp = beta_ + g_offset;
-        const int gp_elem =
-            static_cast<int>(reinterpret_cast<uintptr_t>(gp) / sizeof(T));
-        // Clamp to D_: for D_ < VEC_SIZE (e.g. num_groups == num_channels),
-        // the raw alignment-derived head can exceed D_, which would make
-        // c_nvecs truncate to 0 and c_tail stay above D_ -- the head loop
-        // below would then run past D_, reading gp/bp out of bounds and
-        // writing beyond coeff_'s intended a[]/b[] sub-ranges.
-        const index_t c_head = std::min(
-            static_cast<index_t>((VEC_SIZE - gp_elem % VEC_SIZE) % VEC_SIZE),
-            D_);
-        const index_t c_nvecs = (D_ - c_head) / VEC_SIZE;
-        const index_t c_tail = c_head + c_nvecs * VEC_SIZE;
-        if (lid == 0) {
-          for (index_t c = 0; c < c_head; c++) {
-            T_ACC gv = static_cast<T_ACC>(gp[c]);
-            T_ACC bv = static_cast<T_ACC>(bp[c]);
-            T_ACC a_c = g_rstd * gv;
-            coeff_[c] = a_c;
-            coeff_[D_ + c] = bv - g_mean * a_c;
-          }
+      const T* gp = gamma_ + g_offset;
+      const T* bp = beta_ + g_offset;
+      const int gp_elem =
+          static_cast<int>(reinterpret_cast<uintptr_t>(gp) / sizeof(T));
+      // Clamp to D_: for D_ < VEC_SIZE (e.g. num_groups == num_channels),
+      // the raw alignment-derived head can exceed D_, which would make
+      // c_nvecs truncate to 0 and c_tail stay above D_ -- the head loop
+      // below would then run past D_, reading gp/bp out of bounds and
+      // writing beyond coeff_'s intended a[]/b[] sub-ranges.
+      const index_t c_head = std::min(
+          static_cast<index_t>((VEC_SIZE - gp_elem % VEC_SIZE) % VEC_SIZE), D_);
+      const index_t c_nvecs = (D_ - c_head) / VEC_SIZE;
+      const index_t c_tail = c_head + c_nvecs * VEC_SIZE;
+      if (lid == 0) {
+        for (index_t c = 0; c < c_head; c++) {
+          T_ACC gv = static_cast<T_ACC>(gp[c]);
+          T_ACC bv = static_cast<T_ACC>(bp[c]);
+          T_ACC a_c = g_rstd * gv;
+          coeff_[c] = a_c;
+          coeff_[D_ + c] = bv - g_mean * a_c;
         }
-        for (index_t ci = lid; ci < c_nvecs; ci += wg_size) {
-          const index_t c = c_head + ci * VEC_SIZE;
-          vec_t gv_vec = *reinterpret_cast<const vec_t*>(gp + c);
-          vec_t bv_vec = *reinterpret_cast<const vec_t*>(bp + c);
+      }
+      for (index_t ci = lid; ci < c_nvecs; ci += wg_size) {
+        const index_t c = c_head + ci * VEC_SIZE;
+        vec_t gv_vec = *reinterpret_cast<const vec_t*>(gp + c);
+        vec_t bv_vec = *reinterpret_cast<const vec_t*>(bp + c);
 #pragma unroll
-          for (int v = 0; v < VEC_SIZE; v++) {
-            T_ACC gv = static_cast<T_ACC>(gv_vec[v]);
-            T_ACC bv = static_cast<T_ACC>(bv_vec[v]);
-            T_ACC a_c = g_rstd * gv;
-            coeff_[c + v] = a_c;
-            coeff_[D_ + c + v] = bv - g_mean * a_c;
-          }
+        for (int v = 0; v < VEC_SIZE; v++) {
+          T_ACC gv = static_cast<T_ACC>(gv_vec[v]);
+          T_ACC bv = static_cast<T_ACC>(bv_vec[v]);
+          T_ACC a_c = g_rstd * gv;
+          coeff_[c + v] = a_c;
+          coeff_[D_ + c + v] = bv - g_mean * a_c;
         }
-        if (lid == 0) {
-          for (index_t c = c_tail; c < D_; c++) {
-            T_ACC gv = static_cast<T_ACC>(gp[c]);
-            T_ACC bv = static_cast<T_ACC>(bp[c]);
-            T_ACC a_c = g_rstd * gv;
-            coeff_[c] = a_c;
-            coeff_[D_ + c] = bv - g_mean * a_c;
-          }
-        }
-      } else {
-        for (index_t c = lid; c < D_; c += wg_size) {
-          const index_t gc = g_offset + c;
-          const T_ACC gv =
-              (gamma_ != nullptr) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
-          const T_ACC bv =
-              (beta_ != nullptr) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
-          const T_ACC a_c = g_rstd * gv;
+      }
+      if (lid == 0) {
+        for (index_t c = c_tail; c < D_; c++) {
+          T_ACC gv = static_cast<T_ACC>(gp[c]);
+          T_ACC bv = static_cast<T_ACC>(bp[c]);
+          T_ACC a_c = g_rstd * gv;
           coeff_[c] = a_c;
           coeff_[D_ + c] = bv - g_mean * a_c;
         }
@@ -927,8 +911,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           const index_t c = static_cast<index_t>(
               s_divider_.div(static_cast<unsigned_index_t>(j)));
           const index_t gc = g_offset + c;
-          T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
-          T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
           T_ACC a_c = g_rstd * gv;
           y_base[j] = static_cast<T>(
               a_c * static_cast<T_ACC>(x_base[j]) + bv - g_mean * a_c);
@@ -944,8 +928,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           const index_t c = static_cast<index_t>(
               s_divider_.div(static_cast<unsigned_index_t>(j + v)));
           const index_t gc = g_offset + c;
-          T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
-          T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
           T_ACC a_c = g_rstd * gv;
           yv[v] = static_cast<T>(
               a_c * static_cast<T_ACC>(xv[v]) + bv - g_mean * a_c);
@@ -957,8 +941,8 @@ struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           const index_t c = static_cast<index_t>(
               s_divider_.div(static_cast<unsigned_index_t>(j)));
           const index_t gc = g_offset + c;
-          T_ACC gv = (gamma_) ? static_cast<T_ACC>(gamma_[gc]) : T_ACC(1);
-          T_ACC bv = (beta_) ? static_cast<T_ACC>(beta_[gc]) : T_ACC(0);
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
           T_ACC a_c = g_rstd * gv;
           y_base[j] = static_cast<T>(
               a_c * static_cast<T_ACC>(x_base[j]) + bv - g_mean * a_c);
@@ -1069,6 +1053,7 @@ void group_norm_kernel_impl(
   constexpr int64_t kElemsPerWorkItem = 16;
 
   T* Y_data = Y.mutable_data_ptr<T>();
+  const bool gamma_beta_defined = gamma.defined() && beta.defined();
   const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
   const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
   const bool needMeanAcc{!std::is_same_v<T, T_ACC>};
@@ -1087,7 +1072,9 @@ void group_norm_kernel_impl(
 
   // Small-DS path: single vec4 per lane (covers DS where lanes <= SIMD).
   // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
-  auto try_single_vec = [&](auto index_tag) -> bool {
+  auto try_small_path = [&](auto index_tag) -> bool {
+    if (!gamma_beta_defined)
+      return false;
     if (simd != 32)
       return false;
     using index_t = decltype(index_tag);
@@ -1166,7 +1153,9 @@ void group_norm_kernel_impl(
     }
     return true;
   };
-  auto try_multi_vec = [&](auto index_tag) -> bool {
+  auto try_medium_path = [&](auto index_tag) -> bool {
+    if (!gamma_beta_defined)
+      return false;
     if (simd != 32)
       return false;
     using index_t = decltype(index_tag);
@@ -1201,9 +1190,9 @@ void group_norm_kernel_impl(
     return true;
   };
   auto dispatch_packed = [&](auto index_tag) -> bool {
-    if (try_single_vec(index_tag))
+    if (try_small_path(index_tag))
       return true;
-    if (try_multi_vec(index_tag))
+    if (try_medium_path(index_tag))
       return true;
     return false;
   };
@@ -1220,7 +1209,7 @@ void group_norm_kernel_impl(
   int64_t n_groups = N * G;
   int64_t max_wg_est = std::min((int64_t)1024, DS / FUSED_VEC_SIZE);
   bool fused_has_occupancy = (n_groups * max_wg_est >= thread_slots / 2);
-  if (fused_has_occupancy && simd == 32) {
+  if (fused_has_occupancy && simd == 32 && gamma_beta_defined) {
     constexpr int64_t wg_choices[] = {32, 64, 128, 256, 512, 1024};
     int64_t wg_size = 32;
     auto launch = [&](auto index_tag) {
