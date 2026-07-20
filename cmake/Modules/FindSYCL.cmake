@@ -194,6 +194,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
   set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
 
+  # Extra definitions for the SYCL device compiler only, not host C++ code.
+  set(SYCL_compile_definitions "${SYCL_compile_definitions};${SYCL_DEVICE_COMPILE_DEFINITIONS}")
+
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
     _cxx_sources
