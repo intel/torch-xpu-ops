@@ -1,101 +1,91 @@
----
-name: xpu-alignment-report-and-issue-format
-description: Exact output formats for the scan report and bug reports. Gives the layout of reports/full_scan.md, the issue-draft template, and the steps for filing a draft on GitHub after the user approves it. Read this for Steps 2e and 2f.
----
+# Report, Deduplication, and Filing
 
-# Report & Issue Templates
+## Scan report
 
-## Full scan report (`reports/full_scan.md`)
+Write `reports/full_scan.md` with one numbered section per terminal case. Include:
 
-Write this file directly (no external renderer). Include every candidate whose
-`local_status == done`; exclude rows rejected at deep-filter (`deep_status == reject`).
+- case key, source ids, and upstream URLs
+- repro, attempt logs, runtime evidence, and assessment paths/statuses
+- `reproduction_status`, `issue_validity`, `execution_path`,
+  `resolution_scope`, `final_verdict`, and `filing_disposition`
+- environment incident when present
+- behavior canonical, XPU tracking canonical, fix PRs, tracking repository, and
+  implementation repository
 
-Each entry must preserve a numbered format and include at least:
+Do not summarize `matched-upstream` as a confirmed issue. The dashboard reports
+separate counts for runtime status, issue validity, execution path, resolution
+scope, final verdict, and filing disposition.
 
-- candidate id, title, and kind
-- evidence URL
-- reproducer script path and output log path
-- an exact ``Local XPU result: `<bucket>` `` line
-- route suggestion for `confirmed` and `related-failure`
+Only a run-level audit `PASS` may produce a final full-window dashboard. Otherwise
+write a progress checkpoint with `STATUS=partial` or `STATUS=blocked`, pending
+case keys, and any individually audited case outcomes.
 
-Requirements:
+## Issue drafts
 
-- Keep the report auditable: keep the numbered entry format and include the exact
-  ``Local XPU result: `<bucket>` `` line for every tested candidate.
-- For confirmed bugs, include enough local evidence and context for issue filing
-  without reopening raw logs.
-- Use upstream issue/PR content or commit context to describe the scenario; do not
-  reduce entries to title-only summaries.
-- Blocked and not-reproduced entries may be shorter, but must still include the
-  repro path, output log path, and decisive local outcome.
+Write a draft only when the assessment is `PASS`, `final_verdict` is
+`confirmed-xpu-issue`, and `filing_disposition` is `file-xpu-tracker`:
 
-## Local issue drafts (`reports/issue_drafts.md`)
+````md
+## Issue <n>
 
-Write this file directly for all `confirmed` and `related-failure` candidates,
-using this exact body structure:
-
-````
-## Issue 1
-
-**Suggested title:** [xpu-alignment] <original bug title>
-**Suggested labels:** xpu-alignment, <upstream-issue|upstream-pr>, <confirmed|related-failure>
-
-**Upstream source:** <upstream URL> (upstream-issue | upstream-pr)
-**Scan date:** <YYYY-MM-DD> to <YYYY-MM-DD>
-**Local XPU result:** confirmed on torch <version>, <GPU model>
-
----
+**Suggested title:** [xpu-alignment] <XPU-specific problem>
+**Suggested labels:** xpu-alignment, confirmed
+**Tracking repository:** <intel/torch-xpu-ops or experimental override>
+**Implementation repository:** <pytorch/pytorch or intel/torch-xpu-ops>
+**Upstream behavior:** <behavior canonical and source URLs>
+**Case key:** <case_key>
+**Runtime evidence:** <evidence path> — audit `valid`
+**Issue assessment:** <assessment path> — proof ladder `PASS`
 
 ### Describe the bug
-
-<clear description of the bug with root-cause analysis where available>
+<reference behavior, observed XPU behavior, and why XPU needs an independent fix>
 
 ```python
-# minimal self-contained XPU-adapted reproducer (copy-pasteable)
+<minimal deterministic XPU reproducer>
 ```
 
-```
-<actual output / error message>
+```text
+<two clean attempts with matching decisive output>
 ```
 
----
+### Ownership and canonical state
+<XPU code path, proposed implementation repository, existing fix PRs, and
+why no XPU tracking duplicate exists>
 
 ### Versions
-
-```
-<full contents of artifacts/collect_env.txt>
-```
-
----
-
-## Issue 2
-...
+<contents of artifacts/collect_env.txt>
 ````
 
-### Label selection rules
+An upstream behavior issue may be linked without suppressing the draft. An
+existing XPU tracking issue changes the disposition to `duplicate` and suppresses
+the draft. If no case is eligible, write one line saying so.
 
-- Always include `xpu-alignment`.
-- Add `upstream-issue` if sourced from a GitHub issue, `upstream-pr` if sourced
-  from a GitHub PR or commit.
-- Add `confirmed` if `local_bucket == "confirmed"`, `related-failure` if
-  `local_bucket == "related-failure"`.
+## Deduplication
 
-If no confirmed or related-failure candidates exist, write `reports/issue_drafts.md`
-with a single line: `No confirmed or related-failure candidates in this scan.`
+Search the tracking repository independently using:
 
-## Filing on GitHub (only after user confirmation)
+- upstream/source URLs
+- operation, dtype, shape, and normalized error terms
+- XPU code-path and root-cause terms
+- linked PR and commit ids
 
-This skill never files issues automatically. After writing the local drafts:
+Inspect likely matches; title similarity alone is insufficient. Record the live
+behavior issue, XPU tracking issue, and all fix PRs in their separate assessment
+fields. Multiple source rows sharing a case can produce at most one tracking
+issue.
 
-1. Tell the user the drafts are in `reports/issue_drafts.md` and summarize how many
-   `confirmed` / `related-failure` candidates were found.
-2. Ask whether they want any of them filed on GitHub, and into which repo (the
-   routing rules suggest a default).
-3. Before filing each approved draft, search the target repo for an existing issue
-   covering the same bug (search the upstream URL and the op/error keywords, e.g.
-   `gh issue search --repo <repo> "<keywords>"`). If a likely duplicate exists,
-   skip filing, link the existing issue in the report, and tell the user.
-4. Only on explicit confirmation and once de-duplicated, file the approved drafts
-   via the GitHub MCP server (or `gh issue create`) into the routed repository,
-   applying the labels above.
-5. Report back the URLs of any issues created or matched.
+Refresh live issue and PR state immediately before filing. A shared fix that
+covers XPU changes the case to `track-upstream`; an XPU-specific fix PR remains
+linked but does not replace the required tracking issue.
+
+## Authorization
+
+A case-level assessment `PASS` may support a draft or authorized filing while the
+run remains partial. State that the full-window scan is incomplete; never present
+the case as a complete-window conclusion.
+
+Summarize each proposed filing and ask for explicit authorization naming the
+draft and target repository. Create only the approved issues. Issue creation,
+comments, reviews, labels, and closures are separate GitHub write actions and
+require their own authorization. Record created or matched URLs in the assessment,
+case ledger, and report.
