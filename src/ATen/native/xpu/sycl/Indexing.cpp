@@ -28,6 +28,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
+#include <ATen/ops/aminmax.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/gather.h>
@@ -2121,6 +2122,23 @@ void index_select_out_impl(
   }
 
   at::native::resize_output(out, newSize);
+
+  if (self.numel() == 0 && numIndices > 0) {
+    const auto indexing_axis_dim = self.size(dim);
+    TORCH_CHECK(
+        indexing_axis_dim > 0,
+        "index_select(): self indexing axis dim should be positive");
+
+    const auto [min_index, max_index] = at::aminmax(index);
+    const auto min_index_value = min_index.item<int64_t>();
+    const auto max_index_value = max_index.item<int64_t>();
+    TORCH_CHECK(
+        min_index_value >= 0 && max_index_value < indexing_axis_dim,
+        "INDICES element is out of DATA bounds, id=",
+        min_index_value < 0 ? min_index_value : max_index_value,
+        " axis_dim=",
+        indexing_axis_dim);
+  }
 
   uint64_t outTotalSize = out.numel();
   if (outTotalSize == 0) {
