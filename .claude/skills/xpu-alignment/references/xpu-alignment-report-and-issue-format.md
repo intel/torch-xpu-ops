@@ -18,7 +18,7 @@ Never summarize `matched-upstream` as a confirmed issue. A partial or blocked
 report lists all pending/blocking case keys. `full_scan.md` is the scan record;
 `review_dashboard.md` is the final decision dashboard.
 
-## Issue drafts
+## Issue drafts (`reports/issue_drafts.md`)
 
 Write a draft only when evidence and assessment are `valid`, every proof gate is
 `pass`, `final_verdict` is `confirmed-xpu-issue`, and

@@ -121,7 +121,9 @@ Keep every fix PR's live state separately, then derive the unit's aggregate
 2. `fix-open` if no verified fix exists and any active candidate PR remains.
 3. `merged-upstream` if no verified/open fix exists and a plausible merged fix
    is not yet present and tested in the build.
-4. `unfixed` if no candidate remains, or every contained-and-tested candidate
+4. `verification-gap` if no preceding state can be derived because candidate
+   live state or applicable build/test evidence cannot be determined.
+5. `unfixed` if no candidate remains, or every contained-and-tested candidate
    failed to resolve the case; mark those candidates ineffective.
 
 Use `not-applicable` and `verification-gap` only through compatible review

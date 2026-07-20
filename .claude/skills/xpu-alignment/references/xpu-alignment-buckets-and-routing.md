@@ -64,7 +64,7 @@ Derive gates; never assign them independently:
 |---|---|---|---|
 | Runtime | `matched-upstream`, or `different-failure` with its own reference oracle; intended stage reached and fidelity valid | `not-reproduced` | `different-failure` without an independent oracle, `oracle-not-reached`, `blocked-script-error`, or `verification-gap` |
 | Bug | `actionable-bug` or `input-validation-defect` | feature, design, invalid, or undefined/nondeterministic behavior | `verification-gap` |
-| XPU fix | `xpu-fix-required` with `xpu-native` or `xpu-compiler` proof | `shared-fix-covers-xpu`, `upstream-design`, or `no-fix` | `unknown` path or scope |
+| XPU fix | `xpu-fix-required` with `xpu-native` or `xpu-compiler` proof | `shared-fix-covers-xpu` or `upstream-design` | `unknown` path or scope |
 | Canonical | `canonical_audit.verdict: complete`; searches and live tracker/fix-PR states, including absence, are recorded | not used | audit absent, incomplete, or stale |
 
 For `oracle_audit`, use `input_contract: supported|invalid|unknown`,
@@ -108,7 +108,6 @@ Assign one `resolution_scope`:
   independent change, even when that code is in `pytorch/pytorch`.
 - `shared-fix-covers-xpu`: one shared-core fix naturally corrects XPU.
 - `upstream-design`: upstream design ownership must decide.
-- `no-fix`: validity review leaves no defect.
 - `unknown`: ownership or fix effect is unproved.
 
 Compare CPU/reference and CUDA behavior when available, dispatch ownership,
@@ -136,8 +135,7 @@ Apply the first matching row:
 |---|---|---|
 | Runtime gate fails | `non-issue` | `no-issue` |
 | Runtime passes and bug gate fails | `non-issue` | `no-issue` |
-| Runtime/bug pass; XPU-fix fails with `shared-fix-covers-xpu` | `track-upstream` | `track-upstream` |
-| Runtime/bug pass; XPU-fix fails with `upstream-design` or `no-fix` | `non-issue` | `no-issue` |
+| Runtime/bug pass; XPU-fix fails with `shared-fix-covers-xpu` or `upstream-design` | `track-upstream` | `track-upstream` |
 | Any gate required by the remaining rows is unresolved | `verification-gap` | `needs-evidence` |
 | All gates pass, no tracker | `confirmed-xpu-issue` | `file-xpu-tracker` |
 | All gates pass, preexisting tracker | `confirmed-xpu-issue` | `use-existing-xpu-tracker` |
