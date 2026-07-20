@@ -24,16 +24,24 @@ namespace at::native::xpu {
 //   NHWC -> NCHW: transpose (H*W, C) -> (C, H*W)
 //   NCHW -> NHWC: transpose (C, H*W) -> (H*W, C)
 //
-// Uses shared local memory (SLM) with padding for bank-conflict-free
-// access, vectorized global loads/stores, and a FULL_TILE fast path
-// that eliminates bounds checks when dimensions are divisible by TILE_DIM.
+// Optimizations:
+// 1. 3D nd_range with batch as a separate dimension eliminates expensive
+//    integer division by non-power-of-2 tile counts on every thread.
+// 2. Type-aware SLM padding minimizes bank conflicts for 2-byte types.
+// 3. FULL_TILE template fast-path eliminates all bounds checks.
 
 static constexpr int TILE_DIM = 32;
 
-// Work-group keeps 256 threads regardless of VEC_SIZE:
-//   local(dim0) = BRV = 256 * VEC_SIZE / TILE_DIM
-//   local(dim1) = TILE_DIM / VEC_SIZE
-// Each thread processes TILE_DIM / BRV rows with VEC_SIZE cols per load.
+// SLM padding: +2 for 2-byte types avoids paired-element bank conflicts,
+// +1 for 4-byte types is the classic conflict-free padding.
+template <typename scalar_t>
+static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
+
+template <typename scalar_t>
+static constexpr int SLM_STRIDE = TILE_DIM + SLM_PAD<scalar_t>;
+
+// Work-group thread count = 256, regardless of VEC_SIZE:
+//   local(dim1) = BRV rows, local(dim2) = TILE_DIM/VEC_SIZE cols
 template <int VEC_SIZE>
 static constexpr int BRV = 256 * VEC_SIZE / TILE_DIM;
 
@@ -41,21 +49,19 @@ template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
 struct ChannelsLastTransposeFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr int kBRV = BRV<VEC_SIZE>;
+  static constexpr int kSLM_STRIDE = SLM_STRIDE<scalar_t>;
   using vec_t = at::native::memory::aligned_vector<scalar_t, VEC_SIZE>;
 
-  void operator()(sycl::nd_item<2> item) const {
-    int tx = item.get_local_id(1);
-    int ty = item.get_local_id(0);
-    int tile_x = item.get_group(1);
-    int tile_y_and_batch = item.get_group(0);
+  void operator()(sycl::nd_item<3> item) const {
+    int tx = item.get_local_id(2);   // col within tile
+    int ty = item.get_local_id(1);   // row within tile
+    int batch = item.get_group(0);   // batch index (no division!)
+    int tile_y = item.get_group(1);  // row-tile index
+    int tile_x = item.get_group(2);  // col-tile index
 
-    int batch = tile_y_and_batch / num_tiles_y_;
-    int tile_y = tile_y_and_batch % num_tiles_y_;
+    int batch_off = batch * rows_ * cols_;
 
-    int batch_off_src = batch * rows_ * cols_;
-    int batch_off_dst = batch * cols_ * rows_;
-
-    // READ: coalesced vec loads along cols (fast dim of source)
+    // READ: coalesced vec loads along cols (source fast dim)
 #pragma unroll
     for (int i = 0; i < TILE_DIM; i += kBRV) {
       int src_row = tile_y * TILE_DIM + ty + i;
@@ -63,18 +69,18 @@ struct ChannelsLastTransposeFunctor
 
       if constexpr (FULL_TILE) {
         vec_t v = *reinterpret_cast<const vec_t*>(
-            src_ + batch_off_src + src_row * cols_ + src_col);
+            src_ + batch_off + src_row * cols_ + src_col);
 #pragma unroll
         for (int k = 0; k < VEC_SIZE; k++) {
-          slm_[(ty + i) * (TILE_DIM + 1) + tx * VEC_SIZE + k] = v.val[k];
+          slm_[(ty + i) * kSLM_STRIDE + tx * VEC_SIZE + k] = v.val[k];
         }
       } else {
         if (src_row < rows_) {
 #pragma unroll
           for (int k = 0; k < VEC_SIZE; k++) {
             if (src_col + k < cols_) {
-              slm_[(ty + i) * (TILE_DIM + 1) + tx * VEC_SIZE + k] =
-                  src_[batch_off_src + src_row * cols_ + src_col + k];
+              slm_[(ty + i) * kSLM_STRIDE + tx * VEC_SIZE + k] =
+                  src_[batch_off + src_row * cols_ + src_col + k];
             }
           }
         }
@@ -83,7 +89,7 @@ struct ChannelsLastTransposeFunctor
 
     sycl::group_barrier(item.get_group());
 
-    // WRITE: gather from transposed SLM, coalesced vec stores along rows
+    // WRITE: transposed gather from SLM, coalesced vec stores
 #pragma unroll
     for (int i = 0; i < TILE_DIM; i += kBRV) {
       int dst_row = tile_x * TILE_DIM + ty + i;
@@ -93,17 +99,17 @@ struct ChannelsLastTransposeFunctor
         vec_t v;
 #pragma unroll
         for (int k = 0; k < VEC_SIZE; k++) {
-          v.val[k] = slm_[(tx * VEC_SIZE + k) * (TILE_DIM + 1) + (ty + i)];
+          v.val[k] = slm_[(tx * VEC_SIZE + k) * kSLM_STRIDE + (ty + i)];
         }
         *reinterpret_cast<vec_t*>(
-            dst_ + batch_off_dst + dst_row * rows_ + dst_col) = v;
+            dst_ + batch_off + dst_row * rows_ + dst_col) = v;
       } else {
         if (dst_row < cols_) {
 #pragma unroll
           for (int k = 0; k < VEC_SIZE; k++) {
             if (dst_col + k < rows_) {
-              dst_[batch_off_dst + dst_row * rows_ + dst_col + k] =
-                  slm_[(tx * VEC_SIZE + k) * (TILE_DIM + 1) + (ty + i)];
+              dst_[batch_off + dst_row * rows_ + dst_col + k] =
+                  slm_[(tx * VEC_SIZE + k) * kSLM_STRIDE + (ty + i)];
             }
           }
         }
@@ -114,30 +120,24 @@ struct ChannelsLastTransposeFunctor
   ChannelsLastTransposeFunctor(
       const scalar_t* src,
       scalar_t* dst,
-      int batch_size,
       int rows,
-      int cols,
-      int num_tiles_y)
+      int cols)
       : src_(src),
         dst_(dst),
-        batch_size_(batch_size),
         rows_(rows),
         cols_(cols),
-        num_tiles_y_(num_tiles_y),
         slm_() {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     slm_ = sycl::local_accessor<scalar_t, 1>(
-        sycl::range<1>(TILE_DIM * (TILE_DIM + 1)), cgh);
+        sycl::range<1>(TILE_DIM * kSLM_STRIDE), cgh);
   }
 
  private:
   const scalar_t* src_;
   scalar_t* dst_;
-  int batch_size_;
   int rows_;
   int cols_;
-  int num_tiles_y_;
   sycl::local_accessor<scalar_t, 1> slm_;
 };
 
@@ -152,13 +152,15 @@ static void launch_transpose_kernel(
   int num_tiles_x = (cols + TILE_DIM - 1) / TILE_DIM;
   int num_tiles_y = (rows + TILE_DIM - 1) / TILE_DIM;
 
-  sycl::range<2> local_range(kBRV, TILE_DIM / VEC_SIZE);
-  sycl::range<2> global_range(
-      static_cast<size_t>(batch_size) * num_tiles_y * kBRV,
+  // 3D: (batch, row-tiles * BRV, col-tiles * TILE_DIM/VEC_SIZE)
+  sycl::range<3> local_range(1, kBRV, TILE_DIM / VEC_SIZE);
+  sycl::range<3> global_range(
+      static_cast<size_t>(batch_size),
+      static_cast<size_t>(num_tiles_y) * kBRV,
       static_cast<size_t>(num_tiles_x) * (TILE_DIM / VEC_SIZE));
 
   auto ker = ChannelsLastTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>(
-      src, dst, batch_size, rows, cols, num_tiles_y);
+      src, dst, rows, cols);
 
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), ker);
 }
