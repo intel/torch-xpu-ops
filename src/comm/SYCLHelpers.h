@@ -263,6 +263,25 @@ static inline void sycl_kernel_submit(
     ::sycl::queue q,
     int slm_sz,
     Kargs... args) {
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
+  #warning "Current SYCL compiler detected (< 2026.1)."
+  sycl::context ctxt = q.get_context();
+  auto exe_bndl =
+      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
+  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  } else {
+    syclexp::launch_config cfg{::sycl::nd_range<1>(
+        ::sycl::range<1>(global_range), ::sycl::range<1>(local_range))};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  }
+#else
+  #warning "Current SYCL compiler detected (>= 2026.1)."
   if (slm_sz != 0) {
     syclexp::launch_config cfg{
         ::sycl::nd_range<1>(
@@ -277,6 +296,7 @@ static inline void sycl_kernel_submit(
         syclexp::kernel_function<kptr>,
         args...);
   }
+#endif
 }
 
 template <auto* kptr, int dim, typename... Kargs>
@@ -286,6 +306,23 @@ static inline void sycl_kernel_submit(
     ::sycl::queue q,
     int slm_sz,
     Kargs... args) {
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
+  sycl::context ctxt = q.get_context();
+  auto exe_bndl =
+      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
+  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<dim>(
+            ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  } else {
+    syclexp::launch_config cfg{::sycl::nd_range<dim>(
+        ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range))};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  }
+#else
   if (slm_sz != 0) {
     syclexp::launch_config cfg{
         ::sycl::nd_range<dim>(global_range, local_range),
@@ -298,6 +335,7 @@ static inline void sycl_kernel_submit(
         syclexp::kernel_function<kptr>,
         args...);
   }
+#endif
 }
 
 #ifdef __SYCL_DEVICE_ONLY__
