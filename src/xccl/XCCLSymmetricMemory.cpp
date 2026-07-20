@@ -35,13 +35,13 @@ namespace symmetric_memory {
 
 static StoreExchange storeExchange = StoreExchange("XCCLSymmetricMemory");
 
-#define C10D_ONECCL_CHECK(cmd)                             \
-  do {                                                     \
-    onecclResult_t result = cmd;                           \
-    TORCH_CHECK(                                           \
-        result == onecclSuccess,                           \
-        #cmd " failed with oneCCL error code ",            \
-        static_cast<int>(result));                         \
+#define C10D_ONECCL_CHECK(cmd)                  \
+  do {                                          \
+    onecclResult_t result = cmd;                \
+    TORCH_CHECK(                                \
+        result == onecclSuccess,                \
+        #cmd " failed with oneCCL error code ", \
+        static_cast<int>(result));              \
   } while (0)
 
 // Resolve the onecclComm_t that the XCCL ProcessGroup has created for
@@ -49,9 +49,7 @@ static StoreExchange storeExchange = StoreExchange("XCCLSymmetricMemory");
 // the XCCL backend's communicator rather than bootstrapping its own, so the
 // XCCL comm must already exist (i.e. a collective has run on the group, or the
 // backend was eagerly initialized via `device_id` in `init_process_group`).
-static onecclComm_t getCclComm(
-    const std::string& group_name,
-    int device_idx) {
+static onecclComm_t getCclComm(const std::string& group_name, int device_idx) {
   auto group = resolve_process_group(group_name);
   auto backend = group->getBackend(c10::DeviceType::XPU);
   auto* pg = dynamic_cast<ProcessGroupXCCL*>(backend.get());
@@ -158,8 +156,7 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
       } else {
         // All ranks use the same aligned_buffer_size, so a peer's signal pad
         // is simply its buffer base plus that offset.
-        signal_pads_[r] =
-            static_cast<char*>(buffers_[r]) + aligned_buffer_size;
+        signal_pads_[r] = static_cast<char*>(buffers_[r]) + aligned_buffer_size;
       }
     }
 
@@ -226,9 +223,7 @@ class XCCLPeerAllocInfo : public c10::intrusive_ptr_target {
 
 class XCCLSymmetricMemory : public SymmetricMemory {
  public:
-  XCCLSymmetricMemory(
-      c10::intrusive_ptr<XCCLPeerAllocInfo> pai,
-      size_t offset)
+  XCCLSymmetricMemory(c10::intrusive_ptr<XCCLPeerAllocInfo> pai, size_t offset)
       : pai_(std::move(pai)), offset_(offset) {}
 
   ~XCCLSymmetricMemory() override = default;
@@ -336,7 +331,9 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     // onecclMemAlloc does not zero memory; clear the signal pad so the
     // CAS-based signalling protocol starts from a known state.
     if (ptr != nullptr) {
-      queue.memset(static_cast<char*>(ptr) + aligned_buffer_size, 0, signal_pad_size)
+      queue
+          .memset(
+              static_cast<char*>(ptr) + aligned_buffer_size, 0, signal_pad_size)
           .wait();
     }
 
@@ -409,8 +406,8 @@ class XCCLSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     if (base_it != symm_mems_.end()) {
       pai = base_it->second->pai_;
     } else {
-      pai = c10::make_intrusive<XCCLPeerAllocInfo>(
-          allocation.get(), *group_name);
+      pai =
+          c10::make_intrusive<XCCLPeerAllocInfo>(allocation.get(), *group_name);
       auto base_symm_mem =
           c10::make_intrusive<XCCLSymmetricMemory>(pai, /*offset=*/0);
       symm_mems_[base_key] = base_symm_mem;
