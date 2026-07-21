@@ -108,9 +108,11 @@ jobs:
       - name: Build Pytorch XPU
         shell: cmd
         run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda activate windows_ci
           set WORKSPACE=${{ github.workspace }}\..
           set XPU_VERSION=${{ inputs.xpu_version }}
-          call .github\scripts\build_windows.bat > %WORKSPACE%\pytorch\build_torch_wheel_log.log 2>&1
+          python .github\scripts\build_windows.py > %WORKSPACE%\pytorch\build_torch_wheel_log.log 2>&1
           set BUILD_ERR=%ERRORLEVEL%
           type %WORKSPACE%\pytorch\build_torch_wheel_log.log
           if %BUILD_ERR% neq 0 exit /b 1
