@@ -22,7 +22,7 @@ namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
-using ScanType = enum {
+enum ScanType {
   EXCLUSIVE_TYPE = 0,
   INCLUSIVE_TYPE = 1,
 };
