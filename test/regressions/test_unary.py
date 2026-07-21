@@ -99,9 +99,24 @@ class TestSimpleUnary(TestCase):
     def test_sigmoid_special_value_complex(self):
         # (xpu_dtype, compare_dtype, numpy_dtype, z)
         cases = [
-            (torch.complex32, torch.complex64, np.complex64, complex(501, float("-inf"))),
-            (torch.complex64, torch.complex64, np.complex64, complex(501, float("-inf"))),
-            (torch.complex128, torch.complex128, np.complex128, complex(3000, float("-inf"))),
+            (
+                torch.complex32,
+                torch.complex64,
+                np.complex64,
+                complex(501, float("-inf")),
+            ),
+            (
+                torch.complex64,
+                torch.complex64,
+                np.complex64,
+                complex(501, float("-inf")),
+            ),
+            (
+                torch.complex128,
+                torch.complex128,
+                np.complex128,
+                complex(3000, float("-inf")),
+            ),
         ]
         for xpu_dtype, compare_dtype, numpy_dtype, z in cases:
             with self.subTest(dtype=xpu_dtype):
