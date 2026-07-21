@@ -42,8 +42,12 @@ class FftKernelBundleCache {
   using bundle_t = sycl::kernel_bundle<sycl::bundle_state::executable>;
 
   static FftKernelBundleCache& instance() {
-    static FftKernelBundleCache cache;
-    return cache;
+    // Intentionally leaked (never deleted). The cache owns
+    // sycl::kernel_bundle objects whose destructor's reference the
+    // sycl::context. During process teardown the SYCL runtime's
+    // context may already be destroyed.
+    static FftKernelBundleCache* cache = new FftKernelBundleCache();
+    return *cache;
   }
 
   std::shared_ptr<bundle_t> get(const std::string& key) {
@@ -58,9 +62,9 @@ class FftKernelBundleCache {
   }
 
   // NOTE: the critical section is guarded by std::lock_guard (RAII).
-  // It acquires the mutex on construction and releases it in its destructor when
-  // `lock` goes out of scope at the end of get()/put().
-  // Adding a manual unlock() would cause a double-unlock bug.
+  // It acquires the mutex on construction and releases it in its destructor
+  // when `lock` goes out of scope at the end of get()/put(). Adding a manual
+  // unlock() would cause a double-unlock bug.
  private:
   std::mutex mutex_;
   std::unordered_map<std::string, std::shared_ptr<bundle_t>> cache_;
