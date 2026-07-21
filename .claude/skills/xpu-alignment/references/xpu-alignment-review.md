@@ -184,6 +184,7 @@ For full-window units, also enforce this assessment crosswalk:
 |---|---|
 | `confirmed-xpu-issue` with no effective fix or an active fix | `needs-xpu-fix` with `unfixed` or `fix-open` |
 | `confirmed-xpu-issue` with merged but untested fix | `verification-gap` with `merged-upstream` |
+| `confirmed-xpu-issue` with undeterminable candidate fix state | `verification-gap` with `verification-gap` |
 | `confirmed-xpu-issue` with tested passing fix | `fixed` with `verified-in-tested-build` |
 | `track-upstream` | `track-shared-fix` |
 | `non-issue` | `non-issue` |
