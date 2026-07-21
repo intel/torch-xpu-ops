@@ -17,7 +17,6 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 try:
     from . import test_functions
