@@ -41,7 +41,8 @@ struct SigmoidFunctor {
     [[maybe_unused]] const auto one = opmath_t{1.0};
     if constexpr (c10::is_complex<opmath_t>::value) {
       using value_t = typename opmath_t::value_type;
-      if constexpr (std::is_same_v<value_t, float> || std::is_same_v<value_t, double>) {
+      if constexpr (
+          std::is_same_v<value_t, float> || std::is_same_v<value_t, double>) {
 #if defined(__SYCL_DEVICE_ONLY__)
         namespace syclex = sycl::ext::oneapi::experimental;
         const auto a_ = static_cast<opmath_t>(a);
