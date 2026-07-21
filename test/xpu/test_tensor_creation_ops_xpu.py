@@ -18,6 +18,7 @@ import warnings
 import numpy as np
 import torch
 from torch.testing._internal.common_device_type import (
+    deviceCountAtLeast,
     dtypes,
     dtypesIfXPU,
     expectedFailureMeta,
@@ -37,6 +38,7 @@ from torch.testing._internal.common_utils import (
     IS_PPC,
     IS_SANDCASTLE,
     run_tests,
+    suppress_warnings,
     TestCase,
 )
 
@@ -57,8 +59,152 @@ with XPUImportCtx(False):
 
 
 # ======================================================================
-# 1. Override upstream test methods for XPU migration adjustments
+# Override upstream test methods for XPU migration adjustments
 # ======================================================================
+
+
+@suppress_warnings
+@onlyNativeDeviceTypes
+@deviceCountAtLeast(1)
+def _test_tensor_device(self, devices):
+    device_type = torch.device(devices[0]).type
+    if device_type == "cpu":
+        self.assertEqual("cpu", torch.tensor(5).device.type)
+        self.assertEqual(
+            "cpu", torch.ones((2, 3), dtype=torch.float32, device="cpu").device.type
+        )
+        self.assertEqual(
+            "cpu", torch.ones((2, 3), dtype=torch.float32, device="cpu:0").device.type
+        )
+        self.assertEqual(
+            "cpu",
+            torch.tensor(
+                torch.ones((2, 3), dtype=torch.float32), device="cpu:0"
+            ).device.type,
+        )
+        self.assertEqual(
+            "cpu", torch.tensor(np.random.randn(2, 3), device="cpu").device.type
+        )
+    if device_type == "cuda":
+        self.assertEqual("cuda:0", str(torch.tensor(5).cuda(0).device))
+        self.assertEqual("cuda:0", str(torch.tensor(5).cuda("cuda:0").device))
+        self.assertEqual(
+            "cuda:0", str(torch.tensor(5, dtype=torch.int64, device=0).device)
+        )
+        self.assertEqual(
+            "cuda:0", str(torch.tensor(5, dtype=torch.int64, device="cuda:0").device)
+        )
+        self.assertEqual(
+            "cuda:0",
+            str(
+                torch.tensor(
+                    torch.ones((2, 3), dtype=torch.float32), device="cuda:0"
+                ).device
+            ),
+        )
+
+        self.assertEqual(
+            "cuda:0", str(torch.tensor(np.random.randn(2, 3), device="cuda:0").device)
+        )
+
+        for device in devices:
+            with torch.cuda.device(device):
+                device_string = "cuda:" + str(torch.cuda.current_device())
+                self.assertEqual(
+                    device_string,
+                    str(torch.tensor(5, dtype=torch.int64, device="cuda").device),
+                )
+
+        with self.assertRaises(RuntimeError):
+            torch.tensor(5).cuda("cpu")
+        with self.assertRaises(RuntimeError):
+            torch.tensor(5).cuda("cpu:0")
+
+        if len(devices) > 1:
+            self.assertEqual("cuda:1", str(torch.tensor(5).cuda(1).device))
+            self.assertEqual("cuda:1", str(torch.tensor(5).cuda("cuda:1").device))
+            self.assertEqual(
+                "cuda:1", str(torch.tensor(5, dtype=torch.int64, device=1).device)
+            )
+            self.assertEqual(
+                "cuda:1",
+                str(torch.tensor(5, dtype=torch.int64, device="cuda:1").device),
+            )
+            self.assertEqual(
+                "cuda:1",
+                str(
+                    torch.tensor(
+                        torch.ones((2, 3), dtype=torch.float32), device="cuda:1"
+                    ).device
+                ),
+            )
+
+            self.assertEqual(
+                "cuda:1",
+                str(torch.tensor(np.random.randn(2, 3), device="cuda:1").device),
+            )
+
+    if device_type == "xpu":
+        self.assertEqual("xpu:0", str(torch.tensor(5).xpu(0).device))
+        self.assertEqual("xpu:0", str(torch.tensor(5).xpu("xpu:0").device))
+        self.assertEqual(
+            "xpu:0", str(torch.tensor(5, dtype=torch.int64, device=0).device)
+        )
+        self.assertEqual(
+            "xpu:0", str(torch.tensor(5, dtype=torch.int64, device="xpu:0").device)
+        )
+        self.assertEqual(
+            "xpu:0",
+            str(
+                torch.tensor(
+                    torch.ones((2, 3), dtype=torch.float32), device="xpu:0"
+                ).device
+            ),
+        )
+
+        self.assertEqual(
+            "xpu:0", str(torch.tensor(np.random.randn(2, 3), device="xpu:0").device)
+        )
+
+        for device in devices:
+            with torch.xpu.device(device):
+                device_string = "xpu:" + str(torch.xpu.current_device())
+                self.assertEqual(
+                    device_string,
+                    str(torch.tensor(5, dtype=torch.int64, device="xpu").device),
+                )
+
+        with self.assertRaises(RuntimeError):
+            torch.tensor(5).xpu("cpu")
+        with self.assertRaises(RuntimeError):
+            torch.tensor(5).xpu("cpu:0")
+
+        if len(devices) > 1:
+            self.assertEqual("xpu:1", str(torch.tensor(5).xpu(1).device))
+            self.assertEqual("xpu:1", str(torch.tensor(5).xpu("xpu:1").device))
+            self.assertEqual(
+                "xpu:1", str(torch.tensor(5, dtype=torch.int64, device=1).device)
+            )
+            self.assertEqual(
+                "xpu:1", str(torch.tensor(5, dtype=torch.int64, device="xpu:1").device)
+            )
+            self.assertEqual(
+                "xpu:1",
+                str(
+                    torch.tensor(
+                        torch.ones((2, 3), dtype=torch.float32), device="xpu:1"
+                    ).device
+                ),
+            )
+
+            self.assertEqual(
+                "xpu:1", str(torch.tensor(np.random.randn(2, 3), device="xpu:1").device)
+            )
+
+
+TestTensorCreation.test_tensor_device = _test_tensor_device
+
+
 @onlyNativeDeviceTypes
 @unittest.skipIf(
     IS_PPC,
@@ -115,6 +261,8 @@ TestTensorCreation.test_empty_full = _test_empty_full
 
 # Removed onlyCPU + added XPU if branches
 def _test_as_tensor(self, device):
+    device_type = torch.device(device).type
+
     # from python data
     x = [[0, 1], [2, 3]]
     self.assertEqual(torch.tensor(x), torch.as_tensor(x))
@@ -144,17 +292,12 @@ def _test_as_tensor(self, device):
     y = torch.tensor(x)
     self.assertIs(y, torch.as_tensor(y))
     self.assertIsNot(y, torch.as_tensor(y, dtype=torch.float32))
-    if torch.cuda.is_available():
-        self.assertIsNot(y, torch.as_tensor(y, device="cuda"))
-        y_cuda = y.to("cuda")
-        self.assertIs(y_cuda, torch.as_tensor(y_cuda))
-        self.assertIs(y_cuda, torch.as_tensor(y_cuda, device="cuda"))
 
-    if torch.xpu.is_available():
-        self.assertIsNot(y, torch.as_tensor(y, device="xpu"))
-        y_xpu = y.to("xpu")
-        self.assertIs(y_xpu, torch.as_tensor(y_xpu))
-        self.assertIs(y_xpu, torch.as_tensor(y_xpu, device="xpu"))
+    if device_type in ("cuda", "xpu"):
+        self.assertIsNot(y, torch.as_tensor(y, device=device_type))
+        y_device = y.to(device_type)
+        self.assertIs(y_device, torch.as_tensor(y_device))
+        self.assertIs(y_device, torch.as_tensor(y_device, device=device_type))
 
     # doesn't copy
     for dtype in [np.float64, np.int64, np.int8, np.uint8]:
@@ -172,19 +315,12 @@ def _test_as_tensor(self, device):
     self.assertNotEqual(torch.tensor(n, dtype=torch.float64), n_astensor)
 
     # changing device causes copy
-    if torch.cuda.is_available():
-        n = np.random.randn(5, 6)
-        n_astensor = torch.as_tensor(n, device="cuda")
-        self.assertEqual(torch.tensor(n, device="cuda"), n_astensor)
+    if device_type in ("cuda", "xpu"):
+        n = np.random.rand(5, 6)
+        n_astensor = torch.as_tensor(n, device=device_type)
+        self.assertEqual(torch.tensor(n, device=device_type), n_astensor)
         n_astensor[0][2] = 250.9
-        self.assertNotEqual(torch.tensor(n, device="cuda"), n_astensor)
-
-    if torch.xpu.is_available():
-        n = np.random.randn(5, 6)
-        n_astensor = torch.as_tensor(n, device="xpu")
-        self.assertEqual(torch.tensor(n, device="xpu"), n_astensor)
-        n_astensor[0][2] = 250.9
-        self.assertNotEqual(torch.tensor(n, device="xpu"), n_astensor)
+        self.assertNotEqual(torch.tensor(n, device=device_type), n_astensor)
 
 
 TestTensorCreation.test_as_tensor = _test_as_tensor
@@ -204,12 +340,8 @@ def _test_tensor_ctor_device_inference(self, device):
             self.assertEqual(op(values).device, torch_device)
             self.assertEqual(op(values, dtype=torch.float64).device, torch_device)
 
-            if self.device_type == "cuda":
-                with torch.cuda.device(device):
-                    self.assertEqual(op(values.cpu()).device, torch.device("cpu"))
-
-            if self.device_type == "xpu":
-                with torch.xpu.device(device):
+            if self.device_type in ("cuda", "xpu"):
+                with torch.get_device_module(self.device_type).device(device):
                     self.assertEqual(op(values.cpu()).device, torch.device("cpu"))
 
     # Tests sparse ctor
@@ -224,15 +356,8 @@ def _test_tensor_ctor_device_inference(self, device):
     )
     self.assertEqual(sparse_with_dtype.device, torch_device)
 
-    if self.device_type == "cuda":
-        with torch.cuda.device(device):
-            sparse_with_dtype = torch.sparse_coo_tensor(
-                indices.cpu(), values.cpu(), sparse_size, dtype=torch.float64
-            )
-            self.assertEqual(sparse_with_dtype.device, torch.device("cpu"))
-
-    if self.device_type == "xpu":
-        with torch.xpu.device(device):
+    if self.device_type in ("cuda", "xpu"):
+        with torch.get_device_module(self.device_type).device(device):
             sparse_with_dtype = torch.sparse_coo_tensor(
                 indices.cpu(), values.cpu(), sparse_size, dtype=torch.float64
             )
@@ -339,8 +464,9 @@ TestRandomTensorCreation.test_randperm_device_compatibility = (
 
 
 # ======================================================================
-# 2. Add dtypesIfXPU overrides for migrated tensor-creation tests
+# Add dtypesIfXPU overrides for migrated tensor-creation tests
 # ======================================================================
+
 TestTensorCreation.test_signal_window_functions = dtypesIfXPU(
     torch.float, torch.double, torch.bfloat16, torch.half, torch.long
 )(TestTensorCreation.test_signal_window_functions)
@@ -367,22 +493,25 @@ TestRandomTensorCreation.test_uniform_from_to = dtypesIfXPU(
 
 
 # ======================================================================
-# 3. Add XPU largeTensorTest override for migrated randperm coverage
+# Add XPU largeTensorTest override for migrated randperm coverage
 # ======================================================================
+
 TestRandomTensorCreation.test_randperm_large = largeTensorTest("40GB", "xpu")(
     TestRandomTensorCreation.test_randperm_large
 )
 
 
 # ======================================================================
-# 4. Add XPU-only large tensor creation tests
+# Add XPU-only large tensor creation tests
 # ======================================================================
+
+
 @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
 @largeTensorTest(
     lambda self, device, dtype: (2**31) * torch.tensor([], dtype=dtype).element_size()
 )
 def _test_zeros_large(self, device, dtype):
-    output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
+    _ = torch.zeros(2**31 - 1, device=device, dtype=dtype)
 
 
 TestLikeTensorCreation.test_zeros_large = _test_zeros_large
@@ -393,55 +522,70 @@ TestLikeTensorCreation.test_zeros_large = _test_zeros_large
     lambda self, device, dtype: (2**31) * torch.tensor([], dtype=dtype).element_size()
 )
 def _test_ones_large(self, device, dtype):
-    output = torch.ones(2**31 - 1, device=device, dtype=dtype)
+    _ = torch.ones(2**31 - 1, device=device, dtype=dtype)
 
 
 TestLikeTensorCreation.test_ones_large = _test_ones_large
 
 
 # ======================================================================
-# 5. Retarget outermost @onlyCUDA test methods to @onlyOn(["cuda", "xpu"])
+# Retarget outermost @onlyCUDA test methods to @onlyOn(["cuda", "xpu"])
 # ======================================================================
-for _cls, _method_names in (
-    (
-        TestTensorCreation,
-        [
-            "test_cat_channels_last_large_inputs",
-            "test_cat_out_memory_format",
-            "test_cat_stack_cross_devices",
-            "test_cat",
-            "test_new_tensor_device",
-            "test_range_factories_64bit_indexing",
-        ],
-    ),
-    (
-        TestAsArray,
-        [
-            "test_copy_from_tensor_mult_devices",
-            "test_copy_from_dlpack_mult_devices",
-            "test_unsupported_alias_mult_devices",
-        ],
-    ),
-):
-    for _method_name in _method_names:
-        setattr(
-            _cls,
-            _method_name,
-            retarget_outermost_onlycuda_to_onlyon(getattr(_cls, _method_name)),
-        )
+
+TestTensorCreation.test_cat_channels_last_large_inputs = (
+    retarget_outermost_onlycuda_to_onlyon(
+        TestTensorCreation.test_cat_channels_last_large_inputs
+    )
+)
+
+TestTensorCreation.test_cat_out_memory_format = retarget_outermost_onlycuda_to_onlyon(
+    TestTensorCreation.test_cat_out_memory_format
+)
+
+TestTensorCreation.test_cat_stack_cross_devices = retarget_outermost_onlycuda_to_onlyon(
+    TestTensorCreation.test_cat_stack_cross_devices
+)
+
+TestTensorCreation.test_cat = retarget_outermost_onlycuda_to_onlyon(
+    TestTensorCreation.test_cat
+)
+
+TestTensorCreation.test_new_tensor_device = retarget_outermost_onlycuda_to_onlyon(
+    TestTensorCreation.test_new_tensor_device
+)
+
+TestTensorCreation.test_range_factories_64bit_indexing = (
+    retarget_outermost_onlycuda_to_onlyon(
+        TestTensorCreation.test_range_factories_64bit_indexing
+    )
+)
+
+TestAsArray.test_copy_from_tensor_mult_devices = retarget_outermost_onlycuda_to_onlyon(
+    TestAsArray.test_copy_from_tensor_mult_devices
+)
+
+TestAsArray.test_copy_from_dlpack_mult_devices = retarget_outermost_onlycuda_to_onlyon(
+    TestAsArray.test_copy_from_dlpack_mult_devices
+)
+
+TestAsArray.test_unsupported_alias_mult_devices = retarget_outermost_onlycuda_to_onlyon(
+    TestAsArray.test_unsupported_alias_mult_devices
+)
 
 
 # ======================================================================
-# 6. Extend dtype coverage on XPU for the retargeted device-rounding test
+# Extend dtype coverage on XPU for the retargeted device-rounding test
 # ======================================================================
+
 TestTensorCreation.test_device_rounding = dtypesIfXPU(
     torch.half, torch.float, torch.double
 )(retarget_outermost_onlycuda_to_onlyon(TestTensorCreation.test_device_rounding))
 
 
 # ======================================================================
-# 7. Instantiate migrated test classes for XPU/CPU execution
+# Instantiate test classes for XPU execution
 # ======================================================================
+
 instantiate_device_type_tests(
     TestTensorCreation, globals(), only_for="xpu", allow_xpu=True
 )
@@ -454,6 +598,7 @@ instantiate_device_type_tests(
 instantiate_device_type_tests(TestBufferProtocol, globals(), only_for="cpu")
 instantiate_device_type_tests(TestFromBlob, globals(), only_for="cpu")
 instantiate_device_type_tests(TestAsArray, globals(), only_for="xpu", allow_xpu=True)
+
 
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True
