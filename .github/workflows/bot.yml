@@ -41,7 +41,7 @@ jobs:
       authorized: ${{ steps.parse.outputs.authorized }}
     steps:
       - name: Acknowledge Command
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -54,7 +54,7 @@ jobs:
 
       - name: Parse Command
         id: parse
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const body = context.payload.comment.body;
@@ -141,7 +141,7 @@ jobs:
     if: needs.parse-command.outputs.command == 'invalid'
     steps:
       - name: Post invalid command message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -162,7 +162,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'false'
     steps:
       - name: Post permission denied message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -186,7 +186,7 @@ jobs:
     if: needs.parse-command.outputs.command == 'help'
     steps:
       - name: Post help message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -225,7 +225,7 @@ jobs:
       statuses: read
     steps:
       - name: Get PR Info
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: prinfo
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -239,7 +239,7 @@ jobs:
             core.setOutput('mergeable', String(pr.data.mergeable));
 
       - name: Check Reviews
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -264,7 +264,7 @@ jobs:
 
       - name: Check CI Status
         if: needs.parse-command.outputs.force != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -313,7 +313,7 @@ jobs:
             }
 
       - name: Check Merge Conflicts
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -336,7 +336,7 @@ jobs:
 
       - name: Merge PR
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -369,7 +369,7 @@ jobs:
     steps:
       - name: Validate revert reason
         if: needs.parse-command.outputs.revert_reason == ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -382,7 +382,7 @@ jobs:
 
       - name: Checkout repository
         if: needs.parse-command.outputs.revert_reason != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -406,7 +406,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status and rebase
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -440,7 +440,7 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -472,7 +472,7 @@ jobs:
 
       - name: Post success
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -484,7 +484,7 @@ jobs:
 
       - name: Post failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -502,7 +502,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -535,7 +535,7 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -578,7 +578,7 @@ jobs:
           fi
 
       - name: Post result
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -600,7 +600,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Rerun CI
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -701,7 +701,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run AI review
         id: ai-review
@@ -720,7 +720,7 @@ jobs:
 
       - name: Post review comment
         if: steps.ai-review.outputs.execution_file
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -740,7 +740,7 @@ jobs:
             });
 
       - name: "Verify: AI review succeeded"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -765,7 +765,7 @@ jobs:
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -805,7 +805,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Collect UT data
         id: collect
@@ -836,7 +836,7 @@ jobs:
 
       - name: Post analysis comment
         if: steps.collect.outputs.has_data == 'true' && steps.ai-analysis.outputs.execution_file
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -857,7 +857,7 @@ jobs:
 
       - name: "Verify: AI analysis succeeded"
         if: steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -882,7 +882,7 @@ jobs:
 
       - name: Report usage cost
         if: always() && steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -928,10 +928,10 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "Test: MERGE_TOKEN has PR read/write access"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1005,7 +1005,7 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       - name: "Verify: Bedrock test actually succeeded"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |

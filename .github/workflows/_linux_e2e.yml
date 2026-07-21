@@ -72,7 +72,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -263,7 +263,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.archive.outputs.name }}
           path: ${{ github.workspace }}/upload_files

@@ -60,7 +60,7 @@ jobs:
       torch_whl_name: ${{ steps.find_whl.outputs.torch_whl_name }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Install oneAPI
         shell: cmd
         run: |
@@ -225,13 +225,13 @@ jobs:
           echo "[INFO] wheel name: %WHL_NAME%"
       - name: Upload Windows build log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
       - name: Upload Windows binary
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'

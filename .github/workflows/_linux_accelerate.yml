@@ -79,17 +79,17 @@ jobs:
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Detect devices
         run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-rsf'
       - name: Checkout Accelerate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.python }}
       - name: Check python
@@ -169,7 +169,7 @@ jobs:
           pip_packages: 'accelerate transformers'
       - name: Upload Test log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Accelerate-Log-${{ github.event.pull_request.number || github.sha }}
           path: |
