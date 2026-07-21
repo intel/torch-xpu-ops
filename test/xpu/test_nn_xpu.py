@@ -120,10 +120,9 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.types import _TensorOrTensors
 
-AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.get_device_module(GPU_TYPE).is_tf32_supported()
+AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
 # Based on third_party/ideep/mkl-dnn/src/cpu/x64/cpu_isa_traits.hpp
 IS_AVX2_VNNI_2 = (
@@ -1906,22 +1905,22 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         self.assertIsInstance(l.bias.data, torch.HalfTensor)
         self.assertIsInstance(net.indices, torch.LongTensor)
         if TEST_CUDA:
-            net.float().to(device=GPU_TYPE)
-            self.assertIsInstance(l.weight.data, torch.FloatTensor)
-            self.assertIsInstance(l.bias.data, torch.FloatTensor)
-            self.assertIsInstance(net.indices, torch.LongTensor)
+            net.float().cuda()
+            self.assertIsInstance(l.weight.data, torch.cuda.FloatTensor)
+            self.assertIsInstance(l.bias.data, torch.cuda.FloatTensor)
+            self.assertIsInstance(net.indices, torch.cuda.LongTensor)
             net.cpu()
             self.assertIsInstance(l.weight.data, torch.FloatTensor)
             self.assertIsInstance(l.bias.data, torch.FloatTensor)
             self.assertIsInstance(net.indices, torch.LongTensor)
-            net.to(GPU_TYPE, torch.double, True)
-            self.assertIsInstance(l.weight.data, torch.DoubleTensor)
-            self.assertIsInstance(l.bias.data, torch.DoubleTensor)
-            self.assertIsInstance(net.indices, torch.LongTensor)
-            net.to(torch.empty(1, device=f"{GPU_TYPE}:0", dtype=torch.half))
-            self.assertIsInstance(l.weight.data, torch.HalfTensor)
-            self.assertIsInstance(l.bias.data, torch.HalfTensor)
-            self.assertIsInstance(net.indices, torch.LongTensor)
+            net.to("cuda", torch.double, True)
+            self.assertIsInstance(l.weight.data, torch.cuda.DoubleTensor)
+            self.assertIsInstance(l.bias.data, torch.cuda.DoubleTensor)
+            self.assertIsInstance(net.indices, torch.cuda.LongTensor)
+            net.to(torch.empty(1, device="cuda:0", dtype=torch.half))
+            self.assertIsInstance(l.weight.data, torch.cuda.HalfTensor)
+            self.assertIsInstance(l.bias.data, torch.cuda.HalfTensor)
+            self.assertIsInstance(net.indices, torch.cuda.LongTensor)
         net.to(torch.device("cpu"), non_blocking=True)
         self.assertIsInstance(l.weight.data, torch.HalfTensor)
         self.assertIsInstance(l.bias.data, torch.HalfTensor)
@@ -1933,9 +1932,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         self.assertIsInstance(l.weight.data, torch.DoubleTensor)
         self.assertIsInstance(l.bias.data, torch.DoubleTensor)
         if TEST_CUDA:
-            net.to(device=GPU_TYPE, dtype=torch.float)
-            self.assertIsInstance(l.weight.data, torch.FloatTensor)
-            self.assertIsInstance(l.bias.data, torch.FloatTensor)
+            net.to(device="cuda", dtype=torch.float)
+            self.assertIsInstance(l.weight.data, torch.cuda.FloatTensor)
+            self.assertIsInstance(l.bias.data, torch.cuda.FloatTensor)
 
     def test_non_leaf_parameters(self):
         l1 = nn.Linear(10, 10)
@@ -2153,7 +2152,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             if apply_dp:
                 if not TEST_MULTIGPU:
                     continue
-                device = torch.device(f"{GPU_TYPE}:0")
+                device = torch.device("cuda:0")
 
                 def maybe_wrap(m):
                     return torch.nn.DataParallel(m, [0, 1])
@@ -2531,7 +2530,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         devices = [0, 1]
         model_parallel = nn.DataParallel(model, device_ids=devices)
         model_parallel.cuda(devices[0])
-        input_tensor = torch.ones(4, 2, device=f"{GPU_TYPE}:{devices[0]}")
+        input_tensor = torch.ones(4, 2, device=f"cuda:{devices[0]}")
         output = model_parallel(input_tensor)
         self.assertEqual(model_parallel.module.param_2d.shape, torch.Size([0, 16]))
         self.assertEqual(model_parallel.module.param_3d.shape, torch.Size([3, 0, 8]))
@@ -4379,17 +4378,17 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         for rnn in rnns:
             rnn.bias_ih_l0_reverse = rnn.bias_ih_l0
             rnn.to(device_type)
-            input = torch.randn(5, 4, 10, requires_grad=True, device=GPU_TYPE)
-            hx = torch.randn(2, 5, 20, requires_grad=True, device=GPU_TYPE)
+            input = torch.randn(5, 4, 10, requires_grad=True, device="cuda")
+            hx = torch.randn(2, 5, 20, requires_grad=True, device="cuda")
             all_vars = [input, hx] + list(rnn.parameters())
             opt = torch.optim.SGD(rnn.parameters(), lr=0.1)
             opt.zero_grad()
             if isinstance(rnn, nn.LSTM):
                 # LSTM with projections has different hx size
                 if rnn.proj_size > 0:
-                    hx = torch.randn(2, 5, 10, requires_grad=True, device=GPU_TYPE)
+                    hx = torch.randn(2, 5, 10, requires_grad=True, device="cuda")
                     all_vars[1] = hx
-                cx = torch.randn(2, 5, 20, requires_grad=True, device=GPU_TYPE)
+                cx = torch.randn(2, 5, 20, requires_grad=True, device="cuda")
                 all_vars[2:2] = [cx]
                 hx = (hx, cx)
 
@@ -7053,7 +7052,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         with self.assertRaisesRegex(RuntimeError, "eps must be non-negative"):
             F.cosine_similarity(x1, x2, dim=0, eps=eps_negative)
 
-        if torch.get_device_module(GPU_TYPE).is_available():
+        if torch.cuda.is_available():
             x1_cuda = x1.cuda()
             x2_cuda = x2.cuda()
             with self.assertRaisesRegex(RuntimeError, "eps must be non-negative"):
@@ -7067,7 +7066,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             torch.all(torch.isnan(result_cpu)) or torch.all(torch.isinf(result_cpu))
         )
 
-        if torch.get_device_module(GPU_TYPE).is_available():
+        if torch.cuda.is_available():
             result_cuda = F.cosine_similarity(
                 x1_cuda, x2_cuda, dim=0, eps=eps_large_positive
             )
@@ -7084,7 +7083,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         self.assertEqual(result_cpu.shape, torch.Size([10]))
         self.assertTrue(torch.all(result_cpu >= -1.0) and torch.all(result_cpu <= 1.0))
 
-        if torch.get_device_module(GPU_TYPE).is_available():
+        if torch.cuda.is_available():
             x3_cuda = x3.cuda()
             x4_cuda = x4.cuda()
             result_cuda = F.cosine_similarity(x3_cuda, x4_cuda, dim=1, eps=1e-8)
@@ -7263,7 +7262,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ):
             F.affine_grid(theta, torch.Size([1, 1, 2, 2, 2, 2]), align_corners=False)
 
-    @parametrize_test("device", ["cpu"] + ([GPU_TYPE] if TEST_GPU else []))
+    @parametrize_test("device", ["cpu"] + (["cuda"] if TEST_CUDA else []))
     @parametrize_test("nd", [2, 3])
     def test_affine_grid_backward_cl_cf_consistency(self, device, nd):
         # Test based on reported issue: https://github.com/pytorch/pytorch/issues/124154
@@ -7380,9 +7379,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                             .transpose(0, 1)
                             .requires_grad_(input_requires_grad)
                         )
-                        grid_cuda = get_grid(
-                            GPU_TYPE, grid_cpu.detach()
-                        ).requires_grad_()
+                        grid_cuda = get_grid("cuda", grid_cpu.detach()).requires_grad_()
                         out_cuda = F.grid_sample(
                             input_cuda,
                             grid_cuda,
@@ -8214,7 +8211,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         .expand_as(input_cuda)
                         .requires_grad_(input_requires_grad)
                     )
-                    grid_cuda = grid_cpu.detach().to(device=GPU_TYPE).requires_grad_()
+                    grid_cuda = grid_cpu.detach().cuda().requires_grad_()
                     out_cuda = F.grid_sample(
                         input_cuda,
                         grid_cuda,
@@ -8342,7 +8339,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
     def test_grid_sample_nearest_neighbor_rounding_mode_consistency(self):
         device_list = ["cpu"]
         if TEST_CUDA:
-            device_list.append(GPU_TYPE)
+            device_list.append("cuda")
 
         def normalize_indices(
             indices_unnormalized: torch.Tensor, dim_size: int, align_corners: bool
@@ -8580,7 +8577,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     out_cpu = F.affine_grid(input_cpu, sz, align_corners=align_corners)
                 gradients = torch.randn(out_cpu.size())
                 out_cpu.backward(gradients)
-                input_gpu = input_cpu.detach().to(device=GPU_TYPE).requires_grad_()
+                input_gpu = input_cpu.detach().cuda().requires_grad_()
                 with warnings.catch_warnings(record=True):
                     warnings.simplefilter(
                         "always"
@@ -8665,7 +8662,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     out_cpu = F.affine_grid(input_cpu, sz, align_corners=align_corners)
                 gradients = torch.randn(out_cpu.size())
                 out_cpu.backward(gradients)
-                input_gpu = input_cpu.detach().to(device=GPU_TYPE).requires_grad_()
+                input_gpu = input_cpu.detach().cuda().requires_grad_()
                 with warnings.catch_warnings(record=True):
                     warnings.simplefilter(
                         "always"
@@ -8804,7 +8801,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
         device_list = ["cpu"]
         if TEST_CUDA:
-            device_list.append(GPU_TYPE)
+            device_list.append("cuda")
 
         for align_corners in [True, False]:
             kwargs = dict(mode="bicubic", align_corners=align_corners)
@@ -8916,10 +8913,10 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         in_s = 45
         out_s = 14
 
-        input = torch.ones((1, 1, in_s), device=GPU_TYPE, requires_grad=True)
+        input = torch.ones((1, 1, in_s), device="cuda", requires_grad=True)
         # note we allocated grad_output to be larger so out of bound access
         # would be visible in grad_input
-        grad = torch.ones((1, 1, out_s * 2), device=GPU_TYPE, requires_grad=True)
+        grad = torch.ones((1, 1, out_s * 2), device="cuda", requires_grad=True)
         grad = grad[:, :, :out_s]
 
         input_ref = input.detach().cpu().requires_grad_()
@@ -8998,7 +8995,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     if (
                         device == "cpu"
                         and dtype == torch.half
-                        or (device in ("cuda", "xpu") and dtype == torch.bfloat16)
+                        or (device == "cuda" and dtype == torch.bfloat16)
                     ):
                         # no half precision support on cpu or bfloat16 on cuda yet
                         continue
@@ -9049,8 +9046,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             return torch.ones(size, requires_grad=True, device=device)
 
         device_list = ["cpu"]
-        if TEST_GPU:
-            device_list.append(GPU_TYPE)
+        if TEST_CUDA:
+            device_list.append("cuda")
 
         for device in device_list:
             for scale_factor in [0.5, 1.5, 2]:
@@ -9101,7 +9098,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             m(inp)
 
     @tf32_on_and_off(0.005)
-    @parametrize_test("device", ["cpu"] + ([GPU_TYPE] if TEST_GPU else []))
+    @parametrize_test("device", ["cpu"] + (["cuda"] if TEST_CUDA else []))
     @parametrize_test(
         "bias", [subtest(False, name="nobias"), subtest(True, name="bias")]
     )
@@ -9503,19 +9500,17 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         input_2 = torch.rand([5, 0], dtype=torch.float32)
         torch.nn.CrossEntropyLoss()(input_1, input_2)
 
-    @unittest.skipIf(
-        not torch.get_device_module(GPU_TYPE).is_available(), "CUDA not available"
-    )
+    @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
     def test_convert_sync_batchnorm(self):
         module = torch.nn.Sequential(
             torch.nn.BatchNorm1d(100), torch.nn.InstanceNorm1d(100)
-        ).to(device=GPU_TYPE)
+        ).cuda()
 
         # necessary to have an anchor point for comparison, in case the
         # convert_sync_batchnorm updates in place
         comp_module = torch.nn.Sequential(
             torch.nn.BatchNorm1d(100), torch.nn.InstanceNorm1d(100)
-        ).to(device=GPU_TYPE)
+        ).cuda()
         comp_module.load_state_dict(module.state_dict())
 
         sync_bn_module = torch.nn.SyncBatchNorm.convert_sync_batchnorm(module)
@@ -9535,9 +9530,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                     layer.state_dict()[key], converted_layer.state_dict()[key]
                 )
 
-    @unittest.skipIf(not TEST_GPU, "GPU not available")
+    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
     def test_sync_batchnorm_backward_elemt(self):
-        device = GPU_TYPE
+        device = "cuda"
         saved_input = torch.rand(2, 3, 2, 1, device=device)
         grad_output = torch.rand(2, 3, 2, 1, device=device)
         mean = torch.rand(3, device=device)
@@ -9596,12 +9591,12 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             self.assertEqual(mean_ref, mean2)
 
         _batch_norm_stats(
-            torch.randn(1, 96, 112, 112, dtype=torch.float, device=GPU_TYPE),
+            torch.randn(1, 96, 112, 112, dtype=torch.float, device="cuda"),
             torch.channels_last,
             (0, 2, 3),
         )
         _batch_norm_stats(
-            torch.randn(1, 96, 112, 112, 112, dtype=torch.float, device=GPU_TYPE),
+            torch.randn(1, 96, 112, 112, 112, dtype=torch.float, device="cuda"),
             torch.channels_last_3d,
             (0, 2, 3, 4),
         )
@@ -9651,8 +9646,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         self.assertEqual(grads1, grads2, rtol=rtol, atol=atol)
 
         if TEST_CUDA:
-            x = x.to(GPU_TYPE)
-            layer_norm = layer_norm.to(GPU_TYPE)
+            x = x.to("cuda")
+            layer_norm = layer_norm.to("cuda")
 
             grads1 = torch.autograd.grad(layer_norm(x).sum(), x, create_graph=False)[0]
             grads2 = torch.autograd.grad(layer_norm(x).sum(), x, create_graph=True)[0]
@@ -9667,7 +9662,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
     # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the test now targets
     # whichever GPU is available); resolve the GPU device at runtime
-    # instead of hard-coding GPU_TYPE or "xpu". Variable names
+    # instead of hard-coding "cuda" or "xpu". Variable names
     # `x_cuda`/`ln_cuda`/`grad_output_cuda` left as-is since they're local
     # and only describe the GPU-side tensor. Tracks intel/torch-xpu-ops#2531.
     @unittest.skipIf(not TEST_GPU, "no GPU available")
@@ -9734,7 +9729,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
 
     # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the test now targets
     # whichever GPU is available); resolve the GPU device at runtime
-    # instead of hard-coding GPU_TYPE or "xpu". Tracks intel/torch-xpu-ops#2024.
+    # instead of hard-coding "cuda" or "xpu". Tracks intel/torch-xpu-ops#2024.
     @unittest.skipIf(not TEST_GPU, "no GPU available")
     @largeTensorTest("40GB", device=device_type)
     def test_layer_norm_large_tensor(self):
@@ -9782,12 +9777,12 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ):
             res = arg_class(*arg_3)
 
-    @unittest.skipIf(not TEST_GPU, "GPU not available")
-    @largeTensorTest("20GB", device=GPU_TYPE)
+    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
+    @largeTensorTest("20GB", device="cuda")
     def test_large_max_pool2d_ch_last(self):
         # https://github.com/pytorch/pytorch/issues/165297
         N, C, H, W = 70, 64, 512, 960  # dims to extend > int32
-        device = torch.device(GPU_TYPE)
+        device = torch.device("cuda")
         x_cuda = torch.randn(N, C, H, W, device=device, dtype=torch.float16)
         x_cuda = x_cuda.to(memory_format=torch.channels_last)
         pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -9951,7 +9946,7 @@ def add_test(test, decorator=None):
         kwargs["extra_args"] = test.extra_args
 
     if "dtype" in get_function_arglist(test.test_cuda):
-        if torch.get_device_module(GPU_TYPE).is_tf32_supported() and test.with_tf32:
+        if torch.cuda.is_tf32_supported() and test.with_tf32:
 
             def with_tf32_off(self, test=test, kwargs=kwargs):
                 with tf32_off():
@@ -10006,7 +10001,7 @@ def add_test(test, decorator=None):
             with tf32_off():
                 test.test_cuda(self, **kwargs)
 
-        if torch.get_device_module(GPU_TYPE).is_tf32_supported() and test.with_tf32:
+        if torch.cuda.is_tf32_supported() and test.with_tf32:
             add(cuda_test_name + "_fp32", with_tf32_off)
 
             def with_tf32_on(self, test=test, kwargs=kwargs):
@@ -10228,7 +10223,7 @@ add_test(
 
 
 # The following are helpers for TestNN.test_affine_*
-if torch.get_device_module(GPU_TYPE).is_available():
+if torch.cuda.is_available():
 
     def device_():
         return ["cpu", "cuda"]
@@ -10863,7 +10858,7 @@ class TestNNDeviceType(NNTestCase):
 
             output.backward(torch.randn_like(output))
             if output.is_cuda:
-                torch.accelerator.synchronize()
+                torch.cuda.synchronize()
             if output.device.type == "xpu":
                 torch.xpu.synchronize()
 
@@ -13777,7 +13772,7 @@ class TestNNDeviceType(NNTestCase):
             for dim in [0, 3]:
                 for mask_orig, mask, mask_type in masks:
                     if (
-                        (self.device_type == GPU_TYPE)
+                        (self.device_type == "cuda")
                         and (num_heads % 2)
                         and (mask_type == 1)
                     ):
@@ -13990,7 +13985,7 @@ class TestNNDeviceType(NNTestCase):
         dim = input.dim() - 1
         mask = torch.randint(0, 2, (B, L))
         mask_type = 1  # BxL => src_key_padding_mask
-        if self.device_type == GPU_TYPE:
+        if self.device_type == "cuda":
             input = input.to(device_type)
             mask = mask.to(device_type)
         mask = mask.bool()
@@ -14011,7 +14006,7 @@ class TestNNDeviceType(NNTestCase):
         dim = input.dim() - 1
         mask = torch.randint(0, 2, (L, L))
         mask_type = 0  # LxL => src_mask
-        if self.device_type == GPU_TYPE:
+        if self.device_type == "cuda":
             input = input.to(device_type)
             mask = mask.to(device_type)
         mask = mask.bool()
@@ -14190,7 +14185,7 @@ class TestNNDeviceType(NNTestCase):
             self.assertEqual(F.log_softmax(x_small, -1), F.log_softmax(x_big, -1))
 
         _test_helper((16, 4))
-        if self.device_type == GPU_TYPE:
+        if self.device_type == "cuda":
             # test non-persistent softmax kernel
             _test_helper((4, 1536))
 
@@ -14300,8 +14295,8 @@ class TestNNDeviceType(NNTestCase):
                 result, torch.zeros(1, 1, 4, 4, device=device, dtype=torch.float)
             )
             result.backward(torch.ones_like(result))
-            if torch.accelerator.is_available():
-                torch.accelerator.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             elif torch.xpu.is_available():
                 torch.xpu.synchronize()
 
@@ -14868,7 +14863,7 @@ class TestNNDeviceType(NNTestCase):
         losses = []
         losses_no_bd = []
 
-        has_cuda = torch.accelerator.is_available()
+        has_cuda = torch.cuda.is_available()
         has_cudnn = has_cuda and "cuda" in device and self.has_cudnn()
         # cudnn requires a cpu target
         if has_cuda and has_cudnn:
@@ -14984,14 +14979,14 @@ class TestNNDeviceType(NNTestCase):
             packed = rnn_utils.pack_padded_sequence(
                 padded, lengths, enforce_sorted=enforce_sorted
             )
-            if device in ("cuda", "xpu"):
-                self.assertFalse(packed.is_cuda or packed.is_xpu)
+            if device == "cuda":
+                self.assertFalse(packed.is_cuda)
             packed = packed.to(device)
-            if device in ("cuda", "xpu"):
-                self.assertTrue(packed.is_cuda or packed.is_xpu)
+            if device == "cuda":
+                self.assertTrue(packed.is_cuda)
             unpacked, _ = rnn_utils.pad_packed_sequence(packed)
-            if device in ("cuda", "xpu"):
-                self.assertTrue(unpacked.is_cuda or packed.is_xpu)
+            if device == "cuda":
+                self.assertTrue(unpacked.is_cuda)
             self.assertEqual(unpacked.dtype, torch.float)
 
     @onlyOn(["cuda", "xpu"])
@@ -15520,7 +15515,7 @@ class TestNNDeviceType(NNTestCase):
         )
         log_probs = torch.log_softmax(
             torch.randn(
-                input_length, batch_size, num_labels, device=GPU_TYPE, dtype=torch.float
+                input_length, batch_size, num_labels, device="cuda", dtype=torch.float
             ),
             2,
         )
@@ -15532,12 +15527,12 @@ class TestNNDeviceType(NNTestCase):
             end=input_length,
             steps=batch_size,
             dtype=torch.long,
-            device=GPU_TYPE,
+            device="cuda",
         )
         target_lengths = torch.tensor(
-            batch_size * [target_length], dtype=torch.long, device=GPU_TYPE
+            batch_size * [target_length], dtype=torch.long, device="cuda"
         )
-        grad_out = torch.randn(batch_size, device=GPU_TYPE, dtype=torch.float)
+        grad_out = torch.randn(batch_size, device="cuda", dtype=torch.float)
         with torch.backends.cudnn.flags(enabled=False):
             loss_native = torch.nn.functional.ctc_loss(
                 log_probs, targets, input_lengths, target_lengths, reduction="none"
@@ -15545,9 +15540,9 @@ class TestNNDeviceType(NNTestCase):
             (grad_native,) = torch.autograd.grad(loss_native, log_probs, grad_out)
         loss_cudnn = torch.nn.functional.ctc_loss(
             log_probs,
-            targets.to(GPU_TYPE, torch.int32),
-            input_lengths.to(GPU_TYPE, torch.int32),
-            target_lengths.to(GPU_TYPE, torch.int32),
+            targets.to("cuda", torch.int32),
+            input_lengths.to("cuda", torch.int32),
+            target_lengths.to("cuda", torch.int32),
             reduction="none",
         )
         # ROCm uses MIOpen (MiopenCtcLossBackward), CUDA uses cuDNN (CudnnCtcLossBackward)
@@ -15759,7 +15754,7 @@ class TestNNDeviceType(NNTestCase):
     def test_batchnorm_update_stats(self, device):
         self._test_batchnorm_update_stats(device)
 
-        if self.device_type == GPU_TYPE and self.has_cudnn():
+        if self.device_type == "cuda" and self.has_cudnn():
             with torch.backends.cudnn.flags(enabled=False):
                 self._test_batchnorm_update_stats(device)
 
@@ -16102,8 +16097,8 @@ class TestThatContainsCUDAAssert(TestCase):
         x = F.cross_entropy(
             pred, labels, reduction="none", ignore_index=ignore_index
         )
-        if torch.accelerator.is_available():
-            torch.accelerator.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         elif torch.xpu.is_available():
             torch.xpu.synchronize()
 

@@ -32,8 +32,6 @@ import warnings
 import weakref
 from unittest.mock import patch
 
-from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-
 # Make upstream `test/dynamo/utils.py` importable as `utils` for tests like
 # test_nested_function_resuming_with_correct_globals (its fallback
 # `from utils import outer_func` relies on test/dynamo being on sys.path,
@@ -281,8 +279,8 @@ class MiscTests(torch._inductor.test_case.TestCase):
 
             return cumsum.sum()
 
-        a = torch.rand(100, 30, device=GPU_TYPE)
-        b = torch.rand(100, 30, device=GPU_TYPE)
+        a = torch.rand(100, 30, device="cuda")
+        b = torch.rand(100, 30, device="cuda")
 
         torch._dynamo.decorators.mark_unbacked(a, 0)
         torch._dynamo.decorators.mark_unbacked(a, 1)

@@ -3593,7 +3593,7 @@ with warnings.catch_warnings(record=True) as w:
             return torch.sin(x)
 
         # Register autocast for CUDA
-        torch.library.register_autocast(my_sin, GPU_TYPE, torch.float16)
+        torch.library.register_autocast(my_sin, "cuda", torch.float16)
 
         x1 = torch.randn(3, dtype=torch.float32, device="xpu")
         with torch.autocast("xpu", dtype=torch.float16):
