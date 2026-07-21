@@ -121,10 +121,10 @@ class TestCudaMultiGPU(TestCase):
             torch.accelerator.synchronize(1)
             torch.accelerator.synchronize(torch.device(f"{GPU_TYPE}:1"))
 
-        with self.assertRaisesRegex(ValueError, "Expected a cuda device, but"):
+        with self.assertRaisesRegex(ValueError, f"current accelerator {GPU_TYPE}"):
             torch.accelerator.synchronize(torch.device("cpu"))
 
-        with self.assertRaisesRegex(ValueError, "Expected a cuda device, but"):
+        with self.assertRaisesRegex(ValueError, f"current accelerator {GPU_TYPE}"):
             torch.accelerator.synchronize("cpu")
 
     @staticmethod
@@ -492,7 +492,7 @@ class TestCudaMultiGPU(TestCase):
             buf.getvalue().replace(f"{GPU_TYPE}:0".encode(), f"{GPU_TYPE}:9".encode())
         )
 
-        msg = r"Attempting to deserialize object on CUDA device 9"
+        msg = rf"Attempting to deserialize object on {GPU_TYPE.upper()} device 9"
         with self.assertRaisesRegex(RuntimeError, msg):
             _ = torch.load(buf)
 
