@@ -12,15 +12,10 @@ Environment variables (set by caller):
     XPU_VERSION - XPU bundle version (for xpu_install.bat)
 """
 
-import glob
 import os
 import subprocess
 import sys
 from pathlib import Path
-
-
-def pip_install(*args):
-    subprocess.run([sys.executable, "-m", "pip", "install", *args], check=True)
 
 
 def main():
@@ -106,32 +101,6 @@ def main():
         check=True,
     )
     print("build_wheel complete", flush=True)
-
-    # Step 4: Install and verify
-    print("=== Step 4: install and verify ===", flush=True)
-    wheels = glob.glob(str(dist_dir / "torch*.whl"))
-    if not wheels:
-        sys.exit("No wheel found in dist/")
-    whl = wheels[0]
-    print(f"Built wheel: {whl}", flush=True)
-    pip_install("--force-reinstall", whl)
-
-    subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import torch; assert torch.xpu._is_compiled(), 'XPU not compiled!'",
-        ],
-        check=True,
-    )
-    subprocess.run(
-        [sys.executable, "-c", "import torch; print(torch.__config__.show())"],
-        check=True,
-    )
-    subprocess.run(
-        [sys.executable, "-c", "import torch; print(torch.__config__.parallel_info())"],
-        check=True,
-    )
     print("Build completed successfully", flush=True)
 
 

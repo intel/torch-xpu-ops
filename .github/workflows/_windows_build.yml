@@ -130,6 +130,18 @@ jobs:
           for %%A in ("%TORCH_WHL%") do set WHL_NAME=%%~nxA
           echo torch_whl_name=%WHL_NAME% >> %GITHUB_OUTPUT%
           echo "[INFO] wheel name: %WHL_NAME%"
+      - name: Install and Verify
+        shell: cmd
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda activate windows_ci
+          cd ..\pytorch
+          for /r %%i in (dist\torch*.whl) do (
+            pip install --force-reinstall "%%i"
+          )
+          python -c "import torch; assert torch.xpu._is_compiled(), 'XPU not compiled!'"
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
       - name: Upload Windows build log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
