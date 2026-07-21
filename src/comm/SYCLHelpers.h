@@ -264,7 +264,6 @@ static inline void sycl_kernel_submit(
     int slm_sz,
     Kargs... args) {
 #if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
-  #warning "Current SYCL compiler detected (< 2026.1)."
   sycl::context ctxt = q.get_context();
   auto exe_bndl =
       syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
@@ -281,7 +280,6 @@ static inline void sycl_kernel_submit(
     syclexp::nd_launch(q, cfg, ker, args...);
   }
 #else
-  #warning "Current SYCL compiler detected (>= 2026.1)."
   if (slm_sz != 0) {
     syclexp::launch_config cfg{
         ::sycl::nd_range<1>(
