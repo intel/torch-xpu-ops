@@ -39,8 +39,7 @@ namespace at::native::xpu {
 static constexpr int TILE_DIM = 32;
 
 template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
-struct BatchTransposeFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr int WG_SIZE = 256;
   static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
   static constexpr int SLM_STRIDE = TILE_DIM + SLM_PAD;
@@ -110,16 +109,8 @@ struct BatchTransposeFunctor
     }
   }
 
-  BatchTransposeFunctor(
-      const scalar_t* src,
-      scalar_t* dst,
-      int rows,
-      int cols)
-      : src_(src),
-        dst_(dst),
-        rows_(rows),
-        cols_(cols),
-        slm_() {}
+  BatchTransposeFunctor(const scalar_t* src, scalar_t* dst, int rows, int cols)
+      : src_(src), dst_(dst), rows_(rows), cols_(cols), slm_() {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     slm_ = sycl::local_accessor<scalar_t, 1>(
@@ -141,7 +132,8 @@ static void launch_transpose_kernel(
     int batch_size,
     int rows,
     int cols) {
-  constexpr int kROWS_PER_ITER = BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>::ROWS_PER_ITER;
+  constexpr int kROWS_PER_ITER =
+      BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>::ROWS_PER_ITER;
   int num_tiles_x = (cols + TILE_DIM - 1) / TILE_DIM;
   int num_tiles_y = (rows + TILE_DIM - 1) / TILE_DIM;
 
@@ -185,18 +177,30 @@ static void dispatch_transpose(
 
   if (full_tile) {
     if constexpr (kMaxVec >= 4) {
-      if (vec_size == 4) { LAUNCH(4, true); return; }
+      if (vec_size == 4) {
+        LAUNCH(4, true);
+        return;
+      }
     }
     if constexpr (kMaxVec >= 2) {
-      if (vec_size == 2) { LAUNCH(2, true); return; }
+      if (vec_size == 2) {
+        LAUNCH(2, true);
+        return;
+      }
     }
     LAUNCH(1, true);
   } else {
     if constexpr (kMaxVec >= 4) {
-      if (vec_size == 4) { LAUNCH(4, false); return; }
+      if (vec_size == 4) {
+        LAUNCH(4, false);
+        return;
+      }
     }
     if constexpr (kMaxVec >= 2) {
-      if (vec_size == 2) { LAUNCH(2, false); return; }
+      if (vec_size == 2) {
+        LAUNCH(2, false);
+        return;
+      }
     }
     LAUNCH(1, false);
   }
@@ -291,7 +295,8 @@ static bool detect_batch_transpose(
         match = false;
     }
     if (match) {
-      // Compute batch, rows (= product of groupA sizes), cols (= product of groupB sizes)
+      // Compute batch, rows (= product of groupA sizes), cols (= product of
+      // groupB sizes)
       int64_t b = 1, r = 1, c = 1;
       for (int i = 0; i < batch_end; i++)
         b *= sizes[src_order[i]];
@@ -347,6 +352,12 @@ bool can_use_channels_last_transpose_kernel(TensorIteratorBase& iter) {
     return false;
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
+
+  // Only support float16, bfloat16, float32
+  auto dtype = src.scalar_type();
+  if (!(dtype == at::kHalf || dtype == at::kBFloat16 || dtype == at::kFloat))
+    return false;
+
   int batch_size, rows, cols;
   return detect_batch_transpose(src, dst, batch_size, rows, cols);
 }
@@ -358,12 +369,31 @@ void channels_last_transpose_kernel(TensorIteratorBase& iter) {
   int batch_size, rows, cols;
   detect_batch_transpose(src, dst, batch_size, rows, cols);
 
-  AT_DISPATCH_ALL_TYPES_AND2(
-      kHalf, kBFloat16, src.scalar_type(), "batch_transpose_xpu", [&] {
-        const scalar_t* src_data = src.const_data_ptr<scalar_t>();
-        scalar_t* dst_data = dst.mutable_data_ptr<scalar_t>();
-        dispatch_transpose(src_data, dst_data, batch_size, rows, cols);
-      });
+  AT_DISPATCH_SWITCH(
+      src.scalar_type(),
+      "batch_transpose_xpu",
+      AT_DISPATCH_CASE(at::ScalarType::Half, [&] {
+        dispatch_transpose(
+            src.const_data_ptr<scalar_t>(),
+            dst.mutable_data_ptr<scalar_t>(),
+            batch_size,
+            rows,
+            cols);
+      }) AT_DISPATCH_CASE(at::ScalarType::BFloat16, [&] {
+        dispatch_transpose(
+            src.const_data_ptr<scalar_t>(),
+            dst.mutable_data_ptr<scalar_t>(),
+            batch_size,
+            rows,
+            cols);
+      }) AT_DISPATCH_CASE(at::ScalarType::Float, [&] {
+        dispatch_transpose(
+            src.const_data_ptr<scalar_t>(),
+            dst.mutable_data_ptr<scalar_t>(),
+            batch_size,
+            rows,
+            cols);
+      }));
 }
 
 } // namespace at::native::xpu
