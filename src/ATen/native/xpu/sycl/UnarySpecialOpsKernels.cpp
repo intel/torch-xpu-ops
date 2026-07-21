@@ -39,24 +39,24 @@ struct SigmoidFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
     [[maybe_unused]] const auto one = opmath_t{1.0};
+    const auto a_ = static_cast<opmath_t>(a);
     if constexpr (c10::is_complex<opmath_t>::value) {
       using value_t = typename opmath_t::value_type;
       if constexpr (
           std::is_same_v<value_t, float> || std::is_same_v<value_t, double>) {
 #if defined(__SYCL_DEVICE_ONLY__)
         namespace syclex = sycl::ext::oneapi::experimental;
-        const auto a_ = static_cast<opmath_t>(a);
         const syclex::complex<value_t> z(a_.real(), a_.imag());
         const auto sig = value_t(1) / (value_t(1) + syclex::exp(-z));
         return opmath_t(sig.real(), sig.imag());
 #else
-        return one / (one + std::exp(-static_cast<opmath_t>(a)));
+        return one / (one + std::exp(-a_));
 #endif
       } else {
-        return one / (one + std::exp(-static_cast<opmath_t>(a)));
+        return one / (one + std::exp(-a_));
       }
     } else {
-      return one / (one + sycl::exp(-static_cast<opmath_t>(a)));
+      return one / (one + sycl::exp(-a_));
     }
   }
 };
