@@ -32,8 +32,8 @@
 //     owns among s's slice-g tokens into s's recv slot; then signal s's pad at
 //     slot (g*W + rank).  Non-owned slots on the destination stay zero.
 //   Phase 2 (reduce, as SOURCE): wait until all W owners have signaled slice g
-//     (system-scope acquire), then sum the W contiguous owner-slots of every
-//     slice-g token into output.
+//     (system-scope acquire), then sum the DISTINCT owner-slots of every
+//     slice-g token into output (only slots an owner actually wrote are read).
 // Because signals are per-slice, a work-group can reduce its slice as soon as
 // its owners are done while other work-groups are still pushing -- so the reduce
 // overlaps the push and the whole combine tracks the push cost (< the dense
@@ -90,6 +90,10 @@ inline void epc_np_vec_store(vec_t* dst, vec_t vd) {
 // world_size * this, so num_wg * world_size (our pad usage) must fit.
 constexpr int32_t EPC_NP_MAX_WG = 256;
 
+// Upper bound on top-k, used to size the small per-token owner list computed on
+// the reduce path (kept in registers, no SLM).
+constexpr int32_t EPC_NP_MAX_TOPK = 32;
+
 // Signal helpers -- identical semantics to RingReduceScatter / xccl Signal.hpp:
 // store the value THEN a system release fence; acquire fence BEFORE each load.
 inline void store_release_sys(uint32_t* addr, uint32_t val) {
@@ -132,6 +136,12 @@ struct EpCombineNoPermuteKernel {
   int32_t base_experts;
   int32_t rem_experts;
   int32_t boundary;
+  // This rank's owned experts form a CONTIGUOUS range [expert_lo, expert_hi).
+  // The push ownership test (executed redundantly by every work-item for every
+  // source token) then reduces to two comparisons instead of the two integer
+  // divisions inside owner_of -- a large ALU saving on the hot path.
+  int32_t expert_lo;
+  int32_t expert_hi;
 
   inline int32_t owner_of(int32_t expert) const {
     if (expert < boundary) {
@@ -165,7 +175,8 @@ struct EpCombineNoPermuteKernel {
         const int32_t row = s * tokens_per_rank + t;  // source (s, t)
         bool owned = false;
         for (int32_t k = 0; k < topk; ++k) {
-          if (owner_of(topk_idx_full[row * topk + k]) == rank) {
+          const int32_t e = topk_idx_full[row * topk + k];
+          if (e >= expert_lo && e < expert_hi) {
             owned = true;
             break;
           }
@@ -216,13 +227,34 @@ struct EpCombineNoPermuteKernel {
         sycl::memory_order::acquire, sycl::memory_scope::system);
 
     for (int32_t t = t0; t < t1; ++t) {
+      // Only this token's DISTINCT owners ever pushed a slot; summing just those
+      // (instead of all W slots) skips the never-written slots -- less local
+      // read bandwidth AND correct without relying on the non-owned slots being
+      // zero (so the recv buffer need not be re-zeroed under dynamic routing).
+      const int32_t lrow = rank * tokens_per_rank + t;  // this rank's token t
+      int32_t owners[EPC_NP_MAX_TOPK];
+      int32_t num_owners = 0;
+      for (int32_t k = 0; k < topk; ++k) {
+        const int32_t o = owner_of(topk_idx_full[lrow * topk + k]);
+        bool dup = false;
+        for (int32_t j = 0; j < num_owners; ++j) {
+          if (owners[j] == o) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup) {
+          owners[num_owners++] = o;
+        }
+      }
       const scalar_t* base =
           recv_local + static_cast<int64_t>(t) * world_size * hidden;
       scalar_t* out = output + static_cast<int64_t>(t) * hidden;
       vec_t* ovec = reinterpret_cast<vec_t*>(out);
       for (int32_t i = lid; i < hidden_vecs; i += lsize) {
         sycl::vec<float, VEC_SIZE> acc(0.0f);
-        for (int32_t o = 0; o < world_size; ++o) {
+        for (int32_t oi = 0; oi < num_owners; ++oi) {
+          const int32_t o = owners[oi];
           const vec_t* rv = reinterpret_cast<const vec_t*>(
               base + static_cast<int64_t>(o) * hidden);
           vec_t raw = rv[i];
@@ -250,8 +282,9 @@ struct EpCombineNoPermuteKernel {
 }  // namespace
 
 // recv_buffers[rank] MUST equal recv_local; peers push into it directly. The
-// caller zeroes recv once (non-owned slots stay zero => add nothing) and issues
-// the leading symmetric-memory barrier before this op.
+// caller issues the leading symmetric-memory barrier before this op. The reduce
+// sums only each token's DISTINCT owner slots, so the recv buffer does NOT need
+// to be re-zeroed between calls (never-written slots are simply not read).
 at::Tensor ep_combine_no_permute(
     const at::Tensor& contributions,
     const at::Tensor& topk_idx_full,
@@ -306,6 +339,9 @@ at::Tensor ep_combine_no_permute(
   const int64_t hidden = contributions.size(1);
   const int64_t topk = topk_idx_full.size(1);
   TORCH_CHECK(
+      topk <= EPC_NP_MAX_TOPK,
+      "ep_combine_no_permute: topk exceeds EPC_NP_MAX_TOPK");
+  TORCH_CHECK(
       output.size(0) == tokens && output.size(1) == hidden,
       "ep_combine_no_permute: output shape must be [T, H]");
   constexpr int VEC_SIZE = 8;
@@ -320,6 +356,18 @@ at::Tensor ep_combine_no_permute(
   const int32_t rem_experts = static_cast<int32_t>(num_experts % world_size);
   const int32_t boundary = rem_experts * (base_experts + 1);
 
+  // This rank's owned experts are a contiguous [expert_lo, expert_hi) range
+  // (inverse of owner_of); the push path uses this to test ownership with two
+  // comparisons instead of two integer divisions per (source, token, k).
+  int32_t expert_lo;
+  int32_t expert_hi;
+  if (static_cast<int32_t>(rank) < rem_experts) {
+    expert_lo = static_cast<int32_t>(rank) * (base_experts + 1);
+    expert_hi = expert_lo + (base_experts + 1);
+  } else {
+    expert_lo = boundary + (static_cast<int32_t>(rank) - rem_experts) * base_experts;
+    expert_hi = expert_lo + base_experts;
+  }
   // One work-group per token slice; keep num_wg <= EPC_NP_MAX_WG so num_wg *
   // world_size fits the signal-pad region (world_size * EPC_NP_MAX_WG).
   int64_t tokens_per_wg = (tokens + EPC_NP_MAX_WG - 1) / EPC_NP_MAX_WG;
@@ -362,7 +410,9 @@ at::Tensor ep_combine_no_permute(
             static_cast<uint32_t>(iteration),
             base_experts,
             rem_experts,
-            boundary};
+            boundary,
+            expert_lo,
+            expert_hi};
         sycl_kernel_submit(
             sycl::range<1>(static_cast<size_t>(num_wg) * threads),
             sycl::range<1>(threads),
