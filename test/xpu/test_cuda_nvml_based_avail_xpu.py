@@ -29,8 +29,8 @@ with patch.dict(os.environ, {"PYTORCH_NVML_BASED_CUDA_CHECK": "1"}):
     # to bypass that method here which should be irrelevant to the parameterized tests in this module.
     torch.testing._internal.common_utils.remove_device_and_dtype_suffixes = lambda x: x
 
-    TEST_CUDA = torch.get_device_module(GPU_TYPE).is_available()
-    if not TEST_CUDA:
+    TEST_GPU = torch.get_device_module(GPU_TYPE).is_available()
+    if not TEST_GPU:
         print("CUDA not available, skipping tests", file=sys.stderr)
         TestCase = NoTest  # type: ignore[misc, assignment]
 

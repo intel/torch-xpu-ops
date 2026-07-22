@@ -40,7 +40,6 @@ from torch.utils.checkpoint import (
     create_selective_checkpoint_contexts,
 )
 from torch.utils.flop_counter import FlopCounterMode
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 
 @onlyXPU
@@ -165,7 +164,7 @@ def dataparallel_saved_tensors_hooks(self):
         def forward(self, x):
             with warnings.catch_warnings(record=True) as w:
                 y = x * x
-                if torch.get_device_module(GPU_TYPE).device_count() >= 2:
+                if torch.cuda.device_count() >= 2:
                     # DataParallel is calling the forward in different threads
                     # without progating TLS, so hooks should not be called here
                     _self.assertEqual(len(w), 0)

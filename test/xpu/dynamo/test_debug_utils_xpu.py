@@ -842,7 +842,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
 
 
 instantiate_device_type_tests(
-    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", GPU_TYPE]
+    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", "cuda", "xpu"], allow_xpu=True
 )
 
 

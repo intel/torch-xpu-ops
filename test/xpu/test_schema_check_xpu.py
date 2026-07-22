@@ -546,7 +546,7 @@ class TestSchemaCheckModeOpInfo(JitTestCase):
 
 
 instantiate_device_type_tests(
-    TestSchemaCheckModeOpInfo, globals(), only_for=("cpu", GPU_TYPE)
+    TestSchemaCheckModeOpInfo, globals(), only_for=("cpu", "cuda", "xpu"), allow_xpu=True
 )
 
 if __name__ == "__main__":
