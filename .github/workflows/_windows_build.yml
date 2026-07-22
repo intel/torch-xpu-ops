@@ -120,6 +120,7 @@ jobs:
           for /r %%i in (dist\torch*.whl) do (
             pip install --force-reinstall "%%i"
           )
+          cd %TEMP%
           python -c "import torch; assert torch.xpu._is_compiled(), 'XPU not compiled!'"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
