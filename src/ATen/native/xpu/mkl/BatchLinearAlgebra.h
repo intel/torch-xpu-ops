@@ -35,4 +35,10 @@ TORCH_XPU_API void triangular_solve_mkl(
     TransposeType transpose,
     bool unitriangular);
 
+TORCH_XPU_API Tensor& orgqr_mkl(Tensor& result, const Tensor& tau);
+
+TORCH_XPU_API Tensor& ungqr_mkl(Tensor& result, const Tensor& tau);
+
+TORCH_XPU_API void linalg_lstsq_gels_mkl(const Tensor& A, const Tensor& B);
+
 } // namespace at::native::xpu

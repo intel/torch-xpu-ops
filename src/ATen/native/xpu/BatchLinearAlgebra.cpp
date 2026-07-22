@@ -12,6 +12,7 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/xpu/XPUContext.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -74,6 +75,71 @@ void lu_factor_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(lu_factor_stub, &lu_factor_kernel_xpu);
 
+at::Tensor copy_to_cpu_preserving_strides_and_conj(const Tensor& xpu_tensor);
+
+void lstsq_kernel_fallback(
+    const Tensor& A,
+    Tensor& B,
+    Tensor& rank,
+    Tensor& singular_values,
+    Tensor& infos,
+    double rcond,
+    std::string driver_name) {
+  TORCH_WARN_ONCE(
+      "torch.linalg.lstsq op is using fallback implementation. "
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
+
+  auto A_cpu = copy_to_cpu_preserving_strides_and_conj(A);
+  auto B_cpu = copy_to_cpu_preserving_strides_and_conj(B);
+  auto rank_cpu = rank.to(rank.options().device(kCPU));
+  auto singular_values_cpu =
+      singular_values.to(singular_values.options().device(kCPU));
+  auto infos_cpu = infos.to(infos.options().device(kCPU));
+
+  lstsq_stub(
+      DeviceType::CPU,
+      A_cpu,
+      B_cpu,
+      rank_cpu,
+      singular_values_cpu,
+      infos_cpu,
+      rcond,
+      driver_name);
+
+  B.copy_(B_cpu);
+  rank.copy_(rank_cpu);
+  singular_values.copy_(singular_values_cpu);
+  infos.copy_(infos_cpu);
+}
+
+void lstsq_kernel_xpu(
+    const Tensor& A,
+    Tensor& B,
+    Tensor& rank,
+    Tensor& singular_values,
+    Tensor& infos,
+    double rcond,
+    std::string driver_name) {
+#if defined(USE_ONEMKL_XPU)
+  if (driver_name == "gels") {
+    // oneMKL gels path can require fp64 device aspect even for fp32/cfp32.
+    // On fp64-limited devices, use the CPU fallback implementation instead.
+    auto* dev_prop = at::xpu::getDeviceProperties(at::xpu::current_device());
+    if (!dev_prop->has_fp64) {
+      lstsq_kernel_fallback(
+          A, B, rank, singular_values, infos, rcond, std::move(driver_name));
+      return;
+    }
+    native::xpu::linalg_lstsq_gels_mkl(A, B);
+    return;
+  }
+#endif // USE_ONEMKL_XPU
+
+  lstsq_kernel_fallback(A, B, rank, singular_values, infos, rcond, driver_name);
+}
+
+REGISTER_XPU_DISPATCH(lstsq_stub, &lstsq_kernel_xpu);
+
 at::Tensor copy_to_cpu_preserving_strides_and_conj(const Tensor& xpu_tensor) {
   if (xpu_tensor.is_complex()) {
     auto cpu_tensor = at::empty_strided(
@@ -133,5 +199,50 @@ void triangular_solve_kernel_xpu(
 }
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
+
+void geqrf_kernel_fallback(const Tensor& input, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.geqrf op is using CPU fallback implementation on XPU.");
+
+  auto input_cpu = input.to(input.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  geqrf_stub(at::kCPU, input_cpu, tau_cpu);
+  input.copy_(input_cpu);
+  tau.copy_(tau_cpu);
+}
+
+Tensor& orgqr_kernel_fallback(Tensor& result, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.linalg.householder_product/torch.orgqr op is using CPU fallback "
+      "implementation on XPU. Consider building with USE_ONEMKL_XPU=1 for "
+      "better performance.");
+
+  auto result_cpu = result.to(result.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  orgqr_stub(at::kCPU, result_cpu, tau_cpu);
+  result.copy_(result_cpu);
+  return result;
+}
+
+void geqrf_kernel_xpu(const Tensor& input, const Tensor& tau) {
+  // TODO: Use CPU fallback until XPU geqrf performance is optimized in MKL
+  geqrf_kernel_fallback(input, tau);
+}
+
+REGISTER_XPU_DISPATCH(geqrf_stub, &geqrf_kernel_xpu);
+
+Tensor& orgqr_kernel_xpu(Tensor& result, const Tensor& tau) {
+#if defined(USE_ONEMKL_XPU)
+  if (result.is_complex()) {
+    return native::xpu::ungqr_mkl(result, tau);
+  } else {
+    return native::xpu::orgqr_mkl(result, tau);
+  }
+#else
+  return orgqr_kernel_fallback(result, tau);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(orgqr_stub, &orgqr_kernel_xpu);
 
 } // namespace at::native
