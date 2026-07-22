@@ -15,7 +15,7 @@
 #include <ATen/native/xpu/sycl/IndexUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
-#include <math.h>
+#include <cmath>
 
 //
 // This file contains pointwise operation functions and kernels that
