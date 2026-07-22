@@ -24,6 +24,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <c10/util/bit_cast.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
@@ -670,7 +671,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = c10::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
                 ScatterFillInternalKernel<dtype, index_t>()(
@@ -718,7 +719,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = c10::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(),
               "scatter_fill_base_kernel_reduce_multiply",
