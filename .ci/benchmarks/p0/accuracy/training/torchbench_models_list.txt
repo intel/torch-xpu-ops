@@ -3,6 +3,7 @@ BERT_pytorch
 dcgan
 densenet121
 fastNLP_Bert
+llama
 mnasnet1_0
 mobilenet_v3_large
 nanogpt
