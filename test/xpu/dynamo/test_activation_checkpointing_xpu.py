@@ -2429,7 +2429,7 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         )
 
     @unittest.skipIf(
-        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires GPU"
     )
     def test_region_activation_memory_budget_reduces_act_mem(self):
         N, NUM_LAYERS = 1000, 4
@@ -2484,7 +2484,7 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
         self.assertEqual(get_act_mem(lambda: compiled(x)), 0)
 
     @unittest.skipIf(
-        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires GPU"
     )
     def test_region_activation_memory_budget_per_region(self):
         """Different graphs (separated by a graph break) can have different
@@ -2617,7 +2617,7 @@ cos: aten.cos.default -> PREFER_RECOMPUTE""",
             cfn(x, y).sum().backward()
 
     @unittest.skipIf(
-        not torch.get_device_module(GPU_TYPE).is_available(), "requires CUDA"
+        not torch.get_device_module(GPU_TYPE).is_available(), "requires GPU"
     )
     @torch._dynamo.config.patch(inline_single_use_invoke_subgraph=False)
     def test_region_activation_memory_budget_covers_invoke_subgraph(self):
