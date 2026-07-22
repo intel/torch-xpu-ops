@@ -17,7 +17,10 @@
 
 import functools
 import itertools
+import sys
 import unittest
+
+sys.path.append("../../../../test/functorch")
 
 import torch
 import torch.autograd.forward_ad as fwAD
