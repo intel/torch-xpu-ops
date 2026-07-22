@@ -13,3 +13,12 @@ timm_vision_transformer
 vision_maskrcnn
 yolov3
 timm_regnet
+torchrec_dlrm
+demucs
+detectron2_fcos_r_50_fpn
+detectron2_maskrcnn_r_50_c4
+hf_BigBird
+hf_Longformer
+llama_v2_7b_16h
+llava
+moondream

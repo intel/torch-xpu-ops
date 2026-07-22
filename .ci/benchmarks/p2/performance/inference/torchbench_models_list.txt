@@ -31,13 +31,3 @@ timm_vision_transformer_large
 timm_vovnet
 torch_multimodal_clip
 tts_angular
-torchrec_dlrm
-cm3leon_generate
-demucs
-detectron2_fcos_r_50_fpn
-detectron2_maskrcnn_r_50_c4
-hf_BigBird
-hf_Longformer
-llama_v2_7b_16h
-llava
-moondream
