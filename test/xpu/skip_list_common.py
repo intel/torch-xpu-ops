@@ -368,7 +368,7 @@ skip_dict = {
     "dynamo/test_export_xpu.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_modes_xpu.py": None,
-    "dynamo/test_package_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_package_xpu.py": None,
     "dynamo/test_recompiles_xpu.py": None,
     "dynamo/test_structured_trace_xpu.py": None,
     "functorch/test_ac_xpu.py": None,
