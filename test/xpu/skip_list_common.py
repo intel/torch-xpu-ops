@@ -360,7 +360,7 @@ skip_dict = {
     "higher_order_ops/test_with_effects_xpu.py": None,
     "test_fx_experimental_xpu.py": None,
     "dynamo/test_activation_checkpointing_xpu.py": None,
-    "dynamo/test_callback_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_callback_xpu.py": None,
     "dynamo/test_cudagraphs_expandable_segments_xpu.py": None,
     "dynamo/test_cudagraphs_xpu.py": None,
     "dynamo/test_debug_utils_xpu.py": None,
