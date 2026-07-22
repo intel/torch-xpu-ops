@@ -1153,7 +1153,7 @@ class AccumulationBuffer {
   at::DataPtr buffer_;
 };
 
-#define DEFAULT_OUTPUT_VEC_SIZE 4
+inline constexpr int DEFAULT_OUTPUT_VEC_SIZE = 4;
 template <typename scalar_t, int vt1>
 int get_output_vec_size(at::TensorIterator& iter) {
   int vec_size = DEFAULT_OUTPUT_VEC_SIZE;
