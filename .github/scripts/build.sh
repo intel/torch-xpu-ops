@@ -69,31 +69,30 @@ if [ -n "${ONEDNN_COMMIT:-}" ] && [ "${ONEDNN_COMMIT,,}" != "pinned" ]; then
 fi
 
 python -m pip install -r requirements.txt
-python -m pip install mkl-static mkl-include
+python -m pip install mkl-static==2025.3.1 mkl-include==2025.3.1
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
-        intel-cmplr-lib-rt | \
-        intel-cmplr-lib-ur | \
-        intel-cmplr-lic-rt | \
-        intel-sycl-rt | \
-        oneccl-devel | \
-        oneccl | \
-        impi-rt | \
-        onemkl-license | \
-        onemkl-sycl-blas | \
-        onemkl-sycl-dft | \
-        onemkl-sycl-lapack | \
-        onemkl-sycl-rng | \
-        onemkl-sycl-sparse | \
-        dpcpp-cpp-rt | \
-        intel-opencl-rt | \
-        mkl | \
-        intel-openmp | \
-        tbb | \
-        tcmlib | \
-        umf | \
-        intel-pti
+        intel-cmplr-lib-rt==2025.3.2 | \
+        intel-cmplr-lib-ur==2025.3.2 | \
+        intel-cmplr-lic-rt==2025.3.2 | \
+        intel-sycl-rt==2025.3.2 | \
+        oneccl-devel==2021.17.2 | \
+        oneccl==2021.17.2 | \
+        impi-rt==2021.17.2 | \
+        onemkl-sycl-blas==2025.3.1 | \
+        onemkl-sycl-dft==2025.3.1 | \
+        onemkl-sycl-lapack==2025.3.1 | \
+        onemkl-sycl-rng==2025.3.1 | \
+        onemkl-sycl-sparse==2025.3.1 | \
+        dpcpp-cpp-rt==2025.3.2 | \
+        intel-opencl-rt==2025.3.2 | \
+        mkl==2025.3.1 | \
+        intel-openmp==2025.3.2 | \
+        tbb==2022.3.1 | \
+        tcmlib==1.4.1 | \
+        umf==1.0.3 | \
+        intel-pti==0.16.0
     "
 fi
 
