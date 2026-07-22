@@ -46,7 +46,7 @@ jobs:
   build:
     name: ${{ inputs.pytorch }}
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: PVC-817255
     container:
       image: 'ubuntu:24.04'
       volumes:
