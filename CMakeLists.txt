@@ -97,6 +97,8 @@ endif()
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
   set(BUILD_SEPARATE_OPS TRUE)
+  set(USE_SYCLTLA OFF)
+  message(STATUS "SYCL-TLA disabled in ${CMAKE_BUILD_TYPE} build (excessive memory usage with debug info)")
 endif()
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 

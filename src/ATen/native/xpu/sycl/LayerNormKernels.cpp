@@ -76,7 +76,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  typedef NormBackward<scalar_t, mean_t, weight_t> NB;
+  using NB = NormBackward<scalar_t, mean_t, weight_t>;
 
   template <
       int vec_size,
@@ -664,7 +664,10 @@ void layer_norm_kernel_impl(
   const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
   const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
   T* Y_data = Y->data_ptr<T>();
-  T_ACC* mean_data = !rms_norm ? mean->data_ptr<T_ACC>() : nullptr;
+  T_ACC* mean_data = nullptr;
+  if constexpr (!rms_norm) {
+    mean_data = mean->data_ptr<T_ACC>();
+  }
   T_ACC* rstd_data = rstd->data_ptr<T_ACC>();
 
   constexpr int num_vec_elems = vec_size;
