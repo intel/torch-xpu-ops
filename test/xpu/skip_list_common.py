@@ -371,7 +371,6 @@ skip_dict = {
     "dynamo/test_package_xpu.py": None,
     "dynamo/test_recompiles_xpu.py": None,
     "dynamo/test_structured_trace_xpu.py": None,
-    "dynamo/test_subclasses_xpu.py": None,
     "functorch/test_ac_xpu.py": None,
     "test_cuda_expandable_segments_xpu.py": None,
     "test_cuda_multigpu_xpu.py": None,
