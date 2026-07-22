@@ -86,6 +86,7 @@ def main():
 
     # Step 3: Build wheel
     print("=== Step 3: build_wheel ===", flush=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "build"], check=True)
     dist_dir = pytorch_root / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
