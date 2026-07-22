@@ -182,12 +182,41 @@ def _test_torch_binomial_dtype_errors(self):
                 torch.binomial(total_count, total_prob)
 
 
+def _test_lowrank_multivariate_normal_moments(self):
+    # XPU override of the upstream moments test with a larger sample count.
+    #
+    # The upstream test draws only 100 000 samples and checks the empirical
+    # mean against the analytic mean with atol=0.01, rtol=0. For this fixture
+    # the worst per-element variance is ~3.15, so the standard error of the
+    # empirical mean is sqrt(3.15 / 100 000) ~= 0.0056 and its 3-sigma spread
+    # ~= 0.0168 already exceeds the 0.01 tolerance. The test is therefore
+    # statistically underpowered; it only appeared to "pass" on XPU because the
+    # exact seed-0 draws happened to land under the threshold, until PR #3725
+    # (std::log -> sycl::log in the Box-Muller transform) legitimately perturbed
+    # those draws. Raising the sample count to 500 000 shrinks the 3-sigma mean
+    # spread to ~0.0075 (< 0.01) and the variance spread comfortably under 0.02,
+    # making the check robust across seeds without weakening the tolerance.
+    set_rng_seed(0)
+    mean = torch.randn(5)
+    cov_factor = torch.randn(5, 2)
+    cov_diag = torch.randn(5).abs()
+    d = LowRankMultivariateNormal(mean, cov_factor, cov_diag)
+    samples = d.rsample((500000,))
+    empirical_mean = samples.mean(0)
+    self.assertEqual(d.mean, empirical_mean, atol=0.01, rtol=0)
+    empirical_var = samples.var(0)
+    self.assertEqual(d.variance, empirical_var, atol=0.02, rtol=0)
+
+
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
+TestDistributions.test_lowrank_multivariate_normal_moments = (
+    _test_lowrank_multivariate_normal_moments
+)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )
