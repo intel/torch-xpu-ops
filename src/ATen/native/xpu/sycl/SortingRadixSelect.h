@@ -62,6 +62,7 @@
 #pragma once
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <c10/util/bit_cast.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
@@ -85,14 +86,14 @@ struct TopKTypeConfig<float> {
   // pos nan: signbit=0 exp=ff fraction>0 --> radix = 1 ff x>0
   // neg nan: signbit=1 exp=ff fraction>0 --> radix = 0 00 x<ff...
   static inline RadixType convert(float v) {
-    RadixType x = *((uint32_t*)&v);
+    RadixType x = c10::bit_cast<uint32_t>(v);
     RadixType mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
     return (v == v) ? (x ^ mask) : 0xffffffff;
   }
 
   static inline float deconvert(RadixType v) {
     RadixType mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    return __int_as_float(v ^ mask);
+    return c10::bit_cast<float>(v ^ mask);
   }
 };
 
@@ -166,14 +167,14 @@ struct TopKTypeConfig<double> {
   using RadixType = uint64_t;
 
   static inline RadixType convert(double v) {
-    RadixType x = *((uint64_t*)&v);
+    RadixType x = c10::bit_cast<uint64_t>(v);
     RadixType mask = -((x >> 63)) | 0x8000000000000000;
     return (v == v) ? (x ^ mask) : 0xffffffffffffffff;
   }
 
   static inline double deconvert(RadixType v) {
     RadixType mask = ((v >> 63) - 1) | 0x8000000000000000;
-    return __long_long_as_double(v ^ mask);
+    return c10::bit_cast<double>(v ^ mask);
   }
 };
 
@@ -182,14 +183,14 @@ struct TopKTypeConfig<at::Half> {
   using RadixType = uint32_t;
 
   static inline RadixType convert(at::Half v) {
-    RadixType x = *((uint16_t*)&v);
+    RadixType x = c10::bit_cast<uint16_t>(v);
     RadixType mask = (x & 0x00008000) ? 0x0000ffff : 0x00008000;
     return (v == v) ? (x ^ mask) : 0xffff;
   }
 
   static inline at::Half deconvert(RadixType v) {
     RadixType mask = (v & 0x00008000) ? 0x00008000 : 0x0000ffff;
-    return __ushort_as_half(v ^ mask);
+    return c10::bit_cast<at::Half>(static_cast<uint16_t>(v ^ mask));
   }
 };
 

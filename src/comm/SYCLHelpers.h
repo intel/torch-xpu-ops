@@ -14,7 +14,6 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // Official suppression macro provided by Intel SYCL headers for
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
-#include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END

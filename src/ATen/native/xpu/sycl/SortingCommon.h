@@ -10,8 +10,8 @@
 
 #pragma once
 
+#include <c10/util/bit_cast.h>
 #include <comm/SYCLContext.h>
-#include <comm/Scalar.h>
 #include <comm/TensorInfo.h>
 #include <stdlib.h>
 
@@ -53,13 +53,13 @@ template <>
 struct KeyTraits<float> {
   using Type = uint32_t;
   static inline Type convert(float v) {
-    Type x = *((Type*)&v);
+    Type x = c10::bit_cast<Type>(v);
     Type mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
     return (x ^ mask);
   }
   static inline float deconvert(Type v) {
     Type mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    return __int_as_float(v ^ mask);
+    return c10::bit_cast<float>(v ^ mask);
   }
   static constexpr int endbit() {
     return sizeof(Type) << 3;
@@ -198,13 +198,13 @@ template <>
 struct KeyTraits<double> {
   using Type = uint64_t;
   static inline Type convert(double v) {
-    Type x = *((Type*)&v);
+    Type x = c10::bit_cast<Type>(v);
     Type mask = -((x >> 63)) | 0x8000000000000000;
     return (x ^ mask);
   }
   static inline double deconvert(Type v) {
     Type mask = ((v >> 63) - 1) | 0x8000000000000000;
-    return __long_long_as_double(v ^ mask);
+    return c10::bit_cast<double>(v ^ mask);
   }
   static constexpr int endbit() {
     return sizeof(Type) << 3;
@@ -215,14 +215,14 @@ template <>
 struct KeyTraits<at::Half> {
   using Type = uint16_t;
   static inline Type convert(at::Half v) {
-    Type x = *((Type*)&v);
+    Type x = c10::bit_cast<Type>(v);
     Type mask = -((x >> 15)) | 0x8000;
     return (x ^ mask);
   }
   static inline at::Half deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
     Type v_de = v ^ mask;
-    return reinterpret_cast<at::Half&>(v_de);
+    return c10::bit_cast<at::Half>(v_de);
   }
   static constexpr int endbit() {
     return sizeof(Type) << 3;
@@ -233,14 +233,14 @@ template <>
 struct KeyTraits<at::BFloat16> {
   using Type = uint16_t;
   static inline Type convert(at::BFloat16 v) {
-    Type x = *((Type*)&v);
+    Type x = c10::bit_cast<Type>(v);
     Type mask = -((x >> 15)) | 0x8000;
     return (x ^ mask);
   }
   static inline at::BFloat16 deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
     Type v_de = v ^ mask;
-    return reinterpret_cast<at::BFloat16&>(v_de);
+    return c10::bit_cast<at::BFloat16>(v_de);
   }
   static constexpr int endbit() {
     return sizeof(Type) << 3;
