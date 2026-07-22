@@ -15,7 +15,6 @@ from torch._dynamo.debug_utils import (
 from torch._dynamo.test_case import TestCase
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 f32 = torch.float32
 i64 = torch.int64
@@ -842,7 +841,10 @@ class TestInductorConfigOverrideIntegration(TestCase):
 
 
 instantiate_device_type_tests(
-    TestInductorConfigOverrideIntegration, globals(), only_for=["cpu", "cuda", "xpu"], allow_xpu=True
+    TestInductorConfigOverrideIntegration,
+    globals(),
+    only_for=["cpu", "cuda", "xpu"],
+    allow_xpu=True,
 )
 
 

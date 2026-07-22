@@ -25,7 +25,6 @@ from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_map
 
 pytorch_test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 sys.path.append(pytorch_test_dir)
 
@@ -546,7 +545,10 @@ class TestSchemaCheckModeOpInfo(JitTestCase):
 
 
 instantiate_device_type_tests(
-    TestSchemaCheckModeOpInfo, globals(), only_for=("cpu", "cuda", "xpu"), allow_xpu=True
+    TestSchemaCheckModeOpInfo,
+    globals(),
+    only_for=("cpu", "cuda", "xpu"),
+    allow_xpu=True,
 )
 
 if __name__ == "__main__":

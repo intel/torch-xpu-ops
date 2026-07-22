@@ -378,7 +378,7 @@ skip_dict = {
     "test_cuda_primary_ctx_xpu.py": None,
     "test_cuda_sanitizer_xpu.py": None,
     "test_cuda_trace_xpu.py": None,
-     f"{PYTORCH_TEST_DIR}/test_dlpack_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_dlpack_xpu.py": None,
     "test_mkldnn_fusion_xpu.py": None,
     "test_schema_check_xpu.py": None,
 }
