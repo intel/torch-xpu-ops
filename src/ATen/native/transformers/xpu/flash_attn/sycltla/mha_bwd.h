@@ -98,7 +98,7 @@ struct FAKernel {
       SubgroupSize == kSubgroupSize,
       "Subgroup size must be consistent with the one used in mha_common.h");
 
-  FAKernel() {}
+  FAKernel() = default;
 };
 
 using index_t = uint64_t;
