@@ -18,10 +18,10 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/BFloat16.h>
 #include <c10/util/Half.h>
-#include <c10/util/MathConstants.h>
 #include <sycl/sycl.hpp>
 
 #include <limits>
+#include <numbers>
 #include <type_traits>
 
 namespace at::native::xpu {
@@ -31,7 +31,8 @@ namespace at::native::xpu {
  * "ATen/native/Math.h".
  */
 template <typename T>
-inline std::enable_if_t<std::is_floating_point_v<T>, T> calc_erfinv(T y) {
+  requires std::is_floating_point_v<T>
+inline T calc_erfinv(T y) {
   /* Function to calculate inverse error function. Rational approximation is
    * used to generate an initial approximation, which is then improved to full
    * accuracy by two steps of Newton's method.
@@ -62,9 +63,11 @@ inline std::enable_if_t<std::is_floating_point_v<T>, T> calc_erfinv(T y) {
   }
   /* Two steps of Newton-Raphson correction */
   x = x -
-      (sycl::erf(x) - y) / ((T(2) * c10::frac_1_sqrt_pi<T>)*sycl::exp(-x * x));
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
   x = x -
-      (sycl::erf(x) - y) / ((T(2) * c10::frac_1_sqrt_pi<T>)*sycl::exp(-x * x));
+      (sycl::erf(x) - y) /
+          ((T(2) * std::numbers::inv_sqrtpi_v<T>)*sycl::exp(-x * x));
   return x;
 }
 
@@ -144,7 +147,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   }
 
   return static_cast<scalar_t>(
-      std::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
+      sycl::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
 }
 
 template <typename scalar_t>
@@ -206,7 +209,7 @@ scalar_t ratevl(
 
   int64_t i, dir;
   accscalar_t y, num_ans, denom_ans;
-  accscalar_t absx = std::fabs(x);
+  accscalar_t absx = sycl::fabs(x);
   const accscalar_t* p;
 
   if (absx > 1) {
@@ -242,7 +245,7 @@ scalar_t ratevl(
   }
   if (absx > 1) {
     i = N - M;
-    return std::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
+    return sycl::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
   } else {
     return num_ans / denom_ans;
   }
@@ -313,8 +316,8 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   static const accscalar_t EXP1 = 2.718281828459045;
   static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
-  if (std::fabs(a - x) > 0.4 * std::fabs(a)) {
-    ax = a * std::log(x) - x - sycl::lgamma(a);
+  if (sycl::fabs(a - x) > 0.4 * sycl::fabs(a)) {
+    ax = a * sycl::log(x) - x - sycl::lgamma(a);
     if (ax < -MAXLOG) {
       return 0.0;
     }
@@ -322,15 +325,15 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   }
 
   fac = a + lanczos_g - 0.5;
-  res = std::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
+  res = sycl::sqrt(fac / EXP1) / lanczos_sum_expg_scaled(a);
 
   if ((a < 200) && (x < 200)) {
-    res *= sycl::exp(a - x) * std::pow(x / fac, a);
+    res *= sycl::exp(a - x) * sycl::pow(x / fac, a);
   } else {
     num = x - a - lanczos_g + 0.5;
     numfac = num / fac;
     res *= sycl::exp(
-        a * (std::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
+        a * (sycl::log1p(numfac) - numfac) + x * (0.5 - lanczos_g) / fac);
   }
   return res;
 }
@@ -387,12 +390,12 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
     fac *= -x / n;
     term = fac / (a + n);
     sum += term;
-    if (std::fabs(term) <= MACHEP * std::fabs(sum)) {
+    if (sycl::fabs(term) <= MACHEP * sycl::fabs(sum)) {
       break;
     }
   }
 
-  logx = std::log(x);
+  logx = sycl::log(x);
   term = -sycl::expm1(a * logx - sycl::lgamma(1 + a));
   return term - sycl::exp(a * logx - sycl::lgamma(a)) * sum;
 }
@@ -667,13 +670,13 @@ static const scalar_t _igam_helper_asymptotic_series(
   }
 
   if (lambda > 1) {
-    eta = std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = sycl::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else if (lambda < 1) {
-    eta = -std::sqrt(-2 * (std::log1p(sigma) - sigma));
+    eta = -sycl::sqrt(-2 * (sycl::log1p(sigma) - sigma));
   } else {
     eta = 0;
   }
-  res = 0.5 * sycl::erfc(sgn * eta * std::sqrt(a / 2));
+  res = 0.5 * sycl::erfc(sgn * eta * sycl::sqrt(a / 2));
 
   for (k = 0; k < 25; k++) {
     ck = d[k][0];
@@ -684,24 +687,24 @@ static const scalar_t _igam_helper_asymptotic_series(
       }
       ckterm = d[k][n] * etapow[n];
       ck += ckterm;
-      if (std::fabs(ckterm) < MACHEP * std::fabs(ck)) {
+      if (sycl::fabs(ckterm) < MACHEP * sycl::fabs(ck)) {
         break;
       }
     }
     term = ck * afac;
-    absterm = std::fabs(term);
+    absterm = sycl::fabs(term);
     if (absterm > absoldterm) {
       break;
     }
     sum += term;
-    if (absterm < MACHEP * std::fabs(sum)) {
+    if (absterm < MACHEP * sycl::fabs(sum)) {
       break;
     }
     absoldterm = absterm;
     afac /= a;
   }
   const accscalar_t PI = 3.14159265358979323846;
-  res += sgn * sycl::exp(-0.5 * a * eta * eta) * sum / std::sqrt(2 * PI * a);
+  res += sgn * sycl::exp(-0.5 * a * eta * eta) * sum / sycl::sqrt(2 * PI * a);
 
   return res;
 }
@@ -748,7 +751,7 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
     qk = qkm1 * z - qkm2 * yc;
     if (qk != 0) {
       r = pk / qk;
-      t = std::fabs((ans - r) / r);
+      t = sycl::fabs((ans - r) / r);
       ans = r;
     } else {
       t = 1.0;
@@ -757,7 +760,7 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
     pkm1 = pk;
     qkm2 = qkm1;
     qkm1 = qk;
-    if (std::fabs(pk) > BIG) {
+    if (sycl::fabs(pk) > BIG) {
       pkm2 *= BIGINV;
       pkm1 *= BIGINV;
       qkm2 *= BIGINV;
@@ -814,10 +817,10 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
     return 0.0;
   }
 
-  absxma_a = std::fabs(x - a) / a;
+  absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 0);
-  } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
+  } else if ((a > LARGE) && (absxma_a < LARGERATIO / sycl::sqrt(a))) {
     return _igam_helper_asymptotic_series(a, x, 0);
   }
 
@@ -828,7 +831,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
       return _igamc_helper_continued_fraction(a, x);
     }
   } else if (x <= 0.5) {
-    if (-0.4 / std::log(x) < a) {
+    if (-0.4 / sycl::log(x) < a) {
       return 1.0 - _igam_helper_series(a, x);
     } else {
       return _igamc_helper_series(a, x);
@@ -889,10 +892,10 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   }
 
   /* Asymptotic regime where a ~ x. See [igam2] */
-  absxma_a = std::fabs(x - a) / a;
+  absxma_a = sycl::fabs(x - a) / a;
   if ((a > SMALL) && (a < LARGE) && (absxma_a < SMALLRATIO)) {
     return _igam_helper_asymptotic_series(a, x, 1);
-  } else if ((a > LARGE) && (absxma_a < LARGERATIO / std::sqrt(a))) {
+  } else if ((a > LARGE) && (absxma_a < LARGERATIO / sycl::sqrt(a))) {
     return _igam_helper_asymptotic_series(a, x, 1);
   }
 
@@ -993,7 +996,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
       "don't instantiate with low precision type");
   // Upcast input for numerical accuracy purposes
   // Needed for accurate results if input is bfloat16 or float16
-  scalar_t x = std::abs(_x);
+  scalar_t x = sycl::fabs(_x);
 
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i0e_A<scalar_t>();
@@ -1008,13 +1011,12 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
   auto len = std::get<1>(coeff_pair);
   return (
       sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
-      std::sqrt(x));
+      sycl::sqrt(x));
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::enable_if<
-    std::is_same<double, T>::value,
-    std::tuple<const T*, size_t>>::type
+  requires std::is_same_v<double, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
 chebyshev_coefficients_i1e_A() {
   /* Chebyshev coefficients for exp(-x) I1(x)
    * in the interval [0,8].
@@ -1042,9 +1044,9 @@ chebyshev_coefficients_i1e_A() {
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::
-    enable_if<std::is_same<float, T>::value, std::tuple<const T*, size_t>>::type
-    chebyshev_coefficients_i1e_A() {
+  requires std::is_same_v<float, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
+chebyshev_coefficients_i1e_A() {
   /* Chebyshev coefficients for exp(-x) I1(x)
    * in the interval [0,8].
    *
@@ -1072,9 +1074,8 @@ C10_HOST_DEVICE inline typename std::
 };
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::enable_if<
-    std::is_same<double, T>::value,
-    std::tuple<const T*, size_t>>::type
+  requires std::is_same_v<double, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
 chebyshev_coefficients_i1e_B() {
   /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
    * in the inverted interval [8,infinity].
@@ -1100,9 +1101,9 @@ chebyshev_coefficients_i1e_B() {
 }
 
 template <typename T>
-C10_HOST_DEVICE inline typename std::
-    enable_if<std::is_same<float, T>::value, std::tuple<const T*, size_t>>::type
-    chebyshev_coefficients_i1e_B() {
+  requires std::is_same_v<float, T>
+C10_HOST_DEVICE inline std::tuple<const T*, size_t>
+chebyshev_coefficients_i1e_B() {
   /* Chebyshev coefficients for exp(-x) sqrt(x) I1(x)
    * in the inverted interval [8,infinity].
    *
@@ -1122,7 +1123,7 @@ C10_HOST_DEVICE inline typename std::
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
-  const auto x = std::abs(_x);
+  const auto x = sycl::fabs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -1137,13 +1138,13 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
       (sycl::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
-      std::sqrt(x);
+      sycl::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
-  const auto x = std::abs(_x);
+  const auto x = sycl::fabs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -1157,7 +1158,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / std::sqrt(x);
+      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / sycl::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
@@ -1267,7 +1268,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
               std::cos(x - scalar_t(2.356194490192344928846982537459627163)) -
           scalar_t(5.0) / x * (qp / qq) *
               std::sin(x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
+      scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_j1_forward(scalar_t x)
 
 template <typename scalar_t>
@@ -1356,7 +1357,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
 
     return x * (yp / yq) +
         (scalar_t(0.636619772367581343075535053490057448) *
-         (bessel_j1_forward(x) * std::log(x) - scalar_t(1.0) / x));
+         (bessel_j1_forward(x) * sycl::log(x) - scalar_t(1.0) / x));
   }
 
   scalar_t pp = 0.0;
@@ -1387,7 +1388,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
               std::sin(x - scalar_t(2.356194490192344928846982537459627163)) +
           scalar_t(5.0) / x * (qp / qq) *
               std::cos(x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
+      scalar_t(0.797884560802865355879892119868763737) / sycl::sqrt(x);
 } // bessel_y1_forward(scalar_t x)
 
 template <typename T>
@@ -1482,7 +1483,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
   T k;
 
   if (x < T(-2.09f)) {
-    T z = T(1.0f) / (T(-2.0f) * x * std::sqrt(-x) / T(3.0f));
+    T z = T(1.0f) / (T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f));
 
     T afn = 0.0f;
 
@@ -1508,10 +1509,10 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
       agd = agd * (z * z) + AGD[index];
     }
 
-    T t = T(-2.0f) * x * std::sqrt(-x) / T(3.0f) +
+    T t = T(-2.0f) * x * sycl::sqrt(-x) / T(3.0f) +
         T(0.25f) * T(3.14159265358979323846f);
 
-    return T(5.64189583547756286948e-01f) / std::sqrt(std::sqrt(-x)) *
+    return T(5.64189583547756286948e-01f) / sycl::sqrt(sycl::sqrt(-x)) *
         (std::sin(t) * (T(1.0f) + z * z * afn / afd) -
          std::cos(t) * (z * agn / agd));
   }
@@ -1519,7 +1520,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
   if (x >= T(2.09f)) {
     domain_flag = 5;
 
-    T zeta = T(2.0f) * x * std::sqrt(x) / T(3.0f);
+    T zeta = T(2.0f) * x * sycl::sqrt(x) / T(3.0f);
 
     T an = 0.0f;
 
@@ -1534,7 +1535,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
     }
 
     ai = T(5.64189583547756286948e-01f) * (an / ad) /
-        (T(2.0f) * std::sqrt(std::sqrt(x)) * sycl::exp(zeta));
+        (T(2.0f) * sycl::sqrt(sycl::sqrt(x)) * sycl::exp(zeta));
 
     if (x > T(8.3203353f)) {
       return ai;
@@ -1563,7 +1564,7 @@ static inline C10_HOST_DEVICE T airy_ai_forward(T x) {
     n /= k;
     g += n;
 
-    t = std::abs(m / f);
+    t = sycl::fabs(m / f);
   }
 
   if ((domain_flag & 1) == 0) {

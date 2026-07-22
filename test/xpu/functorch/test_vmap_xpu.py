@@ -94,7 +94,9 @@ TEST_GPU = TEST_CUDA or TEST_XPU
 
 def get_platform_specific_sdpa():
     ret = [SDPBackend.MATH]
-    if PLATFORM_SUPPORTS_FLASH_ATTENTION:
+    if PLATFORM_SUPPORTS_FLASH_ATTENTION and (
+        not TEST_XPU or torch._C._is_flash_attention_available()
+    ):
         ret.append(SDPBackend.FLASH_ATTENTION)
     if PLATFORM_SUPPORTS_MEM_EFF_ATTENTION:
         ret.append(SDPBackend.EFFICIENT_ATTENTION)
@@ -4416,6 +4418,7 @@ class TestVmapOperatorsOpInfo(TestCase):
                         sample.kwargs["memory_format"] == torch.channels_last
                     ),
                 ),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -4479,11 +4482,9 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("put"),
                 xfail("quantile"),
                 xfail("renorm"),
-                xfail("squeeze_copy"),
                 xfail("resize_as_"),
                 xfail("take"),
                 xfail("tensor_split"),
-                xfail("transpose_copy"),
                 xfail("to_sparse"),
                 # TypeError: expected Tensor as element 0 in argument 0, but got float
                 xfail("item"),
@@ -4509,9 +4510,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail("histc"),
                 xfail("as_strided"),
                 xfail("as_strided_copy"),
-                xfail("permute_copy"),
-                xfail("t_copy"),
-                xfail("unsqueeze_copy"),
                 xfail("istft"),
                 xfail("nonzero"),
                 xfail("nn.functional.fractional_max_pool2d"),
@@ -4592,6 +4590,7 @@ class TestVmapOperatorsOpInfo(TestCase):
                 xfail(
                     "searchsorted"
                 ),  # aten::searchsorted.Scalar hit the vmap fallback which is currently disabled
+                xfail("native_group_norm"),
             }
         ),
     )

@@ -31,189 +31,244 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
 endfunction()
 
 macro(set_build_flags)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(SYCL_HOST_FLAGS)
-    set(SYCL_KERNEL_OPTIONS)
-    set(SYCL_COMPILE_FLAGS ${SYCL_FLAGS})
-    set(SYCL_DEVICE_LINK_FLAGS ${SYCL_LINK_FLAGS})
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS)
-    set(SYCL_OFFLINE_COMPILER_CG_OPTIONS)
-    set(SYCL_OFFLINE_COMPILER_FLAGS)
+ set(_TORCH_XPU_OPS_SUPPORTED_COMPILERS "GNU" "MSVC")
+  if(NOT CMAKE_CXX_COMPILER_ID IN_LIST _TORCH_XPU_OPS_SUPPORTED_COMPILERS)
+    message(WARNING "Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
+    return()
+  endif()
+  set(SYCL_HOST_FLAGS)
+  set(SYCL_DEVICE_COMPILE_DEFINITIONS)
+  set(SYCL_KERNEL_OPTIONS)
+  set(SYCL_COMPILE_FLAGS ${SYCL_FLAGS})
+  set(SYCL_DEVICE_LINK_FLAGS ${SYCL_LINK_FLAGS})
+  set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS)
+  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS)
+  set(SYCL_OFFLINE_COMPILER_FLAGS)
 
-    set(CPP_STD c++20)
-    # # -- Host flags (SYCL_CXX_FLAGS)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-      if(CMAKE_BUILD_TYPE MATCHES Debug)
-        list(APPEND SYCL_HOST_FLAGS /MDd)
-      else()
-        list(APPEND SYCL_HOST_FLAGS /MD)
-      endif()
-      list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
-      # SYCL headers warnings
-      list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
-      list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      list(APPEND SYCL_HOST_FLAGS -fPIC)
-      list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-      list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-      list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
-      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
-      # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
-      # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
-      # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
-      # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
-      # the issue we wrap paths to SYCL headers in `-isystem`.
-      if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
-        foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-          list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-        endforeach()
-      endif()
-      # Excluding warnings which flood the compilation output
-      # TODO: fix warnings in the source code and then reenable them in compilation
-      list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+  # Definitions that must reach the SYCL device compiler only, not the
+  # host C++ compilation. Consumed by SYCL_WRAP_SRCS in FindSYCL.cmake.
+  if(NOT DEFINED SYCL_COMPILER_VERSION OR NOT DEFINED USE_XPU)
+    message(FATAL_ERROR "SYCL_COMPILER_VERSION and USE_XPU must be defined. "
+      "Ensure SYCLToolkit is found before building torch-xpu-ops.")
+  endif()
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS SYCL_COMPILER_VERSION=${SYCL_COMPILER_VERSION})
+  list(APPEND SYCL_DEVICE_COMPILE_DEFINITIONS USE_XPU=${USE_XPU})
+
+  set(CPP_STD c++20)
+  # -- Host flags (SYCL_CXX_FLAGS)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      list(APPEND SYCL_HOST_FLAGS /MDd)
+    else()
+      list(APPEND SYCL_HOST_FLAGS /MD)
     endif()
+    list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
+    # SYCL headers warnings
+    list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
+    list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+
+    # -fsycl-host-compiler-options never sees CMAKE_CXX_FLAGS_<CONFIG>, so
+    # spell per-config flags here. /Z7 (not /Zi) avoids parallel PDB contention.
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      list(APPEND SYCL_HOST_FLAGS /Od /Z7)
+    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+      list(APPEND SYCL_HOST_FLAGS /O2 /Z7)
+    endif()
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND SYCL_HOST_FLAGS -fPIC)
+    list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
+    list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+    # Excluding warnings which flood the compilation output
+    # TODO: fix warnings in the source code and then reenable them in compilation
+    list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
     elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
       list(APPEND SYCL_HOST_FLAGS -g -O2)
     endif()
-    if(USE_PER_OPERATOR_HEADERS)
-      list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
-    endif()
-    # -- Kernel flags (SYCL_KERNEL_OPTIONS)
-    # The fast-math will be enabled by default in SYCL compiler.
-    # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
-    # 1. We enable below flags here to be warn about NaN and Infinity,
-    # which will be hidden by fast-math by default.
-    # 2. The associative-math in fast-math allows floating point
-    # operations to be reassociated, which will lead to non-deterministic
-    # results compared with CUDA backend.
-    # 3. The approx-func allows certain math function calls (such as log, sqrt, pow, etc)
-    # to be replaced with an approximately equivalent set of instructions or
-    # alternative math function calls, which have great errors.
-    #
-    # PSEUDO of separate compilation with DPCPP compiler.
-    # 1. Kernel source compilation:
-    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
-    # 2. Device code linkage:
-    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
-    # 3. Host only source compilation:
-    # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
-    # 4. Linkage:
-    # gcc -shared host.o kernel.o device-code.o -o libxxx.so
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -std=${CPP_STD})
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
-      # Suppress warnings about dllexport.
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
-      # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
-      # with very old version of the ICX compiler. The -ffp-contract=fast is supported by both closed
-      # source and open source DPC++ compiler versions.
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -ffp-contract=fast)
-      # -no-ftz is supported only by ICX compiler shipped with oneAPI Toolkits. For the
-      # DPCLANG open source compiler that's the default mode and no option is needed.
-      CHECK_SYCL_FLAG("-no-ftz" SUPPORTS_NO_FTZ)
-      if(SUPPORTS_NO_FTZ)
-        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
-      endif()
-    endif()
-
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-      if(WIN32)
-        # Large SYCL translation units in Windows Debug builds will exhaust Clang
-        # source locations resulting in errors during kernels' compilation; reduce debug metadata when
-        # the compiler supports it
-        CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
-        if(SUPPORTS_FNO_SYSTEM_DEBUG)
-          set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-system-debug)
-        endif()
-        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O0 -Rno-debug-disables-optimization)
-      else()
-        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
-      endif()
-    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
-    endif()
-
-    CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
-    if(NOT SUPPORTS_FP64_CONV_EMU)
-      message(WARNING "The compiler does not support the '-fsycl-fp64-conv-emu' flag, \
-      will disable it. On some platforms that don't support FP64, \
-      running operations with the FP64 datatype will raise a Runtime error: Required aspect fp64 is not supported on the device \
-      or a Native API failed error.")
-    endif()
-
-    set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
-
-    # -- SYCL device object linkage flags
-    include(ProcessorCount)
-    ProcessorCount(proc_cnt)
-    if((DEFINED ENV{MAX_JOBS}) AND ("$ENV{MAX_JOBS}" LESS_EQUAL ${proc_cnt}))
-      set(SYCL_MAX_PARALLEL_LINK_JOBS $ENV{MAX_JOBS})
-    else()
-      set(SYCL_MAX_PARALLEL_LINK_JOBS ${proc_cnt})
-    endif()
-    set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
-    set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} --offload-compress)
-
-    set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-poison-unsupported-fp64-kernels")
-    set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-enable-auto-large-GRF-mode")
-    set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-fp32-correctly-rounded-divide-sqrt")
-    set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
-
-    if(REPLACE_FLAGS_FOR_SYCLTLA)
-      set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
-      set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
-      set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
-      if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
-        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device cri")
-      else()
-        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
-      endif()
-    else()
-      if(WIN32)
-        set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
-      else()
-        set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m,ptl-h,ptl-u")
-      endif()
-      if(TORCH_XPU_ARCH_LIST)
-        set(AOT_TARGETS "${TORCH_XPU_ARCH_LIST}")
-      endif()
-      if(AOT_TARGETS STREQUAL "none")
-        set(TORCH_XPU_ARCH_LIST "" PARENT_SCOPE)
-      else()
-        if(SUPPORTS_FP64_CONV_EMU)
-          string(FIND "${AOT_TARGETS}" "dg2" _dg2_index)
-          string(FIND "${AOT_TARGETS}" "ats-m" _atsm_index)
-          if(_dg2_index GREATER_EQUAL 0 OR _atsm_index GREATER_EQUAL 0)
-            set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
-            set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-fp64-conv-emu)
-          endif()
-        endif()
-        set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen,spir64)
-        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
-        set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
-        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
-        set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
-      endif()
-      message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
-    endif()
-
-    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_KERNEL_OPTIONS})
-
-    set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
-  else()
-    message("Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
-    return()
   endif()
+
+  if(USE_PER_OPERATOR_HEADERS)
+    list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
+  endif()
+  # -- Kernel flags (SYCL_KERNEL_OPTIONS)
+  # The fast-math will be enabled by default in SYCL compiler.
+  # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
+  # 1. We enable below flags here to be warn about NaN and Infinity,
+  # which will be hidden by fast-math by default.
+  # 2. The associative-math in fast-math allows floating point
+  # operations to be reassociated, which will lead to non-deterministic
+  # results compared with CUDA backend.
+  # 3. The approx-func allows certain math function calls (such as log, sqrt, pow, etc)
+  # to be replaced with an approximately equivalent set of instructions or
+  # alternative math function calls, which have great errors.
+  #
+  # PSEUDO of separate compilation with DPCPP compiler.
+  # 1. Kernel source compilation:
+  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} ${SYCL_DEVICE_COMPILE_DEFINITIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+  # 2. Device code linkage:
+  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
+  # 3. Host only source compilation:
+  # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
+  # 4. Linkage:
+  # gcc -shared host.o kernel.o device-code.o -o libxxx.so
+  list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-unnamed-lambda)
+  list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
+  list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-div)
+  list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-sqrt)
+
+  # SYCL defaults fast-math ON, which strips the inf/NaN our kernels check.
+  # Probe the compiler for the strict-FP flag and fail if it is rejected. Keep
+  # it before /Qfma and -ffp-contract=fast, which re-add the FMA we do want.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(_sycl_strict_fp_flag /fp:strict)
+  else()
+    set(_sycl_strict_fp_flag -fno-fast-math)
+  endif()
+  CHECK_SYCL_FLAG("${_sycl_strict_fp_flag}" _supports_strict_fp)
+  if(NOT _supports_strict_fp)
+    message(FATAL_ERROR
+      "SYCL compiler ${SYCL_COMPILER} rejects ${_sycl_strict_fp_flag}; its "
+      "default fast-math would silently break kernel inf/NaN semantics.")
+  endif()
+  list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_strict_fp_flag})
+
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # On Windows icx uses the clang-cl driver, which ignores -std= with
+    # only a warning; spell it as -Qstd= so device code is really C++20.
+    list(APPEND SYCL_KERNEL_OPTIONS -Qstd=${CPP_STD})
+    list(APPEND SYCL_KERNEL_OPTIONS /Qfma)
+    list(APPEND SYCL_KERNEL_OPTIONS /Qftz-)
+    # Suppress warnings about dllexport.
+    list(APPEND SYCL_KERNEL_OPTIONS -Wno-ignored-attributes)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND SYCL_KERNEL_OPTIONS -std=${CPP_STD})
+    list(APPEND SYCL_KERNEL_OPTIONS -Wno-absolute-value)
+    # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
+    # with very old version of the ICX compiler. The -ffp-contract=fast is supported by both closed
+    # source and open source DPC++ compiler versions.
+    list(APPEND SYCL_KERNEL_OPTIONS -ffp-contract=fast)
+    # -no-ftz is supported only by ICX compiler shipped with oneAPI Toolkits. For the
+    # DPCLANG open source compiler that's the default mode and no option is needed.
+    CHECK_SYCL_FLAG("-no-ftz" SUPPORTS_NO_FTZ)
+    if(SUPPORTS_NO_FTZ)
+      list(APPEND SYCL_KERNEL_OPTIONS -no-ftz)
+    endif()
+  endif()
+
+  # -- Device debug flags (aligned with CUDA behavior)
+  # XPU_DEVICE_DEBUG=1: full device debug, disables optimization (like CUDA's -g -G)
+  #   Orthogonal to build type, always forces device debug.
+  # DEBUG_XPU=1: line-table-only debug info (like CUDA's -lineinfo)
+  #   Only effective in Debug/RelWithDebInfo builds.
+  # DEBUG=1 alone: does NOT affect device code (same as CUDA).
+  if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
+    if(WIN32)
+      # Large SYCL translation units in Windows Debug builds will exhaust Clang
+      # source locations resulting in errors during kernels' compilation; reduce
+      # debug metadata when the compiler supports it.
+      CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
+      if(SUPPORTS_FNO_SYSTEM_DEBUG)
+        list(APPEND SYCL_KERNEL_OPTIONS -fno-system-debug)
+      endif()
+      list(APPEND SYCL_KERNEL_OPTIONS -gline-tables-only -O0 -Rno-debug-disables-optimization)
+    else()
+      list(APPEND SYCL_KERNEL_OPTIONS -g -O0 -Rno-debug-disables-optimization)
+    endif()
+  elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
+    if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+      list(APPEND SYCL_KERNEL_OPTIONS -gline-tables-only -O2)
+    endif()
+  endif()
+
+  CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
+  if(NOT SUPPORTS_FP64_CONV_EMU)
+    message(WARNING "The compiler does not support the '-fsycl-fp64-conv-emu' flag, \
+    will disable it. On some platforms that don't support FP64, \
+    running operations with the FP64 datatype will raise a Runtime error: Required aspect fp64 is not supported on the device \
+    or a Native API failed error.")
+  endif()
+
+  set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+
+  # -- SYCL device object linkage flags
+  include(ProcessorCount)
+  ProcessorCount(proc_cnt)
+  if((DEFINED ENV{MAX_JOBS}) AND ("$ENV{MAX_JOBS}" LESS_EQUAL ${proc_cnt}))
+    set(SYCL_MAX_PARALLEL_LINK_JOBS $ENV{MAX_JOBS})
+  else()
+    set(SYCL_MAX_PARALLEL_LINK_JOBS ${proc_cnt})
+  endif()
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
+  list(APPEND SYCL_DEVICE_LINK_FLAGS --offload-compress)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-sqrt)
+  list(APPEND SYCL_DEVICE_LINK_FLAGS -foffload-fp32-prec-div)
+
+  string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-poison-unsupported-fp64-kernels")
+  string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-enable-auto-large-GRF-mode")
+  string(APPEND SYCL_OFFLINE_COMPILER_CG_OPTIONS " -options -cl-intel-greater-than-4GB-buffer-required")
+
+  if(REPLACE_FLAGS_FOR_SYCLTLA)
+    set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen)
+    list(APPEND SYCL_KERNEL_OPTIONS ${SYCL_TARGETS_OPTION})
+    list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
+    list(APPEND SYCL_DEVICE_LINK_FLAGS "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
+    if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
+      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device cri")
+    else()
+      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
+    endif()
+  else()
+    if(WIN32)
+      set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
+    else()
+      set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m,ptl-h,ptl-u")
+    endif()
+    if(TORCH_XPU_ARCH_LIST)
+      set(AOT_TARGETS "${TORCH_XPU_ARCH_LIST}")
+    endif()
+    if(AOT_TARGETS STREQUAL "none")
+      set(TORCH_XPU_ARCH_LIST "" PARENT_SCOPE)
+    else()
+      if(SUPPORTS_FP64_CONV_EMU)
+        string(FIND "${AOT_TARGETS}" "dg2" _dg2_index)
+        string(FIND "${AOT_TARGETS}" "ats-m" _atsm_index)
+        if(_dg2_index GREATER_EQUAL 0 OR _atsm_index GREATER_EQUAL 0)
+          list(APPEND SYCL_KERNEL_OPTIONS -fsycl-fp64-conv-emu)
+          list(APPEND SYCL_DEVICE_LINK_FLAGS -fsycl-fp64-conv-emu)
+        endif()
+      endif()
+      set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen,spir64)
+      list(APPEND SYCL_KERNEL_OPTIONS ${SYCL_TARGETS_OPTION})
+      list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
+      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
+      set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
+    endif()
+    message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
+  endif()
+
+  list(APPEND SYCL_COMPILE_FLAGS ${SYCL_KERNEL_OPTIONS})
+
+  set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 endmacro()
+
+# Shared options/includes/links for every torch_xpu_ops target.
+# ARGN = extra PUBLIC libs (Windows: c10_xpu torch_cpu).
+function(torch_xpu_ops_finalize_targets)
+  foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
+    # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
+    torch_compile_options(${lib})
+    target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
+    target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
+
+    target_include_directories(${lib} PUBLIC
+        ${TORCH_XPU_OPS_INCLUDE_DIRS} ${ATen_XPU_INCLUDE_DIRS} ${SYCL_INCLUDE_DIR})
+
+    target_link_libraries(${lib}
+        PUBLIC  ${SYCL_LIBRARY} ${ARGN}
+        PRIVATE ATEN_XPU_FILES_GEN_LIB)
+  endforeach()
+endfunction()

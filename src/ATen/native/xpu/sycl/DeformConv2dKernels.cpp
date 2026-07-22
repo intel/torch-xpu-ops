@@ -73,6 +73,8 @@
  *  https://github.com/open-mmlab/mmdetection/blob/master/mmdet/ops/dcn/src/deform_conv_cuda.cpp
  */
 
+#include <limits>
+
 #include <comm/Macros.h>
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
@@ -289,11 +291,11 @@ void deformable_im2col(
   // https://github.com/pytorch/vision/issues/4269
   bool use_64bits_indexing = false;
   // Checks if num_kernels or columns numel larger than 2 ** 31
-  use_64bits_indexing |= num_kernels > ((int64_t)1 << 31);
+  use_64bits_indexing |= num_kernels > std::numeric_limits<int32_t>::max();
   use_64bits_indexing |=
       ((int64_t)n_in_channels * weight_h * weight_w * parallel_imgs * out_h *
            out_w >
-       ((int64_t)1 << 31));
+       std::numeric_limits<int32_t>::max());
 
   if (use_64bits_indexing) {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
@@ -412,15 +414,18 @@ struct DeformableCol2ImKernel {
 
       const scalar_t y = (out_y * stride_h - pad_h) + i * dilation_h + offset_h;
       const scalar_t x = (out_x * stride_w - pad_w) + j * dilation_w + offset_w;
+      using opmath_t = at::opmath_type<scalar_t>;
 
       for (index_t dy = -1; dy <= 1; dy++) {
         for (index_t dx = -1; dx <= 1; dx++) {
           index_t yp = (index_t)y + dy;
           index_t xp = (index_t)x + dx;
           if (0 <= yp && yp < height && 0 <= xp && xp < width &&
-              std::abs(y - yp) < 1 && std::abs(x - xp) < 1) {
+              sycl::fabs(static_cast<opmath_t>(y - yp)) < 1 &&
+              sycl::fabs(static_cast<opmath_t>(x - xp)) < 1) {
             index_t grad_pos = ((b * channels + c) * height + yp) * width + xp;
-            scalar_t weight = (1 - std::abs(y - yp)) * (1 - std::abs(x - xp));
+            scalar_t weight = (1 - sycl::fabs(static_cast<opmath_t>(y - yp))) *
+                (1 - sycl::fabs(static_cast<opmath_t>(x - xp)));
             atomicAdd(
                 sycl_global_ptr<scalar_t>(grad_im + grad_pos),
                 mask_value * weight * col[index]);
@@ -534,7 +539,7 @@ void compute_grad_input(
   // https://github.com/pytorch/vision/issues/4269
   bool use_64bits_indexing = false;
   // Checks if num_kernels or columns numel larger than 2 ** 31
-  use_64bits_indexing |= num_kernels > (1 << 31);
+  use_64bits_indexing |= num_kernels > std::numeric_limits<int32_t>::max();
 
   at::globalContext().alertNotDeterministic("compute_grad_input");
 
@@ -844,10 +849,10 @@ void compute_grad_offset_and_mask(
   // https://github.com/pytorch/vision/issues/4269
   bool use_64bits_indexing = false;
   // Checks if columns numel is larger than 2 ** 31
-  use_64bits_indexing |= num_kernels > ((int64_t)1 << 31);
+  use_64bits_indexing |= num_kernels > std::numeric_limits<int32_t>::max();
   use_64bits_indexing |=
       ((int64_t)channels * weight_h * weight_w * parallel_imgs * out_h * out_w >
-       ((int64_t)1 << 31));
+       std::numeric_limits<int32_t>::max());
 
   if (use_64bits_indexing) {
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(

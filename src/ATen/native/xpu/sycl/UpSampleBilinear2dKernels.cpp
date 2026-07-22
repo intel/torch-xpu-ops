@@ -323,8 +323,8 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
            point_h += input_height_ - 1) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ - 1) {
-          int distance_w = output_width_ - 1 - std::abs(point_w - in_index_w);
-          int distance_h = output_height_ - 1 - std::abs(point_h - in_index_h);
+          int distance_w = output_width_ - 1 - sycl::abs(point_w - in_index_w);
+          int distance_h = output_height_ - 1 - sycl::abs(point_h - in_index_h);
           accscalar_t scale =
               static_cast<accscalar_t>(distance_h * distance_w) /
               static_cast<accscalar_t>(
@@ -426,8 +426,8 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
            point_h += input_height_ * 2) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ * 2) {
-          int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
-          int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
+          int distance_w = output_width_ * 2 - sycl::abs(point_w - in_index_w);
+          int distance_h = output_height_ * 2 - sycl::abs(point_h - in_index_h);
           bool is_boundary_w =
               !((point_w >= output_width_) &&
                 (point_w <= output_width_ * input_width_ * 2 - output_width_));
@@ -635,7 +635,7 @@ void launch_upsample_bilinear2d_backward_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same<scalar_t, double>::value;
+      !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
@@ -849,7 +849,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same<scalar_t, double>::value;
+      !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>

@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
 
@@ -17,6 +18,8 @@
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
 #include <ATen/native/xpu/sycl/PowKernels.h>
+
+#include <sycl/sycl.hpp>
 
 namespace at {
 namespace native {
@@ -30,13 +33,17 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  // Both base and exp have the same scalar type in all current call paths
+  // They are promoted to opmath_t before entering impl::pow_.
+  // Therefore a single opmath_t derived from Base_type.
+  // is sufficient for both operands.
+  using opmath_t = at::opmath_type<Base_type>;
+  return sycl::pow(static_cast<opmath_t>(base), static_cast<opmath_t>(exp));
 }
 
 template <typename T>
-static inline std::enable_if_t<std::is_integral<T>::value, T> pow_(
-    T base,
-    T exp) {
+  requires std::is_integral_v<T>
+static inline T pow_(T base, T exp) {
   return at::native::powi(base, exp);
 }
 

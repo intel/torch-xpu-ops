@@ -1098,6 +1098,7 @@ class TestOperators(TestCase):
         {
             xfail("as_strided", "partial_views"),
             xfail("as_strided_copy"),
+            xfail("native_group_norm"),
         },
     )
     def test_vmapvjpvjp(self, device, dtype, op):
@@ -1261,6 +1262,7 @@ class TestOperators(TestCase):
                 xfail("as_strided"),
                 xfail("as_strided_copy"),
                 xfail("as_strided", "partial_views"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1376,6 +1378,7 @@ class TestOperators(TestCase):
         vmapjvpall_fail.union(
             {
                 xfail("as_strided_copy"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1442,12 +1445,8 @@ class TestOperators(TestCase):
                 xfail("nn.functional.dropout3d", ""),
                 xfail("as_strided_scatter", ""),
                 xfail("masked.cumprod", ""),
-                xfail("permute_copy"),
                 xfail("renorm"),  # hit vmap fallback, which is disabled
-                xfail("squeeze_copy"),
-                xfail("t_copy"),
-                xfail("transpose_copy"),
-                xfail("unsqueeze_copy"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1506,11 +1505,9 @@ class TestOperators(TestCase):
                 xfail("masked_select"),
                 xfail("nanquantile"),
                 xfail("ormqr"),
-                xfail("permute_copy"),
                 xfail("put"),
                 xfail("quantile"),
                 xfail("renorm"),
-                xfail("squeeze_copy"),
                 xfail("take"),
                 xfail("tensor_split"),
                 xfail("to_sparse"),
@@ -1570,10 +1567,7 @@ class TestOperators(TestCase):
                 xfail(
                     "index_fill"
                 ),  # aten::_unique hit the vmap fallback which is currently disabled
-                xfail("squeeze_copy"),
-                xfail("t_copy"),
-                xfail("transpose_copy"),
-                xfail("unsqueeze_copy"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1682,6 +1676,7 @@ class TestOperators(TestCase):
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
                 xfail("as_strided", "partial_views"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -1785,7 +1780,6 @@ class TestOperators(TestCase):
                 # this is not supported. Tensor is of size [5, 2, 3] while the given forward gradient is of size [1, 2, 3].
                 xfail("normal", ""),
                 xfail("cdist", ""),  # NYI: forward-AD for _cdist_forward
-                xfail("cholesky", ""),  # NYI: forward-AD for cholesky
                 xfail(
                     "nn.functional.embedding_bag", ""
                 ),  # NYI: forward-AD for _embedding_bag
@@ -1967,7 +1961,6 @@ class TestOperators(TestCase):
                 xfail("cdouble"),  # required rank 4 tensor to use channels_last format
                 xfail("cfloat"),  # required rank 4 tensor to use channels_last format
                 xfail("chalf"),  # required rank 4 tensor to use channels_last format
-                xfail("cholesky"),  # Forward AD not implemented and no decomposition
                 xfail("ormqr"),  # Forward AD not implemented and no decomposition
                 xfail("double"),  # required rank 4 tensor to use channels_last format
                 xfail("float"),  # required rank 4 tensor to use channels_last format
@@ -2083,6 +2076,7 @@ class TestOperators(TestCase):
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
                 xfail("native_dropout_backward"),
+                xfail("native_group_norm"),
             }
         ),
     )
@@ -2407,6 +2401,7 @@ class TestOperators(TestCase):
             skip("sparse.sampled_addmm", ""),
             skip("sparse.mm", "reduce"),
             skip("native_layer_norm", "", device_type="cpu"),
+            skip("native_group_norm", dtypes=(torch.float32,), device_type="cpu"),
         },
     )
     @opsToleranceOverride(
@@ -2444,6 +2439,7 @@ class TestOperators(TestCase):
             ),
             tol1("svd_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
             tol1("pca_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
+            tol1("native_group_norm", {torch.float32: tol(atol=5e-5, rtol=5e-6)}),
         ),
     )
     def test_vmap_autograd_grad(self, device, dtype, op):

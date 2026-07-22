@@ -50,10 +50,6 @@ endif()
 
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
-  # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
-  # processed.  Using this variable, we can pull out the current path, and
-  # provide a way to get access to the other files we need local to here.
-  get_filename_component(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
   if(NOT EXISTS "${SYCL_${_name}}")
     set(error_message "${_full_name} not found in ${CMAKE_CURRENT_LIST_DIR}/FindSYCL")
@@ -113,44 +109,24 @@ endmacro()
 sycl_find_helper_file(make2cmake cmake)
 sycl_find_helper_file(run_sycl cmake)
 
-macro(SYCL_GET_SOURCES_AND_OPTIONS _sycl_sources _cxx_sources _cmake_options)
-  set(${_cmake_options})
-  set(${_sycl_sources})
-  set(${_cxx_sources})
-  set(_found_options FALSE)
-  set(_found_sycl_sources FALSE)
-  set(_found_cpp_sources FALSE)
-  foreach(arg ${ARGN})
-    if("x${arg}" STREQUAL "xOPTIONS")
-      set(_found_options TRUE)
-      set(_found_sycl_sources FALSE)
-      set(_found_cpp_sources FALSE)
-    elseif(
-        "x${arg}" STREQUAL "xEXCLUDE_FROM_ALL" OR
-        "x${arg}" STREQUAL "xSTATIC" OR
-        "x${arg}" STREQUAL "xSHARED" OR
-        "x${arg}" STREQUAL "xMODULE"
-        )
-      list(APPEND ${_cmake_options} ${arg})
-    elseif("x${arg}" STREQUAL "xSYCL_SOURCES")
-      set(_found_options FALSE)
-      set(_found_sycl_sources TRUE)
-      set(_found_cpp_sources FALSE)
-    elseif("x${arg}" STREQUAL "xCXX_SOURCES")
-      set(_found_options FALSE)
-      set(_found_sycl_sources FALSE)
-      set(_found_cpp_sources TRUE)
-    else()
-      if(_found_options)
-        message(FATAL_ERROR "sycl_add_executable/library doesn't support OPTIONS keyword.")
-      elseif(_found_sycl_sources)
-        list(APPEND ${_sycl_sources} ${arg})
-      elseif(_found_cpp_sources)
-        list(APPEND ${_cxx_sources} ${arg})
-      endif()
+function(SYCL_GET_SOURCES_AND_OPTIONS _sycl_sources _cxx_sources _cmake_options)
+  cmake_parse_arguments(PARSE_ARGV 3 PARSED_SYCL
+    "STATIC;SHARED;MODULE;EXCLUDE_FROM_ALL"
+    ""
+    "SYCL_SOURCES;CXX_SOURCES")
+  if("OPTIONS" IN_LIST ARGN)
+    message(FATAL_ERROR "sycl_add_executable/library doesn't support OPTIONS keyword.")
+  endif()
+  set(${_sycl_sources} ${PARSED_SYCL_SYCL_SOURCES} PARENT_SCOPE)
+  set(${_cxx_sources} ${PARSED_SYCL_CXX_SOURCES} PARENT_SCOPE)
+  set(_opts "")
+  foreach(_kw IN ITEMS STATIC SHARED MODULE EXCLUDE_FROM_ALL)
+    if(PARSED_SYCL_${_kw})
+      list(APPEND _opts ${_kw})
     endif()
   endforeach()
-endmacro()
+  set(${_cmake_options} ${_opts} PARENT_SCOPE)
+endfunction()
 
 function(SYCL_BUILD_SHARED_LIBRARY shared_flag)
   set(cmake_args ${ARGN})
@@ -217,6 +193,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
   list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${sycl_target},INCLUDE_DIRECTORIES>")
 
   set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
+
+  # Extra definitions for the SYCL device compiler only, not host C++ code.
+  set(SYCL_compile_definitions "${SYCL_compile_definitions};${SYCL_DEVICE_COMPILE_DEFINITIONS}")
 
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
@@ -379,7 +358,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(important_host_flags)
     _sycl_get_important_host_flags(important_host_flags "${SYCL_HOST_FLAGS}")
     set(SYCL_device_link_flags
-        ${link_type_flag}
         ${important_host_flags}
         ${SYCL_DEVICE_LINK_FLAGS})
 

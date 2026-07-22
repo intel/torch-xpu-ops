@@ -526,14 +526,14 @@ static inline void atomicMax(
     const sycl_local_ptr<int32_t>& address,
     int32_t val) {
   sycl_atomic_ref_rlx_wg_local_t<int32_t> target(*address);
-  target.fetch_add(val);
+  target.fetch_max(val);
 }
 
 static inline void atomicMax(
     const sycl_local_ptr<int64_t>& address,
     int64_t val) {
   sycl_atomic_ref_rlx_wg_local_t<int64_t> target(*address);
-  target.fetch_add(val);
+  target.fetch_max(val);
 }
 
 SYCL_ATOMIC_INTEGER(Max, safe_max<uint8_t>(a, b), uint8_t)

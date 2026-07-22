@@ -11,23 +11,21 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-macro(setup_common_libraries)
-  add_library(
-    torch_xpu_ops
-    STATIC
-    ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
-  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
-  target_link_libraries(torch_xpu_ops PUBLIC c10)
-endmacro()
+add_library(
+  torch_xpu_ops
+  STATIC
+  ${ATen_XPU_MKL_SRCS}
+  ${ATen_XPU_NATIVE_CPP_SRCS})
+target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 
 if(BUILD_SEPARATE_OPS)
-  setup_common_libraries()
+  # Do not link torch_xpu here: torch_xpu whole-archive-links torch_xpu_ops
+  # (see PyTorch's caffe2/CMakeLists.txt), so a torch_xpu_ops -> torch_xpu
+  # edge would form a link cycle. torch_cpu/c10 have no such reverse edge.
+  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu c10)
   set(_sycl_libs_for_rsp)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    get_filename_component(name ${sycl_src} NAME_WLE)
     set(sycl_lib torch-xpu-ops-sycl-${name})
     # Keep split SYCL targets static on Windows so torch_xpu remains the only
     # shared-library link that resolves cross-target XPU helper symbols.
@@ -63,54 +61,12 @@ else()
   # those on Linux. If they are combined into one, the library size will exceed
   # 4GB, which conflicts with the size limit of a single library on Windows.
   # We will combine the libraries on Windows into one after the compiler is fixed.
-  add_library(
-    torch_xpu_ops
-    STATIC
-    ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
-  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
- # Split SYCL kernels into 2 libraries as categories 1) Common (Unary+Binary+Reduce+Pow+Copy+Activation+Foreach) 2) Others.
-  set(ATen_XPU_SYCL_COMMON_SRCS)
-  set(ATen_XPU_SYCL_OTHERS_SRCS)
-  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
-    string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
-    string(REGEX MATCH "Pow" IS_POW ${sycl_src})
-    string(REGEX MATCH "Copy" IS_COPY ${sycl_src})
-    string(REGEX MATCH "Reduce" IS_REDUCE ${sycl_src})
-    string(REGEX MATCH "Activation" IS_ACTIVATION ${sycl_src})
-    string(REGEX MATCH "Foreach" IS_FOREACH ${sycl_src})
-    string(REGEX MATCH "Polynomial" IS_POLY ${sycl_src})
-    string(REGEX MATCH "Norm" IS_NORM ${sycl_src})
-    string(REGEX MATCH "Loss" IS_LOSS ${sycl_src})
-    string(REGEX MATCH "Resize" IS_RESIZE ${sycl_src})
-    string(REGEX MATCH "Distribution" IS_DISTRIBUTION ${sycl_src})
-
-    if(NOT IS_FOREACH STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_REDUCE STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_UNARY STREQUAL "" OR NOT IS_BINARY STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_COPY STREQUAL "" OR NOT IS_POW STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_ACTIVATION STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_NORM STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_LOSS STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_RESIZE STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_DISTRIBUTION STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    elseif(NOT IS_POLY STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    else()
-      list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
-    endif()
-  endforeach()
+  # Split SYCL kernels into 2 libraries: common kernels (matched below) vs. the rest.
+  set(sycl_common_regex "(Foreach|Reduce|Unary|Binary|Copy|Pow|Activation|Norm|Loss|Resize|Distribution|Polynomial)")
+  set(ATen_XPU_SYCL_COMMON_SRCS ${ATen_XPU_SYCL_SRCS})
+  set(ATen_XPU_SYCL_OTHERS_SRCS ${ATen_XPU_SYCL_SRCS})
+  list(FILTER ATen_XPU_SYCL_COMMON_SRCS INCLUDE REGEX "${sycl_common_regex}")
+  list(FILTER ATen_XPU_SYCL_OTHERS_SRCS EXCLUDE REGEX "${sycl_common_regex}")
   # Common kernel lib
   set(sycl_common_lib torch_xpu_ops_sycl_common_kernels)
   sycl_add_library(
@@ -129,37 +85,11 @@ else()
   target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
-  target_link_libraries(torch_xpu_ops
-      PUBLIC
-      ${sycl_common_lib}
-      ${sycl_lib}
-  )
-  target_link_options(torch_xpu_ops PUBLIC
-      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_common_lib}>"
-      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
+  target_link_libraries(torch_xpu_ops PUBLIC
+      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${sycl_common_lib},${sycl_lib}>"
   )
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
-foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
-  # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
-  torch_compile_options(${lib})
-  target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
-  target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
-
-  target_include_directories(${lib} PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
-  target_include_directories(${lib} PUBLIC ${ATen_XPU_INCLUDE_DIRS})
-  target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
-
-  target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
-  target_link_libraries(${lib} PUBLIC c10_xpu)
-  target_link_libraries(${lib} PUBLIC torch_cpu)
-  target_link_libraries(${lib} PRIVATE ATEN_XPU_OPS_FILES_GEN_LIB)
-endforeach()
-
-if(USE_ONEMKL_XPU)
-  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL_XPU")
-  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
-  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
-endif()
+torch_xpu_ops_finalize_targets(c10_xpu torch_cpu)

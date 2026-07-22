@@ -36,10 +36,11 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
-#include <c10/util/llvmMathExtras.h>
 #include <comm/SYCLHelpers.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
+
+#include <bit>
 
 namespace at::native::xpu {
 
@@ -163,6 +164,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
+    // WAR barrier: next radix pass re-zeros smem.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================
@@ -269,6 +272,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
     out = sg_exclusive + cross_sg_prefix;
     carry = static_cast<int>(smem[num_sgs - 1]);
+    // WAR barrier: caller reuses smem next iteration.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================
@@ -614,11 +619,10 @@ static void single_wg_launch_kernel(
   // With ept=32 and 1024 threads, each iteration covers 32K elements,
   // keeping the number of gatherTopK iterations small (~4 for dim=131072).
   int64_t ratio = sliceSize / SBTOPK_BLOCK;
-  int ept = ratio >= 1 ? std::min(
-                             32,
-                             static_cast<int>(c10::llvm::PowerOf2Floor(
-                                 static_cast<uint64_t>(ratio))))
-                       : 1;
+  int ept = ratio >= 1
+      ? std::min(
+            32, static_cast<int>(std::bit_floor(static_cast<uint64_t>(ratio))))
+      : 1;
 
   // Determine VEC_SIZE: largest power-of-2 dividing sliceSize,
   // capped by type max AND by EPT (vec <= ept required).
