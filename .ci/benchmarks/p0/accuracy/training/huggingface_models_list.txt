@@ -1,13 +1,11 @@
 AlbertForQuestionAnswering,8
 BartForConditionalGeneration,4
 BertForMaskedLM,32
-BlenderbotForCausalLM,32
 BlenderbotSmallForCausalLM,256
 DebertaV2ForQuestionAnswering,8
 DistillGPT2,32
 GoogleFnet,32
 GPT2ForSequenceClassification,8
-M2M100ForConditionalGeneration,64
 MBartForConditionalGeneration,4
 MobileBertForMaskedLM,256
 MT5ForConditionalGeneration,32
