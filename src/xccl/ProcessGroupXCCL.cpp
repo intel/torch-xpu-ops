@@ -1311,7 +1311,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
           onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
         if (getRank() == root) {
-          for (auto input : inputs) {
+          for (const auto& input : inputs) {
             c10::xpu::XPUCachingAllocator::recordStream(
                 input.storage().data_ptr(), stream);
           }

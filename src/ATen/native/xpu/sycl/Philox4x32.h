@@ -79,12 +79,12 @@ struct alignas(sizeof(T) * 4) rand_vec4 {
   inline rand_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
 };
 
-typedef rand_vec4<float> float4;
-typedef rand_vec2<float> float2;
-typedef rand_vec2<double> double2;
-typedef rand_vec4<uint32_t> uint4;
-typedef rand_vec2<uint32_t> uint2;
-typedef rand_vec2<uint64_t> ulonglong2;
+using float4 = rand_vec4<float>;
+using float2 = rand_vec2<float>;
+using double2 = rand_vec2<double>;
+using uint4 = rand_vec4<uint32_t>;
+using uint2 = rand_vec2<uint32_t>;
+using ulonglong2 = rand_vec2<uint64_t>;
 
 constexpr uint32_t kPhiloxWeylSequence0 = 0x9E3779B9;
 constexpr uint32_t kPhiloxWeylSequence1 = 0xBB67AE85;
