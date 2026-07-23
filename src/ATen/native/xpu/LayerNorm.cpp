@@ -74,8 +74,10 @@ namespace native {
   Tensor mean = at::empty({M}, X->options().dtype(acc_type));
   Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
 
-  native::xpu::layer_norm_kernel(
-      *X, *gamma, *beta, M, N, epsilon, &Y, &mean, &rstd);
+  if (M > 0) {
+    native::xpu::layer_norm_kernel(
+        *X, *gamma, *beta, M, N, epsilon, &Y, &mean, &rstd);
+  }
 
   const auto input_shape = input.sizes();
   const size_t axis = input.dim() - normalized_shape.size();
