@@ -225,6 +225,49 @@ def build_one_ishmem(cfg, ishmem_cfg, src_name, out_name, label):
     return out
 
 
+def build_one_ishmem_topo(cfg, ishmem_cfg, src_name, out_name, label):
+    """Like build_one_ishmem but also compiles Topology.cpp and links hwloc."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(base_dir, src_name)
+    topo = os.path.join(base_dir, "Topology.cpp")
+    out = os.path.join(base_dir, out_name)
+
+    cmd = [
+        "icpx",
+        "-fsycl",
+        "-std=c++17",
+        "-shared",
+        "-fPIC",
+        "-O2",
+        f"-D_GLIBCXX_USE_CXX11_ABI={cfg['cxx_abi']}",
+        f"-I{cfg['torch_include']}",
+        f"-I{cfg['torch_include_csrc']}",
+        f"-I{cfg['project_src']}",
+        f"-I{cfg['python_include']}",
+        f"-I{ishmem_cfg['include_dir']}",
+        f"-L{cfg['torch_lib']}",
+        "-ltorch",
+        "-ltorch_cpu",
+        "-lc10",
+        "-Wl,-rpath," + cfg["torch_lib"],
+        src,
+        topo,
+        ishmem_cfg["static_lib"],
+        *get_mpi_flags(),
+        *get_ishmem_extra_link_flags(),
+        *get_hwloc_flags(),
+        "-lze_loader",
+        "-o",
+        out,
+    ]
+
+    print(f"Building {label} extension...")
+    print(" ".join(cmd))
+    subprocess.check_call(cmd)
+    print(f"Build successful: {out}\n")
+    return out
+
+
 def build():
     cfg = get_build_config()
     ishmem_cfg = get_ishmem_config()
@@ -318,6 +361,15 @@ def build():
             "RingReduceScatterIshmem",
         )
     )
+    outputs.append(
+        build_one_ishmem_topo(
+            cfg,
+            ishmem_cfg,
+            "RingAllgatherIshmemwithIPC.cpp",
+            "libring_allgather_ishmem_ipc.so",
+            "RingAllgatherIshmemwithIPC",
+        )
+    )
     outputs.append(build_topology(cfg))
     return outputs
 
@@ -339,6 +391,7 @@ def clean():
         os.path.join(base_dir, "liballgather_permute_ishmem.so"),
         os.path.join(base_dir, "libring_allgather_ishmem.so"),
         os.path.join(base_dir, "libring_reduce_scatter_ishmem.so"),
+        os.path.join(base_dir, "libring_allgather_ishmem_ipc.so"),
         os.path.join(
             base_dir,
             "xpu_topology" + (sysconfig.get_config_var("EXT_SUFFIX") or ".so"),
