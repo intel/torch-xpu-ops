@@ -112,12 +112,19 @@ def _get_normalized_xpu_traces(actual_traces):
 # _xpu variants are created.
 import itertools
 
+from torch.func import functionalize
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.graph_module import GraphModule
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
     TestCase,
 )
+
+
+def _xpu_make_fx(f, *args):
+    # Functionalize in-place ops 
+    return make_fx(functionalize(f))(*args)
 
 if torch.xpu.is_available() and "xpu" not in test_common_passes.Devices:
     test_common_passes.Devices.append("xpu")
@@ -136,7 +143,7 @@ class TestCommonPass(TestCase):
     )
     def test_correctness(self, common_pass, f, device):
         inp = torch.randn(10, device=device)
-        traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp)
+        traced_m = _xpu_make_fx(f, inp)
         P = common_pass()
         res = P(traced_m)
         modified_m = res.graph_module
@@ -158,7 +165,7 @@ class TestCommonPass(TestCase):
     )
     def test_correctness_factory(self, common_pass, f, device):
         inp = torch.randn(10, device=device)
-        traced_m = torch.fx.experimental.proxy_tensor.make_fx(f)(inp, device)
+        traced_m = _xpu_make_fx(f, inp, device)
         P = common_pass()
         res = P(traced_m)
         modified_m = res.graph_module
