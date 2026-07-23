@@ -23,7 +23,6 @@
 #include <c10/util/complex.h>
 #include <comm/xpu_aten.h>
 #include <numbers>
-#include <type_traits>
 
 #if defined(__SYCL_DEVICE_ONLY__)
 #define SYCL_EXT_ONEAPI_COMPLEX
