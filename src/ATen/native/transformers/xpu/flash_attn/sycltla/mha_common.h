@@ -12,6 +12,7 @@
 #include <cassert>
 
 #include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
 
 #include <ATen/native/transformers/xpu/flash_attn/flash_api.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/flash_api.h>
@@ -59,6 +60,31 @@
     }                                     \
   }()
 
+#define HEADDIM_SWITCH(HEADDIM, ...)                        \
+  [&] {                                                     \
+    if (HEADDIM <= 32) {                                    \
+      constexpr static int Headdim = 32;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 64) {                             \
+      constexpr static int Headdim = 64;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 96) {                             \
+      constexpr static int Headdim = 96;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 128) {                            \
+      constexpr static int Headdim = 128;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 192) {                            \
+      constexpr static int Headdim = 192;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 256) {                            \
+      constexpr static int Headdim = 256;                   \
+      return __VA_ARGS__();                                 \
+    } else {                                                \
+      TORCH_CHECK(false, "Unsupported headdim: ", HEADDIM); \
+    }                                                       \
+  }()
+
 struct QKV_params {
   using index_t = int64_t;
   // The QKV matrices.
@@ -90,6 +116,9 @@ struct FLASH_FWD_params : public QKV_params {
   // The pointer to the softmax logsumexp.
   void* lse_ptr;
 
+  // The pointer to the P matrix.
+  void* p_ptr;
+
   // The dimensions of the problem.
   int batch_size;
   int num_heads_qo;
@@ -103,6 +132,19 @@ struct FLASH_FWD_params : public QKV_params {
 
   bool is_causal;
   float scale;
+  // The dropout probability (probability of keeping an activation).
+  float p_dropout;
+  uint16_t p_dropout_in_uint16_t;
+  // Scale factor of 1 / (1 - p_dropout).
+  float rp_dropout;
+
+  // Random state.
+  at::PhiloxXpuState philox_args;
+
+  // Pointer to the RNG seed and offset.
+  void* rng_seed;
+  void* rng_offset;
+
   bool is_fp16;
 };
 
@@ -137,7 +179,7 @@ struct FLASH_BWD_params : public FLASH_FWD_params {
   index_t dv_row_stride;
 };
 
-void set_params_fprop(
+inline void set_params_fprop(
     FLASH_FWD_params& params,
     // sizes
     const int batch_size,
@@ -155,7 +197,9 @@ void set_params_fprop(
     const at::Tensor& v,
     at::Tensor& out,
     at::Tensor& logsumexp,
+    std::optional<at::Tensor> p,
     float scale,
+    float p_dropout,
     bool is_causal) {
   // Reset the parameters
   params = {};
@@ -168,6 +212,7 @@ void set_params_fprop(
   params.v_ptr = v.data_ptr();
   params.o_ptr = out.data_ptr();
   params.lse_ptr = logsumexp.data_ptr();
+  params.p_ptr = p.has_value() ? p->data_ptr() : nullptr;
   // All stride are in elements, not bytes.
   params.q_batch_stride = q.stride(0);
   params.k_batch_stride = k.stride(0);
@@ -196,9 +241,15 @@ void set_params_fprop(
   // Other params
   params.is_causal = is_causal;
   params.scale = scale;
+  // Set this to probability of keeping an element to simplify things.
+  TORCH_CHECK(p_dropout >= 0.0f && p_dropout < 1.0f);
+  params.p_dropout = 1.f - p_dropout;
+  params.p_dropout_in_uint16_t =
+      uint16_t(std::floor(params.p_dropout * 65535.0));
+  params.rp_dropout = 1.f / params.p_dropout;
 }
 
-void set_params_dgrad(
+inline void set_params_dgrad(
     FLASH_BWD_params& params,
     // sizes
     const int batch_size,
@@ -226,6 +277,7 @@ void set_params_dgrad(
     at::Tensor& tensor_pbuff,
     // other params
     float scale,
+    float p_dropout,
     bool is_causal) {
   params = {};
   set_params_fprop(
@@ -244,7 +296,9 @@ void set_params_dgrad(
       v,
       const_cast<at::Tensor&>(out),
       const_cast<at::Tensor&>(logsumexp),
+      std::nullopt, // p is not needed for backward
       scale,
+      p_dropout,
       is_causal);
 
   params.do_ptr = grad_out.data_ptr();
@@ -268,4 +322,74 @@ void set_params_dgrad(
   params.dq_row_stride = dq.stride(1);
   params.dk_row_stride = dk.stride(1);
   params.dv_row_stride = dv.stride(1);
+}
+
+// Backward kernel padding constants.
+constexpr int kBwdMPad = 128;
+constexpr int kBwdNPad = 128;
+
+// same as subgroup size used in the kernel, which is 16 for Xe.
+constexpr int kSubgroupSize = 16;
+
+// block 2D restrictions:
+//
+//   1. Base address: per-subgroup base pointer must be cache-line aligned
+//      (64 bytes).
+//   2. Memory Width: >= 64 bytes and a multiple of 4 bytes.
+//   3. Memory Height: > 0.
+//   4. Memory Pitch: >= Memory Width and a multiple of 16 bytes.
+//   5. Block Width: must be a multiple of 4 bytes.
+//   6. Coordinate X: must be a multiple of 4 bytes.
+//   7. Out-of-bounds: loads return zero for OOB elements; stores and prefetches
+//      silently ignore OOB elements.
+//
+// See: https://github.khronos.org/SPIRV-Registry/extensions/INTEL/
+//      SPV_INTEL_2d_block_io.html#_restrictions
+
+[[maybe_unused]] static bool is_64_bytes_aligned(const at::Tensor& t) {
+  return reinterpret_cast<uintptr_t>(t.data_ptr()) % 64 == 0;
+}
+
+// Ensure tensor satisfies block 2D load 64-byte base address alignment
+// requirement. Tries contiguous() first (may reuse storage), falls back to
+// clone() which always allocates fresh aligned memory.
+[[maybe_unused]] static at::Tensor ensure_alignment_for_sdpa(
+    const at::Tensor& t) {
+  if (is_64_bytes_aligned(t)) {
+    return t;
+  }
+  at::Tensor out = t.contiguous();
+  if (!is_64_bytes_aligned(out)) {
+    out = out.clone();
+  }
+  return out;
+}
+
+// The kernel is dispatched by Headdim template parameter (32, 64, 96, ...),
+// and its tile sizes are chosen accordingly. Pad headsize to the matching
+// Headdim so that:
+//   1. Tensor dimensions are consistent with the kernel's tile sizes.
+//   2. Memory Width >= 64 bytes.
+//   3. Memory Pitch >= Memory Width. Without
+//      padding, a headdim smaller than the kernel's Headdim would have
+//      Pitch (= real headdim * elem_size) < Width (= Headdim * elem_size).
+inline int round_up_headdim(int d) {
+  if (d <= 32)
+    return 32;
+  if (d <= 64)
+    return 64;
+  if (d <= 96)
+    return 96;
+  if (d <= 128)
+    return 128;
+  if (d <= 192)
+    return 192;
+  if (d <= 256)
+    return 256;
+  TORCH_CHECK(
+      false,
+      "FlashAttentionXPU: head dimension ",
+      d,
+      " exceeds maximum supported (256)");
+  return -1;
 }

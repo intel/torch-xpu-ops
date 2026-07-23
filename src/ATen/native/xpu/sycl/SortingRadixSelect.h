@@ -87,7 +87,7 @@ struct TopKTypeConfig<float> {
   static inline RadixType convert(float v) {
     RadixType x = *((uint32_t*)&v);
     RadixType mask = (x & 0x80000000) ? 0xffffffff : 0x80000000;
-    return (x ^ mask);
+    return (v == v) ? (x ^ mask) : 0xffffffff;
   }
 
   static inline float deconvert(RadixType v) {
@@ -168,7 +168,7 @@ struct TopKTypeConfig<double> {
   static inline RadixType convert(double v) {
     RadixType x = *((uint64_t*)&v);
     RadixType mask = -((x >> 63)) | 0x8000000000000000;
-    return (x ^ mask);
+    return (v == v) ? (x ^ mask) : 0xffffffffffffffff;
   }
 
   static inline double deconvert(RadixType v) {
@@ -183,12 +183,12 @@ struct TopKTypeConfig<at::Half> {
 
   static inline RadixType convert(at::Half v) {
     RadixType x = *((uint16_t*)&v);
-    RadixType mask = -((x >> 15)) | 0x8000;
-    return (x ^ mask);
+    RadixType mask = (x & 0x00008000) ? 0x0000ffff : 0x00008000;
+    return (v == v) ? (x ^ mask) : 0xffff;
   }
 
   static inline at::Half deconvert(RadixType v) {
-    RadixType mask = ((v >> 15) - 1) | 0x8000;
+    RadixType mask = (v & 0x00008000) ? 0x00008000 : 0x0000ffff;
     return __ushort_as_half(v ^ mask);
   }
 };
@@ -346,8 +346,9 @@ scalar_t findPattern(
   auto local_id = item_id.get_local_id(0);
   auto smem_ptr = static_cast<scalar_t*>(static_cast<void*>(
       smem.template get_multi_ptr<sycl::access::decorated::no>().get()));
-  if (local_id < RADIX_SIZE) {
-    smem_ptr[RADIX_SIZE] = static_cast<scalar_t>(0);
+  // Zero slots 0/1 (found-flag, value); else stale from countRadixUsingMask.
+  if (local_id < 2) {
+    smem_ptr[local_id] = static_cast<scalar_t>(0);
   }
 
   sycl::group_barrier(item_id.get_group());
@@ -481,7 +482,7 @@ void radixSelect(
 
     // All threads participate in the comparisons below to know the
     // final result
-    if (Order) {
+    if constexpr (Order) {
       // Process in descending order
       for (int i = RADIX_SIZE - 1; i >= 0; --i) {
         int count = counts[i];

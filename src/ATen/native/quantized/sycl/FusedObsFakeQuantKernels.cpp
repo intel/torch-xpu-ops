@@ -44,13 +44,13 @@ void MovingAverageMinMax(
       scalar_t averaging_const_t = static_cast<scalar_t>(averaging_const);
 
       scalar_t adjusted_min =
-          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_min[i]))
+          sycl::isinf(static_cast<at::opmath_type<scalar_t>>(running_min[i]))
           ? curr_min
           : (running_min[i]) +
               averaging_const_t * (curr_min - (running_min[i]));
 
       scalar_t adjusted_max =
-          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_max[i]))
+          sycl::isinf(static_cast<at::opmath_type<scalar_t>>(running_max[i]))
           ? curr_max
           : (running_max[i]) +
               averaging_const_t * (curr_max - (running_max[i]));
@@ -167,8 +167,8 @@ void ChooseQuantizationParamsKernelImpl(
       int symmetric_qmax = (qmax - qmin) / 2;
 
       float max_scale = std::max(
-          std::fabs(min_val / symmetric_qmin),
-          std::fabs(max_val / symmetric_qmax));
+          sycl::fabs(min_val / symmetric_qmin),
+          sycl::fabs(max_val / symmetric_qmax));
       min_val = max_scale * symmetric_qmin;
       max_val = max_scale * symmetric_qmax;
     }
@@ -182,16 +182,16 @@ void ChooseQuantizationParamsKernelImpl(
 
     // Moving this check outside this function would result in extra Device to
     // Host copy of the min and max val which would result in a perf hit.
-    if (scale[i] == 0.0f || std::isinf(1.0f / scale[i])) {
+    if (scale[i] == 0.0f || sycl::isinf(1.0f / scale[i])) {
       scale[i] = 0.1;
     }
 
     double zero_point_from_min = qmin - min_val / static_cast<double>(scale[i]);
     double zero_point_from_max = qmax - max_val / static_cast<double>(scale[i]);
     double zero_point_from_min_error =
-        std::abs(qmin) + std::abs(min_val / static_cast<double>(scale[i]));
+        sycl::abs(qmin) + sycl::fabs(min_val / static_cast<double>(scale[i]));
     double zero_point_from_max_error =
-        std::abs(qmax) + std::abs(max_val / static_cast<double>(scale[i]));
+        sycl::abs(qmax) + sycl::fabs(max_val / static_cast<double>(scale[i]));
     double initial_zero_point =
         zero_point_from_min_error < zero_point_from_max_error
         ? zero_point_from_min
@@ -215,7 +215,7 @@ void ChooseQuantizationParamsKernelImpl(
     } else if (initial_zero_point > qmax) {
       nudged_zero_point = qmax;
     } else {
-      nudged_zero_point = std::nearbyint(initial_zero_point);
+      nudged_zero_point = sycl::rint(initial_zero_point);
     }
     zero_point[i] = nudged_zero_point;
   }

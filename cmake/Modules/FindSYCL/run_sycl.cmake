@@ -39,7 +39,7 @@ set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 
-list(REMOVE_DUPLICATES SYCL_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES SYCL_include_dirs)
 
 set(SYCL_host_compiler_flags "-fsycl-host-compiler-options=")
 set(SYCL_include_args)

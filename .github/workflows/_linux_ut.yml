@@ -23,6 +23,14 @@ on:
         required: true
         type: string
         description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+      category:
+        type: string
+        default: ''
+        description: 'Optional tag (e.g. target/baseline) appended to artifact names'
+      skip_summary:
+        type: boolean
+        default: false
+        description: 'Skip the UT summary/issue-update job (e.g. when caller handles its own comparison)'
 
 permissions:
   contents: read
@@ -37,49 +45,44 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  runner:
-    runs-on: ${{ inputs.runner }}
-    name: get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-      hostname: ${{ steps.runner-info.outputs.hostname }}
-      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   test-in-container:
-    needs: runner
     timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
-    runs-on: ${{ needs.runner.outputs.runner_id }}
+    runs-on: ${{ inputs.runner }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
-                        --only-rerun 'crashed while running' --reruns 2
-                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Download dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: dpclang
+      - name: Setup dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        run: |
+          rm -rf install-dpclang && mkdir install-dpclang
+          tar xzvf install-dpclang.tgz -C install-dpclang
+          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          category: ${{ inputs.category }}
+      - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
@@ -87,22 +90,25 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 /__w /github ./ -R
 
   test-in-baremetal:
-    needs: runner
     timeout-minutes: 600
     if: ${{ contains(inputs.ut, 'distributed') }}
-    runs-on: ${{ needs.runner.outputs.runner_id }}
+    runs-on: ${{ inputs.runner }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
@@ -115,7 +121,8 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          category: ${{ inputs.category }}
+      - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
@@ -123,32 +130,33 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
   summary:
     needs: [test-in-container, test-in-baremetal]
-    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
+    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) && ! inputs.skip_summary }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
       - name: Download skipped issues snapshot
         continue-on-error: true
@@ -157,6 +165,8 @@ jobs:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: ${{ github.workspace }}/issues_snapshot
       - name: Check UT Results
+        id: ut-check
+        continue-on-error: true
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
@@ -196,10 +206,136 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
+      - name: Collect new failures with error messages
+        if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
+        id: new-failures
+        run: |
+          cd ${{ github.workspace }}/ut_log/
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          ut_dir="${latest_dir}/${{ inputs.ut }}"
+          if [ "${{ inputs.ut }}" == "basic" ]; then
+            ut_list="op_regression op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          # Collect new failure case names from filtered logs produced by ut_result_check.sh
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          : > "$new_failure_list"
+          for ut_name in ${ut_list}; do
+            filtered_file="${ut_dir}/failures_${ut_name}_filtered.log"
+            if [ -s "$filtered_file" ]; then
+              cat "$filtered_file" >> "$new_failure_list"
+            fi
+          done
+          # Filter ut_failure_list.csv to keep only new failures (with error messages)
+          ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
+          new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
+          if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
+            # Keep header lines
+            head -2 "$ut_failure_csv" > "$new_failure_csv"
+            # Match rows by test_name from filtered log (format: category,class_name,test_name)
+            while IFS=',' read -r category class_name test_name; do
+              [ -z "$test_name" ] && continue
+              grep -F "$test_name" "$ut_failure_csv" >> "$new_failure_csv" || true
+            done < "$new_failure_list"
+            echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload new failure report
+        if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
+        id: upload-new-failures
+        uses: actions/upload-artifact@v4
+        with:
+          name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           overwrite: true
+      - name: Comment on PR for new failures
+        if: >-
+          ${{ ! cancelled() && github.event_name == 'pull_request'
+          && steps.new-failures.outputs.has_new_failures == 'true'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
+              || github.event.pull_request.user.login == 'copilot[bot]') }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.COPILOT_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prNumber = context.issue.number;
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const ut = '${{ inputs.ut }}';
+            const artifactUrl = '${{ steps.upload-new-failures.outputs.artifact-url }}';
+
+            // Read and parse new failure list csv (markdown table format)
+            const csvFile = '${{ github.workspace }}/ut_log/new_ut_failure_list.csv';
+            let failureTable = '';
+            let totalCount = 0;
+            if (fs.existsSync(csvFile)) {
+              const lines = fs.readFileSync(csvFile, 'utf8').trim().split('\n');
+              // Parse markdown table: remove last column (Source) and format as table
+              // Header is first line, separator is second line, data starts at third
+              if (lines.length > 2) {
+                const dataLines = lines.slice(2);
+                totalCount = dataLines.length;
+                const displayLines = dataLines.slice(0, 5);
+
+                // Build table without last column (Source)
+                const header = '| Category | Class name | Test name | Status | Message |';
+                const separator = '| --- | --- | --- | --- | --- |';
+                const rows = displayLines.map(line => {
+                  const cols = line.split(' | ');
+                  // Remove last column and rejoin
+                  return cols.slice(0, -1).join(' | ');
+                });
+
+                failureTable = [header, separator, ...rows].join('\n');
+                if (totalCount > 5) {
+                  failureTable += `\n\n... and ${totalCount - 5} more failures. See full list in artifact.`;
+                }
+              }
+            }
+
+            const body = [
+              `@copilot New UT failures detected in **${ut}** tests (${totalCount} total). Please check these new failures and analyze whether they are caused by the PR changes.`,
+              '',
+              '**Important: Do NOT update the plan in the PR description directly. Use reply comments to update the status.**',
+              '',
+              `Job log: ${jobUrl}`,
+              `Full new failure report: ${artifactUrl}`,
+              '',
+              '**New failures:**',
+              '',
+              failureTable,
+              '',
+              'Instructions:',
+              '1. Download the full new failure report artifact for complete error messages',
+              '2. Analyze whether the failures are caused by PR changes',
+              '3. If caused by PR changes, fix those failures on this PR branch directly',
+              '4. Add failing test cases with pytest commands in the PR description for the reproducer job to use',
+              '5. Use reply comments to report analysis status - do NOT modify the PR description plan directly'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
+      - name: Fail if UT check failed
+        if: ${{ steps.ut-check.outcome == 'failure' }}
+        run: |
+          new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
+          if [ -s "$new_failure_list" ]; then
+            echo "::error::UT check failed with new failures:"
+            cat "$new_failure_list"
+          else
+            echo "::error::UT check failed"
+          fi
+          exit 1
