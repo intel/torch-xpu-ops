@@ -27,7 +27,7 @@ struct MishFunctor {
   scalar_t operator()(scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t x_acc = static_cast<opmath_t>(x);
-    return x_acc * std::tanh(std::log1p(std::exp(x_acc)));
+    return x_acc * sycl::tanh(sycl::log1p(sycl::exp(x_acc)));
   }
 };
 
@@ -46,8 +46,8 @@ struct MishBackwardFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t dy_acc = static_cast<opmath_t>(dy);
     const opmath_t x_acc = static_cast<opmath_t>(x);
-    const opmath_t s_acc = opmath_t(1) / (opmath_t(1) + std::exp(-x_acc));
-    const opmath_t t_acc = std::tanh(std::log1p(std::exp(x_acc)));
+    const opmath_t s_acc = opmath_t(1) / (opmath_t(1) + sycl::exp(-x_acc));
+    const opmath_t t_acc = sycl::tanh(sycl::log1p(sycl::exp(x_acc)));
     return dy_acc * (t_acc + x_acc * s_acc * (opmath_t(1) - t_acc * t_acc));
   }
 };

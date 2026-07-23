@@ -84,27 +84,21 @@ void store_args(
 } // namespace
 
 namespace foreach_internal {
-// Implement std::isnan<IntegralType> for MSVC.
-// taken from
-// https://github.com/pytorch/pytorch/blob/a67691e50803b31e98043d22ae29da4c0135ab3c/aten/src/ATen/native/ReduceOps.cpp#L239-L256
+// Use sycl::isnan for floating-point types, std::isnan for complex types,
+// and return false for integral types (they can never be NaN).
+// sycl::isnan only accepts float, double, and sycl::half.
 namespace {
-#ifdef _MSC_VER
-template <typename T>
-inline typename std::enable_if<std::is_integral<T>::value, bool>::type isnan_(
-    T x) {
-  return false;
-}
-template <typename T>
-inline typename std::enable_if<!std::is_integral<T>::value, bool>::type isnan_(
-    T x) {
-  return std::isnan(x);
-}
-#else
 template <typename T>
 inline bool isnan_(T x) {
-  return std::isnan(x);
+  if constexpr (std::is_integral_v<T>) {
+    return false;
+  } else if constexpr (c10::is_complex<T>::value) {
+    return std::isnan(x);
+  } else {
+    using opmath_t = at::opmath_type<T>;
+    return sycl::isnan(static_cast<opmath_t>(x));
+  }
 }
-#endif
 } // namespace
 
 template <typename T>
@@ -232,7 +226,7 @@ struct PointwiseOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -298,7 +292,7 @@ struct PointwiseOpScalarListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -421,7 +415,7 @@ void binary_op_scalar(
     T** args,
     opmath_t scalar,
     int n,
-    int chunk_size,
+    int64_t chunk_size,
     bool all_aligned,
     Op op,
     size_t item_range,
@@ -478,14 +472,14 @@ void binary_op_scalar_tensor(
     scalar_t* scalar,
     opmath_t alpha,
     int n,
-    int chunk_size,
+    int64_t chunk_size,
     bool all_aligned,
     Op op,
     size_t item_range,
     size_t item_idx) {
   // deal with compiler error with bool for '*' operator:
   // "error: ‘*’ in boolean context, suggest ‘&&’ instead"
-  auto second_arg = std::is_same<opmath_t, bool>::value
+  auto second_arg = std::is_same_v<opmath_t, bool>
       ? static_cast<opmath_t>(alpha) && static_cast<opmath_t>(*scalar)
       : static_cast<opmath_t>(alpha) * static_cast<opmath_t>(*scalar);
   // to make things simple, we put aligned case in a different code path
@@ -637,7 +631,7 @@ struct BinaryOpScalarListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
@@ -712,14 +706,14 @@ struct TernaryOpListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op) const {
-    static_assert(depth == 3 || depth == 4, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 3 || depth == 4);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
@@ -779,15 +773,15 @@ struct TernaryOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op,
       opmath_t alpha) const {
-    static_assert(depth == 2 || depth == 3, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 2 || depth == 3);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
@@ -850,14 +844,14 @@ struct TernaryOpScalarListFunctor {
 
   template <typename TLA, typename TLW, typename Op>
   void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op) const {
-    static_assert(depth == 2 || depth == 3, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 2 || depth == 3);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);

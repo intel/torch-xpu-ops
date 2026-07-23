@@ -10,7 +10,6 @@
 
 #include <comm/xpu_aten.h>
 
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
@@ -166,6 +165,7 @@ void copy_kernel(TensorIteratorBase& iter) {
         kBool,
         kBFloat16,
         kComplexHalf,
+        kBComplex32,
         AT_EXPAND(AT_FLOAT8_TYPES),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }

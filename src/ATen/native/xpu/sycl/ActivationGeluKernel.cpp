@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
+#include <numbers>
 
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 
@@ -26,7 +27,8 @@ template <typename scalar_t>
 struct GeluTanhFunctor {
   scalar_t operator()(scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    constexpr opmath_t kBeta = M_SQRT2 * M_2_SQRTPI * opmath_t(0.5);
+    constexpr opmath_t kBeta =
+        std::numbers::sqrt2_v<opmath_t> * std::numbers::inv_sqrtpi_v<opmath_t>;
     constexpr opmath_t kKappa = 0.044715;
     auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x) *
         static_cast<opmath_t>(x);
@@ -40,7 +42,8 @@ template <typename scalar_t>
 struct GeluTanhBackwardFunctor {
   scalar_t operator()(scalar_t dy, scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    constexpr opmath_t kBeta = M_SQRT2 * M_2_SQRTPI * opmath_t(0.5);
+    constexpr opmath_t kBeta =
+        std::numbers::sqrt2_v<opmath_t> * std::numbers::inv_sqrtpi_v<opmath_t>;
     constexpr opmath_t kKappa = 0.044715;
     auto x_sq = static_cast<opmath_t>(x) * static_cast<opmath_t>(x);
     auto x_cube = x_sq * static_cast<opmath_t>(x);
@@ -64,9 +67,9 @@ template <typename scalar_t>
 struct GeluErfFunctor {
   scalar_t operator()(scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    constexpr opmath_t kAlpha = M_SQRT1_2;
+    constexpr opmath_t kAlpha = std::numbers::sqrt2_v<opmath_t> / 2;
     return static_cast<opmath_t>(x) * opmath_t(0.5) *
-        (opmath_t(1) + std::erf(static_cast<opmath_t>(x) * kAlpha));
+        (opmath_t(1) + sycl::erf(static_cast<opmath_t>(x) * kAlpha));
   }
 };
 
@@ -74,10 +77,10 @@ template <typename scalar_t>
 struct GeluErfBackwardFunctor {
   scalar_t operator()(scalar_t dy, scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    constexpr opmath_t kBeta = M_2_SQRTPI * M_SQRT1_2 * opmath_t(0.5);
-    constexpr opmath_t kAlpha = M_SQRT1_2;
+    constexpr opmath_t kAlpha = std::numbers::sqrt2_v<opmath_t> / 2;
+    constexpr opmath_t kBeta = std::numbers::inv_sqrtpi_v<opmath_t> * kAlpha;
     const opmath_t cdf = opmath_t(0.5) *
-        (opmath_t(1) + std::erf(static_cast<opmath_t>(x) * kAlpha));
+        (opmath_t(1) + sycl::erf(static_cast<opmath_t>(x) * kAlpha));
     const opmath_t pdf = c10::xpu::compat::exp(
                              opmath_t(-0.5) * static_cast<opmath_t>(x) *
                              static_cast<opmath_t>(x)) *

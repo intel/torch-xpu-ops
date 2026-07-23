@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'pvc-1100'
         description: Test node
       search_commits:
         required: true
@@ -47,29 +47,15 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  get_runner:
-    runs-on: ${{ inputs.runner }}
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-      hostname: ${{ steps.runner-info.outputs.hostname }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   biisect-search:
-    needs: get_runner
-    runs-on: ${{ needs.get_runner.outputs.runner_id }}
+    runs-on: ${{ inputs.runner }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_runner.outputs.user_id }} --group-add ${{ needs.get_runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
@@ -89,6 +75,10 @@ jobs:
         with:
           pytorch: nightly_wheel
           python: ${{ inputs.python }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh status
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
@@ -211,6 +201,11 @@ jobs:
             echo -e "\n\n\n${reulst_log}" |tee -a ${GITHUB_STEP_SUMMARY}
             cat ${reulst_log} |tee -a ${GITHUB_STEP_SUMMARY}
           done
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          bash ${{ github.workspace }}/gs-scripts/.github/scripts/freq-fixed.sh unlock
+          chown 1000:1000 /__w /github ./ -R
       - name: Upload Logs
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

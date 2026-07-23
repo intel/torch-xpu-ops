@@ -8,10 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/core/CachingHostAllocator.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/XPUHooksInterface.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <c10/core/ScalarType.h>
 #include <comm/SYCLContext.h>
 

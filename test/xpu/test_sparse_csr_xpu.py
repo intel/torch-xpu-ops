@@ -40,7 +40,6 @@ from torch.testing._internal.common_device_type import (
     OpDTypes,
     ops,
     precisionOverride,
-    skipCPUIf,
     skipCPUIfNoMklSparse,
     skipCUDAIf,
     skipCUDAIfNoSparseGeneric,
@@ -1301,7 +1300,6 @@ class TestSparseCompressed(TestCase):
             subtest("sparse_compressed_tensor_no_size"),
         ],
     )
-    @skipCPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2229")
     def test_invalid_input(self, layout, device, target):
         for (
             label,
@@ -3543,7 +3541,10 @@ class TestSparseCSR(TestCase):
             self.assertEqual(actual.shape, c.shape)
 
         for m, n, k in itertools.product([0, 5], repeat=3):
-            c = torch.empty(m, n, dtype=dtype, device=device, layout=torch.sparse_csr)
+            with torch.sparse.check_sparse_tensor_invariants(enable=False):
+                c = torch.empty(
+                    m, n, dtype=dtype, device=device, layout=torch.sparse_csr
+                )
             a = make_tensor((m, k), dtype=dtype, device=device)
             b = make_tensor((k, n), dtype=dtype, device=device)
             run_test(c, a, b)
@@ -5810,7 +5811,7 @@ class TestSparseCompressedTritonKernels(TestCase):
             key = (M, K, N, Ms, Ks, beta == 0, beta == 1, alpha == 1)
             update_bsr_dense_addmm_meta(
                 "bsr_dense_addmm",
-                device_type,
+                getattr(torch, device_type).get_device_name(),
                 ("test_triton_bsr_dense_addmm_meta", dtype, sparsity),
                 key,
                 value,

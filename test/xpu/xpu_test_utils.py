@@ -353,6 +353,10 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("nn.LazyConv2d", "test_memory_format"),
+    ("nn.Conv2d", "test_memory_format"),
+    ("nn.ConvTranspose2d", "test_memory_format"),
+    ("nn.LazyConvTranspose2d", "test_memory_format"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
@@ -360,7 +364,6 @@ _cuda_xfail_xpu_pass = [
     ("_refs.div", "test_python_ref"),
     ("_refs.pow", "test_python_ref"),
     ("_refs.pow", "test_python_ref_torch_fallback"),
-    ("_refs.mul", "test_python_ref_executor"),
     (
         "_refs.div",
         "test_python_ref_torch_fallback",
@@ -375,6 +378,17 @@ _cuda_xfail_xpu_pass = [
     ("sort", "test_non_standard_bool_values"),
 ]
 
+# Additional unscoped (device_type=None) expectedFailure entries that should
+# also be stripped for XPU.  This list is maintained separately from
+# _cuda_xfail_xpu_pass because it is related to, but not necessarily a literal
+# subset of, the CUDA-scoped overrides above.  Keeping it separate preserves
+# unscoped xfails that genuinely fail on XPU (e.g. complex-dtype memory-format
+# tests for ConvTranspose2d).
+_none_device_xfail_xpu_pass = [
+    ("_refs.mul", "test_python_ref_executor"),
+    ("_refs.pow", "test_python_ref_executor"),
+    ("_refs.true_divide", "test_python_ref_executor"),
+]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
@@ -969,7 +983,20 @@ def get_dtypesIf_mock(src_device_type: str):
     return dtypesIfXPUMock
 
 
-class XPUPatchForImport:
+class XPUImportCtx:
+    """Minimal context manager for importing upstream test modules on XPU.
+
+    Only performs the essential import mechanics:
+    - Extends sys.path so upstream test modules can be imported
+    - Suppresses instantiate_device_type_tests during import
+    - Suppresses instantiate_parametrized_tests during import
+    - Optionally replaces TestCase with NoTest to hide upstream classes from pytest
+
+    Does NOT apply any decorator remapping, op_db manipulation, or global state
+    faking. Test files using this are expected to work with upstream decorators
+    as-is, relying on upstream's native XPU support.
+    """
+
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "../../../../test"
@@ -979,20 +1006,44 @@ class XPUPatchForImport:
             os.path.join(test_dir, "nn"),
             os.path.join(test_dir, "distributions"),
             os.path.join(test_dir, "quantization/core"),
+            os.path.join(test_dir, "functorch"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
         self.test_case_cls = common_utils.TestCase
-        self.only_cuda_fn = common_device_type.onlyCUDA
-        self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
-        self.dtypes_if_xpu_fn = common_device_type.dtypesIfXPU
-        self.only_native_device_types_fn = common_device_type.onlyNativeDeviceTypes
         self.instantiate_device_type_tests_fn = (
             common_device_type.instantiate_device_type_tests
         )
         self.instantiate_parametrized_tests_fn = (
             common_utils.instantiate_parametrized_tests
         )
+
+    def __enter__(self):
+        common_device_type.instantiate_device_type_tests = DO_NOTHING
+        common_utils.instantiate_parametrized_tests = DO_NOTHING
+        if self.patch_test_case:
+            common_utils.TestCase = common_utils.NoTest
+        sys.path.extend(self.test_package)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.path = self.original_path
+        common_device_type.instantiate_device_type_tests = (
+            self.instantiate_device_type_tests_fn
+        )
+        common_utils.instantiate_parametrized_tests = (
+            self.instantiate_parametrized_tests_fn
+        )
+        common_utils.TestCase = self.test_case_cls
+
+
+class XPUPatchForImport(XPUImportCtx):
+    def __init__(self, patch_test_case=True) -> None:
+        super().__init__(patch_test_case)
+        self.only_cuda_fn = common_device_type.onlyCUDA
+        self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
+        self.dtypes_if_xpu_fn = common_device_type.dtypesIfXPU
+        self.only_native_device_types_fn = common_device_type.onlyNativeDeviceTypes
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
@@ -1022,6 +1073,23 @@ class XPUPatchForImport:
                         else:
                             wrapper.device_type = "xpu"
                             replaced = True
+                    elif (
+                        wrapper.device_type is None
+                        and unittest.expectedFailure in wrapper.decorators
+                        and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
+                    ):
+                        # For tests that are expected to fail on some devices but pass on XPU,
+                        # create an XPU-specific variant of the wrapper without expectedFailure.
+                        replaced = True
+                        new_wrapper = copy.copy(wrapper)
+                        new_wrapper.decorators = tuple(
+                            d
+                            for d in new_wrapper.decorators
+                            if d is not unittest.expectedFailure
+                        )
+                        new_wrapper.device_type = "xpu"
+                        wrapper_xpu.append(new_wrapper)
+                        continue
                     wrapper_xpu.append(wrapper)
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
@@ -1135,19 +1203,13 @@ class XPUPatchForImport:
                         opinfo.reference_inputs_func = reference_inputs_cat_nofp64
 
     def __enter__(self):
-        # Monkey patch until we have a fancy way
+        super().__enter__()
 
         common_device_type.onlyCUDA = common_device_type.onlyXPU
-
         common_device_type.skipXPU = _skipXPU
         common_device_type.dtypesIfCUDA = get_dtypesIf_mock("cuda")
         common_device_type.dtypesIfXPU = get_dtypesIf_mock("xpu")
-
         common_device_type.onlyNativeDeviceTypes = common_device_type.onlyXPU
-        if self.patch_test_case:
-            common_utils.TestCase = common_utils.NoTest
-        common_device_type.instantiate_device_type_tests = DO_NOTHING
-        common_utils.instantiate_parametrized_tests = DO_NOTHING
         common_device_type.largeTensorTest = (
             lambda size, device=None: self.largeTensorTest(
                 size, device if device and device != "cuda" else "xpu"
@@ -1173,23 +1235,13 @@ class XPUPatchForImport:
         torch.cuda.is_tf32_supported = is_tf32_supported
         torch.cuda.get_device_capability = torch.xpu.get_device_capability
 
-        sys.path.extend(self.test_package)
-
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        sys.path = self.original_path
         common_device_type.onlyCUDA = self.only_cuda_fn
         common_device_type.dtypesIfCUDA = self.dtypes_if_cuda_fn
         common_device_type.dtypesIfXPU = self.dtypes_if_xpu_fn
         common_device_type.onlyNativeDeviceTypes = self.only_native_device_types_fn
-        common_device_type.instantiate_device_type_tests = (
-            self.instantiate_device_type_tests_fn
-        )
-        common_utils.instantiate_parametrized_tests = (
-            self.instantiate_parametrized_tests_fn
-        )
-        common_utils.TestCase = self.test_case_cls
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
@@ -1197,6 +1249,7 @@ class XPUPatchForImport:
         torch.cuda.is_tf32_supported = self.cuda_is_tf32_supported
         torch.cuda.get_device_capability = self.cuda_get_device_capability
         common_device_type.skipXPU = self.skipXPU
+        super().__exit__(exc_type, exc_value, traceback)
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
@@ -1239,30 +1292,68 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    import subprocess
+
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     if skip_list is not None and len(skip_list) > 0:
-        skip_options = ' -k "not ' + skip_list[0]
-        for skip_case in skip_list[1:]:
-            skip_option = " and not " + skip_case
-            skip_options += skip_option
-        skip_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-        )
-        test_command += skip_options
+        k_expr = "not " + " and not ".join(skip_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_skip.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     elif exe_list is not None and len(exe_list) > 0:
-        exe_options = ' -k "' + exe_list[0]
-        for exe_case in exe_list[1:]:
-            exe_option = " or " + exe_case
-            exe_options += exe_option
-        exe_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-        )
-        test_command += exe_options
+        k_expr = " or ".join(exe_list)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_exe.{module_name}.xml",
+            test_case,
+            "-k",
+            k_expr,
+        ]
     else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
-    return os.system(test_command)
+        cmd_args = [
+            "pytest",
+            f"--junit-xml=./op_ut_with_all.{module_name}.xml",
+            test_case,
+        ]
+    # Use subprocess to avoid cmd.exe 8191-char command line limit on Windows
+    result = subprocess.run(cmd_args)
+    return result.returncode
+
+
+def ensure_pytorch_test_path(test_dir):
+    test_dir = os.path.abspath(test_dir)
+    if test_dir not in sys.path:
+        sys.path.insert(0, test_dir)
+
+
+def retarget_outermost_onlycuda_to_onlyon(test_method):
+    """Replaces an outermost onlyCUDA wrapper with onlyOn(['cuda', 'xpu'])."""
+
+    def is_onlycuda_wrapper(fn):
+        closure = getattr(fn, "__closure__", None)
+        if not closure:
+            return False
+
+        for cell in closure:
+            try:
+                obj = cell.cell_contents
+            except ValueError:
+                continue
+
+            if (
+                obj.__class__.__name__ == "onlyOn"
+                and getattr(obj, "device_type", None) == "cuda"
+            ):
+                return True
+
+        return False
+
+    if not is_onlycuda_wrapper(test_method):
+        return test_method
+
+    return common_device_type.onlyOn(["cuda", "xpu"])(test_method.__wrapped__)

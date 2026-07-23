@@ -8,7 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/WrapDimUtils.h>
@@ -19,7 +18,6 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/xpu/CachingHostAllocator.h>
 #include <c10/core/MemoryFormat.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
@@ -614,6 +612,7 @@ void cat_out_kernel(
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16,
@@ -651,6 +650,7 @@ void cat_out_kernel(
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16,

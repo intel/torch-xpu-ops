@@ -62,10 +62,6 @@ inline void adam_math(
     }
     opmath_t exp_avg = static_cast<opmath_t>(r_args[kExpAvgIdx][ii]);
     opmath_t exp_avg_sq = static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]);
-    opmath_t max_exp_avg_sq;
-    if (amsgrad) {
-      max_exp_avg_sq = static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]);
-    }
     // Update param, grad, 1st and 2nd order momentum.
     if (weight_decay != 0) {
       if constexpr (adam_mode == ADAM_MODE::ORIGINAL) {
@@ -79,11 +75,13 @@ inline void adam_math(
     exp_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * grad * grad;
     const opmath_t step_size = lr / bias_correction1;
     opmath_t denom;
-    if (amsgrad) {
-      max_exp_avg_sq = std::max(max_exp_avg_sq, exp_avg_sq);
-      denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+    if constexpr (amsgrad) {
+      opmath_t max_exp_avg_sq = std::max(
+          static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]), exp_avg_sq);
+      denom = (sycl::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+      r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
     } else {
-      denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = (sycl::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
     }
     param -= step_size * exp_avg / denom;
 
@@ -94,9 +92,6 @@ inline void adam_math(
     }
     r_args[kExpAvgIdx][ii] = exp_avg;
     r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
-    if (amsgrad) {
-      r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
-    }
   }
 }
 
@@ -108,7 +103,7 @@ struct FusedAdamMathFunctor {
   using opmath_t = at::opmath_type<scalar_type>;
   template <typename TLA, typename TLW>
   inline void operator()(
-      int chunk_size,
+      int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item,
@@ -136,9 +131,11 @@ struct FusedAdamMathFunctor {
         [&]() -> std::pair<double, double> {
       auto* step_count = reinterpret_cast<const float*>(
           tlAddress[tensor_loc].state_steps_addresses);
-      const auto bias_correction1 = 1 - std::pow(beta1, *step_count);
-      const auto bias_correction2 = 1 - std::pow(beta2, *step_count);
-      const auto bias_correction2_sqrt = std::sqrt(bias_correction2);
+      const auto bias_correction1 =
+          1 - sycl::pow(beta1, static_cast<double>(*step_count));
+      const auto bias_correction2 =
+          1 - sycl::pow(beta2, static_cast<double>(*step_count));
+      const auto bias_correction2_sqrt = sycl::sqrt(bias_correction2);
       return {bias_correction1, bias_correction2_sqrt};
     }();
 

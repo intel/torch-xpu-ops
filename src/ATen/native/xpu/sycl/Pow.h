@@ -9,8 +9,10 @@
  */
 
 #pragma once
+#include <ATen/OpMathType.h>
 #include <ATen/native/Pow.h>
 #include <c10/core/Scalar.h>
+#include <sycl/sycl.hpp>
 
 namespace at::native::xpu {
 
@@ -27,44 +29,53 @@ namespace {
 // pow for at::Half
 static inline at::Half pow_(at::Half base, at::Half exp) {
   return static_cast<at::Half>(
-      std::pow(static_cast<float>(base), static_cast<float>(exp)));
+      sycl::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow for at::BFloat16
 static inline at::BFloat16 pow_(at::BFloat16 base, at::BFloat16 exp) {
   return static_cast<at::BFloat16>(
-      std::pow(static_cast<float>(base), static_cast<float>(exp)));
+      sycl::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow (floating, floating/int)
 template <typename Base_type, typename Exp_type>
-static inline typename std::enable_if<
-    std::is_floating_point<Base_type>::value &&
-        (std::is_same<Base_type, Exp_type>::value ||
-         std::is_same<Exp_type, int>::value),
-    Base_type>::type
-pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  requires(
+      std::is_floating_point_v<Base_type> &&
+      (std::is_same_v<Base_type, Exp_type> || std::is_same_v<Exp_type, int>))
+static inline Base_type pow_(Base_type base, Exp_type exp) {
+  if constexpr (std::is_same_v<Exp_type, int>) {
+    return sycl::pown(base, exp);
+  } else {
+    return sycl::pow(base, exp);
+  }
 }
 // pow (Otherwise)
 template <typename Base_type, typename Exp_type>
-static inline typename std::enable_if<
-    !std::is_same<Base_type, Exp_type>::value &&
-        !std::is_same<Exp_type, int>::value,
-    Base_type>::type
-pow_(Base_type base, Exp_type exp) {
+  requires(
+      !std::is_same_v<Base_type, Exp_type> && !std::is_same_v<Exp_type, int>)
+static inline Base_type pow_(Base_type base, Exp_type exp) {
   return static_cast<Base_type>(
-      std::pow(static_cast<double>(base), static_cast<double>(exp)));
+      sycl::pow(static_cast<double>(base), static_cast<double>(exp)));
 }
 #else
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  // Both base and exp have the same scalar type in all current call paths
+  // They are promoted to opmath_t before entering at::native::xpu::pow_.
+  // Therefore a single opmath_t derived from Base_type.
+  // is sufficient for both operands.
+  using opmath_t = at::opmath_type<Base_type>;
+  if constexpr (
+      std::is_integral_v<Exp_type> && sizeof(Exp_type) <= sizeof(int)) {
+    return sycl::pown(static_cast<opmath_t>(base), static_cast<int>(exp));
+  } else {
+    return sycl::pow(static_cast<opmath_t>(base), static_cast<opmath_t>(exp));
+  }
 }
 #endif
 
 template <typename T>
-static inline std::enable_if_t<std::is_integral<T>::value, T> pow_(
-    T base,
-    T exp) {
+  requires std::is_integral_v<T>
+static inline T pow_(T base, T exp) {
   return at::native::powi(base, exp);
 }
 

@@ -14,6 +14,7 @@
 # flake8: noqa
 
 import contextlib
+import re
 import sys
 import unittest
 import unittest.mock as mock
@@ -53,6 +54,10 @@ from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import requires_gpu
 
 nested_compile_region = torch.compiler.nested_compile_region
+
+PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION = (
+    torch.xpu.is_available() and torch._C._is_flash_attention_available()
+)
 
 if HAS_GPU:
     import triton
@@ -252,7 +257,9 @@ class TestInvokeSubgraphCompile(TestCase):
         for node in invoke_subgraph_nodes:
             stack_trace = node.meta["stack_trace"]
             if not TEST_WITH_CROSSREF:
-                self.assertTrue(stack_trace.endswith("return mod(x, y) + mod(x, y)\n"))
+                # Strip caret lines (e.g. "  ~~~^^^^") that 3.13+ appends
+                clean = re.sub(r"\n[ ~^]*[~^][ ~^]*(?=\n|\Z)", "", stack_trace)
+                self.assertTrue(clean.endswith("return mod(x, y) + mod(x, y)\n"))
 
     def test_gen_schema(self):
         class Mod(torch.nn.Module):
@@ -632,6 +639,9 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(ref, res)
         self.assertEqual(x.grad, x_clone.grad)
 
+    @unittest.skipIf(
+        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION, "XPU flash attention not available"
+    )
     def test_sdpa(self):
         @nested_compile_region
         def gn(q, k, v):
@@ -1345,7 +1355,7 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(exp_out, out)
         self.assertEqual(x_clone, x)
 
-    def test_input_mutation_mutiple_times_fake_tensor_cahche_hit(self):
+    def test_input_mutation_mutiple_times_fake_tensor_cache_hit(self):
         @nested_compile_region
         def gn(x, y):
             x.add_(1)
@@ -1372,7 +1382,7 @@ class GraphModule(torch.nn.Module):
             return (operands[0].clone(),)
 
         with (
-            mock.patch(
+            mock.patch.dict(
                 "torch._higher_order_ops.utils.registered_hop_fake_fns",
                 {torch.ops.higher_order.invoke_subgraph: _mock_invoke_subgraph},
             ),
@@ -1822,7 +1832,9 @@ class GraphModule(torch.nn.Module):
 class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f32[8, 8]"):
         partitioned_fw_subgraph_0_0 = self.partitioned_fw_subgraph_0_0
+
         invoke_subgraph_2 = torch.ops.higher_order.invoke_subgraph(partitioned_fw_subgraph_0_0, 'partitioned_fw_subgraph_0_0', primals_1);  partitioned_fw_subgraph_0_0 = primals_1 = None
+
         getitem: "f32[8, 8]" = invoke_subgraph_2[0]
         getitem_1: "f32[8, 8]" = invoke_subgraph_2[1];  invoke_subgraph_2 = None
 
@@ -1843,7 +1855,9 @@ class GraphModule(torch.nn.Module):
 class GraphModule(torch.nn.Module):
     def forward(self, tangents_1: "f32[8, 8]"):
         partitioned_bw_subgraph_0_0 = self.partitioned_bw_subgraph_0_0
+
         invoke_subgraph_3 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_0, 'partitioned_bw_subgraph_0_0', tangents_1, tangents_1);  partitioned_bw_subgraph_0_0 = tangents_1 = None
+
         getitem_2: "f32[8, 8]" = invoke_subgraph_3[0];  invoke_subgraph_3 = None
         return (getitem_2,)
 
@@ -2015,12 +2029,15 @@ class GraphModule(torch.nn.Module):
 class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f32[8, 8]", primals_2: "f32[8, 8]"):
         partitioned_fw_subgraph_0_0 = self.partitioned_fw_subgraph_0_0
+
         invoke_subgraph_2 = torch.ops.higher_order.invoke_subgraph(partitioned_fw_subgraph_0_0, 'partitioned_fw_subgraph_0_0', primals_1, primals_2);  partitioned_fw_subgraph_0_0 = primals_1 = primals_2 = None
         getitem_6: "f32[8, 8]" = invoke_subgraph_2[3]
         getitem_5: "f32[8, 8]" = invoke_subgraph_2[2]
         getitem_4: "f32[8, 8]" = invoke_subgraph_2[1]
+
         getitem: "f32[8, 8]" = invoke_subgraph_2[0];  invoke_subgraph_2 = None
         sin: "f32[8, 8]" = torch.ops.aten.sin.default(getitem)
+
         cos: "f32[8, 8]" = torch.ops.aten.cos.default(getitem);  getitem = None
         return (sin, getitem_6, getitem_5, getitem_4, cos)
 
@@ -2043,7 +2060,9 @@ class GraphModule(torch.nn.Module):
     def forward(self, getitem_6: "f32[8, 8]", getitem_5: "f32[8, 8]", getitem_4: "f32[8, 8]", cos: "f32[8, 8]", tangents_1: "f32[8, 8]"):
         mul: "f32[8, 8]" = torch.ops.aten.mul.Tensor(tangents_1, cos);  tangents_1 = cos = None
         partitioned_bw_subgraph_0_0 = self.partitioned_bw_subgraph_0_0
+
         invoke_subgraph_3 = torch.ops.higher_order.invoke_subgraph(partitioned_bw_subgraph_0_0, 'partitioned_bw_subgraph_0_0', getitem_4, getitem_5, getitem_6, mul);  partitioned_bw_subgraph_0_0 = getitem_4 = getitem_5 = getitem_6 = mul = None
+
         getitem_1: "f32[8, 8]" = invoke_subgraph_3[0]
         getitem_2: "f32[8, 8]" = invoke_subgraph_3[1];  invoke_subgraph_3 = None
         return (getitem_1, getitem_2)
@@ -2443,10 +2462,7 @@ class GraphModule(torch.nn.Module):
             if grid_type == 0:
                 grid = (x.numel(),)
             elif grid_type == 1:
-
-                def grid(meta):
-                    return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
+                grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
             else:
                 grid = grid_fn
 
@@ -2509,7 +2525,7 @@ class GraphModule(torch.nn.Module):
         def forward(self, x: "f32[5]", y: "f32[5]"):
             o: "f32[5]" = torch.zeros_like(x)
 
-            triton_kernel_wrapper_mutation = torch.ops.higher_order.triton_kernel_wrapper_mutation(kernel_idx = 0, constant_args_idx = 0, grid = [(5, 1, 1)], tma_descriptor_metadata = {}, kwargs = {'in_ptr0': x, 'in_ptr1': y, 'out_ptr': o});  x = y = triton_kernel_wrapper_mutation = None
+            triton_kernel_wrapper_mutation = torch.ops.higher_order.triton_kernel_wrapper_mutation(kernel_idx = 0, constant_args_idx = 0, grid = [(5, 1, 1)], tma_descriptor_metadata = {}, kwargs = {'in_ptr0': x, 'in_ptr1': y, 'out_ptr': o}, launch_kwargs = ('BLOCK_SIZE',));  x = y = triton_kernel_wrapper_mutation = None
 
             sin: "f32[5]" = o.sin();  o = None
             return (sin,)

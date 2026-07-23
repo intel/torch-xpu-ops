@@ -10,11 +10,15 @@
 
 #pragma once
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SortingCommon.h>
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
+#include <cstdint>
+
+#include <bit>
 
 namespace at {
 namespace native {
@@ -108,22 +112,21 @@ struct SegmentedRadixSortPairsUpsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
-        method_t::PROCESSING_LENGTH;
-    int seg_idx = item.get_group(0) / num_tiles;
-    int tile_idx = item.get_group(0) % num_tiles;
+    int seg_idx = item.get_group(0) / num_tiles_;
+    int tile_idx = item.get_group(0) % num_tiles_;
     auto keys_in_seg = keys_in_ + seg_idx * num_elements_;
-    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles;
+    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles_;
     int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
-    int tile_end = tile_offset + method_t::PROCESSING_LENGTH;
-    tile_end = tile_end > num_elements_ ? num_elements_ : tile_end;
+    int tile_end = (num_elements_ - tile_offset < method_t::PROCESSING_LENGTH)
+        ? num_elements_
+        : tile_offset + method_t::PROCESSING_LENGTH;
     auto method = method_t(
         item,
         keys_in_seg,
         tile_idx,
         begin_bit_,
         end_bit_,
-        num_tiles,
+        num_tiles_,
         counts_seg,
         slm_);
     method.run(tile_offset, tile_end);
@@ -135,11 +138,13 @@ struct SegmentedRadixSortPairsUpsweepFunctor
       const key_t* keys_in,
       int* counts,
       int num_elements,
+      int num_tiles,
       int begin_bit,
       int end_bit)
       : keys_in_(keys_in),
         counts_(counts),
         num_elements_(num_elements),
+        num_tiles_(num_tiles),
         begin_bit_(begin_bit),
         end_bit_(end_bit) {}
 
@@ -147,6 +152,7 @@ struct SegmentedRadixSortPairsUpsweepFunctor
   const key_t* keys_in_;
   int* counts_;
   int num_elements_;
+  int num_tiles_;
   int begin_bit_;
   int end_bit_;
   sycl_local_acc_t<char> slm_;
@@ -173,10 +179,10 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
-      method_t::PROCESSING_LENGTH;
+  int num_tiles = static_cast<int>(
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
   auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
-      keys_in, counts, num_elements, begin_bit, end_bit);
+      keys_in, counts, num_elements, num_tiles, begin_bit, end_bit);
   sycl_kernel_submit(
       num_segments * num_tiles * GROUP_SIZE,
       GROUP_SIZE,
@@ -230,20 +236,18 @@ struct SegmentedRadixSortPairsDownsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
   void operator()(sycl::nd_item<1> item) const {
-    int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
-        method_t::PROCESSING_LENGTH;
-    int seg_idx = item.get_group(0) / num_tiles;
-    int tile_idx = item.get_group(0) % num_tiles;
+    int seg_idx = item.get_group(0) / num_tiles_;
+    int tile_idx = item.get_group(0) % num_tiles_;
     int seg_offset = seg_idx * num_elements_;
     int tile_offset = tile_idx * method_t::PROCESSING_LENGTH;
-    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles;
+    auto counts_seg = counts_ + seg_idx * method_t::RADIX_BUCKETS * num_tiles_;
     auto method = method_t(item, slm_);
     method.load_keys(keys_in_ + seg_offset, num_elements_, tile_offset);
     method.load_values(
         values_in_ == nullptr ? nullptr : values_in_ + seg_offset,
         num_elements_,
         tile_offset);
-    method.load_bin_offsets(counts_seg, tile_idx, num_tiles);
+    method.load_bin_offsets(counts_seg, tile_idx, num_tiles_);
     method.rank_keys(begin_bit_, end_bit_);
     method.exchange_and_store_keys(keys_out_ + seg_offset, num_elements_);
     method.exchange_and_store_values(values_out_ + seg_offset, num_elements_);
@@ -257,6 +261,7 @@ struct SegmentedRadixSortPairsDownsweepFunctor
       const value_t* values_in,
       value_t* values_out,
       int num_elements,
+      int num_tiles,
       int begin_bit,
       int end_bit,
       int* counts)
@@ -265,6 +270,7 @@ struct SegmentedRadixSortPairsDownsweepFunctor
         values_in_(values_in),
         values_out_(values_out),
         num_elements_(num_elements),
+        num_tiles_(num_tiles),
         begin_bit_(begin_bit),
         end_bit_(end_bit),
         counts_(counts) {}
@@ -275,6 +281,7 @@ struct SegmentedRadixSortPairsDownsweepFunctor
   const value_t* values_in_;
   value_t* values_out_;
   int num_elements_;
+  int num_tiles_;
   int begin_bit_;
   int end_bit_;
   int* counts_;
@@ -305,8 +312,8 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
-      method_t::PROCESSING_LENGTH;
+  int num_tiles = static_cast<int>(
+      ceil_div<int64_t>(num_elements, method_t::PROCESSING_LENGTH));
   auto caller =
       SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
           keys_in,
@@ -314,6 +321,7 @@ void segmented_radix_sort_pairs_downsweep_kernel(
           values_in,
           values_out,
           num_elements,
+          num_tiles,
           begin_bit,
           end_bit,
           count);
@@ -349,7 +357,7 @@ void segmented_radix_sort_pairs_kernel(
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
   int num_tiles =
-      (num_elements + TILE_PROCESSING_LENGTH - 1) / TILE_PROCESSING_LENGTH;
+      static_cast<int>(ceil_div<int64_t>(num_elements, TILE_PROCESSING_LENGTH));
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
@@ -359,11 +367,12 @@ void segmented_radix_sort_pairs_kernel(
   value_t* values_temp;
 
   at::DataPtr counts_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * RADIX_BUCKETS * num_tiles * sizeof(int));
+      static_cast<size_t>(num_segments) * RADIX_BUCKETS * num_tiles *
+      sizeof(int));
   at::DataPtr keys_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(key_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(key_t));
   at::DataPtr values_temp_data = c10::GetAllocator(kXPU)->allocate(
-      num_segments * num_elements * sizeof(value_t));
+      static_cast<size_t>(num_segments) * num_elements * sizeof(value_t));
 
   counts = (int*)counts_data.get();
   keys_temp = (key_t*)keys_temp_data.get();
@@ -422,7 +431,7 @@ void segmented_radix_sort_pairs_kernel(
 
   // Among basic types, the bit size of bool is not an even multiple of 4. AB
   // buffer switching is required.
-  if constexpr (std::is_same<key_t, bool>::value) {
+  if constexpr (std::is_same_v<key_t, bool>) {
     auto input_calc = TrivialOffsetCalculator<2>();
     at::detail::Array<char*, 2> data;
     if (keys_out) {
@@ -669,17 +678,6 @@ void sort_pairs(
       keys_in, keys_out, values_in, values_out, 1, num_elements, descending);
 }
 
-inline uint64_t radix_select_last_power2(uint64_t n) {
-  n--;
-  n |= n >> 1;
-  n |= n >> 2;
-  n |= n >> 4;
-  n |= n >> 8;
-  n |= n >> 16;
-  n++;
-  return n;
-}
-
 template <
     typename key_t,
     typename value_t,
@@ -712,7 +710,7 @@ void segmented_group_select_pairs_(
   }
   constexpr int max_group_size = 1024; // simd32-specific
   if (num_elements <= max_group_size * 4) {
-    switch (radix_select_last_power2(num_elements)) {
+    switch (std::bit_ceil(static_cast<uint64_t>(num_elements))) {
       case 4096:
         RUN_RADIX_SELECT(4096); // gsz 1024
         break;

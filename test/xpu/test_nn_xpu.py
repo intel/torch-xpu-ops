@@ -62,6 +62,7 @@ from torch.testing._internal.common_device_type import (
     onlyNativeDeviceTypes,
     onlyOn,
     precisionOverride,
+    skipCPUIf,
     skipCUDAIf,
     skipCUDAIfNotRocm,
     skipCUDAIfRocm,
@@ -122,6 +123,15 @@ from torch.testing._internal.common_utils import (
 from torch.types import _TensorOrTensors
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
+
+# Based on third_party/ideep/mkl-dnn/src/cpu/x64/cpu_isa_traits.hpp
+IS_AVX2_VNNI_2 = (
+    torch.cpu.get_capabilities().get("avx2", False)
+    and torch.cpu.get_capabilities().get("avx_vnni", False)
+    and torch.cpu.get_capabilities().get("avx_vnni_int8", False)
+    and torch.cpu.get_capabilities().get("avx_ne_convert", False)
+    and not torch.cpu.get_capabilities().get("avx512_f", False)
+)
 
 if TEST_WITH_ROCM:
     os.environ["PYTORCH_MIOPEN_SUGGEST_NHWC"] = "1"
@@ -348,6 +358,13 @@ class TestNN(NNTestCase):
 
     def test_no_grad(self):
         for dtype in [torch.bfloat16, torch.float, torch.double]:
+            if (
+                dtype == torch.bfloat16
+                and IS_AVX2_VNNI_2
+                and torch.backends.mkldnn.enabled
+            ):
+                # oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA
+                continue
             module = nn.Conv2d(2, 5, kernel_size=3, padding=1).to(dtype)
             input = torch.randn(1, 2, 10, 10).to(dtype)
             x = input
@@ -4292,7 +4309,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 x_wrong,
             )
 
-    @unittest.skipIf(not TEST_CUDNN, "CUDNN not available")
     def test_cudnn_weight_format(self):
         rnns = [
             nn.LSTM(10, 20, batch_first=True),
@@ -4300,19 +4316,19 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             nn.GRU(10, 20, batch_first=True),
             nn.RNN(10, 20, batch_first=True),
         ]
-        # ROCm RNN does not issue warning about single contig chunk of memory, so don't assert it
-        first_warn = not torch.version.hip
+        # XPU RNN does not issue warning about single contig chunk of memory, so don't assert it
+        first_warn = not torch.version.xpu
         for rnn in rnns:
             rnn.to(device_type)
-            input = torch.randn(5, 4, 10, requires_grad=True, device="cuda")
-            hx = torch.randn(1, 5, 20, requires_grad=True, device="cuda")
+            input = torch.randn(5, 4, 10, requires_grad=True, device=device_type)
+            hx = torch.randn(1, 5, 20, requires_grad=True, device=device_type)
             all_vars = [input, hx] + list(rnn.parameters())
             if isinstance(rnn, nn.LSTM):
                 # LSTM with projections has different hx size
                 if rnn.proj_size > 0:
-                    hx = torch.randn(1, 5, 10, requires_grad=True, device="cuda")
+                    hx = torch.randn(1, 5, 10, requires_grad=True, device=device_type)
                     all_vars[1] = hx
-                cx = torch.randn(1, 5, 20, requires_grad=True, device="cuda")
+                cx = torch.randn(1, 5, 20, requires_grad=True, device=device_type)
                 all_vars[2:2] = [cx]
                 hx = (hx, cx)
 
@@ -9604,15 +9620,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             tensor_output = unflatten(tensor_input)
             self.assertEqual(tensor_output.size(), torch.Size([2, 2, 5, 5]))
 
-        # Unflatten NamedTensor
-
-        unflatten = nn.Unflatten(
-            dim="features", unflattened_size=(("C", 2), ("H", 5), ("W", 5))
-        )
-        named_tensor_input = tensor_input.refine_names("N", "features")
-        named_tensor_output = unflatten(named_tensor_input)
-        self.assertEqual(named_tensor_output.size(), torch.Size([2, 2, 5, 5]))
-
     def test_unflatten_invalid_arg(self):
         # Wrong type for unflattened_size (tuple of floats)
 
@@ -9621,34 +9628,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             r"unflattened_size must be tuple of ints, but found element of type float at pos 2",
         ):
             nn.Unflatten(dim=1, unflattened_size=(2, 5, 5.0))
-
-        # Wrong type for unflattened_size (list of lists and list of tuples)
-        for us in ([["C", 2], ["W", 5], ["H", 5]], [("C", 2), ("W", 5), ("H", 5)]):
-            with self.assertRaisesRegex(
-                TypeError,
-                r"unflattened_size must be a tuple of tuples, but found type list",
-            ):
-                nn.Unflatten(dim="features", unflattened_size=us)
-
-        # Wrong type for unflattened_size (tuple of lists)
-
-        with self.assertRaisesRegex(
-            TypeError,
-            r"unflattened_size must be tuple of tuples, but found element of type list at pos 0",
-        ):
-            nn.Unflatten(
-                dim="features", unflattened_size=(["C", 2], ["W", 5], ["H", 5])
-            )
-
-        # Wrong type for unflattened_size (tuple of dicts)
-
-        with self.assertRaisesRegex(
-            TypeError,
-            r"unflattened_size must be tuple of tuples, but found element of type dict at pos 0",
-        ):
-            nn.Unflatten(
-                dim="features", unflattened_size=({"C": 2}, {"W": 5}, {"H": 5})
-            )
 
     def test_layer_norm_grads_with_create_graph_flag(self):
         atol = 1e-5
@@ -15781,6 +15760,10 @@ class TestNNDeviceType(NNTestCase):
 
     @onlyCPU
     @dtypes(torch.bfloat16, torch.float16)
+    @skipCPUIf(
+        IS_AVX2_VNNI_2 and torch.backends.mkldnn.enabled,
+        "oneDNN does not support bf16/fp16 backward on the avx2_vnni_2 CPU ISA",
+    )
     def test_activations_bfloat16_half_cpu(self, device, dtype):
         def test_helper(fn, device, inp_dims, prec=None):
             torch.manual_seed(37)

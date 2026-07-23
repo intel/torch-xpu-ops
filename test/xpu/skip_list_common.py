@@ -6,33 +6,51 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+PYTORCH_TEST_DIR = "../../../../test"
+
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
-    "nn/test_embedding_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_embedding.py": None,
     "nn/test_init_xpu.py": None,
     "nn/test_lazy_modules_xpu.py": None,
-    "nn/test_load_state_dict_xpu.py": None,
-    "nn/test_module_hooks_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_load_state_dict.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_module_hooks.py": None,
     "nn/test_multihead_attention_xpu.py": None,
     "nn/test_packed_sequence_xpu.py": None,
     "nn/test_parametrization_xpu.py": None,
     "nn/test_pooling_xpu.py": None,
-    "nn/test_pruning_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/nn/test_pruning.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Tensor-likes are not close!
         # RuntimeError: value cannot be converted to type int without overflow
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # AssertionError: Quantized tensor-likes are not close!
+        # Rounding mismatch at quantization midpoint due to hypothesis
+        # derandomize seed difference from _xpu suffix.
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_leaky_relu_observed_output_xpu",
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
         "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
         "test_qrelu_xpu",
+        # CPU-only qnnpack backend, not applicable to XPU
+        "test_qsoftmax_qnnpack_xpu",
     ),
-    "quantization/core/test_quantized_tensor_xpu.py": None,
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_qtensor_cuda_xpu",
+        "test_qtensor_masked_fill_cuda_xpu",
+        "test_qtensor_index_put_cuda_xpu",
+        "test_qtensor_index_select_cuda_xpu",
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        "test_per_channel_to_device_xpu",
+        "test_per_tensor_to_device_xpu",
+    ),
     "quantization/core/test_workflow_module_xpu.py": None,
     "quantization/core/test_workflow_ops_xpu.py": (
         # AssertionError:
@@ -41,6 +59,11 @@ skip_dict = {
         # AssertionError:
         # Not equal to tolerance rtol=1e-06, atol=1e-06
         "test_forward_per_tensor_xpu",
+        # deprecated fake quantization stack, https://github.com/intel/torch-xpu-ops/issues/2434
+        # https://docs.pytorch.org/docs/2.12/quantization.html
+        # https://dev-discuss.pytorch.org/t/torch-ao-quantization-migration-plan/2810
+        # https://dev-discuss.pytorch.org/t/clarification-of-pytorch-quantization-flow-support-in-pytorch-and-torchao/2809
+        "test_fq_module_per_tensor_xpu",
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
@@ -67,6 +90,14 @@ skip_dict = {
         "test_quick_core_backward_baddbmm_xpu_float64",
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_comprehensive_grid_sampler_2d_xpu_float32",
+        "test_comprehensive_grid_sampler_2d_xpu_float64",
+        # Slow test cases: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward_clamp_max_xpu_float64",
+        "test_quick_core_backward_clamp_min_xpu_float64",
+        # Slow test case: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
@@ -111,12 +142,17 @@ skip_dict = {
         "narrow_copy",
         "histogramdd",
         "_jiterator_",
+        # https://github.com/intel/torch-xpu-ops/issues/2285
+        "_efficient_attention_forward",
     ),
     "test_modules_xpu.py": None,
-    "test_namedtensor_xpu.py": None,
-    "test_native_functions_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_native_functions.py": None,
     "test_native_mha_xpu.py": None,
-    "test_nn_xpu.py": None,
+    "test_nn_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuDNN CTC test uses CUDA-only backend/device assumptions.
+        "test_ctc_loss_cudnn_tensor_cuda_xpu",
+    ),
     "test_ops_fwd_gradients_xpu.py": None,
     "test_ops_gradients_xpu.py": None,
     "test_ops_xpu.py": (
@@ -149,8 +185,13 @@ skip_dict = {
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
     "test_sparse_xpu.py": None,
-    "test_spectral_ops_xpu.py": None,
+    "test_spectral_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # cuFFT plan cache is CUDA-specific and has no XPU equivalent.
+        "test_cufft_plan_cache_xpu_float64",
+    ),
     "test_tensor_creation_ops_xpu.py": None,
+    "test_testing_xpu.py": None,
     "test_torch_xpu.py": (
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
@@ -174,78 +215,23 @@ skip_dict = {
         "test_storage_error",
         # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
         # under pytest -k substring semantics used by the XPU skip runner.
+        # https://github.com/intel/torch-xpu-ops/issues/2531
+        # CudaSyncGuard has no XPU counterpart yet.
+        "test_sync_warning_xpu",
         "test_print",
         "test_tensor_storage_type_xpu",
     ),
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
         "test_math_backend_high_precision_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3133#issuecomment-4211942967
+        # https://github.com/intel/torch-xpu-ops/issues/3482
+        "test_fused_kernels_nested_broadcasting_kernel",
         # https://github.com/intel/torch-xpu-ops/issues/3133
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         "test_scaled_dot_product_attention_fused_kernels_packed_type_nested_is_contiguous_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         "test_fused_kernels_seq_len_1_inputs_fused_kernel1_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_scaled_dot_product_attention_fused_kernels_packed_accuracy_type_nested_fused_kernel1_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_fused_kernels_nested_broadcasting_query_dense_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel1_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3129
         "test_fused_backwards_throws_determinism_warning_fused_kernel1_warn_only_True_xpu",
         "test_invalid_fused_inputs_dim_3_kernel2_xpu",
@@ -269,78 +255,18 @@ skip_dict = {
         "test_fused_sdp_priority_order_use_compile_True_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/3132
         "test_cudnn_attention_seqlen1_dropout_heuristic_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
         "test_scaled_dot_product_attention_fused_kernels_packed_accuracy_type_nested_fused_kernel0_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_False_expand_q_num_heads_False_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
         "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_False_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_False_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_False_expand_k_num_heads_True_expand_v_num_heads_False_xpu",
         "test_fused_kernels_seq_len_1_inputs_fused_kernel0_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_True_expand_k_batch_True_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_False_expand_v_num_heads_True_xpu",
-        "test_fused_kernels_nested_broadcasting_kernel0_expand_q_batch_False_expand_k_batch_False_expand_v_batch_True_expand_q_num_heads_True_expand_k_num_heads_True_expand_v_num_heads_True_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
-    "test_view_ops_xpu.py": None,
+    "test_view_ops_xpu.py": (
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_ravel_xpu",
+        "test_flatten_xpu",
+    ),
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
     "functorch/test_eager_transforms_xpu.py": None,
@@ -352,9 +278,18 @@ skip_dict = {
         "test_cudnn_rnn",
     ),
     "test_compile_benchmark_util_xpu.py": None,
-    "test_hub_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_hub.py": None,
     "test_matmul_cuda_xpu.py": None,
-    "test_custom_ops_xpu.py": None,
+    "test_custom_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/3644
+        # CPU-only tests, flaky under pytest-xdist worksteal scheduling
+        "test_backward_dict_grad_for_nontensor",
+        "test_backward_dict_invalid_keys",
+        "test_backward_dict_requires_keys_for_input_optional_tensors",
+        "test_backward_dict_requires_keys_for_input_tensors",
+        "test_backward_grads_are_tensor_or_none",
+        "test_backward_impl_on_existing_op",
+    ),
     "test_flop_counter_xpu.py": None,
     "test_legacy_vmap_xpu.py": None,
     "test_utils_xpu.py": None,
@@ -383,8 +318,31 @@ skip_dict = {
     "export/test_serdes_xpu.py": None,
     "export/test_serialize_xpu.py": None,
     "export/test_strict_export_v2_xpu.py": None,
-    "export/test_torchbind_xpu.py": None,
+    "export/test_export_strict_xpu.py": None,
+    "export/test_torchbind_xpu.py": (
+        # Skipped due to lack of _TorchScriptTesting::queue_push implementation.
+        # It will not be added as the whole TorchScript is currently deprecated.
+        "test_export_obj_torchbind_op_with_autocast_device_xpu",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_inductor",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_aot_eager",
+        "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
+    ),
     "functorch/test_aotdispatch_xpu.py": None,
+    "dynamo/test_aot_autograd_cache_xpu.py": (
+        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
+        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
+        "test_cache_hot_load_device_cpu",
+        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
+        "test_cache_lazy_backward_for_compiled_autograd",
+    ),
+    "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_deviceguard_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
+    "dynamo/test_misc_xpu.py": None,
+    "dynamo/test_regional_inductor_xpu.py": None,
+    "dynamo/test_streams_xpu.py": None,
+    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "test_basic_torch_np_xpu.py": None,
     "test_fx_xpu.py": None,
@@ -400,4 +358,5 @@ skip_dict = {
     "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
+    "test_fx_experimental_xpu.py": None,
 }
