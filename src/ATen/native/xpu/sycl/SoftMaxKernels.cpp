@@ -241,6 +241,11 @@ struct DispatchSoftmaxForwardKernelFunctor
     }
     vec_t reg_in[outer_loop];
     vec_t reg_mask[outer_loop];
+    // Softmax needs exp(x - max) in both the sum and output passes. Since exp
+    // is an expensive math operation, cache the first result to avoid issuing a
+    // second math exp per element. LogSoftMax does not use this cache, hence
+    // maybe_unused.
+    [[maybe_unused]] accscalar_t reg_exp[outer_loop][vec_size];
     auto lid_offset = lid_col * vec_size;
     auto local_stride = local_size_ * vec_size;
 
@@ -292,7 +297,11 @@ struct DispatchSoftmaxForwardKernelFunctor
          ++i) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value += sycl::exp(reg_in[i][j] - max_value);
+        auto exp_value = sycl::exp(reg_in[i][j] - max_value);
+        if constexpr (!LogSoftMax) {
+          reg_exp[i][j] = exp_value;
+        }
+        sum_value += exp_value;
       }
     }
     if (local_size_ > 1) {
@@ -331,8 +340,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           } else if (sum_value == 0) {
             reg_in[i][j] = nan_;
           } else {
-            reg_in[i][j] = static_cast<outscalar_t>(
-                sycl::exp(reg_in[i][j] - max_value) * sum_value);
+            reg_in[i][j] = static_cast<outscalar_t>(reg_exp[i][j] * sum_value);
           }
         } else {
           if constexpr (LogSoftMax) {
@@ -345,8 +353,8 @@ struct DispatchSoftmaxForwardKernelFunctor
           } else if (sum_value == 0) {
             out_data_point[j] = static_cast<outscalar_t>(nan_);
           } else {
-            out_data_point[j] = static_cast<outscalar_t>(
-                sycl::exp(reg_in[i][j] - max_value) * sum_value);
+            out_data_point[j] =
+                static_cast<outscalar_t>(reg_exp[i][j] * sum_value);
           }
         }
       }
