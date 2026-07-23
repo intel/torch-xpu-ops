@@ -89,9 +89,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item, val, welford_op, shared_);
 
     if (item.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       mean_[i] = m1;
       rstd_[i] = rstd_val;
@@ -174,9 +172,7 @@ struct GNRowwiseMomentsVectorizedFunctor
       vec_t rstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        T_ACC m1;
-        T_ACC m2;
-        std::tie(m2, m1) = welford_op.project(val[v]);
+        auto [m2, m1] = welford_op.project(val[v]);
         T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
         mean_vec[v] = m1;
         rstd_vec[v] = rstd_val;
