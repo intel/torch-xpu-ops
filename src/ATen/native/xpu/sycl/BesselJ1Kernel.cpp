@@ -9,9 +9,9 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/Scalar.h>
 
 #include <ATen/native/xpu/sycl/BesselJ1Kernel.h>
