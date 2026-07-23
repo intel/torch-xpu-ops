@@ -178,6 +178,9 @@ def bench_allgather_permute_fusion(sbuf, hidden_shard, topk_idx, topk_weights,
 
     symm_latencies = timed_loop(run_symm, LOOP, WARMUP)
 
+    # Per-op breakdown (notify_dispatch vs ring op) when enabled.
+    sbuf.report_ring_timing(rank)
+
     # --- Accuracy check: SymmBuffer vs all_gather reference (matches dist UT) ---
     run_symm()
     torch.xpu.synchronize()

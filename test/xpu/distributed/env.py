@@ -84,6 +84,17 @@ def symm_buffer_debug():
     return os.environ.get(SYMM_BUFFER_DEBUG_ENV, SYMM_BUFFER_DEBUG_DEFAULT) == "1"
 
 
+SYMM_BUFFER_TIME_BREAKDOWN_ENV = "SYMM_BUFFER_TIME_BREAKDOWN"
+SYMM_BUFFER_TIME_BREAKDOWN_DEFAULT = "0"
+
+
+def symm_buffer_time_breakdown():
+    """SYMM_BUFFER_TIME_BREAKDOWN=1 records per-op (notify / ring) timings."""
+    return os.environ.get(
+        SYMM_BUFFER_TIME_BREAKDOWN_ENV, SYMM_BUFFER_TIME_BREAKDOWN_DEFAULT
+    ) == "1"
+
+
 def fusion_ring_dispatch():
     """Dispatch policy for allgather+permute: auto / 1 / 0."""
     return os.environ.get(

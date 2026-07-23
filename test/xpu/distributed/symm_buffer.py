@@ -25,6 +25,7 @@ import env
 # Debug logging controlled by SYMM_BUFFER_DEBUG environment variable.
 # Set SYMM_BUFFER_DEBUG=1 to enable detailed input/output logging.
 _SYMM_BUFFER_DEBUG = env.symm_buffer_debug()
+_SYMM_BUFFER_TIME_BREAKDOWN = env.symm_buffer_time_breakdown()
 _logger = logging.getLogger("SymmBuffer")
 if _SYMM_BUFFER_DEBUG and not _logger.handlers:
     _handler = logging.StreamHandler()
@@ -165,6 +166,12 @@ class SymmBuffer:
         self.num_topk = num_topk
         self.hidden_dtype = hidden_dtype
         self.count = 0
+        # Optional per-op timing (notify_dispatch vs ring_allgather_permute).
+        # Enabled via SYMM_BUFFER_TIME_BREAKDOWN=1. Each entry is a tuple of
+        # (notify_begin, notify_end, ring_begin, ring_end) XPU timing events;
+        # call report_ring_timing() after a synchronize to summarize them.
+        self._time_breakdown = _SYMM_BUFFER_TIME_BREAKDOWN
+        self._timing_events = []
 
         device = f"xpu:{self.rank_idx}"
         num_tokens_max = num_max_tokens_per_rank * self.num_ranks
@@ -640,6 +647,13 @@ class SymmBuffer:
             self._global_scale_buf[:num_tokens] if scale is not None else None
         )
 
+        if self._time_breakdown:
+            notify_begin = torch.xpu.Event(enable_timing=True)
+            notify_end = torch.xpu.Event(enable_timing=True)
+            ring_begin = torch.xpu.Event(enable_timing=True)
+            ring_end = torch.xpu.Event(enable_timing=True)
+            notify_begin.record()
+
         if scale is not None:
             torch.ops.symm_mem.notify_dispatch_with_scale(
                 self._topk_rank_ptrs,
@@ -708,6 +722,9 @@ class SymmBuffer:
             if _FUSION_RING_PUSH
             else torch.ops.symm_mem.ring_allgather_permute
         )
+        if self._time_breakdown:
+            notify_end.record()
+            ring_begin.record()
         ring_op(
             hidden_shard,
             self._ring_rank_buffers_ptr,
@@ -719,6 +736,11 @@ class SymmBuffer:
             self.num_ranks,
             iteration,
         )
+        if self._time_breakdown:
+            ring_end.record()
+            self._timing_events.append(
+                (notify_begin, notify_end, ring_begin, ring_end)
+            )
 
         permuted_scale = None
         if scale is not None:
@@ -751,6 +773,68 @@ class SymmBuffer:
             self._log_tensor("handle.rows_per_expert", rows_per_expert)
 
         return remap_hidden_states, handle
+
+    def report_ring_timing(self, rank=None, reset=True):
+        """Summarize recorded notify / ring op timings (ms) and print them.
+
+        Requires SYMM_BUFFER_TIME_BREAKDOWN=1. Call after the measured loop and
+        a torch.xpu.synchronize() so all recorded events have completed.
+        """
+        if rank is None:
+            rank = self.rank_idx
+        if not self._timing_events:
+            if self._time_breakdown:
+                print(f"[Rank {rank}] ring timing: no samples recorded")
+            return None
+
+        torch.xpu.synchronize()
+        notify_ms = [nb.elapsed_time(ne) for nb, ne, _, _ in self._timing_events]
+        ring_ms = [rb.elapsed_time(re) for _, _, rb, re in self._timing_events]
+        total_ms = [
+            nb.elapsed_time(re) for nb, _, _, re in self._timing_events
+        ]
+
+        def _avg(xs):
+            return sum(xs) / len(xs)
+
+        n = len(self._timing_events)
+        print(
+            f"[Rank {rank}] allgather_local_permute_fusion op breakdown "
+            f"({n} samples):"
+        )
+        print(
+            f"  notify_dispatch : avg={_avg(notify_ms):.3f} ms  "
+            f"min={min(notify_ms):.3f}  max={max(notify_ms):.3f}"
+        )
+        print(
+            f"  ring op         : avg={_avg(ring_ms):.3f} ms  "
+            f"min={min(ring_ms):.3f}  max={max(ring_ms):.3f}"
+        )
+        print(
+            f"  total           : avg={_avg(total_ms):.3f} ms  "
+            f"min={min(total_ms):.3f}  max={max(total_ms):.3f}"
+        )
+        print(
+            f"  notify per-iter : {[f'{x:.3f}' for x in notify_ms]}"
+        )
+        print(
+            f"  ring   per-iter : {[f'{x:.3f}' for x in ring_ms]}"
+        )
+        worst = max(range(n), key=lambda i: total_ms[i])
+        print(
+            f"  worst total     : iter={worst}  "
+            f"notify={notify_ms[worst]:.3f} ms  "
+            f"ring={ring_ms[worst]:.3f} ms  "
+            f"total={total_ms[worst]:.3f} ms"
+        )
+        result = {
+            "notify_ms": notify_ms,
+            "ring_ms": ring_ms,
+            "total_ms": total_ms,
+        }
+        if reset:
+            self._timing_events = []
+        return result
 
     # ------------------------------------------------------------------ #
     #  notify_dispatch implementation                                      #
