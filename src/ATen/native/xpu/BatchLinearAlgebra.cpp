@@ -134,4 +134,49 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
+void geqrf_kernel_fallback(const Tensor& input, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.geqrf op is using CPU fallback implementation on XPU.");
+
+  auto input_cpu = input.to(input.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  geqrf_stub(at::kCPU, input_cpu, tau_cpu);
+  input.copy_(input_cpu);
+  tau.copy_(tau_cpu);
+}
+
+Tensor& orgqr_kernel_fallback(Tensor& result, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.linalg.householder_product/torch.orgqr op is using CPU fallback "
+      "implementation on XPU. Consider building with USE_ONEMKL_XPU=1 for "
+      "better performance.");
+
+  auto result_cpu = result.to(result.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  orgqr_stub(at::kCPU, result_cpu, tau_cpu);
+  result.copy_(result_cpu);
+  return result;
+}
+
+void geqrf_kernel_xpu(const Tensor& input, const Tensor& tau) {
+  // TODO: Use CPU fallback until XPU geqrf performance is optimized in MKL
+  geqrf_kernel_fallback(input, tau);
+}
+
+REGISTER_XPU_DISPATCH(geqrf_stub, &geqrf_kernel_xpu);
+
+Tensor& orgqr_kernel_xpu(Tensor& result, const Tensor& tau) {
+#if defined(USE_ONEMKL_XPU)
+  if (result.is_complex()) {
+    return native::xpu::ungqr_mkl(result, tau);
+  } else {
+    return native::xpu::orgqr_mkl(result, tau);
+  }
+#else
+  return orgqr_kernel_fallback(result, tau);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(orgqr_stub, &orgqr_kernel_xpu);
+
 } // namespace at::native
