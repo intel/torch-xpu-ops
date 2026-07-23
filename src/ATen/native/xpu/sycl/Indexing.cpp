@@ -2394,8 +2394,7 @@ Tensor index_select_sparse_kernel(
     const auto idx_nneg_index = at::arange(index_len, nneg_index.options());
     const auto idx_dim_indices = at::arange(nnz, dim_indices.options());
 
-    Tensor sorted_dim_indices, argsort_dim_indices;
-    std::tie(sorted_dim_indices, argsort_dim_indices) =
+    auto [sorted_dim_indices, argsort_dim_indices] =
         [&]() -> std::tuple<Tensor, Tensor> {
       if (dim == 0 && self.is_coalesced()) {
         return std::make_tuple(dim_indices, idx_dim_indices);
@@ -2404,9 +2403,7 @@ Tensor index_select_sparse_kernel(
       }
     }();
 
-    Tensor intrsc_counts_nneg_index;
-    Tensor intrsc_first_match_nneg_index;
-    std::tie(intrsc_counts_nneg_index, intrsc_first_match_nneg_index) =
+    auto [intrsc_counts_nneg_index, intrsc_first_match_nneg_index] =
         [&]() -> std::tuple<Tensor, Tensor> {
       auto intrsc_counts_nneg_index = at::zeros_like(nneg_index);
       auto intrsc_first_match_nneg_index = at::zeros_like(nneg_index);

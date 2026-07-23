@@ -1322,11 +1322,9 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  Tensor input, gradOutput, indices;
-
-  input = input_.contiguous(memory_format);
-  gradOutput = gradOutput_.contiguous(memory_format);
-  indices = indices_.contiguous(memory_format);
+  Tensor input = input_.contiguous(memory_format);
+  Tensor gradOutput = gradOutput_.contiguous(memory_format);
+  Tensor indices = indices_.contiguous(memory_format);
   gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);

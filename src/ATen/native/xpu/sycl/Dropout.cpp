@@ -389,10 +389,7 @@ std::tuple<Tensor, Tensor> dropout(
 
   Tensor ret = at::empty_like(self);
 
-  uint64_t counter_offset;
-  uint32_t num_groups, group_size;
-  std::tie(counter_offset, num_groups, group_size) =
-      calc_execution_policy(nelem);
+  auto [counter_offset, num_groups, group_size] = calc_execution_policy(nelem);
 
   PhiloxXpuState rng_engine_inputs;
   {
