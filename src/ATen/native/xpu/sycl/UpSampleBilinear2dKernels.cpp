@@ -449,7 +449,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
                 static_cast<accscalar_t>(odata_[idx_cl(
                     n,
                     (point_h - input_height_) / (2 * input_height_),
-                    (point_w - input_height_) / (2 * input_width_),
+                    (point_w - input_width_) / (2 * input_width_),
                     c,
                     output_height_,
                     output_width_,
@@ -459,7 +459,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
                 ((n * channels_ + c) * output_height_ +
                  (point_h - input_height_) / (2 * input_height_)) *
                     output_width_ +
-                (point_w - input_height_) / (2 * input_width_);
+                (point_w - input_width_) / (2 * input_width_);
             tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
           }
         }
