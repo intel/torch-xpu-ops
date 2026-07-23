@@ -44,6 +44,9 @@ struct SigmoidFunctor {
       if constexpr (
           std::is_same_v<value_t, float> || std::is_same_v<value_t, double>) {
 #if defined(__SYCL_DEVICE_ONLY__)
+        // std::complex::exp on Windows/MSVC returns 0 instead of nan for
+        // exp(finite + inf*i) if the real part exceeds some threshold;
+        // the SYCL complex extension avoids this.
         namespace syclex = sycl::ext::oneapi::experimental;
         const syclex::complex<value_t> z(a_.real(), a_.imag());
         const auto sig = value_t(1) / (value_t(1) + syclex::exp(-z));
