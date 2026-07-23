@@ -77,7 +77,7 @@ struct unroll {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int item_idx_ = item_idx;
 #pragma unroll
     for (int i = 0; i < item_work_size; i++) {
@@ -148,7 +148,7 @@ struct vectorized {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int group_offset = group_work_size * group_idx;
     // `Unroll` policy cannot feed memory bandwidth well on Intel GPU,
     // 1. Small loop size cannot provide enough payloads, specially for small
@@ -220,7 +220,7 @@ struct multi_outputs_unroll {
 
   template <typename args_t>
   inline void load(args_t* args) {
-    constexpr int arity = std::tuple_size<args_t>::value;
+    constexpr int arity = std::tuple_size_v<args_t>;
     int item_idx_ = item_idx;
 #pragma unroll
     for (int i = 0; i < item_work_size; i++) {
@@ -294,13 +294,13 @@ inline int can_vectorize_up_to(const char* pointer) {
   int preferred_width = preferred_vector_width(dev_id, elem_size);
   uint64_t address = reinterpret_cast<uint64_t>(pointer);
   constexpr int vec2_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 2>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 2>>;
   constexpr int vec4_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 4>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 4>>;
   constexpr int vec8_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 8>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 8>>;
   constexpr int vec16_alignment =
-      std::alignment_of<aligned_vector<scalar_t, 16>>::value;
+      std::alignment_of_v<aligned_vector<scalar_t, 16>>;
   if (address % vec16_alignment == 0) {
     return std::min<int>(preferred_width, 16);
   } else if (address % vec8_alignment == 0) {
@@ -349,7 +349,7 @@ struct alignas(sizeof(T) * 4) m_vec4 {
   m_vec4() = default;
   m_vec4(T x_, T y_, T z_, T w_) : x(x_), y(y_), z(z_), w(w_) {}
 };
-typedef m_vec4<uint32_t> uint4;
+using uint4 = m_vec4<uint32_t>;
 
 template <typename T>
 inline size_t get_alignment(T ptr_or_size) {

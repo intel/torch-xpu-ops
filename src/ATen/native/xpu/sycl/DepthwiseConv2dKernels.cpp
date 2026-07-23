@@ -31,7 +31,6 @@
 #endif
 
 namespace at::native::xpu {
-#define NUM_THREADS 1024;
 
 template <
     typename scalar_t,

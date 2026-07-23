@@ -28,6 +28,7 @@
 
 #include <ATen/native/transformers/sycl/AttentionKernels.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <ATen/xpu/PhiloxXpuState.h>
 #include <comm/SYCLContext.h>
 #include <cstdint>
 
@@ -535,6 +536,64 @@ void _transform_bias_rescale_qkv_kernel(
               kfn);
         }
       });
+}
+
+struct UnpackPhiloxFunctor {
+  void operator()() const {
+    if (captured_) {
+      *seed_ptr_ = static_cast<int64_t>(*seed_dev_ptr_);
+      *offset_ptr_ = static_cast<int64_t>(
+          *offset_dev_ptr_ + static_cast<int64_t>(offset_intragraph_));
+    } else {
+      *seed_ptr_ = static_cast<int64_t>(seed_val_);
+      *offset_ptr_ = static_cast<int64_t>(offset_val_);
+    }
+  }
+
+  UnpackPhiloxFunctor(
+      bool captured,
+      int64_t* seed_dev_ptr,
+      int64_t* offset_dev_ptr,
+      uint32_t offset_intragraph,
+      uint64_t seed_val,
+      uint64_t offset_val,
+      int64_t* seed_ptr,
+      int64_t* offset_ptr)
+      : captured_(captured),
+        seed_dev_ptr_(seed_dev_ptr),
+        offset_dev_ptr_(offset_dev_ptr),
+        offset_intragraph_(offset_intragraph),
+        seed_val_(seed_val),
+        offset_val_(offset_val),
+        seed_ptr_(seed_ptr),
+        offset_ptr_(offset_ptr) {}
+
+ private:
+  bool captured_;
+  int64_t* seed_dev_ptr_;
+  int64_t* offset_dev_ptr_;
+  uint32_t offset_intragraph_;
+  uint64_t seed_val_;
+  uint64_t offset_val_;
+  int64_t* seed_ptr_;
+  int64_t* offset_ptr_;
+};
+
+void unpack_philox_kernel(
+    at::PhiloxXpuState arg,
+    int64_t* seed_ptr,
+    int64_t* offset_ptr) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  UnpackPhiloxFunctor functor(
+      arg.captured_,
+      arg.seed_.ptr,
+      arg.offset_.ptr,
+      arg.offset_intragraph_,
+      arg.seed_.val,
+      arg.offset_.val,
+      seed_ptr,
+      offset_ptr);
+  queue.submit([&](sycl::handler& cgh) { cgh.single_task(functor); });
 }
 
 } // namespace at::native::xpu
