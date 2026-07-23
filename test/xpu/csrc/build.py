@@ -80,6 +80,52 @@ def get_ishmem_extra_link_flags():
     return flags
 
 
+def get_hwloc_flags():
+    """cflags + libs for hwloc (falls back to a bare -lhwloc)."""
+    try:
+        output = subprocess.check_output(
+            ["pkg-config", "--cflags", "--libs", "hwloc"],
+            text=True,
+        ).strip()
+        if output:
+            return shlex.split(output)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return ["-lhwloc"]
+
+
+def build_topology(cfg):
+    """Build the pybind11 topology module (NOT a torch op)."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".so"
+    out = os.path.join(base_dir, "xpu_topology" + ext_suffix)
+
+    cmd = [
+        "icpx",
+        "-fsycl",
+        "-std=c++17",
+        "-shared",
+        "-fPIC",
+        "-O2",
+        f"-D_GLIBCXX_USE_CXX11_ABI={cfg['cxx_abi']}",
+        f"-I{cfg['torch_include']}",  # pybind11 headers ship inside torch
+        f"-I{cfg['torch_include_csrc']}",
+        f"-I{cfg['project_src']}",
+        f"-I{cfg['python_include']}",
+        os.path.join(base_dir, "Topology.cpp"),
+        os.path.join(base_dir, "TopologyBindings.cpp"),
+        *get_hwloc_flags(),
+        "-o",
+        out,
+    ]
+
+    print("Building xpu_topology (pybind11) module...")
+    print(" ".join(cmd))
+    subprocess.check_call(cmd)
+    print(f"Build successful: {out}\n")
+    return out
+
+
 def get_ishmem_config():
     env_root = os.environ.get("ISHMEM_HOME") or os.environ.get("ISHMEM_ROOT")
     candidates = [
@@ -272,6 +318,7 @@ def build():
             "RingReduceScatterIshmem",
         )
     )
+    outputs.append(build_topology(cfg))
     return outputs
 
 
@@ -292,6 +339,10 @@ def clean():
         os.path.join(base_dir, "liballgather_permute_ishmem.so"),
         os.path.join(base_dir, "libring_allgather_ishmem.so"),
         os.path.join(base_dir, "libring_reduce_scatter_ishmem.so"),
+        os.path.join(
+            base_dir,
+            "xpu_topology" + (sysconfig.get_config_var("EXT_SUFFIX") or ".so"),
+        ),
     ]
 
     removed = False
