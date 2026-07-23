@@ -15,7 +15,6 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
-#include <sycl/ext/oneapi/work_group_static.hpp> // Remove it once the header is exposed by sycl.hpp
 #include <sycl/sycl.hpp>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
