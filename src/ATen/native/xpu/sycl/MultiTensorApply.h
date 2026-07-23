@@ -18,6 +18,11 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <comm/SYCLContext.h>
 
+#ifdef _WIN32
+#include <tuple>
+#include <utility>
+#endif
+
 namespace at::native::xpu {
 
 // Instruction level Parallelism, namely vec size
@@ -77,6 +82,7 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
   return max_wg_size * kILP;
 }
 
+#ifndef _WIN32
 template <typename T, typename Y, typename U, typename... ArgTypes>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void multi_tensor_apply_kernel(
@@ -88,7 +94,70 @@ void multi_tensor_apply_kernel(
   auto item = syclext::this_work_item::get_nd_item<1>();
   callable(kChunkSize, tlAddressMeta, tlWGMeta, item, args...);
 }
+#else
+// Windows-only workaround for an Intel oneAPI DPC++ (icx) SYCL integration
+// header generation bug when the host compiler is MSVC (cl.exe, i.e.
+// -fsycl-host-compiler=cl). For a variadic free function kernel, icx emits a
+// `KernelInfo` specialization keyed on
+//   NdRangeFreeFunctionKernelWrapper<&multi_tensor_apply_kernel<T, Y, U,
+//   ArgTypes...>, ...>
+// where the kernel pointer is used as an uncast non-type template argument.
+// The MSVC front-end cannot convert that variadic template-id to the expected
+// `auto*` pointer type and fails with:
+//   error C2440: 'specialization': cannot convert from 'overloaded-function'
+//   to 'void (__cdecl *)(...)'
+//
+// To avoid a variadic kernel signature entirely, the kernel below is
+// non-variadic (multi_tensor_apply_kernel<T, Y, U>): the trailing kernel
+// arguments are folded, together with the callable, into a single
+// non-variadic, device-copyable functor (MultiTensorApplyCallableWrapper).
+// The emitted template-id is then non-variadic and MSVC resolves the pointer
+// correctly.
+//
+// Remove this workaround once the icx integration-header generator is fixed.
+template <typename T, typename Y, typename U>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multi_tensor_apply_kernel(
+    int64_t kChunkSize,
+    T tlAddressMeta,
+    Y tlWGMeta,
+    U callable) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  callable(kChunkSize, tlAddressMeta, tlWGMeta, item);
+}
 
+template <typename U, typename... ArgTypes>
+struct MultiTensorApplyCallableWrapper {
+  U callable;
+  std::tuple<ArgTypes...> args;
+
+  template <typename T, typename Y, typename Item>
+  void operator()(
+      int64_t kChunkSize,
+      T tlAddressMeta,
+      Y tlWGMeta,
+      Item item) const {
+    std::apply(
+        [&](const ArgTypes&... unpacked) {
+          callable(kChunkSize, tlAddressMeta, tlWGMeta, item, unpacked...);
+        },
+        args);
+  }
+};
+} // namespace at::native::xpu
+
+// Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
+// is not implicitly device-copyable, so declare the wrapper copyable whenever
+// its callable and bound argument types are.
+template <typename U, typename... ArgTypes>
+struct sycl::is_device_copyable<
+    ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
+    : std::bool_constant<
+          (sycl::is_device_copyable_v<U> && ... &&
+           sycl::is_device_copyable_v<ArgTypes>)> {};
+
+namespace at::native::xpu {
+#endif // _WIN32
 template <
     bool fused_kernel,
     typename T,
@@ -111,6 +180,25 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
+#ifdef _WIN32
+  // See MultiTensorApplyCallableWrapper above: fold extra args into a
+  // non-variadic, device-copyable callable so the kernel template-id emitted in
+  // the SYCL integration header is non-variadic (works around MSVC C2440).
+  using WrappedCallable = MultiTensorApplyCallableWrapper<U, ArgTypes...>;
+  WrappedCallable wrapped{callable, std::tuple<ArgTypes...>(args...)};
+
+  constexpr auto kfn = multi_tensor_apply_kernel<T, Y, WrappedCallable>;
+
+  sycl_kernel_submit<kfn>(
+      sycl::range<1>(num_wg * max_wg_size),
+      sycl::range<1>(max_wg_size),
+      q,
+      0,
+      kChunkSize,
+      tlAddressMeta,
+      tlWGMeta,
+      wrapped);
+#else
   constexpr auto kfn = multi_tensor_apply_kernel<T, Y, U, ArgTypes...>;
 
   sycl_kernel_submit<kfn>(
@@ -123,6 +211,7 @@ void launch_multi_tensor_apply_kernel(
       tlWGMeta,
       callable,
       args...);
+#endif // _WIN32
 }
 
 template <int depth, typename scalar_t, typename T, typename... ArgTypes>
