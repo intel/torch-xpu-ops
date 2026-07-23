@@ -194,8 +194,10 @@ Write `## Final Summary` only when all three audit checks pass. Include filter s
 
 ### Step 4: Independent review
 
-After the scan audit passes, start one fresh subagent using parent-model
-inheritance. The reviewer must not have produced the scan. Follow
+After the scan audit passes, start one fresh subagent that did not produce the
+scan. Use a reviewer model whose runtime-advertised capability is higher than the
+main model when available, and never lower. Exact parent-model inheritance is the
+fallback when no verifiable higher tier is available. Follow
 [references/xpu-alignment-review.md](references/xpu-alignment-review.md) to review
 all provisional findings, sample negative buckets, refresh live GitHub state, and
 write:
@@ -211,9 +213,11 @@ filing or implementation.
 
 ### Step 5: File or hand off reviewed work
 
-Only `needs-xpu-fix` cases may proceed. De-duplicate them against canonical XPU
-trackers, update or reject the provisional drafts, then obtain separate user
-authorization for each kind of GitHub write and for `issue-handler`.
+Only `needs-xpu-fix` cases may proceed. Every such case uses
+`intel/torch-xpu-ops` as its tracking repository, including fixes implemented in
+`pytorch/pytorch`. De-duplicate them against canonical XPU trackers, update or
+reject the provisional drafts, then obtain separate user authorization for each
+kind of GitHub write and for `issue-handler`.
 
 `issue-handler` owns implementation and verification; it does not create PRs.
 Use `xpu-ops-pr-creation` to prepare Intel repository PRs. Actual PR creation and

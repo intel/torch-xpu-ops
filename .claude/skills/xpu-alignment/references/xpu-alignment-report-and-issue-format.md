@@ -43,6 +43,7 @@ candidates, using this exact body structure:
 **Upstream source:** <upstream URL> (upstream-issue | upstream-pr)
 **Scan date:** <YYYY-MM-DD> to <YYYY-MM-DD>
 **Local XPU result:** confirmed on torch <version>, <GPU model>
+**Implementation repository:** <pytorch/pytorch | intel/torch-xpu-ops>
 
 ---
 
@@ -90,14 +91,15 @@ This skill never files issues automatically. After independent review passes:
 1. Remove or mark rejected every draft whose review verdict is not
    `needs-xpu-fix`, and update approved drafts with the review evidence.
 2. Tell the user the reviewed drafts are in `reports/issue_drafts.md` and summarize
-   how many `needs-xpu-fix` candidates remain.
-3. Ask whether they want any of them filed on GitHub, and into which repo (the
-   routing rules suggest a default).
-4. Before filing each approved draft, search the target repo for an existing issue
+   how many `needs-xpu-fix` candidates remain. Their tracking repository is always
+   `intel/torch-xpu-ops`, including cases implemented in `pytorch/pytorch`.
+3. Ask whether they want any of them filed on GitHub.
+4. Before filing each approved draft, search `intel/torch-xpu-ops` for an existing issue
    covering the same bug (search the upstream URL and the op/error keywords, e.g.
-   `gh issue search --repo <repo> "<keywords>"`). If a likely duplicate exists,
+   `gh issue search --repo intel/torch-xpu-ops "<keywords>"`). If a likely duplicate exists,
    skip filing, link the existing issue in the report, and tell the user.
 5. Only on explicit confirmation and once de-duplicated, file the approved drafts
-   via the GitHub MCP server (or `gh issue create`) into the routed repository,
-   applying the labels above.
+   via the GitHub MCP server (or `gh issue create`) into `intel/torch-xpu-ops`,
+   applying the labels above. Record the separate implementation repository in the
+   draft and review conclusion.
 6. Report back the URLs of any issues created or matched.

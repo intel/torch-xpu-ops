@@ -46,10 +46,14 @@ or permission to file or hand off work; those remain in the review Markdown.
 
 ## Reviewer
 
-The orchestrating agent starts one fresh subagent that did not produce the scan,
-using the runtime's default parent-model inheritance with no model override. Record
-`reviewer_basis: inherited-parent-model` in the conclusions; neither agent needs
-to discover or rank model names.
+The orchestrating agent starts one fresh subagent that did not produce the scan.
+Select a model only from runtime-advertised capability metadata: prefer a tier
+higher than the main model and never select a lower tier. If the runtime provides
+no verifiable higher tier, use exact parent-model inheritance, which satisfies the
+equal-capability floor. Do not infer capability from model names. Record
+`reviewer_basis: higher-tier:<runtime source>` or
+`reviewer_basis: inherited-parent-model` in the conclusions. If neither basis can
+be verified, block review.
 
 When this reference is received as a delegated review task, act as that reviewer
 directly. Do not start another subagent. If the orchestrating runtime cannot start
@@ -89,6 +93,9 @@ Apply every rule to every mandatory issue candidate:
    validation, feature/design request, environment failure, or invalid repro.
 5. **Ownership:** inspect dispatch and proposed diffs. Decide whether XPU needs an
    independent kernel/backend change or a shared/CUDA/reference fix covers it.
+   For an independent XPU change, identify `pytorch/pytorch` or
+   `intel/torch-xpu-ops` as the implementation repository without changing the
+   XPU tracking repository.
 6. **Live state:** refresh issue state separately from every PR's merge state.
    Identify canonical trackers, duplicates, competing fixes, and superseded PRs.
 7. **Fix evidence:** call a case fixed only when pre-fix evidence identifies the
@@ -108,7 +115,7 @@ Assign exactly one:
 
 | Verdict | Meaning and next action |
 |---|---|
-| `needs-xpu-fix` | A real defect requires an independent XPU change. Keep or create one canonical XPU tracker. |
+| `needs-xpu-fix` | A real defect requires an independent XPU change. Keep or create one canonical tracker in `intel/torch-xpu-ops`, even when implementation belongs in `pytorch/pytorch`. |
 | `track-upstream` | A shared fix or upstream design naturally owns XPU behavior. Track it; do not duplicate implementation. |
 | `fixed` | The containing tested build passes the same target repro. No new issue or implementation. |
 | `non-issue` | Expected behavior, environment problem, feature/design request, or invalid repro. |
@@ -147,6 +154,7 @@ Write one section per mandatory issue candidate in
 - **Repro fidelity / execution:** <evidence and limitations>
 - **Real bug:** <yes | no | unresolved> - <reason>
 - **Ownership:** <XPU | shared upstream | design/env | unresolved>
+- **Implementation repository:** <pytorch/pytorch | intel/torch-xpu-ops | none | unresolved>
 - **Fix evidence:** <open, merged-untested, tested-fixed, absent, or gap>
 - **Canonical outcome:** <tracker and fix PRs>
 - **Verdict:** <allowed verdict>
@@ -161,8 +169,8 @@ do not manufacture full issue verdicts for sampled negative rows without evidenc
 Write `reports/review_dashboard.md` in the style of an engineering review dashboard:
 
 1. title, review date, scan window, exact scope, samples, and exclusions
-2. per-candidate table with provisional bucket, real-bug decision, owner/fix scope,
-   live fix state, final verdict, and required action
+2. per-candidate table with provisional bucket, real-bug decision, implementation
+   repository, live fix state, final verdict, and required action
 3. nonempty verdict buckets and counts
 4. actionable XPU work count and resolved-unit denominator
 5. systemic scan/repro/handler findings cited by candidate id

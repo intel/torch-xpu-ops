@@ -1,6 +1,6 @@
 ---
 name: xpu-alignment-buckets-and-routing
-description: How to label and route candidates. Lists the result buckets (confirmed, not-reproduced, blocked, etc.), what counts as a confirmed bug, how to rewrite a CUDA reproducer for XPU, which repo to file a bug in, and the columns of the candidate ledger file. Read this for Steps 1.1 through 3.
+description: How to label and route candidates. Lists the result buckets (confirmed, not-reproduced, blocked, etc.), what counts as a confirmed bug, how to rewrite a CUDA reproducer for XPU, which repo implements a fix, and the columns of the candidate ledger file. Read this for Steps 1.1 through 3.
 ---
 
 # Classification, Adaptation & Ledger
@@ -54,11 +54,12 @@ APIs and keep everything else identical:
 ## Provisional routing (confirmed / related-failure)
 
 Use this when suggesting where a `confirmed` / `related-failure` bug would be
-implemented (Step 2d). Do not file or hand off based on this suggestion. The
-independent review must first establish a `needs-xpu-fix` verdict, canonical
-tracker, and current fix state.
+implemented (Step 2d). This is the implementation repository, not the tracking
+repository. Do not file or hand off based on this suggestion. The independent
+review must first establish a `needs-xpu-fix` verdict, canonical tracker, and
+current fix state.
 
-| File into... | When the bug is in... |
+| Implement in... | When the bug is in... |
 |--------------|-----------------------|
 | `pytorch/pytorch` | shared code: Inductor, autograd, dispatcher, ATen, Triton, runtime |
 | `pytorch/pytorch` | an XPU kernel that lives upstream in `aten/src/ATen/native/xpu/` |
@@ -66,6 +67,9 @@ tracker, and current fix state.
 | `intel/torch-xpu-ops` | an XPU kernel that is **not** upstream |
 | `intel/torch-xpu-ops` | an XPU backend gap (different error or missing feature vs CUDA) |
 | `pytorch/pytorch` | anything you are unsure about (default) |
+
+After review, every `needs-xpu-fix` case is tracked in `intel/torch-xpu-ops`
+regardless of its implementation repository.
 
 ## Ledger schema (`artifacts/candidate_ledger.jsonl`)
 
