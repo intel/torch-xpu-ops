@@ -1,59 +1,50 @@
-# Environment and Preflight
+---
+name: xpu-alignment-environment-setup
+description: How to set up the run environment before scanning. Covers finding or creating the workspace XPU Python interpreter, installing or refreshing the XPU nightly, checking GitHub access, and fixing common preflight failures. Read this for Step 0.
+---
 
-## Workspace-local interpreter
+# Environment & Preflight
 
-Use `.venv/bin/python` or `.conda*/bin/python` inside the workspace. If none
-exists, create an in-workspace virtual environment. Never use an unrelated
-interpreter.
+This skill is self-contained and relies on no helper scripts. Everything below
+is performed inline with the workspace XPU interpreter and the GitHub MCP server
+(or `gh` CLI fallback).
 
-Use a current XPU nightly unless the caller explicitly selects another build:
+## Workspace-local XPU interpreter
 
-```bash
-python -m pip install --pre --upgrade torch \
-  --index-url https://download.pytorch.org/whl/nightly/xpu
-```
+- Look for `.venv/bin/python` or `.conda*/bin/python` inside the workspace.
+  Never use an interpreter outside the workspace.
+- If no workspace venv exists, create one in-workspace: `python -m venv .venv`.
+- Ensure the latest XPU nightly is installed by running the upgrade install
+  below. `pip` resolves to the newest nightly and no-ops if the workspace is
+  already current, so there is no separate "is it stale?" judgment to make:
 
-Record the interpreter path, imported torch path, `torch.__version__`,
-`torch.version.git_version`, build source/date, and XPU device in the scan report.
-When a linked fix is newer than the tested build, refresh the nightly before
-deciding whether the fix works.
+  ```bash
+  python -m pip install --pre --upgrade torch --index-url https://download.pytorch.org/whl/nightly/xpu
+  ```
 
-## Controls
-
-Run an eager control that imports torch, allocates and operates on an XPU tensor,
-checks its device, and synchronizes. If selected candidates use `torch.compile`,
-also run a minimal XPU compile control.
-
-A failed eager control blocks all candidate execution. A failed compile control
-blocks compiler candidates. Record one shared environment blocker and repair it
-before rerunning affected candidates; do not report each candidate as an
-independent XPU issue.
+  Run this inline with the workspace interpreter.
 
 ## GitHub access
 
-Use the GitHub MCP server or ambient `gh` authentication. Never hardcode a token
-or pass credentials to a repro process.
+Use the GitHub MCP server, or the `gh` CLI as a fallback. Never hardcode tokens;
+rely on the ambient `gh auth` / MCP credentials.
 
-## Preflight checklist
+## Step 0 preflight checklist
 
-1. Verify the workspace interpreter and tested-build provenance.
-2. Pass the eager XPU control and any required compile control.
-3. Verify read-only GitHub access.
-4. Create `artifacts/details`, `reports`, and `scripts`.
-5. Save:
+1. Verify XPU torch import and `torch.xpu.is_available()`.
+2. Run the upgrade install above so the workspace holds the latest nightly.
+3. Verify GitHub access.
+4. Create output directories: `artifacts/details`, `reports`, `scripts`.
+5. Save `collect_env` output to `artifacts/collect_env.txt`:
 
    ```bash
    python -m torch.utils.collect_env > artifacts/collect_env.txt
    ```
 
-6. Configure a fresh temporary and Inductor/Triton cache namespace for each repro
-   attempt. Do not reuse a process or cache after a device assert, crash, or
-   timeout.
+## Preflight failure remedies
 
-## Common failures
-
-- XPU unavailable: load the oneAPI runtime and verify the driver.
-- Torch import failure: reinstall the XPU nightly in the workspace environment.
-- GitHub access failure: verify ambient MCP or `gh auth` credentials.
-- Shared Dynamo, loader, dependency, topology, or cache failure: isolate it as one
-  environment blocker, repair it, and rerun every affected candidate.
+- `torch.xpu.is_available()` returns `False` -> ensure Intel oneAPI runtime is
+  loaded (`source /opt/intel/oneapi/setvars.sh`) and the XPU driver is installed.
+- `import torch` fails -> reinstall the XPU nightly wheel into the workspace venv.
+- GitHub access fails -> verify auth (`gh auth status`) or MCP credentials.
+- Output directory creation fails -> check filesystem permissions.

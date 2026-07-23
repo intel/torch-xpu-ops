@@ -1,104 +1,91 @@
-# Classification, Adaptation, and Ledger
+---
+name: xpu-alignment-buckets-and-routing
+description: How to label and route candidates. Lists the result buckets (confirmed, not-reproduced, blocked, etc.), what counts as a confirmed bug, how to rewrite a CUDA reproducer for XPU, which repo to file a bug in, and the columns of the candidate ledger file. Read this for Steps 1.1 through 3.
+---
 
-## Provisional buckets
+# Classification, Adaptation & Ledger
 
-Assign exactly one scan bucket from observed execution:
+## Bucket vocabulary
 
-| Bucket | Use when |
-|---|---|
-| `confirmed` | XPU reached the intended stage and showed the same behavior/signature as upstream. |
-| `related-failure` | XPU reached the intended path but failed differently from upstream. |
-| `not-reproduced` | The intended XPU stage ran and the upstream failure was absent. |
-| `blocked-env` | A dependency, topology, loader, or shared environment failure prevented execution. |
-| `blocked-platform` | The required path has no XPU equivalent. |
-| `blocked-fetch` | Required source details could not be retrieved. |
-| `blocked-script-error` | The harness failed, ran on CPU, or did not prove the target stage. |
-| `needs-performance-harness` | A performance-only claim needs an unavailable benchmark. |
+Assign exactly one provisional bucket as the `RESULT:` of each repro (Step 2c).
+Pick by what actually happened when you ran it:
 
-These are provisional runtime results. `confirmed` does not prove that the inputs
-are valid, the behavior is a bug, or XPU needs an independent fix.
-`related-failure` does not claim reproduction of the upstream bug. Independent
-review owns those decisions.
+| Bucket | Apply when... |
+|--------|---------------|
+| `confirmed` | the repro ran on XPU and showed the **same** bug as upstream |
+| `related-failure` | the repro ran on XPU but failed in a **different** way than upstream |
+| `not-reproduced` | the repro ran on XPU and the upstream failure did **not** happen |
+| `blocked-env` | the repro could not start: a dependency was missing or it needed a distributed/multi-GPU setup |
+| `blocked-platform` | the repro needed a code path XPU does not have at all |
+| `blocked-fetch` | you could not retrieve the issue/PR/commit details to build a repro |
+| `blocked-script-error` | the repro failed before producing a verdict: it crashed before the check, or it silently ran on CPU instead of XPU |
+| `needs-performance-harness` | the bug is performance-only and needs a benchmark you do not have |
 
-Title and deep rejects do not receive a local bucket. Only executed or terminally
-blocked repro rows set `local_status: done`.
+Candidates rejected before a repro runs do not get a bucket: title rejects are
+recorded with `title_status: reject` (Step 1.1) and deep-filter rejects with
+`deep_status: reject` (Step 2a), including commits with insufficient context.
+Only repros that actually run receive a `local_bucket`.
 
-## Repro fidelity
+## Confirmation criteria
 
-Before assigning a runtime bucket:
+Use this when deciding between `confirmed` and `not-reproduced` (Step 2c) -- i.e.
+whether what you saw on XPU matches the upstream behavior. These scan buckets do
+not decide whether the behavior is a real bug, requires an XPU-specific fix, or
+should be filed. The independent review makes those decisions.
 
-- preserve upstream inputs, shapes, dtypes, mode, and oracle
-- seed random inputs and reuse the same input for compared executions
-- replace uninitialized or contract-invalid inputs only as an explicit diagnostic;
-  do not call the changed scenario an upstream reproduction
-- prove a key input, output, or target execution is on XPU
-- record CPU fallback and shared-frontend failures
-- for compiler cases, record an eager baseline and prove the target compiler stage
-  was reached
+**Counts as a bug**: crash, segfault, assertion failure, hang, wrong numerical
+result, wrong shape/stride/dtype, off-by-one beyond atol=1e-4.
 
-Tiny expected floating-point noise, documented unsupported behavior, and a broken
-harness are not confirmed behavior.
+**Does NOT count as a bug**: tiny float noise within tolerance, documented
+unsupported behavior, an invalid repro setup.
 
-## CUDA to XPU adaptation
+## CUDA -> XPU adaptation
 
-Change only device mechanics:
+Use this when writing a repro from upstream CUDA code (Step 2b). Map the device
+APIs and keep everything else identical:
 
-- `"cuda"` to `"xpu"` for device placement
-- `torch.cuda.*` to `torch.xpu.*`
-- `torch.cuda.synchronize()` to `torch.xpu.synchronize()`
-- CUDA-only test markers and autocast device strings to their XPU equivalents
+- `cuda` -> `xpu` for `.to("cuda")`, `device="cuda"`, `torch.cuda.*` -> `torch.xpu.*`.
+- `torch.cuda.synchronize()` -> `torch.xpu.synchronize()`.
+- `@onlyCUDA` / `requires_cuda` test markers -> run directly on XPU.
+- Drop CUDA-only kwargs (e.g., `device_type="cuda"` in autocast) and substitute `"xpu"`.
+- Keep the numerical scenario, shapes, dtypes, and oracle identical; only the
+  device changes.
 
-Do not change the numerical scenario or oracle to make the repro pass or fail.
+## Provisional routing (confirmed / related-failure)
 
-## Abnormal termination
+Use this when suggesting where a `confirmed` / `related-failure` bug would be
+implemented (Step 2d). Do not file or hand off based on this suggestion. The
+independent review must first establish a `needs-xpu-fix` verdict, canonical
+tracker, and current fix state.
 
-Normal execution ends with `RESULT: <bucket>`. A child process cannot emit this
-after a segfault, abort, or forced timeout, so append a parent-observed record to
-the same log:
+| File into... | When the bug is in... |
+|--------------|-----------------------|
+| `pytorch/pytorch` | shared code: Inductor, autograd, dispatcher, ATen, Triton, runtime |
+| `pytorch/pytorch` | an XPU kernel that lives upstream in `aten/src/ATen/native/xpu/` |
+| `pytorch/pytorch` | a CPU-only crash that affects all backends |
+| `intel/torch-xpu-ops` | an XPU kernel that is **not** upstream |
+| `intel/torch-xpu-ops` | an XPU backend gap (different error or missing feature vs CUDA) |
+| `pytorch/pytorch` | anything you are unsure about (default) |
 
-```text
-PARENT_RESULT: command=<...>; exit=<code>; signal=<signal-or-none>;
-timeout=<true|false>; target_stage_reached=<true|false>
-```
+## Ledger schema (`artifacts/candidate_ledger.jsonl`)
 
-An abnormal termination may receive `confirmed` or `related-failure` only when the
-log proves the intended stage was reached. Otherwise use `blocked-script-error`.
-Independent review requires a second fresh-process/cache attempt with the same
-decisive abnormal signature before treating it as a real bug.
+The ledger is the resume point for the batched pipeline. It is **agent-maintained**:
+there is no script that updates it. The agent reads and rewrites rows directly as
+each stage completes. The JSONL format is kept for backward compatibility with the
+legacy scripted workflow.
 
-Use `PARENT_RESULT` only for an attempted child process. A
-`needs-performance-harness` placeholder records the missing workload, baseline,
-threshold, or environment and must not claim that a target stage ran.
+Each row tracks at least:
 
-## Provisional routing
+| Field | Values | Set during |
+|-------|--------|-----------|
+| `id` | candidate id | Step 1.1 |
+| `kind` | `issue` / `pr` / `commit` | Step 1.1 |
+| `title` | candidate title or commit message | Step 1.1 |
+| `url` | evidence URL | Step 1.1 |
+| `title_status` | `pass` / `reject` | Step 1.1 |
+| `deep_status` | `pending` / `pass` / `reject` | Step 2a |
+| `local_status` | `pending` / `done` | Step 2c |
+| `local_bucket` | a bucket vocabulary value | Step 2c |
 
-Routing suggests implementation ownership; it does not authorize filing:
-
-| Suggested repository | Code ownership |
-|---|---|
-| `pytorch/pytorch` | Shared Inductor, Dynamo, autograd, dispatcher, ATen, Triton, runtime, or upstream XPU code. |
-| `intel/torch-xpu-ops` | XPU kernel or backend code maintained only in torch-xpu-ops. |
-| Review required | Ownership, fallback, or shared-fix effect is unclear. |
-
-A shared or CUDA/reference fix that naturally covers XPU should be tracked
-upstream, not implemented again for XPU.
-
-## Ledger contract
-
-Keep `artifacts/candidate_ledger.jsonl` backward-compatible with historical runs.
-Each raw candidate has exactly one row with at least:
-
-| Field | Values |
-|---|---|
-| `id` | Stable candidate id |
-| `kind` | `issue`, `pr`, or `commit` |
-| `title` | Source title or commit message |
-| `url` | Source URL |
-| `title_status` | `pass` or `reject` |
-| `deep_status` | `pending`, `pass`, or `reject` |
-| `local_status` | `pending` or `done` |
-| `local_bucket` | One provisional bucket when done |
-
-Keep a concise rejection/blocker reason when applicable. An actionable-pending row
-has `title_status == pass`, `deep_status != reject`, and
-`local_status == pending`.
+An actionable-pending row is one with `title_status == pass` AND
+`deep_status != reject` AND `local_status == pending`.
