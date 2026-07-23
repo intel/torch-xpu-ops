@@ -68,6 +68,44 @@ def main():
     # Physical node topology dump (per-device numa/switch/nic + NIC list).
     lines.append(t.describe().rstrip("\n"))
 
+    # ---- machine-wide grouping over ALL local cards (not just this rank) ----
+    devices = list(t.node.devices)
+    nics = list(t.node.nics)
+
+    def _group_by(key):
+        groups = {}
+        for d in devices:
+            groups.setdefault(key(d), []).append(d.local_rank)
+        # stable order by first member
+        return dict(sorted(groups.items(), key=lambda kv: min(kv[1])))
+
+    switch_groups = _group_by(lambda d: d.pcie_switch)
+    numa_groups = _group_by(lambda d: d.numa_node)
+
+    lines.append("---- all-card grouping (local ranks) ----")
+    lines.append(
+        "numa groups     : "
+        + "  ".join(f"numa{numa}={ranks}" for numa, ranks in numa_groups.items())
+    )
+    lines.append(
+        "switch groups   : "
+        + "  ".join(f"sw{sw}={ranks}" for sw, ranks in switch_groups.items())
+    )
+
+    # ---- per-card NIC (name + bdf) for every card on this machine ----
+    def _nic_str(idx):
+        if idx is None or idx < 0 or idx >= len(nics):
+            return "none"
+        n = nics[idx]
+        return f"nic{n.index}:{n.name} ({n.pci_bdf}, numa{n.numa_node})"
+
+    lines.append("---- per-card NIC ----")
+    for d in devices:
+        lines.append(
+            f"card {d.local_rank} (bdf={d.pci_bdf}, numa{d.numa_node}) "
+            f"-> {_nic_str(d.nearest_nic)}"
+        )
+
     # Rank groups for the current device.
     lines.append(f"same_node_ranks   = {t.same_node_ranks()}")
     lines.append(f"same_switch_ranks = {t.same_switch_ranks()}")
