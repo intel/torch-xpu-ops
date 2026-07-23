@@ -1,88 +1,92 @@
-# Report, Deduplication, and Filing
+# Reports, Drafts, and Filing
 
-## Scan report
+## Full scan report
 
-Write `reports/full_scan.md` with the current
-`artifacts/coverage.json.workflow_status` and one numbered section per selected
-case. Include:
+Write `reports/full_scan.md` directly. Include every row with
+`local_status == done` and exclude deep rejects.
 
-- case key, source ids, and upstream URLs
-- repro, attempt logs, evidence, and assessment paths/statuses
-- reproduction status, issue validity, execution path, resolution scope, final
-  verdict, and filing disposition
-- environment incident or construction blocker
-- behavior canonical, XPU tracker, fix PRs, and both repositories
+Each numbered entry includes:
 
-Keep runtime, validity, execution, scope, verdict, and filing counts separate.
-Never summarize `matched-upstream` as a confirmed issue. A partial or blocked
-report lists all pending/blocking case keys. `full_scan.md` is the scan record;
-`review_dashboard.md` is the final decision dashboard.
+- candidate id, title, kind, and source URL
+- repro and output-log paths
+- exact ``Local XPU result: `<bucket>` `` line
+- decisive observed behavior and upstream oracle
+- provisional route for `confirmed` and `related-failure`
+- blocker reason for blocked buckets
 
-## Issue drafts (`reports/issue_drafts.md`)
+Keep `confirmed` and `related-failure` visibly labeled **provisional pending
+independent review**. The final summary reports filter and provisional bucket
+counts but makes no issue-filing claim.
 
-Write a draft only when evidence and assessment are `valid`, every proof gate is
-`pass`, `final_verdict` is `confirmed-xpu-issue`, and
-`filing_disposition` is `file-xpu-tracker`:
+## Provisional issue drafts
+
+Write `reports/issue_drafts.md` for provisional `confirmed` and
+`related-failure` rows:
 
 ````md
-## Issue <n>
+## Draft <n> - provisional
 
-**Suggested title:** [xpu-alignment] <XPU-specific problem>
-**Suggested labels:** <existing repository labels only>
-**Tracking repository:** <intel/torch-xpu-ops or explicit override>
-**Implementation repository:** <pytorch/pytorch or intel/torch-xpu-ops>
-**Upstream behavior:** <behavior canonical and source URLs>
-**Case key:** <case_key>
-**Runtime evidence / assessment:** <paths>
+**Suggested title:** [xpu-alignment] <behavior>
+**Tracking repository:** <suggested repository>
+**Upstream source:** <URL>
+**Local XPU result:** <confirmed | related-failure>
+**Review verdict:** pending
 
-### Describe the bug
-<reference behavior, observed XPU behavior, and independent XPU fix proof>
+### Observed behavior
+<upstream oracle, faithful XPU adaptation, actual result, and target-stage proof>
 
 ```python
-<minimal deterministic XPU reproducer>
+<minimal deterministic reproducer>
 ```
 
 ```text
-<two clean attempts with the same decisive stage and signature>
+<decisive output and parent termination record when applicable>
 ```
-
-### Ownership and canonical state
-<XPU code path, target implementation repository, linked fixes, and dedup result>
 
 ### Versions
 - PyTorch: <version and git commit>
 - XPU device: <device>
 - Build: <source/date>
-- Environment: <sanitized relevant details>
 ````
 
-Do not paste raw credentials, usernames, hostnames, home paths, or the full
-`collect_env` output into a public issue. If no case is eligible, record that no
-draft was generated.
+Sanitize credentials, usernames, hostnames, home paths, and unrelated environment
+details. If no provisional issue candidate exists, record that in one line.
 
-## Deduplication and filing
+## Apply review
 
-Search the tracking repository using source URLs, operation/dtype/shape/error
-terms, XPU code-path/root-cause terms, and linked PR/commit ids. Inspect likely
-matches; title similarity alone is insufficient.
+After independent review:
 
-Refresh live state immediately before filing. A shared fix changes the case to
-`track-upstream`. A preexisting XPU tracker changes filing disposition to
-`use-existing-xpu-tracker`, not the confirmed verdict.
+- keep and update a draft only for `needs-xpu-fix`
+- mark `duplicate` with its canonical XPU tracker and remove it from filing
+- mark `track-upstream`, `fixed`, `non-issue`, and `verification-gap` as not
+  eligible, with the review-conclusion link
+- do not silently delete rejected drafts; retain their disposition for audit
 
-File only after global `review_state.review_status` is `pass`, the corresponding
-unit has `verdict: needs-xpu-fix`, and live dedup still finds no tracker. Then
-summarize each proposed filing and ask for explicit authorization naming the
-draft and target repository. Create only approved issues. After creation:
+The review conclusions, not the provisional bucket, control filing.
 
-- move a previously completed workflow back to `partial`
-- set `xpu_tracking_canonical_url` to the created URL
-- set `tracker_origin: created-this-run`
-- set `filing_disposition: filed-xpu-tracker`
-- preserve `final_verdict: confirmed-xpu-issue`
-- update the assessment, case ledger, coverage, and scan report
-- mark the local draft as filed and record the created URL
-- rebuild the review manifest and repeat independent review
+## Filing gate
 
-Issue creation, comments, reviews, labels, closures, and dashboard publication
-are separate GitHub write actions with separate authorization.
+For each `needs-xpu-fix` draft:
+
+1. Refresh the upstream behavior issue, all linked/superseded fix PRs, and the
+   target tracking repository.
+2. Search by source URL, operation/error signature, root cause, and fix commit.
+3. If an XPU tracker exists, use it and do not create another.
+4. Summarize the reviewed draft, target repository, labels, and dedup result.
+5. Ask for explicit authorization naming that draft and repository.
+6. Create only approved issues and record their URLs in the draft and review
+   reports.
+
+Issue creation does not authorize comments, labels, closure, handler execution,
+or PR publication.
+
+## Implementation handoff
+
+Only a reviewed `needs-xpu-fix` case with a canonical XPU issue may enter
+`issue-handler`. Pass the issue URL, repro command, logs, ownership conclusion,
+required build level, and known verification gaps.
+
+`issue-handler` owns implementation, rebuild, and fix verification.
+`xpu-ops-pr-creation` prepares an Intel repository PR after verification but does
+not authorize publication. A `pytorch/pytorch` implementation follows that
+repository's PR process. Every PR publication is separately authorized.
