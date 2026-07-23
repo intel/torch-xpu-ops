@@ -88,7 +88,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   // [C++ Standard Reference: Gamma Function]
   // https://en.cppreference.com/w/cpp/numeric/math/tgamma
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  static const pi_t PI_f64 = 3.14159265358979323846;
+  constexpr pi_t PI_f64 = 3.14159265358979323846;
   const accscalar_t PSI_10 = 2.25175258906672110764;
   const accscalar_t A[] = {
       8.33333333333333333333E-2,
@@ -310,11 +310,11 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
 
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   accscalar_t ax, fac, res, num, numfac;
-  static const accscalar_t MAXLOG = std::is_same<accscalar_t, double>::value
+  constexpr accscalar_t MAXLOG = std::is_same_v<accscalar_t, double>
       ? 7.09782712893383996843E2
       : 88.72283905206835;
-  static const accscalar_t EXP1 = 2.718281828459045;
-  static const accscalar_t lanczos_g = 6.024680040776729583740234375;
+  constexpr accscalar_t EXP1 = 2.718281828459045;
+  constexpr accscalar_t lanczos_g = 6.024680040776729583740234375;
 
   if (sycl::fabs(a - x) > 0.4 * sycl::fabs(a)) {
     ax = a * sycl::log(x) - x - sycl::lgamma(a);
@@ -342,10 +342,10 @@ template <typename scalar_t>
 static scalar_t _igam_helper_series(scalar_t a, scalar_t x) {
   // Compute igam using DLMF 8.11.4. [igam1]
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  constexpr accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  static const int MAXITER = 2000;
+  constexpr int MAXITER = 2000;
 
   int i;
   accscalar_t ans, ax, c, r;
@@ -381,8 +381,8 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   accscalar_t fac = 1;
   accscalar_t sum = 0;
   accscalar_t term, logx;
-  static const int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  constexpr int MAXITER = 2000;
+  constexpr accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
 
@@ -652,7 +652,7 @@ static const scalar_t _igam_helper_asymptotic_series(
 
   int k, n, sgn;
   int maxpow = 0;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  constexpr accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   accscalar_t lambda = x / a;
@@ -717,13 +717,12 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
   accscalar_t ans, ax, c, yc, r, t, y, z;
   accscalar_t pk, pkm1, pkm2, qk, qkm1, qkm2;
   int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  constexpr accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  static const accscalar_t BIG = std::is_same<accscalar_t, double>::value
-      ? 4.503599627370496e15
-      : 16777216.;
-  static const accscalar_t BIGINV = std::is_same<accscalar_t, double>::value
+  constexpr accscalar_t BIG =
+      std::is_same_v<accscalar_t, double> ? 4.503599627370496e15 : 16777216.;
+  constexpr accscalar_t BIGINV = std::is_same_v<accscalar_t, double>
       ? 2.22044604925031308085e-16
       : 5.9604644775390625E-8;
 
@@ -789,10 +788,10 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   accscalar_t absxma_a;
 
-  static const accscalar_t SMALL = 20.0;
-  static const accscalar_t LARGE = 200.0;
-  static const accscalar_t SMALLRATIO = 0.3;
-  static const accscalar_t LARGERATIO = 4.5;
+  constexpr accscalar_t SMALL = 20.0;
+  constexpr accscalar_t LARGE = 200.0;
+  constexpr accscalar_t SMALLRATIO = 0.3;
+  constexpr accscalar_t LARGERATIO = 4.5;
 
   bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
   bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
@@ -860,10 +859,10 @@ inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
 
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   accscalar_t absxma_a;
-  static const accscalar_t SMALL = 20.0;
-  static const accscalar_t LARGE = 200.0;
-  static const accscalar_t SMALLRATIO = 0.3;
-  static const accscalar_t LARGERATIO = 4.5;
+  constexpr accscalar_t SMALL = 20.0;
+  constexpr accscalar_t LARGE = 200.0;
+  constexpr accscalar_t SMALLRATIO = 0.3;
+  constexpr accscalar_t LARGERATIO = 4.5;
 
   bool is_inf_a = sycl::isinf(static_cast<accscalar_t>(a));
   bool is_inf_x = sycl::isinf(static_cast<accscalar_t>(x));
@@ -914,7 +913,7 @@ template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t
 chbevl(scalar_t _x, const scalar_t array[], size_t len) {
   static_assert(
-      !std::is_same<scalar_t, Half>() && !std::is_same<scalar_t, BFloat16>(),
+      !std::is_same_v<scalar_t, Half> && !std::is_same_v<scalar_t, BFloat16>,
       "don't instantiate with low precision type");
 
   scalar_t b0, b1, b2;
@@ -992,7 +991,7 @@ chebyshev_coefficients_i0e_B() {
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
   static_assert(
-      !std::is_same<scalar_t, Half>() && !std::is_same<scalar_t, BFloat16>(),
+      !std::is_same_v<scalar_t, Half> && !std::is_same_v<scalar_t, BFloat16>,
       "don't instantiate with low precision type");
   // Upcast input for numerical accuracy purposes
   // Needed for accurate results if input is bfloat16 or float16
