@@ -42,7 +42,7 @@ struct RreluWithNoiseKernelFunctor {
       auto rand = random_func_(&state);
 
       // ensure that (&rand.x)[ii] is safe
-      static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor, "");
+      static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor);
 
 #pragma unroll
       for (int ii = 0; ii < unroll_factor; ii++) {

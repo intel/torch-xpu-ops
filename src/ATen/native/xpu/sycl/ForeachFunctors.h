@@ -90,7 +90,7 @@ namespace foreach_internal {
 namespace {
 template <typename T>
 inline bool isnan_(T x) {
-  if constexpr (std::is_integral<T>::value) {
+  if constexpr (std::is_integral_v<T>) {
     return false;
   } else if constexpr (c10::is_complex<T>::value) {
     return std::isnan(x);
@@ -479,7 +479,7 @@ void binary_op_scalar_tensor(
     size_t item_idx) {
   // deal with compiler error with bool for '*' operator:
   // "error: ‘*’ in boolean context, suggest ‘&&’ instead"
-  auto second_arg = std::is_same<opmath_t, bool>::value
+  auto second_arg = std::is_same_v<opmath_t, bool>
       ? static_cast<opmath_t>(alpha) && static_cast<opmath_t>(*scalar)
       : static_cast<opmath_t>(alpha) * static_cast<opmath_t>(*scalar);
   // to make things simple, we put aligned case in a different code path
@@ -711,9 +711,9 @@ struct TernaryOpListFunctor {
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op) const {
-    static_assert(depth == 3 || depth == 4, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 3 || depth == 4);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
@@ -779,9 +779,9 @@ struct TernaryOpScalarFunctor {
       sycl::nd_item<1> item_id,
       Op op,
       opmath_t alpha) const {
-    static_assert(depth == 2 || depth == 3, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 2 || depth == 3);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
@@ -849,9 +849,9 @@ struct TernaryOpScalarListFunctor {
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op) const {
-    static_assert(depth == 2 || depth == 3, "");
-    static_assert(depth >= r_args_depth, "");
-    static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
+    static_assert(depth == 2 || depth == 3);
+    static_assert(depth >= r_args_depth);
+    static_assert(res_arg_index == depth - 1 || res_arg_index == 0);
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
