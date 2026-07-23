@@ -59,7 +59,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TEST_XPU,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 if TEST_FAIRSEQ:
     import fairseq.models.transformer as fairseq_transformer
@@ -109,32 +108,22 @@ def cudnn_attention_if_supported():
 default_atol = {torch.float16: 1e-3, torch.bfloat16: 1e-3, torch.float32: 1e-5}
 default_rtol = {torch.float16: 1e-3, torch.bfloat16: 1.6e-2, torch.float32: 1.3e-6}
 
-isSM8XDevice = torch.get_device_module(
-    GPU_TYPE
-).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
+isSM8XDevice = torch.cuda.is_available() and torch.cuda.get_device_capability() in [
     (8, 6),
     (8, 7),
     (8, 9),
 ]
-isSM90Device = torch.get_device_module(
-    GPU_TYPE
-).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() == (
+isSM90Device = torch.cuda.is_available() and torch.cuda.get_device_capability() == (
     9,
     0,
 )
-isSM120Device = torch.get_device_module(
-    GPU_TYPE
-).is_available() and torch.get_device_module(GPU_TYPE).get_device_capability() in [
+isSM120Device = torch.cuda.is_available() and torch.cuda.get_device_capability() in [
     (12, 0),
     (12, 1),
 ]
-isSM5xDevice = (
-    torch.get_device_module(GPU_TYPE).is_available()
-    and torch.get_device_module(GPU_TYPE).get_device_capability()[0] == 5
-)
+isSM5xDevice = torch.cuda.is_available() and torch.cuda.get_device_capability()[0] == 5
 isLessThanSM80Device = (
-    torch.get_device_module(GPU_TYPE).is_available()
-    and torch.get_device_module(GPU_TYPE).get_device_capability()[0] < 8
+    torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8
 )
 
 TEST_WITH_CK = (
@@ -1211,12 +1200,12 @@ class TestTransformers(NNTestCase):
                 )
             return attn_output.transpose(1, 2)
 
-        if device == GPU_TYPE:
+        if device == "cuda":
             torch.backends.cuda.allow_fp16_bf16_reduction_math_sdp(True)
         sdp_math_low_prec_out = scaled_dot_product_attention(
             xq, xk, xv, mask, SDPBackend.MATH
         )
-        if device == GPU_TYPE:
+        if device == "cuda":
             torch.backends.cuda.allow_fp16_bf16_reduction_math_sdp(False)
         sdp_math_high_prec_out = scaled_dot_product_attention(
             xq, xk, xv, mask, SDPBackend.MATH
@@ -2860,9 +2849,7 @@ def _get_block_size_n(device, head_dim, is_dropout, is_causal):
     if head_dim > 256:
         raise AssertionError(f"head_dim should be <= 256, got {head_dim}")
     major, minor = (
-        torch.accelerator.get_device_capability(device)
-        if device == GPU_TYPE
-        else (0, 0)
+        torch.cuda.get_device_capability(device) if device == "cuda" else (0, 0)
     )
     is_sm8x = (
         major == 8 and minor > 0
@@ -3398,7 +3385,7 @@ class TestSDPACpuOnly(NNTestCase):
             grads = torch.autograd.grad(loss, [query, key, value])
             return masked_out, grads
 
-        if backend == SDPBackend.FLASH_ATTENTION and GPU_TYPE in str(device):
+        if backend == SDPBackend.FLASH_ATTENTION and "cuda" in str(device):
             unittest.skip("FlashAttention does not support masks on cuda")
             return
         if backend == SDPBackend.EFFICIENT_ATTENTION and "cpu" in str(device):
@@ -3805,9 +3792,8 @@ class TestSDPACudaOnly(NNTestCase):
         cudnn_version = (
             torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else 0
         )
-        if device != GPU_TYPE or (
-            torch.get_device_module(GPU_TYPE).get_device_capability() == (9, 0)
-            and cudnn_version >= 91000
+        if device != "cuda" or (
+            torch.cuda.get_device_capability() == (9, 0) and cudnn_version >= 91000
         ):
             test()
         else:
@@ -3862,7 +3848,7 @@ class TestSDPACudaOnly(NNTestCase):
             torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else 0
         )
         device_capability = torch.accelerator.get_device_capability()
-        if device != GPU_TYPE or (
+        if device != "cuda" or (
             (device_capability == (9, 0) or device_capability[0] == 10)
             and cudnn_version >= 91100
         ):
@@ -3924,10 +3910,10 @@ class TestSDPACudaOnly(NNTestCase):
         v = torch.randn(b, h, s_kv, d_v, device=device, dtype=torch.bfloat16)
 
         device_cap = torch.accelerator.get_device_capability()
-        ISSM90 = device_cap == (9, 0) if device == GPU_TYPE else False
-        ISSM100 = device_cap == (10, 0) if device == GPU_TYPE else False
+        ISSM90 = device_cap == (9, 0) if device == "cuda" else False
+        ISSM100 = device_cap == (10, 0) if device == "cuda" else False
         with sdpa_kernel(backends=[SDPBackend.CUDNN_ATTENTION]):
-            if device != GPU_TYPE or (
+            if device != "cuda" or (
                 (ISSM90 or ISSM100) and torch.backends.cudnn.version() >= 90501
             ):
                 torch.nn.functional.scaled_dot_product_attention(q, k, v)
@@ -4746,8 +4732,8 @@ class TestSDPACudaOnly(NNTestCase):
         key = key.view(batch_size, -1, num_heads, head_dim).transpose(1, 2)
 
         device_capability = None
-        if GPU_TYPE in str(device):
-            device_capability = torch.accelerator.get_device_capability()
+        if "cuda" in str(device):
+            device_capability = torch.cuda.get_device_capability()
         prefer_cudnn = "TORCH_CUDNN_SDPA_PREFERRED" not in os.environ or bool(
             os.environ["TORCH_CUDNN_SDPA_PREFERRED"]
         )
@@ -4756,9 +4742,7 @@ class TestSDPACudaOnly(NNTestCase):
             torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else 0
         )
         is_hopper_or_newer = device_capability and (
-            device == GPU_TYPE
-            and device_capability[0] == 9
-            or device_capability[0] == 10
+            device == "cuda" and device_capability[0] == 9 or device_capability[0] == 10
         )
         prefer_cudnn = prefer_cudnn and is_hopper_or_newer and cudnn_version > 91500
 
@@ -5113,7 +5097,7 @@ class TestSDPACudaOnly(NNTestCase):
             TEST_WITH_ROCM
             and seq_len_q * seq_len_k * head_dim * batch_size > 1024 * 1024 * 128
         ):
-            torch.accelerator.empty_cache()  # Prevent memory fragmentation
+            torch.cuda.empty_cache()  # Prevent memory fragmentation
         seed = 42
         scale = scale if scale is None else (1 / head_dim)
         n_heads = 4
@@ -5321,7 +5305,7 @@ class TestSDPACudaOnly(NNTestCase):
             TEST_WITH_ROCM
             and seq_len_q * seq_len_k * head_dim * batch_size > 1024 * 1024 * 128
         ):
-            torch.accelerator.empty_cache()  # Prevent memory fragmentation
+            torch.cuda.empty_cache()  # Prevent memory fragmentation
         seed = 42
         scale = scale if scale is None else (1 / head_dim)
         n_heads = 4
@@ -5530,7 +5514,7 @@ class TestSDPACudaOnly(NNTestCase):
             and seq_len_k >= 1024
             and batch_size > 1
         ):
-            torch.accelerator.empty_cache()  # Prevent memory fragmentation
+            torch.cuda.empty_cache()  # Prevent memory fragmentation
         if max(seq_len_q, seq_len_k) >= 2048 and (
             torch.get_device_module(device).get_device_properties(device).total_memory
             < 40 * 2**30
