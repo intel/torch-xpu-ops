@@ -23,8 +23,13 @@ from copy import deepcopy
 
 import torch
 from torch.nn import Parameter
-from torch.testing._internal.common_device_type import TEST_WITH_ROCM
+from torch.testing._internal.common_device_type import (
+    TEST_WITH_ROCM,
+    tol,
+    toleranceOverride,
+)
 from torch.testing._internal.common_dtype import floating_types_and
+from torch.testing._internal.common_methods_invocations import DecorateInfo
 from torch.testing._internal.common_optimizers import (
     _get_optim_inputs_including_global_cliquey_kwargs,
     optim_db,
@@ -45,6 +50,29 @@ for optim in optim_db:
                 and "xpu" not in optim.supports_fused_on
             ):
                 optim.supports_fused_on = ("xpu",) + optim.supports_fused_on
+
+# Muon's Newton-Schulz orthogonalization runs in bfloat16 and the fused addmm
+# kernel rounds differently on CPU vs XPU (both valid within bf16 precision).
+# This 1-ULP bf16 rounding difference (~3.9e-3) amplifies through 5 polynomial
+# iterations, producing additive errors up to ~4.7e-4 in the float32 parameter
+# update.  Since the error is additive (independent of parameter magnitude),
+# atol absorbs it entirely; rtol stays at float32 default.
+# Empirically validated: 3000 seeds on Arc B580, worst diff = 4.66e-4.
+# See: https://github.com/intel/torch-xpu-ops/issues/4263
+for optim in optim_db:
+    if optim.optim_cls is torch.optim.Muon:
+        optim.decorators = optim.decorators + (
+            DecorateInfo(
+                toleranceOverride(
+                    {
+                        torch.float32: tol(atol=7e-4, rtol=1.3e-6),
+                    }
+                ),
+                "TestOptimRenewed",
+                "test_state_dict_cross_device",
+                device_type="xpu",
+            ),
+        )
 
 
 @optims(
