@@ -2364,8 +2364,8 @@ batch_norm_backward_reduce_channels_last_template(
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
 
-  at::Tensor sumn_dy = at::zeros({stride}, mean.options());
-  at::Tensor sum_dy_xmu = at::zeros({stride}, mean.options());
+  at::Tensor sumn_dy = at::empty({stride}, mean.options());
+  at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
 
   at::Tensor grad_weight;
   at::Tensor grad_bias;
