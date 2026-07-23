@@ -22,7 +22,7 @@
 #include <c10/util/SmallVector.h>
 
 #include <ATen/TensorUtils.h>
-#include <math.h>
+#include <cmath>
 
 namespace at::native::xpu {
 
@@ -348,7 +348,7 @@ struct BilinearFilterFunctor {
     return 0;
   }
 
-  static const int size = 2;
+  static constexpr int size = 2;
 };
 
 // taken from
@@ -371,7 +371,7 @@ struct BicubicFilterFunctor {
     return 0;
   }
 
-  static const int size = 4;
+  static constexpr int size = 4;
 };
 
 template <typename accscalar_t>

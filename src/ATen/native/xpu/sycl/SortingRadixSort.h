@@ -41,17 +41,17 @@ class GroupRadixSort {
 
     PROCESSING_LENGTH = GROUP_THREADS * KEYS_PER_THREAD,
     RADIX_BUCKETS = 1 << RADIX_BITS,
-    KEYS_ONLY = std::is_same<ValueT, NullType>::value,
+    KEYS_ONLY = std::is_same_v<ValueT, NullType>,
     PACKING_RATIO = sizeof(CounterT) / sizeof(DigitT),
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
     LOG_COUNTER_LANES = Log2<COUNTER_LANES>::VALUE,
     DIGIT_BITS = sizeof(DigitT) << 3,
     DIGIT_MASK = (1 << DIGIT_BITS) - 1,
-    IS_INT_TYPE = std::is_integral<ValueT>::value,
+    IS_INT_TYPE = std::is_integral_v<ValueT>,
   };
 
-  static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
-  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0, "");
+  static_assert(sizeof(CounterT) >= sizeof(DigitT));
+  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0);
   static_assert(
       ((1l << (sizeof(DigitT) << 3)) - 1) >= (GROUP_THREADS * KEYS_PER_THREAD),
       " ");
@@ -93,7 +93,7 @@ class GroupRadixSort {
   inline void load_bin_offsets(int* counts, int group_id, int num_groups) {
     int bin_idx = lid_;
     if (lid_ < RADIX_BUCKETS) {
-      if (IS_DESCENDING)
+      if constexpr (IS_DESCENDING)
         bin_idx = RADIX_BUCKETS - bin_idx - 1;
       bin_offset_ = counts[group_id + bin_idx * num_groups];
     }
@@ -120,10 +120,10 @@ class GroupRadixSort {
             KeyTraits<KeyT>::convert(c10::load(&keys_group_in[offset]));
       } else {
         KeyTraitsT padding_key;
-        if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+        if constexpr (std::is_same_v<KeyTraitsT, bool>) {
           padding_key = IS_DESCENDING ? false : true;
         } else {
-          if (IS_DESCENDING) {
+          if constexpr (IS_DESCENDING) {
             padding_key = 0;
           } else {
             constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
@@ -342,7 +342,7 @@ class GroupRadixSort {
       auto digit = extract_digit(ukeys_[ITEM]);
       auto sub_counter = digit >> LOG_COUNTER_LANES;
       auto counter_lane = digit & (COUNTER_LANES - 1);
-      if (IS_DESCENDING) {
+      if constexpr (IS_DESCENDING) {
         sub_counter = PACKING_RATIO - 1 - sub_counter;
         counter_lane = COUNTER_LANES - 1 - counter_lane;
       }
@@ -382,7 +382,7 @@ class GroupRadixSort {
     if (enable_bin_offsets_) {
       int digit = lid_;
       if (lid_ < RADIX_BUCKETS) {
-        if (IS_DESCENDING)
+        if constexpr (IS_DESCENDING)
           digit = RADIX_BUCKETS - digit - 1;
         auto sub_counter = digit >> LOG_COUNTER_LANES;
         auto counter_lane = digit & (COUNTER_LANES - 1);
@@ -442,7 +442,7 @@ class GroupRadixSort {
         auto digit = extract_digit(ukeys_[ITEM]);
         auto sub_counter = digit >> LOG_COUNTER_LANES;
         auto counter_lane = digit & (COUNTER_LANES - 1);
-        if (IS_DESCENDING) {
+        if constexpr (IS_DESCENDING) {
           sub_counter = PACKING_RATIO - 1 - sub_counter;
           counter_lane = COUNTER_LANES - 1 - counter_lane;
         }
@@ -517,14 +517,14 @@ class GroupRadixSort {
         offset_select = k - num_selected;
       if (offset_select > 0) {
         store_keys(out_keys, offset_select, num_selected);
-        if (!KEYS_ONLY)
+        if constexpr (!KEYS_ONLY)
           store_values(out_values, offset_select, num_selected);
       }
       num_selected += offset_select;
       if (num_selected == k)
         break;
       exchange_keys(offset_select, offset_active, &active_mask);
-      if (!KEYS_ONLY)
+      if constexpr (!KEYS_ONLY)
         exchange_values(offset_select, offset_active);
     }
   }
@@ -546,10 +546,10 @@ class GroupRadixSort {
           ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_in[offset]));
         } else {
           KeyTraitsT padding_key;
-          if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+          if constexpr (std::is_same_v<KeyTraitsT, bool>) {
             padding_key = IS_DESCENDING ? false : true;
           } else {
-            if (IS_DESCENDING) {
+            if constexpr (IS_DESCENDING) {
               padding_key = 0;
             } else {
               constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
@@ -612,7 +612,7 @@ class RadixSortUpsweep {
 
     PROCESSING_LENGTH = GROUP_THREADS * KEYS_PER_THREAD,
     RADIX_BUCKETS = 1 << RADIX_BITS,
-    KEYS_ONLY = std::is_same<ValueT, NullType>::value,
+    KEYS_ONLY = std::is_same_v<ValueT, NullType>,
     PACKING_RATIO = sizeof(CounterT) / sizeof(DigitT),
     LOG_PACKING_RATIO = Log2<PACKING_RATIO>::VALUE,
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
@@ -622,8 +622,8 @@ class RadixSortUpsweep {
         std::max<int>(1, (COUNTER_LANES + SUBGROUPS - 1) / SUBGROUPS),
   };
 
-  static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
-  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0, "");
+  static_assert(sizeof(CounterT) >= sizeof(DigitT));
+  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0);
 
  private:
   union LocalStorage {
@@ -774,7 +774,7 @@ class RadixSortUpsweep {
 #pragma unroll
       for (int i = 0; i < SUBGROUP_SIZE; ++i)
         bin_count += local_storage_.group_counters[i][bin_idx];
-      if (IS_DESCENDING)
+      if constexpr (IS_DESCENDING)
         bin_idx = RADIX_BUCKETS - bin_idx - 1;
       count_out_[(num_groups_ * bin_idx) + gid_] = bin_count;
     }
