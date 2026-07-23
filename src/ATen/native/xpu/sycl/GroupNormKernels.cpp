@@ -14,6 +14,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
 #include <comm/MemoryFormat.h>
@@ -21,6 +22,8 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/GroupNormKernels.h>
+
+namespace syclex = sycl::ext::oneapi::experimental;
 
 namespace at::native::xpu {
 
@@ -365,6 +368,658 @@ bool can_use_vectorization(T* p, int vec_size) {
   return memory::can_vectorize_up_to<T>((char*)p) >= vec_size;
 }
 
+template <typename T_ACC>
+struct WelfordState {
+  T_ACC mean;
+  T_ACC m2;
+  T_ACC nf;
+};
+
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_combine(
+    WelfordState<T_ACC> a,
+    WelfordState<T_ACC> b) {
+  T_ACC delta = b.mean - a.mean;
+  T_ACC total = a.nf + b.nf;
+  T_ACC r = (total > T_ACC(0)) ? (b.nf / total) : T_ACC(0);
+  return {a.mean + delta * r, a.m2 + b.m2 + delta * delta * a.nf * r, total};
+}
+
+// Symmetric Welford merge: assumes a.nf == b.nf (r = 0.5 always).
+// Eliminates division and branch from the general formula.
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_combine_symmetric(
+    WelfordState<T_ACC> a,
+    WelfordState<T_ACC> b) {
+  T_ACC delta = b.mean - a.mean;
+  return {
+      a.mean + delta * T_ACC(0.5),
+      a.m2 + b.m2 + delta * delta * a.nf * T_ACC(0.5),
+      a.nf + b.nf};
+}
+
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_shfl(
+    sycl::sub_group sg,
+    WelfordState<T_ACC> s,
+    int offset) {
+  return {
+      sycl::shift_group_left(sg, s.mean, offset),
+      sycl::shift_group_left(sg, s.m2, offset),
+      sycl::shift_group_left(sg, s.nf, offset)};
+}
+
+template <typename T_ACC>
+inline WelfordState<T_ACC> welford_shfl_xor(
+    sycl::sub_group sg,
+    WelfordState<T_ACC> s,
+    int mask) {
+  return {
+      sycl::permute_group_by_xor(sg, s.mean, mask),
+      sycl::permute_group_by_xor(sg, s.m2, mask),
+      sycl::permute_group_by_xor(sg, s.nf, mask)};
+}
+
+// Small-DS fused GroupNorm forward: DS fits in 1 vec4 per lane.
+// WG = 1 SG, flat (N,G) mapping with grid-stride loop.
+// When G < SIMD/lanes, packs groups from multiple batch items per SG.
+// Gamma/beta preloaded into registers.
+template <
+    typename T,
+    typename T_ACC,
+    int SIMD,
+    int VEC_SIZE,
+    int LANES_PER_GROUP,
+    typename index_t>
+struct GNFusedForwardSmallFunctor {
+  using vec_t = memory::aligned_vector<T, VEC_SIZE>;
+  static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
+  static constexpr int DS = LANES_PER_GROUP * VEC_SIZE;
+  static constexpr int GROUPS_PER_SG = SIMD / LANES_PER_GROUP;
+
+  void operator()(sycl::nd_item<1> item) const {
+    auto sg = item.get_sub_group();
+    const int sg_lid = sg.get_local_linear_id();
+    const index_t wg_id = item.get_group(0);
+
+    const int group_in_sg = sg_lid / LANES_PER_GROUP;
+    const int local_lid = sg_lid % LANES_PER_GROUP;
+
+    // Flat mapping across (N, G): packs groups from multiple batch items
+    // into one SG when G < GROUPS_PER_SG.
+    const index_t flat_base =
+        static_cast<index_t>(wg_id) * GROUPS_PER_SG + group_in_sg;
+    // g = flat_base % G_. Since G_ = 2^k, this is equivalent to flat_base & (G_
+    // - 1).
+    const index_t g = flat_base & (G_ - 1);
+    const index_t total_groups = N_ * G_;
+    const index_t stride =
+        static_cast<index_t>(item.get_group_range(0)) * GROUPS_PER_SG;
+
+    // Pre-load gamma/beta (g is invariant across iterations since
+    // stride % G == 0 for power-of-2 G and GROUPS_PER_SG).
+    T_ACC my_gamma[VEC_SIZE];
+    T_ACC my_beta[VEC_SIZE];
+    const index_t g_offset = g * D_;
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; v++) {
+      const index_t cv = (local_lid * VEC_SIZE + v) >> log2_S_;
+      my_gamma[v] = static_cast<T_ACC>(gamma_[g_offset + cv]);
+      my_beta[v] = static_cast<T_ACC>(beta_[g_offset + cv]);
+    }
+
+    for (index_t ng = flat_base; ng < total_groups; ng += stride) {
+      const T* x_base = X_ + ng * DS;
+      T* y_base = Y_ + ng * DS;
+
+      vec_t xv = *reinterpret_cast<const vec_t*>(x_base + local_lid * VEC_SIZE);
+
+      T_ACC x0 = static_cast<T_ACC>(xv[0]);
+      T_ACC x1 = static_cast<T_ACC>(xv[1]);
+      T_ACC x2 = static_cast<T_ACC>(xv[2]);
+      T_ACC x3 = static_cast<T_ACC>(xv[3]);
+      constexpr T_ACC inv_vec =
+          static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
+      T_ACC batch_sum = (x0 + x1) + (x2 + x3);
+      T_ACC batch_sum_sq = (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
+      T_ACC batch_mean = batch_sum * inv_vec;
+      WelfordState<T_ACC> st = {
+          batch_mean,
+          batch_sum_sq - batch_sum * batch_mean,
+          static_cast<T_ACC>(VEC_SIZE)};
+
+#pragma unroll
+      for (int off = LANES_PER_GROUP / 2; off > 0; off >>= 1)
+        st = welford_combine_symmetric(st, welford_shfl_xor(sg, st, off));
+
+      // XOR all-reduce: all lanes have the final result, no broadcast needed.
+      constexpr T_ACC inv_DS = static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS);
+      const T_ACC mean_val = st.mean;
+      const T_ACC rstd_val =
+          sycl::rsqrt(st.m2 * inv_DS + static_cast<T_ACC>(eps_));
+
+      if (local_lid == 0) {
+        mean_[ng] = static_cast<T>(mean_val);
+        rstd_[ng] = static_cast<T>(rstd_val);
+        if constexpr (!std::is_same_v<T, T_ACC>) {
+          mean_acc_[ng] = mean_val;
+          rstd_acc_[ng] = rstd_val;
+        }
+      }
+
+      vec_t yv;
+#pragma unroll
+      for (int v = 0; v < VEC_SIZE; v++) {
+        yv[v] = static_cast<T>(
+            rstd_val * my_gamma[v] * (static_cast<T_ACC>(xv[v]) - mean_val) +
+            my_beta[v]);
+      }
+      *reinterpret_cast<vec_t*>(y_base + local_lid * VEC_SIZE) = yv;
+    }
+  }
+
+  GNFusedForwardSmallFunctor(
+      index_t D,
+      int log2_S,
+      index_t G,
+      index_t N,
+      T eps,
+      const T* X,
+      T* Y,
+      const T* gamma,
+      const T* beta,
+      T* mean,
+      T* rstd,
+      T_ACC* mean_acc,
+      T_ACC* rstd_acc)
+      : D_(D),
+        log2_S_(log2_S),
+        G_(G),
+        N_(N),
+        eps_(eps),
+        X_(X),
+        Y_(Y),
+        gamma_(gamma),
+        beta_(beta),
+        mean_(mean),
+        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc) {}
+
+ private:
+  index_t D_;
+  int log2_S_;
+  index_t G_;
+  index_t N_;
+  T eps_;
+  const T* X_;
+  T* Y_;
+  const T* gamma_;
+  const T* beta_;
+  T* mean_;
+  T* rstd_;
+  T_ACC* mean_acc_;
+  T_ACC* rstd_acc_;
+};
+
+// Medium-DS fused GroupNorm forward: multiple vec4 loads per lane.
+// WG = 1 SG, all SIMD lanes on 1 group, persistent loop over N.
+// Gamma/beta fetched on-the-fly (small D, L1-cached).
+template <typename T, typename T_ACC, int SIMD, int VEC_SIZE, typename index_t>
+struct GNFusedForwardMediumFunctor {
+  using vec_t = memory::aligned_vector<T, VEC_SIZE>;
+  static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
+
+  void operator()(sycl::nd_item<1> item) const {
+    auto sg = item.get_sub_group();
+    const int sg_lid = sg.get_local_linear_id();
+    const index_t wg_id = item.get_group(0);
+
+    const int loads_per_lane = DS_ / (VEC_SIZE * SIMD);
+    const T_ACC inv_DS = static_cast<T_ACC>(1.0) / static_cast<T_ACC>(DS_);
+
+    // Each workgroup deals G=g, N=n_begin..n_begin + n_per_wg.
+    const index_t g = wg_id % G_;
+    const index_t wgs_per_g = item.get_group_range(0) / G_;
+    const index_t wg_rank = wg_id / G_;
+    const index_t n_per_wg = (N_ + wgs_per_g - 1) / wgs_per_g;
+    const index_t n_begin = wg_rank * n_per_wg;
+    const index_t g_offset = g * D_;
+
+    for (index_t n = n_begin; n < n_begin + n_per_wg && n < N_; ++n) {
+      const index_t ng = n * G_ + g;
+      const T* x_base = X_ + ng * DS_;
+      T* y_base = Y_ + ng * DS_;
+
+      constexpr int MAX_LOADS = 4;
+      vec_t xv_cache[MAX_LOADS];
+      WelfordState<T_ACC> st = {0, 0, 0};
+      constexpr T_ACC inv_vec =
+          static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
+      for (int li = 0; li < loads_per_lane; li++) {
+        xv_cache[li] = *reinterpret_cast<const vec_t*>(
+            x_base + (sg_lid + li * SIMD) * VEC_SIZE);
+        T_ACC x0 = static_cast<T_ACC>(xv_cache[li][0]);
+        T_ACC x1 = static_cast<T_ACC>(xv_cache[li][1]);
+        T_ACC x2 = static_cast<T_ACC>(xv_cache[li][2]);
+        T_ACC x3 = static_cast<T_ACC>(xv_cache[li][3]);
+        T_ACC batch_sum = (x0 + x1) + (x2 + x3);
+        T_ACC batch_sum_sq = (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
+        T_ACC batch_mean = batch_sum * inv_vec;
+        WelfordState<T_ACC> batch = {
+            batch_mean,
+            batch_sum_sq - batch_sum * batch_mean,
+            static_cast<T_ACC>(VEC_SIZE)};
+        st = welford_combine(st, batch);
+      }
+
+      for (int off = SIMD / 2; off > 0; off >>= 1)
+        st = welford_combine_symmetric(st, welford_shfl_xor(sg, st, off));
+
+      // XOR all-reduce: all lanes have the final result.
+      const T_ACC mean_val = st.mean;
+      const T_ACC rstd_val =
+          sycl::rsqrt(st.m2 * inv_DS + static_cast<T_ACC>(eps_));
+
+      if (sg_lid == 0) {
+        mean_[ng] = static_cast<T>(mean_val);
+        rstd_[ng] = static_cast<T>(rstd_val);
+        if constexpr (!std::is_same_v<T, T_ACC>) {
+          mean_acc_[ng] = mean_val;
+          rstd_acc_[ng] = rstd_val;
+        }
+      }
+
+      for (int li = 0; li < loads_per_lane; li++) {
+        vec_t yv;
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; v++) {
+          const int pos = (sg_lid + li * SIMD) * VEC_SIZE + v;
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(pos)));
+          T_ACC gv = static_cast<T_ACC>(gamma_[g_offset + c]);
+          T_ACC bv = static_cast<T_ACC>(beta_[g_offset + c]);
+          yv[v] = static_cast<T>(
+              rstd_val * gv * (static_cast<T_ACC>(xv_cache[li][v]) - mean_val) +
+              bv);
+        }
+        *reinterpret_cast<vec_t*>(y_base + (sg_lid + li * SIMD) * VEC_SIZE) =
+            yv;
+      }
+    }
+  }
+
+  GNFusedForwardMediumFunctor(
+      index_t D,
+      index_t S,
+      index_t DS,
+      index_t G,
+      index_t N,
+      T eps,
+      const T* X,
+      T* Y,
+      const T* gamma,
+      const T* beta,
+      T* mean,
+      T* rstd,
+      T_ACC* mean_acc,
+      T_ACC* rstd_acc)
+      : D_(D),
+        S_(S),
+        DS_(DS),
+        G_(G),
+        N_(N),
+        eps_(eps),
+        X_(X),
+        Y_(Y),
+        gamma_(gamma),
+        beta_(beta),
+        mean_(mean),
+        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc),
+        s_divider_(static_cast<unsigned_index_t>(S)) {}
+
+ private:
+  // See GNFusedForwardFunctor's s_divider_ for rationale (magic-number
+  // multiply+shift for 32-bit index_t, plain division fallback for 64-bit).
+  using unsigned_index_t = std::make_unsigned_t<index_t>;
+  index_t D_;
+  index_t S_;
+  index_t DS_;
+  index_t G_;
+  index_t N_;
+  T eps_;
+  const T* X_;
+  T* Y_;
+  const T* gamma_;
+  const T* beta_;
+  T* mean_;
+  T* rstd_;
+  T_ACC* mean_acc_;
+  T_ACC* rstd_acc_;
+  at::detail::IntDivider<unsigned_index_t> s_divider_;
+};
+
+// Fused GroupNorm forward kernel: combines reduction + normalization
+// in a single kernel launch to avoid reading X twice from global memory.
+// Each workgroup handles one (n, g) group. Pass 1 computes mean/rstd via
+// batched Welford (sum within vec4, Welford merge across iterations);
+// Pass 2 applies Y = a[c]*X + b[c] with coefficients either precomputed
+// in SLM or computed on-the-fly depending on SLM budget.
+template <typename T, typename T_ACC, int SIMD, int VEC_SIZE, typename index_t>
+struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using vec_t = memory::aligned_vector<T, VEC_SIZE>;
+
+  void operator()(sycl::nd_item<1> item) const {
+    static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
+    const index_t ng = item.get_group(0);
+    const int lid = item.get_local_id(0);
+    const int wg_size = item.get_local_range(0);
+
+    const T* x_base = X_ + static_cast<int64_t>(ng) * DS_;
+    T* y_base = Y_ + static_cast<int64_t>(ng) * DS_;
+
+    // Compute aligned region for vectorized access
+    const int ptr_elem =
+        static_cast<int>(reinterpret_cast<uintptr_t>(x_base) / sizeof(T));
+    const index_t head = ((VEC_SIZE - ptr_elem % VEC_SIZE) % VEC_SIZE);
+    const index_t n_vecs = (DS_ - head) / VEC_SIZE;
+    const index_t tail_start = head + n_vecs * VEC_SIZE;
+
+    // === Pass 1: Batched Welford reduction ===
+    WelfordState<T_ACC> st = {0, 0, 0};
+
+    // Head + tail (work-item 0 only): accumulate as sum, merge once
+    T_ACC ht_sum = 0, ht_sum_sq = 0;
+    int ht_count = 0;
+    if (lid == 0) {
+      for (index_t j = 0; j < head; j++) {
+        T_ACC xf = static_cast<T_ACC>(x_base[j]);
+        ht_sum += xf;
+        ht_sum_sq += xf * xf;
+      }
+      for (index_t j = tail_start; j < DS_; j++) {
+        T_ACC xf = static_cast<T_ACC>(x_base[j]);
+        ht_sum += xf;
+        ht_sum_sq += xf * xf;
+      }
+      ht_count = static_cast<int>(head + DS_ - tail_start);
+    }
+
+    // Vectorized middle: tree-reduce within vec4, Welford merge across iters
+    constexpr T_ACC inv_vec =
+        static_cast<T_ACC>(1.0) / static_cast<T_ACC>(VEC_SIZE);
+    for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
+      vec_t xv = *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
+      T_ACC x0 = static_cast<T_ACC>(xv[0]);
+      T_ACC x1 = static_cast<T_ACC>(xv[1]);
+      T_ACC x2 = static_cast<T_ACC>(xv[2]);
+      T_ACC x3 = static_cast<T_ACC>(xv[3]);
+      T_ACC batch_sum = (x0 + x1) + (x2 + x3);
+      T_ACC batch_sum_sq = (x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3);
+      T_ACC batch_mean = batch_sum * inv_vec;
+      T_ACC batch_M2 = batch_sum_sq - batch_sum * batch_mean;
+      st = welford_combine(
+          st,
+          WelfordState<T_ACC>{
+              batch_mean, batch_M2, static_cast<T_ACC>(VEC_SIZE)});
+    }
+
+    // Merge head+tail into work-item 0's Welford state
+    if (ht_count > 0) {
+      T_ACC ht_nf = static_cast<T_ACC>(ht_count);
+      T_ACC ht_mean = ht_sum / ht_nf;
+      T_ACC ht_M2 = ht_sum_sq - ht_sum * ht_mean;
+      st = welford_combine(st, WelfordState<T_ACC>{ht_mean, ht_M2, ht_nf});
+    }
+
+    // Reduce across workgroup via Welford parallel merge
+    auto sg = item.get_sub_group();
+    int sg_tid = sg.get_local_linear_id();
+    int sg_id = sg.get_group_linear_id();
+    int n_sg = wg_size / SIMD;
+
+    // Intra-subgroup Welford merge
+    for (int off = SIMD / 2; off > 0; off >>= 1) {
+      WelfordState<T_ACC> r = welford_shfl(sg, st, off);
+      st = welford_combine(st, r);
+    }
+
+    // Each subgroup leader writes to SLM
+    if (sg_tid == 0) {
+      reduce_shared_[sg_id * 3] = st.mean;
+      reduce_shared_[sg_id * 3 + 1] = st.m2;
+      reduce_shared_[sg_id * 3 + 2] = st.nf;
+    }
+    sycl::group_barrier(item.get_group());
+
+    // First subgroup reduces all partial results
+    if (sg_id == 0) {
+      st.mean = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3] : T_ACC(0);
+      st.m2 = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 1] : T_ACC(0);
+      st.nf = (sg_tid < n_sg) ? reduce_shared_[sg_tid * 3 + 2] : T_ACC(0);
+      for (int off = SIMD / 2; off > 0; off >>= 1) {
+        WelfordState<T_ACC> r = welford_shfl(sg, st, off);
+        st = welford_combine(st, r);
+      }
+    }
+
+    // Work-item 0 computes final rstd and broadcasts via SLM
+    if (lid == 0) {
+      T_ACC var = st.m2 / st.nf;
+      T_ACC rstd_val = sycl::rsqrt(var + static_cast<T_ACC>(eps_));
+      mean_[ng] = static_cast<T>(st.mean);
+      rstd_[ng] = static_cast<T>(rstd_val);
+      if constexpr (!std::is_same_v<T, T_ACC>) {
+        mean_acc_[ng] = st.mean;
+        rstd_acc_[ng] = rstd_val;
+      }
+      broadcast_[0] = st.mean;
+      broadcast_[1] = rstd_val;
+    }
+    sycl::group_barrier(item.get_group());
+    const T_ACC g_mean = broadcast_[0];
+    const T_ACC g_rstd = broadcast_[1];
+
+    // === Precompute a[c], b[c] in SLM (if budget allows) ===
+    const index_t g = ng % G_;
+    const index_t g_offset = g * D_;
+    if (use_slm_coeff_) {
+      const T* gp = gamma_ + g_offset;
+      const T* bp = beta_ + g_offset;
+      const int gp_elem =
+          static_cast<int>(reinterpret_cast<uintptr_t>(gp) / sizeof(T));
+      // Clamp to D_: for D_ < VEC_SIZE (e.g. num_groups == num_channels),
+      // the raw alignment-derived head can exceed D_, which would make
+      // c_nvecs truncate to 0 and c_tail stay above D_ -- the head loop
+      // below would then run past D_, reading gp/bp out of bounds and
+      // writing beyond coeff_'s intended a[]/b[] sub-ranges.
+      const index_t c_head = std::min(
+          static_cast<index_t>((VEC_SIZE - gp_elem % VEC_SIZE) % VEC_SIZE), D_);
+      const index_t c_nvecs = (D_ - c_head) / VEC_SIZE;
+      const index_t c_tail = c_head + c_nvecs * VEC_SIZE;
+      if (lid == 0) {
+        for (index_t c = 0; c < c_head; c++) {
+          T_ACC gv = static_cast<T_ACC>(gp[c]);
+          T_ACC bv = static_cast<T_ACC>(bp[c]);
+          T_ACC a_c = g_rstd * gv;
+          coeff_[c] = a_c;
+          coeff_[D_ + c] = bv - g_mean * a_c;
+        }
+      }
+      for (index_t ci = lid; ci < c_nvecs; ci += wg_size) {
+        const index_t c = c_head + ci * VEC_SIZE;
+        vec_t gv_vec = *reinterpret_cast<const vec_t*>(gp + c);
+        vec_t bv_vec = *reinterpret_cast<const vec_t*>(bp + c);
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; v++) {
+          T_ACC gv = static_cast<T_ACC>(gv_vec[v]);
+          T_ACC bv = static_cast<T_ACC>(bv_vec[v]);
+          T_ACC a_c = g_rstd * gv;
+          coeff_[c + v] = a_c;
+          coeff_[D_ + c + v] = bv - g_mean * a_c;
+        }
+      }
+      if (lid == 0) {
+        for (index_t c = c_tail; c < D_; c++) {
+          T_ACC gv = static_cast<T_ACC>(gp[c]);
+          T_ACC bv = static_cast<T_ACC>(bp[c]);
+          T_ACC a_c = g_rstd * gv;
+          coeff_[c] = a_c;
+          coeff_[D_ + c] = bv - g_mean * a_c;
+        }
+      }
+      sycl::group_barrier(item.get_group());
+    }
+
+    // === Pass 2: Y = a[c]*X + b[c] ===
+    if (use_slm_coeff_) {
+      // Use precomputed coefficients from SLM
+      if (lid == 0) {
+        for (index_t j = 0; j < head; j++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
+          y_base[j] = static_cast<T>(
+              coeff_[c] * static_cast<T_ACC>(x_base[j]) + coeff_[D_ + c]);
+        }
+      }
+      for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
+        const index_t j = head + vi * VEC_SIZE;
+        vec_t xv =
+            *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
+        vec_t yv;
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; v++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j + v)));
+          yv[v] = static_cast<T>(
+              coeff_[c] * static_cast<T_ACC>(xv[v]) + coeff_[D_ + c]);
+        }
+        *reinterpret_cast<vec_t*>(y_base + j) = yv;
+      }
+      if (lid == 0) {
+        for (index_t j = tail_start; j < DS_; j++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
+          y_base[j] = static_cast<T>(
+              coeff_[c] * static_cast<T_ACC>(x_base[j]) + coeff_[D_ + c]);
+        }
+      }
+    } else {
+      // Compute coefficients on-the-fly (gamma/beta L1/L2 cached)
+      if (lid == 0) {
+        for (index_t j = 0; j < head; j++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
+          const index_t gc = g_offset + c;
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
+          T_ACC a_c = g_rstd * gv;
+          y_base[j] = static_cast<T>(
+              a_c * static_cast<T_ACC>(x_base[j]) + bv - g_mean * a_c);
+        }
+      }
+      for (index_t vi = lid; vi < n_vecs; vi += wg_size) {
+        const index_t j = head + vi * VEC_SIZE;
+        vec_t xv =
+            *reinterpret_cast<const vec_t*>(x_base + head + vi * VEC_SIZE);
+        vec_t yv;
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; v++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j + v)));
+          const index_t gc = g_offset + c;
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
+          T_ACC a_c = g_rstd * gv;
+          yv[v] = static_cast<T>(
+              a_c * static_cast<T_ACC>(xv[v]) + bv - g_mean * a_c);
+        }
+        *reinterpret_cast<vec_t*>(y_base + j) = yv;
+      }
+      if (lid == 0) {
+        for (index_t j = tail_start; j < DS_; j++) {
+          const index_t c = static_cast<index_t>(
+              s_divider_.div(static_cast<unsigned_index_t>(j)));
+          const index_t gc = g_offset + c;
+          T_ACC gv = static_cast<T_ACC>(gamma_[gc]);
+          T_ACC bv = static_cast<T_ACC>(beta_[gc]);
+          T_ACC a_c = g_rstd * gv;
+          y_base[j] = static_cast<T>(
+              a_c * static_cast<T_ACC>(x_base[j]) + bv - g_mean * a_c);
+        }
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    reduce_shared_ = sycl_local_acc_t<T_ACC>(wg_size_ / SIMD * 3, cgh);
+    broadcast_ = sycl_local_acc_t<T_ACC>(2, cgh);
+    coeff_ = sycl_local_acc_t<T_ACC>(use_slm_coeff_ ? 2 * D_ : 1, cgh);
+  }
+
+  GNFusedForwardFunctor(
+      index_t D,
+      index_t S,
+      index_t DS,
+      index_t G,
+      T eps,
+      const T* X,
+      T* Y,
+      const T* gamma,
+      const T* beta,
+      T* mean,
+      T* rstd,
+      T_ACC* mean_acc,
+      T_ACC* rstd_acc,
+      int wg_size,
+      bool use_slm_coeff)
+      : D_(D),
+        S_(S),
+        DS_(DS),
+        G_(G),
+        eps_(eps),
+        X_(X),
+        Y_(Y),
+        gamma_(gamma),
+        beta_(beta),
+        mean_(mean),
+        rstd_(rstd),
+        mean_acc_(mean_acc),
+        rstd_acc_(rstd_acc),
+        wg_size_(wg_size),
+        use_slm_coeff_(use_slm_coeff),
+        s_divider_(static_cast<unsigned_index_t>(S)) {}
+
+ private:
+  // at::detail::IntDivider<unsigned int> replaces the Pass-2 channel-index
+  // division (c = j / S_) with a precomputed magic-number multiply + shift
+  // (see IntegerDivider.h). Falls back to plain division when index_t is
+  // 64-bit (IntDivider has no fast specialization for that width, matching
+  // the CUDA/XPU IntDivider's own precedent elsewhere in this codebase).
+  using unsigned_index_t = std::make_unsigned_t<index_t>;
+  index_t D_;
+  index_t S_;
+  index_t DS_;
+  index_t G_;
+  T eps_;
+  const T* X_;
+  T* Y_;
+  const T* gamma_;
+  const T* beta_;
+  T* mean_;
+  T* rstd_;
+  T_ACC* mean_acc_;
+  T_ACC* rstd_acc_;
+  int wg_size_;
+  bool use_slm_coeff_;
+  sycl_local_acc_t<T_ACC> reduce_shared_;
+  sycl_local_acc_t<T_ACC> broadcast_;
+  sycl_local_acc_t<T_ACC> coeff_;
+  at::detail::IntDivider<unsigned_index_t> s_divider_;
+};
+
 template <typename T, typename T_ACC = acc_type_device<T, kXPU>>
 void group_norm_kernel_impl(
     const Tensor& X,
@@ -388,24 +1043,253 @@ void group_norm_kernel_impl(
   const int64_t G = group;
   const int64_t D = C / G;
   const T* X_data = X.const_data_ptr<T>();
-
-  const bool needMeanAcc{
-      X.scalar_type() == kHalf || X.scalar_type() == kBFloat16};
-  const auto kAccTypeOpts{
-      X.options().dtype(needMeanAcc ? kFloat : X.scalar_type())};
-
   T* mean_data = mean.mutable_data_ptr<T>();
   T* rstd_data = rstd.mutable_data_ptr<T>();
-  Tensor mean_acc = needMeanAcc ? at::empty(mean.sizes(), kAccTypeOpts) : mean;
-  Tensor rstd_acc = needMeanAcc ? at::empty(rstd.sizes(), kAccTypeOpts) : rstd;
-  T_ACC* mean_acc_data = mean_acc.mutable_data_ptr<T_ACC>();
-  T_ACC* rstd_acc_data = rstd_acc.mutable_data_ptr<T_ACC>();
-
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
+
+  // --- Fused forward path: single kernel for Welford + normalization ---
+  constexpr int FUSED_VEC_SIZE = 4;
+  int64_t DS = D * HxW;
+  bool can_use_int32 = canUse32BitIndexMath(X);
+  constexpr int64_t kElemsPerWorkItem = 16;
+
+  T* Y_data = Y.mutable_data_ptr<T>();
+  const bool gamma_beta_defined = gamma.defined() && beta.defined();
+  const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
+  const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
+  const bool needMeanAcc{!std::is_same_v<T, T_ACC>};
+  T_ACC* mean_acc_data = nullptr;
+  T_ACC* rstd_acc_data = nullptr;
+  Tensor mean_acc, rstd_acc;
+  if (needMeanAcc) {
+    const auto kAccOpts{X.options().dtype(kFloat)};
+    mean_acc = at::empty(mean.sizes(), kAccOpts);
+    rstd_acc = at::empty(rstd.sizes(), kAccOpts);
+    mean_acc_data = mean_acc.mutable_data_ptr<T_ACC>();
+    rstd_acc_data = rstd_acc.mutable_data_ptr<T_ACC>();
+  }
+
+  int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+
+  // Small-DS path: single vec4 per lane (covers DS where lanes <= SIMD).
+  // WG = 1 SG, flat mapping over (N, G) with grid-stride loop.
+  auto try_small_path = [&](auto index_tag) -> bool {
+    if (!gamma_beta_defined)
+      return false;
+    if (simd != 32)
+      return false;
+    using index_t = decltype(index_tag);
+    if (DS % FUSED_VEC_SIZE != 0)
+      return false;
+    int64_t lanes = DS / FUSED_VEC_SIZE;
+    if (lanes <= 0 || lanes > SIMD32 || (lanes & (lanes - 1)) != 0)
+      return false;
+    // Require G and HxW to be powers of 2 for bitwise modulo/division.
+    if ((G & (G - 1)) != 0 || (HxW & (HxW - 1)) != 0)
+      return false;
+    int64_t groups_per_sg = SIMD32 / lanes;
+    if ((N * G) % groups_per_sg != 0)
+      return false;
+    int log2_S = 0;
+    for (int64_t tmp = HxW; tmp > 1; tmp >>= 1)
+      log2_S++;
+    int64_t total_sgs = (N * G) / groups_per_sg;
+    // Ensure stride preserves g across iterations (stride % G == 0).
+    int64_t n_wgs;
+    if (G >= groups_per_sg) {
+      int64_t g_chunks = G / groups_per_sg;
+      n_wgs = std::min(total_sgs, (thread_slots / g_chunks) * g_chunks);
+    } else {
+      n_wgs = std::min(total_sgs, thread_slots);
+    }
+    n_wgs = std::max(n_wgs, (int64_t)1);
+    constexpr int64_t wg_sz = SIMD32;
+    auto launch = [&](auto lanes_tag) {
+      constexpr int LANES = decltype(lanes_tag)::value;
+      using K = GNFusedForwardSmallFunctor<
+          T,
+          T_ACC,
+          SIMD32,
+          FUSED_VEC_SIZE,
+          LANES,
+          index_t>;
+      auto kfn =
+          K(static_cast<index_t>(D),
+            log2_S,
+            static_cast<index_t>(G),
+            static_cast<index_t>(N),
+            eps,
+            X_data,
+            Y_data,
+            gamma_data,
+            beta_data,
+            mean_data,
+            rstd_data,
+            mean_acc_data,
+            rstd_acc_data);
+      sycl_kernel_submit(
+          sycl::range<1>(n_wgs * wg_sz),
+          sycl::range<1>(wg_sz),
+          queue,
+          syclex::properties{syclex::sub_group_size<SIMD32>},
+          kfn);
+    };
+    switch (lanes) {
+      case 1:
+        launch(std::integral_constant<int, 1>{});
+        break;
+      case 2:
+        launch(std::integral_constant<int, 2>{});
+        break;
+      case 4:
+        launch(std::integral_constant<int, 4>{});
+        break;
+      case 8:
+        launch(std::integral_constant<int, 8>{});
+        break;
+      case 16:
+        launch(std::integral_constant<int, 16>{});
+        break;
+      case 32:
+        launch(std::integral_constant<int, 32>{});
+        break;
+      default:
+        return false;
+    }
+    return true;
+  };
+  auto try_medium_path = [&](auto index_tag) -> bool {
+    if (!gamma_beta_defined)
+      return false;
+    if (simd != 32)
+      return false;
+    using index_t = decltype(index_tag);
+    constexpr int64_t MAX_LOADS = 4;
+    int64_t elems_per_sg = FUSED_VEC_SIZE * SIMD32;
+    if (DS % elems_per_sg != 0)
+      return false;
+    int64_t loads = DS / elems_per_sg;
+    if (loads < 1 || loads > MAX_LOADS)
+      return false;
+    using K =
+        GNFusedForwardMediumFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
+    int64_t n_wgs = std::max(G, std::min(N * G, thread_slots));
+    constexpr int64_t wg_sz = SIMD32;
+    auto kfn =
+        K(static_cast<index_t>(D),
+          static_cast<index_t>(HxW),
+          static_cast<index_t>(DS),
+          static_cast<index_t>(G),
+          static_cast<index_t>(N),
+          eps,
+          X_data,
+          Y_data,
+          gamma_data,
+          beta_data,
+          mean_data,
+          rstd_data,
+          mean_acc_data,
+          rstd_acc_data);
+    sycl_kernel_submit(
+        sycl::range<1>(n_wgs * wg_sz),
+        sycl::range<1>(wg_sz),
+        queue,
+        syclex::properties{syclex::sub_group_size<SIMD32>},
+        kfn);
+    return true;
+  };
+  auto dispatch_packed = [&](auto index_tag) -> bool {
+    if (try_small_path(index_tag))
+      return true;
+    if (try_medium_path(index_tag))
+      return true;
+    return false;
+  };
+  if (can_use_int32) {
+    if (dispatch_packed(int{}))
+      return;
+  } else {
+    if (dispatch_packed(int64_t{}))
+      return;
+  }
+
+  // Large-DS fused path: check occupancy with VEC_SIZE=4.
+  // If n_groups * min(DS/4, max_wg) >= 50% thread slots, use fused kernel.
+  int64_t n_groups = N * G;
+  int64_t max_wg_est = std::min((int64_t)1024, DS / FUSED_VEC_SIZE);
+  bool fused_has_occupancy = (n_groups * max_wg_est >= thread_slots / 2);
+  if (fused_has_occupancy && simd == 32 && gamma_beta_defined) {
+    constexpr int64_t wg_choices[] = {32, 64, 128, 256, 512, 1024};
+    int64_t wg_size = 32;
+    auto launch = [&](auto index_tag) {
+      using index_t = decltype(index_tag);
+      using K =
+          GNFusedForwardFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
+      int64_t max_wg = syclMaxWorkGroupSize<K>();
+      int64_t ideal = (DS + kElemsPerWorkItem - 1) / kElemsPerWorkItem;
+      int64_t min_wg_for_occ =
+          ((thread_slots / 2 + n_groups - 1) / n_groups) * simd;
+      int64_t max_wg_from_ds = std::min(max_wg, DS / FUSED_VEC_SIZE);
+      int64_t target_wg = std::max(ideal, min_wg_for_occ);
+      for (int64_t w : wg_choices) {
+        if (w <= max_wg_from_ds) {
+          wg_size = w;
+          if (w >= target_wg)
+            break;
+        }
+      }
+      // SLM budget: local_mem_size shared among concurrent WGs per Xe-core
+      int64_t eu_per_xc = syclGpuEUCountPerSubslice();
+      int64_t hw_thr = syclGpuHWThreadsPerEU();
+      int64_t slots_per_xc = eu_per_xc * hw_thr;
+      int64_t sgs_per_wg = wg_size / simd;
+      int64_t concurrent_wgs = slots_per_xc / sgs_per_wg;
+      int64_t slm_per_wg = syclLocalMemSize() / concurrent_wgs;
+      bool use_slm_coeff = (2 * D * (int64_t)sizeof(T_ACC) <= slm_per_wg);
+      auto kfn =
+          K(static_cast<index_t>(D),
+            static_cast<index_t>(HxW),
+            static_cast<index_t>(DS),
+            static_cast<index_t>(G),
+            eps,
+            X_data,
+            Y_data,
+            gamma_data,
+            beta_data,
+            mean_data,
+            rstd_data,
+            mean_acc_data,
+            rstd_acc_data,
+            (int)wg_size,
+            use_slm_coeff);
+      sycl_kernel_submit(
+          sycl::range<1>(n_groups * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          syclex::properties{syclex::sub_group_size<SIMD32>},
+          kfn);
+    };
+    if (can_use_int32) {
+      launch(int{});
+    } else {
+      launch(int64_t{});
+    }
+    return;
+  }
+
+  // --- Fallback: original 3-kernel path (low occupancy for fused) ---
+  const auto kAccTypeOpts{
+      X.options().dtype(needMeanAcc ? kFloat : X.scalar_type())};
+  if (!mean_acc.defined()) {
+    mean_acc = needMeanAcc ? at::empty(mean.sizes(), kAccTypeOpts) : mean;
+    rstd_acc = needMeanAcc ? at::empty(rstd.sizes(), kAccTypeOpts) : rstd;
+    mean_acc_data = mean_acc.mutable_data_ptr<T_ACC>();
+    rstd_acc_data = rstd_acc.mutable_data_ptr<T_ACC>();
+  }
+
   int64_t prob_size = D * HxW;
   int64_t stride = N * G;
-
   constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
 
   if (can_use_vectorization(X_data, VEC_SIZE) &&
@@ -472,8 +1356,6 @@ void group_norm_kernel_impl(
   } else {
     Tensor a = at::empty({N, C}, kAccTypeOpts);
     Tensor b = at::empty({N, C}, kAccTypeOpts);
-    const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
-    const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
     T_ACC* a_data = a.mutable_data_ptr<T_ACC>();
     T_ACC* b_data = b.mutable_data_ptr<T_ACC>();
 
