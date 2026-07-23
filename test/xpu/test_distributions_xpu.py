@@ -185,17 +185,8 @@ def _test_torch_binomial_dtype_errors(self):
 def _test_lowrank_multivariate_normal_moments(self):
     # XPU override of the upstream moments test with a larger sample count.
     #
-    # The upstream test draws only 100 000 samples and checks the empirical
-    # mean against the analytic mean with atol=0.01, rtol=0. For this fixture
-    # the worst per-element variance is ~3.15, so the standard error of the
-    # empirical mean is sqrt(3.15 / 100 000) ~= 0.0056 and its 3-sigma spread
-    # ~= 0.0168 already exceeds the 0.01 tolerance. The test is therefore
-    # statistically underpowered; it only appeared to "pass" on XPU because the
-    # exact seed-0 draws happened to land under the threshold, until PR #3725
-    # (std::log -> sycl::log in the Box-Muller transform) legitimately perturbed
-    # those draws. Raising the sample count to 500 000 shrinks the 3-sigma mean
-    # spread to ~0.0075 (< 0.01) and the variance spread comfortably under 0.02,
-    # making the check robust across seeds without weakening the tolerance.
+    # More samples shrink the 3-sigma mean spread (std error ~ sigma/sqrt(N)):
+    # 100k -> 500k brings it from ~0.0168 to ~0.0075, under atol=0.01
     set_rng_seed(0)
     mean = torch.randn(5)
     cov_factor = torch.randn(5, 2)
