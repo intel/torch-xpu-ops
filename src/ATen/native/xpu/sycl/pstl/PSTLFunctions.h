@@ -1903,7 +1903,7 @@ OutputIt2 reduce_by_key(
 
   auto value_options = map_options<ValueType>();
   // scan the values by flag
-  Tensor scanned_values = at::zeros({N}, value_options);
+  Tensor scanned_values = at::empty({N}, value_options);
   auto scanned_values_first = scanned_values.data_ptr<ValueType>();
 
   Tensor scanned_tail_flags = at::ones({N}, flag_options);

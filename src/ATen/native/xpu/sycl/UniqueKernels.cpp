@@ -78,7 +78,6 @@ Tensor compute_inverse(
         "return_inverse is set to true, but sorted_indices is undefined. Send a bug report!");
     index_t* sorted_indices_ptr = sorted_indices.mutable_data_ptr<index_t>();
     Tensor inv_loc = at::empty({num_inp}, index_options);
-    inverse_indices = at::empty({num_inp}, index_options);
     index_t* inv_loc_ptr = inv_loc.mutable_data_ptr<index_t>();
     auto inv_loc_begin = inv_loc_ptr;
     pstl::adjacent_difference<index_t>(
@@ -156,8 +155,6 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
   auto self_c = *(self.expect_contiguous());
   Tensor output = self_c.clone().reshape(-1);
   Tensor sorted_indices = at::empty({num_inp}, index_options);
-  Tensor inverse_indices = at::empty({num_inp}, index_options);
-  Tensor counts = at::empty({num_inp}, index_options);
   auto sorted_indices_begin = sorted_indices.mutable_data_ptr<int64_t>();
   at::native::xpu::pstl::iota(
       sorted_indices_begin, sorted_indices_begin + num_inp, (int64_t)0);
@@ -171,11 +168,9 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
         false);
   }
 
-  int64_t num_out;
-
   scalar_t* output_data = output.mutable_data_ptr<scalar_t>();
   UniqueNotEqualFunctor not_equal_cmp_functor;
-  inverse_indices = compute_inverse<scalar_t, int64_t>(
+  Tensor inverse_indices = compute_inverse<scalar_t, int64_t>(
       output,
       num_inp,
       sorted_indices,
@@ -184,7 +179,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
       not_equal_cmp_functor);
 
   UniqueEqualFunctor equal_cmp_functor;
-  std::tie(counts, num_out) = compute_unique<scalar_t, int64_t>(
+  auto [counts, num_out] = compute_unique<scalar_t, int64_t>(
       output_data, num_inp, return_counts, index_options, equal_cmp_functor);
   output.resize_(num_out);
   if (return_inverse) {
