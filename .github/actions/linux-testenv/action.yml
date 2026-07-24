@@ -32,7 +32,6 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
           rm -rf ${AGENT_TOOLSDIRECTORY}
@@ -83,6 +82,8 @@ runs:
           echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://laurentides.igk.intel.com/repositories/ubuntu noble/testing-intel-omix-pvc/1.0 unified' | tee /etc/apt/sources.list.d/intel-gpu-noble.list
           apt-get update
           apt-get install -y intel-omix-dev
+
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
 
     - name: Setup python-${{ inputs.python }} with uv
       shell: bash -xe {0}
