@@ -13,7 +13,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
 #include <comm/TensorInfo.h>
-#include <stdlib.h>
+#include <cstdlib>
 
 namespace at::native::xpu {
 

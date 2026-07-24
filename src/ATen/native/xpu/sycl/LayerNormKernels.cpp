@@ -76,7 +76,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  typedef NormBackward<scalar_t, mean_t, weight_t> NB;
+  using NB = NormBackward<scalar_t, mean_t, weight_t>;
 
   template <
       int vec_size,

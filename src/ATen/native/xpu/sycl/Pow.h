@@ -65,7 +65,7 @@ static inline Base_type pow_(Base_type base, Exp_type exp) {
   // is sufficient for both operands.
   using opmath_t = at::opmath_type<Base_type>;
   if constexpr (
-      std::is_integral<Exp_type>::value && sizeof(Exp_type) <= sizeof(int)) {
+      std::is_integral_v<Exp_type> && sizeof(Exp_type) <= sizeof(int)) {
     return sycl::pown(static_cast<opmath_t>(base), static_cast<int>(exp));
   } else {
     return sycl::pow(static_cast<opmath_t>(base), static_cast<opmath_t>(exp));
