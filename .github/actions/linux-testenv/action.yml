@@ -38,6 +38,52 @@ runs:
           rm -rf ${AGENT_TOOLSDIRECTORY}
         fi
         rm -rf Torch-XPU-Wheel-*
+        export GCC_VERSION=13
+        apt-get install -y wget curl vim libgomp1 pciutils ca-certificates \
+                gnupg \
+                software-properties-common \
+                apt-transport-https \
+                lsb-release wget \
+                curl \
+                sudo \
+                git \
+                unzip \
+                zip \
+                gh \
+                numactl \
+                rsync \
+                jq gcc g++ \
+                build-essential \
+                cmake \
+                ninja-build \
+                pkg-config \
+                autoconf \
+                automake \
+            gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+                libtool libgl1 \
+                libglib2.0-0 \
+                libglib2.0-dev \
+                zlib1g \
+                zlib1g-dev python3 \
+                python3-dev \
+                python3
+        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
+            update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
+            update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
+            gcc -v && g++ -v && gcov -v
+
+          # install driver
+          touch /etc/apt/apt.conf.d/99disable-ssl-verify
+          echo 'Acquire::https::Verify-Peer "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
+          echo 'Acquire::https::Verify-Host "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
+
+          apt-get update
+          apt-get install wget curl gpg gpg-agent -y
+          wget --no-check-certificate -qO - https://laurentides.igk.intel.com/repositories/intel-graphics.key | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+          echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://laurentides.igk.intel.com/repositories/ubuntu noble/testing-intel-omix-pvc/1.0 unified' | tee /etc/apt/sources.list.d/intel-gpu-noble.list
+          apt-get update
+          apt-get install -y intel-omix-dev
+
     - name: Setup python-${{ inputs.python }} with uv
       shell: bash -xe {0}
       run: |
@@ -240,36 +286,14 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-edaf6b42acff4e00f3428b92ebb2a6ba81088724-29149939469-1
+        name: Torch-XPU-Wheel-f9afa42939e3f601c1b028eb7db8f28d18fe1132-29720403608-1
         github-token: ${{ github.token }}
         repository: mengfei25/torch-xpu-ops
-        run-id: 29149939469
+        run-id: 29720403608
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
       run: |
         pip uninstall -y torch && pip uninstall -y torch
-        pip uninstall -y \
-          intel-cmplr-lib-rt \
-          intel-cmplr-lib-ur \
-          intel-cmplr-lic-rt \
-          intel-sycl-rt \
-          oneccl-devel \
-          oneccl \
-          impi-rt \
-          onemkl-license \
-          onemkl-sycl-blas \
-          onemkl-sycl-dft \
-          onemkl-sycl-lapack \
-          onemkl-sycl-rng \
-          onemkl-sycl-sparse \
-          dpcpp-cpp-rt \
-          intel-opencl-rt \
-          mkl \
-          intel-openmp \
-          tbb \
-          tcmlib \
-          umf \
-          intel-pti || true
-        pip install ${{ github.workspace }}/wheels/torch-*.whl
+        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
         pip list |grep -E 'intel|torch|triton'

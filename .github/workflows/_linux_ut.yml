@@ -50,7 +50,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
+      image: ubuntu:24.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri

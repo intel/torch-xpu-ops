@@ -61,10 +61,9 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
+      image: ubuntu:24.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - /opt:/opt
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
