@@ -171,6 +171,29 @@ meta_dispatch_device_expected_failures["xpu"] = meta_dispatch_device_expected_fa
     "cuda"
 ]
 
+meta_function_device_skips["xpu"].update(
+    {
+        torch.fft.fft: {f16},
+        torch.fft.ifft: {f16},
+        torch.fft.rfft: {f16},
+        torch.fft.ihfft: {f16},
+        torch.fft.fft2: {f16},
+        torch.fft.ifft2: {f16},
+        torch.fft.rfft2: {f16},
+        torch.fft.ihfft2: {f16},
+        torch.fft.fftn: {f16},
+        torch.fft.ifftn: {f16},
+        torch.fft.rfftn: {f16},
+        torch.fft.ihfftn: {f16},
+        torch.fft.hfft: {f16},
+        torch.fft.irfft: {f16},
+        torch.fft.irfft2: {f16},
+        torch.fft.hfft2: {f16},
+        torch.fft.irfftn: {f16},
+        torch.fft.hfftn: {f16},
+    }
+)
+
 # ======================================================================
 # Override @onlyCUDA test methods to also run on XPU
 # ======================================================================
