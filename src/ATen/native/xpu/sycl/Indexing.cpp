@@ -28,6 +28,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
+#include <ATen/ops/aminmax.h>
 #include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/gather.h>
@@ -1227,6 +1228,19 @@ void index_reduce_add_xpu_template(
   const Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
   const Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
 
+  // Host-side bounds check so an out-of-range index raises a catchable
+  // RuntimeError/IndexError instead of tripping the device-side
+  // SYCL_KERNEL_ASSERT (which aborts the process). Matches eager CPU/CUDA.
+  if (index.numel() > 0) {
+    auto [idx_min, idx_max] = at::aminmax(index);
+    int64_t dim_size = self_.size(dim);
+    TORCH_CHECK_INDEX(
+        idx_max.item<int64_t>() < dim_size &&
+            idx_min.item<int64_t>() >= -dim_size,
+        "index_add(): index out of range: expected indices in [",
+        -dim_size, ", ", dim_size - 1, "]");
+  }
+
   TORCH_CHECK(
       result.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
@@ -1498,6 +1512,19 @@ void index_reduce_func_xpu_template(
   // Scalars are treated as 1-d tensor
   Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
   Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+
+  // Host-side bounds check so an out-of-range index raises a catchable
+  // RuntimeError/IndexError instead of tripping the device-side
+  // SYCL_KERNEL_ASSERT (which aborts the process). Matches eager CPU/CUDA.
+  if (index.numel() > 0) {
+    auto [idx_min, idx_max] = at::aminmax(index);
+    int64_t dim_size = self_.size(dim);
+    TORCH_CHECK_INDEX(
+        idx_max.item<int64_t>() < dim_size &&
+            idx_min.item<int64_t>() >= -dim_size,
+        "index_reduce(): index out of range: expected indices in [",
+        -dim_size, ", ", dim_size - 1, "]");
+  }
 
   TORCH_CHECK(
       result.dim() <= XPU_MAX_TENSORINFO_DIMS,

@@ -196,6 +196,36 @@ with XPUPatchForImport(False):
 
         self.assertEqual(out, dst)
 
+    def index_add_reduce_out_of_range_index(self, device):
+        # Regression test for intel/torch-xpu-ops#4284. Pre-fix, an
+        # out-of-range index tripped a device-side assert that aborted the
+        # process (SIGABRT) instead of raising a catchable Python error.
+        # This asserts the fixed behavior: a catchable IndexError/RuntimeError,
+        # while valid (in-range) negative indices still work.
+        dim_size = 4
+        src = torch.ones(1, device=device)
+
+        # dim_size == 4 -> valid indices are [-4, 3]; 4 and -5 are out of range.
+        for bad_index in (4, -5):
+            index = torch.tensor([bad_index], device=device)
+            with self.assertRaises((IndexError, RuntimeError)):
+                out = torch.zeros(dim_size, device=device).index_add(0, index, src)
+                torch.xpu.synchronize()
+                _ = out.cpu()
+            with self.assertRaises((IndexError, RuntimeError)):
+                out = torch.zeros(dim_size, device=device).index_reduce(
+                    0, index, src, "prod", include_self=True
+                )
+                torch.xpu.synchronize()
+                _ = out.cpu()
+
+        # A valid negative index (-1 on dim size 4) must still work.
+        neg = torch.tensor([-1], device=device)
+        out = torch.zeros(dim_size, device=device).index_add(0, neg, src)
+        expected = torch.zeros(dim_size, device=device)
+        expected[-1] = 1.0
+        self.assertEqual(out, expected)
+
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
@@ -203,6 +233,9 @@ with XPUPatchForImport(False):
     TestIndexing.test_index_select = index_select
     TestIndexing.test_index_add_empty_index_1d = index_add_empty_index_1d
     TestIndexing.test_index_add_empty_index_2d = index_add_empty_index_2d
+    TestIndexing.test_index_add_reduce_out_of_range_index = (
+        index_add_reduce_out_of_range_index
+    )
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 
