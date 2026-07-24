@@ -25,6 +25,7 @@
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
 #include <ATen/xpu/PhiloxXpuState.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
@@ -191,6 +192,11 @@ void distribution_nullary_kernel(
 }
 
 // Unary kernel
+enum class DistributionRngInitMode {
+  Default,
+  OffsetAsSubsequence,
+};
+
 template <
     typename scalar1_t,
     typename scalar2_t,
@@ -205,7 +211,15 @@ struct DistributionUnaryElementwiseKernelFunctor {
 
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+    if (rng_init_mode_ == DistributionRngInitMode::OffsetAsSubsequence) {
+      rand_init(
+          std::get<0>(seeds),
+          static_cast<unsigned long long>(global_idx) + std::get<1>(seeds),
+          0,
+          &state);
+    } else {
+      rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+    }
 
     for (int i = global_idx; i < numel_; i += global_size) {
       auto in_offsets = inp_calc_.get(i);
@@ -220,14 +234,16 @@ struct DistributionUnaryElementwiseKernelFunctor {
       scalar1_t* output_data,
       const scalar2_t* input_data,
       inp_offset_calc_t input_offset_calculator,
-      out_offset_calc_t output_offset_calculator)
+      out_offset_calc_t output_offset_calculator,
+      DistributionRngInitMode rng_init_mode)
       : numel_(numel),
         f_(f),
         philox_args_(philox_args),
         output_data_(output_data),
         input_data_(input_data),
         inp_calc_(input_offset_calculator),
-        out_calc_(output_offset_calculator) {}
+        out_calc_(output_offset_calculator),
+        rng_init_mode_(rng_init_mode) {}
 
  private:
   int numel_;
@@ -237,17 +253,25 @@ struct DistributionUnaryElementwiseKernelFunctor {
   const scalar2_t* input_data_;
   inp_offset_calc_t inp_calc_;
   out_offset_calc_t out_calc_;
+  DistributionRngInitMode rng_init_mode_;
 };
 
-template <typename scalar1_t, typename scalar2_t, typename func_t>
+template <
+    typename scalar1_t,
+    typename scalar2_t,
+    typename func_t,
+    DistributionRngInitMode rng_init_mode = DistributionRngInitMode::Default>
 void distribution_unary_kernel(
     TensorIterator& iter,
     PhiloxXpuState philox_args,
     func_t f) {
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
-      distribution_unary_kernel<scalar1_t, scalar2_t, decltype(f)>(
-          sub_iter, philox_args, f);
+      distribution_unary_kernel<
+          scalar1_t,
+          scalar2_t,
+          decltype(f),
+          rng_init_mode>(sub_iter, philox_args, f);
     }
     return;
   }
@@ -276,7 +300,8 @@ void distribution_unary_kernel(
         output_data,
         input_data,
         input_offset_calculator,
-        output_offset_calculator);
+        output_offset_calculator,
+        rng_init_mode);
     sycl_kernel_submit(
         num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   } else {
@@ -289,10 +314,57 @@ void distribution_unary_kernel(
         output_data,
         input_data,
         input_offset_calculator,
-        output_offset_calculator);
+        output_offset_calculator,
+        rng_init_mode);
     sycl_kernel_submit(
         num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   }
+}
+
+template <
+    typename scalar1_t,
+    typename scalar2_t,
+    typename func_t,
+    DistributionRngInitMode rng_init_mode = DistributionRngInitMode::Default>
+void distribution_unary_kernel(
+    TensorIterator& iter,
+    XPUGeneratorImpl* gen,
+    func_t f) {
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_unary_kernel<
+          scalar1_t,
+          scalar2_t,
+          decltype(f),
+          rng_init_mode>(sub_iter, gen, f);
+    }
+    return;
+  }
+
+  int64_t numel = iter.numel();
+  if (numel == 0) {
+    return;
+  }
+
+  PhiloxXpuState rng_engine_inputs;
+  auto execution_policy = calc_execution_policy(numel);
+  if constexpr (rng_init_mode == DistributionRngInitMode::OffsetAsSubsequence) {
+    auto num_groups = std::get<1>(execution_policy);
+    auto group_size = std::get<2>(execution_policy);
+    {
+      std::lock_guard<std::mutex> lock(gen->mutex_);
+      rng_engine_inputs = gen->philox_xpu_state(num_groups * group_size);
+    }
+  } else {
+    auto counter_offset = std::get<0>(execution_policy);
+    {
+      std::lock_guard<std::mutex> lock(gen->mutex_);
+      rng_engine_inputs = gen->philox_xpu_state(counter_offset);
+    }
+  }
+
+  distribution_unary_kernel<scalar1_t, scalar2_t, decltype(f), rng_init_mode>(
+      iter, rng_engine_inputs, f);
 }
 
 // Binary kernel
