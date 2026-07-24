@@ -152,6 +152,13 @@ void copy_kernel(TensorIteratorBase& iter) {
       gpu_kernel(iter, CopyScalarFunc<scalar_t>());
     });
   } else if (isBitsType(dtype)) {
+    TORCH_CHECK(
+        iter.dtype(0) == iter.dtype(1),
+        "copy_() does not support casting bits types to different bits types. "
+        "Source dtype is ",
+        iter.dtype(1),
+        ", target dtype is ",
+        iter.dtype(0));
     AT_DISPATCH_BIT_TYPES(dtype, "copy_xpu", [&] {
       gpu_kernel_nocast(iter, CopyScalarFunc<scalar_t>());
     });
