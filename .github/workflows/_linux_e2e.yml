@@ -60,16 +60,9 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
-    container:
-      image: ubuntu:24.04
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
-              -e ZE_AFFINITY_MASK
-      env:
-        MODEL_ONLY_NAME: ${{ inputs.model }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    defaults:
+      run:
+        shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME=${{ inputs.model }} -w ${{ github.workspace }} amazing_euclid bash -xe"'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -260,7 +253,7 @@ jobs:
         if: ${{ always() }}
         run: |
           bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
-          chown 1000:1000 /__w /github ./ -R
+          chown 1000:1000 ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

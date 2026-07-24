@@ -72,18 +72,6 @@ runs:
             update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
             gcc -v && g++ -v && gcov -v
 
-          # install driver
-          touch /etc/apt/apt.conf.d/99disable-ssl-verify
-          echo 'Acquire::https::Verify-Peer "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
-          echo 'Acquire::https::Verify-Host "false";' >> /etc/apt/apt.conf.d/99disable-ssl-verify
-
-          apt-get update
-          apt-get install wget curl gpg gpg-agent -y
-          wget --no-check-certificate -qO - https://laurentides.igk.intel.com/repositories/intel-graphics.key | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
-          echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://laurentides.igk.intel.com/repositories/ubuntu noble/testing-intel-omix-pvc/1.0 unified' | tee /etc/apt/sources.list.d/intel-gpu-noble.list
-          apt-get update
-          apt-get install -y intel-omix-dev
-
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
 
     - name: Setup python-${{ inputs.python }} with uv

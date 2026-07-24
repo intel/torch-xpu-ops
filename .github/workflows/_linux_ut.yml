@@ -49,15 +49,9 @@ jobs:
     timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
-    container:
-      image: ubuntu:24.04
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    defaults:
+      run:
+        shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} test bash -xe"'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -89,7 +83,7 @@ jobs:
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          chown 1000:1000 ./ -R
 
   test-in-baremetal:
     timeout-minutes: 600
