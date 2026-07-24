@@ -179,9 +179,11 @@ with XPUPatchForImport(False):
             i2 = i.detach()[:, 1:].clone().requires_grad_()
             output2 = m2(i2)
             output2.backward(grad_output[:, offset:].contiguous())
-            is_cuda_sm86 = device.startswith(
-                "cuda"
-            ) and torch.cuda.get_device_capability(0) == (8, 6)
+            is_cuda_sm86 = (
+                device.startswith("cuda")
+                and torch.cuda.is_available()
+                and torch.cuda.get_device_capability(0) == (8, 6)
+            )
             atol, rtol = (
                 (3e-4, 3e-2)
                 if dtype == torch.float32 and is_cuda_sm86
