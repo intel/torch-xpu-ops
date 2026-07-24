@@ -634,7 +634,7 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
       const std::string& method_name,
       const func_t& f) {
     at::assert_no_internal_overlap(self);
@@ -683,7 +683,7 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
       const std::string& method_name,
       const ReduceMultiply& f) {
     at::assert_no_internal_overlap(self);

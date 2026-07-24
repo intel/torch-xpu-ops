@@ -91,10 +91,10 @@ struct AdaptiveMaxPool2dKernelFunctor {
         istrideP_(istrideP),
         istrideH_(istrideH),
         istrideW_(istrideW),
-        cfg_(cfg) {
+        cfg_(cfg),
+        ostrideH_(osizeW),
+        ostrideP_(osizeW * osizeH) {
     // assume output tensor is in contiguous format
-    ostrideH_ = osizeW;
-    ostrideP_ = osizeW * osizeH;
     ostrideB_ = ostrideP_ * sizeP;
   }
 

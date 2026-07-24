@@ -310,7 +310,7 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
 
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   accscalar_t ax, fac, res, num, numfac;
-  static const accscalar_t MAXLOG = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MAXLOG = std::is_same_v<accscalar_t, double>
       ? 7.09782712893383996843E2
       : 88.72283905206835;
   static const accscalar_t EXP1 = 2.718281828459045;
