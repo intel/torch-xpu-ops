@@ -44,3 +44,21 @@ class TestTorchMethod(TestCase):
 
         for dtype in test_dtypes:
             _test_upsample_bilinear_bwd(dtype)
+
+    def test_upsample_bilinear_bwd_portrait(self):
+        # Portrait inputs (height > width) exercised wrong output-column
+        # indexing in the align_corners=False integer-scale fast path;
+        # square shapes floored to the correct index by coincidence.
+        bwd = torch._ops.ops.aten.upsample_bilinear2d_backward
+        kwargs = {
+            "output_size": (128, 64),
+            "input_size": (1, 1, 64, 32),
+            "align_corners": False,
+        }
+        grad_output_cpu = torch.randn((1, 1, 128, 64), device=cpu_device)
+        # Both memory formats: each hits a different indexing branch.
+        for memory_format in [torch.channels_last, torch.contiguous_format]:
+            g = grad_output_cpu.contiguous(memory_format=memory_format)
+            r_cpu = bwd(g.to(torch.float64), **kwargs)
+            r_xpu = bwd(g.to("xpu"), **kwargs)
+            self.assertEqual(r_cpu.to(torch.float), r_xpu.cpu())

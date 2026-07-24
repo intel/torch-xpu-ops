@@ -15,10 +15,10 @@
 #include <ATen/xpu/XPUContext.h>
 #include <c10/xpu/XPUStream.h>
 #include <comm/SYCLContext.h>
-#include <stdint.h>
 #include <torch/library.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <algorithm>
+#include <cstdint>
 
 namespace c10d {
 
