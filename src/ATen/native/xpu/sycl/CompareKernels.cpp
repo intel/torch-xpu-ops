@@ -50,7 +50,8 @@ void compare_eq_ne_kernel(TensorIteratorBase& iter, EqOpType op) {
       kBFloat16,
       kBool,
       AT_EXPAND(AT_FLOAT8_TYPES),
-      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kFloat4_e2m1fn_x2);
 }
 
 void eq_kernel(TensorIteratorBase& iter) {
