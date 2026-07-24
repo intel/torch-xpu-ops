@@ -133,11 +133,8 @@ struct MultiTensorApplyCallableWrapper {
   std::tuple<ArgTypes...> args;
 
   template <typename T, typename Y, typename Item>
-  void operator()(
-      int64_t kChunkSize,
-      T tlAddressMeta,
-      Y tlWGMeta,
-      Item item) const {
+  void operator()(int64_t kChunkSize, T tlAddressMeta, Y tlWGMeta, Item item)
+      const {
     std::apply(
         [&](const ArgTypes&... unpacked) {
           callable(kChunkSize, tlAddressMeta, tlWGMeta, item, unpacked...);
@@ -153,9 +150,9 @@ struct MultiTensorApplyCallableWrapper {
 template <typename U, typename... ArgTypes>
 struct sycl::is_device_copyable<
     ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
-    : std::bool_constant<
-          (sycl::is_device_copyable_v<U> && ... &&
-           sycl::is_device_copyable_v<ArgTypes>)> {};
+    : std::bool_constant<(
+          sycl::is_device_copyable_v<U> && ... &&
+          sycl::is_device_copyable_v<ArgTypes>)> {};
 
 namespace at::native::xpu {
 #endif // _WIN32
