@@ -1,19 +1,19 @@
 ---
 name: xpu-alignment-buckets-and-routing
-description: How to label and route candidates. Lists the result buckets (confirmed, not-reproduced, blocked, etc.), what counts as a confirmed bug, how to rewrite a CUDA reproducer for XPU, which repo to file a bug in, and the columns of the candidate ledger file. Read this for Steps 1.1 through 3.
+description: How to label and route candidates. Lists the result buckets (confirmed, not-reproduced, blocked, etc.), what counts as a confirmed bug, how to rewrite a CUDA reproducer for XPU, which repo implements a fix, and the columns of the candidate ledger file. Read this for Steps 1.1 through 3.
 ---
 
 # Classification, Adaptation & Ledger
 
 ## Bucket vocabulary
 
-Assign exactly one bucket as the `RESULT:` of each repro (Step 2c). Pick by what
-actually happened when you ran it:
+Assign exactly one provisional bucket as the `RESULT:` of each repro (Step 2c).
+Pick by what actually happened when you ran it:
 
 | Bucket | Apply when... |
 |--------|---------------|
-| `confirmed` | the repro ran on XPU and showed the **same** bug as upstream |
-| `related-failure` | the repro ran on XPU but failed in a **different** way than upstream |
+| `confirmed` | an approved repro ran the **target** operation/path on XPU and showed the **same** bug as upstream |
+| `related-failure` | an approved repro ran the target operation/path on XPU but showed a different, independently actionable failure |
 | `not-reproduced` | the repro ran on XPU and the upstream failure did **not** happen |
 | `blocked-env` | the repro could not start: a dependency was missing or it needed a distributed/multi-GPU setup |
 | `blocked-platform` | the repro needed a code path XPU does not have at all |
@@ -28,8 +28,20 @@ Only repros that actually run receive a `local_bucket`.
 
 ## Confirmation criteria
 
-Use this when deciding between `confirmed` and `not-reproduced` (Step 2c) -- i.e.
-whether what you saw on XPU actually counts as a bug.
+Use this when deciding between `confirmed` and `not-reproduced` (Step 2d) -- i.e.
+whether what you saw on XPU matches the upstream behavior. These scan buckets do
+not decide whether the behavior is a real bug, requires an XPU-specific fix, or
+should be filed. The independent review makes those decisions.
+
+Both `confirmed` and `related-failure` require an `approved` entry in
+`reports/repro_precheck.md` and target-path XPU proof in the captured execution
+log. `torch.xpu.is_available()`, an unrelated XPU allocation, or a device print
+outside the operation under test is not target-path proof. A script must not infer
+either bucket from a title, broad exception text, or generic string matching.
+
+If the upstream oracle was not reached, do not call it `confirmed`. If the observed
+failure has no independently stated semantics and actionability, do not call it
+`related-failure`; use `blocked-script-error` or `not-reproduced` as appropriate.
 
 **Counts as a bug**: crash, segfault, assertion failure, hang, wrong numerical
 result, wrong shape/stride/dtype, off-by-one beyond atol=1e-4.
@@ -49,12 +61,15 @@ APIs and keep everything else identical:
 - Keep the numerical scenario, shapes, dtypes, and oracle identical; only the
   device changes.
 
-## Routing rules (confirmed / related-failure)
+## Provisional routing (confirmed / related-failure)
 
-Use this when deciding which repo to file a `confirmed` / `related-failure` bug
-into (Step 2d). Pick by where the buggy code lives:
+Use this when suggesting where a `confirmed` / `related-failure` bug would be
+implemented (Step 2d). This is the implementation repository, not the tracking
+repository. Do not file or hand off based on this suggestion. The independent
+review must first establish a `needs-xpu-fix` verdict, canonical tracker, and
+current fix state.
 
-| File into... | When the bug is in... |
+| Implement in... | When the bug is in... |
 |--------------|-----------------------|
 | `pytorch/pytorch` | shared code: Inductor, autograd, dispatcher, ATen, Triton, runtime |
 | `pytorch/pytorch` | an XPU kernel that lives upstream in `aten/src/ATen/native/xpu/` |
@@ -62,6 +77,9 @@ into (Step 2d). Pick by where the buggy code lives:
 | `intel/torch-xpu-ops` | an XPU kernel that is **not** upstream |
 | `intel/torch-xpu-ops` | an XPU backend gap (different error or missing feature vs CUDA) |
 | `pytorch/pytorch` | anything you are unsure about (default) |
+
+After review, every `needs-xpu-fix` case is tracked in `intel/torch-xpu-ops`
+regardless of its implementation repository.
 
 ## Ledger schema (`artifacts/candidate_ledger.jsonl`)
 
