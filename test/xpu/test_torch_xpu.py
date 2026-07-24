@@ -54,6 +54,7 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfCPU,
     dtypesIfCUDA,
+    dtypesIfXPU,
     expectedFailureMeta,
     expectedFailureXLA,
     instantiate_device_type_tests,
@@ -66,7 +67,6 @@ from torch.testing._internal.common_device_type import (
     skipCUDAIfNotRocm,
     skipMeta,
     skipXLA,
-    skipXPU,
 )
 from torch.testing._internal.common_dtype import (
     all_types_and,
@@ -76,7 +76,9 @@ from torch.testing._internal.common_dtype import (
     floating_and_complex_types,
     floating_types,
     floating_types_and,
-    get_all_math_dtypes,
+    get_all_complex_dtypes,
+    get_all_fp_dtypes,
+    get_all_int_dtypes,
     get_all_qint_dtypes,
     integral_types_and,
 )
@@ -146,6 +148,20 @@ assert torch.get_default_dtype() is torch.float32
 load_tests = load_tests  # noqa: PLW0127
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
+
+
+# Extend get_all_math_dtypes to include torch.float16 if XPU is available
+def _get_all_math_dtypes(device) -> list[torch.dtype]:
+    return (
+        get_all_int_dtypes()
+        + get_all_fp_dtypes(
+            include_half=device.startswith(("cuda", "xpu")), include_bfloat16=False
+        )
+        + get_all_complex_dtypes()
+    )
+
+
+get_all_math_dtypes = _get_all_math_dtypes  # type: ignore[assignment]
 
 
 # Extend get_all_device_types to include 'xpu' if available
@@ -585,6 +601,10 @@ class TestTorchDeviceType(TestCase):
 
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @slowTestIf(IS_WINDOWS)
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU.",
+    )
     def test_storage_meta_errors(self, device, dtype):
         s0 = torch.TypedStorage([1, 2, 3, 4], device="meta", dtype=dtype)
 
@@ -2599,6 +2619,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_types())
     @dtypesIfCPU(*floating_types_and(torch.bfloat16, torch.half))
     @dtypesIfCUDA(*floating_types_and(torch.half))
+    @dtypesIfXPU(*floating_types_and(torch.half))
     def test_bernoulli_p(self, device, dtype):
         for trivial_p in ([0, 1], [1, 0, 1, 1, 0, 1]):
             x = torch.tensor(trivial_p, dtype=dtype, device=device)
@@ -2621,6 +2642,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_types())
     @dtypesIfCPU(*all_types_and(torch.bool, torch.half))
     @dtypesIfCUDA(*all_types_and(torch.bool, torch.half))
+    @dtypesIfXPU(*all_types_and(torch.bool, torch.half))
     def test_bernoulli_self(self, device, dtype):
         def isBinary(t):
             return torch.ne(t, 0).mul_(torch.ne(t, 1)).sum().item() == 0
@@ -2757,6 +2779,7 @@ class TestTorchDeviceType(TestCase):
     @skipIfNoSciPy
     @dtypes(*floating_types_and(torch.half))
     @dtypesIfCUDA(*floating_types_and(torch.half, torch.bfloat16))
+    @dtypesIfXPU(*floating_types_and(torch.half, torch.bfloat16))
     def test_normal_kstest(self, device, dtype):
         from scipy import stats
 
@@ -3421,6 +3444,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*all_types_and_complex_and(torch.bool))
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool))
     def test_diff(self, device, dtype):
         shapes = ((1,), (1, 5), (3, 5), (1, 5, 1), (2, 3, 5))
 
@@ -3913,7 +3937,6 @@ class TestTorchDeviceType(TestCase):
     @parametrize("use_cpu_scalar", [True, False])
     @dtypesIfCUDA(*set(get_all_math_dtypes("cuda")))
     @dtypes(*set(get_all_math_dtypes("cpu")))
-    @skipXPU
     def test_addcmul(self, device, dtype, use_cpu_scalar):
         # Returns floating or integral scalar corresponding to dtype
         def _number(floating, integer, dtype):
@@ -4158,6 +4181,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_operations_to_large_input(self, device, dtype):
         index = torch.tensor([[1], [2]], device=device, dtype=torch.long)
         test_data = [
@@ -4192,6 +4216,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_scalar(self, device, dtype):
         index = torch.tensor([[1], [2]], device=device, dtype=torch.long)
         test_data = [
@@ -4243,6 +4268,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*floating_and_complex_types())
     @dtypesIfCPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     @dtypesIfCUDA(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @dtypesIfXPU(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_scatter_reduce_non_unique_index(self, device, dtype):
         height = 2
         width = 2
@@ -4886,6 +4912,7 @@ class TestTorchDeviceType(TestCase):
     # FIXME: move to elementwise ternary test suite
     @onlyNativeDeviceTypes
     @dtypesIfCUDA(*set(get_all_math_dtypes("cuda")))
+    @dtypesIfXPU(*set(get_all_math_dtypes("xpu")))
     @dtypes(*set(get_all_math_dtypes("cpu")))
     def test_addcdiv(self, device, dtype):
         # Returns floating or integral scalar corresponding to dtype
@@ -5070,7 +5097,6 @@ class TestTorchDeviceType(TestCase):
     # (but have to extend ErrorInputs to handle inplace-only errors!)
     @expectedFailureMeta  # Warning not triggered
     @onlyNativeDeviceTypes
-    @skipXPU
     def test_index_fill_mem_overlap(self, device):
         x = torch.rand((1,), device=device).expand((6,))
         ind = torch.tensor([2, 1, 0], device=device)
@@ -6634,7 +6660,6 @@ class TestTorchDeviceType(TestCase):
     )
     @onlyNativeDeviceTypes
     @dtypes(torch.float)
-    @skipXPU
     def test_grad_scaling_unscale_sparse(self, device, dtype):
         device = torch.device(device)
         scaler = torch.GradScaler(device=device.type)
@@ -7234,6 +7259,7 @@ class TestTorchDeviceType(TestCase):
 
     @dtypesIfCUDA(torch.float, torch.double, torch.half)
     @dtypesIfCPU(torch.float, torch.double, torch.bfloat16, torch.half)
+    @dtypesIfXPU(torch.float, torch.double, torch.half, torch.bfloat16)
     @dtypes(torch.float, torch.double)
     def test_multinomial_cpu(self, device, dtype):
         def make_prob_dist(shape, is_contiguous):
@@ -7451,7 +7477,6 @@ class TestTorchDeviceType(TestCase):
             torch.uint64,
         )
     )
-    @skipXPU
     def test_item(self, device, dtype):
         xla_unsupported_dtypes = [
             torch.uint16,
@@ -7584,6 +7609,16 @@ class TestDevicePrecision(TestCase):
         self.assertEqual(x.to(torch.int).device, torch.device(devices[1]))
 
     @dtypesIfCUDA(
+        torch.half,
+        torch.float,
+        torch.double,
+        torch.int8,
+        torch.short,
+        torch.int,
+        torch.long,
+        torch.uint8,
+    )
+    @dtypesIfXPU(
         torch.half,
         torch.float,
         torch.double,
