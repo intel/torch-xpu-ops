@@ -16,6 +16,7 @@ Read these as needed (progressive disclosure):
 
 - Environment, preflight, nightly install -> [references/xpu-alignment-environment-setup.md](references/xpu-alignment-environment-setup.md)
 - Bucket vocabulary, confirmation criteria, CUDA->XPU adaptation, routing, ledger schema -> [references/xpu-alignment-buckets-and-routing.md](references/xpu-alignment-buckets-and-routing.md)
+- Reproducer construction and independent pre-execution audit -> [references/xpu-alignment-repro-precheck.md](references/xpu-alignment-repro-precheck.md)
 - Report format, issue-draft template, GitHub filing flow -> [references/xpu-alignment-report-and-issue-format.md](references/xpu-alignment-report-and-issue-format.md)
 - Independent review, verdicts, dashboard, comment drafts -> [references/xpu-alignment-review.md](references/xpu-alignment-review.md)
 
@@ -43,7 +44,7 @@ The caller (user or orchestrator) provides:
      `artifacts/details/` for fetched per-candidate details; `output_<id>.log`
      for repro logs
    - `scripts/` — `repro_<id>.py` reproducers
-   - `reports/` — `full_scan.md` and `issue_drafts.md`
+   - `reports/` — `repro_precheck.md`, `full_scan.md`, and `issue_drafts.md`
 2. Never file issues automatically. Write local drafts, complete independent
    review, then ask the user before filing a review-approved draft on GitHub.
 3. The scan is done only when there are zero pending actionable rows in the
@@ -145,7 +146,19 @@ Prefer extracting existing upstream code and adapting it (CUDA->XPU mapping in
 [references/xpu-alignment-buckets-and-routing.md](references/xpu-alignment-buckets-and-routing.md)). Only write from scratch
 when no upstream repro exists.
 
-#### 2c. Serial execution
+#### 2c. Independent repro precheck
+
+Before executing any generated repro, follow
+[references/xpu-alignment-repro-precheck.md](references/xpu-alignment-repro-precheck.md).
+Start a fresh, compliant reviewer subagent that did not write the repros. It must
+audit every script and write `reports/repro_precheck.md`.
+
+Only scripts marked `approved` may execute. A `rework` script must be corrected
+and approved in a fresh precheck before it runs. A `reject` must retain its source
+material and documented reason; update its ledger row to a proper deep rejection,
+not a synthetic repro result.
+
+#### 2d. Serial execution
 
 Run each repro script sequentially (for crash/timeout isolation) with the workspace
 XPU interpreter and a timeout (~120s). Capture stdout/stderr to
@@ -155,18 +168,18 @@ XPU interpreter and a timeout (~120s). Capture stdout/stderr to
 If a tensor `.device` is `cpu`, mark `blocked-script-error` (CPU fallback, not a valid
 XPU test).
 
-#### 2d. Batch route
+#### 2e. Batch route
 
 Apply the routing rules in [references/xpu-alignment-buckets-and-routing.md](references/xpu-alignment-buckets-and-routing.md)
 to each `confirmed` / `related-failure` candidate.
 
-#### 2e. Batch write report
+#### 2f. Batch write report
 
 Write `reports/full_scan.md` directly, following the report format in
 [references/xpu-alignment-report-and-issue-format.md](references/xpu-alignment-report-and-issue-format.md). Include every candidate whose
 `local_status == done`; exclude rows rejected at deep-filter.
 
-#### 2f. Write provisional issue drafts
+#### 2g. Write provisional issue drafts
 
 Write `reports/issue_drafts.md` directly for all `confirmed` and `related-failure`
 candidates, using the template in [references/xpu-alignment-report-and-issue-format.md](references/xpu-alignment-report-and-issue-format.md).
@@ -184,8 +197,13 @@ scan is auditable and complete only when ALL of these hold:
    ``Local XPU result: `<bucket>` `` line where `<bucket>` is a bucket vocabulary value.
 3. **Report scope matches the ledger**: the report counts only entries with
    `local_status == done`, and every deep-rejected row is excluded.
+4. **Precheck coverage matches execution**: every executed repro is `approved` in
+   `reports/repro_precheck.md`, and each execution log demonstrates that the
+   target operation or target compiled result, rather than an unrelated setup
+   tensor, ran on XPU.
 
-If any check fails, write `## Progress checkpoint` describing the pending rows or
+If any check fails, write `## Progress checkpoint` describing the pending rows,
+precheck gaps, or
 mismatches and continue; do not write the final summary.
 
 Write `## Final Summary` only when all three audit checks pass. Include filter stats
@@ -242,6 +260,7 @@ Artifacts produced under the run directory:
 - `artifacts/candidate_ledger.jsonl` — agent-maintained per-candidate status ledger (resume point)
 - `artifacts/details/<id>.json` — fetched body/diff per passed candidate
 - `scripts/repro_<id>.py` — XPU-adapted reproducer per `deep_status == pass` candidate
+- `reports/repro_precheck.md` — independent approval, rework, or rejection for every generated repro
 - `artifacts/output_<id>.log` — captured stdout/stderr per executed repro
 - `artifacts/collect_env.txt` — `collect_env` output for issue Versions section
 - `reports/full_scan.md` — auditable report of all tested candidates

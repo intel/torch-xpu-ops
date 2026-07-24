@@ -15,6 +15,7 @@ Each entry must preserve a numbered format and include at least:
 - candidate id, title, and kind
 - evidence URL
 - reproducer script path and output log path
+- precheck approval and the target-path XPU proof cited from that output log
 - an exact ``Local XPU result: `<bucket>` `` line
 - route suggestion for `confirmed` and `related-failure`
 
@@ -31,7 +32,7 @@ Requirements:
 
 ## Local issue drafts (`reports/issue_drafts.md`)
 
-Write this provisional file directly for all `confirmed` and `related-failure`
+Write this provisional file directly for all precheck-approved `confirmed` and `related-failure`
 candidates, using this exact body structure:
 
 ````

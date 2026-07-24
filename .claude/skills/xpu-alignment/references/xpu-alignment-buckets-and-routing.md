@@ -12,8 +12,8 @@ Pick by what actually happened when you ran it:
 
 | Bucket | Apply when... |
 |--------|---------------|
-| `confirmed` | the repro ran on XPU and showed the **same** bug as upstream |
-| `related-failure` | the repro ran on XPU but failed in a **different** way than upstream |
+| `confirmed` | an approved repro ran the **target** operation/path on XPU and showed the **same** bug as upstream |
+| `related-failure` | an approved repro ran the target operation/path on XPU but showed a different, independently actionable failure |
 | `not-reproduced` | the repro ran on XPU and the upstream failure did **not** happen |
 | `blocked-env` | the repro could not start: a dependency was missing or it needed a distributed/multi-GPU setup |
 | `blocked-platform` | the repro needed a code path XPU does not have at all |
@@ -28,10 +28,20 @@ Only repros that actually run receive a `local_bucket`.
 
 ## Confirmation criteria
 
-Use this when deciding between `confirmed` and `not-reproduced` (Step 2c) -- i.e.
+Use this when deciding between `confirmed` and `not-reproduced` (Step 2d) -- i.e.
 whether what you saw on XPU matches the upstream behavior. These scan buckets do
 not decide whether the behavior is a real bug, requires an XPU-specific fix, or
 should be filed. The independent review makes those decisions.
+
+Both `confirmed` and `related-failure` require an `approved` entry in
+`reports/repro_precheck.md` and target-path XPU proof in the captured execution
+log. `torch.xpu.is_available()`, an unrelated XPU allocation, or a device print
+outside the operation under test is not target-path proof. A script must not infer
+either bucket from a title, broad exception text, or generic string matching.
+
+If the upstream oracle was not reached, do not call it `confirmed`. If the observed
+failure has no independently stated semantics and actionability, do not call it
+`related-failure`; use `blocked-script-error` or `not-reproduced` as appropriate.
 
 **Counts as a bug**: crash, segfault, assertion failure, hang, wrong numerical
 result, wrong shape/stride/dtype, off-by-one beyond atol=1e-4.
