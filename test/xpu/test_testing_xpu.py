@@ -58,7 +58,7 @@ with XPUImportCtx(False):
 # instantiate_device_type_tests at module level.  During import under
 # XPUImportCtx these were patched to DO_NOTHING, so the module-local
 # names still reference the no-op.  Several test methods call these
-# functions on locally-defined classes and assert the results â€” they
+# functions on locally-defined classes and assert the results — they
 # would silently fail without this fixup.
 # ======================================================================
 

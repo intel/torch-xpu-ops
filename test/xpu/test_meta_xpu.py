@@ -306,7 +306,7 @@ TestMeta.test_binary_ufuncs_mixed_dtype = _test_binary_ufuncs_mixed_dtype
 
 
 # Removed @onlyCUDA; replaced with @onlyOn(["cuda", "xpu"]).
-# test_fill_stride has no `device` parameter â€” it's a simple TestCase method,
+# test_fill_stride has no `device` parameter — it's a simple TestCase method,
 # not a device-type parameterized test.
 TestMeta.test_fill_stride = retarget_outermost_onlycuda_to_onlyon(
     TestMeta.test_fill_stride
