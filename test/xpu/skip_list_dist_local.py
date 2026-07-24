@@ -110,7 +110,7 @@
     ),
     "distributed/_composable/fsdp/test_fully_shard_state_dict.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": None,
+    "distributed/_composable/fsdp/test_fully_shard_training.py": None,
     "../../../../test/distributed/_composable/test_replicate_with_compiler.py": None,
     "../../../../test/distributed/_composable/test_checkpoint.py": None,
     "distributed/_composable/test_composability/test_2d_composability.py": None,
