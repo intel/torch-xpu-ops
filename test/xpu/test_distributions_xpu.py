@@ -182,12 +182,32 @@ def _test_torch_binomial_dtype_errors(self):
                 torch.binomial(total_count, total_prob)
 
 
+def _test_lowrank_multivariate_normal_moments(self):
+    # XPU override of the upstream moments test with a larger sample count.
+    #
+    # More samples shrink the 3-sigma mean spread (std error ~ sigma/sqrt(N)):
+    # 100k -> 500k brings it from ~0.0168 to ~0.0075, under atol=0.01
+    set_rng_seed(0)
+    mean = torch.randn(5)
+    cov_factor = torch.randn(5, 2)
+    cov_diag = torch.randn(5).abs()
+    d = LowRankMultivariateNormal(mean, cov_factor, cov_diag)
+    samples = d.rsample((500000,))
+    empirical_mean = samples.mean(0)
+    self.assertEqual(d.mean, empirical_mean, atol=0.01, rtol=0)
+    empirical_var = samples.var(0)
+    self.assertEqual(d.variance, empirical_var, atol=0.02, rtol=0)
+
+
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
+TestDistributions.test_lowrank_multivariate_normal_moments = (
+    _test_lowrank_multivariate_normal_moments
+)
 instantiate_device_type_tests(
     TestDistributions, globals(), only_for="xpu", allow_xpu=True
 )
