@@ -73,39 +73,34 @@ _flash_attention_forward(
   at::Tensor output, q_padded, k_padded, v_padded, logsumexp, philox_seed,
       philox_offset, debug_attn_mask;
   if (cumulative_sequence_length_q.has_value()) {
-    // std::tie(
-    //     output,
-    //     q_padded,
-    //     k_padded,
-    //     v_padded,
-    //     logsumexp,
-    //     philox_seed,
-    //     philox_offset,
-    //     debug_attn_mask) =
-    //     FLASH_NAMESPACE::mha_varlen_fwd(
-    //         query,
-    //         key,
-    //         value,
-    //         out,
-    //         cumulative_sequence_length_q.value(),
-    //         cumulative_sequence_length_k.value(),
-    //         seqused_k, /*seqused_k*/
-    //         block_table, /*block_table*/
-    //         alibi_slopes, /*alibi_slopes*/
-    //         max_seqlen_batch_q,
-    //         max_seqlen_batch_k,
-    //         dropout_p,
-    //         softmax_scale,
-    //         false /*zero_tensors*/,
-    //         is_causal,
-    //         window_left,
-    //         window_right,
-    //         softcap,
-    //         return_debug_mask,
-    //         std::nullopt /*gen_*/);
-    TORCH_CHECK(
-        false,
-        "_flash_attention_forward: Varseqlen path is not implemented yet.");
+    const auto& cu_seqlens_q = cumulative_sequence_length_q.value();
+    const auto& cu_seqlens_k = cumulative_sequence_length_k.value();
+
+    auto [varlen_output, varlen_logsumexp] =
+        flash_attention_forward_varlen_sycltla(
+            query,
+            key,
+            value,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_batch_q,
+            max_seqlen_batch_k,
+            dropout_p,
+            is_causal,
+            softmax_scale);
+
+    at::Tensor philox_seed_v =
+        at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
+    at::Tensor philox_offset_v =
+        at::empty({}, at::dtype(c10::kLong).device(at::kXPU));
+    debug_attn_mask = return_debug_mask ? at::empty({0}, query.options())
+                                        : at::empty({0}, query.options());
+    return std::make_tuple(
+        std::move(varlen_output),
+        std::move(varlen_logsumexp),
+        std::move(philox_seed_v),
+        std::move(philox_offset_v),
+        std::move(debug_attn_mask));
   } else {
     std::tie(
         output,
@@ -353,6 +348,37 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward(
       scale);
   return std::make_tuple(
       std::move(grad_query), std::move(grad_key), std::move(grad_value));
+#endif
+}
+
+std::tuple<at::Tensor, at::Tensor> flash_attention_forward_varlen(
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const at::Tensor& cu_seqlens_q,
+    const at::Tensor& cu_seqlens_k,
+    const int64_t max_seqlen_q,
+    const int64_t max_seqlen_k,
+    const double dropout,
+    const bool is_causal,
+    const float scale) {
+#ifndef USE_SYCLTLA
+  TORCH_CHECK(
+      false,
+      "flash_attention_forward_varlen: Torch XPU was not compiled with SYCLTLA support.");
+  return std::make_tuple(at::Tensor(), at::Tensor());
+#else
+  return flash_attention_forward_varlen_sycltla(
+      query,
+      key,
+      value,
+      cu_seqlens_q,
+      cu_seqlens_k,
+      max_seqlen_q,
+      max_seqlen_k,
+      dropout,
+      is_causal,
+      scale);
 #endif
 }
 } // namespace sycltla

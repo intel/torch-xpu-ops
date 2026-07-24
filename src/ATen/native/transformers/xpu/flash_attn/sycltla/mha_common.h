@@ -146,6 +146,12 @@ struct FLASH_FWD_params : public QKV_params {
   void* rng_offset;
 
   bool is_fp16;
+
+  // Variable-length (varlen) attention fields
+  int* cu_seqlens_q = nullptr;
+  int* cu_seqlens_k = nullptr;
+  int total_q = 0;
+  int total_k = 0;
 };
 
 struct FLASH_BWD_params : public FLASH_FWD_params {
