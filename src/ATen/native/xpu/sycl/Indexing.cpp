@@ -999,16 +999,26 @@ template <
     bool IndexIsMajor,
     typename func_t>
 struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  // Work-group-scope (local memory) 64-bit floating-point atomics are not
+  // reliably supported on some Intel GPUs (e.g. BMG) and can hang the device.
+  // For those types skip the shared-local-memory coalescing optimization and
+  // accumulate directly through the global-memory atomic op (this matches the
+  // CUDA implementation, which has no local coalescing path).
+  static constexpr bool use_smem_coalescing =
+      !(std::is_same_v<T, double> || std::is_same_v<T, c10::complex<double>>);
+
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto local_range = item.get_local_range(0);
     T identity = (T)0;
 
-    for (int i = item.get_local_id(0); i < SMEM_SIZE; i += local_range) {
-      smem_offsets[i] = (IndexType)-1;
-      smem_values[i] = identity;
-    }
+    if constexpr (use_smem_coalescing) {
+      for (int i = item.get_local_id(0); i < SMEM_SIZE; i += local_range) {
+        smem_offsets[i] = (IndexType)-1;
+        smem_values[i] = identity;
+      }
 
-    sycl::group_barrier(item.get_group());
+      sycl::group_barrier(item.get_group());
+    }
 
     for (IndexType linearIndex =
              item.get_group(0) * local_range + item.get_local_id(0);
@@ -1044,18 +1054,23 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       } else {
         val = src_.data[srcOffset] * alpha_;
       }
-      const int smem_idx = dstOffset & (SMEM_SIZE - 1);
-      IndexType current_offset = smem_offsets[smem_idx];
 
-      if (current_offset == dstOffset) {
-        atomicAddLocal(
-            static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
-      } else if (current_offset == (IndexType)-1) {
-        IndexType expected = (IndexType)-1;
-        if (atomicCAS(&smem_offsets[smem_idx], expected, dstOffset) ==
-            expected) {
+      if constexpr (use_smem_coalescing) {
+        const int smem_idx = dstOffset & (SMEM_SIZE - 1);
+        IndexType current_offset = smem_offsets[smem_idx];
+
+        if (current_offset == dstOffset) {
           atomicAddLocal(
               static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
+        } else if (current_offset == (IndexType)-1) {
+          IndexType expected = (IndexType)-1;
+          if (atomicCAS(&smem_offsets[smem_idx], expected, dstOffset) ==
+              expected) {
+            atomicAddLocal(
+                static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
+          } else {
+            op_(dst_.data, dstOffset, dstNumel_, &val);
+          }
         } else {
           op_(dst_.data, dstOffset, dstNumel_, &val);
         }
@@ -1064,16 +1079,18 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    sycl::group_barrier(item.get_group());
+    if constexpr (use_smem_coalescing) {
+      sycl::group_barrier(item.get_group());
 
-    for (int i = item.get_local_id(0); i < SMEM_SIZE;
-         i += item.get_local_range(0)) {
-      IndexType final_dstOffset = smem_offsets[i];
+      for (int i = item.get_local_id(0); i < SMEM_SIZE;
+           i += item.get_local_range(0)) {
+        IndexType final_dstOffset = smem_offsets[i];
 
-      if (final_dstOffset != (IndexType)-1) {
-        T final_val = smem_values[i];
+        if (final_dstOffset != (IndexType)-1) {
+          T final_val = smem_values[i];
 
-        op_(dst_.data, final_dstOffset, dstNumel_, &final_val);
+          op_(dst_.data, final_dstOffset, dstNumel_, &final_val);
+        }
       }
     }
   }
