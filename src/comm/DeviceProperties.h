@@ -68,6 +68,8 @@ static int64_t syclMaxWorkGroupSize(
   ::sycl::kernel k = exe_bndl.template ext_oneapi_get_kernel<kptr>();
   return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);
 #else
+  // Choose get_kernel_info(ctx, dev) for better performance
+  // according to the comments of this function.
   auto& ctx = c10::xpu::get_device_context();
   auto& dev = c10::xpu::get_raw_device(dev_id);
   return ::syclexp::get_kernel_info<

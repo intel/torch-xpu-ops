@@ -255,6 +255,8 @@ static inline void sycl_kernel_submit(
 //      ...)`).
 //   2. Both forms are equivalent — `kernel_function<kptr>` simply evaluates to
 //      a default-constructed `kernel_function_s<kptr>` at compile time.
+
+// TODO: unify and remove the if-else for slm_sz
 template <auto* kptr, typename... Kargs>
 static inline void sycl_kernel_submit(
     int64_t global_range,
@@ -296,6 +298,7 @@ static inline void sycl_kernel_submit(
 #endif
 }
 
+// TODO: unify and remove the if-else for slm_sz
 template <auto* kptr, int dim, typename... Kargs>
 static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
