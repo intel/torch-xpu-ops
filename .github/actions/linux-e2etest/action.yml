@@ -26,12 +26,12 @@ runs:
   using: composite
   steps:
     - name: Check Python
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         which python && python -V
         which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         set -o pipefail
         cd ./pytorch

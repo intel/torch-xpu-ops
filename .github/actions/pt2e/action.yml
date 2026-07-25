@@ -19,13 +19,13 @@ runs:
   using: composite
   steps:
     - name: Check Python
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         which python && python -V
         which pip && pip list
     - name: Prepare dataset
       if: contains(inputs.scenario, 'accuracy')
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         dataset_dir="/opt/_datasets/imagenet"
         if [ ! -d "${dataset_dir}" ]; then
@@ -39,7 +39,7 @@ runs:
         fi
         echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         set -o pipefail
 

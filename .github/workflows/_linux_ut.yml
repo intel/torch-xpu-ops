@@ -48,7 +48,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} test bash -xe"'
+        shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid bash -xe"'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

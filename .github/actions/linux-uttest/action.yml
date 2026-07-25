@@ -10,13 +10,13 @@ runs:
   using: composite
   steps:
     - name: Check Python
-      shell: bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         which python && python -V
         which pip && pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 3600 bash -xe"'
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
@@ -27,7 +27,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
     - name: op_regression_dev1
-      shell: timeout 300 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 300 bash -xe"'
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
@@ -39,7 +39,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 3600 bash -xe"'
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -53,7 +53,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 72000 bash -xe"'
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -66,7 +66,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: skipped_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e PYTEST_ADDOPTS -w ${{ github.workspace }} amazing_euclid timeout 72000 bash -xe"'
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -80,7 +80,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
     - name: torch_xpu
-      shell: timeout 72000 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 72000 bash -xe"'
       if: ${{ inputs.ut_name == 'torch_xpu' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -94,7 +94,7 @@ runs:
         eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
           tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
     - name: xpu_profiling
-      shell: timeout 3600 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 3600 bash -xe"'
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
@@ -139,7 +139,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
 
     - name: xpu_distributed
-      shell: timeout 36000 bash -xeu -o pipefail {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e PYTEST_ADDOPTS -w ${{ github.workspace }} amazing_euclid timeout 36000 bash -xeu -o pipefail"'
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
@@ -156,7 +156,7 @@ runs:
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
     - name: p0
-      shell: timeout 72000 bash -eo pipefail {0}
+      shell: 'bash -c "cat {0} | docker exec -i -e PYTORCH_TEST_WITH_SLOW -e LOG_BASE -e PYTORCH_ROOT_DIR -e XML_OUTPUT_DIR -e XML_PREFIX -w ${{ github.workspace }} amazing_euclid timeout 72000 bash -eo pipefail"'
       if: ${{ inputs.ut_name == 'p0' }}
       env:
         PYTORCH_TEST_WITH_SLOW: 1
@@ -177,7 +177,7 @@ runs:
     # Summary
     - name: UT Test Results Summary
       if: ${{ !cancelled() }}
-      shell: timeout 180 bash -xe {0}
+      shell: 'bash -c "cat {0} | docker exec -i -w ${{ github.workspace }} amazing_euclid timeout 180 bash -xe"'
       run: |
         pip install junitparser
         python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
