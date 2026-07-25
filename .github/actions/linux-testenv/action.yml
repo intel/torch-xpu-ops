@@ -26,7 +26,7 @@ runs:
   using: composite
   steps:
     - name: Check runner
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         hostname && id
         cat /etc/os-release
@@ -75,7 +75,7 @@ runs:
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
 
     - name: Setup python-${{ inputs.python }} with uv
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
         rm -rf /opt/uv-python
@@ -86,7 +86,7 @@ runs:
         echo "/opt/uv-python/bin" >> ${GITHUB_PATH}
         echo "VIRTUAL_ENV=/opt/uv-python" >> ${GITHUB_ENV}
     - name: Check python
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         which python && python -V
         which pip && pip list
@@ -101,7 +101,7 @@ runs:
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         # install pytorch
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
@@ -129,7 +129,7 @@ runs:
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         cd pytorch
         rm -rf third_party/torch-xpu-ops
@@ -154,7 +154,7 @@ runs:
         fi
         git status && git diff && git show -s
     - name: Install E2E Requirements
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         # common
         pip install pandas psutil scipy pyyaml
@@ -238,7 +238,7 @@ runs:
           pip install -U numpy==1.26.4
         fi
     - name: Update numpy
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         # TODO: Remove this step once Python 3.10 is no longer supported.
         if [[ "${{ inputs.python }}" == "3.10" ]]; then
@@ -254,10 +254,10 @@ runs:
           echo "Skipping Update numpy because python is not 3.10 (python=${{ inputs.python }})"
         fi
     - name: Detect devices
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -euo pipefail"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -euo pipefail"'
       run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
     - name: Torch Config
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         printenv
         python -c "import torch; print(torch.__config__.show())"
@@ -282,7 +282,7 @@ runs:
         run-id: 29720403608
         path: ${{ github.workspace }}/wheels
     - name: Install test target
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         pip uninstall -y torch && pip uninstall -y torch
         pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps

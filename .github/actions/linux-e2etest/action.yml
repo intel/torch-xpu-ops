@@ -26,12 +26,12 @@ runs:
   using: composite
   steps:
     - name: Check Python
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         which python && python -V
         which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
+      shell: 'bash -c "cat {0} | docker exec -i -e GITHUB_ENV -e GITHUB_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY -e GITHUB_WORKSPACE -e PATH -e VIRTUAL_ENV -e PYTHONPATH -e TORCH_COMMIT_ID -e dataset_dir -e ZE_AFFINITY_MASK -e NUMACTL_ARGS -e PYTEST_EXTRA_ARGS -e PYTEST_ADDOPTS -e XPU_CPU_COUNT -e XPU_TOTAL_COUNT -e NUM_GPUS -e MODEL_ONLY_NAME -w ${{ github.workspace }} amazing_euclid bash -xe"'
       run: |
         set -o pipefail
         cd ./pytorch
