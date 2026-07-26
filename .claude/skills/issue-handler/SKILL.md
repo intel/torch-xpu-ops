@@ -182,7 +182,7 @@ TRIAGED -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED
 ```
 
 Terminal stages: `DONE`, `SKIPPED`, `NEEDS_HUMAN`, `PATCH_PROPOSED`,
-`DONE_SKIP_TRIAGED`.
+`DONE_SKIP_TRIAGED`, `SKIP_TRIAGED_NEEDS_HUMAN`.
 
 Stage → label mapping:
 
@@ -192,7 +192,7 @@ Stage → label mapping:
 | WAITING_UPSTREAM | `agent:waiting-upstream` |
 | TRIAGED, PATCH_PROPOSED | `agent:triaged` |
 | DONE, SKIPPED, DONE_SKIP_TRIAGED | `agent:done` |
-| NEEDS_HUMAN | `agent:needs-human` |
+| NEEDS_HUMAN, SKIP_TRIAGED_NEEDS_HUMAN | `agent:needs-human` |
 
 **Single state-comment pattern.** Keep exactly one machine-readable
 "state comment" per issue. On the first pipeline run, post it as a new
@@ -268,11 +268,39 @@ Classify as `bug`, `skip-list`, or `nonbug` and extract metadata.
      - `NO_REPRODUCER` (test does not exist / `collected 0 items`) or
        `CANNOT_VERIFY` due to test-name drift → `ENVIRONMENT`
      - Intermittent (pass on retry) → `FLAKY`
-  4. Do NOT call `fix/implement`. Post the per-test verdict table as an
-     issue comment.
-  5. Outcome is `DONE_SKIP_TRIAGED`; apply `agent:done` label and set
-     status marker to `<!-- agent:status:DONE -->` with `(skip-triaged)`
-     suffix in the body summary.
+  4. Post the per-test verdict table as an issue comment. This is a
+     mandatory deliverable of the skip-triage branch, not the only one.
+  5. **For every `STILL_FAILING_UPSTREAM_BUG` or `STILL_FAILING_XPU_BUG`
+     entry**, treat that single test as a sub-bug and run the full
+     bug-branch pipeline (Stages 2–5.5) for it, then post one
+     patch-proposal comment per sub-bug on the same skip-list issue.
+     Each sub-bug patch-proposal comment MUST contain:
+     - The test's node id (unique identifier within the skip-list issue)
+     - Root cause (one paragraph, cites the specific line / symbol)
+     - Verified patch diff (or `NEEDS_HUMAN` if no root-cause fix is
+       possible; the STRICT patch-acceptance rules below apply here
+       exactly the same as in the bug branch — no skip/xfail/seed/
+       tolerance workarounds)
+     - Reproducer command
+     - Verify output (before / after)
+     - `git apply` instructions
+     If a sub-bug lands `NEEDS_HUMAN`, its patch-proposal comment states
+     the reason plus a concrete fix location. Do NOT try to bundle all
+     sub-bug fixes into a single mega-diff — one comment per test keeps
+     the audit trail clean.
+     `ALREADY_FIXED`, `ENVIRONMENT`, and `FLAKY` entries need no
+     patch-proposal (the verdict table already tells the maintainer to
+     remove or ignore the skip).
+  6. Outcome selection:
+     - Every sub-bug produced a verified `PATCH_PROPOSED` (or is
+       `ALREADY_FIXED` / `ENVIRONMENT` / `FLAKY`) → outcome
+       `DONE_SKIP_TRIAGED`; apply `agent:done` label.
+     - One or more sub-bugs landed `NEEDS_HUMAN` → outcome
+       `SKIP_TRIAGED_NEEDS_HUMAN`; apply `agent:needs-human` (the
+       maintainer sees both the verdict table and per-sub-bug
+       patch-proposal comments, so they know exactly which sub-bugs
+       remain).
+     - Do NOT modify the issue body regardless of outcome.
 - `bug` → continue to Stage 2.
 
 ### Stage 2 — fix/reproduce
@@ -435,7 +463,8 @@ Always include:
 - Reviewer verdict: APPROVE / REQUEST_CHANGES / BLOCK / not-attempted
   (+ round count if looped)
 - Outcome: `IMPLEMENTING` / `PATCH_PROPOSED` / `DONE_SKIP_TRIAGED` /
-  `NEEDS_HUMAN` / `SKIPPED` / `NOT_REPRODUCED`
+  `SKIP_TRIAGED_NEEDS_HUMAN` / `NEEDS_HUMAN` / `SKIPPED` /
+  `NOT_REPRODUCED`
 
 Routing by `target_repo` vs `pr_repo` (see Stage 3):
 
@@ -500,3 +529,55 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
   In pipeline mode with multiple issues, each issue's fix lives on
   `agent/issue-<N>`. If the branch is wrong, abort with `NEEDS_HUMAN`
   rather than commit onto the wrong branch.
+
+## STRICT patch-acceptance rules
+
+A patch is only `PATCH_PROPOSED` if it fixes the **root cause** of the
+failure. This rule applies equally to the bug branch and to every
+sub-bug produced in the skip-list branch. The Stage 5.5 reviewer MUST
+reject anything that does not clear this bar.
+
+**Acceptable root-cause fixes:**
+
+- **(a) Correcting a stale test expectation** where upstream has
+  legitimately changed observed behavior and the test itself is now
+  wrong. Examples: exception class renamed (`UserError` → `Unsupported`),
+  an error-message wording changed, or removing a dead `@skipIfXpu` on
+  a test that genuinely passes now under its own assertion.
+- **(b) Product-code fix** in `torch-xpu-ops` (kernel/op) or in
+  `pytorch` runtime (framework code, dispatch, autograd, inductor,
+  etc.). This includes fixing a test file that hard-codes CUDA APIs on
+  a device-agnostic path, when the correct fix is to make the test
+  device-agnostic (not to skip it on XPU).
+
+**REJECTED — return `NEEDS_HUMAN`, not `PATCH_PROPOSED`:**
+
+- Adding `@expectedFailureXPU` / `@skipXPU` / `@skipIfXpu` /
+  `@unittest.skip` / `@unittest.expectedFailure` to a failing test.
+  That hides the bug; it does not fix it. `issue-handler` never allows
+  `fix/implement` to add skips (`allow_skip=false`).
+- Hardcoding `set_rng_seed(...)` / `torch.manual_seed(...)` to dodge a
+  numerical failure region.
+- Loosening `atol` / `rtol` on `assertEqual` (or any tolerance-carrying
+  assertion) beyond a small, quantitatively justified bump. The
+  tightened value must be on the order of the actual observed drift; a
+  bump of several orders of magnitude is not acceptable and is a
+  workaround, not a fix.
+- Deleting the failing test outright.
+- Any change whose stated rationale is "hide until real fix lands" /
+  "unblock CI" / "align with MPS/CUDA which is also skipped here".
+- Wrapping the failing call in an overly broad `try/except` that
+  suppresses the failure mode.
+
+If reproduction shows the failure is a real product-code issue but the
+root-cause fix is out of scope for this run (multi-day kernel work,
+distributed hardware you do not have, a third-party component you can't
+touch): outcome is `NEEDS_HUMAN` with the root cause and a clear
+pointer to where the fix should live. That is an honest, valid outcome.
+Prefer honest `NEEDS_HUMAN` over fabricated `PATCH_PROPOSED`.
+
+The Stage 5.5 reviewer's checklist item 2 ("verify the changes fix the
+root cause") IS this rule. If the reviewer is tempted to APPROVE a diff
+that matches any bullet in the REJECTED list, that is a pipeline bug —
+bail with `NEEDS_HUMAN`, name the real fix location, and post a state
+comment saying so. Do not paper over.
