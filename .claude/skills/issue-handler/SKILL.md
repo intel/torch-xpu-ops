@@ -516,6 +516,20 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
   the chat). If a prior run of this skill (or any tool called by it)
   wrote to the body, restore the body from the timeline API or from
   local snapshots before doing anything else.
+- **Never remove any pre-existing label that is not in the `agent:*`
+  namespace.** This includes but is not limited to `issue_handler_handle`,
+  `module: *`, `hw: *`, `dtype: *`, `os: *`, `bug`, `enhancement`,
+  `type: *`, `skipped`, `ut_upstream`, `not_target`, `wait_upstream`,
+  `dependency component: *`, `performance`, `E2E`, `Accuracy`. These
+  labels are set by humans or by other automation (batch selectors,
+  triage bots) and this skill has no authority to modify them.
+  Explicitly: do NOT remove `issue_handler_handle` after processing an
+  issue. It is a batch-selector label, not a "todo done" marker; the
+  batch orchestrator uses it to know which issues are in scope, and
+  removing it silently breaks the batch state. The skill's only allowed
+  label operations are adding or removing labels in the `agent:*`
+  namespace (`agent:active`, `agent:triaged`, `agent:done`,
+  `agent:needs-human`, `agent:waiting-upstream`).
 - **`agent:triaged` label requires a real `fix/triage` run.** Do not
   apply that label from a stage that only ran `fix/reproduce`.
 - **`PATCH_PROPOSED` requires** Stage 4 -> Stage 5 PASSED -> Stage 5.5
