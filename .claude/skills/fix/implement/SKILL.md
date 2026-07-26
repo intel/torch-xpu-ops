@@ -87,6 +87,77 @@ git diff --cached --stat   # verify only intended files are staged
 
 Never stage `third_party/xpu.txt` or unrelated files.
 
+## Step 3.5: Skip-guard review (only when `allow_skip=false`)
+
+Skip this step entirely when `allow_skip=true` (nightly-ci-fix flow).
+
+When `allow_skip=false`, spawn a fresh-context subagent via the `Task`
+tool (`subagent_type=general`) to inspect the staged diff for
+skip-shaped workarounds before returning to the orchestrator. The
+implementer must not review its own diff for this specific bias — the
+gatekeeper here is a separate agent with no memory of the reasoning
+that produced the diff.
+
+Pass the reviewer:
+
+- The full staged diff: `git -C <repo_dir> diff --cached`.
+- The `triage_result` (so the reviewer knows what the root cause is
+  supposed to be).
+- The value of `allow_skip` (always `false` when this step runs).
+
+Instruct the reviewer to reject the diff (return `REQUEST_CHANGES`) if
+any of the following appears anywhere in added lines:
+
+- A new `@skipIfXpu` / `@skipXPU` / `@skipCUDAIf` / `@skipMPS` /
+  `@unittest.skip` / `@unittest.skipIf` / `@pytest.mark.skip` /
+  `@pytest.mark.skipif` / `@pytest.mark.xfail` /
+  `@expectedFailureXPU` / `@expectedFailureCUDA` / `@expectedFailureMPS`
+  / `@expectedFailure` decorator on a test.
+- A new `DecorateInfo(unittest.skip, ...)` / `DecorateInfo(skipIfXpu, ...)`
+  / `DecorateInfo(unittest.expectedFailure, ...)` entry in an
+  `OpInfo` / `ModuleInfo` skips/decorators list.
+- A new `xfail(...)` / `skip(...)` entry in an
+  `instantiate_device_type_tests` skip dict for XPU.
+- Bare `raise unittest.SkipTest(...)` / `self.skipTest(...)` inserted
+  into a previously-running test to short-circuit it on XPU.
+- Loosening `atol` / `rtol` on `assertEqual` (or any tolerance-carrying
+  assertion) by more than an order of magnitude, when the diff has no
+  quantitative justification for the new value in a comment.
+- Hardcoded `set_rng_seed(...)` / `torch.manual_seed(...)` /
+  `random.seed(...)` inserted into a previously-random test purely to
+  dodge a failure region.
+- Deleting or commenting out the failing assertion / the failing test
+  function.
+- A broad `try / except Exception: pass` (or equivalent) wrapping the
+  call that used to fail.
+
+Existing skips being **removed** by the diff are fine — that is a
+legitimate root-cause fix in the "stale test expectation" category.
+The rule only fires on *added* skip-shaped constructs.
+
+The reviewer returns one of:
+
+- `APPROVE` — no skip-shaped workaround found. Continue to Step 4
+  (output).
+- `REQUEST_CHANGES` — cite each offending hunk (file + line + which
+  rule it matched). The implementer MUST address every citation
+  (either replace the workaround with a real root-cause fix or, if no
+  root-cause fix is possible within this run's scope, unstage the
+  offending change and return `NEEDS_HUMAN` to the orchestrator with
+  the reviewer's citations attached).
+
+**Do not loop this step more than once.** If a second run of Step 3.5
+still returns `REQUEST_CHANGES`, unstage the offending change and
+return `NEEDS_HUMAN` — that is a signal the fix cannot be produced
+without a workaround and a human should take it.
+
+This step is intentionally narrower than the orchestrator's Stage 5.5
+review. Stage 5.5 checks the entire diff for correctness, minimalism,
+and root-cause alignment; Step 3.5 checks only for the specific class
+of "hide the failure instead of fixing it" workarounds that
+`allow_skip=false` is meant to forbid. Both run; they do not replace
+each other.
+
 ## Patch-proposal mode
 
 When `patch_proposal_mode=true`, the fix must land in a repo the current
@@ -94,7 +165,7 @@ run is not allowed to open a PR against (usually `pytorch` when the issue
 is on `torch-xpu-ops`, or vice versa). In this mode:
 
 - Apply the fix in the `target_repo`'s local checkout exactly as normal
-  (Step 1 through Step 3).
+  (Step 1 through Step 3.5). Step 3.5 still runs when `allow_skip=false`.
 - **Do NOT commit.** Leave the change staged only. The orchestrator's
   Stage 6 will read it back via `git -C <target_repo_dir> diff --cached`
   and post the diff as a comment on the issue.
@@ -123,6 +194,9 @@ changes to be present when verify is called.
 
 ## HARD RULES
 - NEVER add skip decorators when `allow_skip=false`.
+- When `allow_skip=false`, Step 3.5 (skip-guard reviewer subagent) is
+  MANDATORY before returning to the orchestrator. Do not skip it, do
+  not run it inline in your own context.
 - NEVER modify files outside your repo scope.
 - NEVER modify unrelated files.
 - NEVER cherry-pick upstream commits. Rebase instead.
