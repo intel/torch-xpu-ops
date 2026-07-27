@@ -57,7 +57,6 @@ jobs:
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}

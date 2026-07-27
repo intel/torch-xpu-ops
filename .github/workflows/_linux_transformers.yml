@@ -76,7 +76,6 @@ env:
     libswscale-dev
     pciutils
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
-  AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
 defaults:
   run:
@@ -213,18 +212,19 @@ jobs:
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: ${{ env.python }}
+          activate-environment: true
       - name: Check python
         run: |
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
+          uv pip list
+          uv pip install -U pip wheel setuptools
       - name: Prepare pytorch and deps
         run: |
-          pip install junitparser
-          pip install $TORCH_INDEX \
+          uv pip install junitparser
+          uv pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
             torchaudio==${{ needs.prepare.outputs.torchaudio }} \
@@ -233,11 +233,11 @@ jobs:
         run: |
           pwd
           cd transformers
-          pip install \
+          uv pip install \
             accelerate==${{ env.accelerate }} \
             datasets==${{ env.datasets }}
-          pip install -e .
-          pip install -e ".[dev-torch,testing,video]"
+          uv pip install -e .
+          uv pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
@@ -245,7 +245,7 @@ jobs:
         run: |
           LOGS_DIR="${{ github.workspace }}/transformers/logs"
           echo "pip installed packages:"
-          pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
+          uv pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee "$LOGS_DIR/lspci_0380-$TEST_CASE.txt"
           echo "GPU render nodes:"
@@ -255,12 +255,12 @@ jobs:
       - name: Sanity check installed packages
         run: |
           # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist pytest-shard
+          uv pip install -U pytest pytest-timeout pytest-xdist pytest-shard
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run tests
         run: |
@@ -322,12 +322,13 @@ jobs:
         with:
           path: torch-xpu-ops
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: ${{ env.python }}
+          activate-environment: true
       - name: Install pip deps
         run: |
-          pip install junitparser
+          uv pip install junitparser
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |
