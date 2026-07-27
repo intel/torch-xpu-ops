@@ -310,7 +310,7 @@ void validate_rendezvous_requests(
 
   std::unordered_set<int> device_indices;
   device_indices.reserve(world_size);
-  for (auto req : reqs) {
+  for (const auto& req : reqs) {
     device_indices.insert(req.device_idx);
   }
 

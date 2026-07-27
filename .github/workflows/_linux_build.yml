@@ -110,14 +110,8 @@ jobs:
           echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
-      - name: Build Pytorch
+      - name: Prepare Pytorch Source
         run: |
-          export USE_XCCL=1
-          export IS_XPU_CI=1
-          # only build pvc for CI
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc'
-          fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -132,19 +126,26 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
+          python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
+            --workspace="${{ github.workspace }}" \
+            --pytorch-repo="${PYTORCH_REPO}" \
+            --pytorch-commit="${PYTORCH_COMMIT}" \
+            --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
+            --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
+            --onednn-commit='${{ inputs.onednn }}'
+      - name: Build Pytorch
+        run: |
+          export USE_XCCL=1
+          export IS_XPU_CI=1
+          # only build pvc for CI
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            export TORCH_XPU_ARCH_LIST='pvc'
+          fi
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
-          if [ "${{inputs.category}}" != "dpclang" ]; then
-            source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          fi
-          export ONEDNN_COMMIT='${{ inputs.onednn }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
-            --PYTORCH_REPO="${PYTORCH_REPO}" \
-            --PYTORCH_COMMIT="${PYTORCH_COMMIT}" \
-            --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
-            --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
-            2>&1 |tee ${{ github.workspace }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log
+            2>&1 |tee ${{ github.workspace }}/build_pytorch.log
           if [ $(ls ${{ github.workspace }} |grep -c "torch-.*.whl") -eq 0 ];then
             echo "Build pytorch got failed"
             exit 1

@@ -431,7 +431,7 @@ void segmented_radix_sort_pairs_kernel(
 
   // Among basic types, the bit size of bool is not an even multiple of 4. AB
   // buffer switching is required.
-  if constexpr (std::is_same<key_t, bool>::value) {
+  if constexpr (std::is_same_v<key_t, bool>) {
     auto input_calc = TrivialOffsetCalculator<2>();
     at::detail::Array<char*, 2> data;
     if (keys_out) {
