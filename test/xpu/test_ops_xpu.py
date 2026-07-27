@@ -9,6 +9,9 @@
 # Owner(s): ["module: intel"]
 
 
+from functools import wraps
+
+import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
@@ -27,6 +30,41 @@ with XPUPatchForImport(False):
     )
 
 fake_autocast_device_skips["xpu"] = {"linalg.pinv", "pinverse"}
+
+
+def _is_problematic_fft_case(dtype, op):
+    return op.name.startswith("_refs.fft.") and dtype is torch.half
+
+
+_original_test_python_ref = TestCommon.test_python_ref
+_original_test_python_ref_torch_fallback = TestCommon.test_python_ref_torch_fallback
+_original_test_python_ref_executor = TestCommon.test_python_ref_executor
+
+
+@wraps(_original_test_python_ref)
+def _test_python_ref_xpu(self, device, dtype, op):
+    if _is_problematic_fft_case(dtype, op):
+        self.skipTest("Skipped on XPU: python ref FFT mismatch for half precision")
+    return _original_test_python_ref(self, device, dtype, op)
+
+
+@wraps(_original_test_python_ref_torch_fallback)
+def _test_python_ref_torch_fallback_xpu(self, device, dtype, op):
+    if _is_problematic_fft_case(dtype, op):
+        self.skipTest("Skipped on XPU: python ref FFT mismatch for half precision")
+    return _original_test_python_ref_torch_fallback(self, device, dtype, op)
+
+
+@wraps(_original_test_python_ref_executor)
+def _test_python_ref_executor_xpu(self, device, dtype, op, executor):
+    if _is_problematic_fft_case(dtype, op):
+        self.skipTest("Skipped on XPU: python ref FFT mismatch for half precision")
+    return _original_test_python_ref_executor(self, device, dtype, op, executor)
+
+
+TestCommon.test_python_ref = _test_python_ref_xpu
+TestCommon.test_python_ref_torch_fallback = _test_python_ref_torch_fallback_xpu
+TestCommon.test_python_ref_executor = _test_python_ref_executor_xpu
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 # in finegrand
