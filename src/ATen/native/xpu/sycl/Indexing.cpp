@@ -1230,15 +1230,16 @@ void index_reduce_add_xpu_template(
 
   // Host-side bounds check so an out-of-range index raises a catchable
   // RuntimeError/IndexError instead of tripping the device-side
-  // SYCL_KERNEL_ASSERT (which aborts the process). Matches eager CPU/CUDA.
+  // SYCL_KERNEL_ASSERT (which aborts the process). Negative indices are
+  // rejected rather than wrapped, matching eager CPU/CUDA.
   if (index.numel() > 0) {
     auto [idx_min, idx_max] = at::aminmax(index);
     int64_t dim_size = self_.size(dim);
     TORCH_CHECK_INDEX(
-        idx_max.item<int64_t>() < dim_size &&
-            idx_min.item<int64_t>() >= -dim_size,
-        "index_add(): index out of range: expected indices in [",
-        -dim_size, ", ", dim_size - 1, "]");
+        idx_min.item<int64_t>() >= 0 && idx_max.item<int64_t>() < dim_size,
+        "index_add(): index out of range in self: expected indices in [0, ",
+        dim_size - 1,
+        "]");
   }
 
   TORCH_CHECK(
@@ -1515,15 +1516,16 @@ void index_reduce_func_xpu_template(
 
   // Host-side bounds check so an out-of-range index raises a catchable
   // RuntimeError/IndexError instead of tripping the device-side
-  // SYCL_KERNEL_ASSERT (which aborts the process). Matches eager CPU/CUDA.
+  // SYCL_KERNEL_ASSERT (which aborts the process). Negative indices are
+  // rejected rather than wrapped, matching eager CPU/CUDA.
   if (index.numel() > 0) {
     auto [idx_min, idx_max] = at::aminmax(index);
     int64_t dim_size = self_.size(dim);
     TORCH_CHECK_INDEX(
-        idx_max.item<int64_t>() < dim_size &&
-            idx_min.item<int64_t>() >= -dim_size,
-        "index_reduce(): index out of range: expected indices in [",
-        -dim_size, ", ", dim_size - 1, "]");
+        idx_min.item<int64_t>() >= 0 && idx_max.item<int64_t>() < dim_size,
+        "index_reduce(): index out of range in self: expected indices in [0, ",
+        dim_size - 1,
+        "]");
   }
 
   TORCH_CHECK(

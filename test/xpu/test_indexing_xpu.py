@@ -200,13 +200,13 @@ with XPUPatchForImport(False):
         # Regression test for intel/torch-xpu-ops#4284. Pre-fix, an
         # out-of-range index tripped a device-side assert that aborted the
         # process (SIGABRT) instead of raising a catchable Python error.
-        # This asserts the fixed behavior: a catchable IndexError/RuntimeError,
-        # while valid (in-range) negative indices still work.
+        # This asserts the fixed behavior: a catchable IndexError/RuntimeError.
+        # Like eager CPU, negative indices are rejected rather than wrapped.
         dim_size = 4
         src = torch.ones(1, device=device)
 
-        # dim_size == 4 -> valid indices are [-4, 3]; 4 and -5 are out of range.
-        for bad_index in (4, -5):
+        # dim_size == 4 -> valid indices are [0, 3]; 4 and any negative are not.
+        for bad_index in (4, -1, -5):
             index = torch.tensor([bad_index], device=device)
             with self.assertRaises((IndexError, RuntimeError)):
                 out = torch.zeros(dim_size, device=device).index_add(0, index, src)
@@ -219,11 +219,16 @@ with XPUPatchForImport(False):
                 torch.xpu.synchronize()
                 _ = out.cpu()
 
-        # A valid negative index (-1 on dim size 4) must still work.
-        neg = torch.tensor([-1], device=device)
-        out = torch.zeros(dim_size, device=device).index_add(0, neg, src)
+            # CPU parity: the same index is rejected there too.
+            cpu_index = torch.tensor([bad_index])
+            with self.assertRaises((IndexError, RuntimeError)):
+                torch.zeros(dim_size).index_add(0, cpu_index, torch.ones(1))
+
+        # A valid index still works.
+        good = torch.tensor([3], device=device)
+        out = torch.zeros(dim_size, device=device).index_add(0, good, src)
         expected = torch.zeros(dim_size, device=device)
-        expected[-1] = 1.0
+        expected[3] = 1.0
         self.assertEqual(out, expected)
 
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
