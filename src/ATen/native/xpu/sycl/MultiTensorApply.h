@@ -88,7 +88,8 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 // specialization whose non-type template argument (the kernel pointer) MSVC
 // cannot convert (error C2440). Fold the extra args into a single non-variadic,
 // device-copyable functor so the emitted template-id is non-variadic.
-// TODO: remove once the icx integration-header generator is fixed [CMPLRLLVM-77173]
+// TODO: remove once the icx integration-header generator is fixed
+// [CMPLRLLVM-77173]
 template <typename T, typename Y, typename U>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void multi_tensor_apply_kernel(
@@ -434,7 +435,8 @@ void multi_tensor_apply_for_fused_optimizer(
 // Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
 // is not implicitly device-copyable, so declare the wrapper copyable whenever
 // its callable and bound argument types are.
-// TODO: remove once the icx integration-header generator is fixed [CMPLRLLVM-77173]
+// TODO: remove once the icx integration-header generator is fixed
+// [CMPLRLLVM-77173]
 template <typename U, typename... ArgTypes>
 struct sycl::is_device_copyable<
     ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
@@ -442,4 +444,3 @@ struct sycl::is_device_copyable<
           sycl::is_device_copyable_v<U> && ... &&
           sycl::is_device_copyable_v<ArgTypes>)> {};
 #endif // _WIN32
-
