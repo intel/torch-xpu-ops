@@ -82,39 +82,13 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
   return max_wg_size * kILP;
 }
 
-#ifndef _WIN32
-template <typename T, typename Y, typename U, typename... ArgTypes>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void multi_tensor_apply_kernel(
-    int64_t kChunkSize,
-    T tlAddressMeta,
-    Y tlWGMeta,
-    U callable,
-    ArgTypes... args) {
-  auto item = syclext::this_work_item::get_nd_item<1>();
-  callable(kChunkSize, tlAddressMeta, tlWGMeta, item, args...);
-}
-#else
-// Windows-only workaround for an Intel oneAPI DPC++ (icx) SYCL integration
-// header generation bug when the host compiler is MSVC (cl.exe, i.e.
-// -fsycl-host-compiler=cl). For a variadic free function kernel, icx emits a
-// `KernelInfo` specialization keyed on
-//   NdRangeFreeFunctionKernelWrapper<&multi_tensor_apply_kernel<T, Y, U,
-//   ArgTypes...>, ...>
-// where the kernel pointer is used as an uncast non-type template argument.
-// The MSVC front-end cannot convert that variadic template-id to the expected
-// `auto*` pointer type and fails with:
-//   error C2440: 'specialization': cannot convert from 'overloaded-function'
-//   to 'void (__cdecl *)(...)'
-//
-// To avoid a variadic kernel signature entirely, the kernel below is
-// non-variadic (multi_tensor_apply_kernel<T, Y, U>): the trailing kernel
-// arguments are folded, together with the callable, into a single
-// non-variadic, device-copyable functor (MultiTensorApplyCallableWrapper).
-// The emitted template-id is then non-variadic and MSVC resolves the pointer
-// correctly.
-//
-// Remove this workaround once the icx integration-header generator is fixed.
+#ifdef _WIN32
+// Windows-only workaround for an icx SYCL integration-header bug with MSVC as
+// host compiler: a variadic free-function kernel makes icx emit a KernelInfo
+// specialization whose non-type template argument (the kernel pointer) MSVC
+// cannot convert (error C2440). Fold the extra args into a single non-variadic,
+// device-copyable functor so the emitted template-id is non-variadic.
+// TODO: remove once the icx integration-header generator is fixed [CMPLRLLVM-77173]
 template <typename T, typename Y, typename U>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void multi_tensor_apply_kernel(
@@ -141,20 +115,20 @@ struct MultiTensorApplyCallableWrapper {
         args);
   }
 };
-} // namespace at::native::xpu
-
-// Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
-// is not implicitly device-copyable, so declare the wrapper copyable whenever
-// its callable and bound argument types are.
-template <typename U, typename... ArgTypes>
-struct sycl::is_device_copyable<
-    ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
-    : std::bool_constant<(
-          sycl::is_device_copyable_v<U> && ... &&
-          sycl::is_device_copyable_v<ArgTypes>)> {};
-
-namespace at::native::xpu {
+#else
+template <typename T, typename Y, typename U, typename... ArgTypes>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multi_tensor_apply_kernel(
+    int64_t kChunkSize,
+    T tlAddressMeta,
+    Y tlWGMeta,
+    U callable,
+    ArgTypes... args) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  callable(kChunkSize, tlAddressMeta, tlWGMeta, item, args...);
+}
 #endif // _WIN32
+
 template <
     bool fused_kernel,
     typename T,
@@ -455,3 +429,17 @@ void multi_tensor_apply_for_fused_optimizer(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _WIN32
+// Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
+// is not implicitly device-copyable, so declare the wrapper copyable whenever
+// its callable and bound argument types are.
+// TODO: remove once the icx integration-header generator is fixed [CMPLRLLVM-77173]
+template <typename U, typename... ArgTypes>
+struct sycl::is_device_copyable<
+    ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
+    : std::bool_constant<(
+          sycl::is_device_copyable_v<U> && ... &&
+          sycl::is_device_copyable_v<ArgTypes>)> {};
+#endif // _WIN32
+
