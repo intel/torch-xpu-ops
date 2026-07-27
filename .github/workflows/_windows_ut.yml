@@ -161,7 +161,14 @@ jobs:
             REM Prepare torch-xpu-ops for test scripts
             set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
             if "%torch_xpu_ops%" == "pinned" (
-              echo "Using pinned torch-xpu-ops"
+              for /f "delims=" %%c in ('type third_party\xpu.txt') do set XPU_OPS_COMMIT=%%c
+              cd third_party
+              if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
+              cd ..
+              git clone "https://github.com/intel/torch-xpu-ops.git" "third_party\torch-xpu-ops"
+              cd "third_party\torch-xpu-ops"
+              git checkout "%XPU_OPS_COMMIT%"
+              cd ../..
             ) else (
               cd third_party
               if exist "torch-xpu-ops" rmdir /s /q torch-xpu-ops
