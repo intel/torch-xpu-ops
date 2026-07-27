@@ -16,14 +16,14 @@ namespace at::xpu {
 
 template <typename T1, typename T2>
 struct pair {
-  typedef T1 first_type;
-  typedef T2 second_type;
+  using first_type = T1;
+  using second_type = T2;
 
   first_type first;
   second_type second;
 
   // default constructor
-  pair(void) : first(), second() {}
+  pair() : first(), second() {}
 
   inline pair(const T1& x, const T2& y) : first(x), second(y) {}
 };

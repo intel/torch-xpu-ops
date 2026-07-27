@@ -16,6 +16,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
+#include <numbers>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -133,7 +134,7 @@ struct AngleWrapper {
     if (at::_isnan(v)) {
       return v;
     }
-    return v < 0 ? M_PI : 0;
+    return v < 0 ? std::numbers::pi_v<scalar_t> : scalar_t(0);
   }
 };
 

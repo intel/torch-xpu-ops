@@ -53,7 +53,7 @@ struct FusedDropoutVecFunctor {
 
     // Helps align the total number of times rand_uniform4 is called by each
     // thread for the same total_elements in the vec=2 and vec=4 cases.
-    bool gridxvec_loop_state = 0;
+    bool gridxvec_loop_state = false;
     accscalar_t scale = 1.0 / p_;
 
     float4 rand;

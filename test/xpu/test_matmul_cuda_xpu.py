@@ -12,7 +12,6 @@
 
 # Owner(s): ["module: intel"]
 
-import unittest
 
 import torch
 from torch.testing._internal.common_device_type import (
@@ -23,19 +22,12 @@ from torch.testing._internal.common_device_type import (
     tol as xtol,
     toleranceOverride,
 )
-from torch.testing._internal.common_utils import (
-    IS_JETSON,
-    MI200_ARCH,
-    parametrize,
-    run_tests,
-    runOnRocmArch,
-    TestCase,
-)
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUImportCtx
+    from xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
 except Exception:
-    from .xpu_test_utils import XPUImportCtx
+    from .xpu_test_utils import retarget_outermost_onlycuda_to_onlyon, XPUImportCtx
 
 with XPUImportCtx(False):
     from test_matmul_cuda import TestMatmulCuda, TestMixedDtypesLinearCuda
@@ -113,78 +105,13 @@ def _test_cublas_addmm_alignment(self, device, dtype):
 TestMatmulCuda.test_cublas_addmm_alignment = _test_cublas_addmm_alignment
 
 
-@onlyOn(["cuda", "xpu"])
-@unittest.skipIf(IS_JETSON, "Too large for Jetson")
-@toleranceOverride({torch.float32: xtol(atol=1e-5, rtol=1.1e-5)})
-@dtypes(torch.float32, torch.float16, torch.bfloat16)
-@parametrize(
-    "batch_size, N, M, P",
-    [
-        (2, 100, 100, 100),
-        (2, 1000, 1000, 1000),
-        (1, 10000, 1000, 10000),
-        (1, 10000, 10000, 10000),
-    ],
-    name_fn=lambda batch_size, N, M, P: f"{batch_size}_{N}_{M}_{P}",
+# ======================================================================
+# Only replace the onlyCUDA decorator with onlyOn(["cuda", "xpu"])
+# ======================================================================
+
+TestMatmulCuda.test_cublas_baddbmm_large_input = retarget_outermost_onlycuda_to_onlyon(
+    TestMatmulCuda.test_cublas_baddbmm_large_input
 )
-def _test_cublas_baddbmm_large_input(self, device, batch_size, N, M, P, dtype):
-    cpu_dtype = dtype
-    if dtype == torch.float16 or dtype == torch.bfloat16:
-        cpu_dtype = torch.float32
-
-    M1 = torch.rand((N, M), device=device, dtype=dtype)
-    M2 = torch.rand((M, P), device=device, dtype=dtype)
-    A = torch.rand((N, P), device=device, dtype=dtype)
-
-    def _convert_to_cpu(t):
-        return t.to(device="cpu", dtype=cpu_dtype)
-
-    M1_cpu, M2_cpu, A_cpu = map(_convert_to_cpu, [M1, M2, A])
-
-    out1_cpu = torch.nn.functional.linear(M1_cpu, M2_cpu.t(), A_cpu).to(dtype=dtype)
-    out1_gpu = torch.nn.functional.linear(M1, M2.t(), A).cpu()
-    self.assertEqual(out1_cpu, out1_gpu)
-
-    if N == M and M == P:
-        M2_eye = torch.eye(N, device=device, dtype=dtype)
-        out1_eye_gpu = torch.nn.functional.linear(M1, M2_eye.t(), torch.zeros_like(A))
-        if runOnRocmArch(MI200_ARCH) and dtype == torch.float16:
-            self.assertEqual(
-                M1_cpu.to(dtype=dtype), out1_eye_gpu.cpu(), atol=1e-4, rtol=0.001
-            )
-        else:
-            self.assertEqual(M1_cpu.to(dtype=dtype), out1_eye_gpu.cpu())
-
-    def _expand_to_batch(t: torch.Tensor):
-        return t.expand((batch_size,) + t.size())
-
-    alpha, beta = 1.0, 1.0
-    M1, M2, A, M1_cpu, M2_cpu, A_cpu = map(
-        _expand_to_batch, [M1, M2, A, M1_cpu, M2_cpu, A_cpu]
-    )
-
-    out2_cpu = torch.baddbmm(A_cpu, M1_cpu, M2_cpu, beta=beta, alpha=alpha).to(
-        dtype=dtype
-    )
-    out2_gpu = torch.baddbmm(A, M1, M2, beta=beta, alpha=alpha).cpu()
-    self.assertEqual(out2_cpu, out2_gpu)
-
-    if N == M and M == P:
-        M2_eye = torch.eye(N, device=device, dtype=dtype).expand(batch_size, N, N)
-        out2_eye_gpu = torch.baddbmm(
-            torch.zeros_like(A), M1, M2_eye, beta=beta, alpha=alpha
-        )
-        if runOnRocmArch(MI200_ARCH) and dtype == torch.float16:
-            self.assertEqual(
-                M1_cpu.to(dtype=dtype), out2_eye_gpu.cpu(), atol=1e-4, rtol=0.001
-            )
-        else:
-            self.assertEqual(M1_cpu.to(dtype=dtype), out2_eye_gpu.cpu())
-
-    self.assertEqual(out1_gpu, out2_gpu[0])
-
-
-TestMatmulCuda.test_cublas_baddbmm_large_input = _test_cublas_baddbmm_large_input
 
 
 # ======================================================================
