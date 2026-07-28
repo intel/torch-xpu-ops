@@ -32,7 +32,6 @@ const int kMilliSecondToNanosSecond = 1000000;
 class XpuTimer : public Timer {
  private:
   c10::Device device;
-  // at::xpu::XPUEvent(true) means enable_timing=true
   at::xpu::XPUEvent forward_start = at::xpu::XPUEvent(true);
   at::xpu::XPUEvent backward_compute_start = at::xpu::XPUEvent(true);
   at::xpu::XPUEvent backward_compute_end = at::xpu::XPUEvent(true);
