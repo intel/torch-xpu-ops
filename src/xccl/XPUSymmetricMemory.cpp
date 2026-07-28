@@ -1,15 +1,27 @@
-#include <xccl/ProcessGroupXCCL.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
+
+#include <c10/util/Exception.h>
+#include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
+
+// XPU symmetric memory is implemented on top of
+// <sycl/ext/oneapi/experimental/ipc_memory.hpp>, which is provided only by
+// Intel oneAPI DPC++/C++ Compiler >= 2026.0.
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION >= 20260000
+#define XPU_SYMM_MEM_AVAILABLE 1
+#else
+#define XPU_SYMM_MEM_AVAILABLE 0
+#endif
+
+#if XPU_SYMM_MEM_AVAILABLE
+
+#include <xccl/ProcessGroupXCCL.hpp>
 
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
-#include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
-
-#include <sycl/ext/oneapi/experimental/ipc_memory.hpp>
 
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -17,8 +29,12 @@
 #include <atomic>
 #include <mutex>
 
+#endif // XPU_SYMM_MEM_AVAILABLE
+
 namespace c10d {
 namespace symmetric_memory {
+
+#if XPU_SYMM_MEM_AVAILABLE
 
 namespace {
 
@@ -294,7 +310,7 @@ void validate_rendezvous_requests(
 
   std::unordered_set<int> device_indices;
   device_indices.reserve(world_size);
-  for (auto req : reqs) {
+  for (const auto& req : reqs) {
     device_indices.insert(req.device_idx);
   }
 
@@ -466,6 +482,69 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
   }
   return it->second;
 }
+
+#else // !XPU_SYMM_MEM_AVAILABLE
+
+// Stub implementation for compilers that do not provide
+// <sycl/ext/oneapi/experimental/ipc_memory.hpp>. The allocator is still
+// registered (so the "XPU" backend remains discoverable) but invoking it
+// surfaces an actionable upgrade message instead of a silent failure or a
+// confusing missing-symbol error.
+namespace {
+
+[[noreturn]] void throw_unsupported_compiler() {
+  TORCH_CHECK(
+      false,
+      "XPU SymmetricMemory requires Intel oneAPI DPC++/C++ Compiler 2026.0 "
+      "or newer (which provides "
+      "<sycl/ext/oneapi/experimental/ipc_memory.hpp>). Detected "
+      "SYCL_COMPILER_VERSION=" C10_STRINGIZE(
+          SYCL_COMPILER_VERSION) ". Please rebuild PyTorch / torch-xpu-ops with oneAPI 2026.0 or newer.");
+}
+
+#undef XPU_SYMM_MEM_STRINGIZE
+#undef XPU_SYMM_MEM_STRINGIZE_
+} // namespace
+
+void* XPUSymmetricMemoryAllocator::alloc(
+    size_t /*size*/,
+    int /*device_idx*/,
+    const std::optional<std::string>& /*group_name*/) {
+  throw_unsupported_compiler();
+}
+
+void XPUSymmetricMemoryAllocator::free(void* /*ptr*/) {
+  // No-op: alloc() always throws, so there is nothing to free.
+}
+
+size_t XPUSymmetricMemoryAllocator::get_alloc_size(void* /*ptr*/) {
+  throw_unsupported_compiler();
+}
+
+c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
+    void* /*ptr*/,
+    const std::optional<std::string>& /*group_name*/) {
+  throw_unsupported_compiler();
+}
+
+bool XPUSymmetricMemoryAllocator::has_multicast_support(int /*device_idx*/) {
+  return false;
+}
+
+c10::DeviceType XPUSymmetricMemoryAllocator::supported_device_type() {
+  return c10::DeviceType::XPU;
+}
+
+std::string XPUSymmetricMemoryAllocator::name() {
+  return "XPU";
+}
+
+c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(
+    void* /*ptr*/) {
+  return nullptr;
+}
+
+#endif // XPU_SYMM_MEM_AVAILABLE
 
 struct RegisterXPUSymmetricMemoryAllocator {
   RegisterXPUSymmetricMemoryAllocator() {

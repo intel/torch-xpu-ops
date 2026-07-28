@@ -577,10 +577,10 @@ struct MaxPool2dBackwardChannelLastVec {
         grad_acc[i] = accscalar_t(0);
       }
 
-      int offset = batch * out_n_stride_ / vec_size + plane;
+      index_t offset = batch * out_n_stride_ / vec_size + plane;
       for (int ph = phstart; ph < phend; ++ph) {
         for (int pw = pwstart; pw < pwend; ++pw) {
-          int load_offset = offset +
+          index_t load_offset = offset +
               ph * gradOutputSizeW_ * numPlane_ / vec_size +
               pw * numPlane_ / vec_size;
           vec_t gout_val_vec = gradOutput_[load_offset];

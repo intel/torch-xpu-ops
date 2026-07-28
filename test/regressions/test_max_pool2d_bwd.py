@@ -45,3 +45,29 @@ class TestMaxPool2dBwd(TestCase):
         actual = fn(grad_output_fp16, x_fp16, indices)
 
         self.assertEqual(actual, expected)
+
+    def test_max_pool2d_bwd_channels_last(self):
+        # Exercises the channels-last (NHWC) vectorized backward kernel against
+        # the CPU reference. (The int64 offset overflow it guards against only
+        # manifests at >2**31-element offsets, which is not allocatable in CI.)
+        kernel, stride, pad, dil = [3, 3], [2, 2], [1, 1], [1, 1]
+        x = torch.randn([2, 16, 12, 12]).to(memory_format=torch.channels_last)
+        result, indices = aten.max_pool2d_with_indices(
+            x, kernel, stride, pad, dil, False
+        )
+        grad_output = torch.randn_like(result)
+
+        def bwd(grad_output, x, indices):
+            return aten.max_pool2d_with_indices_backward(
+                grad_output, x, kernel, stride, pad, dil, False, indices
+            )
+
+        expected = bwd(grad_output, x, indices)
+        x_xpu = x.xpu()
+        _, indices_xpu = aten.max_pool2d_with_indices(
+            x_xpu, kernel, stride, pad, dil, False
+        )
+        actual = bwd(grad_output.xpu(), x_xpu, indices_xpu)
+
+        self.assertEqual(actual.cpu(), expected)
+        self.assertTrue(actual.is_contiguous(memory_format=torch.channels_last))

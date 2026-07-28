@@ -17,6 +17,8 @@
 
 #include <ATen/native/xpu/sycl/RreluWithNoiseKernels.h>
 
+#include <concepts>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, int unroll_factor, typename transform_t>
@@ -40,7 +42,7 @@ struct RreluWithNoiseKernelFunctor {
       auto rand = random_func_(&state);
 
       // ensure that (&rand.x)[ii] is safe
-      static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor, "");
+      static_assert(sizeof(rand) / sizeof(rand.x) == unroll_factor);
 
 #pragma unroll
       for (int ii = 0; ii < unroll_factor; ii++) {
@@ -125,7 +127,7 @@ inline void _rrelu_with_noise_xpu_train(
   double lower = lower_.to<double>();
   double upper = upper_.to<double>();
 
-  if (std::is_same_v<scalar_t, double>) {
+  if constexpr (std::same_as<scalar_t, double>) {
     templates::xpu::Uniform2DistributionFunctor tfn;
     auto fn = RreluWithNoiseKernelFunctor<scalar_t, 2, decltype(tfn)>(
         numel,

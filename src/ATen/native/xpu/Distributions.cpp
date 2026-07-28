@@ -83,7 +83,7 @@ Tensor _s_gamma_xpu(const Tensor& alpha, std::optional<Generator> gen_) {
   return ret;
 }
 
-Tensor _sample_dirichlet_xpu(
+Tensor _s_dirichlet_xpu(
     const Tensor& alpha,
     std::optional<Generator> generator) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(

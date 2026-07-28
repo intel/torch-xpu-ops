@@ -485,7 +485,8 @@ void adaptive_avg_pool2d_backward_kernel(
           (size_t)range_y * group_y,
           (size_t)range_x * group_x};
 
-      AT_ASSERT(input.numel() < std::numeric_limits<int32_t>::max());
+      TORCH_INTERNAL_ASSERT(
+          input.numel() < std::numeric_limits<int32_t>::max());
 
       AT_DISPATCH_FLOATING_TYPES_AND2(
           kHalf,
