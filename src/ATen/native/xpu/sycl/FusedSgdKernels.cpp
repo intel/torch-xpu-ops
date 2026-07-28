@@ -73,7 +73,7 @@ struct FusedSgdMathFunctor {
 
   template <typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item,

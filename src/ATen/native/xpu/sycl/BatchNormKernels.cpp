@@ -1080,14 +1080,12 @@ struct BatchNormTransformInputKernelFunctor {
       GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
           output,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> mean,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> var_or_invstd,
@@ -1120,13 +1118,13 @@ struct BatchNormTransformInputKernelFunctor {
   GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
       output_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
       mean_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
@@ -1213,14 +1211,12 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
       GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
           output,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> mean,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> var_or_invstd,
@@ -1253,13 +1249,13 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
   GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
       output_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
       mean_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
@@ -3725,9 +3721,9 @@ Tensor batch_norm_backward_elemt_kernel(
             mean_st == invstd_st,
             "mean and invstd need to have the same data types");
         bool is_half_float =
-            std::is_same<scalar_t, at::Half>::value && mean_st == at::kFloat;
-        bool is_bfloat16_float = std::is_same<scalar_t, at::BFloat16>::value &&
-            mean_st == at::kFloat;
+            std::is_same_v<scalar_t, at::Half> && mean_st == at::kFloat;
+        bool is_bfloat16_float =
+            std::is_same_v<scalar_t, at::BFloat16> && mean_st == at::kFloat;
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         if (canUse32BitIndexMath(self)) {
           if (is_half_float || is_bfloat16_float) {

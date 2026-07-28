@@ -22,10 +22,10 @@ namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
-typedef enum {
+enum ScanType {
   EXCLUSIVE_TYPE = 0,
   INCLUSIVE_TYPE = 1,
-} ScanType;
+};
 
 template <typename scalar_t, typename idx_t, typename BinaryOperation>
 void binary_op_update(

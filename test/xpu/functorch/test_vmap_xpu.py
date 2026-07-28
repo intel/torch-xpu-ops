@@ -94,7 +94,9 @@ TEST_GPU = TEST_CUDA or TEST_XPU
 
 def get_platform_specific_sdpa():
     ret = [SDPBackend.MATH]
-    if PLATFORM_SUPPORTS_FLASH_ATTENTION:
+    if PLATFORM_SUPPORTS_FLASH_ATTENTION and (
+        not TEST_XPU or torch._C._is_flash_attention_available()
+    ):
         ret.append(SDPBackend.FLASH_ATTENTION)
     if PLATFORM_SUPPORTS_MEM_EFF_ATTENTION:
         ret.append(SDPBackend.EFFICIENT_ATTENTION)
@@ -4349,14 +4351,6 @@ class TestVmapOperatorsOpInfo(TestCase):
         # RuntimeError: When vmap-ing torch.nn.functional.one_hot,
         # please provide an explicit positive num_classes argument.
         xfail("nn.functional.one_hot"),
-        # RuntimeError: Expected all tensors to be on the same device,
-        # but found at least two devices, cuda:0 and cpu!
-        xfail("eq", device_type=device_type),
-        xfail("ge", device_type=device_type),
-        xfail("gt", device_type=device_type),
-        xfail("le", device_type=device_type),
-        xfail("lt", device_type=device_type),
-        xfail("ne", device_type=device_type),
         # RuntimeError: aten::_flash_attention_forward hit the vmap fallback which is currently disabled
         xfail("torch.ops.aten._flash_attention_forward"),
     }
@@ -4460,7 +4454,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 skip(
                     "to"
                 ),  # RuntimeError: required rank 4 tensor to use channels_last format
-                xfail("fill"),
                 # Batch norm got a batched tensor as input while the running_mean or running_var,
                 # which will be updated in place, were not batched.
                 xfail("native_batch_norm"),
@@ -4472,7 +4465,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 # masked index as input which is not supported
                 xfail("index_put", ""),
                 xfail("isin"),
-                xfail("masked_fill"),
                 xfail("masked_scatter"),
                 xfail("masked_select"),
                 xfail("nanquantile"),
@@ -4582,12 +4574,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 skip("_softmax_backward_data"),
                 # One or more of the overload doesn't have a Batch rule.
                 xfail("bincount"),
-                # RuntimeError: Expected all tensors to be on the same device,
-                # but found at least two devices, cuda:0 and cpu!
-                xfail("ge", device_type=device_type),
-                xfail(
-                    "searchsorted"
-                ),  # aten::searchsorted.Scalar hit the vmap fallback which is currently disabled
                 xfail("native_group_norm"),
             }
         ),

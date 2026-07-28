@@ -180,7 +180,7 @@ void tensor_histogram(
     at::acc_type_device<input_t, kXPU> min_value,
     at::acc_type_device<input_t, kXPU> max_value) {
   checkBackend("tensor_histogram", {a, b}, Backend::XPU);
-  if (has_weights) {
+  if constexpr (has_weights) {
     checkBackend("tensor_histogram", {c}, Backend::XPU);
   }
   auto total_elements = b.numel();
@@ -191,7 +191,7 @@ void tensor_histogram(
   using IndexType = int64_t;
   auto a_info = getTensorInfo<output_t, IndexType>(a);
   auto b_info = getTensorInfo<const input_t, IndexType>(b);
-  if (has_weights) {
+  if constexpr (has_weights) {
     auto c_info = getTensorInfo<output_t, IndexType>(c);
     const IndexingFunctor<output_t, IndexType, decltype(c_info)> get_weights_op(
         c_info);
