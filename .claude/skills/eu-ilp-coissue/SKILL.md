@@ -76,9 +76,7 @@ Identify the idle or underused pipe.
 | S0 high | Not an ILP-first case; run stall attribution |
 | S1 high and S2 low | ILP/co-issue headroom likely exists |
 | One pipe busy, another pipe low | Candidate for interleaving independent work |
-| Low ALU1 utilization but high `MATH` events | Extended math is not represented by ALU1; inspect math dependency chains before declaring ALU1 idle |
 | High FP32/INT32/MATH events with low co-issue | Use ASM to find independent FP/address/math work that can be moved beside the busy pipe |
-| High SEND events or SEND pressure | Do not claim a compute-only ILP opportunity until SEND dependency and memory-pressure evidence is checked |
 | All useful pipes already balanced | ILP headroom may be small |
 
 Stop if co-issue is already healthy or if the candidate work is truly serial.
