@@ -41,6 +41,26 @@ Tensor embedding_dense_backward_kernel(
   auto num_indices = indices.numel();
   auto grad = grad_.contiguous().view({num_indices, grad_.size(-1)});
 
+  // The sort-and-segment path below reads a data-dependent value back to the host
+  // (EmbeddingBackwardKernel.h, num_of_partial_segments), which is not supported during
+  // SYCL graph capture and blocks torch.xpu.graph / make_graphed_callables for embedding
+  // backward. index_add_ does the same accumulate-by-index with no sort and no host read,
+  // so it captures. Half/bfloat16 accumulate in float32 (matching the sort kernel's
+  // acc_type) then cast back. Keep the existing path when frequency scaling or
+  // deterministic algorithms are requested.
+  if (!scale_grad_by_freq && !at::globalContext().deterministicAlgorithms()) {
+    const auto grad_dtype = grad_.scalar_type();
+    const bool low_prec = (grad_dtype == at::kHalf || grad_dtype == at::kBFloat16);
+    const auto acc_dtype = low_prec ? at::kFloat : grad_dtype;
+    auto grad_weight =
+        at::zeros({num_weights, grad_.size(-1)}, grad_.options().dtype(acc_dtype));
+    grad_weight.index_add_(0, indices.view(-1), low_prec ? grad.to(acc_dtype) : grad);
+    if (padding_idx >= 0) {
+      grad_weight[padding_idx].zero_();
+    }
+    return low_prec ? grad_weight.to(grad_dtype) : grad_weight;
+  }
+
   auto sorted_indices =
       at::empty_like(indices, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   auto orig_indices = at::empty_like(indices, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
