@@ -25,7 +25,6 @@ TORCH_XPU_API void _calculate_moving_average(
 
 TORCH_XPU_API
 void _calc_moving_avg_qparams_helper(
-    const at::Tensor& x,
     const at::Tensor fake_quant_on,
     at::Tensor& running_min,
     at::Tensor& running_max,

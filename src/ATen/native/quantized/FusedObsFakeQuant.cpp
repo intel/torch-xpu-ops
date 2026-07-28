@@ -91,7 +91,6 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
   int32_t* zp_ptr = zero_point.data_ptr<int32_t>();
 
   native::xpu::_calc_moving_avg_qparams_helper(
-      x_contig,
       fake_quant_on.to(at::kLong),
       running_min,
       running_max,
