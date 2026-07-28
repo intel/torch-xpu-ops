@@ -22,7 +22,7 @@
 #include <c10/util/SmallVector.h>
 
 #include <ATen/TensorUtils.h>
-#include <math.h>
+#include <cmath>
 
 namespace at::native::xpu {
 

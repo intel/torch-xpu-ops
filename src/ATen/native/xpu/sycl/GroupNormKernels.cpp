@@ -872,7 +872,7 @@ void group_norm_1d_backward(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N, G, D}))
                       .add_owned_const_input(dY.view({N, G, D}))
@@ -885,7 +885,7 @@ void group_norm_1d_backward(
       gpu_kernel(iter, GroupNorm1dBackwardGammaFunctor<T, T_ACC>());
     } else {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D}))
                       .add_owned_const_input(dY.view({N * G, D}))
@@ -1465,7 +1465,7 @@ void group_norm_backward_kernel_impl(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .add_output(c1)
                       .add_owned_const_input(rstd.view({N, G, 1}))
                       .add_owned_const_input(gamma.view({1, G, D}))
@@ -1496,7 +1496,7 @@ void group_norm_backward_kernel_impl(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D, HxW}))
                       .add_owned_const_input(dY.view({N * G, D, HxW}))
@@ -1508,7 +1508,7 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardDXFunctor<T, T_ACC>());
     } else {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D * HxW}))
                       .add_owned_const_input(dY.view({N * G, D * HxW}))
