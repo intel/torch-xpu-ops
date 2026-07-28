@@ -35,9 +35,10 @@ If the target kernel is ambiguous, first collect or inspect profiler output to m
 
 ## Device-Agnostic Workflow
 
-### Step 0: Pick One Hotspot Operator
+### Step 0: Run the Reproducer and Pick One Hotspot Operator
 
-Start from one hotspot operator. The unit of analysis is one target kernel.
+Run the reproducer or microbenchmark first, then use its profiler output to
+select one hotspot operator. The unit of analysis is one target kernel.
 
 Rules:
 - Exclude helper kernels such as random init, copy, flush, memset, or warmup unless one of them is the selected hotspot.
@@ -80,8 +81,12 @@ Derive these quantities when applicable:
 | `input_bytes` | Required input tensor bytes |
 | `output_bytes` | Required output tensor bytes |
 | `parameter_bytes` | Weights, bias, scale, metadata, descriptors |
-| `source_logical_read_bytes` | Element bytes read by the implementation before cacheline or transaction effects |
-| `source_logical_write_bytes` | Element bytes written by the implementation before cacheline or transaction effects |
+| `semantic_minimal_read_bytes` | Minimum bytes that the operator semantics must read to produce its result; excludes cacheline and transaction effects |
+| `semantic_minimal_write_bytes` | Minimum bytes that the operator semantics must write to expose its result; excludes cacheline and transaction effects |
+| `source_logical_read_bytes` | Element bytes actually read by the implementation, including repeated reads but before cacheline or transaction effects |
+| `source_logical_write_bytes` | Element bytes actually written by the implementation, including intermediate or partial writes but before cacheline or transaction effects |
+| `implementation_extra_read_bytes` | `source_logical_read_bytes - semantic_minimal_read_bytes`, when the values are comparable |
+| `implementation_extra_write_bytes` | `source_logical_write_bytes - semantic_minimal_write_bytes`, when the values are comparable |
 | `dram_read_bytes_optimistic` | Minimum global-memory read traffic under optimistic cache reuse |
 | `dram_write_bytes_expected` | Expected global-memory writeback traffic when writeback is visible in the measured window |
 | `shared_onchip_read_reuse_bytes_optimistic` | Multi-pass read bytes expected to be served by on-chip cache/storage after the first pass |
@@ -92,13 +97,19 @@ Derive these quantities when applicable:
 
 Keep read-side and write-side roofline quantities separate. Only compute a combined total-byte roofline after both read-side and write-side closure have been checked independently.
 
+Derive the semantic minimum before modeling the source implementation. A large
+implementation-extra term is evidence for an algorithm-level opportunity such
+as removing an intermediate tensor, avoiding a repeated pass, or fusing a
+producer and consumer. Explain aliasing, in-place updates, and intentionally
+materialized intermediates before treating the difference as avoidable traffic.
+
 Use memory sharing domains first, then map them to backend-specific names:
 
 | Abstract domain | Meaning |
 |---|---|
 | Per-thread / register storage | Values kept inside a lane/thread |
-| Intra-core / block-local on-chip storage | Storage shared within a core, SM, CU, Xe core, workgroup, CTA, or block |
-| Inter-core on-chip cache | Cache shared across cores/SMs/CUs/Xe cores within the device |
+| Intra-core / block-local on-chip storage | Explicit local/shared storage and the per-core load/store-cache path within one core, SM, CU, Xe core, workgroup, CTA, or block |
+| Inter-core on-chip cache | Last-level or device cache shared across cores, SMs, CUs, or Xe cores within the device |
 | Global memory / DRAM / HBM | Traffic reaching external or device-global memory |
 
 ### Step 3: Collect Backend Measurements
@@ -111,8 +122,8 @@ Collect these groups when available:
 |---|---|
 | Runtime and launch | Kernel time, call count, launch grid, frequency, device busy |
 | Compute state | Stall, active, issue utilization, occupancy, pipe mix, vector/tensor-core utilization |
-| Intra-core on-chip memory | Local/shared bytes or events, local-cache transactions, bank conflicts |
-| Inter-core on-chip cache | Shared cache hits/misses/transactions/stalls |
+| Intra-core on-chip memory | Explicit local/shared bytes or events, per-core load/store-cache transactions, bank conflicts |
+| Inter-core on-chip cache | Shared last-level/device-cache hits, misses, transactions, or stalls |
 | Global memory | Read bytes, write bytes, bandwidth, request queues, TLB/page faults |
 
 Derived metrics:
@@ -175,9 +186,19 @@ Use this section when the backend is Intel XPU and the available profiler is uni
 | Global grid | Kernel signature or source launch code |
 | Local workgroup | Kernel signature or source launch code |
 | Workgroup count | `GPGPU_THREADGROUP_COUNT` |
-| Kernel time | `GpuTime[ns]` |
+| Benchmark kernel time | unitrace `-d` device duration; use for absolute performance, throughput, and roofline-gap comparisons |
+| Counter-window kernel time | unitrace `-q` `GpuTime[ns]`; use only to align and weight rows from that same counter collection |
 | Frequency / clocks | `GpuCoreClocks`, `AvgGpuCoreFrequencyMHz` |
 | Device busy | `GPU_BUSY` |
+
+Timing rules:
+- Use repeated `-d` measurements as the performance-time source for benchmark
+	comparisons and absolute roofline claims.
+- `-q` `GpuTime[ns]` may include profiling overhead, especially for short
+	kernels. Do not use it as a substitute for `-d` when reporting absolute
+	latency or throughput.
+- When counter rates or percentages need time weighting, use `GpuTime[ns]` only
+	for rows from that exact `-q` collection and label it as counter-window time.
 
 ### XPU Memory Hierarchy Mapping
 
@@ -241,7 +262,7 @@ Rules:
 - For byte/event counters aggregated across multiple calls, include both total and per-call values when useful.
 - For each primary bottleneck, include the measured metric, the comparison point or threshold, and the next measurement or experiment that can confirm it.
 - If a required metric is unavailable or unreliable, write `N/A` and explain the counter limitation in one sentence.
-- For achieved TFLOPS, use target-kernel profiler time, such as `GpuTime[ns]`, as the primary timing source. Wall-clock or benchmark-table time is secondary context because profiler collection and Python/benchmark overhead can make it misleading.
+- For achieved TFLOPS, use repeated unitrace `-d` target-kernel device duration as the primary timing source. `-q` `GpuTime[ns]` is counter-window time and may include collection overhead, especially for short kernels.
 
 ````markdown
 ## Kernel Perf Analysis
@@ -288,7 +309,8 @@ State the aggregation method first:
 
 | Layer | Metric | Value | Derived / comparison | Interpretation |
 |---|---|---:|---:|---|
-| Runtime | `GpuTime[ns]` / avg time |  |  |  |
+| Runtime | `-d` device duration / avg time |  |  |  |
+| Runtime | `-q` `GpuTime[ns]` |  | counter-window time only |  |
 | Runtime | `GPU_BUSY[%]` |  |  |  |
 | Compute state | `XVE_ACTIVE[%]` |  |  |  |
 | Compute state | `XVE_STALL[%]` |  |  |  |
@@ -324,7 +346,7 @@ This table must make the raw metric-to-per-call derivation explicit. `Metric val
 
 | Path | Source estimate per call | Measured per call | Ratio | Metric value | Closure verdict |
 |---|---:|---:|---:|---|---|
-| FLOPs |  |  | achieved / expected or `N/A` | source FLOPs formula; target-kernel `GpuTime[ns] = <sum>; calls = <N>; kernel_time = sum / N`; wall-clock benchmark time only as secondary context if useful |  |
+| FLOPs |  |  | achieved / expected or `N/A` | source FLOPs formula; target-kernel `-d` device duration = `<sum>`; calls = `<N>`; kernel_time = sum / N; `-q` `GpuTime[ns]` only as counter-window context |  |
 | LSC Read |  |  | measured / estimate or `N/A` | `LOAD_STORE_CACHE_BYTE_READ[bytes] = <sum>; calls = <N>; measured = sum / N`; include `LOAD_STORE_CACHE_ACCESS`, `LOAD_STORE_CACHE_HIT`, `lsc_hit_ratio`; include partial-read counter if backend exposes one |  |
 | LSC Write |  |  | measured / estimate or `N/A` | `LOAD_STORE_CACHE_BYTE_WRITE[bytes] = <sum>; calls = <N>; measured = sum / N`; include `LOAD_STORE_CACHE_PARTIAL_WRITE_COUNT` or backend partial-write counter if available |  |
 | L3 Read |  |  | measured / estimate or `N/A` | `L3_READ[events]` and/or `GPU_MEMORY_L3_READ[events]`; include `L3_HIT`, `L3_MISS`, `l3_hit_ratio`, `L3_STALL[%]`; include event-to-byte assumption only if converting |  |
@@ -336,11 +358,11 @@ Rules for this table:
 - Do not hide the raw counter. `Metric value` must include the exact counter name, summed value, call count, and formula used for `Measured per call`.
 - `Metric value` should be a compact counter bundle for that memory layer, not just the byte counter. Include hit/miss, hit ratio, partial read/write, stall, queue, and TLB counters when the backend exposes them.
 - Use readable normalized units such as `MB/call` or `GB/call` for byte-counter `Measured per call`, while preserving raw `bytes` in `Metric value`. Use `events/call` for event counters unless a documented event-to-byte conversion is available.
-- For TFLOPS, use target-kernel time by default: `tflops_kernel = source_flops_per_call / kernel_avg_seconds / 1e12`. Do not use wall-clock benchmark time for the primary TFLOPS when profiler collection overhead is present.
+- For TFLOPS, use repeated `-d` target-kernel device duration by default: `tflops_kernel = source_flops_per_call / kernel_avg_seconds / 1e12`. Do not use `-q` `GpuTime[ns]` for the primary TFLOPS because counter collection can inflate short-kernel time.
 - For XPU ComputeBasic, include `LOAD_STORE_CACHE_PARTIAL_WRITE_COUNT` for LSC write closure. There may be no partial-read counter; do not invent one. If another backend exposes partial reads, include it in the same row.
 - For cache rows, always include hit-ratio context when available: `lsc_hit_ratio = LOAD_STORE_CACHE_HIT / LOAD_STORE_CACHE_ACCESS`; `l3_hit_ratio = L3_HIT / (L3_HIT + L3_MISS)`.
 - For `L3_READ` and `L3_WRITE`, do not convert events to bytes unless the backend documentation or profiler output provides the transaction size. If no conversion is valid, keep `Measured per call` in `events/call` and set byte-ratio closure to `N/A`.
-- For `FLOPs`, source estimate is usually source-derived work. `Metric value` must name the target-kernel timing source used for primary achieved throughput, usually profiler `GpuTime[ns]`. Wall-clock benchmark `ms` may be listed only as secondary context when it differs.
+- For `FLOPs`, source estimate is usually source-derived work. `Metric value` must name the target-kernel `-d` device-duration source used for primary achieved throughput. `-q` `GpuTime[ns]` may be listed only as same-window counter context when it differs.
 - If one operator launches multiple relevant kernels, either provide one table per kernel or add a `Kernel` column. Do not mix counters from different runtime kernels in one per-call row unless the row explicitly says it is operator-level aggregate.
 
 Required interpretation bullets:
