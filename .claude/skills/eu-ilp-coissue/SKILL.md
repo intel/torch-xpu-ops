@@ -28,7 +28,8 @@ Do not use this skill when S0/stall dominates; run `eu-stall-attribution` first.
 |---|---|
 | `repro-cmd` | Command that launches the target kernel |
 | `kernel-filter` | Target kernel filter |
-| `ComputeBasic` counters | Co-issue, active, and per-pipe utilization counters |
+| `ComputeBasic` counters | Co-issue, active, per-pipe utilization, and raw ALU/SEND event counters |
+| `VectorEngineProfile` counters | Optional FP/INT/MATH/XMX/SEND instruction-mix event counters |
 | `asm-dir` | Optional existing ASM artifacts |
 | `ip-source-table` | Optional source mapping from `eu-stall-attribution` |
 
@@ -36,15 +37,28 @@ Do not use this skill when S0/stall dominates; run `eu-stall-attribution` first.
 
 ### Step 1: Measure Co-Issue and Pipe Utilization
 
-Collect or read `ComputeBasic` for the target kernel.
+Collect or read `ComputeBasic` for the target kernel. If the likely
+interleave work includes math functions, FP/INT type work, or XMX work, also
+collect `VectorEngineProfile` for the identical reproducer, shape, and kernel
+filter. Each metric group is a separate run; do not compare values across runs
+whose workload configuration differs.
 
-Key metrics:
-- `XVE_ACTIVE`
-- `XVE_MULTIPLE_PIPE_ACTIVE`
-- `XVE_INST_EXECUTED_ALU0_ALL_UTILIZATION`
-- `XVE_INST_EXECUTED_ALU1_ALL_UTILIZATION`
-- `XVE_INST_EXECUTED_ALU2_ALL_UTILIZATION`
-- SEND and issue counters when available
+Use the metrics for distinct questions:
+
+| Metric group | Metrics | Question answered |
+|---|---|---|
+| `ComputeBasic` | `XVE_ACTIVE`, `XVE_STALL`, `XVE_MULTIPLE_PIPE_ACTIVE`, `XVE_PIPE_ALU0_AND_ALU1_ACTIVE`, `XVE_PIPE_ALU0_AND_ALU2_ACTIVE` | Is co-issue low, and which pipe pairs fail to overlap? |
+| `ComputeBasic` | `XVE_INST_EXECUTED_ALU0_ALL_UTILIZATION`, `XVE_INST_EXECUTED_ALU1_ALL_UTILIZATION`, `XVE_INST_EXECUTED_ALU2_ALL_UTILIZATION` | Which ALU pipe has low time utilization? |
+| `ComputeBasic` | `XVE_INST_EXECUTED_ALU0_ALL`, `XVE_INST_EXECUTED_ALU1_ALL`, `XVE_INST_EXECUTED_ALU2_ALL`, `XVE_INST_EXECUTED_SEND_ALL`, `XVE_INST_ISSUED_ALL` | What raw ALU/SEND issue volume accompanies the pipe-time picture? |
+| `VectorEngineProfile` | `XVE_INST_EXECUTED_FP32`, `XVE_INST_EXECUTED_INT32`, `XVE_INST_EXECUTED_MATH`, `XVE_INST_EXECUTED_SEND_ALL` | Is candidate independent work FP32, INT32/address, extended math, or SEND? |
+| `VectorEngineProfile` | `XVE_INST_EXECUTED_XMX_BF16`, `XVE_INST_EXECUTED_XMX_FP16`, `XVE_INST_EXECUTED_XMX_INT2`, `XVE_INST_EXECUTED_XMX_INT4` when relevant | Does XMX/tensor work dominate the hot loop? |
+
+`XVE_INST_EXECUTED_ALU1_ALL_UTILIZATION` and the corresponding ALU1 event
+count do not include extended math instructions. Use
+`XVE_INST_EXECUTED_MATH` from `VectorEngineProfile` before concluding that
+ALU1 has no useful work to interleave. Raw `events` quantify executed slots or
+dispatches; utilization and co-issue metrics are time percentages. Do not
+divide or compare those units directly without a documented normalization.
 
 Derived values:
 
@@ -62,6 +76,9 @@ Identify the idle or underused pipe.
 | S0 high | Not an ILP-first case; run stall attribution |
 | S1 high and S2 low | ILP/co-issue headroom likely exists |
 | One pipe busy, another pipe low | Candidate for interleaving independent work |
+| Low ALU1 utilization but high `MATH` events | Extended math is not represented by ALU1; inspect math dependency chains before declaring ALU1 idle |
+| High FP32/INT32/MATH events with low co-issue | Use ASM to find independent FP/address/math work that can be moved beside the busy pipe |
+| High SEND events or SEND pressure | Do not claim a compute-only ILP opportunity until SEND dependency and memory-pressure evidence is checked |
 | All useful pipes already balanced | ILP headroom may be small |
 
 Stop if co-issue is already healthy or if the candidate work is truly serial.
@@ -115,6 +132,10 @@ Do not break a hardware-optimized matrix chain blindly. The goal is to place ind
 | Metric | Value | Interpretation |
 |---|---:|---|
 
+### Instruction Mix Evidence
+| Metric group | FP32 | INT32 | MATH | XMX | SEND | Interpretation |
+|---|---:|---:|---:|---:|---:|---|
+
 ### ASM Evidence
 | Region | ASM lines | Instruction pattern | Pipe |
 |---|---:|---|---|
@@ -136,8 +157,10 @@ Do not break a hardware-optimized matrix chain blindly. The goal is to place ind
 After a source change:
 - Re-run the benchmark and compare kernel time.
 - Re-collect `ComputeBasic`.
+- Re-collect `VectorEngineProfile` when the recommendation depends on FP/INT/MATH/XMX instruction mix.
 - Confirm `XVE_MULTIPLE_PIPE_ACTIVE` increased.
 - Confirm the idle pipe utilization improved.
+- Confirm the intended instruction-mix count is stable or moves as expected; do not treat a lower raw event count alone as proof of faster execution.
 - Re-extract ASM when needed to verify the intended interleaving is present.
 - Check that GRF spill, SEND pressure, or memory traffic did not regress enough to erase the gain.
 
