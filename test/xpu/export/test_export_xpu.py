@@ -61,6 +61,7 @@ from torch._higher_order_ops.hints_wrap import hints_wrapper
 from torch._higher_order_ops.scan import scan
 from torch._higher_order_ops.while_loop import while_loop
 from torch._inductor.compile_fx import split_const_gm
+from torch._library.opaque_object import _OPAQUE_TYPES_BY_NAME
 from torch._subclasses import FakeTensorMode
 from torch.export import default_decompositions, Dim, export, unflatten
 from torch.export._trace import (
@@ -13878,7 +13879,7 @@ graph():
     @testing.expectedFailureSerDer  # register_constant needs to handle serialization
     def test_opaque_obj(self):
         @dataclass(frozen=True)
-        class MyInput(torch._opaque_base.OpaqueBase):
+        class MyInput(torch._custom_class_base.CustomClassBase):
             int_1: int
             int_2: int
 
@@ -13895,12 +13896,13 @@ graph():
             def forward(self, x, f):
                 return x + f.int_1 + f.int_2
 
-        try:
-            torch._library.opaque_object.register_opaque_type(MyInput, typ="value")
-        except RuntimeError as e:
-            # The test suite can execute this test class multiple times in one process.
-            if "is already registered as an opaque type" not in str(e):
-                raise
+        torch._library.opaque_object.register_custom_class(MyInput, typ="constant")
+        self.addCleanup(
+            lambda name=torch._library.opaque_object.get_opaque_type_name(MyInput): (
+                torch._C._unregister_opaque_type(name),
+                _OPAQUE_TYPES_BY_NAME.pop(name, None),
+            )
+        )
         ep = export(Foo(), (torch.randn(2, 2), MyInput(4, 4)), strict=False)
 
         inp = torch.ones(2, 2)

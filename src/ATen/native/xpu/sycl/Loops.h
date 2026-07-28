@@ -741,7 +741,7 @@ void opmath_symmetric_gpu_kernel_with_scalars(
       traits::arity == 2,
       "gpu_kernel_with_scalars only supports two input arguments");
   static_assert(
-      std::is_same<opmath_arg_t, typename traits::template arg<1>::type>::value,
+      std::is_same_v<opmath_arg_t, typename traits::template arg<1>::type>,
       "f is not symmetric");
 
   OptionalDeviceGuard device_guard;
@@ -785,7 +785,7 @@ void gpu_kernel_multiple_outputs_impl(
     const func_t& f) {
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
-  constexpr int num_outputs = std::tuple_size<output_t>::value;
+  constexpr int num_outputs = std::tuple_size_v<output_t>;
   constexpr int num_inputs = traits::arity;
   constexpr int ntensors = num_outputs + num_inputs;
 

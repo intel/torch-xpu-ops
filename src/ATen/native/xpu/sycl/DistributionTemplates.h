@@ -81,7 +81,7 @@ struct DistributionElementwiseKernelFunctor {
       for (int i = 0; i < unroll_factor; i++) {
         int li = linear_index + group_size * num_groups * i;
         if (li < numel_) {
-          if constexpr (std::is_integral<offset_calc_t>::value) {
+          if constexpr (std::is_integral_v<offset_calc_t>) {
             scalar_t* out = (scalar_t*)&out_data_[offset_calc_ * li];
             *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
           } else {
@@ -357,9 +357,9 @@ void distribution_binary_kernel(
     PhiloxXpuState philox_args,
     const func_t& f) {
   static_assert(
-      std::is_same<
+      std::is_same_v<
           typename function_traits<func_t>::template arg<0>::type,
-          randStatePhilox4_32_10_t&>::value,
+          randStatePhilox4_32_10_t&>,
       "the first argument of functor must be randStatePhilox4_32_10_t");
   using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
   using input_t_2 = typename function_traits<func_t>::template arg<2>::type;

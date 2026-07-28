@@ -41,17 +41,17 @@ class GroupRadixSort {
 
     PROCESSING_LENGTH = GROUP_THREADS * KEYS_PER_THREAD,
     RADIX_BUCKETS = 1 << RADIX_BITS,
-    KEYS_ONLY = std::is_same<ValueT, NullType>::value,
+    KEYS_ONLY = std::is_same_v<ValueT, NullType>,
     PACKING_RATIO = sizeof(CounterT) / sizeof(DigitT),
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
     LOG_COUNTER_LANES = Log2<COUNTER_LANES>::VALUE,
     DIGIT_BITS = sizeof(DigitT) << 3,
     DIGIT_MASK = (1 << DIGIT_BITS) - 1,
-    IS_INT_TYPE = std::is_integral<ValueT>::value,
+    IS_INT_TYPE = std::is_integral_v<ValueT>,
   };
 
-  static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
-  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0, "");
+  static_assert(sizeof(CounterT) >= sizeof(DigitT));
+  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0);
   static_assert(
       ((1l << (sizeof(DigitT) << 3)) - 1) >= (GROUP_THREADS * KEYS_PER_THREAD),
       " ");
@@ -120,7 +120,7 @@ class GroupRadixSort {
             KeyTraits<KeyT>::convert(c10::load(&keys_group_in[offset]));
       } else {
         KeyTraitsT padding_key;
-        if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+        if constexpr (std::is_same_v<KeyTraitsT, bool>) {
           padding_key = IS_DESCENDING ? false : true;
         } else {
           if constexpr (IS_DESCENDING) {
@@ -546,7 +546,7 @@ class GroupRadixSort {
           ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_in[offset]));
         } else {
           KeyTraitsT padding_key;
-          if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+          if constexpr (std::is_same_v<KeyTraitsT, bool>) {
             padding_key = IS_DESCENDING ? false : true;
           } else {
             if constexpr (IS_DESCENDING) {
@@ -612,7 +612,7 @@ class RadixSortUpsweep {
 
     PROCESSING_LENGTH = GROUP_THREADS * KEYS_PER_THREAD,
     RADIX_BUCKETS = 1 << RADIX_BITS,
-    KEYS_ONLY = std::is_same<ValueT, NullType>::value,
+    KEYS_ONLY = std::is_same_v<ValueT, NullType>,
     PACKING_RATIO = sizeof(CounterT) / sizeof(DigitT),
     LOG_PACKING_RATIO = Log2<PACKING_RATIO>::VALUE,
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
@@ -622,8 +622,8 @@ class RadixSortUpsweep {
         std::max<int>(1, (COUNTER_LANES + SUBGROUPS - 1) / SUBGROUPS),
   };
 
-  static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
-  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0, "");
+  static_assert(sizeof(CounterT) >= sizeof(DigitT));
+  static_assert(sizeof(CounterT) % sizeof(DigitT) == 0);
 
  private:
   union LocalStorage {
