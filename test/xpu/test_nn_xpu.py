@@ -15931,6 +15931,57 @@ class TestNNDeviceType(NNTestCase):
                     )
                 )
 
+    # Ref: https://github.com/intel/torch-xpu-ops/issues/4723
+    # (pytorch/pytorch#190139). The 4D-input nll_loss2d backward kernel computed
+    # its per-sample base offsets in 32-bit int; once the flattened extent
+    # reaches 2**31 the offset wraps and the tail samples' gradients are silently
+    # dropped. This mirrors test_nll_loss_large_tensor above but exercises the
+    # nll_loss2d path (4D input) instead of the 1D nll_loss path.
+    @onlyOn(["cuda", "xpu"])
+    @largeTensorTest("120GB", "cpu")
+    @largeTensorTest("45GB", "cuda")
+    @largeTensorTest("45GB", "xpu")
+    @parametrize_test("reduction", ("none", "mean", "sum"))
+    def test_nll_loss2d_large_tensor(self, device, reduction):
+        # (2**16 + 1) samples of 2**15 classes, 1x1 spatial: numel > 2**31 so the
+        # last sample's input offset sample * map_nelem * n_classes overflows int32.
+        shape = [int(2**16) + 1, int(2**15), 1, 1]
+
+        input = torch.randn(
+            shape, device=device, dtype=torch.float32, requires_grad=True
+        )
+        labels = torch.randint(
+            shape[1], (shape[0], shape[2], shape[3]), dtype=torch.long, device=device
+        )
+
+        out = F.nll_loss(input, labels, reduction=reduction)
+
+        with torch.no_grad():
+            input_cpu = input.cpu().float().requires_grad_()
+            labels_cpu = labels.cpu()
+        out_cpu = F.nll_loss(input_cpu, labels_cpu, reduction=reduction)
+        # workaround to reduce memory usage vs. self.assertEqual, see #84944
+        rtol, atol = torch.testing._comparison.get_tolerances(
+            torch.float32, rtol=None, atol=None
+        )
+        if reduction == "sum":
+            orig_rtol, orig_atol = rtol, atol
+            rtol, atol = 7 * rtol, 3 * atol
+        with torch.no_grad():
+            self.assertTrue(torch.allclose(out.cpu(), out_cpu, rtol=rtol, atol=atol))
+        if reduction == "sum":
+            rtol, atol = orig_rtol, orig_atol
+
+        if reduction != "none":
+            out.backward()
+            out_cpu.backward()
+            with torch.no_grad():
+                self.assertTrue(
+                    torch.allclose(
+                        input.grad.cpu(), input_cpu.grad, rtol=rtol, atol=atol
+                    )
+                )
+
     # Ref: https://github.com/pytorch/pytorch/issues/108345
     @onlyOn(["cuda", "xpu"])
     @largeTensorTest("20GB", "cpu")
