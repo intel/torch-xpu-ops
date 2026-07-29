@@ -483,6 +483,10 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
   return it->second;
 }
 
+bool XPUSymmetricMemoryAllocator::has_allocation(void* ptr) {
+  return find_block(ptr) != nullptr;
+}
+
 #else // !XPU_SYMM_MEM_AVAILABLE
 
 // Stub implementation for compilers that do not provide
@@ -542,6 +546,10 @@ std::string XPUSymmetricMemoryAllocator::name() {
 c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(
     void* /*ptr*/) {
   return nullptr;
+}
+
+bool XPUSymmetricMemoryAllocator::has_allocation(void* /*ptr*/) {
+  return false;
 }
 
 #endif // XPU_SYMM_MEM_AVAILABLE
