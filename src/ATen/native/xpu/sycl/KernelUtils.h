@@ -31,7 +31,9 @@ inline int GET_GROUPS(
     const int64_t N,
     const int64_t max_threads_per_group = SYCL_NUM_THREADS) {
   TORCH_INTERNAL_ASSERT(
-      N >= 0, "XPU kernel launch blocks must be non-negative, but got N=", N);
+      N >= 0,
+      "XPU kernel launch element count must be non-negative, but got N=",
+      N);
   if (N == 0) {
     return 0;
   }
@@ -43,12 +45,8 @@ inline int GET_GROUPS(
 
   // Round up division for positive number that cannot cause integer overflow
   auto group_num = (N - 1) / max_threads_per_group + 1;
-  auto hw_max_groups = syclMaxWorkItemsPerTile() / max_threads_per_group;
-  TORCH_INTERNAL_ASSERT(
-      hw_max_groups > 0,
-      "Can't schedule XPU kernel launch block size ",
-      max_threads_per_group,
-      " on current device");
+  auto hw_max_groups =
+      std::max<int64_t>(1, syclMaxWorkItemsPerTile() / max_threads_per_group);
   group_num = std::min(group_num, hw_max_groups);
   TORCH_INTERNAL_ASSERT(
       group_num <= max_int, "Can't schedule too many blocks on XPU device");
