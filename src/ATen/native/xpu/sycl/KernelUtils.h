@@ -43,15 +43,17 @@ inline int GET_GROUPS(
 
 // Grid-strided loop kernels (see XPU_KERNEL_LOOP) must not launch one work item
 // per element; doing so degenerates the strided loop into a no-op. Cap the
-// number of launched work items at the number the device can keep resident so
-// each work item processes multiple elements.
+// number of launched work items at roughly the number the device can keep
+// resident so each work item processes multiple elements. The 32 factor is the
+// max sub-group (SIMD) width on Intel GPUs, so this estimates
+// EU count * HW threads per EU * SIMD lanes.
 inline int64_t syclMaxWorkItemsForLoop(
     at::DeviceIndex dev_id = at::xpu::current_device()) {
   return xpu::sycl::syclGpuEuCount(dev_id) *
       xpu::sycl::syclGpuHWThreadsPerEU(dev_id) * 32;
 }
 
-// Number of work groups to launch for a grid-strided loop over `nelem`
+// Returns the number of work groups (not work items) needed to cover `nelem`
 // elements with the given work-group size, capped by syclMaxWorkItemsForLoop().
 inline int64_t syclLoopGroupRange(
     int64_t nelem,
