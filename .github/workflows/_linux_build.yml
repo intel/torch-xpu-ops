@@ -77,8 +77,8 @@ jobs:
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
 
           # install driver
-          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21340/*.deb || apt install -fy
-          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21340/*.deb || apt install -fy
+          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21341/*.deb || apt install -fy
+          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21341/*.deb || apt install -fy
           apt upgrade -y
           apt autoremove -y
 
