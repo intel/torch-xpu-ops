@@ -22,16 +22,12 @@ on:
         required: true
         type: string
         description: Runner label for build job
-      xpu_version:
-        required: false
-        type: string
-        default: '2026.0'
-        description: XPU version
 
 permissions: read-all
 
 env:
   USE_XPU: 1
+  XPU_VERSION: "2026.1"
 
 jobs:
   build:
@@ -112,7 +108,6 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
           set WORKSPACE=${{ github.workspace }}\..
-          set XPU_VERSION=${{ inputs.xpu_version }}
           python .github\scripts\build_windows.py > %WORKSPACE%\pytorch\build_torch_wheel_log.log 2>&1
           set BUILD_ERR=%ERRORLEVEL%
           type %WORKSPACE%\pytorch\build_torch_wheel_log.log
