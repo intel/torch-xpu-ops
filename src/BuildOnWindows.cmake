@@ -11,20 +11,15 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-macro(setup_common_libraries)
-  add_library(
-    torch_xpu_ops
-    STATIC
-    ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS})
-  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
-  target_link_libraries(torch_xpu_ops PUBLIC c10)
-endmacro()
+add_library(
+  torch_xpu_ops
+  STATIC
+  ${ATen_XPU_MKL_SRCS}
+  ${ATen_XPU_NATIVE_CPP_SRCS})
+target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 
 if(BUILD_SEPARATE_OPS)
-  setup_common_libraries()
+  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu torch_cpu c10)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -45,22 +40,12 @@ else()
   # those on Linux. If they are combined into one, the library size will exceed
   # 4GB, which conflicts with the size limit of a single library on Windows.
   # We will combine the libraries on Windows into one after the compiler is fixed.
-  add_library(
-    torch_xpu_ops
-    STATIC
-    ${ATen_XPU_MKL_SRCS}
-    ${ATen_XPU_NATIVE_CPP_SRCS})
-  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
- # Split SYCL kernels into 2 libraries as categories 1) Common (Unary+Binary+Reduce+Pow+Copy+Activation+Foreach) 2) Others.
-  set(ATen_XPU_SYCL_COMMON_SRCS)
-  set(ATen_XPU_SYCL_OTHERS_SRCS)
-  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    if(sycl_src MATCHES "(Foreach|Reduce|Unary|Binary|Copy|Pow|Activation|Norm|Loss|Resize|Distribution|Polynomial)")
-      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
-    else()
-      list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
-    endif()
-  endforeach()
+  # Split SYCL kernels into 2 libraries: common kernels (matched below) vs. the rest.
+  set(sycl_common_regex "(Foreach|Reduce|Unary|Binary|Copy|Pow|Activation|Norm|Loss|Resize|Distribution|Polynomial)")
+  set(ATen_XPU_SYCL_COMMON_SRCS ${ATen_XPU_SYCL_SRCS})
+  set(ATen_XPU_SYCL_OTHERS_SRCS ${ATen_XPU_SYCL_SRCS})
+  list(FILTER ATen_XPU_SYCL_COMMON_SRCS INCLUDE REGEX "${sycl_common_regex}")
+  list(FILTER ATen_XPU_SYCL_OTHERS_SRCS EXCLUDE REGEX "${sycl_common_regex}")
   # Common kernel lib
   set(sycl_common_lib torch_xpu_ops_sycl_common_kernels)
   sycl_add_library(
@@ -79,14 +64,8 @@ else()
   target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
-  target_link_libraries(torch_xpu_ops
-      PUBLIC
-      ${sycl_common_lib}
-      ${sycl_lib}
-  )
-  target_link_options(torch_xpu_ops PUBLIC
-      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_common_lib}>"
-      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
+  target_link_libraries(torch_xpu_ops PUBLIC
+      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${sycl_common_lib},${sycl_lib}>"
   )
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
