@@ -257,10 +257,8 @@ void launch_avg_pool2d_channels_last_kernel(
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
-  const uint32_t work_items = static_cast<uint32_t>(
-      std::min<int64_t>(total_elements, syclMaxWorkItemsForLoop()));
   const uint32_t global_range =
-      ceil_div<uint32_t>(work_items, group_size) * group_size;
+      syclLoopGroupRange(total_elements, group_size) * group_size;
 
   auto kfn = AvgPool2dChannelsLastKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
@@ -307,10 +305,8 @@ void launch_avg_pool2d_kernel(
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
-  const uint32_t work_items = static_cast<uint32_t>(
-      std::min<int64_t>(total_elements, syclMaxWorkItemsForLoop()));
   const uint32_t global_range =
-      ceil_div<uint32_t>(work_items, group_size) * group_size;
+      syclLoopGroupRange(total_elements, group_size) * group_size;
 
   auto kfn = AvgPool2dKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
@@ -568,10 +564,8 @@ void launch_avg_pool2d_backward_channels_last_kernel(
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
-  const uint32_t work_items = static_cast<uint32_t>(
-      std::min<int64_t>(total_elements, syclMaxWorkItemsForLoop()));
   const uint32_t global_range =
-      ceil_div<uint32_t>(work_items, group_size) * group_size;
+      syclLoopGroupRange(total_elements, group_size) * group_size;
 
   auto kfn = AvgPool2dChannelsLastBackwardKernelFunctor<
       scalar_t,
@@ -621,10 +615,8 @@ void launch_avg_pool2d_backward_kernel(
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
-  const uint32_t work_items = static_cast<uint32_t>(
-      std::min<int64_t>(total_elements, syclMaxWorkItemsForLoop()));
   const uint32_t global_range =
-      ceil_div<uint32_t>(work_items, group_size) * group_size;
+      syclLoopGroupRange(total_elements, group_size) * group_size;
 
   auto kfn = AvgPool2dBackwarKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
