@@ -30,10 +30,27 @@ Most failures reproduce here. Start here before doing anything heavier.
 
 ### Install
 
+Always reproduce against the **latest** available XPU nightly. Do not reuse a
+stale wheel from a previous session — a bug may already be fixed in a newer
+nightly, and re-verifying an old wheel produces misleading `REPRODUCED`
+results.
+
 ```bash
-pip3 install --pre torch torchvision torchaudio \
+# Query the latest nightly, then install/upgrade to it explicitly.
+pip3 index versions torch --pre \
+  --index-url https://download.pytorch.org/whl/nightly/xpu | head -1
+pip3 install --pre --upgrade torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
+
+If `torchvision`/`torchaudio` pin `torch` back to an older build, reinstall
+`torch` alone with `--no-deps` to keep the newest, e.g.
+`pip3 install --pre --upgrade --no-deps torch==<latest> --index-url ...`.
+
+Record the exact wheel version used (`python -c "import torch;
+print(torch.__version__)"`) in the reproduce output and in any issue comment,
+so downstream stages and re-verifications know which nightly was tested.
+
 
 ### Working directory
 

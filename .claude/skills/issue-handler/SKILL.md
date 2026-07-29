@@ -481,6 +481,13 @@ Routing by `target_repo` vs `pr_repo` (see Stage 3):
     ```diff block of `git diff` output (unified format)
   - Reproducer command and verification result
   - A "how to apply" line, e.g. `cd <target_repo>; git apply <<'EOF' ...`
+  - **Every claim in the rationale and root-cause description that references
+    upstream behavior ("consistent with upstream", "upstream does X", "same as
+    CUDA/MPS") MUST cite a specific `file:line`. If no such citation can be
+    found, omit the claim and state only what was directly observed (error
+    message, test output, or code read during triage). An unsubstantiated
+    upstream comparison inflates reviewer confidence in a statement that was
+    never verified.**
   - Advance the state comment to stage `TRIAGED` (or `PATCH_PROPOSED`)
     and apply the `agent:triaged` label. The pipeline stops here for
     this issue; a human takes the diff to `target_repo`.

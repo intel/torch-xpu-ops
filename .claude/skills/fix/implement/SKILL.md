@@ -192,6 +192,30 @@ orchestrator commits only after `fix/verify` returns `PASSED`. `fix/verify`
 relies on `git stash` to record a before-state, which requires uncommitted
 changes to be present when verify is called.
 
+### HARD RULE: every external claim in "Why" must have a source
+
+The "Why" line and any patch-proposal description text written here will be
+read by reviewers as factual statements. Before writing any of the following
+phrases, you MUST look up the specific file and line number that backs it up:
+
+- "consistent with upstream"
+- "upstream does X" / "upstream already handles this"
+- "same as CUDA/MPS/ROCm"
+- "mirrors upstream behavior"
+- "aligned with upstream"
+
+If you cannot find a specific `file:line` to cite, **do not write the phrase**.
+Replace it with a direct statement of the observable fact, e.g.:
+
+| Instead of... | Write... |
+|---|---|
+| "consistent with upstream's bcomplex32 handling" | "BComplex32 comparison (`isclose`/`mul`) raises `NotImplementedError` in the nightly wheel (pytorch warns 'BComplex32 support is experimental')" |
+| "upstream already skips this" | "upstream `test_ops.py:595` skips `{bfloat16, bcomplex32}` inputs in `_ref_test_helper`" |
+
+A "Why" that contains an unsubstantiated upstream comparison is worse than one
+that only cites what you directly observed — it inflates reviewer confidence in
+a claim that was never verified.
+
 ## HARD RULES
 - NEVER add skip decorators when `allow_skip=false`.
 - When `allow_skip=false`, Step 3.5 (skip-guard reviewer subagent) is
