@@ -12,6 +12,8 @@
 // Ported from CUDA: aten/src/ATen/native/cuda/PhiloxKeySplit.cu
 // See PyTorch PR #177229.
 
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
 #include <ATen/native/xpu/sycl/StatelessPhilox4x32.h>
