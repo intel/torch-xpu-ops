@@ -35,7 +35,6 @@ from torch.testing._internal.common_utils import (
     coalescedonoff,
     DeterministicGuard,
     instantiate_parametrized_tests,
-    IS_WINDOWS,
     parametrize,
     run_tests,
     subtest,
@@ -121,14 +120,12 @@ TestSparse.test_coalesce_accepts_large_tensor = largeTensorTest("30GB", "xpu")(
     retarget_outermost_onlycuda_to_onlyon(TestSparse.test_coalesce_accepts_large_tensor)
 )
 
+TestSparse.test_bmm_oob = retarget_outermost_onlycuda_to_onlyon(TestSparse.test_bmm_oob)
+
 
 # ======================================================================
 # Decorator additions (no body change)
 # ======================================================================
-
-TestSparse.test_bmm = unittest.skipIf(
-    IS_WINDOWS and TEST_XPU, "bmm sparse-dense XPU is not yet supported"
-)(TestSparse.test_bmm)
 
 TestSparse.test_sparse_matmul = dtypesIfXPU(
     *floating_types_and(torch.half, torch.bfloat16, torch.complex64, torch.complex128)
@@ -381,10 +378,6 @@ TestSparse.test_dtypes = _test_dtypes
 @onlyOn(["cuda", "xpu"])
 @coalescedonoff
 @dtypes(torch.double)
-@unittest.skipIf(
-    IS_WINDOWS,
-    "bmm sparse-dense CUDA is not yet supported in Windows, at least up to CUDA 10.1",
-)
 def _test_bmm_deterministic(self, device, dtype, coalesced):
     device_type = torch.device(device).type
 
@@ -424,27 +417,6 @@ def _test_bmm_deterministic(self, device, dtype, coalesced):
 
 
 TestSparse.test_bmm_deterministic = _test_bmm_deterministic
-
-
-@onlyOn(["cuda", "xpu"])
-@unittest.skipIf(
-    IS_WINDOWS and TEST_CUDA,
-    "bmm sparse-dense CUDA is not yet supported in Windows, at least up to CUDA 10.1",
-)
-@unittest.skipIf(IS_WINDOWS and TEST_XPU, "bmm sparse-dense XPU is not yet supported")
-def _test_bmm_oob(self, device):
-    # Targets an out of bounds error when the sparse tensor has no non-zero
-    # values in the first batch dimension (#131977).
-    torch.accelerator.empty_cache()
-    indices = torch.tensor([[1], [0], [0]], device=device)
-    values = torch.tensor([1.0], device=device)
-    a = torch.sparse_coo_tensor(indices, values, size=(2, 1, 1))
-    b = torch.zeros((2, 1, 1), device=device)
-    ab = torch.bmm(a, b)
-    self.assertEqual(ab, torch.zeros((2, 1, 1), device=device))
-
-
-TestSparse.test_bmm_oob = _test_bmm_oob
 
 
 # Strip outermost skipIf decorator (test passes on XPU).
@@ -849,24 +821,6 @@ TestSparseAny.test_gradcheck_mm = _test_gradcheck_mm
 # ======================================================================
 # New XPU-only tests
 # ======================================================================
-
-
-@onlyOn("xpu")
-@unittest.skipIf(
-    not IS_WINDOWS,
-    "Windows-specific error check; skipping on non-Windows",
-)
-@dtypes(torch.double)
-def _test_bmm_windows_error(self, device, dtype):
-    self.assertTrue(device.startswith("xpu"))
-    a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device)
-    b = torch.rand(2, 2, 2, dtype=dtype).to(device)
-    # XPU supports sparse-dense bmm; verify result matches dense reference
-    ab = a.bmm(b)
-    self.assertEqual(ab, torch.bmm(a.to_dense(), b))
-
-
-TestSparse.test_bmm_windows_error = _test_bmm_windows_error
 
 
 @onlyOn("xpu")
