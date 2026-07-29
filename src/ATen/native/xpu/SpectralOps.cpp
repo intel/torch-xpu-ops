@@ -18,6 +18,9 @@
 #endif // USE_ONEMKL_XPU
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 
+#include <cstdlib>
+#include <string>
+
 namespace at::native {
 
 Tensor _fft_c2c_xpu(
@@ -27,7 +30,10 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
-  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+  // The SYCL FFT implementation is only enabled if `USE_SYCL_SPECTRAL` is set to 1.
+  static const char* enable_sycl_fft = getenv("USE_SYCL_SPECTRAL");
+  if (enable_sycl_fft && std::stoi(enable_sycl_fft) == 1 &&
+      native::xpu::_is_fft_size_supported_sycl(self, dim)) {
     return native::xpu::_fft_c2c_sycl(self, dim, normalization, forward);
   }
 #if defined(USE_ONEMKL_XPU)
@@ -47,7 +53,9 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
-  if (native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+  static const char* enable_sycl_fft = getenv("USE_SYCL_SPECTRAL");
+  if (enable_sycl_fft && std::stoi(enable_sycl_fft) == 1 &&
+      native::xpu::_is_fft_size_supported_sycl(self, dim)) {
     return native::xpu::_fft_c2c_sycl_out(
         self, dim, normalization, forward, out);
   }

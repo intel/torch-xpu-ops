@@ -12,6 +12,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -45,7 +46,10 @@ class FftKernelBundleCache {
     // Intentionally leaked (never deleted). The cache owns
     // sycl::kernel_bundle objects whose destructor's reference the
     // sycl::context. During process teardown the SYCL runtime's
-    // context may already be destroyed.
+    // context may already be destroyed, this is an issue with
+    // sycl runtime and tracked by intel/llvm#22786.
+    // TODO: Allocate the cache on stack once intel/llvm#22786 is fixed
+    // and available in oneapi compiler.
     static FftKernelBundleCache* cache = new FftKernelBundleCache();
     return *cache;
   }
@@ -61,10 +65,6 @@ class FftKernelBundleCache {
     cache_.emplace(key, std::move(bundle));
   }
 
-  // NOTE: the critical section is guarded by std::lock_guard (RAII).
-  // It acquires the mutex on construction and releases it in its destructor
-  // when `lock` goes out of scope at the end of get()/put(). Adding a manual
-  // unlock() would cause a double-unlock bug.
  private:
   std::mutex mutex_;
   std::unordered_map<std::string, std::shared_ptr<bundle_t>> cache_;
@@ -112,7 +112,8 @@ struct fft_descriptor {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
         if (twidl_table[dim][dir] && !external_workspace && queue) {
-          sycl::free(const_cast<void*>(twidl_table[dim][dir]), *queue);
+          c10::xpu::XPUCachingAllocator::raw_delete(
+              const_cast<void*>(twidl_table[dim][dir]));
           twidl_table[dim][dir] = nullptr;
         }
         // exe_bundle holds shared references into FftKernelBundleCache; the
@@ -468,7 +469,7 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
 
       T* twidl_buf = nullptr;
       if (!desc.external_workspace) {
-        twidl_buf = (T*)malloc_device(2 * fact0 * fact1 * sizeof(T), q);
+        twidl_buf = static_cast<T*>(c10::xpu::XPUCachingAllocator::raw_alloc(2 * fact0 * fact1 * sizeof(T)));
         if (twidl_buf == nullptr) {
           throw std::runtime_error(
               "Failed to allocate device memory for twiddle factors");
@@ -482,16 +483,13 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
           TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
       q.submit([&](sycl::handler& h) {
          h.parallel_for(sycl::range<2>(fact0, fact1), ker);
-       }).wait();
+       });
     }
   }
 }
 
 template <typename T>
 void commit(sycl::queue& q, fft_descriptor& desc) {
-  if (!q.get_device().is_gpu()) {
-    throw std::runtime_error("Device is not a GPU");
-  }
   desc.queue = &q;
 
   if (desc.fft_len.size() < 1 || desc.fft_len.size() > 3) {
@@ -682,8 +680,8 @@ void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
         if (desc.twidl_table[dim][dir]) {
-          sycl::free(
-              const_cast<void*>(desc.twidl_table[dim][dir]), *desc.queue);
+          c10::xpu::XPUCachingAllocator::raw_delete(
+              const_cast<void*>(desc.twidl_table[dim][dir]));
           desc.twidl_table[dim][dir] = nullptr;
         }
       }
@@ -734,7 +732,6 @@ static sycl::event compute(
 
     const T* input = (dim == 0) ? in : out;
     prev_ev = q.submit([&](sycl::handler& h) {
-      h.depends_on(prev_ev);
       h.set_arg(0, input);
       h.set_arg(1, out);
       h.set_arg(2, sycl::local_accessor<T, 1>(desc.slm_size[dim], h));

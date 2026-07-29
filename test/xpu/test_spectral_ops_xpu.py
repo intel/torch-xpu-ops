@@ -8,6 +8,7 @@
 
 # Owner(s): ["module: intel"]
 
+import os
 import unittest
 from itertools import product
 
@@ -25,6 +26,11 @@ from torch.testing._internal.common_methods_invocations import (
     SpectralFuncType,
 )
 from torch.testing._internal.common_utils import run_tests
+
+# Route supported sizes through the SYCL FFT kernels.
+# Safe to set this globally since no other tests in this file
+# test the same sizes the SYCL kernels support.
+os.environ["USE_SYCL_SPECTRAL"] = "1"
 
 try:
     from .xpu_test_utils import XPUPatchForImport
