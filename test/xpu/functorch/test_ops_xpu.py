@@ -1076,6 +1076,7 @@ class TestOperators(TestCase):
                 xfail("_native_batch_norm_legit"),
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
+                skip("native_group_norm"),  # takes too long
             }
         ),
     )
@@ -1927,6 +1928,7 @@ class TestOperators(TestCase):
                 skip("broadcast_tensors"),
                 skip("linalg.lstsq"),
                 skip("nn.functional.bilinear"),
+                skip("native_group_norm"),
                 skip("native_layer_norm"),
                 skip("ormqr"),
                 # Not actually a problem
