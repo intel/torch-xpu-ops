@@ -46,9 +46,9 @@ jobs:
   build:
     name: ${{ inputs.pytorch }}
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-    runs-on: build
+    runs-on: SKX-3725
     container:
-      image: 'intelgpu/ubuntu-24.04-rolling:26.05'
+      image: 'ubuntu:24.04'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /home/jenkins:/home/jenkins
@@ -77,8 +77,8 @@ jobs:
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
 
           # install driver
-          # dpkg -i /home/jenkins/open-linux-driver-ci-dev_igc-22161/*.deb || apt install -fy
-          # dpkg -i /home/jenkins/open-linux-driver-ci-dev_igc-22161/*.deb || apt install -fy
+          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21340/*.deb || apt install -fy
+          dpkg -i /home/jenkins/mengfeil/open-linux-driver-ci-dev_igc-21340/*.deb || apt install -fy
           apt upgrade -y
           apt autoremove -y
 
@@ -101,7 +101,7 @@ jobs:
           export USE_XCCL=1
           export IS_XPU_CI=1
           # only build pvc for CI
-          # export TORCH_XPU_ARCH_LIST='pvc'
+          export TORCH_XPU_ARCH_LIST='pvc'
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
