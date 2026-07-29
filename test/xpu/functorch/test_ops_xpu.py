@@ -1262,7 +1262,6 @@ class TestOperators(TestCase):
                 xfail("as_strided"),
                 xfail("as_strided_copy"),
                 xfail("as_strided", "partial_views"),
-                xfail("native_group_norm"),
             }
         ),
     )
@@ -1378,7 +1377,6 @@ class TestOperators(TestCase):
         vmapjvpall_fail.union(
             {
                 xfail("as_strided_copy"),
-                xfail("native_group_norm"),
             }
         ),
     )
@@ -1442,7 +1440,6 @@ class TestOperators(TestCase):
                 xfail("nn.functional.dropout3d", ""),
                 xfail("as_strided_scatter", ""),
                 xfail("renorm"),  # hit vmap fallback, which is disabled
-                xfail("native_group_norm"),
             }
         ),
     )
@@ -1561,7 +1558,6 @@ class TestOperators(TestCase):
                 xfail(
                     "index_fill"
                 ),  # aten::_unique hit the vmap fallback which is currently disabled
-                xfail("native_group_norm"),
             }
         ),
     )
@@ -1670,7 +1666,6 @@ class TestOperators(TestCase):
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
                 xfail("as_strided", "partial_views"),
-                xfail("native_group_norm"),
             }
         ),
     )
