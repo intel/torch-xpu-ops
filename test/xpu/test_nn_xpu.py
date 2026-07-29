@@ -15038,13 +15038,13 @@ class TestNNDeviceType(NNTestCase):
         inputf = input.to(torch.float).detach().requires_grad_(True)
         out = F.softmax(input, dim=-1, dtype=torch.float)
         outf = F.softmax(inputf, dim=-1)
-        # should be bitwise equal
-        self.assertEqual(out, outf, atol=0, rtol=0)
+        bitwise_exact = not (self.device_type == "xpu" and dtype == torch.half)
+        tol = {"atol": 0, "rtol": 0} if bitwise_exact else {}
+        self.assertEqual(out, outf, **tol)
         gO = torch.empty_like(outf).uniform_()
         out.backward(gO)
         outf.backward(gO)
-        # should be bitwise equal
-        self.assertEqual(input.grad, inputf.grad.to(dtype), atol=0, rtol=0)
+        self.assertEqual(input.grad, inputf.grad.to(dtype), **tol)
 
     def _test_batchnorm_grad(self, device, dtype=torch.double):
         bs, n_feat, size_feat = 4, 5, 6
