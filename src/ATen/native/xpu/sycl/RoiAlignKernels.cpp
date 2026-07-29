@@ -526,7 +526,7 @@ Tensor roi_align_backward_kernel(
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
   int64_t global_range =
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512));
+      syclLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients

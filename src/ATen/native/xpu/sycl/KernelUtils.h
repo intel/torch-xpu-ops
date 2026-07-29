@@ -11,6 +11,8 @@
 #pragma once
 
 #include <c10/util/Exception.h>
+#include <comm/DeviceProperties.h>
+#include <algorithm>
 #include <limits>
 
 #define XPU_KERNEL_LOOP_TYPE(item, i, n, index_type)                      \
@@ -37,4 +39,23 @@ inline int GET_GROUPS(
       group_num <= max_int, "Can't schedule too many blocks on XPU device");
 
   return static_cast<int>(group_num);
+}
+
+// Grid-strided loop kernels (see XPU_KERNEL_LOOP) must not launch one work item
+// per element; doing so degenerates the strided loop into a no-op. Cap the
+// number of launched work items at the number the device can keep resident so
+// each work item processes multiple elements.
+inline int64_t syclMaxWorkItemsForLoop(
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+  return xpu::sycl::syclGpuEuCount(dev_id) *
+      xpu::sycl::syclGpuHWThreadsPerEU(dev_id) * 32;
+}
+
+// Number of work groups to launch for a grid-strided loop over `nelem`
+// elements with the given work-group size, capped by syclMaxWorkItemsForLoop().
+inline int64_t syclLoopGroupRange(
+    int64_t nelem,
+    int64_t group_size = SYCL_NUM_THREADS) {
+  int64_t work_items = std::min(nelem, syclMaxWorkItemsForLoop());
+  return (work_items + group_size - 1) / group_size;
 }
