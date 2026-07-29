@@ -170,218 +170,160 @@ void sort_stable_kernel(
 }
 
 template <typename scalar_t, typename index_t, int Dim>
-struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    index_t slice = item.get_group_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void gather_median_kernel_func(
+    TensorInfo<scalar_t, index_t> values,
+    TensorInfo<int64_t, index_t> indices,
+    TensorInfo<const scalar_t, index_t> input,
+    index_t inputSliceSize,
+    index_t numInputSlices,
+    index_t inputWithinSliceStride,
+    bool ignore_nan,
+    const scalar_t* in_data,
+    scalar_t* values_data,
+    int64_t* indices_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    // Finds the start offset for our slice
-    index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
-    index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
-    index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
+  int* smem = (int*)syclexp::get_work_group_scratch_memory();
+  index_t* num_nan = (index_t*)(smem + 32);
 
-    scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
-    int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
-    const scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
+  index_t slice = item.get_group_linear_id();
 
-    index_t nan_count = 0;
-    for (index_t i = item.get_local_id(0); i < inputSliceSize_;
-         i += item.get_local_range(0)) {
-      scalar_t val = inputSliceStart[i * inputWithinSliceStride_];
-      nan_count += at::_isnan(val) ? 1 : 0;
-    }
+  // Finds the start offset for our slice
+  index_t valuesSliceStartIndex =
+      IndexToOffset<scalar_t, index_t, Dim>::get(slice, values);
+  index_t indicesSliceStartIndex =
+      IndexToOffset<int64_t, index_t, Dim>::get(slice, indices);
+  index_t inputSliceStartIndex =
+      IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input);
 
-    // Counts number of nan values
-    // This code performs a parallel sum reduction
-    if (item.get_local_id(0) == 0) {
-      num_nan_[0] = 0;
-    }
+  scalar_t* valuesSliceStart = values_data + valuesSliceStartIndex;
+  int64_t* indicesSliceStart = indices_data + indicesSliceStartIndex;
+  const scalar_t* inputSliceStart = in_data + inputSliceStartIndex;
 
-    sycl::group_barrier(item.get_group());
-    if (nan_count > 0) {
-      atomicAdd(
-          (sycl_local_ptr<index_t>)(num_nan_
-                                        .template get_multi_ptr<
-                                            sycl::access::decorated::no>()
-                                        .get()),
-          nan_count);
-    }
-    sycl::group_barrier(item.get_group());
-
-    // For torch.median, if we found nan set k to last index so the computed
-    // value is nan, otherwise set k to the middle element of the non-nan
-    // values
-    index_t k = (!ignore_nan_ && num_nan_[0] > 0)
-        ? inputSliceSize_ - 1
-        : (inputSliceSize_ - num_nan_[0] - 1) / 2;
-
-    // Find the median
-    scalar_t median = static_cast<scalar_t>(0);
-    radixSelect<
-        scalar_t,
-        typename TopKTypeConfig<scalar_t>::RadixType,
-        index_t,
-        false>(
-        inputSliceStart,
-        k + 1,
-        inputSliceSize_,
-        inputWithinSliceStride_,
-        smem_,
-        &median,
-        item);
-
-    valuesSliceStart[0] = median;
-
-    // Find the index of the median value in the slice
-    for (index_t i = item.get_local_id(0); i < inputSliceSize_;
-         i += item.get_local_range(0)) {
-      scalar_t val = inputSliceStart[i * inputWithinSliceStride_];
-      if (val == median || (at::_isnan(val) && at::_isnan(median))) {
-        indicesSliceStart[0] = i;
-        break;
-      }
-    }
+  index_t nan_count = 0;
+  for (index_t i = item.get_local_id(0); i < inputSliceSize;
+       i += item.get_local_range(0)) {
+    scalar_t val = inputSliceStart[i * inputWithinSliceStride];
+    nan_count += at::_isnan(val) ? 1 : 0;
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<int>(32, cgh);
-    num_nan_ = sycl_local_acc_t<index_t>(1, cgh);
+  // Counts number of nan values
+  // This code performs a parallel sum reduction
+  if (item.get_local_id(0) == 0) {
+    num_nan[0] = 0;
   }
 
-  GatherMedianKernelFunctor(
-      TensorInfo<scalar_t, index_t> values,
-      TensorInfo<int64_t, index_t> indices,
-      TensorInfo<const scalar_t, index_t> input,
-      index_t inputSliceSize,
-      index_t numInputSlices,
-      index_t inputWithinSliceStride,
-      bool ignore_nan,
-      const scalar_t* in_data,
-      scalar_t* values_data,
-      int64_t* indices_data)
-      : values_(values),
-        indices_(indices),
-        input_(input),
-        inputSliceSize_(inputSliceSize),
-        numInputSlices_(numInputSlices),
-        inputWithinSliceStride_(inputWithinSliceStride),
-        ignore_nan_(ignore_nan),
-        in_data_(in_data),
-        values_data_(values_data),
-        indices_data_(indices_data) {}
+  sycl::group_barrier(item.get_group());
+  if (nan_count > 0) {
+    atomicAdd((sycl_local_ptr<index_t>)num_nan, nan_count);
+  }
+  sycl::group_barrier(item.get_group());
 
- private:
-  TensorInfo<scalar_t, index_t> values_;
-  TensorInfo<int64_t, index_t> indices_;
-  TensorInfo<const scalar_t, index_t> input_;
-  index_t inputSliceSize_;
-  index_t numInputSlices_;
-  index_t inputWithinSliceStride_;
-  bool ignore_nan_;
-  const scalar_t* in_data_;
-  scalar_t* values_data_;
-  int64_t* indices_data_;
-  sycl_local_acc_t<int> smem_;
-  sycl_local_acc_t<index_t> num_nan_;
-};
+  // For torch.median, if we found nan set k to last index so the computed
+  // value is nan, otherwise set k to the middle element of the non-nan
+  // values
+  index_t k = (!ignore_nan && num_nan[0] > 0)
+      ? inputSliceSize - 1
+      : (inputSliceSize - num_nan[0] - 1) / 2;
+
+  // Find the median
+  scalar_t median = static_cast<scalar_t>(0);
+  radixSelect<
+      scalar_t,
+      typename TopKTypeConfig<scalar_t>::RadixType,
+      index_t,
+      false>(
+      inputSliceStart,
+      k + 1,
+      inputSliceSize,
+      inputWithinSliceStride,
+      smem,
+      &median,
+      item);
+
+  valuesSliceStart[0] = median;
+
+  // Find the index of the median value in the slice
+  for (index_t i = item.get_local_id(0); i < inputSliceSize;
+       i += item.get_local_range(0)) {
+    scalar_t val = inputSliceStart[i * inputWithinSliceStride];
+    if (val == median || (at::_isnan(val) && at::_isnan(median))) {
+      indicesSliceStart[0] = i;
+      break;
+    }
+  }
+}
 
 template <typename scalar_t, typename index_t, int Dim>
-struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item) const {
-    index_t slice = item.get_group_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void gather_kth_value_kernel_func(
+    TensorInfo<scalar_t, index_t> values,
+    TensorInfo<int64_t, index_t> indices,
+    TensorInfo<const scalar_t, index_t> input,
+    index_t inputSliceSize,
+    index_t numInputSlices,
+    index_t inputWithinSliceStride,
+    index_t k,
+    const scalar_t* in_data,
+    scalar_t* values_data,
+    int64_t* indices_data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
-    // Finds the start offset for our slice
-    index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
-    index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
-    index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
+  int* smem = (int*)syclexp::get_work_group_scratch_memory();
 
-    scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
-    int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
-    const scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
+  index_t slice = item.get_group_linear_id();
 
-    // Find the k-th highest element in our input
-    scalar_t kValue = static_cast<scalar_t>(0);
-    radixSelect<
-        scalar_t,
-        typename TopKTypeConfig<scalar_t>::RadixType,
-        index_t,
-        false>(
-        inputSliceStart,
-        k,
-        inputSliceSize_,
-        inputWithinSliceStride_,
-        smem_,
-        &kValue,
-        item);
+  // Finds the start offset for our slice
+  index_t valuesSliceStartIndex =
+      IndexToOffset<scalar_t, index_t, Dim>::get(slice, values);
+  index_t indicesSliceStartIndex =
+      IndexToOffset<int64_t, index_t, Dim>::get(slice, indices);
+  index_t inputSliceStartIndex =
+      IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input);
 
-    // Find the index of the k-th highest element
-    index_t kValueIndex = 0;
-    bool foundKValue = false;
+  scalar_t* valuesSliceStart = values_data + valuesSliceStartIndex;
+  int64_t* indicesSliceStart = indices_data + indicesSliceStartIndex;
+  const scalar_t* inputSliceStart = in_data + inputSliceStartIndex;
 
-    for (index_t i = item.get_local_id(0); i < inputSliceSize_;
-         i += item.get_local_range(0)) {
-      bool inRange = (i < inputSliceSize_);
-      scalar_t v = inRange ? inputSliceStart[i * inputWithinSliceStride_]
-                           : static_cast<scalar_t>(0);
-      bool isKValue =
-          inRange && ((v == kValue) || (at::_isnan(v) && at::_isnan(kValue)));
-      if (isKValue) {
-        kValueIndex = i;
-        foundKValue = true;
-        break;
-      }
-    }
+  // Find the k-th highest element in our input
+  scalar_t kValue = static_cast<scalar_t>(0);
+  radixSelect<
+      scalar_t,
+      typename TopKTypeConfig<scalar_t>::RadixType,
+      index_t,
+      false>(
+      inputSliceStart,
+      k,
+      inputSliceSize,
+      inputWithinSliceStride,
+      smem,
+      &kValue,
+      item);
 
-    if (foundKValue) {
-      valuesSliceStart[0] = kValue;
-      indicesSliceStart[0] = kValueIndex;
+  // Find the index of the k-th highest element
+  index_t kValueIndex = 0;
+  bool foundKValue = false;
+
+  for (index_t i = item.get_local_id(0); i < inputSliceSize;
+       i += item.get_local_range(0)) {
+    bool inRange = (i < inputSliceSize);
+    scalar_t v = inRange ? inputSliceStart[i * inputWithinSliceStride]
+                         : static_cast<scalar_t>(0);
+    bool isKValue =
+        inRange && ((v == kValue) || (at::_isnan(v) && at::_isnan(kValue)));
+    if (isKValue) {
+      kValueIndex = i;
+      foundKValue = true;
+      break;
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<int>(32, cgh);
+  if (foundKValue) {
+    valuesSliceStart[0] = kValue;
+    indicesSliceStart[0] = kValueIndex;
   }
-
-  GatherKthValueKernelFunctor(
-      TensorInfo<scalar_t, index_t> values,
-      TensorInfo<int64_t, index_t> indices,
-      TensorInfo<const scalar_t, index_t> input,
-      index_t inputSliceSize,
-      index_t numInputSlices,
-      index_t inputWithinSliceStride,
-      index_t k,
-      const scalar_t* in_data,
-      scalar_t* values_data,
-      int64_t* indices_data)
-      : values_(values),
-        indices_(indices),
-        input_(input),
-        inputSliceSize_(inputSliceSize),
-        numInputSlices_(numInputSlices),
-        inputWithinSliceStride_(inputWithinSliceStride),
-        k(k),
-        in_data_(in_data),
-        values_data_(values_data),
-        indices_data_(indices_data) {}
-
- private:
-  TensorInfo<scalar_t, index_t> values_;
-  TensorInfo<int64_t, index_t> indices_;
-  TensorInfo<const scalar_t, index_t> input_;
-  index_t inputSliceSize_;
-  index_t numInputSlices_;
-  index_t inputWithinSliceStride_;
-  index_t k;
-  const scalar_t* in_data_;
-  scalar_t* values_data_;
-  int64_t* indices_data_;
-  sycl_local_acc_t<int> smem_;
-};
+}
 
 // kernel to find the median, and its index, of the values along dimension dim
 template <typename scalar_t, typename index_t, int Dim>
@@ -400,7 +342,14 @@ void gatherMedian(
   auto indices_data = indices.data;
   auto in_data = input.data;
 
-  GatherMedianKernelFunctor<scalar_t, index_t, Dim> kfn(
+  int64_t local_size =
+      syclMaxWorkGroupSize<gather_median_kernel_func<scalar_t, index_t, Dim>>();
+  int slm_size = 32 * sizeof(int) + sizeof(index_t);
+  sycl_kernel_submit<gather_median_kernel_func<scalar_t, index_t, Dim>>(
+      numInputSlices * local_size,
+      local_size,
+      getCurrentSYCLQueue(),
+      slm_size,
       values,
       indices,
       input,
@@ -411,9 +360,6 @@ void gatherMedian(
       in_data,
       values_data,
       indices_data);
-  int64_t local_size = syclMaxWorkGroupSize(kfn);
-  sycl_kernel_submit(
-      numInputSlices * local_size, local_size, getCurrentSYCLQueue(), kfn);
 }
 
 // Finds the rank k element, and its index, of the values along dimension dim
@@ -433,7 +379,14 @@ void gatherKthValue(
   auto indices_data = indices.data;
   auto in_data = input.data;
 
-  GatherKthValueKernelFunctor<scalar_t, index_t, Dim> kfn(
+  int64_t local_size = syclMaxWorkGroupSize<
+      gather_kth_value_kernel_func<scalar_t, index_t, Dim>>();
+  int slm_size = 32 * sizeof(int);
+  sycl_kernel_submit<gather_kth_value_kernel_func<scalar_t, index_t, Dim>>(
+      numInputSlices * local_size,
+      local_size,
+      getCurrentSYCLQueue(),
+      slm_size,
       kthValue,
       indices,
       input,
@@ -444,9 +397,6 @@ void gatherKthValue(
       in_data,
       values_data,
       indices_data);
-  int64_t local_size = syclMaxWorkGroupSize(kfn);
-  sycl_kernel_submit(
-      numInputSlices * local_size, local_size, getCurrentSYCLQueue(), kfn);
 }
 
 struct MedianLauncher {
