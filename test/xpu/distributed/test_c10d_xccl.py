@@ -335,6 +335,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         self.assertEqual(pg_2.group_desc, "undefined")
 
     @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     @parametrize(
         "type",
         [
