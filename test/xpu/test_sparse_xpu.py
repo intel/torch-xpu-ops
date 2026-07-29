@@ -35,11 +35,15 @@ from torch.testing._internal.common_utils import (
     coalescedonoff,
     DeterministicGuard,
     instantiate_parametrized_tests,
+    IS_LINUX,
+    IS_MACOS,
+    IS_WINDOWS,
     parametrize,
     run_tests,
     subtest,
     TEST_CUDA,
     TEST_WITH_CROSSREF,
+    TEST_WITH_ROCM,
     TEST_XPU,
 )
 
@@ -419,7 +423,11 @@ def _test_bmm_deterministic(self, device, dtype, coalesced):
 TestSparse.test_bmm_deterministic = _test_bmm_deterministic
 
 
-# Strip outermost skipIf decorator (test passes on XPU).
+# Modify the skipIf - test works on XPU
+@unittest.skipIf(
+    not TEST_XPU and (IS_LINUX or IS_MACOS or TEST_WITH_ROCM or IS_WINDOWS),
+    "https://github.com/pytorch/pytorch/issues/174389",
+)
 @coalescedonoff
 @dtypes(torch.double)
 @dtypesIfMPS(torch.float32)
