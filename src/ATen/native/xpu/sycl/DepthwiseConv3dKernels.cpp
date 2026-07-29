@@ -563,8 +563,7 @@ void conv_depthwise_shape_check(
         (dilh),                                                                \
         (dilw)>;                                                               \
     int64_t local_range = 256;                                                 \
-    int64_t global_range =                                                     \
-        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536);         \
+    int64_t global_range = GET_GROUPS(num_outputs, local_range);               \
     auto kfn = KernelClass(                                                    \
         input_.packed_accessor32<const scalar_t, 5>(),                         \
         output_.packed_accessor32<scalar_t, 5>(),                              \
@@ -595,8 +594,7 @@ void conv_depthwise_shape_check(
         -1,                                                                  \
         -1>;                                                                 \
     int64_t local_range = 256;                                               \
-    int64_t global_range =                                                   \
-        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536);       \
+    int64_t global_range = GET_GROUPS(num_outputs, local_range);             \
     auto kfn = KernelClass(                                                  \
         input_.packed_accessor32<const scalar_t, 5>(),                       \
         output_.packed_accessor32<scalar_t, 5>(),                            \
@@ -860,8 +858,7 @@ std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
         kHalf, kBFloat16, grad_output.scalar_type(), "conv_depthwise3d", [&] {
           int64_t num_inputs = grad_input_.numel();
           int64_t local_range = 256;
-          int64_t global_range =
-              std::min((num_inputs - 1) / local_range + 1, (int64_t)65536);
+          int64_t global_range = GET_GROUPS(num_inputs, local_range);
 
           // Range check to avoid overflow in XPU kernels.
           TORCH_CHECK(

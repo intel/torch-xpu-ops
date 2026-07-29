@@ -178,7 +178,7 @@ Tensor& max_unpooling2d_forward_kernel(
                       output.mutable_data_ptr<scalar_t>());
 
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
+                  int64_t num_groups = GET_GROUPS(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
@@ -199,7 +199,7 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
+                  int64_t num_groups = GET_GROUPS(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
@@ -409,7 +409,7 @@ void max_unpooling3d_cl_forward_template(
       output);
 
   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-  int64_t num_groups = (numInputElements + group_size - 1) / group_size;
+  int64_t num_groups = GET_GROUPS(numInputElements, group_size);
   int64_t total_items = num_groups * group_size;
   sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
 }

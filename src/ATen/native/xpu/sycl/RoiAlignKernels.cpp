@@ -17,7 +17,6 @@
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 #include <ATen/OpMathType.h>
-#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/SYCLContext.h>
@@ -525,9 +524,8 @@ Tensor roi_align_backward_kernel(
     bool aligned) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range =
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512));
   int64_t local_range = 512;
+  int64_t global_range = GET_GROUPS(grad.numel(), local_range);
 
   // handle possibly empty gradients
   if (grad.numel() == 0) {

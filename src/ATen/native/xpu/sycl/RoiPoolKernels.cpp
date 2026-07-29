@@ -17,7 +17,6 @@
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
 #include <ATen/OpMathType.h>
-#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/SYCLContext.h>
@@ -143,9 +142,8 @@ std::tuple<Tensor, Tensor> roi_pool_kernel(
       input.options().dtype(at::kInt));
 
   auto output_size = num_rois * pooled_height * pooled_width * channels;
-  int64_t global_range =
-      ceil_div(static_cast<int64_t>(output_size), static_cast<int64_t>(512));
   int64_t local_range = 512;
+  int64_t global_range = GET_GROUPS(output_size, local_range);
 
   if (output.numel() == 0) {
     return std::make_tuple(output, argmax);
@@ -269,10 +267,8 @@ Tensor roi_pool_backward_kernel(
     int64_t width) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
   int64_t local_range = 512;
+  int64_t global_range = GET_GROUPS(grad.numel(), local_range);
 
   // handle possibly empty gradients
   if (grad.numel() == 0) {
