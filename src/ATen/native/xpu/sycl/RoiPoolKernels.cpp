@@ -62,10 +62,10 @@ struct RoiPoolForwardKernel {
           static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
-      hstart = std::min(std::max(hstart + roi_start_h, 0), height_);
-      hend = std::min(std::max(hend + roi_start_h, 0), height_);
-      wstart = std::min(std::max(wstart + roi_start_w, 0), width_);
-      wend = std::min(std::max(wend + roi_start_w, 0), width_);
+      hstart = sycl::clamp(hstart + roi_start_h, 0, height_);
+      hend = sycl::clamp(hend + roi_start_h, 0, height_);
+      wstart = sycl::clamp(wstart + roi_start_w, 0, width_);
+      wend = sycl::clamp(wend + roi_start_w, 0, width_);
       bool is_empty = (hend <= hstart) || (wend <= wstart);
 
       // Define an empty pooling region to be zero

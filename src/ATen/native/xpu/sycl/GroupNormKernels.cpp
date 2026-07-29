@@ -89,9 +89,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item, val, welford_op, shared_);
 
     if (item.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       mean_[i] = m1;
       rstd_[i] = rstd_val;
@@ -174,9 +172,7 @@ struct GNRowwiseMomentsVectorizedFunctor
       vec_t rstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        T_ACC m1;
-        T_ACC m2;
-        std::tie(m2, m1) = welford_op.project(val[v]);
+        auto [m2, m1] = welford_op.project(val[v]);
         T_ACC rstd_val = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
         mean_vec[v] = m1;
         rstd_vec[v] = rstd_val;
@@ -872,7 +868,7 @@ void group_norm_1d_backward(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N, G, D}))
                       .add_owned_const_input(dY.view({N, G, D}))
@@ -885,7 +881,7 @@ void group_norm_1d_backward(
       gpu_kernel(iter, GroupNorm1dBackwardGammaFunctor<T, T_ACC>());
     } else {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D}))
                       .add_owned_const_input(dY.view({N * G, D}))
@@ -1465,7 +1461,7 @@ void group_norm_backward_kernel_impl(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .add_output(c1)
                       .add_owned_const_input(rstd.view({N, G, 1}))
                       .add_owned_const_input(gamma.view({1, G, D}))
@@ -1496,7 +1492,7 @@ void group_norm_backward_kernel_impl(
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D, HxW}))
                       .add_owned_const_input(dY.view({N * G, D, HxW}))
@@ -1508,7 +1504,7 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardDXFunctor<T, T_ACC>());
     } else {
       auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                      .check_all_same_dtype(std::is_same_v<T, T_ACC>)
                       .resize_outputs(false)
                       .add_owned_output(dX.view({N * G, D * HxW}))
                       .add_owned_const_input(dY.view({N * G, D * HxW}))

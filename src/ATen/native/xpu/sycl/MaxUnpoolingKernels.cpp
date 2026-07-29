@@ -39,7 +39,7 @@ struct MaxUnpooling2dForwardKernelFunctor {
           ? n * numChannels_ * outputHeight_ * outputWidth_ + c
           : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
       output += offset;
-      if (is_channels_last_) {
+      if constexpr (is_channels_last_) {
         output[maxind * numChannels_] = input_data_[linearIndex];
       } else {
         output[maxind] = input_data_[linearIndex];

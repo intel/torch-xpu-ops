@@ -214,7 +214,7 @@ inline void copy_chunk_with_pad(
     int64_t thread_idx,
     int64_t num_threads) {
   // Supports type cast
-  if (!std::is_same_v<dst_t, src_t>) {
+  if constexpr (!std::is_same_v<dst_t, src_t>) {
     const int64_t max_num_elems = max_chunk_size / sizeof(dst_t);
     const int64_t actual_num_elems = actual_chunk_size / sizeof(src_t);
     int64_t elem_index = thread_idx;

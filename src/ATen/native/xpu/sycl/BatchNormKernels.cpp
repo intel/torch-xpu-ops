@@ -104,8 +104,8 @@ template <
     typename index_t = int64_t>
 static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
 get_packed_accessor(const Tensor& t, std::string_view var_name) {
-  constexpr auto expect_type = c10::CppTypeToScalarType<
-      typename std::remove_const<scalar_t>::type>::value;
+  constexpr auto expect_type =
+      c10::CppTypeToScalarType<std::remove_const_t<scalar_t>>::value;
   const auto actual_type = t.scalar_type();
   TORCH_CHECK(
       actual_type == expect_type,
@@ -138,7 +138,7 @@ struct InvStd {
   inline T operator()(T var, double epsilon) const {
     T invstd = 0.0f;
     if (var != static_cast<T>(0.0f) || epsilon != static_cast<T>(0.0f)) {
-      invstd = static_cast<T>(1.0f) / std::sqrt(var + static_cast<T>(epsilon));
+      invstd = static_cast<T>(1.0f) / sycl::sqrt(var + static_cast<T>(epsilon));
     }
     return invstd;
   }
@@ -227,7 +227,7 @@ int get_prefer_simd(int numPlane, int nHw) {
 template <typename scalar_t, typename accscalar_t>
 struct Float2 {
   accscalar_t v1, v2;
-  Float2() {}
+  Float2() = default;
 
   Float2(scalar_t v1, scalar_t v2)
       : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
@@ -576,8 +576,6 @@ void batch_norm_stats_template(
     double epsilon) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   int64_t n_input = input_.size(1);
-  Tensor dummy_mean_;
-  Tensor dummy_var_;
   auto input_reshaped = input_.reshape(
       {input_.size(0),
        input_.size(1),
@@ -1052,7 +1050,7 @@ struct BatchNormTransformInputKernelFunctor {
     } else {
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          std::sqrt(
+          sycl::sqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -1080,14 +1078,12 @@ struct BatchNormTransformInputKernelFunctor {
       GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
           output,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> mean,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> var_or_invstd,
@@ -1120,13 +1116,13 @@ struct BatchNormTransformInputKernelFunctor {
   GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
       output_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
       mean_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
@@ -1174,7 +1170,7 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
     } else {
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          std::sqrt(
+          sycl::sqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -1213,14 +1209,12 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
       GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
           output,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> mean,
       const GenericPackedTensorAccessor<
-          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
-              type,
+          std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
           1,
           RestrictPtrTraits,
           index_t> var_or_invstd,
@@ -1253,13 +1247,13 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
   GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
       output_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
       mean_;
   const GenericPackedTensorAccessor<
-      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      std::conditional_t<train, stat_accscalar_t, stat_scalar_t>,
       1,
       RestrictPtrTraits,
       index_t>
@@ -3725,9 +3719,9 @@ Tensor batch_norm_backward_elemt_kernel(
             mean_st == invstd_st,
             "mean and invstd need to have the same data types");
         bool is_half_float =
-            std::is_same<scalar_t, at::Half>::value && mean_st == at::kFloat;
-        bool is_bfloat16_float = std::is_same<scalar_t, at::BFloat16>::value &&
-            mean_st == at::kFloat;
+            std::is_same_v<scalar_t, at::Half> && mean_st == at::kFloat;
+        bool is_bfloat16_float =
+            std::is_same_v<scalar_t, at::BFloat16> && mean_st == at::kFloat;
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         if (canUse32BitIndexMath(self)) {
           if (is_half_float || is_bfloat16_float) {
@@ -4185,7 +4179,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          std::sqrt(
+          sycl::sqrt(
               static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
@@ -4392,7 +4386,7 @@ struct BatchNormBackwardVectorizedKernelFunctor
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          std::sqrt(
+          sycl::sqrt(
               static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
@@ -5105,7 +5099,8 @@ struct BatchNormReduceStatisticsKernelFunctor {
         n += count;
       }
       mean[i] = avg;
-      invstd[i] = static_cast<accscalar_t>(1) / std::sqrt(var_n / n + epsilon_);
+      invstd[i] =
+          static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
       if (running_mean.data() != NULL) {
         running_mean[i] = static_cast<scalar_t>(
             (1 - momentum_) * running_mean[i] + momentum_ * avg);
@@ -5177,17 +5172,14 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel_template(
     double momentum,
     double epsilon,
     const Tensor& counts_) {
-  Tensor save_mean_;
-  Tensor save_invstd_;
-
   auto features = mean_.size(1);
   auto input_options = mean_.options();
   if (mean_.scalar_type() == at::ScalarType::Half ||
       mean_.scalar_type() == at::ScalarType::BFloat16) {
     input_options = input_options.dtype(ScalarType::Float);
   }
-  save_mean_ = at::empty({features}, input_options);
-  save_invstd_ = at::empty({features}, input_options);
+  Tensor save_mean_ = at::empty({features}, input_options);
+  Tensor save_invstd_ = at::empty({features}, input_options);
 
   auto mean =
       packed_accessor_or_dummy<accscalar_t, 2, RestrictPtrTraits, index_t>(

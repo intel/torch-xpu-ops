@@ -449,7 +449,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
                 static_cast<accscalar_t>(odata_[idx_cl(
                     n,
                     (point_h - input_height_) / (2 * input_height_),
-                    (point_w - input_height_) / (2 * input_width_),
+                    (point_w - input_width_) / (2 * input_width_),
                     c,
                     output_height_,
                     output_width_,
@@ -459,7 +459,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
                 ((n * channels_ + c) * output_height_ +
                  (point_h - input_height_) / (2 * input_height_)) *
                     output_width_ +
-                (point_w - input_height_) / (2 * input_width_);
+                (point_w - input_width_) / (2 * input_width_);
             tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
           }
         }
@@ -635,7 +635,7 @@ void launch_upsample_bilinear2d_backward_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same<scalar_t, double>::value;
+      !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
@@ -849,7 +849,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same<scalar_t, double>::value;
+      !std::is_same_v<scalar_t, double>;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>
