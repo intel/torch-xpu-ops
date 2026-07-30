@@ -470,7 +470,8 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
 
       T* twidl_buf = nullptr;
       if (!desc.external_workspace) {
-        twidl_buf = static_cast<T*>(c10::xpu::XPUCachingAllocator::raw_alloc(2 * fact0 * fact1 * sizeof(T)));
+        twidl_buf = static_cast<T*>(c10::xpu::XPUCachingAllocator::raw_alloc(
+            2 * fact0 * fact1 * sizeof(T)));
         if (twidl_buf == nullptr) {
           throw std::runtime_error(
               "Failed to allocate device memory for twiddle factors");
@@ -483,8 +484,8 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
       auto ker =
           TwiddleTableKernel2FactsFunctor<T>(fact0, fact1, twidl_buf, scale);
       q.submit([&](sycl::handler& h) {
-         h.parallel_for(sycl::range<2>(fact0, fact1), ker);
-       });
+        h.parallel_for(sycl::range<2>(fact0, fact1), ker);
+      });
     }
   }
 }
