@@ -6,8 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
-        description: Runner label
+        description: Runner label for build job
       pytorch:
         type: string
         default: 'main'
@@ -96,14 +95,23 @@ jobs:
           path: |
             known_issue_static.log
             issues_snapshot.log
-      - name: Build Pytorch
+      - name: Download dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: dpclang
+      - name: Setup dpclang
+        if: ${{ inputs.category == 'dpclang' }}
         run: |
-          export USE_XCCL=1
-          export IS_XPU_CI=1
-          # only build pvc for CI
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc'
-          fi
+          rm -rf install-dpclang && mkdir install-dpclang
+          tar xzvf install-dpclang.tgz -C install-dpclang
+          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
+          echo "USE_DPCLANG=yes" >> $GITHUB_ENV
+      - name: Prepare Pytorch Source
+        run: |
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -118,17 +126,26 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
+          python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/prepare_pytorch.py \
+            --workspace="${{ github.workspace }}" \
+            --pytorch-repo="${PYTORCH_REPO}" \
+            --pytorch-commit="${PYTORCH_COMMIT}" \
+            --torch-xpu-ops-repo="${TORCH_XPU_OPS_REPO}" \
+            --torch-xpu-ops-commit="${TORCH_XPU_OPS_COMMIT}" \
+            --onednn-commit='${{ inputs.onednn }}'
+      - name: Build Pytorch
+        run: |
+          export USE_XCCL=1
+          export IS_XPU_CI=1
+          # only build pvc for CI
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            export TORCH_XPU_ARCH_LIST='pvc'
+          fi
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          export ONEDNN_COMMIT='${{ inputs.onednn }}'
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
-            --PYTORCH_REPO="${PYTORCH_REPO}" \
-            --PYTORCH_COMMIT="${PYTORCH_COMMIT}" \
-            --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
-            --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
-            2>&1 |tee ${{ github.workspace }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log
+            2>&1 |tee ${{ github.workspace }}/build_pytorch.log
           if [ $(ls ${{ github.workspace }} |grep -c "torch-.*.whl") -eq 0 ];then
             echo "Build pytorch got failed"
             exit 1

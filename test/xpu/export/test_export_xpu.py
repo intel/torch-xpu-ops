@@ -61,6 +61,7 @@ from torch._higher_order_ops.hints_wrap import hints_wrapper
 from torch._higher_order_ops.scan import scan
 from torch._higher_order_ops.while_loop import while_loop
 from torch._inductor.compile_fx import split_const_gm
+from torch._library.opaque_object import _OPAQUE_TYPES_BY_NAME
 from torch._subclasses import FakeTensorMode
 from torch.export import default_decompositions, Dim, export, unflatten
 from torch.export._trace import (
@@ -694,8 +695,6 @@ class TestExport(TestCase):
                 self.assertTrue("custom" in node.meta)
                 self.assertTrue(node.meta["custom"] != {})
 
-    @testing.expectedFailureSerDer  # can't serialize functorch ops
-    @testing.expectedFailureSerDerNonStrict  # can't serialize functorch ops
     def test_vmap_to_assert(self):
         class VmapToAssert(torch.nn.Module):
             def forward(self, x, y):
@@ -1016,7 +1015,8 @@ def forward(self, x):
     _remove_batch_dim_1 = torch._functorch.predispatch._remove_batch_dim(_remove_batch_dim, 3, 128, 0);  _remove_batch_dim = None
     _vmap_decrement_nesting_1 = torch._functorch.predispatch._vmap_decrement_nesting();  _vmap_decrement_nesting_1 = None
     _remove_batch_dim_2 = torch._functorch.predispatch._remove_batch_dim(_remove_batch_dim_1, 2, 1, 0)
-    expand = torch.ops.aten.expand.default(_remove_batch_dim_1, [1, 128, 128]);  _remove_batch_dim_1 = expand = None
+    unsqueeze = torch.ops.aten.unsqueeze.default(_remove_batch_dim_1, 0);  _remove_batch_dim_1 = None
+    expand = torch.ops.aten.expand.default(unsqueeze, [1, 128, 128]);  unsqueeze = expand = None
     _vmap_decrement_nesting_2 = torch._functorch.predispatch._vmap_decrement_nesting();  _vmap_decrement_nesting_2 = None
     _remove_batch_dim_3 = torch._functorch.predispatch._remove_batch_dim(_remove_batch_dim_2, 1, 2, 0);  _remove_batch_dim_2 = None
     _vmap_decrement_nesting_3 = torch._functorch.predispatch._vmap_decrement_nesting();  _vmap_decrement_nesting_3 = None
@@ -1058,13 +1058,13 @@ def forward(self, x):
     _add_batch_dim_7 = torch._functorch.predispatch._add_batch_dim(_add_batch_dim_5, 0, 2);  _add_batch_dim_5 = None
     new_zeros = torch.ops.aten.new_zeros.default(_add_batch_dim_7, [1, 2], dtype = torch.int32, pin_memory = False)
     arange_4 = torch.ops.aten.arange.default(1, dtype = torch.int32, device = device(type='cpu'), pin_memory = False)
-    unsqueeze = torch.ops.aten.unsqueeze.default(arange_4, -1);  arange_4 = None
+    unsqueeze_1 = torch.ops.aten.unsqueeze.default(arange_4, -1);  arange_4 = None
     arange_5 = torch.ops.aten.arange.default(1, dtype = torch.int32, device = device(type='cpu'), pin_memory = False)
-    unsqueeze_1 = torch.ops.aten.unsqueeze.default(_add_batch_dim_6, -1);  _add_batch_dim_6 = None
-    lt_1 = torch.ops.aten.lt.Tensor(arange_5, unsqueeze_1);  arange_5 = unsqueeze_1 = None
+    unsqueeze_2 = torch.ops.aten.unsqueeze.default(_add_batch_dim_6, -1);  _add_batch_dim_6 = None
+    lt_1 = torch.ops.aten.lt.Tensor(arange_5, unsqueeze_2);  arange_5 = unsqueeze_2 = None
     where = torch.ops.aten.where.ScalarOther(lt_1, _add_batch_dim_7, 1);  lt_1 = _add_batch_dim_7 = None
     new_ones = torch.ops.aten.new_ones.default(new_zeros, [], pin_memory = False)
-    index_put_ = torch.ops.aten.index_put_.default(new_zeros, [unsqueeze, where], new_ones);  new_zeros = unsqueeze = where = new_ones = None
+    index_put_ = torch.ops.aten.index_put_.default(new_zeros, [unsqueeze_1, where], new_ones);  new_zeros = unsqueeze_1 = where = new_ones = None
     slice_1 = torch.ops.aten.slice.Tensor(index_put_, 1, 0, 1);  index_put_ = None
     _remove_batch_dim_4 = torch._functorch.predispatch._remove_batch_dim(slice_1, 2, 1, 0);  slice_1 = None
     _vmap_decrement_nesting_4 = torch._functorch.predispatch._vmap_decrement_nesting();  _vmap_decrement_nesting_4 = None
@@ -1089,13 +1089,13 @@ def forward(self, x):
     _add_batch_dim_11 = torch._functorch.predispatch._add_batch_dim(_add_batch_dim_9, 0, 2);  _add_batch_dim_9 = None
     new_zeros_1 = torch.ops.aten.new_zeros.default(_add_batch_dim_11, [1, 2], dtype = torch.int32, pin_memory = False)
     arange_6 = torch.ops.aten.arange.default(1, dtype = torch.int32, device = device(type='cpu'), pin_memory = False)
-    unsqueeze_2 = torch.ops.aten.unsqueeze.default(arange_6, -1);  arange_6 = None
+    unsqueeze_3 = torch.ops.aten.unsqueeze.default(arange_6, -1);  arange_6 = None
     arange_7 = torch.ops.aten.arange.default(1, dtype = torch.int32, device = device(type='cpu'), pin_memory = False)
-    unsqueeze_3 = torch.ops.aten.unsqueeze.default(_add_batch_dim_10, -1);  _add_batch_dim_10 = None
-    lt_2 = torch.ops.aten.lt.Tensor(arange_7, unsqueeze_3);  arange_7 = unsqueeze_3 = None
+    unsqueeze_4 = torch.ops.aten.unsqueeze.default(_add_batch_dim_10, -1);  _add_batch_dim_10 = None
+    lt_2 = torch.ops.aten.lt.Tensor(arange_7, unsqueeze_4);  arange_7 = unsqueeze_4 = None
     where_1 = torch.ops.aten.where.ScalarOther(lt_2, _add_batch_dim_11, 1);  lt_2 = _add_batch_dim_11 = None
     new_ones_1 = torch.ops.aten.new_ones.default(new_zeros_1, [], pin_memory = False)
-    index_put__1 = torch.ops.aten.index_put_.default(new_zeros_1, [unsqueeze_2, where_1], new_ones_1);  new_zeros_1 = unsqueeze_2 = where_1 = new_ones_1 = None
+    index_put__1 = torch.ops.aten.index_put_.default(new_zeros_1, [unsqueeze_3, where_1], new_ones_1);  new_zeros_1 = unsqueeze_3 = where_1 = new_ones_1 = None
     slice_2 = torch.ops.aten.slice.Tensor(index_put__1, 1, 0, 1);  index_put__1 = None
     _remove_batch_dim_6 = torch._functorch.predispatch._remove_batch_dim(slice_2, 2, 1, 0);  slice_2 = None
     _vmap_decrement_nesting_6 = torch._functorch.predispatch._vmap_decrement_nesting();  _vmap_decrement_nesting_6 = None
@@ -1121,7 +1121,7 @@ def forward(self, x):
     detach_21 = torch.ops.aten.detach.default(view_3);  view_3 = None
     sdpa_score0 = self.sdpa_score0
     sdpa_mask0 = self.sdpa_mask0
-    flex_attention = torch.ops.higher_order.flex_attention(detach_19, detach_20, detach_21, sdpa_score0, (128, 128, to_3, to_4, to_6, to_7, to_9, to_10, to_12, to_13, 128, 128, sdpa_mask0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': False, 'OUTPUT_MAX': False}, (), (detach,));  detach_19 = detach_20 = detach_21 = sdpa_score0 = to_3 = to_4 = to_6 = to_7 = to_9 = to_10 = to_12 = to_13 = sdpa_mask0 = detach = None
+    flex_attention = torch.ops.higher_order.flex_attention(detach_19, detach_20, detach_21, sdpa_score0, (128, 128, to_3, to_4, to_6, to_7, to_9, to_10, to_12, to_13, None, None, None, None, 128, 128, sdpa_mask0), 0.125, {'BACKEND': 'AUTO', 'PRESCALE_QK': False, 'ROWS_GUARANTEED_SAFE': False, 'BLOCKS_ARE_CONTIGUOUS': False, 'WRITE_DQ': True, 'OUTPUT_LOGSUMEXP': False, 'OUTPUT_MAX': False}, (), (detach,));  detach_19 = detach_20 = detach_21 = sdpa_score0 = to_3 = to_4 = to_6 = to_7 = to_9 = to_10 = to_12 = to_13 = sdpa_mask0 = detach = None
     getitem = flex_attention[0]
     getitem_1 = flex_attention[1];  getitem_1 = None
     getitem_2 = flex_attention[2];  flex_attention = getitem_2 = None
@@ -3627,8 +3627,6 @@ graph():
         res = ep.module()(ref_x)
         self.assertEqual(res, ref_out)
 
-    @testing.expectedFailureSerDer  # can't serialize functorch ops
-    @testing.expectedFailureSerDerNonStrict  # can't serialize functorch ops
     @testing.expectedFailureCppRuntime
     def test_vmap(self):
         class Vmap(torch.nn.Module):
@@ -6795,12 +6793,8 @@ def forward(self, p_linear_weight, p_linear_bias, b_buffer, x):
         y2 = torch.arange(9).reshape((3, 3))
         with self.assertRaisesRegex(
             AssertionError,
-            (
-                escape("Guard failed: max(x.size()[1], y.size()[1]) == x.size()[1]")
-                if is_retracebility_test(self._testMethodName)
-                else escape(
-                    "Guard failed: max(1, x.size()[1], y.size()[1]) == x.size()[1]"
-                )
+            escape(
+                "Guard failed: torch.sym_max(1, torch.sym_max(x.size()[1], y.size()[1])) == x.size()[1]"
             ),
         ):
             # TODO: this should not error?
@@ -13885,7 +13879,7 @@ graph():
     @testing.expectedFailureSerDer  # register_constant needs to handle serialization
     def test_opaque_obj(self):
         @dataclass(frozen=True)
-        class MyInput(torch._opaque_base.OpaqueBase):
+        class MyInput(torch._custom_class_base.CustomClassBase):
             int_1: int
             int_2: int
 
@@ -13902,12 +13896,13 @@ graph():
             def forward(self, x, f):
                 return x + f.int_1 + f.int_2
 
-        try:
-            torch._library.opaque_object.register_opaque_type(MyInput, typ="value")
-        except RuntimeError as e:
-            # The test suite can execute this test class multiple times in one process.
-            if "is already registered as an opaque type" not in str(e):
-                raise
+        torch._library.opaque_object.register_custom_class(MyInput, typ="constant")
+        self.addCleanup(
+            lambda name=torch._library.opaque_object.get_opaque_type_name(MyInput): (
+                torch._C._unregister_opaque_type(name),
+                _OPAQUE_TYPES_BY_NAME.pop(name, None),
+            )
+        )
         ep = export(Foo(), (torch.randn(2, 2), MyInput(4, 4)), strict=False)
 
         inp = torch.ones(2, 2)

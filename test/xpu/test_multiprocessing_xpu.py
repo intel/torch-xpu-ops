@@ -12,6 +12,7 @@
 
 # Owner(s): ["module: intel"]
 
+import os
 import unittest
 from sys import platform
 
@@ -20,12 +21,26 @@ import torch.multiprocessing as mp
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 except Exception:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 
-with XPUPatchForImport(False):
-    from test_multiprocessing import queue_get_exception, TestMultiprocessing
+with XPUPatchForImport(False) as patcher:
+    from test_multiprocessing import TestMultiprocessing
+
+
+test_dir = os.path.abspath(patcher.test_package[0])
+ensure_pytorch_test_path(test_dir)
+
+
+def queue_get_exception(inqueue, outqueue):
+    os.close(2)
+    try:
+        torch.zeros(5, 5).xpu()
+    except Exception as e:
+        outqueue.put(e)
+    else:
+        outqueue.put("no exception")
 
 
 @unittest.skipIf(IS_WINDOWS, "not applicable to Windows (only fails with fork)")

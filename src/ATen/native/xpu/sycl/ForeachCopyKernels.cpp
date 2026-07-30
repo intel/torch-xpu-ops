@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/Dispatch_v2.h>
 #include <ATen/native/xpu/sycl/ForeachCopyKernels.h>
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
@@ -120,21 +121,15 @@ struct CopyFunctor {
 
 void foreach_copy_list_kernel_(TensorList self, TensorList src) {
   std::vector<std::vector<at::Tensor>> tensor_lists{src.vec(), self.vec()};
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       self[0].scalar_type(),
       "foreach_tensor_copy",
-      [&]() {
+      AT_WRAP([&]() {
         using dst_t = scalar_t;
-        AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-            at::ScalarType::Half,
-            at::ScalarType::BFloat16,
-            at::ScalarType::Bool,
+        AT_DISPATCH_V2(
             src[0].scalar_type(),
             "foreach_tensor_copy",
-            [&]() {
+            AT_WRAP([&]() {
               using src_t = scalar_t;
               multi_tensor_apply<2>(
                   tensor_lists,
@@ -145,8 +140,18 @@ void foreach_copy_list_kernel_(TensorList self, TensorList src) {
                       /* r_args_depth */ 1,
                       /* res_arg_index */ 1>(),
                   Copy<dst_t, src_t>());
-            });
-      });
+            }),
+            AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+            kHalf,
+            kBFloat16,
+            kBool,
+            AT_EXPAND(AT_FLOAT8_TYPES));
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kHalf,
+      kBFloat16,
+      kBool,
+      AT_EXPAND(AT_FLOAT8_TYPES));
 }
 
 } // namespace at::native::xpu

@@ -11,6 +11,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
@@ -29,7 +30,12 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct SqrtFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sqrt(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::sqrt(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::sqrt(static_cast<opmath_t>(a));
+    }
   }
 };
 
@@ -84,36 +90,48 @@ struct BitwiseNotFunctor<bool> {
 void sqrt_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "sqrt_xpu", [&]() {
-          using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, SqrtFunctor<opmath_t>());
-        });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        ScalarType::Half,
-        ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         common_dtype,
         "sqrt_xpu",
-        [&]() { gpu_kernel(iter, SqrtFunctor<scalar_t>()); });
+        AT_WRAP([&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, SqrtFunctor<opmath_t>());
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
+  } else {
+    AT_DISPATCH_V2(
+        common_dtype,
+        "sqrt_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, SqrtFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        ScalarType::Half,
+        ScalarType::BFloat16);
   }
 }
 
 void rsqrt_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "rsqrt_xpu", [&]() {
+    AT_DISPATCH_V2(
+        common_dtype,
+        "rsqrt_xpu",
+        AT_WRAP([&]() {
           using opmath_t = at::opmath_type<scalar_t>;
           gpu_kernel(iter, RsqrtFunctor<opmath_t>());
-        });
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        ScalarType::BFloat16,
-        ScalarType::Half,
+    AT_DISPATCH_V2(
         iter.common_dtype(),
         "rsqrt_xpu",
-        [&]() { gpu_kernel(iter, RsqrtFunctor<scalar_t>()); });
+        AT_WRAP([&]() { gpu_kernel(iter, RsqrtFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        ScalarType::BFloat16,
+        ScalarType::Half);
   }
 }
 
@@ -130,21 +148,28 @@ void bitwise_not_kernel(TensorIteratorBase& iter) {
 void exp_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "exp_xpu", [&]() {
-      using opmath_t = at::opmath_type<scalar_t>;
-      auto caller = ExpFunctor<scalar_t, opmath_t>();
-      gpu_kernel(iter, caller);
-    });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
+    AT_DISPATCH_V2(
         common_dtype,
         "exp_xpu",
-        [&]() {
+        AT_WRAP([&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto caller = ExpFunctor<scalar_t, opmath_t>();
+          gpu_kernel(iter, caller);
+        }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
+  } else {
+    AT_DISPATCH_V2(
+        common_dtype,
+        "exp_xpu",
+        AT_WRAP([&]() {
           auto caller = ExpFunctor<scalar_t>();
           gpu_kernel(iter, caller);
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16);
   }
 }
 
@@ -246,7 +271,8 @@ void nan_to_num_kernel(
 template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::expm1(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::expm1(static_cast<opmath_t>(a));
   }
 };
 
@@ -254,7 +280,7 @@ template <typename T>
 struct Expm1Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
     auto a = std::sin(T(.5) * x.imag());
-    auto re = std::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
+    auto re = sycl::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
     auto im = std::exp(x.real()) * std::sin(x.imag());
     return c10::complex<T>(re, im);
   }
@@ -272,9 +298,10 @@ void expm1_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FrexpFunctor {
   std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     int32_t exponent;
-    scalar_t mantissa = std::frexp(a, &exponent);
-    return {mantissa, exponent};
+    opmath_t mantissa = sycl::frexp(static_cast<opmath_t>(a), &exponent);
+    return {static_cast<scalar_t>(mantissa), exponent};
   }
 };
 

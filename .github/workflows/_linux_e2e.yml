@@ -57,46 +57,33 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
-  runner:
-    runs-on: ${{ inputs.runner }}
-    name: get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-      hostname: ${{ steps.runner-info.outputs.hostname }}
-      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   test:
-    runs-on: ${{ needs.runner.outputs.runner_id }}
-    needs: runner
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              -e ZE_AFFINITY_MASK
       env:
-        numactl_args: ${{ needs.runner.outputs.numactl_args }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
           category: ${{ inputs.category }}
+      - name: Fixed frequency
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh lock
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh status
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
@@ -106,7 +93,7 @@ jobs:
           suite: huggingface
           dt: bfloat16,float16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: CICD Timm_models BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
@@ -115,7 +102,7 @@ jobs:
           suite: timm_models
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: CICD Torchbench BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
@@ -124,7 +111,7 @@ jobs:
           suite: torchbench
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
 
       # Nihglty launch
@@ -135,7 +122,7 @@ jobs:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -143,7 +130,7 @@ jobs:
           suite: timm_models
           dt: float16,bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -151,13 +138,13 @@ jobs:
           suite: torchbench
           dt: float16,bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
@@ -167,7 +154,7 @@ jobs:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly Timm_models Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -175,7 +162,7 @@ jobs:
           suite: timm_models
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly Torchbench Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -183,13 +170,13 @@ jobs:
           suite: torchbench
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
       - name: Weekly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
 
       # On-demand launch
       - name: Get test data types
@@ -240,7 +227,7 @@ jobs:
           suite: ${{ inputs.suite }}
           dt: amp_fp16
           mode: training
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
@@ -249,17 +236,34 @@ jobs:
           suite: ${{ inputs.suite }}
           dt: bfloat16
           mode: inference
-          scenario: accuracy,performance
+          scenario: ${{ inputs.scenario }}
           overwrite_model_list: 'false'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}
+        id: archive
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+          artifact_name="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data"
+          artifact_name+="-${{ github.event.pull_request.number || github.sha }}"
+          artifact_name+="-${{ inputs.suite }}"
+          if [[ "${{ inputs.scenario }}" != *,* ]]; then
+            artifact_name+="-${{ inputs.scenario }}"
+          fi
+          artifact_name+="-${{ github.run_id }}-${{ github.run_attempt }}"
+          if [[ -n "${{ inputs.category }}" ]]; then
+            artifact_name+="-${{ inputs.category }}"
+          fi
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+      - name: Cleanup
+        if: ${{ always() }}
+        run: |
+          bash ${{ github.workspace }}/.github/scripts/freq-fixed.sh unlock
+          chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
+          name: ${{ steps.archive.outputs.name }}
           path: ${{ github.workspace }}/upload_files

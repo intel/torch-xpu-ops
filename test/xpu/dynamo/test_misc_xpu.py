@@ -372,9 +372,9 @@ class MiscTests(torch._inductor.test_case.TestCase):
                 str(cnt.inductor_graphs[0].graph).strip(),
                 """\
 graph():
-    %arg0_1 : [num_users=0] = placeholder[target=arg0_1]
-    %arg1_1 : [num_users=1] = placeholder[target=arg1_1]
-    %sin : [num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg1_1,), kwargs = {})
+    %arg0_1 : [num_users=1] = placeholder[target=arg0_1]
+    %arg1_1 : [num_users=0] = placeholder[target=arg1_1]
+    %sin : [num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})
     %cos : [num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%sin,), kwargs = {})
     return (cos,)""",
             )
@@ -382,9 +382,9 @@ graph():
                 str(cnt1.inductor_graphs[0].graph).strip(),
                 """\
 graph():
-    %arg0_1 : [num_users=0] = placeholder[target=arg0_1]
-    %arg1_1 : [num_users=1] = placeholder[target=arg1_1]
-    %foo : [num_users=1] = call_function[target=torch.ops.mylib.foo.default](args = (%arg1_1,), kwargs = {})
+    %arg0_1 : [num_users=1] = placeholder[target=arg0_1]
+    %arg1_1 : [num_users=0] = placeholder[target=arg1_1]
+    %foo : [num_users=1] = call_function[target=torch.ops.mylib.foo.default](args = (%arg0_1,), kwargs = {})
     return (foo,)""",
             )
 
@@ -2437,7 +2437,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
     def test_structseq2(self):
         def fn(x, y):
-            return tuple(torch.return_types.qr((2 * x, y - 1)))
+            return tuple(torch.return_types.linalg_qr((2 * x, y - 1)))
 
         x = torch.randn(3, 2)
         y = torch.randn(2, 4)
@@ -3619,7 +3619,6 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
             lambda x: x.resize_as_(torch.rand(200, 300)): torch.rand(2, 3),
             lambda x: x.swapaxes_(0, 1).mul_(2): torch.rand(2, 3),
             lambda x: x.swapdims_(0, 1).mul_(2): torch.rand(2, 3),
-            lambda x: x.rename_("N", "C").mul_(2): torch.zeros(2, 3),
             lambda x: x.as_strided_((3, 2), (2, 1)).mul_(2): torch.zeros(2, 3),
             lambda x: x.detach_().mul_(2): torch.zeros(2, 3),
         }
@@ -5460,25 +5459,16 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
         self.assertEqual(res2, 9)
 
     def test_const_dict_variable_python_type(self):
-        from torch._dynamo.variables import ConstantVariable, ConstDictVariable
+        def fn(x):
+            d = {"a": 1, "b": 2}
+            od = collections.OrderedDict([("x", 3), ("y", 4)])
+            return x + d["a"] + od["x"]
 
-        make_key = ConstantVariable.create
-
-        d1 = {
-            make_key("a"): ConstantVariable.create(10),
-            make_key("b"): ConstantVariable.create(20),
-        }
-        d2 = collections.OrderedDict(
-            [
-                (make_key("x"), ConstantVariable.create(12)),
-                (make_key("y"), ConstantVariable.create(22)),
-            ]
+        eager_result = fn(torch.ones(3))
+        compiled_result = torch.compile(fn, backend="eager", fullgraph=True)(
+            torch.ones(3)
         )
-        self.assertEqual(ConstDictVariable(d1).python_type(), dict)
-        self.assertEqual(
-            ConstDictVariable(d2, collections.OrderedDict).python_type(),
-            collections.OrderedDict,
-        )
+        self.assertEqual(eager_result, compiled_result)
 
     def test_builtin_subclasses_as_method_on_class_type(self):
         class Foo:
@@ -7388,7 +7378,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
         x = torch.tensor([2.0])
         with self.assertRaisesRegex(
-            AssertionError, "Can't unpack a tensor of 1 rows into a tuple of 2 elements"
+            ValueError, r"not enough values to unpack \(expected 2, got 1\)"
         ):
             f1(x)
 
@@ -13867,7 +13857,7 @@ fn
                     "this error is if we have y = custom_op(x) and y and x are the same "
                     "Tensor. Please instead return a clone of the offending output "
                     "tensor(s) (e.g. return x.clone()) or refactor the custom operator "
-                    "to not return y. This is deprecated and will become an error in PyTorch 2.12.",
+                    "to not return y. This is deprecated and will become an error in a future version of PyTorch.",
                 )
 
 
@@ -14013,7 +14003,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14041,7 +14031,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14092,7 +14082,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14106,7 +14096,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                         "d",
                         {
                             "f": MyTuple(torch.ones(4, 3), -y, y + 1),
-                            "e": torch.return_types.qr((2 * y, None)),
+                            "e": torch.return_types.linalg_qr((2 * y, None)),
                         },
                     ),
                 ],

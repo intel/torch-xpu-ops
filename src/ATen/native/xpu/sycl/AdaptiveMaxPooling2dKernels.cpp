@@ -236,13 +236,13 @@ void adaptive_max_pool2d_kernel(
               istrideH,
               istrideW);
         });
+  }
 
-    if (!output.is_contiguous()) {
-      output.copy_(output_c);
-    }
-    if (!indices.is_contiguous()) {
-      indices.copy_(indices_c);
-    }
+  if (!output.is_contiguous()) {
+    output.copy_(output_c);
+  }
+  if (!indices.is_contiguous()) {
+    indices.copy_(indices_c);
   }
 }
 

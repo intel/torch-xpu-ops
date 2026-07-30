@@ -44,6 +44,7 @@ runs:
           rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
         fi
         rm -rf inductor_log torch
+        sed -i 's/choices=range(1, 16),/choices=range(1, 17),/g' benchmarks/dynamo/common.py
         # check param
         contains() {
           local pattern="$1"
@@ -66,9 +67,9 @@ runs:
             models_list_args=""
           fi
           # shards to run
-          # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
+          # Such as NUMACTL_ARGS=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
           delimiter=";"
-          IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
+          IFS="${delimiter}" read -ra numactl_args_list <<< "${NUMACTL_ARGS}"
           instances=${#numactl_args_list[@]}
           for i in $(seq 0 $[ ${instances} - 1 ])
           do
