@@ -90,10 +90,10 @@ jobs:
 
           # install oneAPI
           rm -rf /opt/intel/oneapi
-          wget https://af-satgoneapi.devtools.intel.com/artifactory/satgoneapi-or-local/products/deep-learning-essentials/2026.1.1/packages/l_deep-learning-essentials_p_2026.1.1.11/webimage/intel-deep-learning-essentials-2026.1.1.11_offline.sh
-          bash intel-deep-learning-essentials-2026.1.1.11_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action remove || true
-          bash intel-deep-learning-essentials-2026.1.1.11_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action install
-          bash intel-deep-learning-essentials-2026.1.1.11_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action repair
+          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/185b3f71-836d-43fa-8afa-bd6bf08b3441/intel-deep-learning-essentials-2026.1.0.197_offline.sh
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action remove || true
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action install
+          bash intel-deep-learning-essentials-2026.1.0.197_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action repair
           source /opt/intel/oneapi/setvars.sh
           icpx --version
 
