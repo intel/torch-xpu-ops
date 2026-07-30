@@ -53,8 +53,8 @@ jobs:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+      options: --device=/dev/mem --device=/dev/dri --rm
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
