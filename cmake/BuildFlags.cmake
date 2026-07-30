@@ -112,6 +112,7 @@ macro(set_build_flags)
   # 4. Linkage:
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
   list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-unnamed-lambda)
+  list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-id-queries-fit-in-int)
   list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
   list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-div)
   list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-sqrt)
