@@ -376,6 +376,9 @@ _cuda_xfail_xpu_pass = [
     ("_refs.true_divide", "test_python_ref_torch_fallback"),
     ("argsort", "test_non_standard_bool_values"),
     ("sort", "test_non_standard_bool_values"),
+    # ConvTranspose1d chalf test_cpu_gpu_parity: upstream xfails CUDA
+    # ("Not implemented for chalf on CPU"), but XPU passes -> unexpected success.
+    ("nn.ConvTranspose1d", "test_cpu_gpu_parity"),
 ]
 
 # Additional unscoped (device_type=None) expectedFailure entries that should
