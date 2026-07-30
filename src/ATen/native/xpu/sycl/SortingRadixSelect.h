@@ -346,8 +346,9 @@ scalar_t findPattern(
   auto local_id = item_id.get_local_id(0);
   auto smem_ptr = static_cast<scalar_t*>(static_cast<void*>(
       smem.template get_multi_ptr<sycl::access::decorated::no>().get()));
-  if (local_id < RADIX_SIZE) {
-    smem_ptr[RADIX_SIZE] = static_cast<scalar_t>(0);
+  // Zero slots 0/1 (found-flag, value); else stale from countRadixUsingMask.
+  if (local_id < 2) {
+    smem_ptr[local_id] = static_cast<scalar_t>(0);
   }
 
   sycl::group_barrier(item_id.get_group());
@@ -481,7 +482,7 @@ void radixSelect(
 
     // All threads participate in the comparisons below to know the
     // final result
-    if (Order) {
+    if constexpr (Order) {
       // Process in descending order
       for (int i = RADIX_SIZE - 1; i >= 0; --i) {
         int count = counts[i];

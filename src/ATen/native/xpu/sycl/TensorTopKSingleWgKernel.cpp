@@ -164,6 +164,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
+    // WAR barrier: next radix pass re-zeros smem.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================
@@ -270,6 +272,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
     out = sg_exclusive + cross_sg_prefix;
     carry = static_cast<int>(smem[num_sgs - 1]);
+    // WAR barrier: caller reuses smem next iteration.
+    sycl::group_barrier(item.get_group());
   }
 
   // ================================================================

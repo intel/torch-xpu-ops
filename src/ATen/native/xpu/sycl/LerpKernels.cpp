@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/native/Lerp.h>
@@ -69,24 +69,37 @@ void lerp_scalar_kernel(
 void lerp_tensor_kernel(at::TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "lerp_xpu", [&] {
-      if (iter.is_cpu_scalar(3)) {
-        auto weight_val = iter.scalar_value<scalar_t>(3);
-        iter.remove_operand(3);
-        return lerp_scalar_kernel(iter, weight_val);
-      }
-      gpu_kernel(iter, LerpTensorComplexFunctor<scalar_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "lerp_xpu",
+        AT_WRAP([&] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          if (iter.is_cpu_scalar(3)) {
+            auto weight_val = iter.scalar_value<opmath_t>(3);
+            iter.remove_operand(3);
+            return lerp_scalar_kernel(iter, weight_val);
+          }
+          gpu_kernel(iter, LerpTensorComplexFunctor<scalar_t>());
+        }),
+        kComplexFloat,
+        kComplexDouble,
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half, at::ScalarType::BFloat16, dtype, "lerp_xpu", [&] {
+    AT_DISPATCH_V2(
+        dtype,
+        "lerp_xpu",
+        AT_WRAP([&] {
           if (iter.is_cpu_scalar(3)) {
             auto weight_val = iter.scalar_value<scalar_t>(3);
             iter.remove_operand(3);
             return lerp_scalar_kernel(iter, weight_val);
           }
           gpu_kernel(iter, LerpTensorFunctor<scalar_t>());
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16);
   }
 }
 
@@ -95,18 +108,30 @@ void lerp_scalar_kernel(
     const c10::Scalar& weight) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "lerp_xpu", [&] {
-      using opmath_t = at::opmath_type<scalar_t>;
-      auto weight_val = weight.to<opmath_t>();
-      gpu_kernel(iter, LerpScalarComplexFunctor<scalar_t>(weight_val));
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "lerp_xpu",
+        AT_WRAP([&] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto weight_val = weight.to<opmath_t>();
+          gpu_kernel(iter, LerpScalarComplexFunctor<scalar_t>(weight_val));
+        }),
+        kComplexFloat,
+        kComplexDouble,
+        kComplexHalf,
+        kBComplex32);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half, at::ScalarType::BFloat16, dtype, "lerp_xpu", [&] {
+    AT_DISPATCH_V2(
+        dtype,
+        "lerp_xpu",
+        AT_WRAP([&] {
           using opmath_t = at::opmath_type<scalar_t>;
           auto weight_val = weight.to<opmath_t>();
           gpu_kernel(iter, LerpScalarFunctor<scalar_t>(weight_val));
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16);
   }
 }
 

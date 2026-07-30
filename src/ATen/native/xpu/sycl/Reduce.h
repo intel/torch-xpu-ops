@@ -26,6 +26,7 @@
 #include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
+#include <memory>
 #include <numeric>
 #include <type_traits>
 #include <utility>
@@ -39,7 +40,49 @@ using at::detail::Array;
 
 namespace detail {
 
-template <class arg_t, class item_t, class CombineFunc, int out_vec_sz = 1>
+template <class T, class = void>
+struct get_native_sycl_op {
+  using type = void;
+};
+template <class T>
+struct get_native_sycl_op<T, std::void_t<typename T::native_sycl_op>> {
+  using type = typename T::native_sycl_op;
+};
+template <class T>
+using native_sycl_op_t = typename get_native_sycl_op<T>::type;
+
+template <class arg_t, class CombineFunc, class NativeOp, int out_vec_sz>
+void subgroup_tree_reduce(
+    sycl::sub_group sg,
+    at::detail::Array<arg_t, out_vec_sz>& value,
+    CombineFunc combine) {
+  constexpr bool is_fast_path_supported =
+      std::is_same_v<NativeOp, sycl::plus<arg_t>> &&
+      std::is_arithmetic_v<arg_t> && !std::is_same_v<arg_t, bool>;
+
+  if constexpr (is_fast_path_supported) {
+#pragma unroll(out_vec_sz)
+    for (int i = 0; i < out_vec_sz; ++i) {
+      value[i] = sycl::reduce_over_group(sg, value[i], NativeOp{});
+    }
+  } else {
+    int sg_size = sg.get_local_range()[0];
+    for (int offset = 1; offset < sg_size; offset <<= 1) {
+#pragma unroll(out_vec_sz)
+      for (int i = 0; i < out_vec_sz; ++i) {
+        arg_t other = sycl::shift_group_left(sg, value[i], offset);
+        value[i] = combine(value[i], other);
+      }
+    }
+  }
+}
+
+template <
+    class arg_t,
+    class item_t,
+    class CombineFunc,
+    class NativeOp = void,
+    int out_vec_sz = 1>
 inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     item_t item,
     int wg_size,
@@ -60,13 +103,9 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   SYCL_KERNEL_ASSERT(
       wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
 
-  for (int offset = 1; offset < sg_size; offset <<= 1) {
-#pragma unroll(out_vec_sz)
-    for (int i = 0; i < out_vec_sz; ++i) {
-      arg_t other = sycl::shift_group_left(sg, value[i], offset);
-      value[i] = combine(value[i], other);
-    }
-  }
+  // tree reduce in subgroup
+  subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
+      sg, value, combine);
 
   if (sg_lid == 0) {
     shared_[sg_gid] = value;
@@ -83,13 +122,9 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       for (int i = 0; i < out_vec_sz; ++i) {
         value[i] = (sg_lid < sg_range) ? shared_[sg_lid][i] : ident;
       }
-      for (int offset = 1; offset < sg_size; offset <<= 1) {
-#pragma unroll(out_vec_sz)
-        for (int i = 0; i < out_vec_sz; ++i) {
-          value[i] =
-              combine(value[i], sycl::shift_group_left(sg, value[i], offset));
-        }
-      }
+      // subgroup tree reduce
+      subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
+          sg, value, combine);
     }
   } else {
     // work item tree reduce
@@ -144,6 +179,8 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
   }
 
   // sub-group reduction
+  // when dim_x < sg_size, a single sub-group may span multiple rows
+  // and each row needs an independent x-direction reduction
   for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
@@ -448,6 +485,8 @@ template <typename out_scalar_t, typename func_t>
 struct func_wrapper_t {
   using arg_t = typename binary_function_traits<func_t>::arg1_t;
   using scalar_t = typename binary_function_traits<func_t>::arg2_t;
+  // Propagate native_sycl_op from func_t
+  using native_sycl_op = native_sycl_op_t<func_t>;
 
   func_t combine;
   static inline out_scalar_t project(arg_t arg) {
@@ -478,8 +517,7 @@ template <
     int vt0 = 4>
 struct ReduceOp {
   using traits = function_traits<decltype(&ops_t::reduce)>;
-  using arg_t =
-      typename std::decay<typename traits::template arg<0>::type>::type;
+  using arg_t = std::decay_t<typename traits::template arg<0>::type>;
 
   using InputCalculator = OffsetCalculator<1, index_t>;
   using OutputCalculator = OffsetCalculator<2, index_t>;
@@ -490,8 +528,8 @@ struct ReduceOp {
       typename binary_function_traits<decltype(&ops_t::combine)>::arg2_t;
 
   static constexpr bool can_accumulate_in_output =
-      std::is_convertible<arg_t, out_scalar_t>::value &&
-      std::is_convertible<out_scalar_t, arg_t>::value;
+      std::is_convertible_v<arg_t, out_scalar_t> &&
+      std::is_convertible_v<out_scalar_t, arg_t>;
 
   static constexpr float acc_buffer_multiplier =
       (float)sizeof(arg_t) / sizeof(out_scalar_t);
@@ -573,11 +611,14 @@ struct ReduceOp {
       return ops.combine(value, other);
     };
 
+    using native_op_t = native_sycl_op_t<ops_t>;
+
     if (config.should_group_x_reduce() && config.should_group_y_reduce()) {
       value = group_reduce<
           arg_t,
           decltype(pos),
           decltype(combine),
+          native_op_t,
           output_vec_size>(
           pos, config.num_items, shared, value, combine, ident);
     } else {
@@ -858,10 +899,10 @@ struct ReduceOp {
   }
 
   template <int output_vec_size, bool can_acc>
+    requires can_acc
   at::detail::Array<arg_t, output_vec_size> accumulate_in_output(
       at::detail::Array<out_scalar_t*, output_vec_size> out,
-      at::detail::Array<arg_t, output_vec_size> value,
-      typename std::enable_if<can_acc>::type* = nullptr) const {
+      at::detail::Array<arg_t, output_vec_size> value) const {
     at::detail::Array<arg_t, output_vec_size> ret;
 #pragma unroll(output_vec_size)
     for (int i = 0; i < output_vec_size; ++i) {
@@ -871,10 +912,8 @@ struct ReduceOp {
   }
 
   template <bool can_acc>
-  out_scalar_t get_accumulated_output(
-      out_scalar_t* out,
-      arg_t value,
-      typename std::enable_if<can_acc>::type* = nullptr) const {
+    requires can_acc
+  out_scalar_t get_accumulated_output(out_scalar_t* out, arg_t value) const {
     assert(!final_output);
     return (out_scalar_t)value;
   }
@@ -883,10 +922,10 @@ struct ReduceOp {
   // It's the version of `accumulate_in_output`
   // when accumulation in the output is not possible.
   template <int output_vec_size, bool can_acc>
+    requires(!can_acc)
   at::detail::Array<arg_t, output_vec_size> accumulate_in_output(
       at::detail::Array<out_scalar_t*, output_vec_size>,
-      at::detail::Array<arg_t, output_vec_size>,
-      typename std::enable_if<!can_acc>::type* = nullptr) const {
+      at::detail::Array<arg_t, output_vec_size>) const {
     assert(false);
     return arg_t{};
   }
@@ -895,10 +934,8 @@ struct ReduceOp {
   // it's the version of `get_accumulated_output`
   // when accumulation in the output is not possible.
   template <bool can_acc>
-  out_scalar_t get_accumulated_output(
-      out_scalar_t* out,
-      arg_t value,
-      typename std::enable_if<!can_acc>::type* = nullptr) const {
+    requires(!can_acc)
+  out_scalar_t get_accumulated_output(out_scalar_t* out, arg_t value) const {
     assert(false);
     return *out;
   }
@@ -1116,7 +1153,7 @@ class AccumulationBuffer {
   at::DataPtr buffer_;
 };
 
-#define DEFAULT_OUTPUT_VEC_SIZE 4
+inline constexpr int DEFAULT_OUTPUT_VEC_SIZE = 4;
 template <typename scalar_t, int vt1>
 int get_output_vec_size(at::TensorIterator& iter) {
   int vec_size = DEFAULT_OUTPUT_VEC_SIZE;
@@ -1205,13 +1242,13 @@ inline void gpu_reduce_kernel(
             output_memory_size, iter.shape()[dim] * iter.strides(0)[dim]);
       }
       output_memory_size /= iter.element_size(0); // iter.strides is in bytes
-      owned_buf_ptr.reset(new AccumulationBuffer(
+      owned_buf_ptr = std::make_unique<AccumulationBuffer>(
           sizeof(arg_t),
           sizeof(out_scalar_t),
           (char*)iter.data_ptr(0),
-          output_memory_size * sizeof(arg_t)));
+          output_memory_size * sizeof(arg_t));
     } else {
-      owned_buf_ptr.reset(new AccumulationBuffer());
+      owned_buf_ptr = std::make_unique<AccumulationBuffer>();
     }
     acc_buf_ptr = owned_buf_ptr.get();
   }

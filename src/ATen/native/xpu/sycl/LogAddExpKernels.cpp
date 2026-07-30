@@ -35,7 +35,7 @@ c10::complex<scalar_t> _logaddexp_minmax(
     return y;
   } else if (sycl::isnan(xr) || (sycl::isnan(std::imag(x)))) {
     return x;
-  } else if (min) {
+  } else if constexpr (min) {
     return (xr < yr) ? x : y;
   } else {
     return (xr >= yr) ? x : y;
@@ -151,15 +151,15 @@ template <typename scalar_t>
 struct LogAddExp2Functor {
   scalar_t operator()(scalar_t a_, scalar_t b_) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    const auto inv_log_2 =
-        static_cast<opmath_t>(1.0 / std::numbers::ln2_v<double>);
     const auto a = static_cast<opmath_t>(a_);
     const auto b = static_cast<opmath_t>(b_);
     if (sycl::isinf(a) && a == b) {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + sycl::log1p(sycl::exp2(-sycl::fabs(a - b))) * inv_log_2;
+      return m +
+          sycl::log1p(sycl::exp2(-sycl::fabs(a - b))) *
+          std::numbers::log2e_v<opmath_t>;
     }
   }
 };
