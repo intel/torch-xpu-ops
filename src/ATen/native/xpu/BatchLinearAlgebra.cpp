@@ -12,7 +12,6 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
-#include <iostream>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -24,17 +23,6 @@ void lu_solve_kernel_xpu(
     const Tensor& pivots,
     const Tensor& B,
     TransposeType trans) {
-  std::cout << "[LU_FACTOR_DEBUG] lu_solve_kernel_xpu"
-            << " LU.device=" << LU.device()
-            << " LU.dtype=" << LU.scalar_type()
-            << " LU.shape=" << LU.sizes()
-            << " pivots.dtype=" << pivots.scalar_type()
-            << " pivots.shape=" << pivots.sizes()
-            << " B.device=" << B.device()
-            << " B.dtype=" << B.scalar_type()
-            << " B.shape=" << B.sizes()
-            << " trans=" << static_cast<int>(trans)
-            << std::endl;
 #if defined(USE_ONEMKL_XPU)
   native::xpu::lu_solve_mkl(LU, pivots, B, trans);
 #else
@@ -55,36 +43,10 @@ void lu_factor_kernel_fallback(
     const Tensor& pivots,
     const Tensor& infos,
     bool compute_pivots) {
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_fallback"
-            << " input.device=" << input.device()
-            << " input.dtype=" << input.scalar_type()
-            << " input.shape=" << input.sizes()
-            << " pivots.dtype=" << pivots.scalar_type()
-            << " pivots.shape=" << pivots.sizes()
-            << " infos.dtype=" << infos.scalar_type()
-            << " infos.shape=" << infos.sizes()
-            << " compute_pivots=" << compute_pivots
-            << std::endl;
-
   auto input_cpu = input.to(input.options().device(kCPU));
   auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
   const auto infos_cpu = infos.to(infos.options().device(kCPU));
-
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_fallback"
-            << " input_cpu.device=" << input_cpu.device()
-            << " input_cpu.dtype=" << input_cpu.scalar_type()
-            << " input_cpu.shape=" << input_cpu.sizes()
-            << " pivots_cpu.dtype=" << pivots_cpu.scalar_type()
-            << " pivots_cpu.shape=" << pivots_cpu.sizes()
-            << " infos_cpu.dtype=" << infos_cpu.scalar_type()
-            << " infos_cpu.shape=" << infos_cpu.sizes()
-            << std::endl;
-
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_stub(at::kCPU, ...) -> begin"
-            << std::endl;
   lu_factor_stub(at::kCPU, input_cpu, pivots_cpu, infos_cpu, compute_pivots);
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_stub(at::kCPU, ...) -> end"
-            << std::endl;
 
   input.copy_(input_cpu);
   pivots.copy_(pivots_cpu);
@@ -96,38 +58,9 @@ void lu_factor_kernel_xpu(
     const Tensor& pivots,
     const Tensor& infos,
     bool compute_pivots) {
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu"
-            << " input.device=" << input.device()
-            << " input.dtype=" << input.scalar_type()
-            << " input.shape=" << input.sizes()
-            << " pivots.dtype=" << pivots.scalar_type()
-            << " pivots.shape=" << pivots.sizes()
-            << " infos.dtype=" << infos.scalar_type()
-            << " infos.shape=" << infos.sizes()
-            << " compute_pivots=" << compute_pivots
-            << " stride_last=" << input.stride(-1)
-            << std::endl;
 #if defined(USE_ONEMKL_XPU)
-  int64_t batch_size = native::batchCount(input);
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu"
-            << " USE_ONEMKL_XPU=1"
-            << " batch_size=" << batch_size
-            << std::endl;
-  // Keep CPU fallback for batch_size == 1 only when pivots are requested,
-  // because CPU LU without pivoting is not implemented.
-  if (batch_size == 1 && compute_pivots) {
-    std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu -> fallback_cpu_path"
-              << std::endl;
-    lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
-  } else {
-    std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu -> onemkl_path"
-              << std::endl;
-    native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
-  }
+  native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
 #else
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_kernel_xpu"
-            << " USE_ONEMKL_XPU=0 -> fallback_cpu_path"
-            << std::endl;
   lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
 #endif // USE_ONEMKL_XPU
 }

@@ -30,8 +30,6 @@
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl/lapack.hpp>
 
-#include <iostream>
-
 namespace at::native::xpu {
 
 #define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
@@ -118,14 +116,6 @@ void mkl_getrfnp(
     int64_t batch_size,
     scalar_t* scratchpad,
     int64_t scratchpadsize) {
-  std::cout << "[LU_FACTOR_DEBUG] mkl_getrfnp"
-            << " m=" << m
-            << " n=" << n
-            << " lda=" << lda
-            << " stride_a=" << stride_a
-            << " batch_size=" << batch_size
-            << " scratchpadsize=" << scratchpadsize
-            << std::endl;
   SYCL_ONEMKL_SUBMIT(
       queue,
       oneapi::mkl::lapack::getrfnp_batch,
@@ -245,24 +235,11 @@ static void apply_lu_xpu_(
   int64_t stride_a = lda * n;
   scalar_t* a = reinterpret_cast<scalar_t*>(self_.data_ptr());
 
-  std::cout << "[LU_FACTOR_DEBUG] apply_lu_xpu_"
-            << " get_pivots=" << get_pivots
-            << " batch_size=" << batch_size
-            << " m=" << m
-            << " n=" << n
-            << " lda=" << lda
-            << " stride_a=" << stride_a
-            << std::endl;
-
   if (get_pivots) {
     int64_t stride_ipiv = (m < n) ? m : n;
     int64_t* ipiv = pivots_.data_ptr<int64_t>();
     int64_t scratchpadsize = mkl_getrf_scratchpad<scalar_t>(
         queue, m, n, lda, stride_a, stride_ipiv, batch_size);
-    std::cout << "[LU_FACTOR_DEBUG] apply_lu_xpu_ -> getrf_batch"
-              << " stride_ipiv=" << stride_ipiv
-              << " scratchpadsize=" << scratchpadsize
-              << std::endl;
     Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
     try {
       mkl_getrf<scalar_t>(
@@ -283,9 +260,6 @@ static void apply_lu_xpu_(
   } else {
     int64_t scratchpadsize = mkl_getrfnp_scratchpad<scalar_t>(
         queue, m, n, lda, stride_a, batch_size);
-    std::cout << "[LU_FACTOR_DEBUG] apply_lu_xpu_ -> getrfnp_batch"
-              << " scratchpadsize=" << scratchpadsize
-              << std::endl;
     Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
     try {
       mkl_getrfnp<scalar_t>(
@@ -455,13 +429,6 @@ void lu_factor_mkl(
     const Tensor& pivots,
     const Tensor& info,
     bool pivot) {
-  std::cout << "[LU_FACTOR_DEBUG] lu_factor_mkl"
-            << " device=" << LU.device()
-            << " dtype=" << LU.scalar_type()
-            << " shape=" << LU.sizes()
-            << " pivot=" << pivot
-            << " stride_last=" << LU.stride(-1)
-            << std::endl;
   TORCH_CHECK(
       LU.dim() >= 2,
       "torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: ",
@@ -504,6 +471,11 @@ void lu_factor_mkl(
       LU.masked_fill_(
           nan_mask_expanded.expand({batch_size, m, n}),
           create_quiet_nan<scalar_t>());
+    }
+
+    // Match CUDA non-pivot behavior: backend-generated NaNs are replaced by 0.
+    if (!pivot) {
+      LU.copy_(at::where(LU.eq(LU), LU, at::zeros({}, LU.options())));
     }
   });
 
