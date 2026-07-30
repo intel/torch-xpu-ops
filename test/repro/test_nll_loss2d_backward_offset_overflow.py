@@ -1,4 +1,4 @@
-# Copyright 2020-2026 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,11 +23,15 @@ import unittest
 
 import torch
 import torch.nn.functional as F
+from torch.testing._internal.common_device_type import largeTensorTest
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 class TestNllLoss2dBackwardOffsetOverflow(TestCase):
+    # The (2**16 + 1, 2**15, 1, 1) FP16 input plus its gradient is ~9GB; skip on
+    # devices without enough memory so the Reproducer CI stays reliable.
+    @largeTensorTest("10GB", device="xpu")
     def test_backward_offset_no_overflow(self):
         # (2**16 + 1) samples of 2**15 classes: the last sample's input offset
         # sample * map_nelem * n_classes exceeds 2**31, overflowing int32.
