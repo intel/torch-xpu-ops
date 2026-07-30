@@ -16,9 +16,8 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
-#include <ATen/native/xpu/sycl/StatelessPhilox4x32.h>
+#include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <comm/SYCLContext.h>
-
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
@@ -31,6 +30,14 @@
 
 namespace at::native::xpu {
 
+inline void philox_derive_key(
+    uint4 r,
+    uint64_t* out_seed,
+    uint64_t* out_offset) {
+  *out_seed = static_cast<uint64_t>(r.x) | (static_cast<uint64_t>(r.y) << 32);
+  *out_offset = static_cast<uint64_t>(r.z) | (static_cast<uint64_t>(r.w) << 32);
+}
+
 struct PhiloxKeySplitFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t tid = static_cast<int64_t>(item.get_global_id(0));
@@ -41,8 +48,17 @@ struct PhiloxKeySplitFunctor {
 
     uint64_t seed = input_[key_idx * 2];
     uint64_t offset = input_[key_idx * 2 + 1];
+    
+    uint2 key = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+    uint4 counter = {
+      static_cast<uint32_t>(offset + static_cast<uint64_t>(split_idx)),
+      static_cast<uint32_t>((offset + static_cast<uint64_t>(split_idx)) >> 32),
+      // restrict subsequence=0
+      0,
+      0};
 
-    auto r = philox_4x32(seed, offset + static_cast<uint64_t>(split_idx));
+    auto r = philox4x32_10(counter,key);
+
     int64_t out = (split_idx * num_keys_ + key_idx) * 2;
     philox_derive_key(r, &output_[out], &output_[out + 1]);
   }
@@ -70,7 +86,15 @@ struct PhiloxKeyFoldInFunctor {
     uint64_t seed = input_[idx * 2];
     uint64_t offset = input_[idx * 2 + 1];
 
-    auto r = philox_4x32(seed, offset + static_cast<uint64_t>(data_));
+  uint2 key = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+  uint4 ctr = {
+      static_cast<uint32_t>( offset + static_cast<uint64_t>(data_)),
+      static_cast<uint32_t>( (offset + static_cast<uint64_t>(data_)) >> 32),
+      // restrict subsequence=0
+      0,
+      0};
+
+    auto r = philox4x32_10(counter,key);
     philox_derive_key(r, &output_[idx * 2], &output_[idx * 2 + 1]);
   }
 
