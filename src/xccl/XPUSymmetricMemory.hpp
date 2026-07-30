@@ -117,6 +117,7 @@ class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
   bool has_multicast_support(int device_idx) override;
   c10::DeviceType supported_device_type() override;
   std::string name() override;
+  bool has_allocation(void* ptr) override;
 
  private:
   c10::intrusive_ptr<Block> find_block(void* ptr);
