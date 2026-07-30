@@ -61,7 +61,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 3600
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ubuntu:24.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -71,6 +71,37 @@ jobs:
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
+      - name: Install gh-cli
+        run: |
+          cat /etc/os-release
+          hostname && id
+          # install
+          export GCC_VERSION=13
+          apt-get update
+          apt-get install -y gh gcc g++ gcc-${GCC_VERSION} g++-${GCC_VERSION} build-essential cmake ninja-build pkg-config autoconf automake
+          apt-get install -y python3-dev git zip unzip rsync jq sudo gnupg wget
+          gh --version
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100
+          update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100
+          gcc -v && g++ -v && gcov -v
+          # cleanup files
+          rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
+
+          # install driver
+          . /etc/os-release
+          wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2523 unified" | \
+                  sudo tee /etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list
+          apt-get update
+          apt-get install -y \
+                  intel-opencl-icd libze-intel-gpu1 libze1 \
+                  intel-media-va-driver-non-free libmfx-gen1 libvpl2 \
+                  libegl-mesa0 libegl1-mesa-dev libgbm1 libgl1-mesa-dev libgl1-mesa-dri \
+                  libglapi-mesa libgles2-mesa-dev libglx-mesa0 libigdgmm12 libxatracker2 mesa-va-drivers \
+                  mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all vainfo hwinfo clinfo || apt-get install -fy
+          apt-get install -y libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev libze-dev intel-ocloc || apt-get install -fy
+
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare test env
