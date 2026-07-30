@@ -46,9 +46,9 @@ class FftKernelBundleCache {
     // sycl::kernel_bundle objects whose destructor's reference the
     // sycl::context. During process teardown the SYCL runtime's
     // context may already be destroyed, this is an issue with
-    // sycl runtime and tracked by intel/llvm#22786.
-    // TODO: Allocate the cache on stack once intel/llvm#22786 is fixed
-    // and available in oneapi compiler.
+    // sycl runtime and tracked by https://github.com/intel/llvm/issues/22786.
+    // TODO: Allocate the cache on stack once sycl runtime issue is fixed
+    // and fix will be available in oneapi compiler.
     static FftKernelBundleCache* cache = new FftKernelBundleCache();
     return *cache;
   }
@@ -56,8 +56,10 @@ class FftKernelBundleCache {
   std::optional<bundle_t> get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(key);
-    return it == cache_.end() ? std::nullopt
-                              : std::optional<bundle_t>{it->second};
+    if (it == cache_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
   }
 
   void put(const std::string& key, bundle_t bundle) {
@@ -95,7 +97,6 @@ struct fft_descriptor {
   // not default constructible. [dimension][direction]
   std::optional<sycl::kernel_bundle<sycl::bundle_state::executable>>
       exe_bundle[3][2];
-  sycl::queue* queue = nullptr; // non-owning, for resource cleanup
 
   fft_descriptor() = default;
 
@@ -112,7 +113,7 @@ struct fft_descriptor {
   void release() {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
-        if (twidl_table[dim][dir] && !external_workspace && queue) {
+        if (twidl_table[dim][dir] && !external_workspace) {
           c10::xpu::XPUCachingAllocator::raw_delete(
               const_cast<void*>(twidl_table[dim][dir]));
           twidl_table[dim][dir] = nullptr;
@@ -122,7 +123,6 @@ struct fft_descriptor {
         exe_bundle[dim][dir].reset();
       }
     }
-    queue = nullptr;
   }
 };
 
@@ -491,8 +491,6 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
 
 template <typename T>
 void commit(sycl::queue& q, fft_descriptor& desc) {
-  desc.queue = &q;
-
   if (desc.fft_len.size() < 1 || desc.fft_len.size() > 3) {
     throw std::runtime_error("Unsupported number of dimensions");
   }
@@ -638,10 +636,10 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         throw std::runtime_error("Unsupported data type");
       };
 
-      // Build options fully determine the compiled binary, so use them (plus
-      // the device index) as the cache key. A '\x1f' separator keeps distinct
-      // option lists from colliding.
-      std::string cache_key = std::to_string(at::xpu::current_device());
+      // Build options fully determine the compiled binary, so use them as the
+      // cache key. A '\x1f' separator keeps distinct option lists from
+      // colliding.
+      std::string cache_key;
       for (const auto& opt : fft_build_opts) {
         cache_key += '\x1f';
         cache_key += opt;
@@ -650,6 +648,11 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
       auto& bundle_cache = FftKernelBundleCache::instance();
       auto cached = bundle_cache.get(cache_key);
       if (!cached) {
+        // TODO: The cache lock is not held across the build below, so threads
+        // that miss on the same key concurrently will each build the same
+        // source. This is safe - get()/put() are individually locked and the
+        // SYCL runtime handles concurrent builds of identical source - but the
+        // redundant compilation is wasteful and can be improved.
         if (!src_bundle) {
           src_bundle = syclexp::create_kernel_bundle_from_source(
               q.get_context(), syclexp::source_language::sycl, kernel_src);
@@ -675,7 +678,7 @@ void set_workspace(T* workspace, sycl::queue& q, fft_descriptor& desc) {
 
   // Delete any previously allocated twiddle factor buffers if this overrides
   // workspace from internal to external.
-  if (!desc.external_workspace && desc.queue) {
+  if (!desc.external_workspace) {
     for (int dim = 0; dim < 3; ++dim) {
       for (int dir = 0; dir < 2; ++dir) {
         if (desc.twidl_table[dim][dir]) {
