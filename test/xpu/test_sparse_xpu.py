@@ -30,7 +30,10 @@ from torch.testing._internal.common_device_type import (
     tol,
     toleranceOverride,
 )
-from torch.testing._internal.common_dtype import floating_types_and
+from torch.testing._internal.common_dtype import (
+    all_types_and_complex_and,
+    floating_types_and,
+)
 from torch.testing._internal.common_utils import (
     coalescedonoff,
     DeterministicGuard,
@@ -126,6 +129,9 @@ TestSparse.test_coalesce_accepts_large_tensor = largeTensorTest("30GB", "xpu")(
 
 TestSparse.test_bmm_oob = retarget_outermost_onlycuda_to_onlyon(TestSparse.test_bmm_oob)
 
+TestSparse.test_same_gpu = retarget_outermost_onlycuda_to_onlyon(
+    TestSparse.test_same_gpu
+)
 
 # ======================================================================
 # Decorator additions (no body change)
@@ -516,6 +522,66 @@ def _test_empty_like(self, sparse_tensor, dtype, device, coalesced):
 
 
 TestSparse._test_empty_like = _test_empty_like
+
+
+@onlyOn(["cuda", "xpu"])
+@dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+@parametrize("requires_grad", (True, False))
+def _test_empty_full(self, device, dtype, requires_grad):
+    if requires_grad and not (dtype.is_floating_point or dtype.is_complex):
+        self.skipTest(
+            f"requires_grad==True requires float or complex dtype, got {dtype}"
+        )
+
+    self._test_empty_full(torch.device("cpu"), dtype, requires_grad)
+    self._test_empty_full(None, dtype, requires_grad)
+    self._test_empty_full(torch.device(device), dtype, requires_grad)
+
+
+TestSparse.test_empty_full = _test_empty_full
+
+
+def __test_empty_full(self, device, dtype, requires_grad):
+    shape = (2, 3)
+    layout = torch.sparse_coo
+
+    def check_value(tensor, value=None, dtype=dtype, requires_grad=requires_grad):
+        self.assertEqual(shape, tensor.shape)
+        self.assertIs(dtype, tensor.dtype)
+        self.assertIs(layout, tensor.layout)
+        self.assertEqual(tensor.requires_grad, requires_grad)
+        if tensor.device.type != "cpu" and device is not None:
+            self.assertEqual(device, tensor.device)
+        if value is not None:
+            fill = tensor.empty(shape, dtype=dtype).fill_(value)
+            self.assertEqual(tensor, fill)
+
+    v = torch.sparse_coo_tensor(
+        shape, dtype=dtype, device=device, requires_grad=requires_grad
+    )
+    check_value(v)
+
+    out = v.new()
+    check_value(torch.zeros(shape, out=out, device=device, requires_grad=requires_grad))
+
+    int64_dtype = torch.int64
+    check_value(v.new_empty(shape), requires_grad=False)
+    check_value(
+        v.new_empty(shape, dtype=int64_dtype, device=device, requires_grad=False),
+        dtype=int64_dtype,
+        requires_grad=False,
+    )
+    check_value(torch.empty_like(v), requires_grad=False)
+    check_value(
+        torch.empty_like(
+            v, dtype=int64_dtype, layout=layout, device=device, requires_grad=False
+        ),
+        dtype=int64_dtype,
+        requires_grad=False,
+    )
+
+
+TestSparse._test_empty_full = __test_empty_full
 
 
 # TestSparseOneOff
