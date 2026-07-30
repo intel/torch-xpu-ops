@@ -373,10 +373,10 @@ struct NllLoss2dBackwardKernelFunctor {
         -(size_average_ ? *grad_output_ / *total_weight_ : *grad_output_);
 
     // Use 64-bit offsets: sample * map_nelem_ * n_classes_ overflows a 32-bit
-    // int once the flattened extent reaches 2^31, wrapping the per-sample base
-    // pointer and silently dropping gradients for the tail samples (#4723,
-    // pytorch/pytorch#190139). The CUDA path guards this by selecting a 64-bit
-    // index type when 32-bit indexing is unsafe.
+    // int once the flattened extent reaches 2147483648 (INT_MAX + 1), wrapping
+    // the per-sample base pointer and silently dropping gradients for the tail
+    // samples (#4723, pytorch/pytorch#190139). The CUDA path guards this by
+    // selecting a 64-bit index type when 32-bit indexing is unsafe.
     const int64_t sample = item.get_group(0) / blocks_per_sample_;
     const int step = item.get_local_range(0) * blocks_per_sample_;
 
