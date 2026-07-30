@@ -779,8 +779,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
   auto offsets_original = offsets_t.contiguous();
   auto per_sample_weights = per_sample_weights_t.contiguous();
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) =
+  auto [indices, offsets] =
       promoteIndicesAndOffsets(indices_original, offsets_original);
   auto indices_arg = TensorArg(indices, "indices", 1);
   checkScalarTypes("embedding_bag_kernel", indices_arg, {kLong, kInt});
@@ -925,8 +924,7 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
   TORCH_INTERNAL_ASSERT(grad.dim() == 2);
   auto embedding_features = grad.size(1);
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) = promoteIndicesAndOffsets(indices_, offsets_);
+  auto [indices, offsets] = promoteIndicesAndOffsets(indices_, offsets_);
   TORCH_INTERNAL_ASSERT(indices.dim() == 1);
   auto num_samples = indices.size(0);
 
