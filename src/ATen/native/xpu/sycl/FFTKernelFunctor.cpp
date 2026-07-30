@@ -16,7 +16,6 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
-#include <memory>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -34,10 +33,10 @@ namespace syclexp = sycl::ext::oneapi::experimental;
 // parameters that determine the binary, identical repeated
 // FFTs reuse a compiled bundle instead of recompiling.
 //
-// Bundles are owned here via shared_ptr for the lifetime of the process; the
-// fft_descriptor holds a shared reference rather than owning them. The set of
-// distinct keys is tiny (supported sizes x dims x directions x precisions per
-// device), so no eviction is needed for now.
+// Bundles are owned here for the lifetime of the process; the fft_descriptor
+// holds a copy of the handle rather than sharing ownership. The set of distinct
+// keys is tiny (supported sizes x dims x directions x precisions per device),
+// so no eviction is needed for now.
 class FftKernelBundleCache {
  public:
   using bundle_t = sycl::kernel_bundle<sycl::bundle_state::executable>;
@@ -54,20 +53,21 @@ class FftKernelBundleCache {
     return *cache;
   }
 
-  std::shared_ptr<bundle_t> get(const std::string& key) {
+  std::optional<bundle_t> get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = cache_.find(key);
-    return it == cache_.end() ? nullptr : it->second;
+    return it == cache_.end() ? std::nullopt
+                              : std::optional<bundle_t>{it->second};
   }
 
-  void put(const std::string& key, std::shared_ptr<bundle_t> bundle) {
+  void put(const std::string& key, bundle_t bundle) {
     std::lock_guard<std::mutex> lock(mutex_);
     cache_.emplace(key, std::move(bundle));
   }
 
  private:
   std::mutex mutex_;
-  std::unordered_map<std::string, std::shared_ptr<bundle_t>> cache_;
+  std::unordered_map<std::string, bundle_t> cache_;
 };
 
 struct fft_descriptor {
@@ -90,9 +90,10 @@ struct fft_descriptor {
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
   std::array<std::array<size_t, 3>, 3> global_work_size{
       {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}};
-  // Shared references to cached executable bundles; ownership stays with
-  // FftKernelBundleCache. [dimension][direction]
-  std::shared_ptr<sycl::kernel_bundle<sycl::bundle_state::executable>>
+  // Handles to cached executable bundles; ownership stays with
+  // FftKernelBundleCache. std::optional is used because sycl::kernel_bundle is
+  // not default constructible. [dimension][direction]
+  std::optional<sycl::kernel_bundle<sycl::bundle_state::executable>>
       exe_bundle[3][2];
   sycl::queue* queue = nullptr; // non-owning, for resource cleanup
 
@@ -116,8 +117,8 @@ struct fft_descriptor {
               const_cast<void*>(twidl_table[dim][dir]));
           twidl_table[dim][dir] = nullptr;
         }
-        // exe_bundle holds shared references into FftKernelBundleCache; the
-        // cache retains ownership, so we just drop our reference here.
+        // exe_bundle holds handles to bundles owned by FftKernelBundleCache;
+        // the cache retains ownership, so we just drop our handle here.
         exe_bundle[dim][dir].reset();
       }
     }
@@ -653,14 +654,12 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
           src_bundle = syclexp::create_kernel_bundle_from_source(
               q.get_context(), syclexp::source_language::sycl, kernel_src);
         }
-        auto exe_bundle = syclexp::build(
+        cached = syclexp::build(
             *src_bundle,
             syclexp::properties{syclexp::build_options{fft_build_opts}});
-        cached = std::make_shared<FftKernelBundleCache::bundle_t>(
-            std::move(exe_bundle));
-        bundle_cache.put(cache_key, cached);
+        bundle_cache.put(cache_key, *cached);
       }
-      desc.exe_bundle[dim][dir_val] = cached;
+      desc.exe_bundle[dim][dir_val] = std::move(cached);
     }
   }
   if (!desc.external_workspace) {
