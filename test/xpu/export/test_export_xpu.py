@@ -18357,7 +18357,8 @@ class TestExportCustomClass(TorchTestCase):
                 raise AssertionError(f"Key {k} already exists in ep.constants")
             ep._constants[k] = v
         serialized_vals = serialize(ep)
-        deserialized_ep = deserialize(serialized_vals)
+        with torch.serialization.safe_globals([torch.ScriptObject]):
+            deserialized_ep = deserialize(serialized_vals)
 
         for node in deserialized_ep.graph.nodes:
             if (
