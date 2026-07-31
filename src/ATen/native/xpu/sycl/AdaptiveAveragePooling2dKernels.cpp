@@ -89,7 +89,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
     oh_ = gyacc_.size(2);
     ow_ = gyacc_.size(3);
 
-    numel_ = ib_ * ic_ * ih_ * iw_;
+    numel_ = static_cast<int64_t>(ib_) * ic_ * ih_ * iw_;
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
     local_range_ = syclMaxWorkItemsPerSubSlice();
     global_range_ = total_item < local_range_
@@ -205,7 +205,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     oh_ = gyacc_.size(2);
     ow_ = gyacc_.size(3);
 
-    numel_ = ib_ * ic_ * ih_ * iw_;
+    numel_ = static_cast<int64_t>(ib_) * ic_ * ih_ * iw_;
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
 
     local_range_ = syclMaxWorkGroupSize(*this);
