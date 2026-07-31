@@ -223,7 +223,6 @@ void im2col_kernel(
   auto output_length = output_height * output_width;
 
   output.resize_({batch_size, n_output_plane, output_length});
-  output.zero_();
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       kHalf, kBFloat16, kBool, input.scalar_type(), "im2col_xpu", [&] {
