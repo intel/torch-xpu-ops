@@ -93,7 +93,7 @@ struct PhiloxKeyFoldInFunctor {
 
       uint2 key = {
           static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-      uint4 ctr = {
+      uint4 counter = {
           static_cast<uint32_t>(offset + static_cast<uint64_t>(data_)),
           static_cast<uint32_t>((offset + static_cast<uint64_t>(data_)) >> 32),
           // restrict subsequence=0
