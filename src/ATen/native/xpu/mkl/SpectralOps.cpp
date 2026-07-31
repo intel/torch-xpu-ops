@@ -34,22 +34,6 @@ namespace impl {
 
 constexpr int64_t mkl_max_ndim = 3;
 
-// Sort transform dimensions by input layout, for best performance
-// exclude_last is for onesided transforms where the last dimension cannot be
-// reordered
-static DimVector _sort_dims(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool exclude_last = false) {
-  DimVector sorted_dims(dim.begin(), dim.end());
-  auto self_strides = self.strides();
-  std::sort(
-      sorted_dims.begin(),
-      sorted_dims.end() - exclude_last,
-      [&](int64_t a, int64_t b) { return self_strides[a] > self_strides[b]; });
-  return sorted_dims;
-}
-
 template <precision prec, domain signal_type, typename scalar_t>
 void _mkl_dft(
     const Tensor& input,
@@ -287,7 +271,7 @@ Tensor& _exec_fft(
   return out;
 }
 
-// _dft_scale, _fft_apply_normalization, and promote_fft_input are
+// _sort_dims, _dft_scale, _fft_apply_normalization, and promote_fft_input are
 // defined in sycl/FFTKernelFunctor.cpp and declared in sycl/FFTKernelFunctor.h
 
 } // namespace impl

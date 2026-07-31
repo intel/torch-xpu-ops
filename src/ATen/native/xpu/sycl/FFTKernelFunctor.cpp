@@ -11,6 +11,7 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
@@ -129,10 +130,7 @@ struct fft_descriptor {
 // Sort transform dimensions by input layout, for best performance
 // exclude_last is for onesided transforms where the last dimension cannot be
 // reordered
-static DimVector _sort_dims(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool exclude_last = false) {
+DimVector _sort_dims(const Tensor& self, IntArrayRef dim, bool exclude_last) {
   DimVector sorted_dims(dim.begin(), dim.end());
   auto self_strides = self.strides();
   std::sort(
@@ -332,12 +330,12 @@ inline void fft_32(sycl::marray<DFT_FTYPE, 2> *in, sycl::marray<DFT_FTYPE, 2> *o
 
 inline void read_input(const DFT_FTYPE *in, sycl::marray<DFT_FTYPE, 2> *inReg, int group_id,
                        int local_id, int rows, int stride_to_next_row, int batch, int idist) {
-    size_t offset = group_id * idist + local_id * DIST_TO_NEXT_THREAD;
+    size_t offset = group_id * idist + local_id * DIST_TO_NEXT_WORK_ITEM;
 
     if(local_id < FACT1) {
         #pragma unroll
         for(int i=0;i<rows;++i) {
-            const DFT_FTYPE *base = in + i * stride_to_next_row * DIST_TO_NEXT_THREAD * 2;
+            const DFT_FTYPE *base = in + i * stride_to_next_row * DIST_TO_NEXT_WORK_ITEM * 2;
             inReg[i][0] = base[offset * 2];
             inReg[i][1] = base[offset * 2 + 1];
         }
@@ -345,12 +343,12 @@ inline void read_input(const DFT_FTYPE *in, sycl::marray<DFT_FTYPE, 2> *inReg, i
 }
 
 inline void write_output(DFT_FTYPE *out, sycl::marray<DFT_FTYPE, 2> *inReg, int group_id, int local_id,
-                         int rows, int stride_to_next_row, int batch, int odist, int fact1s_idx, int threads_in_group) {
-    size_t offset = group_id * odist + fact1s_idx * threads_in_group * DIST_TO_NEXT_THREAD + local_id * DIST_TO_NEXT_THREAD;
+                         int rows, int stride_to_next_row, int batch, int odist, int fact1s_idx, int work_items_in_group) {
+    size_t offset = group_id * odist + fact1s_idx * work_items_in_group * DIST_TO_NEXT_WORK_ITEM + local_id * DIST_TO_NEXT_WORK_ITEM;
 
     #pragma unroll
     for(int i=0;i<rows;++i) {
-        DFT_FTYPE *base = out + i * stride_to_next_row * DIST_TO_NEXT_THREAD * 2;
+        DFT_FTYPE *base = out + i * stride_to_next_row * DIST_TO_NEXT_WORK_ITEM * 2;
         base[offset * 2] = inReg[i][0];
         base[offset * 2 + 1] = inReg[i][1];
     }
@@ -368,8 +366,8 @@ inline void write_to_slm_nontransposed(sycl::marray<DFT_FTYPE, 2> *inReg, sycl::
 }
 
 inline void read_from_slm_transposed(sycl::marray<DFT_FTYPE, 2> *inReg, sycl::local_accessor<DFT_FTYPE, 1> slm,
-                                     int local_id, int rows, int stride_to_next_row, int fact1s_idx, int threads_in_group) {
-    size_t offset = fact1s_idx * stride_to_next_row * threads_in_group * 2 + local_id * stride_to_next_row * 2;
+                                     int local_id, int rows, int stride_to_next_row, int fact1s_idx, int work_items_in_group) {
+    size_t offset = fact1s_idx * stride_to_next_row * work_items_in_group * 2 + local_id * stride_to_next_row * 2;
 
     #pragma unroll
     for(int i=0;i<rows;++i) {
@@ -378,7 +376,7 @@ inline void read_from_slm_transposed(sycl::marray<DFT_FTYPE, 2> *inReg, sycl::lo
     }
 }
 
-inline void twiddle_mult(sycl::marray<DFT_FTYPE, 2> *inReg, const DFT_FTYPE *twidl, int threads_in_group,
+inline void twiddle_mult(sycl::marray<DFT_FTYPE, 2> *inReg, const DFT_FTYPE *twidl, int work_items_in_group,
                          int group_id, int local_id, int rows, int cols) {
     const int col =  local_id;
     sycl::marray<DFT_FTYPE, 2> twidl_val[REGSIZE];
@@ -404,7 +402,7 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
     int inner_batch = it.get_group(1);
     int outer_batch = it.get_group(2);
     int local_id = it.get_local_id(0);
-    int threads_in_group = it.get_local_range(0);
+    int work_items_in_group = it.get_local_range(0);
     sycl::marray<DFT_FTYPE, 2> inReg[REGSIZE];
 
     const DFT_FTYPE *in_batch = in + outer_batch * OUTER_BATCH_FWD_DIST * 2 + inner_batch * INNER_BATCH_FWD_DIST * 2;
@@ -413,15 +411,15 @@ void KERNEL_NAME(const DFT_FTYPE *in, DFT_FTYPE *out, sycl::local_accessor<DFT_F
 
     FFT_FACT0(inReg, inReg);
 
-    twiddle_mult(inReg, twidl, threads_in_group, group_id, local_id, FACT0, FACT1);
+    twiddle_mult(inReg, twidl, work_items_in_group, group_id, local_id, FACT0, FACT1);
     write_to_slm_nontransposed(inReg, slm, local_id, FACT0, FACT1);
     it.barrier(sycl::access::fence_space::local_space);
 
     #pragma unroll
     for(int i=0;i<NUM_FACT1S;++i) {
-        read_from_slm_transposed(inReg, slm, local_id, FACT1, FACT1, i, threads_in_group);
+        read_from_slm_transposed(inReg, slm, local_id, FACT1, FACT1, i, work_items_in_group);
         FFT_FACT1(inReg, inReg);
-        write_output(out_batch, inReg, group_id, local_id, FACT1, FACT0, BATCH, BWD_DIST, i, threads_in_group);
+        write_output(out_batch, inReg, group_id, local_id, FACT1, FACT0, BATCH, BWD_DIST, i, work_items_in_group);
     }
 }
 
@@ -560,7 +558,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     auto inner_batch_bwd_dist = 0;
     auto outer_batch_fwd_dist = 0;
     auto outer_batch_bwd_dist = 0;
-    auto dist_to_next_thread = desc.fwd_strides[dim];
+    auto dist_to_next_work_item = desc.fwd_strides[dim];
     if (desc.fft_len.size() > 1) {
       if (dim == 0) {
         fwd_dist = desc.fwd_strides[0] * desc.fft_len[0];
@@ -576,7 +574,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         batch = desc.fft_len[0];
         inner_batch_fwd_dist = desc.fwd_strides[1] * desc.fft_len[1];
         inner_batch_bwd_dist = desc.bwd_strides[1] * desc.fft_len[1];
-        dist_to_next_thread = desc.fwd_strides[1];
+        dist_to_next_work_item = desc.fwd_strides[1];
         desc.global_work_size[dim][0] =
             desc.local_work_size[dim][0] * desc.fft_len[0];
         desc.global_work_size[dim][1] = desc.batch;
@@ -594,7 +592,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
         inner_batch_bwd_dist = desc.bwd_strides[1];
         outer_batch_fwd_dist = desc.fwd_dist;
         outer_batch_bwd_dist = desc.bwd_dist;
-        dist_to_next_thread = desc.fwd_strides[2];
+        dist_to_next_work_item = desc.fwd_strides[2];
         desc.global_work_size[dim][1] = desc.fft_len[1] * desc.fft_len[2];
         desc.global_work_size[dim][2] = desc.batch;
       }
@@ -625,7 +623,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
           "-DSCALE=" + std::string(scale_buf),
           "-DFFT_FACT0=" + fact0_fn,
           "-DFFT_FACT1=" + fact1_fn,
-          "-DDIST_TO_NEXT_THREAD=" + std::to_string(dist_to_next_thread),
+          "-DDIST_TO_NEXT_WORK_ITEM=" + std::to_string(dist_to_next_work_item),
           "-DOUTER_BATCH_FWD_DIST=" + std::to_string(outer_batch_fwd_dist),
           "-DINNER_BATCH_FWD_DIST=" + std::to_string(inner_batch_fwd_dist),
           "-DOUTER_BATCH_BWD_DIST=" + std::to_string(outer_batch_bwd_dist),

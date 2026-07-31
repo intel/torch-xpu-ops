@@ -35,6 +35,11 @@ void _fft_fill_with_conjugate_symmetry_(const Tensor& input, IntArrayRef dim_);
 
 namespace impl {
 
+DimVector _sort_dims(
+    const Tensor& self,
+    IntArrayRef dim,
+    bool exclude_last = false);
+
 double _dft_scale(
     IntArrayRef dim,
     IntArrayRef norm_sizes,
