@@ -24,12 +24,6 @@
 #include <complex>
 #include <type_traits>
 
-#define MAX(X, Y) max_impl(X, Y)
-#define MIN(X, Y) min_impl(X, Y)
-
-#define device_sqrt sycl::sqrt
-#define compat_pow sycl::pow
-
 namespace at {
 namespace native {
 namespace xpu {
@@ -95,7 +89,7 @@ struct WelfordOps {
     const auto mean = static_cast<scalar_t>(acc.mean);
     const auto divisor = acc.nf > correction ? acc.nf - correction : 0;
     const auto var = acc.m2 / divisor;
-    res_t results(take_sqrt ? device_sqrt(var) : var, mean);
+    res_t results(take_sqrt ? sycl::sqrt(var) : var, mean);
     return results;
   }
 
@@ -141,11 +135,11 @@ struct MeanOps {
 template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
 struct AbsMinOps {
   inline acc_t reduce(acc_t acc, scalar_t data, int64_t /*idx*/) const {
-    return MIN(acc, static_cast<acc_t>(std::abs(data)));
+    return min_impl(acc, static_cast<acc_t>(std::abs(data)));
   }
 
   inline acc_t combine(acc_t a, acc_t b) const {
-    return MIN(a, b);
+    return min_impl(a, b);
   }
 
   inline out_t project(acc_t a) const {
@@ -164,11 +158,11 @@ struct AbsMinOps {
 template <typename scalar_t, typename acc_t = scalar_t, typename out_t = acc_t>
 struct AbsMaxOps {
   inline acc_t reduce(acc_t acc, scalar_t data, int64_t /*idx*/) const {
-    return MAX(acc, static_cast<acc_t>(std::abs(data)));
+    return max_impl(acc, static_cast<acc_t>(std::abs(data)));
   }
 
   inline acc_t combine(acc_t a, acc_t b) const {
-    return MAX(a, b);
+    return max_impl(a, b);
   }
 
   inline out_t project(acc_t a) const {
@@ -189,7 +183,7 @@ struct NormOps {
   acc_t norm_;
 
   inline acc_t reduce(acc_t acc, scalar_t data, int64_t /*idx*/) const {
-    return acc + compat_pow(static_cast<acc_t>(std::abs(data)), norm_);
+    return acc + sycl::pow(static_cast<acc_t>(std::abs(data)), norm_);
   }
 
   inline acc_t combine(acc_t a, acc_t b) const {
@@ -197,7 +191,7 @@ struct NormOps {
   }
 
   inline out_t project(acc_t a) const {
-    return compat_pow(a, static_cast<acc_t>(1.0) / norm_);
+    return sycl::pow(a, static_cast<acc_t>(1.0) / norm_);
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
@@ -289,7 +283,7 @@ struct NormTwoOps {
   }
 
   inline out_t project(acc_t a) const {
-    return device_sqrt(a);
+    return sycl::sqrt(a);
   }
 
   static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {

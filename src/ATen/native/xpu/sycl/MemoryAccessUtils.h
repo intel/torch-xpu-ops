@@ -100,7 +100,7 @@ struct multi_outputs_store_helper {
       at::detail::Array<char*, ntensors> data,
       at::detail::Array<uint32_t, num_outputs> offsets,
       std::tuple<Args...> ret) {
-    using T = typename std::tuple_element<current, std::tuple<Args...>>::type;
+    using T = std::tuple_element_t<current, std::tuple<Args...>>;
     T* to = reinterpret_cast<T*>(data[current]) + offsets[current];
     *to = std::get<current>(ret);
   }

@@ -333,7 +333,7 @@ Tensor& add_out_dense_sparse_kernel(
           });
     }
   } else {
-    Tensor indices1D = flatten_indices(indices, sparse.sizes(), 0);
+    Tensor indices1D = flatten_indices(indices, sparse.sizes(), false);
 
     int64_t view_rows = 1;
     int64_t view_columns = 1;
