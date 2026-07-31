@@ -5231,6 +5231,7 @@ def forward(self, p_conv_weight, p_conv_bias, p_conv1d_weight, p_conv1d_bias, b_
             self.assertFalse(torch.ops.mylib.foo123.default in table)
             table.materialize()
             self.assertFalse(torch.ops.mylib.foo123.default in table)
+
     def test_if_post_autograd_op_preserved(self):
         class Foo(torch.nn.Module):
             def forward(self, x):
@@ -15930,6 +15931,7 @@ graph():
             dynamo_graph_capture_for_export(Foo())(
                 Block(torch.randn(4, 4), torch.randn(4, 4))
             )
+
     def test_enum_str(self):
         class TensorDim(str, enum.Enum):
             DDP = "ddp"

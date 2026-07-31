@@ -12,6 +12,7 @@
 
 # Owner(s): ["module: intel"]
 import inspect
+
 import torch
 from torch._export.serde import serialize as serde_serialize
 from torch._export.serde.serialize import deserialize, serialize
@@ -23,8 +24,10 @@ except ImportError:
     import testing_xpu  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
-from torch.testing._internal import custom_tensor as custom_tensor_mod
-from torch.testing._internal import two_tensor as two_tensor_mod
+from torch.testing._internal import (
+    custom_tensor as custom_tensor_mod,
+    two_tensor as two_tensor_mod,
+)
 
 test_classes = {}
 
@@ -36,10 +39,20 @@ def _module_safe_globals():
         if obj.__module__ == test_export_xpu.__name__
     ]
     nn_classes = [obj for _, obj in inspect.getmembers(torch.nn, inspect.isclass)]
-    two_tensor_classes = [obj for _, obj in inspect.getmembers(two_tensor_mod, inspect.isclass)]
-    custom_tensor_classes = [obj for _, obj in inspect.getmembers(custom_tensor_mod, inspect.isclass)]
+    two_tensor_classes = [
+        obj for _, obj in inspect.getmembers(two_tensor_mod, inspect.isclass)
+    ]
+    custom_tensor_classes = [
+        obj for _, obj in inspect.getmembers(custom_tensor_mod, inspect.isclass)
+    ]
     serde_helpers = [serde_serialize._reconstruct_fake_tensor, torch.ScriptObject]
-    return test_classes + nn_classes + two_tensor_classes + custom_tensor_classes + serde_helpers
+    return (
+        test_classes
+        + nn_classes
+        + two_tensor_classes
+        + custom_tensor_classes
+        + serde_helpers
+    )
 
 
 def _deserialize_with_safe_globals(payload):
