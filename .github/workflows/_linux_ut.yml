@@ -231,8 +231,9 @@ jobs:
           ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
           new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
           if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
-            # Keep header lines
-            head -2 "$ut_failure_csv" > "$new_failure_csv"
+            # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
+            # build the report from matched rows only.
+            : > "$new_failure_csv"
             # Match rows by class_name AND test_name to avoid substring false positives
             # filtered log format: category,class_name,test_name
             while IFS=',' read -r category class_name test_name; do
@@ -241,8 +242,8 @@ jobs:
               grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
             done < "$new_failure_list"
             # Verify count matches filtered log
-            expected_count=$(wc -l < "$new_failure_list")
-            actual_count=$(($(wc -l < "$new_failure_csv") - 2))  # subtract header lines
+            expected_count=$(grep -c . "$new_failure_list")
+            actual_count=$(grep -c . "$new_failure_csv")
             if [ "$actual_count" -ne "$expected_count" ]; then
               echo "::warning::New failure count mismatch: filtered=$expected_count, csv=$actual_count"
             fi
