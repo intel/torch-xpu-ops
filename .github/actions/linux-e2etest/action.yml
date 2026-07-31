@@ -18,6 +18,9 @@ inputs:
     required: true
     default: 'accuracy'
     description: 'Comma-separated scenarios: accuracy,performance'
+  overwrite_model_list:
+    default: 'true'
+    description: 'Overwrite PyTorch model lists with the torch-xpu-ops .ci/benchmarks overlay'
 
 runs:
   using: composite
@@ -40,6 +43,12 @@ runs:
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
+        fi
+
+        if [ "${{ inputs.overwrite_model_list }}" == "true" ]; then
+          # overlay torch-xpu-ops model lists for nightly / PR tests
+          rsync -avz "${GITHUB_WORKSPACE}/.ci/benchmarks/" benchmarks/dynamo/
+          model_list_args=(--model-only benchmarks/dynamo/model_list.csv)
         fi
 
         rm -rf inductor_log torch && mkdir -p inductor_log
