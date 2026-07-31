@@ -33,7 +33,7 @@ c10::complex<scalar_t> _logcumsumexp_minmax(
     return y;
   } else if (at::_isnan(xr) || (at::_isnan(std::imag(x)))) {
     return x;
-  } else if (min) { // min
+  } else if constexpr (min) { // min
     return (xr < yr) ? x : y;
   } else { // max
     return (xr >= yr) ? x : y;
@@ -52,7 +52,7 @@ scalar_t _log_add_exp_helper(const scalar_t& x, const scalar_t& y) {
   scalar_t max = isnan_y ? y : (isnan_x ? x : std::max(x, y));
   if (min != max || sycl::isfinite(min)) {
     // nan will be propagated here
-    return ::log1p(sycl::exp(min - max)) + max;
+    return sycl::log1p(sycl::exp(min - max)) + max;
   } else {
     // special case to correctly handle infinite cases
     return x;

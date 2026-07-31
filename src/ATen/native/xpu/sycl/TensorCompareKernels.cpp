@@ -94,6 +94,7 @@ void where_kernel(TensorIterator& iter) {
       "where_xpu",
       [&] { gpu_kernel(iter, WhereFunctor<scalar_t>()); },
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBFloat16,
       kBool,

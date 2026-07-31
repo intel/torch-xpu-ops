@@ -9,7 +9,6 @@
 */**/**/**/*.pyc
 */**/**/**/**/*.pyc
 .lintbin
-yaml/templates
 
 agent_space/
 agent_space_xpu/

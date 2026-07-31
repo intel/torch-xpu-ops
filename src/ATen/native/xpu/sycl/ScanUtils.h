@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -20,15 +21,11 @@
 namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
-template <typename T>
-inline T CeilDiv(T a, T b) {
-  return (a + b - 1) / b;
-}
 
-typedef enum {
+enum ScanType {
   EXCLUSIVE_TYPE = 0,
   INCLUSIVE_TYPE = 1,
-} ScanType;
+};
 
 template <typename scalar_t, typename idx_t, typename BinaryOperation>
 void binary_op_update(
@@ -323,7 +320,7 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  LoopScanConfig() {}
+  LoopScanConfig() = default;
 
   LoopScanConfig(
       InputInfo input_info,
@@ -357,7 +354,7 @@ class LoopScanConfig {
     ;
     const size_t max_work_group_num = target_global_size / wg_size;
     const size_t wg_number =
-        std::min(max_work_group_num, CeilDiv(batch_, wg_range_y_));
+        std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
     glb_range_x_ = wg_range_x_;
     glb_range_y_ = wg_range_y_ * wg_number;
 
@@ -685,7 +682,7 @@ class SegmentScanConfig : public BatchKernelConfig {
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
 
-  SegmentScanConfig() {}
+  SegmentScanConfig() = default;
 
   SegmentScanConfig(
       InputInfo input_info,
@@ -1402,6 +1399,11 @@ void scan_with_indices(
     BinaryFunction func) {
   auto self = self_.contiguous();
   TORCH_INTERNAL_ASSERT(values.is_contiguous() && indices.is_contiguous());
+
+  // Empty input: values/indices are empty too, nothing to write.
+  if (self.numel() == 0) {
+    return;
+  }
 
   dimension = maybe_wrap_dim(dimension, self.dim());
   TORCH_CHECK(

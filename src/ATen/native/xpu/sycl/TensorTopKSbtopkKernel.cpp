@@ -21,8 +21,9 @@
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernelImpl.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
-#include <c10/util/llvmMathExtras.h>
 #include <comm/DeviceProperties.h>
+
+#include <bit>
 
 namespace at::native::xpu {
 
@@ -46,7 +47,7 @@ static bool subgroup_topk_try_launch(
   }
 
   int K_sel = std::min<int>(
-      static_cast<int>(c10::llvm::PowerOf2Ceil(static_cast<uint64_t>(k))), 8);
+      static_cast<int>(std::bit_ceil(static_cast<uint64_t>(k))), 8);
 
   switch (K_sel) {
     case 1:

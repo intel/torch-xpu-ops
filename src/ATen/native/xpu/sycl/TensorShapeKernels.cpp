@@ -10,6 +10,7 @@
 
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorShape.h>
@@ -32,10 +33,6 @@ namespace at::native::xpu {
 static constexpr int64_t GROUP_SIZE = 128;
 static constexpr int64_t BYTES_PER_THREAD = 16;
 static constexpr int64_t BYTES_PER_GROUP = BYTES_PER_THREAD * GROUP_SIZE;
-
-inline int64_t div_up(int64_t a, int64_t b) {
-  return (a + b - 1) / b;
-}
 
 template <typename T>
 inline void stream_load128(uint4& val, const T* addr) {
@@ -91,7 +88,7 @@ static inline void get_aligned_region(
     int64_t& align_off,
     int64_t& aligned_size) {
   const int64_t ptr_val = reinterpret_cast<uintptr_t>(ptr);
-  align_off = div_up(ptr_val, alignment) * alignment - ptr_val;
+  align_off = at::ceil_div(ptr_val, alignment) * alignment - ptr_val;
   aligned_size = (chunk_size - align_off) / alignment * alignment;
 }
 
@@ -217,7 +214,7 @@ inline void copy_chunk_with_pad(
     int64_t thread_idx,
     int64_t num_threads) {
   // Supports type cast
-  if (!std::is_same_v<dst_t, src_t>) {
+  if constexpr (!std::is_same_v<dst_t, src_t>) {
     const int64_t max_num_elems = max_chunk_size / sizeof(dst_t);
     const int64_t actual_num_elems = actual_chunk_size / sizeof(src_t);
     int64_t elem_index = thread_idx;
@@ -311,7 +308,8 @@ static inline std::pair<int64_t, int64_t> get_pad_size(
     trailing_numel =
         c10::multiply_integers(sizes.slice(dim + 1, sizes.size() - dim - 1));
   }
-  int64_t pad_size_along_dim = div_up(sizes[dim], num_chunks) * num_chunks;
+  int64_t pad_size_along_dim =
+      at::ceil_div(sizes[dim], num_chunks) * num_chunks;
   return std::make_pair(pad_size_along_dim, trailing_numel);
 }
 
@@ -569,7 +567,8 @@ get_chunk_cat_metadata(
     pad_tensor_chunk_sizes.push_back(pad_tensor_chunk_size);
     chunk_size += pad_tensor_chunk_size;
     // Number of groups required to process this tensor chunk.
-    const int64_t num_groups = div_up(pad_tensor_chunk_size, BYTES_PER_GROUP);
+    const int64_t num_groups =
+        at::ceil_div(pad_tensor_chunk_size, BYTES_PER_GROUP);
     num_groups_per_tensor_chunk.push_back(num_groups);
 
     start_group_idx_per_tensor_chunk.push_back(
@@ -676,7 +675,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   // splits, assuming each thread only processes BYTES_PER_THREAD bytes.
   int64_t num_groups = 0;
   for (const auto& split_chunk_size : split_chunk_sizes) {
-    num_groups += div_up(split_chunk_size, GROUP_SIZE * BYTES_PER_THREAD);
+    num_groups += at::ceil_div(split_chunk_size, GROUP_SIZE * BYTES_PER_THREAD);
   }
 
   int64_t tile_size = syclMaxWorkItemsPerTile();
@@ -685,10 +684,10 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   // Make each thread process BYTES_PER_THREAD * iter_factor bytes to regulate
   // group size. Spread iter_factor evenly between chunks_per_group and
   // iters_per_chunk.
-  int64_t iter_factor = div_up(num_groups * num_chunks, max_groups);
+  int64_t iter_factor = at::ceil_div(num_groups * num_chunks, max_groups);
   int64_t chunks_per_group = std::ceil(std::sqrt(iter_factor));
   chunks_per_group = std::min(chunks_per_group, num_chunks);
-  const int64_t iters_per_chunk = div_up(iter_factor, chunks_per_group);
+  const int64_t iters_per_chunk = at::ceil_div(iter_factor, chunks_per_group);
 
   // Launch a logically jagged grid of shape
   // (chunk_size*, num_splits, num_chunks / chunks_per_group)
@@ -699,7 +698,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   std::vector<int64_t> groups_cumsums{0};
   group_idx_to_split_idx.reserve(num_groups);
   for (size_t split_idx = 0; split_idx < split_sizes.size(); ++split_idx) {
-    const auto groups = div_up(
+    const auto groups = at::ceil_div(
         split_chunk_sizes[split_idx],
         GROUP_SIZE * BYTES_PER_THREAD * iters_per_chunk);
     group_idx_to_split_idx.insert(

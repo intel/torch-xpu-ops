@@ -577,10 +577,10 @@ struct MaxPool2dBackwardChannelLastVec {
         grad_acc[i] = accscalar_t(0);
       }
 
-      int offset = batch * out_n_stride_ / vec_size + plane;
+      index_t offset = batch * out_n_stride_ / vec_size + plane;
       for (int ph = phstart; ph < phend; ++ph) {
         for (int pw = pwstart; pw < pwend; ++pw) {
-          int load_offset = offset +
+          index_t load_offset = offset +
               ph * gradOutputSizeW_ * numPlane_ / vec_size +
               pw * numPlane_ / vec_size;
           vec_t gout_val_vec = gradOutput_[load_offset];
@@ -1322,11 +1322,9 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  Tensor input, gradOutput, indices;
-
-  input = input_.contiguous(memory_format);
-  gradOutput = gradOutput_.contiguous(memory_format);
-  indices = indices_.contiguous(memory_format);
+  Tensor input = input_.contiguous(memory_format);
+  Tensor gradOutput = gradOutput_.contiguous(memory_format);
+  Tensor indices = indices_.contiguous(memory_format);
   gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
