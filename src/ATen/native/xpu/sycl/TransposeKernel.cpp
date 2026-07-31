@@ -18,6 +18,7 @@
 #include <ATen/native/xpu/sycl/TransposeKernel.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 
 namespace at::native::xpu {
@@ -35,10 +36,11 @@ namespace at::native::xpu {
 //    integer division by non-power-of-2 tile counts on every thread.
 // 2. Type-aware SLM padding minimizes bank conflicts for 2-byte types.
 // 3. FULL_TILE template fast-path eliminates all bounds checks.
+// 4. Template index type (int32/int64) selected by can_use_32bit_indexing.
 
 static constexpr int TILE_DIM = 32;
 
-template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
+template <typename scalar_t, typename index_t, int VEC_SIZE, bool FULL_TILE>
 struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr int WG_SIZE = 256;
   static constexpr int SLM_PAD = (sizeof(scalar_t) <= 2) ? 2 : 1;
@@ -49,16 +51,16 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
     int tx = item.get_local_id(2);
     int ty = item.get_local_id(1);
-    int batch = item.get_group(0);
+    index_t batch = static_cast<index_t>(item.get_group(0));
     int tile_y = item.get_group(1);
     int tile_x = item.get_group(2);
 
-    int batch_off = batch * rows_ * cols_;
+    index_t batch_off = batch * rows_ * cols_;
 
 #pragma unroll
     for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
-      int src_row = tile_y * TILE_DIM + ty + i;
-      int src_col = tile_x * TILE_DIM + tx * VEC_SIZE;
+      index_t src_row = static_cast<index_t>(tile_y * TILE_DIM + ty + i);
+      index_t src_col = static_cast<index_t>(tile_x * TILE_DIM + tx * VEC_SIZE);
 
       if constexpr (FULL_TILE) {
         vec_t v = *reinterpret_cast<const vec_t*>(
@@ -71,9 +73,10 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         if (src_row < rows_) {
 #pragma unroll
           for (int k = 0; k < VEC_SIZE; k++) {
-            if (src_col + k < cols_) {
-              slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] =
-                  src_[batch_off + src_row * cols_ + src_col + k];
+            if (src_col + static_cast<index_t>(k) < cols_) {
+              slm_[(ty + i) * SLM_STRIDE + tx * VEC_SIZE + k] = src_
+                  [batch_off + src_row * cols_ + src_col +
+                   static_cast<index_t>(k)];
             }
           }
         }
@@ -84,8 +87,8 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 #pragma unroll
     for (int i = 0; i < TILE_DIM; i += ROWS_PER_ITER) {
-      int dst_row = tile_x * TILE_DIM + ty + i;
-      int dst_col = tile_y * TILE_DIM + tx * VEC_SIZE;
+      index_t dst_row = static_cast<index_t>(tile_x * TILE_DIM + ty + i);
+      index_t dst_col = static_cast<index_t>(tile_y * TILE_DIM + tx * VEC_SIZE);
 
       if constexpr (FULL_TILE) {
         vec_t v;
@@ -99,9 +102,11 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         if (dst_row < cols_) {
 #pragma unroll
           for (int k = 0; k < VEC_SIZE; k++) {
-            if (dst_col + k < rows_) {
-              dst_[batch_off + dst_row * rows_ + dst_col + k] =
-                  slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
+            if (dst_col + static_cast<index_t>(k) < rows_) {
+              dst_
+                  [batch_off + dst_row * rows_ + dst_col +
+                   static_cast<index_t>(k)] =
+                      slm_[(tx * VEC_SIZE + k) * SLM_STRIDE + (ty + i)];
             }
           }
         }
@@ -109,7 +114,11 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
   }
 
-  BatchTransposeFunctor(const scalar_t* src, scalar_t* dst, int rows, int cols)
+  BatchTransposeFunctor(
+      const scalar_t* src,
+      scalar_t* dst,
+      index_t rows,
+      index_t cols)
       : src_(src), dst_(dst), rows_(rows), cols_(cols), slm_() {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
@@ -120,22 +129,23 @@ struct BatchTransposeFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const scalar_t* src_;
   scalar_t* dst_;
-  int rows_;
-  int cols_;
+  index_t rows_;
+  index_t cols_;
   sycl::local_accessor<scalar_t, 1> slm_;
 };
 
-template <typename scalar_t, int VEC_SIZE, bool FULL_TILE>
+template <typename scalar_t, typename index_t, int VEC_SIZE, bool FULL_TILE>
 static void launch_transpose_kernel(
     const scalar_t* src,
     scalar_t* dst,
-    int batch_size,
-    int rows,
-    int cols) {
+    index_t batch_size,
+    index_t rows,
+    index_t cols) {
   constexpr int kROWS_PER_ITER =
-      BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>::ROWS_PER_ITER;
-  int num_tiles_x = (cols + TILE_DIM - 1) / TILE_DIM;
-  int num_tiles_y = (rows + TILE_DIM - 1) / TILE_DIM;
+      BatchTransposeFunctor<scalar_t, index_t, VEC_SIZE, FULL_TILE>::
+          ROWS_PER_ITER;
+  int num_tiles_x = static_cast<int>((cols + TILE_DIM - 1) / TILE_DIM);
+  int num_tiles_y = static_cast<int>((rows + TILE_DIM - 1) / TILE_DIM);
 
   sycl::range<3> local_range(1, kROWS_PER_ITER, TILE_DIM / VEC_SIZE);
   sycl::range<3> global_range(
@@ -143,19 +153,19 @@ static void launch_transpose_kernel(
       static_cast<size_t>(num_tiles_y) * kROWS_PER_ITER,
       static_cast<size_t>(num_tiles_x) * (TILE_DIM / VEC_SIZE));
 
-  auto ker = BatchTransposeFunctor<scalar_t, VEC_SIZE, FULL_TILE>(
+  auto ker = BatchTransposeFunctor<scalar_t, index_t, VEC_SIZE, FULL_TILE>(
       src, dst, rows, cols);
 
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), ker);
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename index_t>
 static void dispatch_transpose(
     const scalar_t* src,
     scalar_t* dst,
-    int batch_size,
-    int rows,
-    int cols) {
+    index_t batch_size,
+    index_t rows,
+    index_t cols) {
   bool full_tile = (rows % TILE_DIM == 0) && (cols % TILE_DIM == 0);
 
   constexpr int kMaxVec =
@@ -172,8 +182,9 @@ static void dispatch_transpose(
       vec_size = 2;
   }
 
-#define LAUNCH(VS, FT) \
-  launch_transpose_kernel<scalar_t, VS, FT>(src, dst, batch_size, rows, cols)
+#define LAUNCH(VS, FT)                                \
+  launch_transpose_kernel<scalar_t, index_t, VS, FT>( \
+      src, dst, batch_size, rows, cols)
 
   if (full_tile) {
     if constexpr (kMaxVec >= 4) {
@@ -226,9 +237,9 @@ static void dispatch_transpose(
 static bool detect_batch_transpose(
     const at::Tensor& src,
     const at::Tensor& dst,
-    int& batch_size,
-    int& rows,
-    int& cols) {
+    int64_t& batch_size,
+    int64_t& rows,
+    int64_t& cols) {
   int ndim = src.dim();
   if (ndim < 2)
     return false;
@@ -237,9 +248,6 @@ static bool detect_batch_transpose(
   if (!src.sizes().equals(dst.sizes()))
     return false;
 
-  // Both must be densely packed (no holes in memory).
-  // This is equivalent to: sorting dims by stride and checking
-  // stride[i] == size[i+1] * stride[i+1] for all adjacent pairs.
   if (!src.is_non_overlapping_and_dense())
     return false;
   if (!dst.is_non_overlapping_and_dense())
@@ -337,9 +345,9 @@ static bool detect_batch_transpose(
       if (slm_per_wg > slm_per_wg_upbound)
         return false;
 
-      batch_size = static_cast<int>(b);
-      rows = static_cast<int>(r);
-      cols = static_cast<int>(c);
+      batch_size = b;
+      rows = r;
+      cols = c;
       return true;
     }
   }
@@ -353,12 +361,11 @@ bool can_use_channels_last_transpose_kernel(TensorIteratorBase& iter) {
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
 
-  // Only support float16, bfloat16, float32
   auto dtype = src.scalar_type();
   if (!(dtype == at::kHalf || dtype == at::kBFloat16 || dtype == at::kFloat))
     return false;
 
-  int batch_size, rows, cols;
+  int64_t batch_size, rows, cols;
   return detect_batch_transpose(src, dst, batch_size, rows, cols);
 }
 
@@ -366,33 +373,62 @@ void channels_last_transpose_kernel(TensorIteratorBase& iter) {
   const auto& dst = iter.tensor(0);
   const auto& src = iter.tensor(1);
 
-  int batch_size, rows, cols;
+  int64_t batch_size, rows, cols;
   detect_batch_transpose(src, dst, batch_size, rows, cols);
+
+  bool use_32bit = iter.can_use_32bit_indexing();
 
   AT_DISPATCH_SWITCH(
       src.scalar_type(),
       "batch_transpose_xpu",
       AT_DISPATCH_CASE(at::ScalarType::Half, [&] {
-        dispatch_transpose(
-            src.const_data_ptr<scalar_t>(),
-            dst.mutable_data_ptr<scalar_t>(),
-            batch_size,
-            rows,
-            cols);
+        if (use_32bit) {
+          dispatch_transpose<scalar_t, int32_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int32_t>(batch_size),
+              static_cast<int32_t>(rows),
+              static_cast<int32_t>(cols));
+        } else {
+          dispatch_transpose<scalar_t, int64_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int64_t>(batch_size),
+              static_cast<int64_t>(rows),
+              static_cast<int64_t>(cols));
+        }
       }) AT_DISPATCH_CASE(at::ScalarType::BFloat16, [&] {
-        dispatch_transpose(
-            src.const_data_ptr<scalar_t>(),
-            dst.mutable_data_ptr<scalar_t>(),
-            batch_size,
-            rows,
-            cols);
+        if (use_32bit) {
+          dispatch_transpose<scalar_t, int32_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int32_t>(batch_size),
+              static_cast<int32_t>(rows),
+              static_cast<int32_t>(cols));
+        } else {
+          dispatch_transpose<scalar_t, int64_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int64_t>(batch_size),
+              static_cast<int64_t>(rows),
+              static_cast<int64_t>(cols));
+        }
       }) AT_DISPATCH_CASE(at::ScalarType::Float, [&] {
-        dispatch_transpose(
-            src.const_data_ptr<scalar_t>(),
-            dst.mutable_data_ptr<scalar_t>(),
-            batch_size,
-            rows,
-            cols);
+        if (use_32bit) {
+          dispatch_transpose<scalar_t, int32_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int32_t>(batch_size),
+              static_cast<int32_t>(rows),
+              static_cast<int32_t>(cols));
+        } else {
+          dispatch_transpose<scalar_t, int64_t>(
+              src.const_data_ptr<scalar_t>(),
+              dst.mutable_data_ptr<scalar_t>(),
+              static_cast<int64_t>(batch_size),
+              static_cast<int64_t>(rows),
+              static_cast<int64_t>(cols));
+        }
       }));
 }
 
