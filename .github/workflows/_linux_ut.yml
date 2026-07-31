@@ -338,10 +338,12 @@ jobs:
             });
       - name: Fail if UT check failed
         if: ${{ steps.ut-check.outcome == 'failure' }}
+        shell: bash {0}
         run: |
           new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
           if [ -s "$new_failure_list" ]; then
-            echo "::error::UT check failed with new failures:"
+            new_failure_count=$(grep -c . "$new_failure_list")
+            echo "::error::UT check failed with ${new_failure_count} new failures:"
             cat "$new_failure_list"
           else
             echo "::error::UT check failed"
