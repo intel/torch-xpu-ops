@@ -18,6 +18,7 @@ import os
 import unittest
 
 import torch
+from torch.testing._internal.common_cuda import SM80OrLater
 from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfMPS,
@@ -27,6 +28,7 @@ from torch.testing._internal.common_device_type import (
     onlyCPU,
     onlyNativeDeviceTypes,
     onlyOn,
+    skipCUDAIf,
     tol,
     toleranceOverride,
 )
@@ -123,10 +125,6 @@ TestSparse.test_storage_not_null = retarget_outermost_onlycuda_to_onlyon(
     TestSparse.test_storage_not_null
 )
 
-TestSparse.test_coalesce_accepts_large_tensor = largeTensorTest("30GB", "xpu")(
-    retarget_outermost_onlycuda_to_onlyon(TestSparse.test_coalesce_accepts_large_tensor)
-)
-
 TestSparse.test_bmm_oob = retarget_outermost_onlycuda_to_onlyon(TestSparse.test_bmm_oob)
 
 TestSparse.test_same_gpu = retarget_outermost_onlycuda_to_onlyon(
@@ -151,6 +149,26 @@ TestSparse.test_sparse_addmm = toleranceOverride(
 # ======================================================================
 
 # TestSparse
+
+
+@onlyOn(["cuda", "xpu"])
+@largeTensorTest("30GB", "cuda")
+@largeTensorTest("30GB", "xpu")
+@skipCUDAIf(
+    not SM80OrLater and not TEST_WITH_ROCM, "CUDA capability < SM80 and not ROCM"
+)
+@dtypes(torch.float)
+def test_coalesce_accepts_large_tensor(self, device, dtype):
+    N = 22500000
+    NNZ = 272500000
+    rows = torch.randint(0, N, (NNZ,), dtype=torch.int64, device=device)
+    cols = torch.randint(0, N, (NNZ,), dtype=torch.int64, device=device)
+    indices = torch.stack([rows, cols], dim=0)
+    values = torch.randn(NNZ, dtype=dtype, device=device)
+    sparse_matrix = torch.sparse_coo_tensor(
+        indices, values, size=(N, N), dtype=torch.float32, device=device
+    )
+    sparse_matrix = sparse_matrix.coalesce()
 
 
 @coalescedonoff
@@ -841,6 +859,8 @@ TestSparseAny.test_constructor_mismatched_pinned_memory = (
 
 
 # Widen regex in assertRaisesRegex to include XPU.
+# NOTE: `self.skipTest('NOT IMPL')` were removed as the `assertRaisesRegex`
+# passes on XPU. Need to evaluate if skips are needed in upstream anyway.
 @onlyNativeDeviceTypes
 @all_sparse_layouts("layout", include_strided=not True)
 @dtypes(torch.float64, torch.cdouble)
