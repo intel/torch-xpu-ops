@@ -47,10 +47,11 @@ runs:
         # relative paths resolve correctly.
         rm -rf inductor_log && mkdir -p inductor_log
         rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_pt2e/
-        model_list_args=()
 
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
+        else
+          model_list_args=(--model-only "${GITHUB_WORKSPACE}/.ci/benchmarks/model_list.csv")
         fi
 
         python -m run_pt2e --suite pt2e --mode inference \
