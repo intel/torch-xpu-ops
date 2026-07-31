@@ -15,8 +15,8 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
+#include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -40,27 +40,34 @@ inline void philox_derive_key(
 
 struct PhiloxKeySplitFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int64_t tid = static_cast<int64_t>(item.get_global_id(0));
-    if (tid >= total_)
-      return;
-    int64_t split_idx = tid / num_keys_;
-    int64_t key_idx = tid % num_keys_;
+    const int64_t global_id = static_cast<int64_t>(item.get_global_id(0));
+    const int64_t global_range = static_cast<int64_t>(item.get_global_range(0));
 
-    uint64_t seed = input_[key_idx * 2];
-    uint64_t offset = input_[key_idx * 2 + 1];
-    
-    uint2 key = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-    uint4 counter = {
-      static_cast<uint32_t>(offset + static_cast<uint64_t>(split_idx)),
-      static_cast<uint32_t>((offset + static_cast<uint64_t>(split_idx)) >> 32),
-      // restrict subsequence=0
-      0,
-      0};
+    for (int64_t idx = global_id; idx < total_; idx += global_range) {
+      const int64_t split_idx = idx / num_keys_;
+      const int64_t key_idx = idx % num_keys_;
 
-    auto r = philox4x32_10(counter,key);
+      const uint64_t seed = input_[key_idx * 2];
+      const uint64_t offset = input_[key_idx * 2 + 1];
+      const uint64_t split_offset = offset + static_cast<uint64_t>(split_idx);
 
-    int64_t out = (split_idx * num_keys_ + key_idx) * 2;
-    philox_derive_key(r, &output_[out], &output_[out + 1]);
+      const uint2 key = {
+          static_cast<uint32_t>(seed),
+          static_cast<uint32_t>(seed >> 32),
+      };
+
+      const uint4 counter = {
+          static_cast<uint32_t>(split_offset),
+          static_cast<uint32_t>(split_offset >> 32),
+          0,
+          0,
+      };
+
+      const auto r = philox4x32_10(counter, key);
+
+      const int64_t out = idx * 2;
+      philox_derive_key(r, &output_[out], &output_[out + 1]);
+    }
   }
 
   PhiloxKeySplitFunctor(
@@ -79,23 +86,23 @@ struct PhiloxKeySplitFunctor {
 
 struct PhiloxKeyFoldInFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int64_t idx = static_cast<int64_t>(item.get_global_id(0));
-    if (idx >= num_keys_)
-      return;
+    for (int64_t idx = (item.get_global_id(0)); idx < num_keys_;
+         idx += item.get_global_range(0)) {
+      uint64_t seed = input_[idx * 2];
+      uint64_t offset = input_[idx * 2 + 1];
 
-    uint64_t seed = input_[idx * 2];
-    uint64_t offset = input_[idx * 2 + 1];
+      uint2 key = {
+          static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+      uint4 ctr = {
+          static_cast<uint32_t>(offset + static_cast<uint64_t>(data_)),
+          static_cast<uint32_t>((offset + static_cast<uint64_t>(data_)) >> 32),
+          // restrict subsequence=0
+          0,
+          0};
 
-  uint2 key = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-  uint4 ctr = {
-      static_cast<uint32_t>( offset + static_cast<uint64_t>(data_)),
-      static_cast<uint32_t>( (offset + static_cast<uint64_t>(data_)) >> 32),
-      // restrict subsequence=0
-      0,
-      0};
-
-    auto r = philox4x32_10(counter,key);
-    philox_derive_key(r, &output_[idx * 2], &output_[idx * 2 + 1]);
+      auto r = philox4x32_10(counter, key);
+      philox_derive_key(r, &output_[idx * 2], &output_[idx * 2 + 1]);
+    }
   }
 
   PhiloxKeyFoldInFunctor(
