@@ -2742,28 +2742,28 @@ class GraphModule(torch.nn.Module):
         x, = fx_pytree.tree_flatten_spec(([x], {}), self._in_spec)
         _guards_fn = self._guards_fn(x);  _guards_fn = None
 
-        sum_1: "f32[]" = torch.ops.aten.sum.default(x)
-        gt: "b8[]" = torch.ops.aten.gt.Scalar(sum_1, 3);  sum_1 = None
+        sum_default: "f32[]" = torch.ops.aten.sum.default(x)
+        gt_scalar: "b8[]" = torch.ops.aten.gt.Scalar(sum_default, 3);  sum_default = None
 
-        true_graph_0 = self.true_graph_0
         false_graph_0 = self.false_graph_0
-        cond = torch.ops.higher_order.cond(gt, true_graph_0, false_graph_0, ());  gt = true_graph_0 = false_graph_0 = None
-        getitem_1: "Sym(u0)" = cond[0];  cond = None
-        ge_1: "Sym(u0 >= 0)" = getitem_1 >= 0
-        _assert_scalar_default = torch.ops.aten._assert_scalar.default(ge_1, "Runtime assertion failed for expression u0 >= 0 on node 'ge_1'");  ge_1 = _assert_scalar_default = None
-        le_1: "Sym(u0 <= 1)" = getitem_1 <= 1
-        _assert_scalar_default_1 = torch.ops.aten._assert_scalar.default(le_1, "Runtime assertion failed for expression u0 <= 1 on node 'le_1'");  le_1 = _assert_scalar_default_1 = None
+        true_graph_0 = self.true_graph_0
+        cond = torch.ops.higher_order.cond(gt_scalar, true_graph_0, false_graph_0, ());  gt_scalar = true_graph_0 = false_graph_0 = None
+        getitem: "Sym(u0)" = cond[0];  cond = None
+        ge: "Sym(u0 >= 0)" = getitem >= 0
+        _assert_scalar_default = torch.ops.aten._assert_scalar.default(ge, "Runtime assertion failed for expression u0 >= 0 on node 'ge_1'");  ge = _assert_scalar_default = None
+        le: "Sym(u0 <= 1)" = getitem <= 1
+        _assert_scalar_default_1 = torch.ops.aten._assert_scalar.default(le, "Runtime assertion failed for expression u0 <= 1 on node 'le_1'");  le = _assert_scalar_default_1 = None
 
-        select: "f32[3]" = torch.ops.aten.select.int(x, 0, getitem_1);  x = getitem_1 = None
-        return pytree.tree_unflatten((select,), self._out_spec)
-
-    class true_graph_0(torch.nn.Module):
-        def forward(self):
-            return (0,)
+        select_int: "f32[3]" = torch.ops.aten.select.int(x, 0, getitem);  x = getitem = None
+        return pytree.tree_unflatten((select_int,), self._out_spec)
 
     class false_graph_0(torch.nn.Module):
         def forward(self):
             return (1,)
+
+    class true_graph_0(torch.nn.Module):
+        def forward(self):
+            return (0,)
 """,  # noqa: B950
             )
         self.assertEqual(m(*args), ep.module()(*args))
@@ -2817,22 +2817,22 @@ class GraphModule(torch.nn.Module):
         x, = fx_pytree.tree_flatten_spec(([x], {}), self._in_spec)
         _guards_fn = self._guards_fn(x);  _guards_fn = None
 
-        sum_1: "f32[]" = torch.ops.aten.sum.default(x)
-        gt: "b8[]" = torch.ops.aten.gt.Scalar(sum_1, 3);  sum_1 = None
+        sum_default: "f32[]" = torch.ops.aten.sum.default(x)
+        gt_scalar: "b8[]" = torch.ops.aten.gt.Scalar(sum_default, 3);  sum_default = None
 
-        true_graph_0 = self.true_graph_0
         false_graph_0 = self.false_graph_0
-        cond = torch.ops.higher_order.cond(gt, true_graph_0, false_graph_0, ());  gt = true_graph_0 = false_graph_0 = None
+        true_graph_0 = self.true_graph_0
+        cond = torch.ops.higher_order.cond(gt_scalar, true_graph_0, false_graph_0, ());  gt_scalar = true_graph_0 = false_graph_0 = None
         getitem = cond[0];  cond = getitem = None
 
-        select: "f32[3]" = torch.ops.aten.select.int(x, 0, 0);  x = None
-        return pytree.tree_unflatten((select,), self._out_spec)
+        select_int: "f32[3]" = torch.ops.aten.select.int(x, 0, 0);  x = None
+        return pytree.tree_unflatten((select_int,), self._out_spec)
 
-    class true_graph_0(torch.nn.Module):
+    class false_graph_0(torch.nn.Module):
         def forward(self):
             return (0,)
 
-    class false_graph_0(torch.nn.Module):
+    class true_graph_0(torch.nn.Module):
         def forward(self):
             return (0,)
 """,  # noqa: B950
@@ -3460,18 +3460,18 @@ def forward(self, add_tensor):
             str(ep.graph_module.code).strip(),
             """\
 def forward(self, x, y):
-    foo = torch.ops.export.foo.default(x, y);  x = None
-    sym_size_int = torch.ops.aten.sym_size.int(foo, 0)
-    sym_size_int_1 = torch.ops.aten.sym_size.int(foo, 1)
+    foo_default = torch.ops.export.foo.default(x, y);  x = None
+    sym_size_int = torch.ops.aten.sym_size.int(foo_default, 0)
     ge = sym_size_int >= 0;  sym_size_int = None
+    sym_size_int_1 = torch.ops.aten.sym_size.int(foo_default, 1)
     _assert_scalar_default = torch.ops.aten._assert_scalar.default(ge, "Runtime assertion failed for expression u0 >= 0 on node 'ge'");  ge = _assert_scalar_default = None
     ge_1 = sym_size_int_1 >= 0;  sym_size_int_1 = None
     _assert_scalar_default_1 = torch.ops.aten._assert_scalar.default(ge_1, "Runtime assertion failed for expression u1 >= 0 on node 'ge_1'");  ge_1 = _assert_scalar_default_1 = None
-    bar = torch.ops.export.bar.default(y);  y = None
-    sym_size_int_2 = torch.ops.aten.sym_size.int(bar, 0)
+    bar_default = torch.ops.export.bar.default(y);  y = None
+    sym_size_int_2 = torch.ops.aten.sym_size.int(bar_default, 0)
     ge_2 = sym_size_int_2 >= 0;  sym_size_int_2 = None
     _assert_scalar_default_2 = torch.ops.aten._assert_scalar.default(ge_2, "Runtime assertion failed for expression u2 >= 0 on node 'ge_2'");  ge_2 = _assert_scalar_default_2 = None
-    return (foo, bar)""",
+    return (foo_default, bar_default)""",
         )
 
     def test_draft_export_fake_kernel_inference_errors(self):
@@ -17682,8 +17682,8 @@ class TestOneOffModelExportResult(TestCase):
         ).run_decompositions()
         code_str = """\
 def forward(self, q, k, v):
-    _scaled_dot_product_flash_attention = torch.ops.aten._scaled_dot_product_flash_attention.default(q, k, v, 0.0, True, scale = 0.125);  q = k = v = None
-    getitem = _scaled_dot_product_flash_attention[0];  _scaled_dot_product_flash_attention = None
+    _scaled_dot_product_flash_attention_default = torch.ops.aten._scaled_dot_product_flash_attention.default(q, k, v, 0.0, True, scale = 0.125);  q = k = v = None
+    getitem = _scaled_dot_product_flash_attention_default[0];  _scaled_dot_product_flash_attention_default = None
     return (getitem,)"""
         try:
             self.assertExpectedInline(
@@ -17693,8 +17693,8 @@ def forward(self, q, k, v):
         except AssertionError:
             code_str = """\
 def forward(self, q, k, v):
-    _scaled_dot_product_cudnn_attention = torch.ops.aten._scaled_dot_product_cudnn_attention.default(q, k, v, None, False, 0.0, True);  q = k = v = None
-    getitem = _scaled_dot_product_cudnn_attention[0];  _scaled_dot_product_cudnn_attention = None
+    _scaled_dot_product_cudnn_attention_default = torch.ops.aten._scaled_dot_product_cudnn_attention.default(q, k, v, None, False, 0.0, True);  q = k = v = None
+    getitem = _scaled_dot_product_cudnn_attention_default[0];  _scaled_dot_product_cudnn_attention_default = None
     return (getitem,)"""
             try:
                 self.assertExpectedInline(
@@ -17705,8 +17705,8 @@ def forward(self, q, k, v):
                 # XPU uses _scaled_dot_product_fused_attention_overrideable
                 code_str = """\
 def forward(self, q, k, v):
-    _scaled_dot_product_fused_attention_overrideable = torch.ops.aten._scaled_dot_product_fused_attention_overrideable.default(q, k, v, None, 0.0, True);  q = k = v = None
-    getitem = _scaled_dot_product_fused_attention_overrideable[0];  _scaled_dot_product_fused_attention_overrideable = None
+    _scaled_dot_product_fused_attention_overrideable_default = torch.ops.aten._scaled_dot_product_fused_attention_overrideable.default(q, k, v, None, 0.0, True);  q = k = v = None
+    getitem = _scaled_dot_product_fused_attention_overrideable_default[0];  _scaled_dot_product_fused_attention_overrideable_default = None
     return (getitem,)"""
                 self.assertExpectedInline(
                     ep.graph_module.code.strip(),
@@ -17845,10 +17845,10 @@ def forward(self, q, k, v):
             gm.code.strip(),
             """\
 def forward(self, x):
-    add = torch.ops.aten.add.Tensor(x, x);  x = None
-    mul = torch.ops.aten.mul.Tensor(add, add)
-    add_1 = torch.ops.aten.add.Tensor(mul, mul);  mul = None
-    return (add, add_1)""",
+    add_tensor = torch.ops.aten.add.Tensor(x, x);  x = None
+    mul_tensor = torch.ops.aten.mul.Tensor(add_tensor, add_tensor)
+    add_tensor_1 = torch.ops.aten.add.Tensor(mul_tensor, mul_tensor);  mul_tensor = None
+    return (add_tensor, add_tensor_1)""",
         )
 
     def test_print_graph_signature(self):
@@ -17871,7 +17871,7 @@ b_buf: BUFFER target='buf' persistent=True
 x: USER_INPUT
 
 # outputs
-add: USER_OUTPUT""",
+add_tensor: USER_OUTPUT""",
         )
 
         ep = ep.run_decompositions({})
@@ -17883,9 +17883,9 @@ b_buf: BUFFER target='buf' persistent=True
 x: USER_INPUT
 
 # outputs
-add_1: BUFFER_MUTATION target='buf'
-add: USER_INPUT_MUTATION target='x'
-add_2: USER_OUTPUT""",
+add_tensor_1: BUFFER_MUTATION target='buf'
+add_tensor: USER_INPUT_MUTATION target='x'
+add_tensor_2: USER_OUTPUT""",
         )
 
     @unittest.skipIf(not TEST_TRANSFORMERS, "No transformers")
@@ -17926,8 +17926,8 @@ def forward(self, x):
             gm.code.strip(),
             """\
 def forward(self, x):
-    add = torch.ops.aten.add.Tensor(x, x);  x = None
-    return (add,)""",
+    add_tensor = torch.ops.aten.add.Tensor(x, x);  x = None
+    return (add_tensor,)""",
         )
 
     def test_logging_logger(self):
@@ -17949,10 +17949,10 @@ def forward(self, x):
             gm.code.strip(),
             """\
 def forward(self, x):
-    add = torch.ops.aten.add.Tensor(x, x);  x = None
-    mul = torch.ops.aten.mul.Tensor(add, add)
-    add_1 = torch.ops.aten.add.Tensor(mul, mul);  mul = None
-    return (add, add_1)""",
+    add_tensor = torch.ops.aten.add.Tensor(x, x);  x = None
+    mul_tensor = torch.ops.aten.mul.Tensor(add_tensor, add_tensor)
+    add_tensor_1 = torch.ops.aten.add.Tensor(mul_tensor, mul_tensor);  mul_tensor = None
+    return (add_tensor, add_tensor_1)""",
         )
 
     def test_constant_fqn(self):
