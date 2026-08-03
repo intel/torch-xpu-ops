@@ -1391,63 +1391,56 @@ struct BatchNormTransformInputChannelsLast1DKernelFunctor {
             s_c;
         if (z_ != nullptr)
           tmp += z_[idx];
-        out_[idx] = (fuse_relu_ && tmp <= accscalar_t(0.0)
-                         ? scalar_t(0.0)
-                         : static_cast<scalar_t>(tmp));
+        tmp *= !(fuse_relu_ && tmp <= accscalar_t(0.0));
+        out_[idx] = static_cast<scalar_t>(tmp);
       }
     } else {
-      // flat_pos = id * 2 is always even, so the vec2 load is always
-      // 4-byte aligned (PyTorch guarantees 64-byte aligned base ptr).
-      // channel_0 = flat_pos % C, channel_1 = (channel_0+1) % C handles
-      // row-crossing pairs for odd C with no alignment penalty.
       int total_elems = reduction_size_ * stride_;
-      int total_vecs  = total_elems / 2;
+      int total_vecs = total_elems / VEC_SIZE;
+
+      using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
 
       for (int id = item.get_global_id(0); id < total_vecs;
            id += global_stride) {
-        int flat_pos = id * 2;  // always even → always 4-byte aligned
+        int flat_pos = id * VEC_SIZE;
 
         auto dm = vec_divider_.divmod(static_cast<unsigned int>(flat_pos));
-        int channel_0 = static_cast<int>(dm.mod);
-        int channel_1 = (channel_0 + 1 < stride_) ? channel_0 + 1 : 0;
+        auto in_vec = *reinterpret_cast<const vec_t*>(&input_[flat_pos]);
 
-        using vec2_t = memory::aligned_vector<scalar_t, 2>;
-        auto in_vec = *reinterpret_cast<const vec2_t*>(&input_[flat_pos]);
-        scalar_t in0 = in_vec[0], in1 = in_vec[1];
+        vec_t vz_vec{};
+        if (z_ != nullptr)
+          vz_vec = *reinterpret_cast<const vec_t*>(&z_[flat_pos]);
 
-        scalar_t vz0, vz1;
-        if (z_ != nullptr) {
-          auto vz_vec = *reinterpret_cast<const vec2_t*>(&z_[flat_pos]);
-          vz0 = vz_vec[0]; vz1 = vz_vec[1];
+        vec_t out_vec;
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; v++) {
+          int ch = static_cast<int>(dm.mod) + v;
+          ch = (ch < stride_) ? ch : ch - stride_;
+          accscalar_t m_c, inv_c, w_c, s_c;
+          load_params(ch, m_c, inv_c, w_c, s_c);
+          accscalar_t tmp =
+              w_c * (static_cast<accscalar_t>(in_vec[v]) - m_c) * inv_c + s_c;
+          if (z_ != nullptr)
+            tmp += static_cast<accscalar_t>(vz_vec[v]);
+          tmp *= !(fuse_relu_ && tmp <= accscalar_t(0.0));
+          out_vec[v] = static_cast<scalar_t>(tmp);
         }
-
-        accscalar_t m0, inv0, w0, s0, m1, inv1, w1, s1;
-        load_params(channel_0, m0, inv0, w0, s0);
-        load_params(channel_1, m1, inv1, w1, s1);
-
-        auto tmp0 = w0 * (static_cast<accscalar_t>(in0) - m0) * inv0 + s0;
-        auto tmp1 = w1 * (static_cast<accscalar_t>(in1) - m1) * inv1 + s1;
-        if (z_ != nullptr) { tmp0 += vz0; tmp1 += vz1; }
-
-        vec2_t out_vec;
-        out_vec[0] = (fuse_relu_ && tmp0 <= accscalar_t(0.0)
-            ? scalar_t(0.0) : static_cast<scalar_t>(tmp0));
-        out_vec[1] = (fuse_relu_ && tmp1 <= accscalar_t(0.0)
-            ? scalar_t(0.0) : static_cast<scalar_t>(tmp1));
-        *reinterpret_cast<vec2_t*>(&out_[flat_pos]) = out_vec;
+        *reinterpret_cast<vec_t*>(&out_[flat_pos]) = out_vec;
       }
 
-      // Scalar tail when total element count is odd (rare in practice)
-      if ((total_elems & 1) && item.get_global_id(0) == 0) {
+      // Scalar tail when total element count is not VEC-aligned.
+      if ((total_elems % VEC_SIZE != 0) && item.get_global_id(0) == 0) {
         int fp = total_elems - 1;
         auto dm = vec_divider_.divmod(static_cast<unsigned int>(fp));
         int c = static_cast<int>(dm.mod);
         accscalar_t m_c, inv_c, w_c, s_c;
         load_params(c, m_c, inv_c, w_c, s_c);
-        auto tmp = w_c * (static_cast<accscalar_t>(input_[fp]) - m_c) * inv_c + s_c;
-        if (z_ != nullptr) tmp += z_[fp];
-        out_[fp] = (fuse_relu_ && tmp <= accscalar_t(0.0)
-            ? scalar_t(0.0) : static_cast<scalar_t>(tmp));
+        accscalar_t tmp =
+            w_c * (static_cast<accscalar_t>(input_[fp]) - m_c) * inv_c + s_c;
+        if (z_ != nullptr)
+          tmp += static_cast<accscalar_t>(z_[fp]);
+        tmp *= !(fuse_relu_ && tmp <= accscalar_t(0.0));
+        out_[fp] = static_cast<scalar_t>(tmp);
       }
     }
   }
@@ -1532,57 +1525,57 @@ struct BatchNormTransformInputChannelsLast1DSLMKernelFunctor {
     }
     sycl::group_barrier(item.get_group());
 
-    // Phase 2: VEC=2 main loop (reads params from SLM).
+    // Phase 2: vectorized main loop (reads params from SLM).
+    static constexpr int VEC_SIZE = 2;
     int global_stride = static_cast<int>(item.get_global_range(0));
-    int total_elems   = reduction_size_ * stride_;
-    int total_vecs    = total_elems / 2;
+    int total_elems = reduction_size_ * stride_;
+    int total_vecs = total_elems / VEC_SIZE;
+
+    using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
 
     for (int id = static_cast<int>(item.get_global_id(0));
          id < total_vecs; id += global_stride) {
-      int flat_pos = id * 2; // always even -> always 4-byte aligned
+      int flat_pos = id * VEC_SIZE;
 
       auto dm = vec_divider_.divmod(static_cast<unsigned int>(flat_pos));
-      int channel_0 = static_cast<int>(dm.mod);
-      int channel_1 = (channel_0 + 1 < stride_) ? channel_0 + 1 : 0;
+      auto in_vec = *reinterpret_cast<const vec_t*>(&input_[flat_pos]);
 
-      using vec2_t = memory::aligned_vector<scalar_t, 2>;
-      auto in_vec = *reinterpret_cast<const vec2_t*>(&input_[flat_pos]);
-      scalar_t in0 = in_vec[0], in1 = in_vec[1];
+      vec_t vz_vec{};
+      if (z_ != nullptr)
+        vz_vec = *reinterpret_cast<const vec_t*>(&z_[flat_pos]);
 
-      scalar_t vz0{}, vz1{};
-      if (z_ != nullptr) {
-        auto vz_vec = *reinterpret_cast<const vec2_t*>(&z_[flat_pos]);
-        vz0 = vz_vec[0]; vz1 = vz_vec[1];
+      vec_t out_vec;
+#pragma unroll
+      for (int v = 0; v < VEC_SIZE; v++) {
+        int ch = static_cast<int>(dm.mod) + v;
+        ch = (ch < stride_) ? ch : ch - stride_;
+        accscalar_t m = slm_mean_[ch];
+        accscalar_t inv = slm_inv_std_[ch];
+        accscalar_t w = slm_weight_[ch];
+        accscalar_t s = slm_shift_[ch];
+        accscalar_t tmp =
+            w * (static_cast<accscalar_t>(in_vec[v]) - m) * inv + s;
+        if (z_ != nullptr)
+          tmp += static_cast<accscalar_t>(vz_vec[v]);
+        tmp *= !(fuse_relu_ && tmp <= accscalar_t(0.0));
+        out_vec[v] = static_cast<scalar_t>(tmp);
       }
-
-      accscalar_t m0   = slm_mean_[channel_0], inv0 = slm_inv_std_[channel_0];
-      accscalar_t w0   = slm_weight_[channel_0], s0  = slm_shift_[channel_0];
-      accscalar_t m1   = slm_mean_[channel_1], inv1 = slm_inv_std_[channel_1];
-      accscalar_t w1   = slm_weight_[channel_1], s1  = slm_shift_[channel_1];
-
-      auto tmp0 = w0 * (static_cast<accscalar_t>(in0) - m0) * inv0 + s0;
-      auto tmp1 = w1 * (static_cast<accscalar_t>(in1) - m1) * inv1 + s1;
-      if (z_ != nullptr) { tmp0 += vz0; tmp1 += vz1; }
-
-      vec2_t out_vec;
-      out_vec[0] = (fuse_relu_ && tmp0 <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp0));
-      out_vec[1] = (fuse_relu_ && tmp1 <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp1));
-      *reinterpret_cast<vec2_t*>(&out_[flat_pos]) = out_vec;
+      *reinterpret_cast<vec_t*>(&out_[flat_pos]) = out_vec;
     }
 
-    // Phase 3: scalar tail when total element count is odd.
-    if ((total_elems & 1) && item.get_global_id(0) == 0) {
-      int fp  = total_elems - 1;
+    // Phase 3: scalar tail when total element count is not VEC-aligned.
+    if ((total_elems % VEC_SIZE != 0) && item.get_global_id(0) == 0) {
+      int fp = total_elems - 1;
       auto dm = vec_divider_.divmod(static_cast<unsigned int>(fp));
-      int c   = static_cast<int>(dm.mod);
-      accscalar_t m_c   = slm_mean_[c], inv_c = slm_inv_std_[c];
-      accscalar_t w_c   = slm_weight_[c], s_c  = slm_shift_[c];
-      auto tmp = w_c * (static_cast<accscalar_t>(input_[fp]) - m_c) * inv_c + s_c;
-      if (z_ != nullptr) tmp += z_[fp];
-      out_[fp] = (fuse_relu_ && tmp <= accscalar_t(0.0)
-          ? scalar_t(0.0) : static_cast<scalar_t>(tmp));
+      int c = static_cast<int>(dm.mod);
+      accscalar_t m_c = slm_mean_[c], inv_c = slm_inv_std_[c];
+      accscalar_t w_c = slm_weight_[c], s_c = slm_shift_[c];
+      accscalar_t tmp =
+          w_c * (static_cast<accscalar_t>(input_[fp]) - m_c) * inv_c + s_c;
+      if (z_ != nullptr)
+        tmp += static_cast<accscalar_t>(z_[fp]);
+      tmp *= !(fuse_relu_ && tmp <= accscalar_t(0.0));
+      out_[fp] = static_cast<scalar_t>(tmp);
     }
   }
 
@@ -1664,12 +1657,17 @@ void batch_norm_elemt_channels_last_template(
               ? shift.const_data_ptr<accscalar_t>()
               : nullptr;
 
+          const auto vec_align = VEC_SIZE * sizeof(scalar_t);
+          const bool input_aligned = reinterpret_cast<uintptr_t>(
+              input_data_ptr) % vec_align == 0;
+          const bool z_aligned = z_data_ptr == nullptr ||
+              reinterpret_cast<uintptr_t>(z_data_ptr) % vec_align == 0;
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
+          if (VEC_SIZE == 2 && input_aligned && z_aligned && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
-            int64_t total_vecs = total_elems / 2;
+            int64_t total_vecs = total_elems / VEC_SIZE;
             int64_t num_wg = std::min(
                 at::ceil_div(total_vecs, wg_size),
                 syclMaxWorkItemsPerTile() / wg_size);
@@ -1702,7 +1700,7 @@ void batch_norm_elemt_channels_last_template(
             const int eff_vec =
                 (VEC_SIZE > 1 && stride % VEC_SIZE != 0) ? 1 : VEC_SIZE;
             int64_t dispatch_total =
-                (eff_vec == 2) ? total_elems / 2 : total_elems;
+                (eff_vec == VEC_SIZE) ? total_elems / VEC_SIZE : total_elems;
             int64_t num_wg = std::min(
                 at::ceil_div(dispatch_total, wg_size),
                 syclMaxWorkItemsPerTile() / wg_size);
@@ -1765,12 +1763,17 @@ void batch_norm_elemt_channels_last_template(
               ? shift.const_data_ptr<scalar_t>()
               : nullptr;
 
+          const auto vec_align = VEC_SIZE * sizeof(scalar_t);
+          const bool input_aligned = reinterpret_cast<uintptr_t>(
+              input_data_ptr) % vec_align == 0;
+          const bool z_aligned = z_data_ptr == nullptr ||
+              reinterpret_cast<uintptr_t>(z_data_ptr) % vec_align == 0;
           int64_t total_elems = (int64_t)reduction_size * stride;
-          if (VEC_SIZE == 2 && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
+          if (VEC_SIZE == 2 && input_aligned && z_aligned && 4 * static_cast<int64_t>(stride) * static_cast<int64_t>(sizeof(accscalar_t)) <= syclLocalMemSize() / 8) {
             // SLM path: load BN params into per-WG SLM, always VEC=2.
             // Eliminates irregular gather (odd C) and non-monotone
             // gather (small even C) by absorbing param accesses into SLM.
-            int64_t total_vecs = total_elems / 2;
+            int64_t total_vecs = total_elems / VEC_SIZE;
             int64_t num_wg = std::min(
                 at::ceil_div(total_vecs, wg_size),
                 syclMaxWorkItemsPerTile() / wg_size);
@@ -1803,7 +1806,7 @@ void batch_norm_elemt_channels_last_template(
             const int eff_vec =
                 (VEC_SIZE > 1 && stride % VEC_SIZE != 0) ? 1 : VEC_SIZE;
             int64_t dispatch_total =
-                (eff_vec == 2) ? total_elems / 2 : total_elems;
+                (eff_vec == VEC_SIZE) ? total_elems / VEC_SIZE : total_elems;
             int64_t num_wg = std::min(
                 at::ceil_div(dispatch_total, wg_size),
                 syclMaxWorkItemsPerTile() / wg_size);
