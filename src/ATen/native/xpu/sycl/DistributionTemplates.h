@@ -47,10 +47,12 @@ inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
   auto num_groups = (total_elements + group_size - 1) / group_size;
   auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
-  // number of times random will be generated per thread, to offset philox
-  // counter in thc random state
+  // Increment must be at least the number of 32-bit values consumed per
+  // dist_func call. Our distribution functors consume one rand4-equivalent
+  // block per loop iteration for both float and double paths.
   uint64_t counter_offset =
-      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) * UNROLL;
+      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) *
+      rand4_engine_calls;
   return std::make_tuple(counter_offset, num_groups, group_size);
 }
 
@@ -135,7 +137,7 @@ void distribution_nullary_kernel(
     return;
   }
 
-  auto execution_policy = calc_execution_policy(numel);
+  auto execution_policy = calc_execution_policy<unroll_factor>(numel);
   auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
