@@ -164,7 +164,7 @@ jobs:
     name: Compare results
     needs: [target-ut, target-e2e, baseline-ut, baseline-e2e]
     if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:

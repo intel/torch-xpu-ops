@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   auto-merge:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     permissions:
       checks: read
       issues: read
@@ -262,7 +262,7 @@ jobs:
   # Dry-run job: triggered by PRs that modify this workflow file.
   # Validates MERGE_TOKEN permissions for each API operation without actually merging.
   token-permission-test:
-    runs-on: ubuntu-latest
+    runs-on: xpu-ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
       - name: "Test: Read PR info (pulls.get)"

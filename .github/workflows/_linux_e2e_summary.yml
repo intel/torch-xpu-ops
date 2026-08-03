@@ -21,7 +21,7 @@ defaults:
 
 jobs:
   summary:
-    runs-on: ubuntu-24.04
+    runs-on: xpu-ubuntu-24.04
     permissions:
       actions: read
       contents: read
