@@ -22,10 +22,10 @@ namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
-typedef enum {
+enum ScanType {
   EXCLUSIVE_TYPE = 0,
   INCLUSIVE_TYPE = 1,
-} ScanType;
+};
 
 template <typename scalar_t, typename idx_t, typename BinaryOperation>
 void binary_op_update(
@@ -320,7 +320,7 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  LoopScanConfig() {}
+  LoopScanConfig() = default;
 
   LoopScanConfig(
       InputInfo input_info,
@@ -682,7 +682,7 @@ class SegmentScanConfig : public BatchKernelConfig {
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
 
-  SegmentScanConfig() {}
+  SegmentScanConfig() = default;
 
   SegmentScanConfig(
       InputInfo input_info,

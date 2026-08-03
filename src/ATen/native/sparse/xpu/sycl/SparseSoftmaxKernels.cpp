@@ -211,7 +211,7 @@ struct SparseCooSoftmaxFunctor {
           auto values_row = input_values_acc[i];
           auto out_values_row = output_values_acc[i];
 
-          auto v = std::exp(values_row[j] - mx_row[j]);
+          auto v = sycl::exp(values_row[j] - mx_row[j]);
           if (!LogSoftMax) {
             out_values_row[j] = v;
           }
@@ -222,7 +222,7 @@ struct SparseCooSoftmaxFunctor {
           auto values_row = input_values_acc[i];
           auto out_values_row = output_values_acc[i];
 
-          if (LogSoftMax) {
+          if constexpr (LogSoftMax) {
             out_values_row[j] = values_row[j] - mx_row[j] - sycl::log(exp_sums);
           } else {
             out_values_row[j] *= 1.0 / exp_sums;
@@ -296,7 +296,7 @@ struct SparseCooSoftmaxbBackwardFunctor {
            */
           if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
             auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               tmp_row -= grad_values_row[k];
             } else {
               tmp_row -= out_values_row[k] * grad_values_row[k];
@@ -312,16 +312,16 @@ struct SparseCooSoftmaxbBackwardFunctor {
           auto j = lower_bound_values[i];
           if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
             auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               values_row[k] =
-                  grad_values_row[k] + std::exp(out_values_row[k]) * tmp_row;
+                  grad_values_row[k] + sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] =
                   out_values_row[k] * (grad_values_row[k] + tmp_row);
             }
           } else {
-            if (LogSoftMax) {
-              values_row[k] = std::exp(out_values_row[k]) * tmp_row;
+            if constexpr (LogSoftMax) {
+              values_row[k] = sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] = out_values_row[k] * tmp_row;
             }
@@ -519,7 +519,7 @@ void xpu_sparse_coo_softmax(
   out_indices.copy_(indices);
 
   if (dim >= sparse_dim) {
-    if (LogSoftMax) {
+    if constexpr (LogSoftMax) {
       auto new_values = _log_softmax(values, dim - sparse_dim + 1, false);
       out_values.set_(new_values);
     } else {
@@ -602,7 +602,7 @@ void xpu_sparse_coo_softmax_backward(
   /* when dim >= sparse_dim the dense backward is used */
   if (dim >= sparse_dim) {
     if (at::equal(out_offsets, grad_offsets) == true) {
-      if (LogSoftMax) {
+      if constexpr (LogSoftMax) {
         auto r = at::_log_softmax_backward_data(
             grad_values, out_values, dim - sparse_dim + 1, input_dtype);
         values.set_(r);
@@ -633,7 +633,7 @@ void xpu_sparse_coo_softmax_backward(
         */
         if (j < grad_nnz &&
             out_offsets_accessor[i] == grad_offsets_accessor[j]) {
-          if (LogSoftMax) {
+          if constexpr (LogSoftMax) {
             auto r = at::_log_softmax_backward_data(
                 grad_values[j], out_values[i], dim - sparse_dim, input_dtype);
             values[i].copy_(r);

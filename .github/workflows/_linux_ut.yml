@@ -61,6 +61,20 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Download dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: dpclang
+      - name: Setup dpclang
+        if: ${{ inputs.category == 'dpclang' }}
+        run: |
+          rm -rf install-dpclang && mkdir install-dpclang
+          tar xzvf install-dpclang.tgz -C install-dpclang
+          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -217,13 +231,22 @@ jobs:
           ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
           new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
           if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
-            # Keep header lines
-            head -2 "$ut_failure_csv" > "$new_failure_csv"
-            # Match rows by test_name from filtered log (format: category,class_name,test_name)
+            # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
+            # build the report from matched rows only.
+            : > "$new_failure_csv"
+            # Match rows by class_name AND test_name to avoid substring false positives
+            # filtered log format: category,class_name,test_name
             while IFS=',' read -r category class_name test_name; do
               [ -z "$test_name" ] && continue
-              grep -F "$test_name" "$ut_failure_csv" >> "$new_failure_csv" || true
+              # Use both class_name and test_name for precise matching in pipe-delimited CSV
+              grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
             done < "$new_failure_list"
+            # Verify count matches filtered log
+            expected_count=$(grep -c . "$new_failure_list")
+            actual_count=$(grep -c . "$new_failure_csv")
+            if [ "$actual_count" -ne "$expected_count" ]; then
+              echo "::warning::New failure count mismatch: filtered=$expected_count, csv=$actual_count"
+            fi
             echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
@@ -251,7 +274,7 @@ jobs:
               || github.event.pull_request.user.login == 'copilot[bot]') }}
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.MERGE_TOKEN }}
+          github-token: ${{ secrets.COPILOT_TOKEN }}
           script: |
             const fs = require('fs');
             const prNumber = context.issue.number;
@@ -316,10 +339,12 @@ jobs:
             });
       - name: Fail if UT check failed
         if: ${{ steps.ut-check.outcome == 'failure' }}
+        shell: bash {0}
         run: |
           new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
           if [ -s "$new_failure_list" ]; then
-            echo "::error::UT check failed with new failures:"
+            new_failure_count=$(grep -c . "$new_failure_list")
+            echo "::error::UT check failed with ${new_failure_count} new failures:"
             cat "$new_failure_list"
           else
             echo "::error::UT check failed"

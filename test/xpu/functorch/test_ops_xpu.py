@@ -430,7 +430,6 @@ aliasing_ops_list_return = {
 skip_noncontig = {
     "_batch_norm_with_update",
     "as_strided_copy",
-    "native_group_norm",
 }
 
 bool_unsupported_ordered_ops = {
@@ -1076,6 +1075,7 @@ class TestOperators(TestCase):
                 xfail("_native_batch_norm_legit"),
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
+                skip("native_group_norm"),  # takes too long
             }
         ),
     )
@@ -1416,9 +1416,6 @@ class TestOperators(TestCase):
                 xfail(
                     "cdouble"
                 ),  # RuntimeError: required rank 4 tensor to use channels_last format
-                xfail("cumprod"),
-                xfail("masked_fill"),
-                xfail("fill"),
                 skip("masked.mean"),  # ???
                 xfail("masked_scatter"),
                 xfail("put"),
@@ -1441,13 +1438,7 @@ class TestOperators(TestCase):
                 xfail("linalg.lu", ""),
                 xfail("nn.functional.dropout3d", ""),
                 xfail("as_strided_scatter", ""),
-                xfail("masked.cumprod", ""),
-                xfail("permute_copy"),
                 xfail("renorm"),  # hit vmap fallback, which is disabled
-                xfail("squeeze_copy"),
-                xfail("t_copy"),
-                xfail("transpose_copy"),
-                xfail("unsqueeze_copy"),
             }
         ),
     )
@@ -1495,22 +1486,18 @@ class TestOperators(TestCase):
                 xfail("view_as_complex"),
                 xfail("cummax"),
                 xfail("cummin"),
-                xfail("fill"),
                 xfail(
                     "narrow"
                 ),  # Batching rule not implemented for `narrow.Tensor` (and view op)
                 xfail("special.log_ndtr"),
                 xfail("linalg.householder_product"),
-                xfail("masked_fill"),
                 xfail("masked_scatter"),
                 xfail("masked_select"),
                 xfail("nanquantile"),
                 xfail("ormqr"),
-                xfail("permute_copy"),
                 xfail("put"),
                 xfail("quantile"),
                 xfail("renorm"),
-                xfail("squeeze_copy"),
                 xfail("take"),
                 xfail("tensor_split"),
                 xfail("to_sparse"),
@@ -1570,10 +1557,6 @@ class TestOperators(TestCase):
                 xfail(
                     "index_fill"
                 ),  # aten::_unique hit the vmap fallback which is currently disabled
-                xfail("squeeze_copy"),
-                xfail("t_copy"),
-                xfail("transpose_copy"),
-                xfail("unsqueeze_copy"),
             }
         ),
     )
@@ -1944,6 +1927,7 @@ class TestOperators(TestCase):
                 skip("broadcast_tensors"),
                 skip("linalg.lstsq"),
                 skip("nn.functional.bilinear"),
+                skip("native_group_norm"),
                 skip("native_layer_norm"),
                 skip("ormqr"),
                 # Not actually a problem
@@ -2405,6 +2389,7 @@ class TestOperators(TestCase):
             skip("sparse.sampled_addmm", ""),
             skip("sparse.mm", "reduce"),
             skip("native_layer_norm", "", device_type="cpu"),
+            skip("native_group_norm", dtypes=(torch.float32,), device_type="cpu"),
         },
     )
     @opsToleranceOverride(

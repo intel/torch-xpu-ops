@@ -378,8 +378,6 @@ for (int offset = 1; offset < sg_size; offset <<= 1) {
 ## Files to Reference
 
 When reviewing, consult these for context:
-- `yaml/xpu_functions.yaml` — XPU operator declarations
-- `yaml/native/native_functions.yaml` — Native function schemas
 - `src/ATen/native/xpu/` — XPU operator implementations
 - `src/ATen/native/xpu/sycl/` — SYCL kernel implementations
 - `src/ATen/native/xpu/XPUFallback.template` — Fallback logic

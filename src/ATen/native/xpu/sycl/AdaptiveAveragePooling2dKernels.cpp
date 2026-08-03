@@ -89,7 +89,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
     oh_ = gyacc_.size(2);
     ow_ = gyacc_.size(3);
 
-    numel_ = ib_ * ic_ * ih_ * iw_;
+    numel_ = static_cast<int64_t>(ib_) * ic_ * ih_ * iw_;
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
     local_range_ = syclMaxWorkItemsPerSubSlice();
     global_range_ = total_item < local_range_
@@ -205,7 +205,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     oh_ = gyacc_.size(2);
     ow_ = gyacc_.size(3);
 
-    numel_ = ib_ * ic_ * ih_ * iw_;
+    numel_ = static_cast<int64_t>(ib_) * ic_ * ih_ * iw_;
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
 
     local_range_ = syclMaxWorkGroupSize(*this);
@@ -485,7 +485,8 @@ void adaptive_avg_pool2d_backward_kernel(
           (size_t)range_y * group_y,
           (size_t)range_x * group_x};
 
-      AT_ASSERT(input.numel() < std::numeric_limits<int32_t>::max());
+      TORCH_INTERNAL_ASSERT(
+          input.numel() < std::numeric_limits<int32_t>::max());
 
       AT_DISPATCH_FLOATING_TYPES_AND2(
           kHalf,

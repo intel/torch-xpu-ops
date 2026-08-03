@@ -33,7 +33,7 @@ c10::complex<scalar_t> _logcumsumexp_minmax(
     return y;
   } else if (at::_isnan(xr) || (at::_isnan(std::imag(x)))) {
     return x;
-  } else if (min) { // min
+  } else if constexpr (min) { // min
     return (xr < yr) ? x : y;
   } else { // max
     return (xr >= yr) ? x : y;
