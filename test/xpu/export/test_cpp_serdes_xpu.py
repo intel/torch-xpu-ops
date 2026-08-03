@@ -11,11 +11,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # Owner(s): ["module: intel"]
-import inspect
-
 import torch
-from torch._export.serde import serialize as serde_serialize
-from torch._export.serde.serialize import deserialize, serialize
+import inspect
+from torch._export.serde.serialize import deserialize, serialize, _reconstruct_fake_tensor
 
 try:
     from . import test_export_xpu, testing_xpu
@@ -24,10 +22,7 @@ except ImportError:
     import testing_xpu  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
-from torch.testing._internal import (
-    custom_tensor as custom_tensor_mod,
-    two_tensor as two_tensor_mod,
-)
+from torch.testing._internal import custom_tensor, two_tensor
 
 test_classes = {}
 
@@ -40,12 +35,12 @@ def _module_safe_globals():
     ]
     nn_classes = [obj for _, obj in inspect.getmembers(torch.nn, inspect.isclass)]
     two_tensor_classes = [
-        obj for _, obj in inspect.getmembers(two_tensor_mod, inspect.isclass)
+        obj for _, obj in inspect.getmembers(two_tensor, inspect.isclass)
     ]
     custom_tensor_classes = [
-        obj for _, obj in inspect.getmembers(custom_tensor_mod, inspect.isclass)
+        obj for _, obj in inspect.getmembers(custom_tensor, inspect.isclass)
     ]
-    serde_helpers = [serde_serialize._reconstruct_fake_tensor, torch.ScriptObject]
+    serde_helpers = [_reconstruct_fake_tensor, torch.ScriptObject]
     return (
         test_classes
         + nn_classes
