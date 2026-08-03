@@ -263,7 +263,7 @@ jobs:
   # Validates MERGE_TOKEN permissions for each API operation without actually merging.
   token-permission-test:
     runs-on: xpu-ubuntu-24.04
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: "Test: Read PR info (pulls.get)"
         uses: actions/github-script@v7
