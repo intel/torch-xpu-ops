@@ -70,9 +70,8 @@ class TestLibtorchAgnostic(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Build versioned extensions from the PyTorch cpp_extensions directory
-        # (torch-xpu-ops lives at <pytorch>/third_party/torch-xpu-ops/)
-        base_dir = Path(__file__).parents[5] / "test" / "cpp_extensions"
+        # Build versioned extensions
+        base_dir = Path(__file__).parent
 
         try:
             import libtorch_agn_2_9  # noqa: F401
