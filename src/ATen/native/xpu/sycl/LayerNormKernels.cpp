@@ -1179,8 +1179,7 @@ void layer_norm_backward_kernel_impl(
           M,
           N);
       Tensor semaphores, scratchpad;
-      config.template init_global_reduce<accscalar_t>(
-          X, semaphores, scratchpad);
+      config.init_global_reduce(X, semaphores, scratchpad);
       rowwise_moments_kernel<
           scalar_t,
           mean_t,
