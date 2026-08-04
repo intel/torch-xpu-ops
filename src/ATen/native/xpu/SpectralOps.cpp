@@ -48,7 +48,7 @@ bool to_bool(std::string str) {
 }
 
 bool use_sycl_spectral() {
-  static const bool enabled = [] {
+  const bool enabled = [] {
     auto env = c10::utils::get_env("USE_SYCL_SPECTRAL");
     return env.has_value() && to_bool(*env);
   }();
