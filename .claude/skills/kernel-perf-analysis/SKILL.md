@@ -186,7 +186,7 @@ Use this section when the backend is Intel XPU and the available profiler is uni
 | Execution width | Kernel signature such as `SIMD32`, or ASM |
 | Global grid | Kernel signature or source launch code |
 | Local workgroup | Kernel signature or source launch code |
-| Workgroup count | `GPGPU_THREADGROUP_COUNT` |
+| Workgroup count | `ASYNC_GPGPU_THREADGROUP_COUNT` |
 | Benchmark kernel time | unitrace `-d` device duration; use for absolute performance, throughput, and roofline-gap comparisons |
 | Counter-window kernel time | unitrace `-q` `GpuTime[ns]`; use only to align and weight rows from that same counter collection |
 | Frequency / clocks | `GpuCoreClocks`, `AvgGpuCoreFrequencyMHz` |
