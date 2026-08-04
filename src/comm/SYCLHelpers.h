@@ -54,6 +54,11 @@ template <typename T>
 using sycl_atomic_ref_rlx_dev_global_t =
     sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_dev, sycl_global_space>;
 
+// For cooperative handoffs, where the ordering is load-bearing.
+template <typename T>
+using sycl_atomic_ref_acq_rel_dev_global_t = sycl::
+    atomic_ref<T, sycl_mem_odr_acq_rel, sycl_mem_scp_dev, sycl_global_space>;
+
 template <typename ker_t, int dim>
 static inline void sycl_kernel_submit(
     ::sycl::range<dim> range,

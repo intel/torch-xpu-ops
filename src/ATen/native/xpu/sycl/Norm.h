@@ -190,7 +190,7 @@ static void norm_global_reduce(
   sycl::group_barrier(item.get_group());
 
   if (local_id == 0) {
-    sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
+    sycl_atomic_ref_acq_rel_dev_global_t<int> count(semaphores_ptr[group_id]);
     int prev_groups_finished = count.fetch_add(1);
     last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
   }
@@ -198,6 +198,8 @@ static void norm_global_reduce(
 
   // use the last workgroup for reduction
   if (last_workgroup[0]) {
+    // Only local_id 0 acquired; fence so the whole workgroup sees the stores.
+    sycl::atomic_fence(sycl_mem_odr_acq, sycl_mem_scp_dev);
     if constexpr (rms_norm) {
       sum2 = accscalar_t(0);
       for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
