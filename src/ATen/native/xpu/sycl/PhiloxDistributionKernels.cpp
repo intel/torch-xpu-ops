@@ -14,13 +14,17 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
+#include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TransformationHelper.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxDistributionKernels.h>
-#include <ATen/native/xpu/sycl/StatelessPhilox4x32.h>
+#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 
+#include <algorithm>
 #include <type_traits>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -37,39 +41,22 @@ namespace at::native::xpu {
 template <typename scalar_t>
 constexpr int elems_per_call = std::is_same_v<scalar_t, double> ? 2 : 4;
 
-// ─── Uniform transforms ─────────────────────────────────────────
-
-// uint32 → float uniform in [0, 1)
-inline float uint32_to_uniform_float(uint32_t val) {
-  constexpr uint32_t MASK = static_cast<uint32_t>(
-      (static_cast<uint64_t>(1) << std::numeric_limits<float>::digits) - 1);
-  constexpr float DIVISOR = static_cast<float>(1.0) /
-      static_cast<float>(static_cast<uint32_t>(1)
-                         << std::numeric_limits<float>::digits);
-  return static_cast<float>(val & MASK) * DIVISOR;
+// Stateless Philox-4x32: 4 pseudo-random uint32 determined entirely by
+// (seed, offset). The subsequence half of the counter is fixed to 0 so the
+// whole counter space is addressed by the 64-bit offset alone, which keeps
+// the generated values consistent across devices.
+inline uint4 philox_4x32(uint64_t seed, uint64_t offset) {
+  const uint2 key = {
+      static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+  const uint4 counter = {
+      static_cast<uint32_t>(offset), static_cast<uint32_t>(offset >> 32), 0, 0};
+  return philox4x32_10(counter, key);
 }
 
-// uint64 → double uniform in [0, 1)
-inline double uint64_to_uniform_double(uint64_t val) {
-  constexpr uint64_t MASK =
-      (static_cast<uint64_t>(1) << std::numeric_limits<double>::digits) - 1;
-  constexpr double DIVISOR = 1.0 /
-      static_cast<double>(static_cast<uint64_t>(1)
-                          << std::numeric_limits<double>::digits);
-  return static_cast<double>(val & MASK) * DIVISOR;
-}
+// --- Box-Muller normal transforms ---
 
-// ─── Box-Muller normal transforms ────────────────────────────────
-
-struct float4 {
-  float x, y, z, w;
-};
-struct double2 {
-  double x, y;
-};
-
-// Box-Muller: 4 uint32 → 4 standard normal floats
-inline float4 box_muller_float(philox_uint4 r) {
+// Box-Muller: 4 uint32 -> 4 standard normal floats
+inline float4 box_muller_float(uint4 r) {
   constexpr float M = 2.3283064365386963e-10f; // 1/2^32
   constexpr float TWO_PI = 6.2831853071795864f;
   float u1 = sycl::fma(static_cast<float>(r.x), M, M * 0.5f);
@@ -89,8 +76,8 @@ inline float4 box_muller_float(philox_uint4 r) {
       radius2 * sycl::sin(angle2)};
 }
 
-// Box-Muller: 4 uint32 → 2 standard normal doubles
-inline double2 box_muller_double(philox_uint4 r) {
+// Box-Muller: 4 uint32 -> 2 standard normal doubles
+inline double2 box_muller_double(uint4 r) {
   constexpr double M = 2.3283064365386963e-10; // 1/2^32
   constexpr double TWO_PI = 6.2831853071795864;
   double u1 = sycl::fma(
@@ -106,35 +93,34 @@ inline double2 box_muller_double(philox_uint4 r) {
   return {radius * sycl::cos(angle), radius * sycl::sin(angle)};
 }
 
-// ─── Single-key kernel ───────────────────────────────────────────
+// --- Single-key kernel ---
 
 template <typename scalar_t, bool is_uniform>
 struct PhiloxSingleKeyFunctor {
+  // Uniform masks the raw bits against the output dtype's mantissa, so its
+  // bounds stay in scalar_t. Normal is transformed in compute precision.
+  using param_t = std::conditional_t<
+      is_uniform,
+      scalar_t,
+      std::conditional_t<std::is_same_v<scalar_t, double>, double, float>>;
+
   void operator()(sycl::nd_item<1> item) const {
     auto key_vec = memory::ld_vec<16>(key_);
     auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
     uint64_t seed = key_vals[0];
     uint64_t offset = key_vals[1];
 
-    int64_t chunk = static_cast<int64_t>(item.get_global_id(0));
     constexpr int epc = elems_per_call<scalar_t>;
     int64_t num_full_chunks = num_elems_ / epc;
+    int64_t num_chunks = (num_elems_ + epc - 1) / epc;
 
-    if (chunk < num_full_chunks) {
-      auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
+    XPU_KERNEL_LOOP_TYPE(item, chunk, num_chunks, int64_t) {
       int64_t base = chunk * epc;
-      write_values(r, base, epc);
-    }
-
-    // Tail
-    if (chunk == num_full_chunks) {
-      int64_t tail_start = num_full_chunks * epc;
-      int remaining = static_cast<int>(num_elems_ - tail_start);
-      if (remaining > 0) {
-        auto r =
-            philox_4x32(seed, offset + static_cast<uint64_t>(num_full_chunks));
-        write_values(r, tail_start, remaining);
-      }
+      // The last chunk is partial when num_elems_ is not a multiple of epc.
+      int count =
+          chunk < num_full_chunks ? epc : static_cast<int>(num_elems_ - base);
+      auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
+      write_values(r, base, count);
     }
   }
 
@@ -142,8 +128,8 @@ struct PhiloxSingleKeyFunctor {
       scalar_t* output,
       const uint64_t* key,
       int64_t num_elems,
-      scalar_t param0,
-      scalar_t param1)
+      param_t param0,
+      param_t param1)
       : output_(output),
         key_(key),
         num_elems_(num_elems),
@@ -151,7 +137,7 @@ struct PhiloxSingleKeyFunctor {
         param1_(param1) {}
 
  private:
-  void write_values(philox_uint4 r, int64_t base, int count) const {
+  void write_values(uint4 r, int64_t base, int count) const {
     if constexpr (is_uniform) {
       write_uniform(r, base, count);
     } else {
@@ -159,55 +145,36 @@ struct PhiloxSingleKeyFunctor {
     }
   }
 
-  void write_uniform(philox_uint4 r, int64_t base, int count) const {
+  void write_uniform(uint4 r, int64_t base, int count) const {
     if constexpr (std::is_same_v<scalar_t, double>) {
       uint64_t packed[2] = {
           (static_cast<uint64_t>(r.x) << 32) | r.y,
           (static_cast<uint64_t>(r.z) << 32) | r.w};
       for (int j = 0; j < count; j++) {
-        double x = uint64_to_uniform_double(packed[j]);
         output_[base + j] = static_cast<scalar_t>(
-            x * (static_cast<double>(param1_) - static_cast<double>(param0_)) +
-            static_cast<double>(param0_));
+            transformation::uniform_real(packed[j], param0_, param1_));
       }
     } else {
       uint32_t vals[4] = {r.x, r.y, r.z, r.w};
       for (int j = 0; j < count; j++) {
-        float x = uint32_to_uniform_float(vals[j]);
-        float result_f =
-            x * (static_cast<float>(param1_) - static_cast<float>(param0_)) +
-            static_cast<float>(param0_);
-        scalar_t val = static_cast<scalar_t>(result_f);
-        // For half/bfloat16, rounding can push val to high; step back in
-        // the reduced-precision representation.
-        if constexpr (
-            std::is_same_v<scalar_t, c10::BFloat16> ||
-            std::is_same_v<scalar_t, c10::Half>) {
-          if (val >= param1_) {
-            val.x -= 1;
-          }
-        }
-        output_[base + j] = val;
+        output_[base + j] = static_cast<scalar_t>(
+            transformation::uniform_real(vals[j], param0_, param1_));
       }
     }
   }
 
-  void write_normal(philox_uint4 r, int64_t base, int count) const {
+  void write_normal(uint4 r, int64_t base, int count) const {
     if constexpr (std::is_same_v<scalar_t, double>) {
       auto normals = box_muller_double(r);
       double vals[2] = {normals.x, normals.y};
       for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(
-            vals[j] * static_cast<double>(param1_) +
-            static_cast<double>(param0_));
+        output_[base + j] = static_cast<scalar_t>(vals[j] * param1_ + param0_);
       }
     } else {
       auto normals = box_muller_float(r);
       float vals[4] = {normals.x, normals.y, normals.z, normals.w};
       for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(
-            vals[j] * static_cast<float>(param1_) +
-            static_cast<float>(param0_));
+        output_[base + j] = static_cast<scalar_t>(vals[j] * param1_ + param0_);
       }
     }
   }
@@ -215,11 +182,11 @@ struct PhiloxSingleKeyFunctor {
   scalar_t* output_;
   const uint64_t* key_;
   int64_t num_elems_;
-  scalar_t param0_; // low or mean
-  scalar_t param1_; // high or stddev
+  param_t param0_; // low or mean
+  param_t param1_; // high or stddev
 };
 
-// ─── Distribution dispatch ───────────────────────────────────────
+// --- Distribution dispatch ---
 
 void philox_distribution_validate(
     const char* op_name,
@@ -295,19 +262,24 @@ void philox_distribution_launch(
       self.scalar_type(),
       is_uniform ? "_philox_uniform_" : "_philox_normal_",
       [&] {
+        using param_t =
+            typename PhiloxSingleKeyFunctor<scalar_t, is_uniform>::param_t;
         constexpr int epc = elems_per_call<scalar_t>;
-        int64_t num_chunks = (self.numel() + epc - 1) / epc;
-        constexpr int work_group_size =
+        int64_t num_chunks = ceil_div(self.numel(), static_cast<int64_t>(epc));
+        constexpr int64_t work_group_size =
             256; // TODO: Investigate impact of wg_size 256 on XPU performance.
-        int work_group_num = static_cast<int>(
-            (num_chunks + work_group_size - 1) / work_group_size);
+        // The kernel is grid-strided, so cap the launched work items at what
+        // the device can keep resident instead of one work item per chunk.
+        const int64_t work_items =
+            std::min(num_chunks, syclMaxWorkItemsPerTile());
+        const int64_t work_group_num = ceil_div(work_items, work_group_size);
 
         auto functor = PhiloxSingleKeyFunctor<scalar_t, is_uniform>(
             output.mutable_data_ptr<scalar_t>(),
             key_contig.const_data_ptr<uint64_t>(),
             self.numel(),
-            static_cast<scalar_t>(param0),
-            static_cast<scalar_t>(param1));
+            static_cast<param_t>(param0),
+            static_cast<param_t>(param1));
 
         sycl_kernel_submit(
             sycl::range<1>(work_group_num * work_group_size),
