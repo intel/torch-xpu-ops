@@ -222,9 +222,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item_id, val, welford_op, shared_);
 
     if (item_id.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       if constexpr (!rms_norm) {
         mean_[i] = m1;
         rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
@@ -1314,7 +1312,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
