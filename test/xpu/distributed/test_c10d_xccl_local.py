@@ -3972,7 +3972,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             #   self.assertTrue(s <= f)
             # we don't collect stack traces in JSON at the moment
             if not is_json:
-                self.assertIn("test_c10d_xccl.py", str(last["frames"]))
+                self.assertIn(os.path.basename(__file__), str(last["frames"]))
             self.assertEqual(last["input_sizes"], ((3, 4),))
             self.assertEqual(last["input_dtypes"], ["Float"])
             self.assertEqual(last["output_sizes"], ((3, 4),))
@@ -4175,7 +4175,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         # TODO: Mark completed in PGXCCL so that the "state" field can be asserted here
         # self.assertEqual(last["state"], "completed")
-        self.assertIn("test_c10d_xccl.py", str(last["frames"]))
+        self.assertIn(os.path.basename(__file__), str(last["frames"]))
         self.assertEqual(last["input_sizes"], ((3, 4),))
         self.assertEqual(last["input_dtypes"], ["Float"])
         self.assertEqual(last["output_sizes"], ((3, 4),))
