@@ -332,58 +332,73 @@ Tensor promote_fft_input(const Tensor& input) {
 
 } // namespace impl
 
-Tensor _fft_c2c_mkl(
+static void _fft_c2c_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
-    bool forward) {
-  if (dim.empty()) {
-    return orig_self.clone();
-  }
+    bool forward,
+    Tensor& out) {
   auto self = impl::promote_fft_input(orig_self);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
-  auto out = at::empty(out_sizes, self.options());
   auto input_sizes = self.sizes();
+  const bool needs_type_conversion = self.scalar_type() != out.scalar_type();
+  Tensor fft_out = needs_type_conversion || !out.is_contiguous()
+      ? at::empty(out_sizes, self.options())
+      : out;
+
+  const auto pass_count =
+      (sorted_dims.size() + impl::mkl_max_ndim - 1) / impl::mkl_max_ndim;
+  Tensor scratch;
+  if (pass_count > 1) {
+    scratch = at::empty(out_sizes, self.options());
+  }
+
   auto working_tensor = self;
+  size_t pass = 0;
 
   while (!sorted_dims.empty()) {
     const auto max_dims =
         std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
     auto fft_dims =
         IntArrayRef(sorted_dims).slice(sorted_dims.size() - max_dims, max_dims);
+    const auto remaining_passes = pass_count - pass;
+    Tensor* pass_out = remaining_passes % 2 == 1 ? &fft_out : &scratch;
 
     impl::_exec_fft(
-        out,
+        *pass_out,
         working_tensor,
         out_sizes,
         fft_dims,
         /*onesided=*/false,
         forward);
 
+    working_tensor = *pass_out;
     sorted_dims.resize(sorted_dims.size() - max_dims);
-
-    if (sorted_dims.empty()) {
-      break;
-    }
-
-    sorted_dims = impl::_sort_dims(self, sorted_dims);
-
-    if (working_tensor.is_same(self)) {
-      working_tensor = std::move(out);
-      out = at::empty(out_sizes, self.options());
-    } else {
-      std::swap(out, working_tensor);
+    ++pass;
+    if (!sorted_dims.empty()) {
+      sorted_dims = impl::_sort_dims(self, sorted_dims);
     }
   }
 
-  if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
-    Tensor result = out.to(ScalarType::ComplexHalf);
-    impl::_fft_apply_normalization(result, normalization, input_sizes, dim);
-    return result;
+  impl::_fft_apply_normalization(fft_out, normalization, input_sizes, dim);
+  if (!fft_out.is_same(out)) {
+    out.copy_(fft_out);
   }
-  impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+}
+
+Tensor _fft_c2c_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool forward) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto out = at::empty(self.sizes(), self.options());
+  _fft_c2c_mkl_out_impl(self, dim, normalization, forward, out);
   return out;
 }
 
@@ -393,9 +408,15 @@ Tensor& _fft_c2c_mkl_out(
     int64_t normalization,
     bool forward,
     Tensor& out) {
-  auto result = _fft_c2c_mkl(self, dim, normalization, forward);
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  if (dim.empty() || out.is_alias_of(self)) {
+    auto result = _fft_c2c_mkl(self, dim, normalization, forward);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
+
+  at::native::resize_output(out, self.sizes());
+  _fft_c2c_mkl_out_impl(self, dim, normalization, forward, out);
   return out;
 }
 
@@ -419,14 +440,21 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
     HermitSymmImpl(input, dim, -1);
 }
 
-Tensor _fft_c2r_mkl(
+static DimVector _fft_c2r_out_sizes(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t last_dim_size) {
+  DimVector out_sizes(self.sizes().begin(), self.sizes().end());
+  out_sizes[dim.back()] = last_dim_size;
+  return out_sizes;
+}
+
+static void _fft_c2r_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
-    int64_t last_dim_size) {
-  if (dim.empty()) {
-    return orig_self.clone();
-  }
+    int64_t last_dim_size,
+    Tensor& out) {
   auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
@@ -452,27 +480,44 @@ Tensor _fft_c2r_mkl(
   auto in_sizes = input.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
-
-  auto out = at::empty(
-      out_sizes,
-      self.options().dtype(c10::toRealValueType(self.scalar_type())));
+  const bool needs_type_conversion =
+      c10::toRealValueType(self.scalar_type()) != out.scalar_type();
+  Tensor fft_out = needs_type_conversion || !out.is_contiguous()
+      ? at::empty(
+            out_sizes,
+            self.options().dtype(c10::toRealValueType(self.scalar_type())))
+      : out;
 
   HermitSymm(input, dim.back(), out_sizes[dim.back()]);
 
   impl::_exec_fft(
-      out,
+      fft_out,
       input,
       out_sizes,
       dim.back(),
       /*onesided=*/true,
       /*forward=*/false);
 
-  if (orig_self.scalar_type() == ScalarType::ComplexHalf) {
-    Tensor result = out.to(ScalarType::Half);
-    impl::_fft_apply_normalization(result, normalization, out_sizes, dim);
-    return result;
+  impl::_fft_apply_normalization(fft_out, normalization, out_sizes, dim);
+  if (!fft_out.is_same(out)) {
+    out.copy_(fft_out);
   }
-  impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+}
+
+Tensor _fft_c2r_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto out_sizes = _fft_c2r_out_sizes(self, dim, last_dim_size);
+  auto out = at::empty(
+      out_sizes,
+      self.options().dtype(c10::toRealValueType(self.scalar_type())));
+  _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
   return out;
 }
 
@@ -482,9 +527,16 @@ Tensor& _fft_c2r_mkl_out(
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& out) {
-  auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  if (dim.empty() || out.is_alias_of(self)) {
+    auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
+
+  auto out_sizes = _fft_c2r_out_sizes(self, dim, last_dim_size);
+  at::native::resize_output(out, out_sizes);
+  _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
   return out;
 }
 
@@ -492,76 +544,116 @@ REGISTER_XPU_DISPATCH(
     fft_fill_with_conjugate_symmetry_stub,
     &_fft_fill_with_conjugate_symmetry_xpu);
 
-Tensor _fft_r2c_mkl(
+static DimVector _fft_r2c_out_sizes(
+    const Tensor& self,
+    IntArrayRef dim,
+    bool onesided) {
+  DimVector out_sizes(self.sizes().begin(), self.sizes().end());
+  if (onesided) {
+    auto last_dim = dim.back();
+    out_sizes[last_dim] = self.size(last_dim) / 2 + 1;
+  }
+  return out_sizes;
+}
+
+static void _fft_r2c_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
-    bool onesided) {
-  if (dim.empty()) {
-    return orig_self.clone();
-  }
+    bool onesided,
+    Tensor& out) {
   auto self = impl::promote_fft_input(orig_self);
 
   auto input_sizes = self.sizes();
-  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
   auto last_dim = dim.back();
   auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
-  onesided_sizes[last_dim] = last_dim_halfsize;
+  auto out_sizes = _fft_r2c_out_sizes(self, dim, onesided);
+  const auto fft_dtype = c10::toComplexType(self.scalar_type());
+  const bool needs_type_conversion = fft_dtype != out.scalar_type();
+  Tensor fft_out = needs_type_conversion || !out.is_contiguous()
+      ? at::empty(out_sizes, self.options().dtype(fft_dtype))
+      : out;
 
-  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
-
-  auto out = at::empty(
-      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  const auto c2c_pass_count =
+      (dim.size() - 1 + impl::mkl_max_ndim - 1) / impl::mkl_max_ndim;
+  const auto pass_count = 1 + c2c_pass_count;
+  Tensor scratch;
+  if (pass_count > 1) {
+    scratch = at::empty(out_sizes, self.options().dtype(fft_dtype));
+  }
 
   auto working_tensor = self.contiguous();
 
   // First do the R2C transform on the last dimension
+  Tensor* pass_out = pass_count % 2 == 1 ? &fft_out : &scratch;
   impl::_exec_fft(
-      out, working_tensor, out_sizes, last_dim, onesided, /*forward=*/true);
-
-  if (dim.size() > 1) {
-    working_tensor = at::empty(
-        out_sizes,
-        self.options().dtype(c10::toComplexType(self.scalar_type())));
-  }
+      *pass_out,
+      working_tensor,
+      out_sizes,
+      last_dim,
+      onesided,
+      /*forward=*/true);
+  working_tensor = *pass_out;
 
   DimVector sorted_dims(dim.begin(), dim.end() - 1);
+  size_t pass = 1;
 
   while (!sorted_dims.empty()) {
     sorted_dims = impl::_sort_dims(self, sorted_dims);
-
-    std::swap(out, working_tensor);
 
     const auto max_dims =
         std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
     auto fft_dims =
         IntArrayRef(sorted_dims).slice(sorted_dims.size() - max_dims, max_dims);
+    const auto remaining_passes = pass_count - pass;
+    pass_out = remaining_passes % 2 == 1 ? &fft_out : &scratch;
     impl::_exec_fft(
-        out,
+        *pass_out,
         working_tensor,
         out_sizes,
         fft_dims,
         onesided,
         /*forward=*/true);
+    working_tensor = *pass_out;
     sorted_dims.resize(sorted_dims.size() - max_dims);
+    ++pass;
   }
 
   // Only need to normalize the onesided slice since data in the other half is
   // overwritten
-  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
+  auto out_slice = fft_out.slice(last_dim, 0, last_dim_halfsize);
   impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
 
   if (!onesided) {
-    if (out.sizes()[last_dim] != out_sizes[last_dim]) {
-      working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
-      working_tensor.slice(last_dim, 0, last_dim_halfsize).copy_(out);
-      out = std::move(working_tensor);
+    if (fft_out.sizes()[last_dim] != out_sizes[last_dim]) {
+      auto full_out = at::empty(out_sizes, self.options().dtype(fft_dtype));
+      full_out.slice(last_dim, 0, last_dim_halfsize).copy_(fft_out);
+      fft_out = std::move(full_out);
     }
-    at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+    at::native::_fft_fill_with_conjugate_symmetry_(fft_out, dim);
   }
 
-  if (orig_self.scalar_type() == ScalarType::Half)
-    return out.to(ScalarType::ComplexHalf);
+  if (!fft_out.is_same(out)) {
+    out.copy_(fft_out);
+  }
+}
+
+Tensor _fft_r2c_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto promoted = impl::promote_fft_input(self);
+  auto out_sizes = _fft_r2c_out_sizes(self, dim, onesided);
+  auto out_dtype = self.scalar_type() == ScalarType::Half
+      ? ScalarType::ComplexHalf
+      : c10::toComplexType(promoted.scalar_type());
+  auto out = at::empty(out_sizes, self.options().dtype(out_dtype));
+  _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
   return out;
 }
 
@@ -571,10 +663,16 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
-  auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
+  if (dim.empty() || out.is_alias_of(self)) {
+    auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
+    at::native::resize_output(out, result.sizes());
+    out.copy_(result);
+    return out;
+  }
 
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  auto out_sizes = _fft_r2c_out_sizes(self, dim, onesided);
+  at::native::resize_output(out, out_sizes);
+  _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
   return out;
 }
 
