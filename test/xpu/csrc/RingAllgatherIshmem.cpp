@@ -253,8 +253,8 @@ struct RingAllgatherIshmemSingleKernel {
           right,
           grp);
       // Ensure the data slice has landed on the right neighbour before the flag.
-      // ishmemx_quiet_work_group(grp);
-      ishmemx_fence_work_group(grp);
+      ishmemx_quiet_work_group(grp);
+      //ishmemx_fence_work_group(grp);
       if (lid == 0) {
         ishmem_uint64_atomic_set(pad + (0 * num_wg + wg), tag, right);
       }
@@ -283,8 +283,8 @@ struct RingAllgatherIshmemSingleKernel {
             static_cast<size_t>(cnt),
             right,
             grp);
-        // ishmemx_quiet_work_group(grp);
-        ishmemx_fence_work_group(grp);
+        ishmemx_quiet_work_group(grp);
+        //ishmemx_fence_work_group(grp);
         if (lid == 0) {
           ishmem_uint64_atomic_set(pad + (t * num_wg + wg), tag, right);
         }
@@ -372,7 +372,6 @@ at::Tensor ring_allgather_ishmem(
     tag = ++state.iteration;
   }
   uint64_t* pad_half = pad + (tag % 2) * static_cast<int64_t>(world_size) * RING_MAX_WG;
-  debug_log(rank, "launch single-kernel ring");
   // Entire ring runs in ONE kernel launch; each work-group drives an
   // independent ring pipeline over its slice with work-group-collective ISHMEM
   // put-with-signal and an on-device wait on its own pad slot.
@@ -394,25 +393,37 @@ at::Tensor ring_allgather_ishmem(
             tag});
   });
 
-  debug_log(rank, "ring kernel done");
-
   queue.memcpy(gathered_out.data_ptr(), symm_base, gathered_bytes);
-  debug_log(rank, "return");
 
   return gathered_out;
 }
 
 void ring_allgather_ishmem_finalize(const at::Tensor&) {
+  // rank is unknown here (state doesn't track it), but the ISHMEM PE id is
+  // available directly and is the natural identifier for these logs.
+  int64_t pe = -1;
+  {
+    int initialized = 0;
+    ishmemx_query_initialized(&initialized);
+    if (initialized) {
+      pe = ishmem_my_pe();
+    }
+  }
+  debug_log(pe, "finalize: enter");
   auto& state = get_state();
   std::lock_guard<std::mutex> lock(state.mutex);
   if (state.symm != nullptr) {
+    debug_log(pe, "finalize: barrier before freeing symm heap");
     ishmem_barrier_all();
+    debug_log(pe, "finalize: freeing symm heap");
     ishmem_free(state.symm);
     state.symm = nullptr;
     state.symm_bytes = 0;
   }
   if (state.pad != nullptr) {
+    debug_log(pe, "finalize: barrier before freeing signal pad");
     ishmem_barrier_all();
+    debug_log(pe, "finalize: freeing signal pad");
     ishmem_free(state.pad);
     state.pad = nullptr;
     state.pad_pes = 0;
@@ -424,10 +435,13 @@ void ring_allgather_ishmem_finalize(const at::Tensor&) {
     int initialized = 0;
     ishmemx_query_initialized(&initialized);
     if (initialized) {
+      debug_log(pe, "finalize: calling ishmem_finalize()");
       ishmem_finalize();
+      debug_log(pe, "finalize: ishmem_finalize() returned");
     }
     state.initialized = false;
   }
+  debug_log(pe, "finalize: exit");
 }
 
 } // namespace
