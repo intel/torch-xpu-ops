@@ -7,7 +7,7 @@ Run:
     mpirun -np 4 --prepend-rank python test_ring_reduce_scatter_ishmem.py
 
 Env:
-    CHUNK (2048)          per-rank output element count (the reduced block)
+    CHUNK (4096)          per-rank output element count (the reduced block)
     DTYPE (bfloat16)
     LOOP (40), WARMUP (20)
 """
@@ -24,7 +24,7 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(1024 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-CHUNK = int(os.environ.get("CHUNK", 2048))
+CHUNK = int(os.environ.get("CHUNK", 4096))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 # Enable the PTI-based torch.profiler to capture a chrome trace of the timed
@@ -32,7 +32,7 @@ WARMUP = int(os.environ.get("WARMUP", 20))
 ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "0") != "0"
 # Print a progress line every PROGRESS_EVERY iterations of the timed loop so a
 # slow run does not look like a hang. Set to 0 to disable.
-PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 5))
+PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 10))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CSRC = os.path.join(_HERE, "..", "csrc")
@@ -72,6 +72,7 @@ def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
     begin = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     end = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     import time as _time
+    dist.barrier()
 
     wall0 = _time.time()
     for i in range(loop):

@@ -25,8 +25,8 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(1024 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 1024))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 2048))
+TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 4096))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 4096))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 COMPARE_PUSH = os.environ.get("COMPARE_PUSH", "0") != "0"
@@ -37,7 +37,7 @@ ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "0") != "0"
 # slow run (each ring op can take ~1.8s) does not look like a hang. Set to 0 to
 # disable. A progress print forces an xpu.synchronize(), so it also gives a
 # rough running latency estimate.
-PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 5))
+PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 10))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CSRC = os.path.join(_HERE, "..", "csrc")
@@ -77,6 +77,7 @@ def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
     begin = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     end = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     import time as _time
+    dist.barrier()
 
     wall0 = _time.time()
     for i in range(loop):

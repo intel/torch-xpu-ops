@@ -180,7 +180,7 @@ uint64_t* ensure_pad(int slots, sycl::queue& queue) {
 // Upper bound on work-groups. The signal pad is sized world_size * this so
 // the runtime (shard-dependent) num_wg can vary per call without reallocating,
 // and must never exceed this value.
-constexpr int32_t RING_MAX_WG = 64;
+constexpr int32_t RING_MAX_WG = 16;
 
 // Deterministic (rank-independent) work-group count / byte-slice for a shard.
 // Must be identical on every PE because the signal-pad slot layout
@@ -253,7 +253,8 @@ struct RingAllgatherIshmemSingleKernel {
           right,
           grp);
       // Ensure the data slice has landed on the right neighbour before the flag.
-      ishmemx_quiet_work_group(grp);
+      // ishmemx_quiet_work_group(grp);
+      ishmemx_fence_work_group(grp);
       if (lid == 0) {
         ishmem_uint64_atomic_set(pad + (0 * num_wg + wg), tag, right);
       }
@@ -282,7 +283,8 @@ struct RingAllgatherIshmemSingleKernel {
             static_cast<size_t>(cnt),
             right,
             grp);
-        ishmemx_quiet_work_group(grp);
+        // ishmemx_quiet_work_group(grp);
+        ishmemx_fence_work_group(grp);
         if (lid == 0) {
           ishmem_uint64_atomic_set(pad + (t * num_wg + wg), tag, right);
         }
@@ -353,8 +355,9 @@ at::Tensor ring_allgather_ishmem(
   int64_t slice_bytes = static_cast<int64_t>(shard_bytes);
   compute_launch(
       static_cast<int64_t>(shard_bytes), threads, num_wg, slice_bytes);
+  // 2x slots: odd/even calls use different halves, so no barrier needed between calls.
   auto* pad = ensure_pad(
-      static_cast<int>(world_size) * RING_MAX_WG, queue);
+      2 * static_cast<int>(world_size) * RING_MAX_WG, queue);
 
   // Seed our own slot.
   const int64_t local_offset = static_cast<int64_t>(rank) * shard_bytes;
@@ -368,6 +371,7 @@ at::Tensor ring_allgather_ishmem(
     std::lock_guard<std::mutex> lock(state.mutex);
     tag = ++state.iteration;
   }
+  uint64_t* pad_half = pad + (tag % 2) * static_cast<int64_t>(world_size) * RING_MAX_WG;
   debug_log(rank, "launch single-kernel ring");
   // Entire ring runs in ONE kernel launch; each work-group drives an
   // independent ring pipeline over its slice with work-group-collective ISHMEM
@@ -380,7 +384,7 @@ at::Tensor ring_allgather_ishmem(
             sycl::range<1>(threads)),
         RingAllgatherIshmemSingleKernel{
             symm_base,
-            pad,
+            pad_half,
             static_cast<int64_t>(shard_bytes),
             slice_bytes,
             static_cast<int32_t>(rank),
@@ -390,26 +394,9 @@ at::Tensor ring_allgather_ishmem(
             tag});
   });
 
-  // The ring kernel issues all device-side ISHMEM put-with-signal transfers.
-  // The host-side ishmem_barrier_all() below is the cross-call fence that lets
-  // the reused signal pads (world_size * num_wg slots) be recycled with the
-  // next strictly-increasing tag. That fence is only meaningful once the kernel
-  // that produces / consumes this call's pad values has actually completed on
-  // the device -- otherwise a pipelined next call (e.g. a timed loop with no
-  // per-iteration synchronize) can signal a pad slot with the next tag before a
-  // peer's wait_until(EQ, this_tag) observes it, overwriting the value it is
-  // spinning on and deadlocking. So we chain the copy-out on the ring kernel
-  // and wait for it below.
   debug_log(rank, "ring kernel done");
 
-  auto out_event = queue.submit([&](sycl::handler& cgh) {
-    cgh.depends_on(ring_event);
-    cgh.memcpy(gathered_out.data_ptr(), symm_base, gathered_bytes);
-  });
-  out_event.wait_and_throw();
-  // Cross-call safety: make sure every PE has finished consuming this call's
-  // signal pads / slots before any PE reuses them with the next tag.
-  ishmem_barrier_all();
+  queue.memcpy(gathered_out.data_ptr(), symm_base, gathered_bytes);
   debug_log(rank, "return");
 
   return gathered_out;

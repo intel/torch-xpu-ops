@@ -198,7 +198,7 @@ uint64_t* ensure_pad(int slots, sycl::queue& queue) {
 // Upper bound on work-groups. The signal pad is sized world_size * this so
 // the runtime (chunk-dependent) num_wg can vary per call without reallocating,
 // and must never exceed this value.
-constexpr int32_t RING_MAX_WG = 64;
+constexpr int32_t RING_MAX_WG = 16;
 
 // Deterministic (rank-independent) work-group count / element-slice for a
 // given chunk. Must be identical on every PE because the signal-pad slot
@@ -317,7 +317,8 @@ struct RingReduceScatterIshmemSingleKernel {
           static_cast<size_t>(cnt) * sizeof(scalar_t),
           right,
           grp);
-      ishmemx_quiet_work_group(grp);
+      // ishmemx_quiet_work_group(grp);
+      ishmemx_fence_work_group(grp);
       if (lid == 0) {
         ishmem_uint64_atomic_set(pad + (0 * num_wg + wg), tag, right);
       }
@@ -350,7 +351,8 @@ struct RingReduceScatterIshmemSingleKernel {
             static_cast<size_t>(cnt) * sizeof(scalar_t),
             right,
             grp);
-        ishmemx_quiet_work_group(grp);
+        // ishmemx_quiet_work_group(grp);
+        ishmemx_fence_work_group(grp);
         if (lid == 0) {
           ishmem_uint64_atomic_set(pad + (t * num_wg + wg), tag, right);
         }
@@ -430,7 +432,8 @@ at::Tensor ring_reduce_scatter_ishmem(
   int64_t elems_per_wg = chunk;
   compute_launch(chunk, threads, VEC_SIZE, num_wg, elems_per_wg);
 
-  auto* pad = ensure_pad(static_cast<int>(world_size) * RING_MAX_WG, queue);
+  // 2x slots: odd/even calls use different halves, so no barrier needed between calls.
+  auto* pad = ensure_pad(2 * static_cast<int>(world_size) * RING_MAX_WG, queue);
 
   // Fresh strictly-increasing signal tag for this call (pads never reused).
   uint64_t tag;
@@ -439,12 +442,13 @@ at::Tensor ring_reduce_scatter_ishmem(
     std::lock_guard<std::mutex> lock(state.mutex);
     tag = ++state.iteration;
   }
+  uint64_t* pad_half = pad + (tag % 2) * static_cast<int64_t>(world_size) * RING_MAX_WG;
 
   debug_log(rank, "launch single-kernel ring reduce-scatter");
   AT_DISPATCH_FLOAT_AND_BFLOAT16(
       output.scalar_type(), "ring_reduce_scatter_ishmem", [&]() {
         auto* symm_base = static_cast<scalar_t*>(current_symmetric());
-        auto ring_event = queue.submit([&](sycl::handler& cgh) {
+        queue.submit([&](sycl::handler& cgh) {
           cgh.parallel_for(
               sycl::nd_range<1>(
                   sycl::range<1>(static_cast<size_t>(num_wg) * threads),
@@ -454,7 +458,7 @@ at::Tensor ring_reduce_scatter_ishmem(
                   symm_base,
                   symm_base,
                   output.data_ptr<scalar_t>(),
-                  pad,
+                  pad_half,
                   chunk,
                   elems_per_wg,
                   r,
@@ -463,13 +467,9 @@ at::Tensor ring_reduce_scatter_ishmem(
                   num_wg,
                   tag});
         });
-        ring_event.wait_and_throw();
       });
 
   debug_log(rank, "ring kernel done");
-  // Cross-call safety: make sure every PE has finished consuming this call's
-  // signal pads / slots before any PE reuses them with the next tag.
-  ishmem_barrier_all();
   debug_log(rank, "return");
 
   return output;
