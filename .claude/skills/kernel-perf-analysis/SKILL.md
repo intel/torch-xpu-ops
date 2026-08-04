@@ -147,6 +147,7 @@ Use the source-code based roofline model as the expectation and backend counters
 | Is global-memory saturation likely? | High global-memory bandwidth plus high request-queue pressure or high memory stalls |
 | Is cache/reuse behavior dominant? | On-chip traffic much larger than global-memory traffic while global read is near the first-pass roofline estimate |
 | Is compute/pipe utilization the limiter? | High active, low stall, low co-issue, or pipe imbalance |
+| Is the kernel dependency-limited rather than instruction-count-limited? | Utilization summed across ALU pipes is near 100 % while the stall share stays high (> 30 %) |
 
 Do not classify a kernel as memory-bound from global-read bytes alone. Do not classify from global-read plus global-write bytes unless write-side closure is understood.
 
