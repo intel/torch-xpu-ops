@@ -8,9 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// SYCL kernels for _philox_key_split and _philox_key_fold_in.
-// Ported from CUDA: aten/src/ATen/native/cuda/PhiloxKeySplit.cu
-// See PyTorch PR #177229.
 
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 

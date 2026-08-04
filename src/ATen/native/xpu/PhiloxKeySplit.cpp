@@ -8,9 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// Dispatch layer for stateless Philox key operations.
-// Ported from CUDA: aten/src/ATen/native/cuda/PhiloxKeySplit.cu
-// See PyTorch PR #177229.
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
