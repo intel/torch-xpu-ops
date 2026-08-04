@@ -422,7 +422,7 @@ std::tuple<at::Tensor, at::Tensor> ps_roi_align_kernel(
 
   auto output_size = output.numel();
   int64_t global_range =
-      syclLoopGroupRange(static_cast<int64_t>(output_size), 512);
+      xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
 
   if (output.numel() == 0) {
@@ -471,7 +471,7 @@ Tensor ps_roi_align_backward_kernel(
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
   int64_t global_range =
-      syclLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients

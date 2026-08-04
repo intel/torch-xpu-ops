@@ -41,23 +41,15 @@ inline int GET_GROUPS(
   return static_cast<int>(group_num);
 }
 
-// Grid-strided loop kernels (see XPU_KERNEL_LOOP) must not launch one work item
-// per element; doing so degenerates the strided loop into a no-op. Cap the
-// number of launched work items at roughly the number the device can keep
-// resident so each work item processes multiple elements. The 32 factor is the
-// max sub-group (SIMD) width on Intel GPUs, so this estimates
-// EU count * HW threads per EU * SIMD lanes.
-inline int64_t syclMaxWorkItemsForLoop(
-    at::DeviceIndex dev_id = at::xpu::current_device()) {
-  return xpu::sycl::syclGpuEuCount(dev_id) *
-      xpu::sycl::syclGpuHWThreadsPerEU(dev_id) * 32;
-}
-
-// Returns the number of work groups (not work items) needed to cover `nelem`
-// elements with the given work-group size, capped by syclMaxWorkItemsForLoop().
-inline int64_t syclLoopGroupRange(
-    int64_t nelem,
-    int64_t group_size = SYCL_NUM_THREADS) {
-  int64_t work_items = std::min(nelem, syclMaxWorkItemsForLoop());
+// Returns the number of work groups needed to cover `nelem` elements with the
+// given work-group size, capped so grid-strided loop kernels (XPU_KERNEL_LOOP)
+// do not launch more work items than the device can keep resident. The default
+// cap is syclMaxWorkItemsPerTile(); pass a custom `candidate` to override.
+inline int64_t xpuKernelLoopGroupRange(
+    size_t nelem,
+    int32_t group_size = SYCL_NUM_THREADS,
+    int64_t candidate = xpu::sycl::syclMaxWorkItemsPerTile()) {
+  int64_t work_items =
+      std::min(static_cast<int64_t>(nelem), candidate);
   return (work_items + group_size - 1) / group_size;
 }

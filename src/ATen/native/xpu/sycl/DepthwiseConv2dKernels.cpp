@@ -683,7 +683,7 @@ void conv_depthwise2d_forward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -712,7 +712,7 @@ void conv_depthwise2d_forward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -741,7 +741,7 @@ void conv_depthwise2d_forward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -770,7 +770,7 @@ void conv_depthwise2d_forward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -862,7 +862,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -890,7 +890,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -918,7 +918,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -948,7 +948,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -976,7 +976,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -1004,7 +1004,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -1034,7 +1034,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -1062,7 +1062,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -1090,7 +1090,7 @@ void conv_depthwise2d_backward_kernel(
                 dilationW,
                 dilationH);
             int64_t local_range = syclMaxWorkGroupSize(kfn);
-            auto global_range = syclLoopGroupRange(n, local_range);
+            auto global_range = xpuKernelLoopGroupRange(n, local_range);
             sycl_kernel_submit(
                 global_range * local_range,
                 local_range,
@@ -1119,7 +1119,7 @@ void conv_depthwise2d_backward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -1147,7 +1147,7 @@ void conv_depthwise2d_backward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
@@ -1175,7 +1175,7 @@ void conv_depthwise2d_backward_kernel(
               dilationW,
               dilationH);
           int64_t local_range = syclMaxWorkGroupSize(kfn);
-          auto global_range = syclLoopGroupRange(n, local_range);
+          auto global_range = xpuKernelLoopGroupRange(n, local_range);
           sycl_kernel_submit(
               global_range * local_range,
               local_range,
