@@ -10,10 +10,13 @@
 
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
+#include <algorithm>
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
+#include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -177,8 +180,9 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
 
   constexpr int64_t work_group_size =
       256; // TODO: wg_size 256 on performance of XPU remains to be investigated
-  const int64_t work_group_num =
-      (num_keys + work_group_size - 1) / work_group_size;
+  const int64_t work_items =
+      std::min(num_keys, xpu::sycl::syclMaxWorkItemsPerTile());
+  const int64_t work_group_num = c10::ceil_div(work_items, work_group_size);
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeyFoldInFunctor(
       key_contig.data_ptr<uint64_t>(),
