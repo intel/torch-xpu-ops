@@ -20,7 +20,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/Formatting.h>
 // #include <ATen/Functions.h>
-#include <ATen/NamedTensor.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/Tensor.h>
 #include <ATen/TensorGeometry.h>
@@ -226,7 +225,7 @@ TensorInfo<scalar, IndexType> getTensorInfo(const at::TensorBase& t) {
 
   scalar* data_ptr = nullptr;
 
-  if constexpr (std::is_const<scalar>::value) {
+  if constexpr (std::is_const_v<scalar>) {
     data_ptr = t.const_data_ptr<scalar>();
   } else {
     data_ptr = t.mutable_data_ptr<scalar>();

@@ -242,6 +242,10 @@ Tensor quantized_max_pool2d_kernel(
   int64_t iC = input.size(-3);
   int64_t iH = input.size(-2);
   int64_t iW = input.size(-1);
+  TORCH_CHECK(iC > 0 && iH > 0 && iW > 0, "input dimensions must be non-zero.");
+  TORCH_CHECK(
+      kH / 2 >= pH && kW / 2 >= pW,
+      "padding should be smaller than half of kernel_size.");
   int64_t oH = pooling_output_shape(iH, kH, pH, sH, dH, ceil_mode);
   int64_t oW = pooling_output_shape(iW, kW, pW, sW, dW, ceil_mode);
   int64_t oC = iC;

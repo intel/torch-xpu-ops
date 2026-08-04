@@ -95,7 +95,8 @@ void polygamma_kernel(TensorIteratorBase& iter, int64_t n) {
 template <typename scalar_t>
 struct LgammaFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::lgamma(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::lgamma(static_cast<opmath_t>(a));
   }
 };
 

@@ -6,6 +6,7 @@
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
+readonly NEW_PASSED_ISSUE=2333
 readonly TEST_PLATFORM_RAW="${TEST_PLATFORM:-linux}"
 _test_platform_normalized="${TEST_PLATFORM_RAW,,}"
 case "$_test_platform_normalized" in
@@ -165,7 +166,7 @@ check_skipped_ut() {
     local new_file="new-passed-issue.cases"
     local result_file="new-passed-this-run.cases"
     # Fetch known passing tests from GitHub issue tracking known passes
-    if gh --repo $REPO issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
+    if gh --repo $REPO issue view "${NEW_PASSED_ISSUE}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
         echo "✅ Fetched known tests from GitHub"
     else
         echo "⚠️  Using empty known tests file"
@@ -195,8 +196,8 @@ check_skipped_ut() {
     # Update GitHub issue with current passing tests for future reference
     if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
         if [ -s "$known_file" ] || [ -s "$new_file" ]; then
-            gh --repo $REPO issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
-            echo "✅ Successfully updated issue #${NEW_PASSED_ISSUE:-2333}"
+            gh --repo $REPO issue edit "${NEW_PASSED_ISSUE}" --body-file "$new_file"
+            echo "✅ Successfully updated issue #${NEW_PASSED_ISSUE}"
         fi
     fi
 }

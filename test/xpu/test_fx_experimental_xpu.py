@@ -1,0 +1,34 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Owner(s): ["module: intel"]
+
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    run_tests,
+)
+
+try:
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from .xpu_test_utils import XPUImportCtx
+
+with XPUImportCtx(False):
+    from test_fx_experimental import TestFXExperimental, TestNormalizeOperators
+
+
+# XPUImportCtx suppresses upstream module-level instantiation while importing,
+# so recreate the generated tests here.
+instantiate_parametrized_tests(TestFXExperimental)
+instantiate_device_type_tests(
+    TestNormalizeOperators, globals(), only_for="xpu", allow_xpu=True
+)
+
+if __name__ == "__main__":
+    run_tests()

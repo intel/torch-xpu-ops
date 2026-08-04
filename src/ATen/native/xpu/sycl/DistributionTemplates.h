@@ -28,6 +28,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
+#include <concepts>
+
 namespace at {
 namespace native {
 namespace xpu {
@@ -45,10 +47,12 @@ inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
   auto num_groups = (total_elements + group_size - 1) / group_size;
   auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
-  // number of times random will be generated per thread, to offset philox
-  // counter in thc random state
+  // Increment must be at least the number of 32-bit values consumed per
+  // dist_func call. Our distribution functors consume one rand4-equivalent
+  // block per loop iteration for both float and double paths.
   uint64_t counter_offset =
-      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) * UNROLL;
+      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) *
+      rand4_engine_calls;
   return std::make_tuple(counter_offset, num_groups, group_size);
 }
 
@@ -79,7 +83,7 @@ struct DistributionElementwiseKernelFunctor {
       for (int i = 0; i < unroll_factor; i++) {
         int li = linear_index + group_size * num_groups * i;
         if (li < numel_) {
-          if constexpr (std::is_integral<offset_calc_t>::value) {
+          if constexpr (std::is_integral_v<offset_calc_t>) {
             scalar_t* out = (scalar_t*)&out_data_[offset_calc_ * li];
             *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
           } else {
@@ -133,7 +137,7 @@ void distribution_nullary_kernel(
     return;
   }
 
-  auto execution_policy = calc_execution_policy(numel);
+  auto execution_policy = calc_execution_policy<unroll_factor>(numel);
   auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
@@ -355,9 +359,9 @@ void distribution_binary_kernel(
     PhiloxXpuState philox_args,
     const func_t& f) {
   static_assert(
-      std::is_same<
+      std::is_same_v<
           typename function_traits<func_t>::template arg<0>::type,
-          randStatePhilox4_32_10_t&>::value,
+          randStatePhilox4_32_10_t&>,
       "the first argument of functor must be randStatePhilox4_32_10_t");
   using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
   using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
@@ -470,11 +474,7 @@ void random_from_to_kernel(
       iter.dtype(),
       "random_from_to_kernel_xpu",
       AT_WRAP([&] {
-        if ((std::is_same<scalar_t, int64_t>::value ||
-             std::is_same<scalar_t, double>::value ||
-             std::is_same<scalar_t, float>::value ||
-             std::is_same<scalar_t, at::BFloat16>::value) &&
-            range >= 1ULL << 32) {
+        if (range >= 1ULL << 28) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -514,10 +514,10 @@ void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_full_64_bits_range_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, int64_t>::value ||
-            std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, float>::value ||
-            std::is_same<scalar_t, at::BFloat16>::value) {
+        if constexpr (
+            std::same_as<scalar_t, int64_t> || std::same_as<scalar_t, double> ||
+            std::same_as<scalar_t, float> ||
+            std::same_as<scalar_t, at::BFloat16>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -550,8 +550,8 @@ void random_kernel(TensorIteratorBase& iter, RNG gen) {
       iter.dtype(),
       "random_kernel_xpu",
       [&] {
-        if (std::is_same<scalar_t, double>::value ||
-            std::is_same<scalar_t, int64_t>::value) {
+        if constexpr (
+            std::same_as<scalar_t, double> || std::same_as<scalar_t, int64_t>) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
@@ -595,7 +595,7 @@ void uniform_and_transform(
     RNG gen,
     transform_t transform) {
   // Distribution backbone only handle two accumulate type.
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Uniform2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -628,7 +628,7 @@ void normal_and_transform(
     TensorIteratorBase& iter,
     RNG gen,
     transform_t transform) {
-  if (std::is_same<scalar_t, double>::value) {
+  if constexpr (std::same_as<scalar_t, double>) {
     Normal2DistributionFunctor f;
     distribution_nullary_kernel<scalar_t, accscalar_t, engine_calls / 2>(
         iter, gen, f, transform);
@@ -807,7 +807,7 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       self.scalar_type(),
       "bernoulli_tensor_xpu_self_",
       [&] {
-        if (std::is_same<scalar_t, double>::value) {
+        if constexpr (std::same_as<scalar_t, double>) {
           return bernoulli_tensor_kernel<double, double>(
               const_cast<TensorBase&>(self),
               const_cast<TensorBase&>(*p),
@@ -863,7 +863,7 @@ struct ExponentialFunctor {
             std::numeric_limits<scalar_t>::epsilon() / 2.f) {
       log = -std::numeric_limits<scalar_t>::epsilon() / 2.f;
     } else {
-      log = std::log(val);
+      log = sycl::log(val);
     }
     return static_cast<accscalar_t>(-1.f) / lambd_ * log;
   }
@@ -974,8 +974,8 @@ void cauchy_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct GeometricFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(std::ceil(
-        std::log(rand) / std::log(static_cast<accscalar_t>(1.0) - p_)));
+    return static_cast<scalar_t>(sycl::ceil(
+        sycl::log(rand) / sycl::log(static_cast<accscalar_t>(1.0) - p_)));
   }
 
   GeometricFunctor(accscalar_t p) : p_(p) {}
@@ -992,7 +992,7 @@ void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
       iter.dtype(),
       "geometric_xpu",
       [&] {
-        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
         auto p_ = static_cast<accscalar_t>(p);
         GeometricFunctor<scalar_t, accscalar_t> geometric_func(p_);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(

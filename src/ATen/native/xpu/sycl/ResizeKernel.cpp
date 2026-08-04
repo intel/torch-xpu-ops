@@ -74,7 +74,7 @@ TensorImpl* resize_impl_xpu_(
     IntArrayRef size,
     at::OptionalIntArrayRef stride,
     bool device_guard) {
-  if (self->sizes() == size && (!stride || self->strides() == stride)) {
+  if (self->sizes() == size && (!stride || self->strides() == *stride)) {
     return self;
   }
 

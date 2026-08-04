@@ -8,6 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/TensorFactories.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <ATen/native/xpu/sycl/TensorFactoriesKernels.h>
@@ -36,7 +37,7 @@ inline int64_t resolve_root_int(
   int64_t bXb_cX4 = b * b - cX4;
   // potential precision loss could occur here when casting int64_t (63 bits
   // precision) to double (52 bits precision)
-  double sr = std::sqrt((double)bXb_cX4);
+  double sr = sycl::sqrt((double)bXb_cX4);
   //
   // TODO: PyTorch uses ::__double2ll_rd. No corresponding API in DPCPP.
   // uses std::llround or std::ceil or std::float will cause error:
@@ -139,7 +140,7 @@ void triu_indices_kernel_template(
   using Kernel = TriuIndicesKernelFunctor<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = triu_size;
-  auto num_groups = CeilDiv(totalElements, group_size);
+  auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;
@@ -217,7 +218,7 @@ void tril_indices_kernel_template(
   using Kernel = TrilIndicesKernelFunctor<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = tril_size;
-  auto num_groups = CeilDiv(totalElements, group_size);
+  auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;

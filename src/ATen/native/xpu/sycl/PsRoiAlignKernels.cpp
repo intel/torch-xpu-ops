@@ -16,6 +16,7 @@
 // clang-format off
 DISABLE_RETURN_TYPE_WARNING_BEGIN
 // clang-format on
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -113,12 +114,17 @@ struct PsRoiAlignForwardKernel {
       T wstart = static_cast<T>(pw) * bin_size_w + roi_start_w;
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
       const T count = roi_bin_grid_h * roi_bin_grid_w;
 
       const T* offset_input =
@@ -279,12 +285,17 @@ struct PsRoiAlignBackwardKernel {
       const T grad_output_this_bin = grad_output_[index];
 
       // We use roi_bin_grid to sample the grid and mimic integral
+      using opmath_t = at::opmath_type<T>;
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_height) /
+                static_cast<opmath_t>(pooled_height_))); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : static_cast<int>(sycl::ceil(
+                static_cast<opmath_t>(roi_width) /
+                static_cast<opmath_t>(pooled_width_)));
       const T count = roi_bin_grid_h * roi_bin_grid_w;
 
       const int offset = (roi_batch_ind * channels_ + c_in) * height_ * width_;
