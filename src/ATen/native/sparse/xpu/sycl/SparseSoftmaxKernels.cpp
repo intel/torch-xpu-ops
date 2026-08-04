@@ -437,8 +437,9 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
 
   auto offsets = get_offsets(indices, sizes, dim);
   int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
-  auto offsets_sort = get_offsets(indices, sizes, dim);
-  int64_t* offsets_sort_ptr = offsets_sort.data_ptr<int64_t>();
+  // Same values as offsets, but pstl::sort permutes it in place below.
+  auto offsets_sort = offsets.clone();
+  int64_t* offsets_sort_ptr = offsets_sort.mutable_data_ptr<int64_t>();
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
