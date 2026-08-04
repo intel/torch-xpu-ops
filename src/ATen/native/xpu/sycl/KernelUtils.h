@@ -46,10 +46,9 @@ inline int GET_GROUPS(
 // do not launch more work items than the device can keep resident. The default
 // cap is syclMaxWorkItemsPerTile(); pass a custom `candidate` to override.
 inline int64_t xpuKernelLoopGroupRange(
-    size_t nelem,
-    int32_t group_size = SYCL_NUM_THREADS,
+    int64_t nelem,
+    int32_t group_size = xpu::sycl::syclDeviceMaxWorkGroupSize(),
     int64_t candidate = xpu::sycl::syclMaxWorkItemsPerTile()) {
-  int64_t work_items =
-      std::min(static_cast<int64_t>(nelem), candidate);
+  int64_t work_items = std::min(nelem, candidate);
   return (work_items + group_size - 1) / group_size;
 }
