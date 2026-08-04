@@ -1504,8 +1504,24 @@ void rms_norm_backward_kernel(
       "rms_norm_backward_xpu",
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        // RMSNorm has no bias, so there is no dbeta. Pass an undefined tensor
+        // instead of aliasing dgamma into the dbeta slot: the shared impl
+        // branches on dbeta->defined() to pick its column-reduction arm, and
+        // aliasing makes it take the both-defined arm, which reads the
+        // dbeta_blocks buffer that the rms_norm specialization deliberately
+        // never allocates.
+        Tensor unused_dbeta;
         layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
-            dY.contiguous(), X, rstd, rstd, gamma, M, N, dX, dgamma, dgamma);
+            dY.contiguous(),
+            X,
+            rstd,
+            rstd,
+            gamma,
+            M,
+            N,
+            dX,
+            dgamma,
+            &unused_dbeta);
       });
 }
 
