@@ -70,8 +70,10 @@ class TestLibtorchAgnostic(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Build versioned extensions
-        base_dir = Path(__file__).parent
+        # Build versioned extensions from the PyTorch cpp_extensions directory.
+        # When running as a submodule (pytorch/third_party/torch-xpu-ops/),
+        # parents[5] navigates up to the pytorch root.
+        base_dir = Path(__file__).parents[5] / "test" / "cpp_extensions"
 
         try:
             import libtorch_agn_2_9  # noqa: F401
