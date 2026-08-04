@@ -33,6 +33,19 @@ by `.github/scripts/bot_ut_check.py`. The JSON contains:
 }
 ```
 
+### Ground Truth for New Failures
+
+The authoritative source for new failures is the `New-UT-Failures-*` artifact
+which contains `new_ut_failure_list.csv`. This CSV is produced by the CI
+summary job: `ut_result_check.sh` identifies new failures (not in the known
+issues list), and the workflow enriches them with error messages from the full
+failure CSV.
+
+**Always verify** the reported failure count is plausible. If the JSON
+`failures` list seems implausibly large (hundreds or thousands for a small PR),
+check whether the artifact generation step in `_linux_ut.yml` is matching
+correctly.
+
 ## Analysis Workflow
 
 ### Step 1: Read the Data
