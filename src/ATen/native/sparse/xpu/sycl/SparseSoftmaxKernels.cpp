@@ -447,16 +447,16 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
   SortFunctor<int64_t> sfn;
   pstl::sort<int64_t, int64_t>(offsets_sort_ptr, sorted_indices_ptr, nnz, sfn);
 
-  auto pool_sizes = at::ones({nnz}, indices.options());
+  auto pool_sizes = at::empty({nnz}, indices.options());
   auto constant_it = at::ones({nnz}, indices.options());
-  auto discard_it = at::zeros({nnz}, indices.options());
+  auto discard_it = at::empty({nnz}, indices.options());
   // sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
 
   auto new_end = pstl::reduce_by_key<int64_t>(
       sorted_indices_ptr,
       sorted_indices_ptr + nnz,
       constant_it.data_ptr<int64_t>(),
-      discard_it.data_ptr<int64_t>(),
+      discard_it.mutable_data_ptr<int64_t>(),
       pool_sizes.data_ptr<int64_t>(),
       ReducePred<int64_t>(offsets_ptr));
   auto new_sz = std::distance(pool_sizes.data_ptr<int64_t>(), new_end);
