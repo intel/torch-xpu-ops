@@ -29,7 +29,7 @@ The active setup provides:
 - Runner namespace: `arc-runners`
 - Controller namespace: `arc-systems`
 - Runner image: `arc-xpu-runner:ubuntu-24.04-tools`
-- Preinstalled tools: `git`, `gh`, `curl`, `wget`, `rsync`, `ca-certificates`
+- Preinstalled tools: `git`, `gh`, `curl`, `wget`, `rsync`, `ca-certificates`, `clang`, `clang-tidy`
 - Default timezone: UTC
 - Runner OS: Ubuntu 24.04
 - Minimum runners: `0`

@@ -77,11 +77,12 @@ COPY ./common/install_xpu.sh /tmp/install_xpu.sh
 RUN bash /tmp/install_xpu.sh && \
     rm -f /tmp/install_xpu.sh
 
-# Install Conda
+# Install Conda to skip RC to avoid issues with non-interactive shells
+ENV CONDA_INIT_NO_RC=1
 RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh && \
-    bash /tmp/Miniforge3.sh -b -p /opt/conda && \
+    bash /tmp/Miniforge3.sh -b -u -p /opt/conda && \
     rm /tmp/Miniforge3.sh && \
-    /opt/conda/bin/conda clean -all -y
+    /opt/conda/bin/conda clean -afy
 
 ENV PATH=/opt/conda/bin:$PATH
 
