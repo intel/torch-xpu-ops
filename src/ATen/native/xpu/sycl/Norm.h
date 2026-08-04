@@ -260,7 +260,6 @@ class NormConfig {
   void* scratchpad_ptr = nullptr;
   int sub_group_num_global = 1;
 
-  template <typename scalar_t>
   void init_global_reduce(
       const Tensor& X,
       Tensor& semaphores,
@@ -272,9 +271,10 @@ class NormConfig {
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      int scratchpad_size = 2 * batch_size * workgroup_num_foreach *
-          sizeof(acc_type_device<scalar_t, kXPU>);
-      scratchpad = at::zeros(scratchpad_size, X.options().dtype(kAccType));
+      // Non-rms keeps two accumulators per slot, rms one; every slot the last
+      // workgroup reads is written by its producer first.
+      int scratchpad_size = 2 * workgroup_num * workgroup_num_foreach;
+      scratchpad = at::empty(scratchpad_size, X.options().dtype(kAccType));
       semaphores_ptr = semaphores.data_ptr<int>();
       scratchpad_ptr = scratchpad.data_ptr();
       sub_group_num_global = (workgroup_num_foreach + SIMD - 1) / SIMD;
