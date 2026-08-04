@@ -14,11 +14,9 @@
 # path (USE_SYCL_SPECTRAL unset).
 
 import os
-import unittest
 from itertools import product
 from unittest import mock
 
-import numpy as np
 import torch
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
@@ -28,7 +26,6 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_methods_invocations import spectral_funcs
 from torch.testing._internal.common_utils import run_tests, TestCase
-
 
 SUPPORTED_SIZES = [512, 768]
 

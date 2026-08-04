@@ -471,7 +471,8 @@ void calculate_twiddle_factors(sycl::queue& q, fft_descriptor& desc) {
       if (!desc.external_workspace) {
         twidl_buf = static_cast<T*>(c10::xpu::XPUCachingAllocator::raw_alloc(
             2 * fact0 * fact1 * sizeof(T)));
-        TORCH_CHECK(twidl_buf, "Failed to allocate device memory for twiddle factors");
+        TORCH_CHECK(
+            twidl_buf, "Failed to allocate device memory for twiddle factors");
         desc.twidl_table[dim][i] = static_cast<const void*>(twidl_buf);
       } else {
         twidl_buf = (T*)desc.twidl_table[dim][i];
@@ -530,8 +531,7 @@ void commit(sycl::queue& q, fft_descriptor& desc) {
     desc.external_workspace_size += desc.twidl_table_size[dim] * sizeof(T) *
         ((desc.which_dir == 2) ? 2 : 1);
 
-    TORCH_INTERNAL_ASSERT(
-        fact0 != 0 && fact1 != 0, "Unsupported FFT length");
+    TORCH_INTERNAL_ASSERT(fact0 != 0 && fact1 != 0, "Unsupported FFT length");
 
     desc.local_work_size[dim][0] = fact1;
     if (fact0 % fact1 != 0)
