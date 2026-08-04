@@ -13,6 +13,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -36,12 +37,9 @@ inline void philox_derive_key(
 
 struct PhiloxKeySplitFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    const int64_t global_id = static_cast<int64_t>(item.get_global_id(0));
-    const int64_t global_range = static_cast<int64_t>(item.get_global_range(0));
-
-    for (int64_t idx = global_id; idx < total_; idx += global_range) {
-      const int64_t split_idx = idx / num_keys_;
-      const int64_t key_idx = idx % num_keys_;
+    XPU_KERNEL_LOOP(item, index, total_elements_) {
+      const int64_t split_idx = index / num_keys_;
+      const int64_t key_idx = index % num_keys_;
 
       const uint64_t seed = input_[key_idx * 2];
       const uint64_t offset = input_[key_idx * 2 + 1];
@@ -61,7 +59,7 @@ struct PhiloxKeySplitFunctor {
 
       const auto r = philox4x32_10(counter, key);
 
-      const int64_t out = idx * 2;
+      const int64_t out = index * 2;
       philox_derive_key(r, &output_[out], &output_[out + 1]);
     }
   }
@@ -70,22 +68,24 @@ struct PhiloxKeySplitFunctor {
       const uint64_t* input,
       uint64_t* output,
       int64_t num_keys,
-      int64_t total)
-      : input_(input), output_(output), num_keys_(num_keys), total_(total) {}
+      int64_t total_elements)
+      : input_(input),
+        output_(output),
+        num_keys_(num_keys),
+        total_elements_(total_elements) {}
 
  private:
   const uint64_t* input_;
   uint64_t* output_;
   int64_t num_keys_;
-  int64_t total_;
+  int64_t total_elements_;
 };
 
 struct PhiloxKeyFoldInFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    for (int64_t idx = (item.get_global_id(0)); idx < num_keys_;
-         idx += item.get_global_range(0)) {
-      uint64_t seed = input_[idx * 2];
-      uint64_t offset = input_[idx * 2 + 1];
+    XPU_KERNEL_LOOP(item, index, num_keys_) {
+      uint64_t seed = input_[index * 2];
+      uint64_t offset = input_[index * 2 + 1];
 
       uint2 key = {
           static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
@@ -97,7 +97,7 @@ struct PhiloxKeyFoldInFunctor {
           0};
 
       auto r = philox4x32_10(counter, key);
-      philox_derive_key(r, &output_[idx * 2], &output_[idx * 2 + 1]);
+      philox_derive_key(r, &output_[index * 2], &output_[index * 2 + 1]);
     }
   }
 
