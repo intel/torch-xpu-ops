@@ -47,7 +47,7 @@ inline int GET_GROUPS(
 // cap is syclMaxWorkItemsPerTile(); pass a custom `candidate` to override.
 inline int64_t xpuKernelLoopGroupRange(
     int64_t nelem,
-    int32_t group_size = xpu::sycl::syclDeviceMaxWorkGroupSize(),
+    int64_t group_size = xpu::sycl::syclDeviceMaxWorkGroupSize(),
     int64_t candidate = xpu::sycl::syclMaxWorkItemsPerTile()) {
   int64_t work_items = std::min(nelem, candidate);
   return (work_items + group_size - 1) / group_size;
