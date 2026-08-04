@@ -260,6 +260,7 @@ class NormConfig {
   void* scratchpad_ptr = nullptr;
   int sub_group_num_global = 1;
 
+  template <bool rms_norm>
   void init_global_reduce(
       const Tensor& X,
       Tensor& semaphores,
@@ -271,9 +272,9 @@ class NormConfig {
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      // Non-rms keeps two accumulators per slot, rms one; every slot the last
-      // workgroup reads is written by its producer first.
-      int scratchpad_size = 2 * workgroup_num * workgroup_num_foreach;
+      // Every slot is written before it is read, so no zero-init.
+      int scratchpad_size =
+          (rms_norm ? 1 : 2) * workgroup_num * workgroup_num_foreach;
       scratchpad = at::empty(scratchpad_size, X.options().dtype(kAccType));
       semaphores_ptr = semaphores.data_ptr<int>();
       scratchpad_ptr = scratchpad.data_ptr();
@@ -368,11 +369,7 @@ class NormConfig {
   }
 };
 
-template <
-    typename scalar_t,
-    typename mean_t,
-    typename weight_t,
-    bool one_moment = false>
+template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
 class NormBackward {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
@@ -466,7 +463,9 @@ class NormBackward {
       accscalar_t sum2,
       const NormConfig& cfg) const {
     auto group_id = item_id.get_group(0);
-    a_data[group_id] = sum1;
+    if constexpr (!rms_norm) {
+      a_data[group_id] = sum1;
+    }
     b_data[group_id] = sum2;
   };
 };
