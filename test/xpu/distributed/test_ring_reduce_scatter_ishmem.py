@@ -13,6 +13,7 @@ Env:
 """
 import os
 import sys
+import json
 from contextlib import nullcontext
 
 os.environ.setdefault("ISHMEM_IB_ENABLE_IBGDA", "1")
@@ -36,6 +37,7 @@ PROGRESS_EVERY = int(os.environ.get("PROGRESS_EVERY", 10))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CSRC = os.path.join(_HERE, "..", "csrc")
+_PROFILED_KERNEL_NAME = "RingReduceScatterIshmemSingleKernel"
 
 
 def _load(lib):
@@ -66,6 +68,65 @@ def init_distributed():
     dev = rank % torch.xpu.device_count()
     torch.xpu.set_device(dev)
     return rank, world_size, dev
+
+
+def _extract_profiled_kernel_latencies(trace_path, expected_iters):
+    with open(trace_path, "r", encoding="utf-8") as f:
+        trace = json.load(f)
+
+    events = trace.get("traceEvents", [])
+    kernel_latencies = []
+    for event in events:
+        if event.get("name") != _PROFILED_KERNEL_NAME:
+            continue
+        if event.get("ph") != "X":
+            continue
+        if "dur" not in event:
+            continue
+
+        category = event.get("cat", "")
+        if category and category not in {"kernel", "gpu_op", "xpu_op"}:
+            continue
+        kernel_latencies.append(float(event["dur"]) / 1000.0)
+
+    if len(kernel_latencies) < expected_iters:
+        raise RuntimeError(
+            f"Expected at least {expected_iters} {_PROFILED_KERNEL_NAME} events in "
+            f"{trace_path}, found {len(kernel_latencies)}"
+        )
+    if len(kernel_latencies) > expected_iters:
+        kernel_latencies = kernel_latencies[-expected_iters:]
+    return kernel_latencies
+
+
+def _summarize_profiled_kernel(rank, world_size, trace_path, expected_iters):
+    local_latencies = _extract_profiled_kernel_latencies(trace_path, expected_iters)
+    gathered = [None for _ in range(world_size)]
+    dist.all_gather_object(gathered, local_latencies)
+
+    if rank != 0:
+        return
+
+    per_iter_min = [
+        min(rank_latencies[iter_idx] for rank_latencies in gathered)
+        for iter_idx in range(expected_iters)
+    ]
+    kernel_avg = sum(per_iter_min) / len(per_iter_min)
+    for iter_idx, iter_min in enumerate(per_iter_min):
+        print(
+            f"[{_PROFILED_KERNEL_NAME}] iter={iter_idx} min_kernel={iter_min:.3f} ms",
+            flush=True,
+        )
+    print(
+        f"[{_PROFILED_KERNEL_NAME}] per-iteration min across ranks/devices: "
+        f"{per_iter_min}",
+        flush=True,
+    )
+    print(
+        f"[{_PROFILED_KERNEL_NAME}] avg={kernel_avg:.3f} ms "
+        f"min={min(per_iter_min):.3f} ms max={max(per_iter_min):.3f} ms",
+        flush=True,
+    )
 
 
 def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
@@ -131,11 +192,7 @@ def main():
         f"[ring rank {rank}] correctness match={ok} max_abs_diff={max_diff}",
         flush=True,
     )
-
-    flag = torch.tensor([1 if ok else 0], device=device)
-    dist.all_reduce(flag, op=dist.ReduceOp.MIN)
-    if rank == 0 and flag.item() != 1:
-        print("[ring] CORRECTNESS FAILED", flush=True)
+    assert ok, f"[ring rank {rank}] correctness failed vs dist.reduce_scatter_tensor"
 
     # ---- performance ----
     def run_ring():
@@ -164,6 +221,12 @@ def main():
         trace_path = f"./profile_ring_reduce_scatter_ishmem_rank{rank}.json"
         prof.export_chrome_trace(trace_path)
         print(f"[ring rank {rank}] profiler trace written to {trace_path}", flush=True)
+        _summarize_profiled_kernel(
+            rank,
+            world_size,
+            trace_path,
+            len(ring_lat),
+        )
 
     ring_avg = sum(ring_lat) / len(ring_lat)
     print(f"ring reduce-scatter average latency: {ring_avg:.3f} ms", flush=True)
@@ -185,11 +248,13 @@ def main():
 
     dist.barrier()
     try:
+        print("try to finalize ishmem", flush=True)
         torch.ops.symm_mem.ring_reduce_scatter_ishmem_finalize(
             torch.empty(0, device=device)
         )
     except Exception:
         pass
+    dist.destroy_process_group()
     sys.stdout.flush()
     os._exit(0)
 
