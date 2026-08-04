@@ -297,7 +297,8 @@ void philox_distribution_launch(
       [&] {
         constexpr int epc = elems_per_call<scalar_t>;
         int64_t num_chunks = (self.numel() + epc - 1) / epc;
-        constexpr int work_group_size = 256;
+        constexpr int work_group_size =
+            256; // TODO: Investigate impact of wg_size 256 on XPU performance.
         int work_group_num = static_cast<int>(
             (num_chunks + work_group_size - 1) / work_group_size);
 
