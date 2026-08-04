@@ -18,10 +18,8 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <comm/SYCLContext.h>
 
-#ifdef _WIN32
 #include <tuple>
 #include <utility>
-#endif
 
 namespace at::native::xpu {
 
@@ -82,13 +80,9 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
   return max_wg_size * kILP;
 }
 
-#ifdef _WIN32
-// Windows-only workaround for an icx SYCL integration-header bug with MSVC as
-// host compiler: a variadic free-function kernel makes icx emit a KernelInfo
-// specialization whose non-type template argument (the kernel pointer) MSVC
-// cannot convert (error C2440). Fold the extra args into a single non-variadic,
-// device-copyable functor so the emitted template-id is non-variadic.
-// TODO: remove once the icx integration-header generator is fixed
+// functions marked with `nd_range_kernel` cannot be variadic.
+// For the variadic kernel template, fold the extra args into
+// a single non-variadic, device-copyable functor
 template <typename T, typename Y, typename U>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
 void multi_tensor_apply_kernel(
@@ -115,19 +109,6 @@ struct MultiTensorApplyCallableWrapper {
         args);
   }
 };
-#else
-template <typename T, typename Y, typename U, typename... ArgTypes>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void multi_tensor_apply_kernel(
-    int64_t kChunkSize,
-    T tlAddressMeta,
-    Y tlWGMeta,
-    U callable,
-    ArgTypes... args) {
-  auto item = syclext::this_work_item::get_nd_item<1>();
-  callable(kChunkSize, tlAddressMeta, tlWGMeta, item, args...);
-}
-#endif // _WIN32
 
 template <
     bool fused_kernel,
@@ -151,10 +132,8 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-#ifdef _WIN32
   // See MultiTensorApplyCallableWrapper above: fold extra args into a
-  // non-variadic, device-copyable callable so the kernel template-id emitted in
-  // the SYCL integration header is non-variadic (works around MSVC C2440).
+  // non-variadic, device-copyable callable
   using WrappedCallable = MultiTensorApplyCallableWrapper<U, ArgTypes...>;
   WrappedCallable wrapped{callable, std::tuple<ArgTypes...>(args...)};
 
@@ -169,20 +148,6 @@ void launch_multi_tensor_apply_kernel(
       tlAddressMeta,
       tlWGMeta,
       wrapped);
-#else
-  constexpr auto kfn = multi_tensor_apply_kernel<T, Y, U, ArgTypes...>;
-
-  sycl_kernel_submit<kfn>(
-      sycl::range<1>(num_wg * max_wg_size),
-      sycl::range<1>(max_wg_size),
-      q,
-      0,
-      kChunkSize,
-      tlAddressMeta,
-      tlWGMeta,
-      callable,
-      args...);
-#endif // _WIN32
 }
 
 template <int depth, typename scalar_t, typename T, typename... ArgTypes>
@@ -430,15 +395,12 @@ void multi_tensor_apply_for_fused_optimizer(
 
 } // namespace at::native::xpu
 
-#ifdef _WIN32
 // Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
 // is not implicitly device-copyable, so declare the wrapper copyable whenever
 // its callable and bound argument types are.
-// TODO: remove once the icx integration-header generator is fixed
 template <typename U, typename... ArgTypes>
 struct sycl::is_device_copyable<
     ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
     : std::bool_constant<(
           sycl::is_device_copyable_v<U> && ... &&
           sycl::is_device_copyable_v<ArgTypes>)> {};
-#endif // _WIN32
