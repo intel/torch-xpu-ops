@@ -8,7 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
 

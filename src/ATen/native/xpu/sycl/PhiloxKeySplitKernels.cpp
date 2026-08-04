@@ -8,7 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
 #include <ATen/core/Tensor.h>
