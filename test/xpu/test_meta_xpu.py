@@ -171,6 +171,29 @@ meta_dispatch_device_expected_failures["xpu"] = meta_dispatch_device_expected_fa
     "cuda"
 ]
 
+meta_function_device_skips["xpu"].update(
+    {
+        torch.fft.fft: {f16},
+        torch.fft.ifft: {f16},
+        torch.fft.rfft: {f16},
+        torch.fft.ihfft: {f16},
+        torch.fft.fft2: {f16},
+        torch.fft.ifft2: {f16},
+        torch.fft.rfft2: {f16},
+        torch.fft.ihfft2: {f16},
+        torch.fft.fftn: {f16},
+        torch.fft.ifftn: {f16},
+        torch.fft.rfftn: {f16},
+        torch.fft.ihfftn: {f16},
+        torch.fft.hfft: {f16},
+        torch.fft.irfft: {f16},
+        torch.fft.irfft2: {f16},
+        torch.fft.hfft2: {f16},
+        torch.fft.irfftn: {f16},
+        torch.fft.hfftn: {f16},
+    }
+)
+
 # ======================================================================
 # Override @onlyCUDA test methods to also run on XPU
 # ======================================================================
@@ -203,9 +226,6 @@ meta_dispatch_device_expected_failures["xpu"] = meta_dispatch_device_expected_fa
         xfail("_foreach_addcmul", dtypes=(b8,)),
         xfail("_foreach_addcdiv", dtypes=integral_types() + complex_types_and(b8)),
         xfail("_foreach_lerp", dtypes=integral_types_and(b8)),
-        xfail(
-            "native_group_norm", device_type="xpu"
-        ),  # TODO: move to common_method_invocations.py when upstreaming
     )
 )
 @ops(itertools.chain(op_db, foreach_op_db), dtypes=OpDTypes.any_common_cpu_cuda_one)
@@ -306,7 +326,7 @@ TestMeta.test_binary_ufuncs_mixed_dtype = _test_binary_ufuncs_mixed_dtype
 
 
 # Removed @onlyCUDA; replaced with @onlyOn(["cuda", "xpu"]).
-# test_fill_stride has no `device` parameter — it's a simple TestCase method,
+# test_fill_stride has no `device` parameter - it's a simple TestCase method,
 # not a device-type parameterized test.
 TestMeta.test_fill_stride = retarget_outermost_onlycuda_to_onlyon(
     TestMeta.test_fill_stride

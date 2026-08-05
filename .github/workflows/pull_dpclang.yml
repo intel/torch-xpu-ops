@@ -107,7 +107,7 @@ jobs:
     with:
       category: dpclang
       runner: build
-      pytorch: ${{ github.base_ref }}
+      pytorch: ${{ github.base_ref || github.ref_name }}
 
   linux-ut:
     needs: build-wheels
@@ -124,6 +124,6 @@ jobs:
     with:
       category: dpclang
       runner: pvc
-      pytorch: ${{ github.base_ref }}
+      pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
