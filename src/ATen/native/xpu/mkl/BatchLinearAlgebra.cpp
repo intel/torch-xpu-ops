@@ -329,6 +329,60 @@ void lu_solve_mkl(
   });
 }
 
+void linalg_lstsq_gels_mkl(const Tensor& A, const Tensor& B) {
+  const auto m = A.size(-2);
+  const auto n = A.size(-1);
+
+  IntArrayRef A_batch_sizes(A.sizes().data(), A.dim() - 2);
+  IntArrayRef B_batch_sizes(B.sizes().data(), B.dim() - 2);
+  std::vector<int64_t> expand_batch_portion =
+      at::infer_size(A_batch_sizes, B_batch_sizes);
+
+  if (m >= n) {
+    auto A_expand_batch = expand_batch_portion;
+    A_expand_batch.insert(A_expand_batch.end(), {A.size(-2), A.size(-1)});
+    Tensor A_expanded = A.expand({A_expand_batch});
+
+    auto qr = at::linalg_qr(A_expanded, "complete");
+    const Tensor& Q = std::get<0>(qr);
+    const Tensor& R = std::get<1>(qr);
+
+    B.copy_(at::matmul(Q.mH(), B));
+
+    const Tensor R_top = R.narrow(-2, 0, n);
+    triangular_solve_mkl(
+        R_top,
+        B,
+        /*left=*/true,
+        /*upper=*/true,
+        /*transpose=*/TransposeType::NoTranspose,
+        /*unitriangular=*/false);
+  } else {
+    Tensor Ah = cloneBatchedColumnMajor(A.mH());
+
+    auto Ah_expand_batch = expand_batch_portion;
+    Ah_expand_batch.insert(Ah_expand_batch.end(), {Ah.size(-2), Ah.size(-1)});
+    Tensor Ah_expanded = Ah.expand({Ah_expand_batch});
+
+    auto qr = at::linalg_qr(Ah_expanded, "reduced");
+    const Tensor& Q = std::get<0>(qr);
+    const Tensor& R = std::get<1>(qr);
+
+    const auto trans = R.is_complex() ? TransposeType::ConjTranspose
+                                      : TransposeType::Transpose;
+    triangular_solve_mkl(
+        R,
+        B,
+        /*left=*/true,
+        /*upper=*/true,
+        trans,
+        /*unitriangular=*/false);
+
+    B.narrow(-2, m, n - m).zero_();
+    B.copy_(at::matmul(Q, B.narrow(-2, 0, m)));
+  }
+}
+
 // Create NaN value that works for both real and complex types
 template <typename scalar_t>
 inline scalar_t create_quiet_nan() {
