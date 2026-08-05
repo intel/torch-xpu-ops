@@ -16,6 +16,7 @@
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
+#include <ATen/ceil_div.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -145,7 +146,7 @@ Tensor _philox_key_split_xpu(const Tensor& key, int64_t num_splits) {
   constexpr int64_t work_group_size =
       256; // TODO: wg_size 256 on performance of XPU remains to be investigated
   const int64_t work_items =
-      std::min(total_elements, xpu::sycl::syclMaxWorkItemsPerTile());
+      std::min(total_elements, ::xpu::sycl::syclMaxWorkItemsPerTile());
   const int64_t work_group_num = at::ceil_div(work_items, work_group_size);
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeySplitFunctor(
@@ -182,7 +183,7 @@ Tensor _philox_key_fold_in_xpu(const Tensor& key, int64_t data) {
   constexpr int64_t work_group_size =
       256; // TODO: wg_size 256 on performance of XPU remains to be investigated
   const int64_t work_items =
-      std::min(num_keys, xpu::sycl::syclMaxWorkItemsPerTile());
+      std::min(num_keys, ::xpu::sycl::syclMaxWorkItemsPerTile());
   const int64_t work_group_num = at::ceil_div(work_items, work_group_size);
   auto key_contig = key.contiguous();
   auto functor = PhiloxKeyFoldInFunctor(
