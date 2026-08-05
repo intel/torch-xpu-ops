@@ -158,7 +158,7 @@ TestSparse.test_sparse_addmm = toleranceOverride(
     not SM80OrLater and not TEST_WITH_ROCM, "CUDA capability < SM80 and not ROCM"
 )
 @dtypes(torch.float)
-def test_coalesce_accepts_large_tensor(self, device, dtype):
+def _test_coalesce_accepts_large_tensor(self, device, dtype):
     N = 22500000
     NNZ = 272500000
     rows = torch.randint(0, N, (NNZ,), dtype=torch.int64, device=device)
@@ -169,6 +169,9 @@ def test_coalesce_accepts_large_tensor(self, device, dtype):
         indices, values, size=(N, N), dtype=torch.float32, device=device
     )
     sparse_matrix = sparse_matrix.coalesce()
+
+
+TestSparse.test_coalesce_accepts_large_tensor = _test_coalesce_accepts_large_tensor
 
 
 @coalescedonoff
