@@ -9,6 +9,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
+from torch.testing._internal.common_device_type import largeTensorTest
 from torch.testing._internal.common_utils import TestCase
 
 
@@ -39,3 +40,17 @@ class TestNNMethod(TestCase):
             self.assertEqual(sorted.cpu(), sorted_cpu)
             sorted, indices = a.sort(stable=True)
             self.assertEqual(sorted.cpu(), sorted_cpu)
+
+    @largeTensorTest("48GB", device="xpu")
+    def test_topk_num_tiles_no_overflow(self):
+        n = 2**31 - 1
+        # k > 256 routes through topk_out_with_sort -> segmented_radix_sort
+        k = 300
+        data = torch.zeros((1, n), device="xpu", dtype=torch.float16)
+        values, indices = torch.topk(data, k, dim=1, largest=True, sorted=False)
+        self.assertEqual(values.shape, (1, k))
+        self.assertEqual(indices.shape, (1, k))
+        # All input values are 0.0, so every top-k value must also be 0.0.
+        self.assertTrue((values == 0.0).all())
+        # Indices must be valid positions within the input dimension.
+        self.assertTrue((indices >= 0).all() and (indices < n).all())

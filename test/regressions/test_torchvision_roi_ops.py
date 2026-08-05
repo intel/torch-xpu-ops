@@ -311,9 +311,9 @@ class TestPSRoIPool(RoIOpTester):
         if device is None:
             device = torch.device("cpu")
         n_input_channels = x.size(1)
-        assert (
-            n_input_channels % (pool_h * pool_w) == 0
-        ), "input channels must be divisible by ph * pw"
+        assert n_input_channels % (pool_h * pool_w) == 0, (
+            "input channels must be divisible by ph * pw"
+        )
         n_output_channels = int(n_input_channels / (pool_h * pool_w))
         y = torch.zeros(
             rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device
@@ -551,9 +551,9 @@ class TestPSRoIAlign(RoIOpTester):
         if device is None:
             device = torch.device("cpu")
         n_input_channels = in_data.size(1)
-        assert (
-            n_input_channels % (pool_h * pool_w) == 0
-        ), "input channels must be divisible by ph * pw"
+        assert n_input_channels % (pool_h * pool_w) == 0, (
+            "input channels must be divisible by ph * pw"
+        )
         n_output_channels = int(n_input_channels / (pool_h * pool_w))
         out_data = torch.zeros(
             rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device

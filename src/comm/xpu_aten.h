@@ -14,7 +14,6 @@
 #include <ATen/DimVector.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Formatting.h>
-#include <ATen/NamedTensor.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/Tensor.h>
 #include <ATen/TensorGeometry.h>

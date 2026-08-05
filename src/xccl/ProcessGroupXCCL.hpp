@@ -31,6 +31,7 @@
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/TraceUtils.h>
@@ -86,6 +87,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   class WorkXCCL : public Work {
    public:
     WorkXCCL(
+        std::string pgUID,
+        std::string pgDesc,
         at::Device& device,
         int rank,
         OpType opType,
@@ -129,6 +132,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
 
    protected:
+    std::string pgUID_;
+    std::string pgDesc_;
     at::Device device_;
     std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
@@ -166,15 +171,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       int size,
       c10::intrusive_ptr<Options> options = Options::create());
 
-  C10_DEPRECATED ProcessGroupXCCL(
-      const c10::intrusive_ptr<Store>& store,
-      int rank,
-      int size,
-      const std::string& groupName,
-      c10::intrusive_ptr<Options> options = Options::create())
-      : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
-
   ~ProcessGroupXCCL() override;
+
+  uint64_t getUid() const noexcept {
+    return static_cast<uint64_t>(local_id_);
+  }
 
   c10::intrusive_ptr<Options> getOptions() {
     return options_;
@@ -194,9 +195,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::intrusive_ptr<Work> endCoalescing(OpType optype);
 
-  std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
+  void setTimeout(std::chrono::milliseconds timeout) override {
+    options_->timeout = timeout;
+  }
 
-  std::shared_ptr<xcclComm_t> initXCCLComm(
+  bool isInitialized();
+
+  void setEnableNanCheck(bool enableNanCheck);
+
+  std::shared_ptr<onecclComm_t> getXCCLComm(const std::string& deviceKey);
+
+  std::shared_ptr<onecclComm_t> initXCCLComm(
       const std::string& deviceKey,
       at::Device& device,
       OpType opType,
@@ -317,7 +326,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // There are two types of coalesce that require `group_start/end`:
           // 1. **Fast Pass for Operations**: For example,
           // `allreduce_coalesced`. In this case, the backend has control, so
-          // the initial group API `ccl::group` is called.
+          // the initial group API `oneccl_group_start` is called.
           // 2. **User-Specified Groups**: The user specifies a series of
           // operations as a group in the frontend by calling the coalesce
           // manager. To avoid incorrect judgments of the p2p state, the
@@ -401,12 +410,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& inputTensors,
       const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  c10::intrusive_ptr<Work> _allgather_base(
+  c10::intrusive_ptr<Work> all_gather_single(
       at::Tensor& outputbuffer,
       at::Tensor& inputbuffer,
       const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  c10::intrusive_ptr<Work> allgather_into_tensor_coalesced(
+  c10::intrusive_ptr<Work> all_gather_single_coalesced(
       std::vector<at::Tensor>& outputs,
       std::vector<at::Tensor>& inputs,
       const AllgatherOptions& opts = AllgatherOptions()) override;
@@ -416,12 +425,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<std::vector<at::Tensor>>& inputTensors,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  c10::intrusive_ptr<Work> _reduce_scatter_base(
+  c10::intrusive_ptr<Work> reduce_scatter_single(
       at::Tensor& outputTensor,
       at::Tensor& inputTensor,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  c10::intrusive_ptr<Work> reduce_scatter_tensor_coalesced(
+  c10::intrusive_ptr<Work> reduce_scatter_single_coalesced(
       std::vector<at::Tensor>& outputs,
       std::vector<at::Tensor>& inputs,
       const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
@@ -429,7 +438,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Work> barrier(
       const BarrierOptions& opts = BarrierOptions()) override;
 
-  c10::intrusive_ptr<Work> alltoall_base(
+  c10::intrusive_ptr<Work> all_to_all_single(
       at::Tensor& outputTensor,
       at::Tensor& inputTensor,
       std::vector<int64_t>& outputSplitSizes,
@@ -475,19 +484,21 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
-  void setEnableNanCheck(bool enableNanCheck);
-
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void attachRetireAndStatusCallback(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+      std::shared_ptr<ProcessGroupStatus> pgStatus);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
-  std::unordered_map<std::string, XCCLStream> xcclStreamsMap_;
+  std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
-  std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
+  std::unordered_map<std::string, std::shared_ptr<onecclComm_t>>
+      devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
@@ -495,7 +506,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::set<int> usedDeviceIdxs_;
   int coalescing_state_ = 0;
   at::Device coalescedDevice_ = at::Device("xpu");
-  std::shared_ptr<xcclComm_t> coalescedComm_ = nullptr;
+  std::shared_ptr<onecclComm_t> coalescedComm_ = nullptr;
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
@@ -514,15 +525,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool enableNanCheck_;
 
   friend class HeartbeatMonitorXCCL;
-
- private:
-  std::mutex kvs_mutex_;
 };
+
+TORCH_API void reset_xccl_trace();
 
 // Dumps the comm traces and additional information about the ProcessGroup.
 TORCH_API std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
+    bool onlyActive);
+
+TORCH_API std::string dump_xccl_trace_json(
+    bool includeCollectives,
     bool onlyActive);
 
 TORCH_API std::string getXcclVersion();

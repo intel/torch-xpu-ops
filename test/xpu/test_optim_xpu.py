@@ -33,7 +33,12 @@ from torch.testing._internal.common_optimizers import (
 from torch.testing._internal.common_utils import TEST_WITH_TORCHDYNAMO
 
 for optim in optim_db:
-    for c in [torch.optim.Adam, torch.optim.AdamW, torch.optim.SGD]:
+    for c in [
+        torch.optim.Adam,
+        torch.optim.AdamW,
+        torch.optim.SGD,
+        torch.optim.Adagrad,
+    ]:
         if optim.optim_cls is c:
             if (
                 "cuda" in optim.supports_fused_on

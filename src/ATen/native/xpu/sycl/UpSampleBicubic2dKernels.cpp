@@ -8,11 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -54,12 +53,12 @@ struct UpsampleBicubic2dKernelFunctor {
       // Interpolation kernel
       accscalar_t real_x = area_pixel_compute_source_index(
           width_scale_, output_x, align_corners_, /*cubic=*/true);
-      int in_x = floorf(real_x);
+      int in_x = sycl::floor(real_x);
       accscalar_t t_x = real_x - in_x;
 
       accscalar_t real_y = area_pixel_compute_source_index(
           height_scale_, output_y, align_corners_, /*cubic=*/true);
-      int in_y = floorf(real_y);
+      int in_y = sycl::floor(real_y);
       accscalar_t t_y = real_y - in_y;
       for (int n = 0; n < nbatch; n++) {
         for (int c = 0; c < channels; c++) {
@@ -224,12 +223,12 @@ struct UpsampleBicubic2dBackwardKernelFunctor {
 
     accscalar_t real_x = area_pixel_compute_source_index(
         width_scale_, output_x, align_corners_, /*cubic=*/true);
-    int input_x = floorf(real_x);
+    int input_x = sycl::floor(real_x);
     accscalar_t t_x = real_x - input_x;
 
     accscalar_t real_y = area_pixel_compute_source_index(
         height_scale_, output_y, align_corners_, /*cubic=*/true);
-    int input_y = floorf(real_y);
+    int input_y = sycl::floor(real_y);
     accscalar_t t_y = real_y - input_y;
 
     accscalar_t x_coeffs[4];
@@ -343,5 +342,6 @@ void upsample_bicubic2d_backward_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

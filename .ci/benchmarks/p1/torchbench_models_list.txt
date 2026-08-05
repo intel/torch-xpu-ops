@@ -16,7 +16,6 @@ mobilenet_v2
 nvidia_deeprecommender
 opacus_cifar10
 phlippe_densenet
-pytorch_CycleGAN_and_pix2pix
 resnet152
 resnet18
 resnet50_quantized_qat

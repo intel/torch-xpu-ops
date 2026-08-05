@@ -108,6 +108,7 @@ static inline void norm_group_reduce(
 template <
     int vec_size,
     typename accscalar_t,
+    bool rms_norm,
     typename reduce_op,
     typename item_t,
     typename local_shared_t>
@@ -125,7 +126,9 @@ static inline void norm_group_reduce_row(
 #pragma unroll(vec_size)
   for (int j = 0; j < vec_size; ++j) {
     local_data1[local_row_id][local_col_id][j] = input1[j];
-    local_data2[local_row_id][local_col_id][j] = input2[j];
+    if constexpr (!rms_norm) {
+      local_data2[local_row_id][local_col_id][j] = input2[j];
+    }
   }
   sycl::group_barrier(item.get_group());
 
@@ -137,9 +140,11 @@ static inline void norm_group_reduce_row(
         local_data1[local_row_id][local_col_id][j] = bin_op(
             local_data1[local_row_id][local_col_id][j],
             local_data1[local_row_id + k][local_col_id][j]);
-        local_data2[local_row_id][local_col_id][j] = bin_op(
-            local_data2[local_row_id][local_col_id][j],
-            local_data2[local_row_id + k][local_col_id][j]);
+        if constexpr (!rms_norm) {
+          local_data2[local_row_id][local_col_id][j] = bin_op(
+              local_data2[local_row_id][local_col_id][j],
+              local_data2[local_row_id + k][local_col_id][j]);
+        }
       }
     }
     k *= 2;
@@ -150,7 +155,7 @@ static inline void norm_group_reduce_row(
 template <
     typename accscalar_t,
     typename index_t,
-    bool one_moment,
+    bool rms_norm,
     typename reduce_op,
     typename item_t,
     typename local_shared_t,
@@ -173,9 +178,9 @@ static void norm_global_reduce(
   index_t group_id_foreach = item.get_group(1);
 
   if (local_id == 0) {
-    if constexpr (one_moment) {
+    if constexpr (rms_norm) {
       auto idx = group_id * workgroup_num_foreach + group_id_foreach;
-      scratchpad_ptr[idx] = sum1;
+      scratchpad_ptr[idx] = sum2;
     } else {
       auto idx = group_id * workgroup_num_foreach * 2 + group_id_foreach;
       scratchpad_ptr[idx] = sum1;
@@ -193,14 +198,14 @@ static void norm_global_reduce(
 
   // use the last workgroup for reduction
   if (last_workgroup[0]) {
-    if constexpr (one_moment) {
-      sum1 = accscalar_t(0);
+    if constexpr (rms_norm) {
+      sum2 = accscalar_t(0);
       for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
         auto idx = group_id * workgroup_num_foreach + i;
-        sum1 = bin_op(sum1, scratchpad_ptr[idx]);
+        sum2 = bin_op(sum2, scratchpad_ptr[idx]);
       }
-      sum1 = sycl::reduce_over_group(
-          item.get_group(), sum1, sycl::plus<accscalar_t>());
+      sum2 = sycl::reduce_over_group(
+          item.get_group(), sum2, sycl::plus<accscalar_t>());
     } else {
       sum1 = accscalar_t(0);
       sum2 = accscalar_t(0);
@@ -477,9 +482,9 @@ template <
     typename vec_t,
     typename weight_vec_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<3> item_id) const {
@@ -488,9 +493,9 @@ struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
         item_id, cfg, sum1, sum2);
 
-    if constexpr (one_moment) {
-      sum1 = sycl::reduce_over_group(
-          item_id.get_group(), sum1, sycl::plus<accscalar_t>());
+    if constexpr (rms_norm) {
+      sum2 = sycl::reduce_over_group(
+          item_id.get_group(), sum2, sycl::plus<accscalar_t>());
     } else {
       norm_group_reduce<accscalar_t>(
           item_id,
@@ -512,12 +517,12 @@ struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   FusedNormKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t> norm_,
+      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
       NormConfig cfg_)
       : norm(norm_), cfg(cfg_), local_sum1(), local_sum2() {}
 
  private:
-  Norm<scalar_t, mean_t, weight_t> norm;
+  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
   const NormConfig cfg;
   sycl_local_acc_t<accscalar_t> local_sum1;
   sycl_local_acc_t<accscalar_t> local_sum2;
@@ -529,11 +534,11 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 void launch_vectorized_fused_norm_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     const NormConfig& cfg) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using vec_t = aligned_vector<scalar_t, vec_size>;
@@ -555,7 +560,7 @@ void launch_vectorized_fused_norm_kernel(
       weight_vec_t,
       vec_size,
       Norm,
-      one_moment>
+      rms_norm>
       kfn(norm, cfg);
 
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
@@ -565,11 +570,11 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 void vectorized_fused_norm_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     const NormConfig& config,
     bool can_use_32bit_index) {
   int vec_size =
@@ -584,7 +589,7 @@ void vectorized_fused_norm_kernel(
           uint32_t,                        \
           vec_size,                        \
           Norm,                            \
-          one_moment>(norm, config);       \
+          rms_norm>(norm, config);         \
     } else {                               \
       launch_vectorized_fused_norm_kernel< \
           scalar_t,                        \
@@ -593,7 +598,7 @@ void vectorized_fused_norm_kernel(
           uint64_t,                        \
           vec_size,                        \
           Norm,                            \
-          one_moment>(norm, config);       \
+          rms_norm>(norm, config);         \
     }                                      \
     break;                                 \
   }
@@ -624,9 +629,9 @@ template <
     typename vec_t,
     typename weight_vec_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<3> item_id) const {
@@ -636,9 +641,9 @@ struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     accscalar_t sum2 = 0;
     norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
         item_id, cfg, sum1, sum2);
-    if constexpr (one_moment) {
-      sum1 = sycl::reduce_over_group(
-          item_id.get_group(), sum1, sycl::plus<accscalar_t>());
+    if constexpr (rms_norm) {
+      sum2 = sycl::reduce_over_group(
+          item_id.get_group(), sum2, sycl::plus<accscalar_t>());
     } else {
       norm_group_reduce<accscalar_t>(
           item_id,
@@ -650,7 +655,7 @@ struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           [](accscalar_t a, accscalar_t b) { return a + b; });
     }
     if (cfg.workgroup_num_foreach > 1) {
-      norm_global_reduce<accscalar_t, index_t, one_moment>(
+      norm_global_reduce<accscalar_t, index_t, rms_norm>(
           item_id,
           cfg.workgroup_num_foreach,
           cfg.workgroup_size,
@@ -681,12 +686,12 @@ struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   RowwiseMomentsKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t> norm_,
+      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
       NormConfig cfg_)
       : norm(norm_), cfg(cfg_), local_sum1(), local_sum2(), last_workgroup() {}
 
  private:
-  Norm<scalar_t, mean_t, weight_t> norm;
+  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
   const NormConfig cfg;
   sycl_local_acc_t<accscalar_t> local_sum1;
   sycl_local_acc_t<accscalar_t> local_sum2;
@@ -699,11 +704,11 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 void launch_rowwise_moments_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     NormConfig& cfg) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using vec_t = aligned_vector<scalar_t, vec_size>;
@@ -725,7 +730,7 @@ void launch_rowwise_moments_kernel(
       weight_vec_t,
       vec_size,
       Norm,
-      one_moment>
+      rms_norm>
       kfn(norm, cfg);
 
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
@@ -735,11 +740,11 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 void rowwise_moments_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     NormConfig& config,
     bool can_use_32bit_index) {
   int vec_size = norm.get_rowwise_reduce_vec_size(
@@ -754,7 +759,7 @@ void rowwise_moments_kernel(
           uint32_t,                  \
           vec_size,                  \
           Norm,                      \
-          one_moment>(norm, config); \
+          rms_norm>(norm, config);   \
     } else {                         \
       launch_rowwise_moments_kernel< \
           scalar_t,                  \
@@ -763,7 +768,7 @@ void rowwise_moments_kernel(
           uint64_t,                  \
           vec_size,                  \
           Norm,                      \
-          one_moment>(norm, config); \
+          rms_norm>(norm, config);   \
     }                                \
     break;                           \
   }
@@ -790,21 +795,22 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
     typename vec_t,
-    typename weight_vec_t>
+    typename weight_vec_t,
+    bool rms_norm>
 struct NormUpdateKernelFunctor {
   void operator()(sycl::nd_item<3> item_id) const {
     norm.template update<vec_size, index_t, vec_t, weight_vec_t>(item_id, cfg);
   }
   NormUpdateKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t> norm_,
+      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
       NormConfig cfg_)
       : norm(norm_), cfg(cfg_) {}
 
  private:
-  Norm<scalar_t, mean_t, weight_t> norm;
+  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
   NormConfig cfg;
 };
 
@@ -814,11 +820,11 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
-void launche_norm_update_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    bool rms_norm>
+void launch_norm_update_kernel(
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     const NormConfig& cfg) {
   // input: [M][N]
   // gamma, beta: [M]
@@ -840,7 +846,8 @@ void launche_norm_update_kernel(
       vec_size,
       Norm,
       vec_t,
-      weight_vec_t>(norm, cfg);
+      weight_vec_t,
+      rms_norm>(norm, cfg);
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
@@ -848,38 +855,38 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename>
+    template <typename, typename, typename, bool>
     class Norm,
-    bool one_moment = false>
+    bool rms_norm>
 void norm_update_kernel(
-    Norm<scalar_t, mean_t, weight_t>& norm,
+    Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     const NormConfig& config,
     bool can_use_32bit_index) {
   int vec_size =
       norm.get_update_vec_size(config.workgroup_work_size, config.max_vec_size);
 
-#define VECTORIZE_KERNEL(vec_size)   \
-  {                                  \
-    if (can_use_32bit_index) {       \
-      launche_norm_update_kernel<    \
-          scalar_t,                  \
-          mean_t,                    \
-          weight_t,                  \
-          uint32_t,                  \
-          vec_size,                  \
-          Norm,                      \
-          one_moment>(norm, config); \
-    } else {                         \
-      launche_norm_update_kernel<    \
-          scalar_t,                  \
-          mean_t,                    \
-          weight_t,                  \
-          uint64_t,                  \
-          vec_size,                  \
-          Norm,                      \
-          one_moment>(norm, config); \
-    }                                \
-    break;                           \
+#define VECTORIZE_KERNEL(vec_size) \
+  {                                \
+    if (can_use_32bit_index) {     \
+      launch_norm_update_kernel<   \
+          scalar_t,                \
+          mean_t,                  \
+          weight_t,                \
+          uint32_t,                \
+          vec_size,                \
+          Norm,                    \
+          rms_norm>(norm, config); \
+    } else {                       \
+      launch_norm_update_kernel<   \
+          scalar_t,                \
+          mean_t,                  \
+          weight_t,                \
+          uint64_t,                \
+          vec_size,                \
+          Norm,                    \
+          rms_norm>(norm, config); \
+    }                              \
+    break;                         \
   }
 
   switch (vec_size) {

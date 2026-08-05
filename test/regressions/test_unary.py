@@ -83,6 +83,18 @@ class TestSimpleUnary(TestCase):
     def test_tanh_out(self, dtype):
         self._test_unary_out_ops("tanh", dtype)
 
+    # Regression test for TanhBackwardFunctor precision bug (bf16/half).
+    # The XPU kernel must use float32 intermediates (opmath_type) for b*b,
+    # otherwise a 1-ULP rounding error in `b*b` propagates to the gradient.
+    @Dtypes([torch.bfloat16, torch.float16])
+    def test_tanh_backward_reduced_precision(self, dtype):
+        z_vals = [0.5, 1.0, 1.5, 2.0, 2.5, -0.5, -1.5, -2.5]
+        z_cpu = torch.tensor(z_vals, dtype=dtype, requires_grad=True)
+        z_xpu = torch.tensor(z_vals, dtype=dtype, device="xpu", requires_grad=True)
+        torch.tanh(z_cpu).backward(torch.ones_like(z_cpu))
+        torch.tanh(z_xpu).backward(torch.ones_like(z_xpu))
+        self.assertEqual(z_cpu.grad, z_xpu.grad.cpu())
+
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
         self._test_unary_out_ops("neg", dtype)
@@ -90,3 +102,32 @@ class TestSimpleUnary(TestCase):
     @Dtypes(floating_and_complex_types)
     def test_reciprocal_out(self, dtype):
         self._test_unary_out_ops("reciprocal", dtype)
+
+    def test_unary_geometric_bcomplex32(self):
+        x_cpu = torch.randn(64, dtype=torch.complex64) * 0.1
+        x_xpu = x_cpu.to("xpu").to(torch.bcomplex32)
+        unary_geometric_ops = [
+            torch.acos,
+            torch.acosh,
+            torch.asin,
+            torch.asinh,
+            torch.atan,
+            torch.atanh,
+            torch.cos,
+            torch.cosh,
+            torch.sin,
+            torch.sinh,
+            torch.tan,
+            torch.tanh,
+        ]
+
+        for op in unary_geometric_ops:
+            with self.subTest(op=op.__name__):
+                out = op(x_xpu)
+                self.assertEqual(out.dtype, torch.bcomplex32)
+                self.assertEqual(out.shape, x_xpu.shape)
+
+                ref = op(x_cpu)
+                self.assertEqual(
+                    out.to(torch.complex64).cpu(), ref, rtol=3e-2, atol=3e-2
+                )

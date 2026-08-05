@@ -50,10 +50,6 @@ endif()
 
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
-  # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
-  # processed.  Using this variable, we can pull out the current path, and
-  # provide a way to get access to the other files we need local to here.
-  get_filename_component(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
   if(NOT EXISTS "${SYCL_${_name}}")
     set(error_message "${_full_name} not found in ${CMAKE_CURRENT_LIST_DIR}/FindSYCL")
@@ -109,44 +105,33 @@ endmacro()
 sycl_find_helper_file(make2cmake cmake)
 sycl_find_helper_file(run_sycl cmake)
 
-macro(SYCL_GET_SOURCES_AND_OPTIONS _sycl_sources _cxx_sources _cmake_options)
-  set(${_cmake_options})
-  set(${_sycl_sources})
-  set(${_cxx_sources})
-  set(_found_options FALSE)
-  set(_found_sycl_sources FALSE)
-  set(_found_cpp_sources FALSE)
-  foreach(arg ${ARGN})
-    if("x${arg}" STREQUAL "xOPTIONS")
-      set(_found_options TRUE)
-      set(_found_sycl_sources FALSE)
-      set(_found_cpp_sources FALSE)
-    elseif(
-        "x${arg}" STREQUAL "xEXCLUDE_FROM_ALL" OR
-        "x${arg}" STREQUAL "xSTATIC" OR
-        "x${arg}" STREQUAL "xSHARED" OR
-        "x${arg}" STREQUAL "xMODULE"
-        )
-      list(APPEND ${_cmake_options} ${arg})
-    elseif("x${arg}" STREQUAL "xSYCL_SOURCES")
-      set(_found_options FALSE)
-      set(_found_sycl_sources TRUE)
-      set(_found_cpp_sources FALSE)
-    elseif("x${arg}" STREQUAL "xCXX_SOURCES")
-      set(_found_options FALSE)
-      set(_found_sycl_sources FALSE)
-      set(_found_cpp_sources TRUE)
-    else()
-      if(_found_options)
-        message(FATAL_ERROR "sycl_add_executable/library doesn't support OPTIONS keyword.")
-      elseif(_found_sycl_sources)
-        list(APPEND ${_sycl_sources} ${arg})
-      elseif(_found_cpp_sources)
-        list(APPEND ${_cxx_sources} ${arg})
-      endif()
+# Per-config subpaths under multi-config generators; flat for single-config.
+if(CMAKE_CONFIGURATION_TYPES)
+  set(SYCL_config_subdir "/$<CONFIG>")
+  set(SYCL_config_suffix ".$<CONFIG>")
+else()
+  set(SYCL_config_subdir "")
+  set(SYCL_config_suffix "")
+endif()
+
+function(SYCL_GET_SOURCES_AND_OPTIONS _sycl_sources _cxx_sources _cmake_options)
+  cmake_parse_arguments(PARSE_ARGV 3 PARSED_SYCL
+    "STATIC;SHARED;MODULE;EXCLUDE_FROM_ALL"
+    ""
+    "SYCL_SOURCES;CXX_SOURCES")
+  if("OPTIONS" IN_LIST ARGN)
+    message(FATAL_ERROR "sycl_add_executable/library doesn't support OPTIONS keyword.")
+  endif()
+  set(${_sycl_sources} ${PARSED_SYCL_SYCL_SOURCES} PARENT_SCOPE)
+  set(${_cxx_sources} ${PARSED_SYCL_CXX_SOURCES} PARENT_SCOPE)
+  set(_opts "")
+  foreach(_kw IN ITEMS STATIC SHARED MODULE EXCLUDE_FROM_ALL)
+    if(PARSED_SYCL_${_kw})
+      list(APPEND _opts ${_kw})
     endif()
   endforeach()
-endmacro()
+  set(${_cmake_options} ${_opts} PARENT_SCOPE)
+endfunction()
 
 function(SYCL_BUILD_SHARED_LIBRARY shared_flag)
   set(cmake_args ${ARGN})
@@ -169,42 +154,6 @@ function(SYCL_BUILD_SHARED_LIBRARY shared_flag)
   set(${shared_flag} ${_sycl_build_shared_libs} PARENT_SCOPE)
 endfunction()
 
-function(SYCL_COMPUTE_BUILD_PATH path build_path)
-  # Only deal with CMake style paths from here on out
-  file(TO_CMAKE_PATH "${path}" bpath)
-  if(IS_ABSOLUTE "${bpath}")
-    # Absolute paths are generally unnessary, especially if something like
-    # file(GLOB_RECURSE) is used to pick up the files.
-
-    string(FIND "${bpath}" "${CMAKE_CURRENT_BINARY_DIR}" _binary_dir_pos)
-    if(_binary_dir_pos EQUAL 0)
-      file(RELATIVE_PATH bpath "${CMAKE_CURRENT_BINARY_DIR}" "${bpath}")
-    else()
-      file(RELATIVE_PATH bpath "${CMAKE_CURRENT_SOURCE_DIR}" "${bpath}")
-    endif()
-  endif()
-
-  # This recipe is from cmLocalGenerator::CreateSafeUniqueObjectFileName in the
-  # CMake source.
-
-  # Remove leading /
-  string(REGEX REPLACE "^[/]+" "" bpath "${bpath}")
-  # Avoid absolute paths by removing ':'
-  string(REPLACE ":" "_" bpath "${bpath}")
-  # Avoid relative paths that go up the tree
-  string(REPLACE "../" "__/" bpath "${bpath}")
-  # Avoid spaces
-  string(REPLACE " " "_" bpath "${bpath}")
-
-  # Strip off the filename.  I wait until here to do it, since removin the
-  # basename can make a path that looked like path/../basename turn into
-  # path/.. (notice the trailing slash).
-  get_filename_component(bpath "${bpath}" PATH)
-
-  set(${build_path} "${bpath}" PARENT_SCOPE)
-  #message("${build_path} = ${bpath}")
-endfunction()
-
 macro(SYCL_WRAP_SRCS sycl_target generated_files)
   # Optional arguments
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
@@ -213,6 +162,9 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
   list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${sycl_target},INCLUDE_DIRECTORIES>")
 
   set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
+
+  # Extra definitions for the SYCL device compiler only, not host C++ code.
+  set(SYCL_compile_definitions "${SYCL_compile_definitions};${SYCL_DEVICE_COMPILE_DEFINITIONS}")
 
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
@@ -251,19 +203,24 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
     # SYCL kernels are in .cpp file
     if((${file} MATCHES "\\.cpp$") AND NOT _is_header)
 
-      # Determine output directory
-      SYCL_COMPUTE_BUILD_PATH("${file}" SYCL_build_path)
-      set(SYCL_compile_intermediate_directory "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${sycl_target}.dir/${SYCL_build_path}")
-      set(SYCL_compile_output_dir "${SYCL_compile_intermediate_directory}")
+      set(SYCL_compile_intermediate_directory "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${sycl_target}.dir")
 
-      get_filename_component( basename ${file} NAME )
-      set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
-      set(generated_file_basename "${sycl_target}_gen_${basename}${generated_extension}")
+      # CMake only names objects for sources it compiles, so uniquify same-named
+      # sources by hashing their source dir (relative, to survive a moved tree).
+      cmake_path(GET file FILENAME basename)
+      cmake_path(ABSOLUTE_PATH file BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE OUTPUT_VARIABLE _sycl_abs_file)
+      cmake_path(GET _sycl_abs_file PARENT_PATH _sycl_src_dir)
+      cmake_path(RELATIVE_PATH _sycl_src_dir BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+      string(SHA256 _sycl_dir_hash "${_sycl_src_dir}")
+      string(SUBSTRING "${_sycl_dir_hash}" 0 8 _sycl_dir_hash)
+
+      set(generated_file_path "${SYCL_compile_intermediate_directory}${SYCL_config_subdir}")
+      set(generated_file_basename "${sycl_target}_gen_${_sycl_dir_hash}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
-      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
+      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # generate by compiler options -M -MF
+      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
       set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
-      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}$<$<BOOL:$<CONFIG>>:.$<CONFIG>>.cmake")
+      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.cmake")
 
       set_source_files_properties("${generated_file}"
         PROPERTIES
@@ -271,7 +228,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         )
 
       # Don't add CMAKE_CURRENT_SOURCE_DIR if the path is already an absolute path.
-      get_filename_component(file_path "${file}" PATH)
+      cmake_path(GET file PARENT_PATH file_path)
       if(IS_ABSOLUTE "${file_path}")
         set(source_file "${file}")
       else()
@@ -280,7 +237,21 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
 
-      SYCL_INCLUDE_DEPENDENCIES(${cmake_dependency_file})
+      # Configure-time bookkeeping can't expand $<CONFIG>, so enumerate the
+      # per-config depend files literally; the command depends on their union.
+      if(CMAKE_CONFIGURATION_TYPES)
+        set(_sycl_depend_files "")
+        foreach(_config ${CMAKE_CONFIGURATION_TYPES})
+          list(APPEND _sycl_depend_files "${SYCL_compile_intermediate_directory}/${generated_file_basename}.${_config}.depend")
+        endforeach()
+      else()
+        set(_sycl_depend_files "${cmake_dependency_file}")
+      endif()
+      set(SYCL_ACCUMULATED_DEPEND)
+      foreach(_depend_file ${_sycl_depend_files})
+        SYCL_INCLUDE_DEPENDENCIES("${_depend_file}")
+        list(APPEND SYCL_ACCUMULATED_DEPEND ${SYCL_DEPEND})
+      endforeach()
 
       set(SYCL_build_type "Device")
 
@@ -313,7 +284,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         OUTPUT ${generated_file}
         # These output files depend on the source_file and the contents of cmake_dependency_file
         ${main_dep}
-        DEPENDS ${SYCL_DEPEND}
+        DEPENDS ${SYCL_ACCUMULATED_DEPEND}
         DEPENDS ${SYCL_EXTERNAL_DEPEND}
         DEPENDS ${custom_target_script}
         # Make sure the output directory exists before trying to write to it.
@@ -354,7 +325,7 @@ endfunction()
 # Compute the filename to be used by SYCL_LINK_DEVICE_OBJECTS
 function(SYCL_COMPUTE_DEVICE_OBJECT_FILE_NAME output_file_var sycl_target)
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
-  set(output_file "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${sycl_target}.dir/${CMAKE_CFG_INTDIR}/${sycl_target}_sycl_device_obj${generated_extension}")
+  set(output_file "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${sycl_target}.dir${SYCL_config_subdir}/${sycl_target}_sycl_device_obj${generated_extension}")
   set(${output_file_var} "${output_file}" PARENT_SCOPE)
 endfunction()
 
@@ -375,10 +346,10 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(important_host_flags)
     _sycl_get_important_host_flags(important_host_flags "${SYCL_HOST_FLAGS}")
     set(SYCL_device_link_flags
-        ${link_type_flag}
         ${important_host_flags}
         ${SYCL_DEVICE_LINK_FLAGS})
 
+    # output_file is a macro arg, not a variable, so cmake_path() can't take it.
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
 
     if(SYCL_VERBOSE_BUILD)
@@ -398,6 +369,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
+      COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}

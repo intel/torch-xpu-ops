@@ -9,9 +9,18 @@
  */
 
 #pragma once
-
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
+
+namespace syclext = sycl::ext::oneapi;
+namespace syclexp = sycl::ext::oneapi::experimental;
 
 // sycl access address space
 static constexpr auto sycl_priv_space =
@@ -73,10 +82,8 @@ static inline void sycl_kernel_submit(
 struct __SYCL_KER_CONFIG_CONVENTION__ {};
 
 template <typename ker_t, int dim>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+  requires std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>
+static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
@@ -90,10 +97,8 @@ sycl_kernel_submit(
 }
 
 template <typename ker_t, int dim>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+  requires(!std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>)
+static inline void sycl_kernel_submit(
     ::sycl::range<dim> global_range,
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
@@ -106,10 +111,8 @@ sycl_kernel_submit(
 }
 
 template <typename ker_t>
-static inline typename std::enable_if<
-    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+  requires std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>
+static inline void sycl_kernel_submit(
     int64_t global_range,
     int64_t local_range,
     ::sycl::queue q,
@@ -125,10 +128,8 @@ sycl_kernel_submit(
 }
 
 template <typename ker_t>
-static inline typename std::enable_if<
-    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
-    void>::type
-sycl_kernel_submit(
+  requires(!std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>)
+static inline void sycl_kernel_submit(
     int64_t global_range,
     int64_t local_range,
     ::sycl::queue q,
@@ -140,6 +141,201 @@ sycl_kernel_submit(
         ker);
   };
   q.submit(cgf);
+}
+
+// Overloads accepting kernel properties (e.g., sub_group_size, grf_size).
+// Uses kernel functor with get(properties_tag) — the official non-deprecated
+// way to attach compile-time properties to a kernel.
+
+template <typename KernelType, typename PropsType>
+struct __SyclKernelWithProps__ {
+  KernelType kernel_;
+  template <typename ItemT>
+  void operator()(ItemT&& item) const {
+    kernel_(std::forward<ItemT>(item));
+  }
+  template <typename ItemT, typename... Rest>
+  void operator()(ItemT&& item, Rest&&...) const {
+    kernel_(std::forward<ItemT>(item));
+  }
+  auto get(::sycl::ext::oneapi::experimental::properties_tag) const {
+    return PropsType{};
+  }
+};
+
+template <typename ker_t, typename Props, int dim>
+  requires std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props, int dim>
+  requires(!std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>)
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props>
+  requires std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        wrapped);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename Props>
+  requires(!std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>)
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    Props properties,
+    ker_t ker) {
+  (void)properties;
+  auto cgf = [&](::sycl::handler& cgh) {
+    __SyclKernelWithProps__<ker_t, Props> wrapped{ker};
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        wrapped);
+  };
+  q.submit(cgf);
+}
+
+// For SYCL free function
+// Submit a SYCL free function kernel via sycl_ext_oneapi_free_function_kernels.
+// See:
+// https://github.com/intel/llvm/blob/sycl/sycl/doc/extensions/experimental/sycl_ext_oneapi_free_function_kernels.asciidoc
+//
+// The spec defines a struct template and a corresponding variable template:
+//   template<auto *Func> struct kernel_function_s {};
+//   template<auto *Func> inline constexpr kernel_function_s<Func>
+//   kernel_function;
+//
+// `kernel_function<kptr>` is an inline constexpr instance of
+// `kernel_function_s<kptr>`. We use it instead of explicitly constructing
+// `kernel_function_s<kptr>{}` because:
+//   1. It is the idiomatic shorthand encouraged by the spec examples
+//      (e.g. `syclexp::nd_launch(q, ndr, syclexp::kernel_function<iota>,
+//      ...)`).
+//   2. Both forms are equivalent — `kernel_function<kptr>` simply evaluates to
+//      a default-constructed `kernel_function_s<kptr>` at compile time.
+
+// TODO: unify and remove the if-else for slm_sz
+template <auto* kptr, typename... Kargs>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    int slm_sz,
+    Kargs... args) {
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
+  sycl::context ctxt = q.get_context();
+  auto exe_bndl =
+      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
+  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  } else {
+    syclexp::launch_config cfg{::sycl::nd_range<1>(
+        ::sycl::range<1>(global_range), ::sycl::range<1>(local_range))};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  }
+#else
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+  } else {
+    syclexp::nd_launch(
+        q,
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        syclexp::kernel_function<kptr>,
+        args...);
+  }
+#endif
+}
+
+// TODO: unify and remove the if-else for slm_sz
+template <auto* kptr, int dim, typename... Kargs>
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    int slm_sz,
+    Kargs... args) {
+#if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
+  sycl::context ctxt = q.get_context();
+  auto exe_bndl =
+      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
+  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<dim>(
+            ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range)),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  } else {
+    syclexp::launch_config cfg{::sycl::nd_range<dim>(
+        ::sycl::range<dim>(global_range), ::sycl::range<dim>(local_range))};
+    syclexp::nd_launch(q, cfg, ker, args...);
+  }
+#else
+  if (slm_sz != 0) {
+    syclexp::launch_config cfg{
+        ::sycl::nd_range<dim>(global_range, local_range),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
+    syclexp::nd_launch(q, cfg, syclexp::kernel_function<kptr>, args...);
+  } else {
+    syclexp::nd_launch(
+        q,
+        ::sycl::nd_range<dim>(global_range, local_range),
+        syclexp::kernel_function<kptr>,
+        args...);
+  }
+#endif
 }
 
 #ifdef __SYCL_DEVICE_ONLY__

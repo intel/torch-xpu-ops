@@ -333,7 +333,7 @@ Tensor& add_out_dense_sparse_kernel(
           });
     }
   } else {
-    Tensor indices1D = flatten_indices(indices, sparse.sizes(), 0);
+    Tensor indices1D = flatten_indices(indices, sparse.sizes(), false);
 
     int64_t view_rows = 1;
     int64_t view_columns = 1;
@@ -644,7 +644,6 @@ Tensor _sparse_sum_backward_kernel(
     } else {
       grad_input_values = at::empty_like(
           input_values, grad_values.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-      AT_ASSERT(grad_input_values.is_xpu());
 
       // get 1D indices
       auto grad_sparse_dim_to_keep_v = std::vector<int64_t>(grad_sparse_dim);

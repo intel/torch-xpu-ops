@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -20,7 +21,8 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct CopysignFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::copysign(a, b);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::copysign(static_cast<opmath_t>(a), static_cast<opmath_t>(b));
   }
 };
 

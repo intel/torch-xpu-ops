@@ -68,7 +68,7 @@ runs:
         fi
         if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
           models="alexnet,demucs,dlrm,hf_Albert,hf_Bert,hf_Bert_large,hf_DistilBert,hf_Roberta_base,mnasnet1_0,mobilenet_v2,"
-          models+="mobilenet_v3_large,nvidia_deeprecommender,pytorch_CycleGAN_and_pix2pix,resnet152,resnet18,resnet50,resnext50_32x4d,"
+          models+="mobilenet_v3_large,nvidia_deeprecommender,resnet152,resnet18,resnet50,resnext50_32x4d,"
           models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
           models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
           cmd_line=" python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor "

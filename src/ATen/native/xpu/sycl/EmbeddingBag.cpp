@@ -8,14 +8,14 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -673,7 +673,7 @@ void EmbeddingBag_accGradParametersKernel_max(
     scalar_t* gradWeight,
     int64_t stride,
     int64_t numBags) {
-  auto chunksPerBag = CeilDiv(stride, (int64_t)64);
+  auto chunksPerBag = at::ceil_div(stride, (int64_t)64);
   auto numChunks = numBags * chunksPerBag;
   auto kernel_range = 1024 * 64;
 
@@ -779,8 +779,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
   auto offsets_original = offsets_t.contiguous();
   auto per_sample_weights = per_sample_weights_t.contiguous();
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) =
+  auto [indices, offsets] =
       promoteIndicesAndOffsets(indices_original, offsets_original);
   auto indices_arg = TensorArg(indices, "indices", 1);
   checkScalarTypes("embedding_bag_kernel", indices_arg, {kLong, kInt});
@@ -922,16 +921,15 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
       mode == MODE_SUM,
       "embedding_bag_backward: per_sample_weights only supported for mode='sum'");
 
-  AT_ASSERT(grad.dim() == 2);
+  TORCH_INTERNAL_ASSERT(grad.dim() == 2);
   auto embedding_features = grad.size(1);
 
-  Tensor indices, offsets;
-  std::tie(indices, offsets) = promoteIndicesAndOffsets(indices_, offsets_);
-  AT_ASSERT(indices.dim() == 1);
+  auto [indices, offsets] = promoteIndicesAndOffsets(indices_, offsets_);
+  TORCH_INTERNAL_ASSERT(indices.dim() == 1);
   auto num_samples = indices.size(0);
 
-  AT_ASSERT(weight.dim() == 2);
-  AT_ASSERT(weight.size(1) == embedding_features);
+  TORCH_INTERNAL_ASSERT(weight.dim() == 2);
+  TORCH_INTERNAL_ASSERT(weight.size(1) == embedding_features);
 
   auto output = at::empty({num_samples}, grad.options());
 
@@ -973,5 +971,6 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

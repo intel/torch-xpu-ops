@@ -8,15 +8,26 @@
 
 # Owner(s): ["module: intel"]
 
+import torch
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from .xpu_test_utils import XPUImportCtx
 
-with XPUPatchForImport(False):
-    from test_comparison_utils import TestComparisonUtils  # noqa: F401`
+with XPUImportCtx(False):
+    from test_comparison_utils import TestComparisonUtils
+
+
+def _test_assert_device(self):
+    t = torch.tensor([0.5], device="cpu")
+
+    with self.assertRaises(RuntimeError):
+        torch._assert_tensor_metadata(t, device="xpu")
+
+
+TestComparisonUtils.test_assert_device = _test_assert_device
 
 
 if __name__ == "__main__":

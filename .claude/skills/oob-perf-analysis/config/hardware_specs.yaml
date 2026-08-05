@@ -1,0 +1,30 @@
+# Platform keys are canonical lowercase identifiers used in code paths.
+# The "label" field is the user-facing display name used in reports.
+# Ridge point (ops:byte ratio) = peak_tflops * 1e3 / bandwidth_gbs, rounded to 1 decimal.
+#
+# peak_tflops_fp16 values are empirically calibrated measured peaks, not spec-sheet theoretical peaks.
+# Spec-sheet references and deltas:
+#   B70 (G31):      spec 183.5 TFLOPS FP16 (XMX), empirical 154.0 TFLOPS (-16%)
+#                   https://www.intel.com/content/www/us/en/products/sku/245797/intel-arc-pro-b70-graphics/specifications.html
+#   B580:           spec 114.69 TFLOPS FP16 (XMX), empirical 93.0 TFLOPS (-19%)
+#                   https://www.intel.com/content/www/us/en/products/sku/241598/intel-arc-b580-graphics/specifications.html
+#   RTX 4080 SUPER: spec 105.3 TFLOPS FP16 (sparse), empirical 100.96 TFLOPS (-4%)
+#                   https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4080-family/
+platforms:
+  b70:
+    label: B70 (G31)
+    internal_id: G31
+    peak_tflops_fp16: 154.0
+    bandwidth_gbs: 532.0
+    ridge_point_ops_per_byte: 289.5
+  b580:
+    label: B580
+    peak_tflops_fp16: 93.0
+    bandwidth_gbs: 410.0
+    ridge_point_ops_per_byte: 226.8
+  4080s:
+    label: RTX 4080 SUPER
+    internal_id: "4080"
+    peak_tflops_fp16: 100.96
+    bandwidth_gbs: 716.8
+    ridge_point_ops_per_byte: 140.8

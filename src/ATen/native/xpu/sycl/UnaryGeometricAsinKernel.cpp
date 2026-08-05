@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -28,17 +29,21 @@ struct AsinComplexFunctor {
 template <typename scalar_t>
 struct AsinFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::asin(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return sycl::asin(static_cast<opmath_t>(a));
   }
 };
 
 void asin_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "asin_xpu", [&]() {
-          gpu_kernel(iter, AsinComplexFunctor<scalar_t>());
-        });
+    AT_DISPATCH_V2(
+        common_dtype,
+        "asin_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, AsinComplexFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         ScalarType::Half,

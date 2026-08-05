@@ -14,7 +14,6 @@
 
 #include <ATen/ExpandUtils.h>
 #include <ATen/MemoryOverlap.h>
-#include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/core/Tensor.h>
@@ -97,8 +96,6 @@ Tensor& masked_fill__xpu(
       mask.scalar_type() == kBool,
       "masked_fill only supports boolean masks, but got dtype ",
       mask.scalar_type());
-  auto maybe_outnames =
-      namedinference::broadcast_to_outnames(self, mask, "masked_fill_");
   if (at::has_internal_overlap(self) == MemOverlap::Yes) {
     TORCH_WARN(
         "Use of masked_fill_ on expanded tensors is deprecated. "
@@ -119,7 +116,6 @@ Tensor& masked_fill__xpu(
                   .build();
 
   xpu::masked_fill_kernel(iter, value);
-  namedinference::propagate_names_if_nonempty(self, maybe_outnames);
   return self;
 }
 
