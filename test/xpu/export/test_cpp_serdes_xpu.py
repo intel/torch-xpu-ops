@@ -10,10 +10,15 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import inspect
+
 # Owner(s): ["module: intel"]
 import torch
-import inspect
-from torch._export.serde.serialize import deserialize, serialize, _reconstruct_fake_tensor
+from torch._export.serde.serialize import (
+    _reconstruct_fake_tensor,
+    deserialize,
+    serialize,
+)
 
 try:
     from . import test_export_xpu, testing_xpu
