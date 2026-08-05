@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   auto-milestone:
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       issues: write
     # Only run when the 'skipped' label is present

@@ -301,7 +301,7 @@ jobs:
   report:
     needs: tests
     if: ${{ success() || failure() }}
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Download reports
         uses: actions/download-artifact@v4

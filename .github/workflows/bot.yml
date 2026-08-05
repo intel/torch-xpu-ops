@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   parse-command:
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue.pull_request
@@ -142,7 +142,7 @@ jobs:
 
   invalid-command:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: needs.parse-command.outputs.command == 'invalid'
     steps:
       - name: Post invalid command message
@@ -159,7 +159,7 @@ jobs:
 
   permission-denied:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command != 'invalid'
       && needs.parse-command.outputs.command != 'help'
@@ -187,7 +187,7 @@ jobs:
 
   help:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: needs.parse-command.outputs.command == 'help'
     steps:
       - name: Post help message
@@ -219,7 +219,7 @@ jobs:
 
   merge:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command == 'merge'
       && needs.parse-command.outputs.authorized == 'true'
@@ -367,7 +367,7 @@ jobs:
 
   revert:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command == 'revert'
       && needs.parse-command.outputs.authorized == 'true'
@@ -405,7 +405,7 @@ jobs:
 
   rebase:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command == 'rebase'
       && needs.parse-command.outputs.authorized == 'true'
@@ -501,7 +501,7 @@ jobs:
 
   lint:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command == 'lint'
       && needs.parse-command.outputs.authorized == 'true'
@@ -599,7 +599,7 @@ jobs:
 
   rerun:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: >-
       needs.parse-command.outputs.command == 'rerun'
       && needs.parse-command.outputs.authorized == 'true'
@@ -727,7 +727,7 @@ jobs:
 
   review:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
       needs.parse-command.outputs.command == 'review'
@@ -831,7 +831,7 @@ jobs:
 
   ut-check:
     needs: parse-command
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     if: >-
       needs.parse-command.outputs.command == 'ut-check'
@@ -957,8 +957,8 @@ jobs:
             --deterministic
 
   token-permission-test:
-    runs-on: xpu-ubuntu-24.04
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

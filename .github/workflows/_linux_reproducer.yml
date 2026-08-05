@@ -125,7 +125,7 @@ jobs:
   summary:
     needs: [reproducer-test]
     if: ${{ ! cancelled() && needs.reproducer-test.result == 'failure' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -195,7 +195,7 @@ jobs:
   reproducer-status-check:
     needs: [reproducer-test]
     if: ${{ always() }}
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check reproducer-test result

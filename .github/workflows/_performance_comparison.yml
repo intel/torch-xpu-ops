@@ -20,7 +20,7 @@ jobs:
   Performance-Comparison:
     env:
       GH_TOKEN: ${{ github.token }}
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Setup python
         uses: actions/setup-python@v5

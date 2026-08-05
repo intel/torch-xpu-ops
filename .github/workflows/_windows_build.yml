@@ -137,7 +137,7 @@ jobs:
   build-status-check:
     needs: [build]
     if: ${{ always() }}
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check build result

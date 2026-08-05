@@ -82,7 +82,7 @@ jobs:
 
   op_benchmark_test_results_check:
     needs: op_benchmark
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: read
