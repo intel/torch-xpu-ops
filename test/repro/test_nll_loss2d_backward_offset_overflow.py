@@ -11,12 +11,10 @@
 Reproducer for issue #4723 (pytorch/pytorch#190139): NLLLoss2d backward
 silently zeroed the gradient of the tail samples for large inputs.
 
-The backward kernel computed the per-sample base offsets
-(sample, toffset = sample * map_nelem, ioffset = sample * map_nelem * n_classes)
-in 32-bit int. Once the flattened extent reaches 2**31 the multiplication
-overflows and wraps the base pointer, so the trailing samples receive no
-gradient (grad == 0) instead of the correct value. The fix widens those offsets
-to int64_t, matching the forward kernel's index type selection.
+The backward kernel computed per-sample offsets in 32-bit arithmetic. Once the
+flattened extent reaches 2**31, the multiplication overflows and the trailing
+samples receive no gradient. The fix selects 32- or 64-bit indexing based on
+the input tensor, matching the forward kernel and pytorch/pytorch#190144.
 """
 
 import unittest
@@ -29,26 +27,40 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 class TestNllLoss2dBackwardOffsetOverflow(TestCase):
-    # The (2**16 + 1, 2**15, 1, 1) FP16 input plus its gradient is ~9GB; skip on
-    # devices without enough memory so the Reproducer CI stays reliable.
-    @largeTensorTest("10GB", device="xpu")
+    @largeTensorTest("5GB", device="xpu")
     def test_backward_offset_no_overflow(self):
-        # (2**16 + 1) samples of 2**15 classes: the last sample's input offset
-        # sample * map_nelem * n_classes exceeds 2**31, overflowing int32.
-        x = torch.zeros(
-            (2**16 + 1, 2**15, 1, 1),
+        batch_size = 2**16 + 1
+        num_classes = 2**15
+        ignore_index = -100
+
+        # Reduced backward only uses input metadata. Expanding a scalar avoids
+        # materializing another four-GiB tensor.
+        input = torch.empty(
+            (),
             device="xpu",
             dtype=torch.float16,
-            requires_grad=True,
+        ).expand(batch_size, num_classes, 1, 1)
+        target = torch.full(
+            (batch_size, 1, 1),
+            ignore_index,
+            dtype=torch.int64,
+            device="xpu",
         )
-        target = torch.zeros((2**16 + 1, 1, 1), device="xpu", dtype=torch.long)
+        target[-1] = 0
+        one = torch.ones((), dtype=torch.float16, device="xpu")
 
-        F.nll_loss(x, target, reduction="sum").backward()
+        grad_input = torch.ops.aten.nll_loss2d_backward.default(
+            one,
+            input,
+            target,
+            None,
+            F._Reduction.get_enum("sum"),
+            ignore_index,
+            one,
+        )
 
-        # With reduction="sum" and target class 0, every selected gradient is -1.
-        # Pre-fix, the wrapped offset leaves the tail sample's gradient at 0.
-        self.assertEqual(x.grad[0, 0, 0, 0].item(), -1.0)
-        self.assertEqual(x.grad[-1, 0, 0, 0].item(), -1.0)
+        torch.xpu.synchronize()
+        self.assertEqual(grad_input[-1, 0, 0, 0], -1)
 
 
 if __name__ == "__main__":

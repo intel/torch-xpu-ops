@@ -366,27 +366,24 @@ struct NllLoss2dBackwardNoReduceKernelFunctor {
   int64_t ignore_index_;
 };
 
-template <typename scalar_t>
+template <typename scalar_t, typename index_t>
 struct NllLoss2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     const auto grad =
         -(size_average_ ? *grad_output_ / *total_weight_ : *grad_output_);
 
-    // Use 64-bit offsets: sample * map_nelem_ * n_classes_ overflows a 32-bit
-    // int once the flattened extent reaches 2147483648 (INT_MAX + 1), wrapping
-    // the per-sample base pointer and silently dropping gradients for the tail
-    // samples (#4723, pytorch/pytorch#190139). The CUDA path guards this by
-    // selecting a 64-bit index type when 32-bit indexing is unsafe.
-    const int64_t sample = item.get_group(0) / blocks_per_sample_;
-    const int step = item.get_local_range(0) * blocks_per_sample_;
+    const index_t sample = item.get_group(0) / blocks_per_sample_;
+    const index_t step =
+        static_cast<index_t>(item.get_local_range(0)) * blocks_per_sample_;
 
-    const int64_t toffset = sample * map_nelem_;
+    const index_t toffset = sample * map_nelem_;
     const auto* const target_thread = target_ + toffset;
 
-    const int64_t ioffset = sample * map_nelem_ * n_classes_;
+    const index_t ioffset = sample * map_nelem_ * n_classes_;
     auto* const grad_input_thread = grad_input_ + ioffset;
 
-    for (int i = (item.get_group(0) % blocks_per_sample_) *
+    for (index_t i =
+             static_cast<index_t>(item.get_group(0) % blocks_per_sample_) *
                  item.get_local_range(0) +
              item.get_local_id(0);
          i < map_nelem_;
@@ -408,8 +405,8 @@ struct NllLoss2dBackwardKernelFunctor {
       const scalar_t* weights,
       const scalar_t* total_weight,
       bool size_average,
-      int n_classes,
-      int map_nelem,
+      index_t n_classes,
+      index_t map_nelem,
       int blocks_per_sample,
       int64_t ignore_index)
       : grad_input_(grad_input),
@@ -430,8 +427,8 @@ struct NllLoss2dBackwardKernelFunctor {
   const scalar_t* weights_;
   const scalar_t* total_weight_;
   bool size_average_;
-  int n_classes_;
-  int map_nelem_;
+  index_t n_classes_;
+  index_t map_nelem_;
   int blocks_per_sample_;
   int64_t ignore_index_;
 };
@@ -520,28 +517,39 @@ void nll_loss2d_backward_kernel(
           auto target_ = target.contiguous();
           auto weight_ = optional_contiguous(weight);
           int64_t map_nelem = target_numel / batch_size;
-          using KernelClass = NllLoss2dBackwardKernelFunctor<scalar_t>;
-          int64_t max_work_group_size = syclMaxWorkGroupSize<KernelClass>();
-          int blocks_per_sample =
-              (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
-          blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;
-          int total_blocks = blocks_per_sample * batch_size;
-          KernelClass kfn(
-              grad_input.mutable_data_ptr<scalar_t>(),
-              grad_output.const_data_ptr<scalar_t>(),
-              target_.const_data_ptr<int64_t>(),
-              optional_data<scalar_t>(weight_),
-              total_weight.const_data_ptr<scalar_t>(),
-              reduction == at::Reduction::Mean,
-              input.size(1),
-              map_nelem,
-              blocks_per_sample,
-              ignore_index);
-          sycl_kernel_submit(
-              total_blocks * max_work_group_size,
-              max_work_group_size,
-              getCurrentSYCLQueue(),
-              kfn);
+          AT_DISPATCH_INDEX_TYPES(
+              at::native::canUse32BitIndexMath(input, INT_MAX)
+                  ? ScalarType::Int
+                  : ScalarType::Long,
+              "nll_loss2d_backward_launcher",
+              [&] {
+                using KernelClass =
+                    NllLoss2dBackwardKernelFunctor<scalar_t, index_t>;
+                int64_t max_work_group_size =
+                    syclMaxWorkGroupSize<KernelClass>();
+                int blocks_per_sample =
+                    (map_nelem + max_work_group_size - 1) /
+                    max_work_group_size / 128;
+                blocks_per_sample =
+                    (blocks_per_sample == 0) ? 1 : blocks_per_sample;
+                int total_blocks = blocks_per_sample * batch_size;
+                KernelClass kfn(
+                    grad_input.mutable_data_ptr<scalar_t>(),
+                    grad_output.const_data_ptr<scalar_t>(),
+                    target_.const_data_ptr<int64_t>(),
+                    optional_data<scalar_t>(weight_),
+                    total_weight.const_data_ptr<scalar_t>(),
+                    reduction == at::Reduction::Mean,
+                    input.size(1),
+                    map_nelem,
+                    blocks_per_sample,
+                    ignore_index);
+                sycl_kernel_submit(
+                    total_blocks * max_work_group_size,
+                    max_work_group_size,
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
         });
   }
 }
