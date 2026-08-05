@@ -1,305 +1,144 @@
-name: OnDemand Acceptance Comparison
+name: OnDemand P0 Scope Tests
 
-# Self-contained orchestration workflow that runs two pipelines (target vs
-# baseline) in the same workflow run, then compares their results.
+# Self-contained workflow that runs the P0 acceptance scope against a single
+# PyTorch build/wheel (no baseline, no comparison).
 #
-# Test scope is fixed to the acceptance comparison scope:
+# Test scope:
 #   * UT  : p0 only
-#   * E2E : huggingface, timm_models, torchbench
-#           (training amp_fp16 + inference bfloat16, accuracy + performance)
+#   * E2E : huggingface, timm_models, torchbench (accuracy + performance)
 #
-# Flexibility is on the *component* under test: select one component
-# (`triton`, `onednn`) via `test_component`, then set `target_version` /
-# `baseline_version` for that component. Other components use their base
-# inputs or upstream-pinned defaults.
+# PyTorch source can be a public wheel or the nightly wheel:
+#   * release_wheel  -> https://download.pytorch.org/whl/xpu
+#   * test_wheel     -> https://download.pytorch.org/whl/test/xpu
+#   * nightly_wheel  -> https://download.pytorch.org/whl/nightly/xpu
+#   * commit/branch  -> built from source
 
 on:
   workflow_dispatch:
     inputs:
-      python:
-        type: string
-        required: true
-        default: '3.10'
-        description: Python version (e.g. 3.10, 3.11, 3.12)
-
-      # ----- Common base refs -----
+      runner:
+        type: choice
+        options: [acceptance]
+        description: 'Runner label for the test pool (UT + E2E).'
       pytorch:
         type: string
-        default: 'main'
-        description: 'Base PyTorch ref (commit/branch/tag, or `repo@ref`).'
+        default: 'nightly_wheel'
+        description: "PyTorch version. 'release_wheel'/'test_wheel'/'nightly_wheel' for public wheels, or 'commit/branch', or 'repo@commit/repo@branch'"
       torch_xpu_ops:
         type: string
-        default: 'main'
-        description: 'Base torch-xpu-ops ref, or `pinned`.'
-
-      # ----- Component under test -----
-      test_component:
-        type: choice
-        options: [onednn, triton]
-        default: onednn
-        description: 'Which component varies between target and baseline.'
-      target_version:
+        default: 'pinned'
+        description: "Torch-xpu-ops ref, 'commit/branch', 'repo@commit/repo@branch', or 'pinned' for pytorch pin"
+      triton:
         type: string
-        required: true
-        description: 'Target ref for the selected test_component.'
-      baseline_version:
+        default: ''
+        description: "Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'"
+      python:
         type: string
-        required: true
-        description: 'Baseline ref for the selected test_component.'
+        default: '3.10'
+        description: "Python version by default is '3.10'"
 
 permissions: read-all
 
-run-name: >-
-  Acceptance / ${{ inputs.test_component }} ${{ inputs.target_version }} vs ${{ inputs.baseline_version }}
+run-name: P0-Scope / ${{ inputs.pytorch }}
 
 jobs:
   # ==================================================================
-  # TARGET pipeline
+  # Pick ONE runner and reuse for every test job (target & baseline,
+  # UT & E2E) so they all execute on the same physical machine.
   # ==================================================================
-  target-build:
-    name: target / build
-    secrets: inherit
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      runner: build
-      pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      triton: ${{ inputs.test_component == 'triton' && inputs.target_version || '' }}
-      onednn: ${{ inputs.test_component == 'onednn' && inputs.target_version || '' }}
-      python: ${{ inputs.python }}
-      category: target
-
-  target-ut:
-    name: target / ut
-    needs: target-build
-    secrets: inherit
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: acceptance
-      pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      python: ${{ inputs.python }}
-      ut: p0
-      category: target
-      skip_summary: true
-
-  target-e2e:
-    name: target / e2e
-    needs: target-build
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
-    uses: ./.github/workflows/_linux_e2e.yml
-    with:
-      runner: acceptance
-      test_type: build-acceptance
-      pytorch: ${{ inputs.pytorch }}
-      python: ${{ inputs.python }}
-      suite: ${{ matrix.suite }}
-      scenario: accuracy,performance
-      category: target
-
-  # ==================================================================
-  # BASELINE pipeline
-  # ==================================================================
-  baseline-build:
-    name: baseline / build
-    secrets: inherit
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      runner: build
-      pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      triton: ${{ inputs.test_component == 'triton' && inputs.baseline_version || '' }}
-      onednn: ${{ inputs.test_component == 'onednn' && inputs.baseline_version || '' }}
-      python: ${{ inputs.python }}
-      category: baseline
-
-  baseline-ut:
-    name: baseline / ut
-    needs: baseline-build
-    secrets: inherit
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: acceptance
-      pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-      python: ${{ inputs.python }}
-      ut: p0
-      category: baseline
-      skip_summary: true
-
-  baseline-e2e:
-    name: baseline / e2e
-    needs: baseline-build
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
-    uses: ./.github/workflows/_linux_e2e.yml
-    with:
-      runner: acceptance
-      test_type: build-acceptance
-      pytorch: ${{ inputs.pytorch }}
-      python: ${{ inputs.python }}
-      suite: ${{ matrix.suite }}
-      scenario: accuracy,performance
-      category: baseline
-
-  # ==================================================================
-  # Compare results
-  # ==================================================================
-  compare-results:
-    name: Compare results
-    needs: [target-ut, target-e2e, baseline-ut, baseline-e2e]
-    if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ github.token }}
+  pick-runner:
+    name: pick-runner
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
-      - name: Setup python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python }}
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Print configuration
+      - name: Derive runner id
+        id: runner-info
+        shell: bash -xe {0}
         run: |
-          {
-            echo "## Acceptance comparison"
-            echo ""
-            echo "| | Value |"
-            echo "| --- | --- |"
-            echo "| **Component under test** | ${{ inputs.test_component }} |"
-            echo "| Target version   | \`${{ inputs.target_version }}\` |"
-            echo "| Baseline version | \`${{ inputs.baseline_version }}\` |"
-            echo "| Base pytorch     | ${{ inputs.pytorch }} |"
-            echo "| Base torch-xpu-ops | ${{ inputs.torch_xpu_ops }} |"
-            echo ""
-            echo "Scope: UT=\`p0\`; E2E=huggingface,timm_models,torchbench (training amp_fp16 + inference bfloat16, accuracy+performance)"
-          } > "${GITHUB_STEP_SUMMARY}"
+          runner_id="$(echo "${RUNNER_NAME}" | sed 's/-[0-9]\+$//')"
+          echo "runner_id=${runner_id}" | tee -a "${GITHUB_OUTPUT}"
 
-      - name: Download target E2E logs
+  Linux-Ondemand-Build:
+    name: linux-build
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [build]
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: build
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+      triton: ${{ inputs.triton }}
+      python: ${{ inputs.python }}
+
+  Linux-Ondemand-UT-Tests:
+    name: linux-ut
+    needs: [pick-runner, Linux-Ondemand-Build]
+    secrets: inherit
+    permissions: write-all
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      ut: p0
+
+  Linux-Ondemand-E2E-Tests:
+    name: linux-e2e
+    needs: [pick-runner, Linux-Ondemand-Build]
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [huggingface, timm_models, torchbench]
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ needs.pick-runner.outputs.runner_id }}
+      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand' }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ inputs.python }}
+      suite: ${{ matrix.suite }}
+      scenario: accuracy,performance
+
+  Linux-Ondemand-E2E-Tests-Summary:
+    name: linux-e2e
+    needs: [Linux-Ondemand-E2E-Tests]
+    if: ${{ ! cancelled() && ! endsWith(needs.Linux-Ondemand-E2E-Tests.result, 'ed') }}
+    permissions: write-all
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand' }}
+      python: ${{ inputs.python }}
+
+  Upload-Results:
+    name: upload-results
+    needs: [Linux-Ondemand-UT-Tests, Linux-Ondemand-E2E-Tests]
+    if: ${{ ! cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download UT logs
         uses: actions/download-artifact@v4
         with:
-          pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-target'
-          path: ${{ github.workspace }}/results/target/e2e
-
-      - name: Download target UT logs
+          pattern: 'Inductor-XPU-UT-Data-*'
+          path: ${{ github.workspace }}/results/ut
+      - name: Download UT failure lists
         uses: actions/download-artifact@v4
         with:
-          pattern: 'Inductor-XPU-UT-Data-*-target'
-          path: ${{ github.workspace }}/results/target/ut
-
-      - name: Download target UT failure lists
+          pattern: 'XPU-UT-Failure-List-*'
+          path: ${{ github.workspace }}/results/ut
+      - name: Download E2E logs
         uses: actions/download-artifact@v4
         with:
-          pattern: 'XPU-UT-Failure-List-*-target'
-          path: ${{ github.workspace }}/results/target/ut
-
-      - name: Download baseline E2E logs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*-baseline'
-          path: ${{ github.workspace }}/results/baseline/e2e
-
-      - name: Download baseline UT logs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: 'Inductor-XPU-UT-Data-*-baseline'
-          path: ${{ github.workspace }}/results/baseline/ut
-
-      - name: Download baseline UT failure lists
-        uses: actions/download-artifact@v4
-        with:
-          pattern: 'XPU-UT-Failure-List-*-baseline'
-          path: ${{ github.workspace }}/results/baseline/ut
-
-      - name: Ensure result directories exist
-        run: |
-          mkdir -p "${{ github.workspace }}/results/target/e2e"
-          mkdir -p "${{ github.workspace }}/results/target/ut"
-          mkdir -p "${{ github.workspace }}/results/baseline/e2e"
-          mkdir -p "${{ github.workspace }}/results/baseline/ut"
-
-      - name: Install comparison dependencies
-        run: |
-          python -m pip install --quiet pandas numpy openpyxl PyGithub
-
-      - name: E2E comparison (compare-e2e.py)
-        id: e2e-cmp
-        continue-on-error: true
-        run: |
-          # Flatten per-suite artifact directories so compare-e2e.py finds csvs
-          for side in target baseline; do
-            base="${{ github.workspace }}/results/${side}/e2e"
-            if compgen -G "${base}/Inductor-*-LTS2-XPU-E2E-Data-*" > /dev/null; then
-              for d in "${base}"/Inductor-*-LTS2-XPU-E2E-Data-*; do
-                cp -r "${d}/." "${base}/"
-              done
-            fi
-          done
-          mkdir -p "${{ github.workspace }}/comparison"
-          python .github/scripts/compare-e2e.py \
-            -t "${{ github.workspace }}/results/target/e2e" \
-            -b "${{ github.workspace }}/results/baseline/e2e" \
-            -o "${{ github.workspace }}/comparison/e2e_comparison.xlsx" \
-            -m "${{ github.workspace }}/comparison/e2e_comparison.md"
-          {
-            echo ""
-            echo "### E2E (target vs baseline)"
-            echo ""
-            if [ -f "${{ github.workspace }}/comparison/e2e_comparison.md" ]; then
-              cat "${{ github.workspace }}/comparison/e2e_comparison.md"
-            else
-              echo "_compare-e2e.py produced no markdown report._"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: UT comparison (compare-ut.py)
-        id: ut-cmp
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "${{ github.workspace }}/comparison"
-          python .github/scripts/compare-ut.py \
-            -i "${{ github.workspace }}/results/target/ut" \
-               "${{ github.workspace }}/results/baseline/ut" \
-            -o "${{ github.workspace }}/comparison/ut_comparison.xlsx" \
-            -m \
-            --markdown-output "${{ github.workspace }}/comparison/ut_comparison.md" \
-            --no-github
-          {
-            echo ""
-            echo "### UT (target vs baseline)"
-            echo ""
-            if [ -f "${{ github.workspace }}/comparison/ut_comparison.md" ]; then
-              cat "${{ github.workspace }}/comparison/ut_comparison.md"
-            else
-              echo "_compare-ut.py produced no markdown report._"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Upload comparison summary
-        if: always()
+          pattern: 'Inductor-*-LTS2-XPU-E2E-Data-*'
+          path: ${{ github.workspace }}/results/e2e
+      - name: Upload consolidated results
         uses: actions/upload-artifact@v4
         with:
-          name: acceptance-comparison-summary-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ github.workspace }}/comparison/**
+          name: P0-Scope-Results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/results/**
           retention-days: 30
           if-no-files-found: warn
