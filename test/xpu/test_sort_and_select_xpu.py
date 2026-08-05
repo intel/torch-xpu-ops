@@ -23,7 +23,7 @@ from torch.testing._internal.common_utils import run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
-except Exception as e:
+except Exception:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
@@ -52,12 +52,18 @@ with XPUPatchForImport(False):
             for sizes in [(1025,), (10000,)]:
                 size = sizes[0]
                 # binary strings
-                yield (torch.tensor([0, 1] * size, dtype=dtype, device=device), 0)
+                yield (
+                    torch.tensor([0, 1] * size, dtype=dtype, device=device),
+                    0,
+                )
 
             if self.device_type in ["cuda", "xpu"]:
                 return
 
-            yield (torch.tensor([0, 1] * 100, dtype=dtype, device=device), 0)
+            yield (
+                torch.tensor([0, 1] * 100, dtype=dtype, device=device),
+                0,
+            )
 
             def repeated_index_fill(t, dim, idxs, vals):
                 res = t
@@ -71,8 +77,8 @@ with XPUPatchForImport(False):
                 yield (x, 0)
 
                 # Generate tensors which are being filled at random locations
-                # with values from the non-empty subsets of the set (inf, neg_inf, nan)
-                # for each dimension.
+                # with values from the non-empty subsets of the set
+                # (inf, neg_inf, nan) for each dimension.
                 n_fill_vals = 3  # cardinality of (inf, neg_inf, nan)
                 for dim in range(len(sizes)):
                     idxs = (
@@ -87,7 +93,12 @@ with XPUPatchForImport(False):
                     for subset in subsets:
                         idxs_subset, vals_subset = zip(*subset)
                         yield (
-                            repeated_index_fill(x, dim, idxs_subset, vals_subset),
+                            repeated_index_fill(
+                                x,
+                                dim,
+                                idxs_subset,
+                                vals_subset,
+                            ),
                             dim,
                         )
 
@@ -97,10 +108,16 @@ with XPUPatchForImport(False):
                 sample_numpy = sample.float().cpu().numpy()
             else:
                 sample_numpy = sample.cpu().numpy()
-            idx_numpy = np.argsort(sample_numpy, axis=dim, kind="stable")
+            idx_numpy = np.argsort(
+                sample_numpy,
+                axis=dim,
+                kind="stable",
+            )
             self.assertEqual(idx_torch, idx_numpy)
 
-    TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
+    TestSortAndSelect.test_stable_sort_against_numpy = (
+        stable_sort_against_numpy
+    )
 
     # Upstream test_sort_and_select.py:test_sort_large_slice carries
     # @onlyCUDA and uses torch.cuda.synchronize() / .cuda(); resolve sync
@@ -114,20 +131,77 @@ with XPUPatchForImport(False):
         x = torch.randn(4, 1024000, device=device)
         res1val, res1ind = torch.sort(x, stable=True)
         torch.get_device_module(device).synchronize()
-        # assertIsOrdered is too slow, so just compare to cpu
+
+        # assertIsOrdered is too slow, so just compare to CPU.
         res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), stable=True)
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
-        res1val, res1ind = torch.sort(x, descending=True, stable=True)
+
+        res1val, res1ind = torch.sort(
+            x,
+            descending=True,
+            stable=True,
+        )
         torch.get_device_module(device).synchronize()
-        res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), descending=True, stable=True)
+
+        res1val_cpu, res1ind_cpu = torch.sort(
+            x.cpu(),
+            descending=True,
+            stable=True,
+        )
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
     TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
 
+    # Regression test for intel/torch-xpu-ops#4435.
+    #
+    # Sorting 16,384 int64 elements with returned int64 indices exercises the
+    # radix-sort key/value path. This size produces a partially filled scan
+    # tile in RadixSortScanBins and verifies that padded entries contribute
+    # zero rather than corrupting the radix-bin prefix sums.
+    def _test_sort_int64_pairs_partial_scan_tile(self, device):
+        torch.manual_seed(0)
+
+        input_cpu = torch.randint(
+            low=33,
+            high=1024,
+            size=(16_384,),
+            dtype=torch.int64,
+        )
+        input_xpu = input_cpu.to(device)
+
+        expected_values, expected_indices = torch.sort(
+            input_cpu,
+            stable=True,
+        )
+        actual_values, actual_indices = torch.sort(
+            input_xpu,
+            stable=True,
+        )
+
+        # Force asynchronous XPU failures to surface in this test.
+        torch.get_device_module(device).synchronize()
+
+        self.assertEqual(
+            actual_values.cpu(),
+            expected_values,
+        )
+        self.assertEqual(
+            actual_indices.cpu(),
+            expected_indices,
+        )
+
+    TestSortAndSelect.test_sort_int64_pairs_partial_scan_tile = (
+        _test_sort_int64_pairs_partial_scan_tile
+    )
+
+
 instantiate_device_type_tests(
-    TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
+    TestSortAndSelect,
+    globals(),
+    only_for="xpu",
+    allow_xpu=True,
 )
 
 
