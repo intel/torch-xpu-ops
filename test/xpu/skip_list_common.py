@@ -336,6 +336,7 @@ skip_dict = {
         "test_cache_lazy_backward_for_compiled_autograd",
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_cuda_repro_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
