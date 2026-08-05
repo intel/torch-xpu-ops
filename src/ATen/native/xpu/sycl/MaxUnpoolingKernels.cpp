@@ -178,7 +178,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       output.mutable_data_ptr<scalar_t>());
 
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = xpuKernelLoopGroupRange(count, group_size);
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
@@ -199,7 +200,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = xpuKernelLoopGroupRange(count, group_size);
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
