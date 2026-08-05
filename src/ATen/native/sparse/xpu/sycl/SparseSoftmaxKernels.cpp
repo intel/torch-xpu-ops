@@ -56,7 +56,6 @@
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/softmax.h>
 #include <ATen/ops/softmax_native.h>
-#include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #endif
 
@@ -391,28 +390,10 @@ Tensor get_offsets(
       host_strides[i] = host_strides[i + 1] * (i + 1 == dim ? 1 : sizes[i + 1]);
     }
   }
-  // auto strides = host_strides;
-  auto strides = at::empty({ndim}, indices.options());
-  // auto strides_ptr = strides.data_ptr<int64_t>();
-
-  // syclMemcpyAsync(
-  //     strides_ptr,
-  //     host_strides.data(),
-  //     host_strides.size() * sizeof(int64_t),
-  //     HostToDevice);
-
-  for (int kk = 0; kk < ndim; kk++) {
-    strides[kk] = host_strides[kk];
-  }
-
-  // auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
   Tensor offsets = at::ones({nnz}, indices.options());
-
-  for (int i = 0; i < nnz; i++) {
-    for (int64_t j = 0; j < ndim; j++) {
-      if (j != dim) {
-        offsets[i] += (strides[j] * indices[j][i]);
-      }
+  for (int64_t j = 0; j < ndim; j++) {
+    if (j != dim) {
+      offsets.add_(indices[j], host_strides[j]);
     }
   }
   return offsets;
