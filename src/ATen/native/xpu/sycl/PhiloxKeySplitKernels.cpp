@@ -12,11 +12,11 @@
 
 #include <algorithm>
 
+#include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxKeySplitKernels.h>
-#include <ATen/ceil_div.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #ifndef AT_PER_OPERATOR_HEADERS
