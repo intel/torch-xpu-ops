@@ -674,7 +674,8 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
       max_chunks_per_tensor = max_chunks_this_tensor;
     }
   }
-  auto output_per_tensor = at::zeros(
+  // Cleanup reads only chunks_per_tensor[t] slots, never the padding.
+  auto output_per_tensor = at::empty(
       {static_cast<int64_t>(ntensors) * max_chunks_per_tensor}, options);
 
   std::vector<at::Tensor> vec_res;
