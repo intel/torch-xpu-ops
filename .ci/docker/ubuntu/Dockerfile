@@ -64,7 +64,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
         zlib1g-dev \
         # Python libraries
         python3 \
-        python3-dev \
+        python3-dev && \
     # Setup gcc 13 as default
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
