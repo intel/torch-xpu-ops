@@ -41,7 +41,7 @@ Collect as much of the following as the platform supports:
 | `ComputeBasic` | Baseline `XVE_STALL`, active/co-issue split, occupancy |
 | Stall sampling | Per-IP absolute stall counts for hot instruction attribution |
 
-Filter to the target kernel before aggregating. Stall sampling output may covers every kernel that ran. 
+Filter to the target kernel before aggregating. Stall sampling output may covers every kernel that ran.
 
 Treat stall sampling per-IP absolute counts as the primary evidence for stall attribution. It directly links stall reason counts to instruction IPs, which can then be mapped to ASM and source.
 
