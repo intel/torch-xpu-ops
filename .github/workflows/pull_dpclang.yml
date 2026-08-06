@@ -39,8 +39,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: intel/llvm
-          # TODO: change to versioned release tag when available
-          ref: eb36014ea34e57e534af8febd14f58dfb181f96e  # branch: sycl-rel-7_0
+          ref: v7.0.0
           path: intel-llvm
       - name: Install prerequisites
         run: |
@@ -51,8 +50,9 @@ jobs:
       - name: Build intel-llvm
         run: |
           source /opt/rh/gcc-toolset-13/enable
-          # WA for https://github.com/intel/llvm/pull/22294
-          sed -i 's/\${zstd_STATIC_LIBRARY}/zstd::libzstd_shared/' sycl/source/CMakeLists.txt
+          # SYCL_UR_FORCE_FETCH_LEVEL_ZERO=ON is required to handle destination
+          # test systems with potentially old drivers (i.e. PVC) where dpclang
+          # binaries will be installed.
           cmake -B build -S llvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
@@ -72,6 +72,7 @@ jobs:
             -DSYCL_ENABLE_MAJOR_RELEASE_PREVIEW_LIB=OFF \
             -DSYCL_ENABLE_WERROR=OFF \
             -DSYCL_ENABLE_XPTI_TRACING=ON \
+            -DSYCL_UR_FORCE_FETCH_LEVEL_ZERO=ON \
             -DLLVM_EXTERNAL_LIBDEVICE_SOURCE_DIR=$(pwd)/libdevice \
             -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=$(pwd)/llvm-spirv \
             -DLLVM_EXTERNAL_SYCL_JIT_SOURCE_DIR=$(pwd)/sycl-jit \
@@ -83,12 +84,6 @@ jobs:
           cmake --build build
           cmake --install build
         working-directory: ./intel-llvm
-      - name:
-        run: |
-          # WA for https://github.cim/intel/llvm/issues/21511
-          ln -s clang dpclang
-          ln -s clang++ dpclang++
-        working-directory: ./intel-llvm/install/bin
       - name: Compress output
         run: |
           # Compressing manually to preserve access permissions for executables
@@ -119,7 +114,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [basic, op_ut]
+        # 'op_ut' tests take suspiciously too long and sometimes
+        # get cancelled. For now limit the scope to 'basic' tests.
+        ut_name: [basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang

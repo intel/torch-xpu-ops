@@ -52,6 +52,25 @@ runs:
       uses: actions/checkout@v4
       with:
         path: torch-xpu-ops
+    - name: Download dpclang
+      if: ${{ inputs.category == 'dpclang' }}
+      uses: actions/download-artifact@v8
+      with:
+        name: dpclang
+    # NOTE: placement of this step is important as some environment variables it sets
+    # might be overriden or reset by certain actions. For example, PKG_CONFIG_PATH is
+    # overriden by actions/setup-python.
+    - name: Setup dpclang
+      if: ${{ inputs.category == 'dpclang' }}
+      shell: bash -xe {0}
+      run: |
+        rm -rf install-dpclang && mkdir install-dpclang
+        tar xzvf install-dpclang.tgz -C install-dpclang
+        echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
+        echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
