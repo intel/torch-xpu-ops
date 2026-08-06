@@ -358,8 +358,8 @@ prepare_cache_dirs() {
 
     log "Preparing host cache directories"
     "${SUDO[@]}" mkdir -p \
-                "${CACHE_ROOT}/home-cache" \
-                "${CACHE_ROOT}/tool-cache"
+        "${CACHE_ROOT}/home-cache" \
+        "${CACHE_ROOT}/tool-cache"
         "${SUDO[@]}" chown -R "${host_uid}:${host_gid}" "${CACHE_ROOT}"
 }
 
@@ -370,10 +370,10 @@ render_values() {
 
         IFS=',' read -ra labels <<<"${EXTRA_LABELS}"
         for label in "${labels[@]}"; do
-                label=$(printf '%s' "${label}" | xargs)
-                if [[ -n "${label}" ]]; then
-                        labels_yaml+="  - ${label}"$'\n'
-                fi
+        label=$(printf '%s' "${label}" | xargs)
+        if [[ -n "${label}" ]]; then
+            labels_yaml+="  - ${label}"$'\n'
+        fi
         done
 
         cat >"${values_file}" <<EOF

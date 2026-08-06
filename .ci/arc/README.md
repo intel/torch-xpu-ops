@@ -174,6 +174,7 @@ These commands print only non-secret Kubernetes state.
 
 ```bash
 kubectl -n arc-systems get pods -o wide
+kubectl get pods -n arc-runners
 kubectl -n arc-runners get autoscalingrunnersets,autoscalinglisteners,ephemeralrunnersets,ephemeralrunners,pods -o wide
 ```
 
