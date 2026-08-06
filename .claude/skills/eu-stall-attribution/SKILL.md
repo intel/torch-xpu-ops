@@ -99,8 +99,6 @@ Use `extract-xpu-kernel-asm` for the target kernel. Preserve:
 - Any debug line information.
 - Compile path type, such as SYCL JIT, SYCL AOT, Triton, or oneDNN ngen.
 
-IGC `.asm` listings carry no instruction addresses, so reconstruct them to key hot IPs against the listing: walk it from offset 0, counting 16 B per Xe instruction, or 8 B when the SWSB braces contain `Compacted`. Reconstruction is heuristic, so check it before use — the instruction count and total size should match the listing's `instCount` and the kernel's code section, and sampled IPs should land on instruction boundaries.
-
 ### Step 5: Map Hot IPs to Source
 
 Use `asm-source-mapping` with:
