@@ -50,9 +50,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             nullptr,
             nullptr),
         M(M),
-        N(N) {
-    numel = M * N;
-  }
+        N(N) {}
 
   LayerNormBackward(
       const scalar_t* X_data,
@@ -188,7 +186,6 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
   int64_t M;
   int64_t N;
-  int64_t numel;
 };
 
 // we could make it dependent on dtype, but that would lead to different results

@@ -1123,8 +1123,8 @@ class AccumulationBuffer {
       size_t acc_t_size,
       size_t out_t_size,
       char* out_ptr,
-      int64_t size) {
-    out_ptr_ = out_ptr;
+      int64_t size)
+      : out_ptr_(out_ptr) {
     if (out_t_size >= acc_t_size) {
       // reusing output buffer for accumulation.
       acc_ptr_ = out_ptr;
