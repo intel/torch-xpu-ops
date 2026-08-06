@@ -14,13 +14,15 @@ import sys
 parser = argparse.ArgumentParser(description="Run specific unit tests")
 # By default, run the cases without the skipped cases
 parser.add_argument(
-    "--device", "-d",
+    "--device",
+    "-d",
     choices=["b60", "pvc"],
     default="b60",
     help="Specify the device to run tests on (default: b60)",
 )
 parser.add_argument(
-    "--test-cases", "-k",
+    "--test-cases",
+    "-k",
     choices=["selected", "skipped", "all"],
     default="selected",
     help="Test cases scope",
