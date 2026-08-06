@@ -253,8 +253,8 @@ struct RingAllgatherIshmemSingleKernel {
           right,
           grp);
       // Ensure the data slice has landed on the right neighbour before the flag.
-      ishmemx_quiet_work_group(grp);
-      //ishmemx_fence_work_group(grp);
+      //ishmemx_quiet_work_group(grp);
+      ishmemx_fence_work_group(grp);
       if (lid == 0) {
         ishmem_uint64_atomic_set(pad + (0 * num_wg + wg), tag, right);
       }
@@ -283,8 +283,8 @@ struct RingAllgatherIshmemSingleKernel {
             static_cast<size_t>(cnt),
             right,
             grp);
-        ishmemx_quiet_work_group(grp);
-        //ishmemx_fence_work_group(grp);
+        //ishmemx_quiet_work_group(grp);
+        ishmemx_fence_work_group(grp);
         if (lid == 0) {
           ishmem_uint64_atomic_set(pad + (t * num_wg + wg), tag, right);
         }
