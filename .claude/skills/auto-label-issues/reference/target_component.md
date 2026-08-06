@@ -17,7 +17,7 @@ wrong, ownership is `pytorch` or `torch-xpu-ops`, not `test-case`.
 ## Required evidence
 
 The delegated trace must cite file and line references, relevant symbols, and
-the call path from the test or API to the failure. It must inspect the local
+the call path from the test or API to the failure. If pytorch_folder is not blank, it must inspect the local
 checkout using `pytorch_folder` and check `git log` for an upstream or local
 commit that already fixes the exact root cause. Record the commit when found.
 

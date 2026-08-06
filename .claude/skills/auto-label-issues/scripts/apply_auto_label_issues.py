@@ -3,10 +3,10 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-Apply GitHub Issue labels/type/priority/comment derived from a quick-label
+Apply GitHub Issue labels/type/priority/comment derived from an auto-label-issues
 `labels.md` report.
 
-Reads the markdown table produced by the quick-label skill, maps each row to
+Reads the markdown table produced by the auto-label-issues skill, maps each row to
 a concrete GitHub mutation, and applies them via `gh`:
 
   - `issue_type: <Bug|Task|Feature|Epic>` row
@@ -28,15 +28,20 @@ a concrete GitHub mutation, and applies them via `gh`:
   - `duplicated` row
       -> `duplicate` label. Skipped if the row is absent (no duplicate
          found).
+  - `not_target` row
+      -> `not_target` label. Skipped if the row is absent (issue is in
+         scope for this repo).
   - A comment starting with `[agent_triage_result]` containing the full
     labels.md content is always posted last, after every label/field
-    mutation has been attempted.
+    mutation has been attempted. If the currently authenticated `gh` user
+    already posted an `[agent_triage_result]` comment on this issue, that
+    comment is edited in place instead of appending a duplicate.
 
-Analysis in `labels.md` is produced separately by the quick-label skill.
+Analysis in `labels.md` is produced separately by the auto-label-issues skill.
 This script is the only piece that mutates GitHub state.
 
 Usage:
-    python3 apply_quick_label.py <issue_ref> --labels-md PATH [--repo owner/name] [--dry-run]
+    python3 apply_auto_label_issues.py <issue_ref> --labels-md PATH [--repo owner/name] [--dry-run]
 
 Exit codes:
     0  - all reachable actions attempted (some may have been skipped with a
@@ -97,7 +102,7 @@ ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|\s*$")
 
 
 def parse_labels_md(path: str) -> dict:
-    """Parse the quick-label markdown table into a structured dict.
+    """Parse the auto-label-issues markdown table into a structured dict.
 
     Returns:
         {
@@ -114,9 +119,6 @@ def parse_labels_md(path: str) -> dict:
         if not m:
             continue
         label_cell, reason = m.group(1).strip(), m.group(2).strip()
-        # Skip the header separator/label column header itself.
-        if label_cell.lower() == "label":
-            continue
         rows.append((label_cell, reason))
     return {"raw_text": text, "rows": rows}
 
@@ -141,11 +143,19 @@ def extract_bare_row(rows: list[tuple[str, str]], name: str) -> bool:
 # GitHub capability probing
 # ---------------------------------------------------------------------------
 
-CAPS_QUERY = """
+TYPES_QUERY = """
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     id
     issueTypes(first: 20) { nodes { id name } }
+  }
+}
+"""
+
+FIELDS_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    viewerCanSeeIssueFields
     issueFields(first: 20) {
       nodes {
         ... on IssueFieldSingleSelect { id name options { id name } }
@@ -157,19 +167,53 @@ query($owner: String!, $name: String!) {
 
 
 def fetch_repo_capabilities(owner: str, name: str) -> dict:
-    data = run_gh_graphql(CAPS_QUERY, {"owner": owner, "name": name})
-    repo = data["repository"]
-    issue_types = {n["name"]: n["id"] for n in (repo.get("issueTypes") or {}).get("nodes") or []}
-    issue_fields = {}
-    for node in (repo.get("issueFields") or {}).get("nodes") or []:
-        if not node or "name" not in node:
-            continue
-        options = {opt["name"]: opt["id"] for opt in node.get("options") or []}
-        issue_fields[node["name"]] = {"id": node["id"], "options": options}
+    """Probe Issue Types and Issue Fields independently. Either query can be
+    rejected on its own (unsupported field, insufficient token scope, schema
+    mismatch) without the other; each degrades to an empty/absent capability
+    rather than aborting the whole run, per the documented "skipped, not a
+    hard error" behavior for repos lacking one or the other native feature.
+    """
+    repository_id = None
+    issue_types: dict = {}
+    try:
+        data = run_gh_graphql(TYPES_QUERY, {"owner": owner, "name": name})
+        repo = data["repository"]
+        repository_id = repo["id"]
+        issue_types = {n["name"]: n["id"] for n in (repo.get("issueTypes") or {}).get("nodes") or []}
+    except (RuntimeError, KeyError):
+        pass
+
+    issue_fields: dict = {}
+    viewer_can_see_issue_fields = False
+    try:
+        data = run_gh_graphql(FIELDS_QUERY, {"owner": owner, "name": name})
+        repo = data["repository"]
+        viewer_can_see_issue_fields = bool(repo.get("viewerCanSeeIssueFields"))
+        for node in (repo.get("issueFields") or {}).get("nodes") or []:
+            if not node or "name" not in node:
+                continue
+            options = {opt["name"]: opt["id"] for opt in node.get("options") or []}
+            issue_fields[node["name"]] = {"id": node["id"], "options": options}
+    except (RuntimeError, KeyError):
+        pass
+
+    if repository_id is None:
+        # Both probes failed to even resolve the repository; fall back to a
+        # minimal id-only lookup so callers still get a usable repository_id.
+        try:
+            data = run_gh_graphql(
+                "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }",
+                {"owner": owner, "name": name},
+            )
+            repository_id = data["repository"]["id"]
+        except (RuntimeError, KeyError):
+            pass
+
     return {
-        "repository_id": repo["id"],
+        "repository_id": repository_id,
         "issue_types": issue_types,
         "issue_fields": issue_fields,
+        "viewer_can_see_issue_fields": viewer_can_see_issue_fields,
     }
 
 
@@ -306,18 +350,64 @@ class Actions:
         except RuntimeError as exc:
             self.errors.append(f"failed to set Priority field: {exc}")
 
+    def find_last_agent_comment_id(self) -> int | None:
+        """Return the id of the most recent `[agent_triage_result]` comment
+        authored by the currently authenticated `gh` user, or None if the
+        viewer has never posted one on this issue.
+        """
+        try:
+            viewer = run_gh(["api", "user", "-q", ".login"])
+            out = run_gh(
+                [
+                    "api",
+                    f"repos/{self.repo}/issues/{self.number}/comments",
+                    "--paginate",
+                ]
+            )
+            comments = json.loads(out)
+        except (RuntimeError, ValueError):
+            return None
+        for comment in reversed(comments):
+            if (
+                comment.get("user", {}).get("login") == viewer
+                and comment.get("body", "").startswith("[agent_triage_result]")
+            ):
+                return comment["id"]
+        return None
+
     def post_comment(self, body: str):
+        existing_id = None if self.dry_run else self.find_last_agent_comment_id()
         if self.dry_run:
-            self.applied.append("[dry-run] would post [agent_triage_result] comment")
+            self.applied.append(
+                "[dry-run] would edit previous [agent_triage_result] comment"
+                if existing_id
+                else "[dry-run] would post [agent_triage_result] comment"
+            )
             return
         try:
-            run_gh(
-                ["issue", "comment", str(self.number), "--repo", self.repo, "--body-file", "-"],
-                input_text=body,
-            )
-            self.applied.append("posted [agent_triage_result] comment")
+            if existing_id:
+                run_gh(
+                    [
+                        "api",
+                        "-X",
+                        "PATCH",
+                        f"repos/{self.repo}/issues/comments/{existing_id}",
+                        "-f",
+                        "body=@-",
+                    ],
+                    input_text=body,
+                )
+                self.applied.append(
+                    f"edited previous [agent_triage_result] comment (id={existing_id})"
+                )
+            else:
+                run_gh(
+                    ["issue", "comment", str(self.number), "--repo", self.repo, "--body-file", "-"],
+                    input_text=body,
+                )
+                self.applied.append("posted [agent_triage_result] comment")
         except RuntimeError as exc:
-            self.errors.append(f"failed to post comment: {exc}")
+            self.errors.append(f"failed to post/edit comment: {exc}")
 
 
 PRIORITY_VALUES = {"P0", "P1", "P2", "P3"}
@@ -325,10 +415,10 @@ PRIORITY_VALUES = {"P0", "P1", "P2", "P3"}
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Apply labels/type/priority/comment from a quick-label labels.md report"
+        description="Apply labels/type/priority/comment from an auto-label-issues labels.md report"
     )
     parser.add_argument("issue_ref", help="Bare issue number or full issue URL")
-    parser.add_argument("--labels-md", required=True, help="Path to the quick-label labels.md file")
+    parser.add_argument("--labels-md", required=True, help="Path to the auto-label-issues labels.md file")
     parser.add_argument("--repo", default=None, help="owner/name, required for a bare issue number")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without mutating GitHub")
     parser.add_argument("--output", "-o", help="Write JSON result summary to this file")
@@ -405,7 +495,12 @@ def main() -> int:
     if extract_bare_row(rows, "duplicated"):
         actions.add_label("duplicate", existing_labels)
 
-    # --- comment: always posted last ---
+    # --- not_target -> `not_target` label, skip if row absent ---
+    if extract_bare_row(rows, "not_target"):
+        actions.add_label("not_target", existing_labels)
+
+    # --- comment: edit the viewer's previous [agent_triage_result] comment
+    #     on this issue if one exists, else post a new one, last ---
     comment_body = "[agent_triage_result]\n\n" + parsed["raw_text"]
     actions.post_comment(comment_body)
 

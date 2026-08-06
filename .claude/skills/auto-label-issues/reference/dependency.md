@@ -9,7 +9,7 @@
 - Runtime and build failures are distinct. Do not infer a build dependency
   from a runtime failure or a runtime dependency from a build failure.
 - For oneMKL or oneDNN classification, read
-  `.opencode/skills/validation/issue-triage/reference/xpu_supported_operators_complete_list.md`.
+  `.claude/skills/auto-label-issues/reference/xpu_supported_operators_complete_list.md`.
 
 ## Taxonomy and evidence mapping
 

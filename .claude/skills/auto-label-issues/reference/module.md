@@ -1,6 +1,6 @@
 # Canonical Category Taxonomy (11 buckets)
 
-**Authoritative enum** for the Excel "Category" column — no other values
+**Authoritative enum** for issue "Category"  — no other values
 permitted:
 
 `distributed`, `sdpa`, `inductor`, `torchAO`, `sparse`,

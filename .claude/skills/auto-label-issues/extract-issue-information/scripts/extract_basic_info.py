@@ -850,7 +850,7 @@ def _benchmark_dir_candidates(pytorch_folder=None):
     env_pf = os.environ.get('PYTORCH_FOLDER')
     if env_pf:
         roots.append(env_pf)
-    roots.append(os.path.expanduser('~/ai4ee'))
+    roots.append(os.getcwd())
     seen = set()
     for root in roots:
         for rel in ('third_party/torch-xpu-ops/.ci/benchmarks', '.ci/benchmarks'):

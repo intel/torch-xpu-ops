@@ -42,7 +42,7 @@ file for an axis before deciding it; do not decide from memory.
 | Axis | File |
 |---|---|
 | `target_component`, `need_action` | `target_component.md` |
-| `dependency` | `dependnecy.md` (plus `xpu_supported_operators_complete_list.md` for oneMKL/oneDNN) |
+| `dependency` | `dependency.md` (plus `xpu_supported_operators_complete_list.md` for oneMKL/oneDNN) |
 | `duplicates` | `duplicates.md` |
 | `module` (11-bucket category enum) | `module.md` |
 | `priority` | `priority.md` |
@@ -110,12 +110,12 @@ Read `reference/target_component.md`. Map the traced fix location to
 `NEED_FIX_3RDPARTY` | `NEED_HUMAN`).
 
 A skip or xfail decorator is never a fix. An inconclusive trace is
-`N/A` + `NEED_HUMAN` — including every evidence-only run that could not
+`N/A` + `NEED_FIX` — including every evidence-only run that could not
 establish a root cause.
 
 ### Step 4 — dependency
 
-Read `reference/dependnecy.md`. Return exactly one taxonomy value, `none`, or
+Read `reference/dependency.md`. Return exactly one taxonomy value, `none`, or
 `null`. For oneMKL/oneDNN, confirm the operator mapping against
 `reference/xpu_supported_operators_complete_list.md`. Ambiguous or missing
 evidence -> `null`; do not guess from issue prose.
@@ -164,7 +164,7 @@ Step 8 only when `skip_apply: true` was given, or when the user explicitly
 asked for analysis-only output.
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/auto-label-issues/scripts/apply_auto_label_issues.py \
+python3 .claude/skills/auto-label-issues/scripts/apply_auto_label_issues.py \
   <issue_ref> --repo <owner/name> \
   --labels-md agent_space/auto_label_issues/<repo_underscored>_issue_<id>/labels.md \
   --output agent_space/auto_label_issues/<repo_underscored>_issue_<id>/apply_result.json
@@ -187,7 +187,8 @@ The script maps each `labels.md` row to a mutation:
 | `P0`/`P1`/`P2`/`P3` (bare row) | Native repo Issue Field "Priority" via GraphQL `setIssueFieldValue`, mapped P0->Urgent, P1->High, P2->Medium, P3->Low. Skipped with a warning if the repo has no native "Priority" Issue Field. |
 | `dependency component: <component>` | `dependency component: <component>` label (created if missing). Row omitted or value `null`/`none` -> skipped entirely. |
 | `duplicated` | `duplicate` label (created if missing). Row absent -> skipped entirely. |
-| (always, last) | A comment starting with `[agent_triage_result]` containing the full `labels.md` text, posted via `gh issue comment`. |
+| `not_target` | `not_target` label (created if missing). Row absent -> skipped entirely. |
+| (always, last) | A comment starting with `[agent_triage_result]` containing the full `labels.md` text, posted via `gh issue comment`. If the authenticated `gh` user already left an `[agent_triage_result]` comment on this issue, that comment is edited in place (`gh api -X PATCH`) instead of appending a new one, so re-running the skill does not accumulate duplicate comments. |
 
 Notes:
 
@@ -195,7 +196,10 @@ Notes:
   GraphQL) or native Issue Fields (`viewerCanSeeIssueFields: false`) cannot
   receive the Type or Priority-field mutations; the script records these as
   `skipped` with a reason and still applies every label it can and posts the
-  comment.
+  comment. Issue Types and Issue Fields are probed with two independent
+  GraphQL queries, each degrading to an empty capability set on its own
+  error, so a schema mismatch or missing scope on one probe never blocks the
+  other or aborts the run.
 - The native repo-level "Priority" Issue Field (Urgent/High/Medium/Low) is
   distinct from the org-level PyTorchXPU Project's "Priority" single-select
   field (P0/P1/P2/P3) used by `validation/issue-triage/update-label`. This
@@ -221,9 +225,11 @@ Notes:
    any other existing label/analysis: re-derive every axis (Steps 3-7) from
    the reference files and current evidence this run. An existing comment may
    be read as one input to Step 2's root-cause trace, but it can never
-   substitute for reading `reference/target_component.md`, `dependnecy.md`,
+   substitute for reading `reference/target_component.md`, `dependency.md`,
    `module.md`, or `priority.md`, and it can never be copied into `labels.md`
-   without independently re-running the corresponding step.
+   without independently re-running the corresponding step. Re-running the
+   skill on the same issue therefore replaces the prior `[agent_triage_result]`
+   comment in place (see Apply step) rather than appending a duplicate.
 5. Never report the source issue as its own duplicate.
 6. Do not edit `pytorch_folder` or any product code.
 7. Never clone or fetch a checkout to substitute for a missing `pytorch_folder`.
@@ -244,7 +250,3 @@ Not hard stops (normal degraded outcomes): a missing or nonexistent
 causing`, any `null` axis, and any individual `apply_auto_label_issues.py` action
 recorded under `skipped` (e.g. a repo lacking a native Priority field).
 
-## See Also
-
-`validation/issue-triage`, `validation/issue-triage/update-label`,
-`validation/issue-triage/triage-issue`.

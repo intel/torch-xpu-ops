@@ -78,7 +78,7 @@ issue in one repository merely because a counterpart exists in the other.
 | Neither, or only a `LOW` relevance duplicate | Both flags are `false`. |
 
 An inherited flag suppresses the product `NEED_FIX` action exactly as an own
-label would, per [need_action.md](need_action.md). It never changes
+label would, per [[target_component.md](target_component.md). It never changes
 `target_component`, which stays governed by
 [target_component.md](target_component.md). Cite the duplicate's URL whenever a
 flag is inherited.
@@ -93,4 +93,4 @@ flag is inherited.
 4. Confirm that each reported duplicate cites a URL and the agreeing signals.
 5. Confirm that a cross-repository match was not marked `close_as_duplicate`.
 6. Confirm that an inherited `not_target` or `wontfix` came from a `HIGH` or
-   `MEDIUM` relevance duplicate.
+   `MEDIUM` relevance duplicate

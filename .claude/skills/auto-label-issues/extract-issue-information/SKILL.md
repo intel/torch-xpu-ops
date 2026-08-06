@@ -45,25 +45,25 @@ Run from the repository root.
 By issue number (defaults to intel/torch-xpu-ops):
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/extract-issue-information/scripts/extract_basic_info.py 4344
+python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 4344
 ```
 
 By issue URL for any repo:
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/extract-issue-information/scripts/extract_basic_info.py https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8
+python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8
 ```
 
 By intel/torch-xpu-ops issue URL:
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/extract-issue-information/scripts/extract_basic_info.py https://github.com/intel/torch-xpu-ops/issues/4344
+python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py https://github.com/intel/torch-xpu-ops/issues/4344
 ```
 
 Override the repo for a bare issue number with `--repo owner/name`:
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/extract-issue-information/scripts/extract_basic_info.py 8 --repo CuiYifeng/torch-xpu-ops-sandbox
+python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 8 --repo CuiYifeng/torch-xpu-ops-sandbox
 ```
 
 The `--repo owner/name` flag sets the repository for a bare issue number. It is
@@ -73,7 +73,7 @@ default is `intel/torch-xpu-ops`.
 Also write the JSON to a file (still printed to stdout):
 
 ```bash
-python3 .opencode/skills/validation/issue-triage/extract-issue-information/scripts/extract_basic_info.py 4344 --output out.json
+python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 4344 --output out.json
 ```
 
 ## Output schema
