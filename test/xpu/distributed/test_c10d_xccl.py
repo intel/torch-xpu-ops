@@ -1658,6 +1658,64 @@ class SymmetricMemoryTest(MultiProcContinuousTest):
         torch.testing.assert_close(output_0, output_1)
         self.assertEqual(output_0.stride(), output_1.stride())
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_alloc_and_rendezvous(self) -> None:
+        """A tensor allocated inside the symmetric MemPool must be usable as
+        symmetric memory: rendezvous → write → barrier → read peer buffer."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        group_name = dist.group.WORLD.group_name
+
+        # Registered by src/xccl/XPUMemPool.cpp.
+        self.assertIsNotNone(symm_mem.get_mempool_allocator(self.device))
+
+        pool = symm_mem.get_mem_pool(self.device)
+        self.assertIsInstance(pool, torch.xpu.MemPool)
+        # The pool is cached per device.
+        self.assertIs(pool, symm_mem.get_mem_pool(self.device))
+
+        with torch.xpu.use_mem_pool(pool):
+            t = torch.empty(numel, dtype=dtype, device=self.device)
+
+        hdl = symm_mem.rendezvous(t, group=group_name)
+        t.fill_(float(self.rank))
+        hdl.barrier()
+
+        for peer in range(self.world_size):
+            buf = hdl.get_buffer(peer, (numel,), dtype)
+            self.assertTrue(
+                buf.eq(float(peer)).all().item(),
+                f"peer {peer} buffer != {peer} (seen from rank {self.rank})",
+            )
+        hdl.barrier()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_mempool_no_split_and_implicit_pool(self) -> None:
+        """The symmetric pool is created with no_split=True, so a same-sized
+        re-allocation must land on the exact same address. symm_mem.empty()
+        routes through that same pool implicitly."""
+        self._init_process()
+
+        numel = 1024
+        dtype = torch.float32
+        pool = symm_mem.get_mem_pool(self.device)
+
+        with torch.xpu.use_mem_pool(pool):
+            t1 = torch.empty(numel, dtype=dtype, device=self.device)
+        ptr1 = t1.data_ptr()
+        del t1
+
+        with torch.xpu.use_mem_pool(pool):
+            t2 = torch.empty(numel, dtype=dtype, device=self.device)
+        self.assertEqual(ptr1, t2.data_ptr())
+
+        t = symm_mem.empty(numel, dtype=dtype, device=self.device)
+        symm_mem.rendezvous(t, group=dist.group.WORLD.group_name)
+
 
 # ------------------------------------------------------------------
 # Inductor micro-pipeline TP FX-pass tests (single-process, FakeStore)
