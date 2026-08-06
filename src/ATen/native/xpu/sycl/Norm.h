@@ -190,7 +190,7 @@ static void norm_global_reduce(
   sycl::group_barrier(item.get_group());
 
   if (local_id == 0) {
-    sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
+    sycl_atomic_ref_acq_rel_dev_global_t<int> count(semaphores_ptr[group_id]);
     int prev_groups_finished = count.fetch_add(1);
     last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
   }
@@ -198,6 +198,8 @@ static void norm_global_reduce(
 
   // use the last workgroup for reduction
   if (last_workgroup[0]) {
+    // Only local_id 0 acquired; fence so the whole workgroup sees the stores.
+    sycl::atomic_fence(sycl_mem_odr_acq, sycl_mem_scp_dev);
     if constexpr (rms_norm) {
       sum2 = accscalar_t(0);
       for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
@@ -262,9 +264,9 @@ class NormConfig {
   void* scratchpad_ptr;
   int sub_group_num_global;
 
-  template <typename scalar_t>
   void init_global_reduce(
       const Tensor& X,
+      bool rms_norm,
       Tensor& semaphores,
       Tensor& scratchpad) {
     if (workgroup_num_foreach > 1) {
@@ -274,11 +276,12 @@ class NormConfig {
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      int scratchpad_size = 2 * batch_size * workgroup_num_foreach *
-          sizeof(acc_type_device<scalar_t, kXPU>);
-      scratchpad = at::zeros(scratchpad_size, X.options().dtype(kAccType));
-      semaphores_ptr = semaphores.data_ptr<int>();
-      scratchpad_ptr = scratchpad.data_ptr();
+      // One accumulator per slot for rms, two otherwise; all get written.
+      int scratchpad_size =
+          (rms_norm ? 1 : 2) * workgroup_num * workgroup_num_foreach;
+      scratchpad = at::empty(scratchpad_size, X.options().dtype(kAccType));
+      semaphores_ptr = semaphores.mutable_data_ptr<int>();
+      scratchpad_ptr = scratchpad.mutable_data_ptr();
       sub_group_num_global = (workgroup_num_foreach + SIMD - 1) / SIMD;
     }
   }
@@ -370,11 +373,7 @@ class NormConfig {
   }
 };
 
-template <
-    typename scalar_t,
-    typename mean_t,
-    typename weight_t,
-    bool one_moment = false>
+template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
 class NormBackward {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
@@ -468,7 +467,9 @@ class NormBackward {
       accscalar_t sum2,
       const NormConfig& cfg) const {
     auto group_id = item_id.get_group(0);
-    a_data[group_id] = sum1;
+    if constexpr (!rms_norm) {
+      a_data[group_id] = sum1;
+    }
     b_data[group_id] = sum2;
   };
 };
