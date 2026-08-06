@@ -41,6 +41,8 @@ Collect as much of the following as the platform supports:
 | `ComputeBasic` | Baseline `XVE_STALL`, active/co-issue split, occupancy |
 | Stall sampling | Per-IP absolute stall counts for hot instruction attribution |
 
+Filter to the target kernel before aggregating. Stall sampling output may covers every kernel that ran. 
+
 Treat stall sampling per-IP absolute counts as the primary evidence for stall attribution. It directly links stall reason counts to instruction IPs, which can then be mapped to ASM and source.
 
 If stall sampling is unavailable, run a controlled `ComputeBasic` sweep with lower vs higher resident-thread configurations. If `XVE_STALL` drops with more resident threads, classify the stall as likely Stage-1 candidate starvation; if it stays high, classify it as likely Stage-2 resource contention. Mark this fallback as lower confidence than per-IP attribution because it can infer the stage but cannot identify the exact stalling instruction.
@@ -96,6 +98,8 @@ Use `extract-xpu-kernel-asm` for the target kernel. Preserve:
 - Kernel name and signature.
 - Any debug line information.
 - Compile path type, such as SYCL JIT, SYCL AOT, Triton, or oneDNN ngen.
+
+IGC `.asm` listings carry no instruction addresses, so reconstruct them to key hot IPs against the listing: walk it from offset 0, counting 16 B per Xe instruction, or 8 B when the SWSB braces contain `Compacted`. Reconstruction is heuristic, so check it before use — the instruction count and total size should match the listing's `instCount` and the kernel's code section, and sampled IPs should land on instruction boundaries.
 
 ### Step 5: Map Hot IPs to Source
 
