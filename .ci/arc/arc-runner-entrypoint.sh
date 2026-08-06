@@ -63,6 +63,10 @@ forward_signal() {
 trap cleanup EXIT
 trap forward_signal TERM INT
 
-setsid setpriv --reuid "${host_uid}" --regid "${host_gid}" --init-groups "${RUNNER_HOME}/run.sh" &
+setsid env \
+    HOME="${RUNNER_HOME}" \
+    USER="${RUNNER_USER}" \
+    LOGNAME="${RUNNER_USER}" \
+    setpriv --reuid "${host_uid}" --regid "${host_gid}" --init-groups "${RUNNER_HOME}/run.sh" &
 runner_pid=$!
 wait "${runner_pid}"

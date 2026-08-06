@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   ci-monitor:
-    runs-on: xpu-ubuntu-24.04
+    runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || vars.CI_MONITOR_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v4
