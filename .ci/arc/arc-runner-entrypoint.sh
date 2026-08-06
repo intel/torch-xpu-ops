@@ -55,7 +55,7 @@ cleanup() {
 
 forward_signal() {
     if [[ -n "${runner_pid:-}" ]]; then
-        kill -TERM "${runner_pid}" 2>/dev/null || true
+        kill -TERM -- "-${runner_pid}" 2>/dev/null || kill -TERM "${runner_pid}" 2>/dev/null || true
         wait "${runner_pid}" 2>/dev/null || true
     fi
 }
@@ -63,6 +63,6 @@ forward_signal() {
 trap cleanup EXIT
 trap forward_signal TERM INT
 
-runuser -u "${RUNNER_USER}" -- "${RUNNER_HOME}/run.sh" &
+setsid setpriv --reuid "${host_uid}" --regid "${host_gid}" --init-groups "${RUNNER_HOME}/run.sh" &
 runner_pid=$!
 wait "${runner_pid}"

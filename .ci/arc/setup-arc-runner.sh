@@ -407,11 +407,6 @@ template:
                         value: "$(id -u)"
                     - name: ARC_RUNNER_GID
                         value: "$(id -g)"
-                lifecycle:
-                    preStop:
-                        exec:
-                            command:
-                                - /usr/local/bin/arc-runner-cleanup.sh
                 securityContext:
                     privileged: false
                     allowPrivilegeEscalation: false

@@ -53,6 +53,12 @@ To recreate the current `intel/torch-xpu-ops` scale set and labels, pass those v
 
 The GitHub token must be able to register repository runners for the target repository.
 
+The `xpu-ubuntu-24.04` label comes from the ARC `runnerScaleSetName`. The `ubuntu-24.04` and `ubuntu-latest` labels are optional compatibility labels advertised through `scaleSetLabels`.
+
+This runner image is intentionally docker-less. Jobs that need Docker must use a Docker-capable runner label, such as `build`, instead of the generic Ubuntu labels routed to this ARC scale set.
+
+Jobs using `actions/setup-python` may populate `/opt/hostedtoolcache` on first use. Keep network egress to GitHub tool-cache manifests and downloads available, or prewarm the mounted tool cache before relying on those jobs.
+
 ## Manual setup
 
 The manual flow below mirrors the script and is useful when you need to audit or customize each step.

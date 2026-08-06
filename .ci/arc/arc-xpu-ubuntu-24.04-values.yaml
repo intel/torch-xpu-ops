@@ -2,6 +2,8 @@ githubConfigUrl: https://github.com/intel/torch-xpu-ops
 githubConfigSecret: github-token
 
 runnerScaleSetName: xpu-ubuntu-24.04
+# ARC automatically registers runnerScaleSetName as the dedicated runner label.
+# scaleSetLabels adds compatibility labels for jobs that still use GitHub-hosted labels.
 scaleSetLabels:
   - ubuntu-24.04
   - ubuntu-latest
@@ -30,11 +32,6 @@ template:
             value: "1000"
           - name: ARC_RUNNER_GID
             value: "1000"
-        lifecycle:
-          preStop:
-            exec:
-              command:
-                - /usr/local/bin/arc-runner-cleanup.sh
         securityContext:
           privileged: false
           allowPrivilegeEscalation: false
