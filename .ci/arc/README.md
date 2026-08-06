@@ -1,67 +1,104 @@
-# ARC Runner Implementation
+# ARC runner setup
 
-This directory contains the implementation files for running GitHub Actions jobs for `intel/torch-xpu-ops` on a local Kubernetes node through Actions Runner Controller (ARC).
+This directory contains the ARC configuration and bootstrap script for a local Ubuntu runner node.
 
-The runner label exposed to workflows is:
+The setup script detects host-specific values by default:
 
-```yaml
-runs-on: xpu-ubuntu-24.04
-```
+- repository URL from the git remote, unless `--repo-url` is set
+- Kubernetes node name from the cluster, falling back to `hostname`, unless `--node-name` is set
+- runner label from host OS/version/hostname, unless `--runner-label` is set
+- runner release from the runner label, unless `--runner-release` is set
+- max runner count from physical CPU cores and memory, unless `--max-runners` is set
+- cache root from the runner label, unless `--cache-root` is set
 
-The same scale set also advertises the compatibility label `ubuntu-latest`.
-
-## Target Setup
-
-- Repository: `https://github.com/intel/torch-xpu-ops`
-- Runner scale set name: `xpu-ubuntu-24.04`
-- Scale set labels: `xpu-ubuntu-24.04`, `ubuntu-24.04`, `ubuntu-latest`
-- Helm release: `xpu-ubuntu-24-04`
-- Controller namespace: `arc-systems`
-- Runner namespace: `arc-runners`
-- Runner image: `arc-xpu-runner:ubuntu-24.04-tools`
-- Target node: `skx3725`
-- Minimum runners: `0`
-- Maximum runners: `12`
-- Per-runner resources: `4` CPU and `16Gi` memory
-- Cache mounts: `/home/runner/.cache` and `/opt/hostedtoolcache`
-- The runner container detects the host cache UID/GID at startup and runs the GitHub runner with that same identity.
-- Cache ownership is restored from the runner entrypoint and the Kubernetes `preStop` hook before the container exits.
+Each runner pod defaults to `4` CPUs and `16Gi` memory. Override those with `--runner-cpu` and `--runner-memory`.
 
 ## Files
 
-- `Dockerfile.arc-runner-ubuntu-24.04`: builds the Ubuntu 24.04 runner image with common CI tools.
-- `arc-xpu-ubuntu-24.04-values.yaml`: configures the ARC runner scale set.
-- `arc-runner-entrypoint.sh`: detects host cache ownership, rewrites the runner user, starts the runner, and triggers cleanup on exit.
-- `arc-runner-cleanup.sh`: restores cache ownership to the detected host UID/GID before pod deletion.
-- `github-token.secret.example.yaml`: documents the required Kubernetes secret shape without storing credentials.
+- [Dockerfile.arc-runner-ubuntu-24.04](Dockerfile.arc-runner-ubuntu-24.04) builds the Ubuntu 24.04 runner image with common build tools, GitHub CLI, `clang`, `clang-tidy`, and passwordless sudo for the `runner` user.
+- [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh) aligns the container `runner` UID/GID with the host cache owner before starting the Actions runner.
+- [arc-runner-cleanup.sh](arc-runner-cleanup.sh) restores cache ownership on shutdown.
+- [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.yaml) is the Helm values file for the runner scale set.
+- [setup-arc-runner.sh](setup-arc-runner.sh) installs and deploys everything on a stock Ubuntu host.
+- [github-token.secret.example.yaml](github-token.secret.example.yaml) documents the Kubernetes secret shape only. Do not put a real token in git.
 
-## 1. Prepare Access
+## Quick setup on stock Ubuntu
 
-Create a GitHub token with access to `intel/torch-xpu-ops` and permissions required by ARC to register repository runners.
-
-Do not print, log, commit, or paste the token into files. Create the Kubernetes secret directly from the shell environment:
+Use this path on a fresh Ubuntu 24.04 node. The script installs base packages, Docker, a local Kubernetes runtime, Helm, ARC, the GitHub token secret, the local runner image, cache directories, and the runner scale set.
 
 ```bash
-export KUBECONFIG=/path/to/k8s/k8s.yaml
-export GITHUB_TOKEN=...
-
-kubectl create namespace arc-runners --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic github-token \
-  --namespace arc-runners \
-  --from-literal=github_token="${GITHUB_TOKEN}" \
-  --dry-run=client -o yaml | kubectl apply -f -
-unset GITHUB_TOKEN
+cd .ci/arc
+./setup-arc-runner.sh --github-token '<github-token>'
 ```
 
-The committed `github-token.secret.example.yaml` file is only a schema reference.
+The script never prints the token. Passing a secret as a command argument can still expose it briefly through shell history or process listings, so use a short-lived token and clear shell history according to local policy.
 
-## 2. Install Or Update ARC Controller
-
-Install the ARC controller into `arc-systems` if it is not already present:
+To recreate the current `intel/torch-xpu-ops` scale set and labels, pass those values explicitly:
 
 ```bash
-export KUBECONFIG=/path/to/k8s/k8s.yaml
+./setup-arc-runner.sh \
+  --github-token '<github-token>' \
+  --repo-url 'https://github.com/intel/torch-xpu-ops' \
+  --runner-label 'xpu-ubuntu-24.04' \
+  --runner-release 'xpu-ubuntu-24-04' \
+  --image 'arc-xpu-runner:ubuntu-24.04-tools' \
+  --extra-labels 'ubuntu-24.04,ubuntu-latest' \
+  --max-runners 12 \
+  --min-runners 0 \
+  --runner-cpu 4 \
+  --runner-memory 16Gi \
+  --reserve-cpu 4 \
+  --cache-root '/var/cache/arc/xpu-ubuntu-24.04'
+```
 
+The GitHub token must be able to register repository runners for the target repository.
+
+## Manual setup
+
+The manual flow below mirrors the script and is useful when you need to audit or customize each step.
+
+### 1. Install Ubuntu packages
+
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  docker.io \
+  gnupg \
+  jq \
+  tar
+```
+
+### 2. Install local Kubernetes
+
+The current local setup uses K3s as a lightweight Kubernetes distribution on stock Ubuntu.
+
+```bash
+curl -sfL https://get.k3s.io | sudo sh -s - --write-kubeconfig-mode 0644
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl get nodes
+```
+
+If you use the script, the node selector is generated from the detected Kubernetes node name or `--node-name`. If you deploy the static values file manually, set the node selector to your node name before deploying:
+
+```yaml
+nodeSelector:
+  kubernetes.io/hostname: <your-node-name>
+```
+
+### 3. Install Helm
+
+```bash
+curl -fsSL https://get.helm.sh/helm-v3.21.3-linux-amd64.tar.gz -o /tmp/helm.tar.gz
+tar -xzf /tmp/helm.tar.gz -C /tmp
+sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+helm version
+```
+
+### 4. Install the ARC controller
+
+```bash
 helm upgrade --install arc \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
   --namespace arc-systems \
@@ -69,137 +106,114 @@ helm upgrade --install arc \
   --timeout 10m
 ```
 
-Confirm the controller service account exists:
+### 5. Create the GitHub token secret
+
+Create the namespace and secret. The token value should only be provided at the terminal prompt or through a local environment variable; never commit it.
 
 ```bash
-kubectl get serviceaccount arc-gha-rs-controller -n arc-systems
+kubectl create namespace arc-runners --dry-run=client -o yaml | kubectl apply -f -
+read -r -s -p 'GitHub token: ' GITHUB_TOKEN
+printf '\n'
+kubectl create secret generic github-token \
+  --namespace arc-runners \
+  --from-literal=github_token="${GITHUB_TOKEN}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset GITHUB_TOKEN
 ```
 
-## 3. Build The Runner Image
-
-Build the image on the Kubernetes node that will run the ARC pods:
+### 6. Build and import the runner image
 
 ```bash
+RUNNER_IMAGE='arc-xpu-runner:ubuntu-24.04-tools'
+
 docker build \
-  -t arc-xpu-runner:ubuntu-24.04-tools \
-  -f .ci/arc/Dockerfile.arc-runner-ubuntu-24.04 \
-  .ci/arc
+  -t "${RUNNER_IMAGE}" \
+  -f Dockerfile.arc-runner-ubuntu-24.04 \
+  .
+
+docker save -o /tmp/arc-xpu-runner.tar "${RUNNER_IMAGE}"
+sudo k3s ctr images import /tmp/arc-xpu-runner.tar
+rm -f /tmp/arc-xpu-runner.tar
 ```
 
-Import the image into the node container runtime used by Kubernetes:
+### 7. Prepare host cache directories
 
 ```bash
-docker save arc-xpu-runner:ubuntu-24.04-tools -o /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
-sudo -n ctr images import /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
-rm -f /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
+CACHE_ROOT='/var/cache/arc/xpu-ubuntu-24.04'
+
+sudo mkdir -p \
+  "${CACHE_ROOT}/home-cache" \
+  "${CACHE_ROOT}/tool-cache"
+sudo chown -R "$(id -u):$(id -g)" "${CACHE_ROOT}"
 ```
 
-If the cluster uses a registry instead of local image import, push the image to that registry and update `template.spec.containers[0].image` in `arc-xpu-ubuntu-24.04-values.yaml`.
+The runner mounts these directories at `/home/runner/.cache` and `/opt/hostedtoolcache`.
 
-## 4. Prepare Host Cache Directories
-
-Create the host cache directories on `skx3725` before deploying the scale set:
+### 8. Deploy the runner scale set
 
 ```bash
-host_uid=$(id -u)
-host_gid=$(id -g)
-
-sudo -n mkdir -p \
-  /var/cache/arc/xpu-ubuntu-24.04/home-cache \
-  /var/cache/arc/xpu-ubuntu-24.04/tool-cache
-sudo -n chown -R "${host_uid}:${host_gid}" /var/cache/arc/xpu-ubuntu-24.04
-```
-
-The runner pod checks those cache directory owners at startup. If they are not `0:0`, it updates the in-container `runner` user to the same UID/GID and runs `/home/runner/run.sh` as that user. The `ARC_RUNNER_UID`/`ARC_RUNNER_GID` values are only fallbacks for newly created root-owned host paths.
-
-Before the pod exits, both the entrypoint trap and the Kubernetes `preStop` hook run `arc-runner-cleanup.sh` to `chown` the mounted caches back to the detected host UID/GID.
-
-## 5. Deploy The Runner Scale Set
-
-Deploy or update the scale set:
-
-```bash
-export KUBECONFIG=/path/to/k8s/k8s.yaml
-
 helm upgrade --install xpu-ubuntu-24-04 \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
   --namespace arc-runners \
   --create-namespace \
-  -f .ci/arc/arc-xpu-ubuntu-24.04-values.yaml \
+  -f arc-xpu-ubuntu-24.04-values.yaml \
   --set controllerServiceAccount.name=arc-gha-rs-controller \
   --set controllerServiceAccount.namespace=arc-systems \
   --timeout 10m
 ```
 
-## 6. Verify The Idle State
+### 9. Verify ARC state
 
-An idle but healthy deployment should have a running controller, a running listener, and no runner pods until matching jobs are queued:
+These commands print only non-secret Kubernetes state.
 
 ```bash
-kubectl get pods -n arc-systems
-kubectl get pods -n arc-runners
-kubectl get autoscalingrunnerset -n arc-runners
+kubectl -n arc-systems get pods -o wide
+kubectl -n arc-runners get autoscalingrunnersets,autoscalinglisteners,ephemeralrunnersets,ephemeralrunners,pods -o wide
 ```
 
-Expected properties:
+The runner scale set should show the configured min/max runner values, and jobs that use one of the configured labels should create runner pods on demand.
 
-- `AutoscalingRunnerSet/xpu-ubuntu-24.04` exists.
-- Minimum runners is `0` and maximum runners is `12`.
-- Listener pod is running in `arc-runners`.
-- Runner pods appear only while jobs with `runs-on: xpu-ubuntu-24.04` are queued or running.
+## Workflow usage
 
-## 7. Use The Runner In Workflows
-
-Set jobs that should run on this ARC scale set to:
+Use the dedicated label for jobs that must run on this node:
 
 ```yaml
 runs-on: xpu-ubuntu-24.04
 ```
 
-Jobs that still use `ubuntu-latest` can also be picked up by this scale set because `ubuntu-latest` is included in `scaleSetLabels`.
+The scale set also advertises `ubuntu-24.04` and `ubuntu-latest`, so jobs using those labels can also be routed here.
 
-The runner pod lifecycle is:
+## Updating the deployment
 
-1. GitHub Actions queues a job with the `xpu-ubuntu-24.04` label.
-2. The ARC listener detects demand for this scale set.
-3. ARC creates an ephemeral runner pod in `arc-runners`.
-4. The runner registers to `intel/torch-xpu-ops` and executes one job.
-5. The runner pod exits and is removed after the job finishes.
-6. The scale set returns to zero runner pods when no matching jobs are queued.
-
-## 8. Update The Deployment
-
-After changing `Dockerfile.arc-runner-ubuntu-24.04`, rebuild and re-import the image, then restart the scale set pods:
+After changing [Dockerfile.arc-runner-ubuntu-24.04](Dockerfile.arc-runner-ubuntu-24.04), [arc-runner-entrypoint.sh](arc-runner-entrypoint.sh), or [arc-runner-cleanup.sh](arc-runner-cleanup.sh), rebuild and import the image, then recycle any idle runner pods.
 
 ```bash
-docker build \
-  -t arc-xpu-runner:ubuntu-24.04-tools \
-  -f .ci/arc/Dockerfile.arc-runner-ubuntu-24.04 \
-  .ci/arc
-docker save arc-xpu-runner:ubuntu-24.04-tools -o /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
-sudo -n ctr images import /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
-rm -f /tmp/arc-xpu-runner-ubuntu-24.04-tools.tar
+docker build -t arc-xpu-runner:ubuntu-24.04-tools -f Dockerfile.arc-runner-ubuntu-24.04 .
+docker save -o /tmp/arc-xpu-runner.tar arc-xpu-runner:ubuntu-24.04-tools
+sudo k3s ctr images import /tmp/arc-xpu-runner.tar
+rm -f /tmp/arc-xpu-runner.tar
+kubectl -n arc-runners delete pod -l actions.github.com/scale-set-name=xpu-ubuntu-24.04 --ignore-not-found
+```
 
+After changing [arc-xpu-ubuntu-24.04-values.yaml](arc-xpu-ubuntu-24.04-values.yaml), redeploy the scale set:
+
+```bash
 helm upgrade --install xpu-ubuntu-24-04 \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
   --namespace arc-runners \
   --create-namespace \
-  -f .ci/arc/arc-xpu-ubuntu-24.04-values.yaml \
+  -f arc-xpu-ubuntu-24.04-values.yaml \
   --set controllerServiceAccount.name=arc-gha-rs-controller \
   --set controllerServiceAccount.namespace=arc-systems \
   --timeout 10m
 ```
 
-## 9. Remove The Scale Set
+## Removal
 
-Remove only the runner scale set:
+Remove the runner scale set before deleting the token secret so ARC finalizers can clean up with GitHub.
 
 ```bash
 helm uninstall xpu-ubuntu-24-04 -n arc-runners
-```
-
-Remove the token secret if this node should no longer host repository runners:
-
-```bash
-kubectl delete secret github-token -n arc-runners
+helm uninstall arc -n arc-systems
+kubectl delete namespace arc-runners arc-systems
 ```
