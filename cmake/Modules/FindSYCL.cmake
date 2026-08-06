@@ -72,37 +72,6 @@ macro(SYCL_INCLUDE_EXTERNAL_DEPENDENCIES dependency_file)
   list(APPEND SYCL_EXTERNAL_DEPEND ${dependency_file})
 endmacro()
 
-macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
-  set(SYCL_DEPEND)
-  set(SYCL_DEPEND_REGENERATE FALSE)
-
-  # Make the output depend on the dependency file itself, which should cause the
-  # rule to re-run.
-  if(NOT EXISTS ${dependency_file})
-    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
-  endif()
-
-  # Always include this file to force CMake to run again next
-  # invocation and rebuild the dependencies.
-  include(${dependency_file})
-
-  if(SYCL_DEPEND)
-    foreach(f ${SYCL_DEPEND})
-      if(NOT EXISTS ${f})
-        set(SYCL_DEPEND_REGENERATE TRUE)
-      endif()
-    endforeach()
-  else()
-    set(SYCL_DEPEND_REGENERATE TRUE)
-  endif()
-
-  if(SYCL_DEPEND_REGENERATE)
-    set(SYCL_DEPEND ${dependency_file})
-    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
-  endif()
-endmacro()
-
-sycl_find_helper_file(make2cmake cmake)
 sycl_find_helper_file(run_sycl cmake)
 
 # Per-config subpaths under multi-config generators; flat for single-config.
@@ -217,8 +186,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_path "${SYCL_compile_intermediate_directory}${SYCL_config_subdir}")
       set(generated_file_basename "${sycl_target}_gen_${_sycl_dir_hash}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # generate by compiler options -M -MF
-      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
+      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # compiler -MD -MF depfile, consumed via DEPFILE
       set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
       set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.cmake")
 
@@ -236,22 +204,6 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       endif()
 
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
-
-      # Configure-time bookkeeping can't expand $<CONFIG>, so enumerate the
-      # per-config depend files literally; the command depends on their union.
-      if(CMAKE_CONFIGURATION_TYPES)
-        set(_sycl_depend_files "")
-        foreach(_config ${CMAKE_CONFIGURATION_TYPES})
-          list(APPEND _sycl_depend_files "${SYCL_compile_intermediate_directory}/${generated_file_basename}.${_config}.depend")
-        endforeach()
-      else()
-        set(_sycl_depend_files "${cmake_dependency_file}")
-      endif()
-      set(SYCL_ACCUMULATED_DEPEND)
-      foreach(_depend_file ${_sycl_depend_files})
-        SYCL_INCLUDE_DEPENDENCIES("${_depend_file}")
-        list(APPEND SYCL_ACCUMULATED_DEPEND ${SYCL_DEPEND})
-      endforeach()
 
       set(SYCL_build_type "Device")
 
@@ -280,13 +232,13 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(SYCL_build_comment_string "Building SYCL (${SYCL_build_type}) object ${generated_file_basename}")
 
       # Build the generated file and dependency file ##########################
+      # Header deps come from the compiler depfile via DEPFILE (CMP0116 NEW).
       add_custom_command(
         OUTPUT ${generated_file}
-        # These output files depend on the source_file and the contents of cmake_dependency_file
         ${main_dep}
-        DEPENDS ${SYCL_ACCUMULATED_DEPEND}
         DEPENDS ${SYCL_EXTERNAL_DEPEND}
         DEPENDS ${custom_target_script}
+        DEPFILE ${SYCL_generated_dependency_file}
         # Make sure the output directory exists before trying to write to it.
         COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
         COMMAND ${CMAKE_COMMAND} ARGS
@@ -303,7 +255,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       list(APPEND _SYCL_wrap_generated_files ${generated_file})
 
       # Add the other files that we want cmake to clean on a cleanup ##########
-      list(APPEND SYCL_ADDITIONAL_CLEAN_FILES "${cmake_dependency_file}")
+      list(APPEND SYCL_ADDITIONAL_CLEAN_FILES "${SYCL_generated_dependency_file}")
       list(REMOVE_DUPLICATES SYCL_ADDITIONAL_CLEAN_FILES)
       set(SYCL_ADDITIONAL_CLEAN_FILES ${SYCL_ADDITIONAL_CLEAN_FILES} CACHE INTERNAL "List of intermediate files that are part of the SYCL dependency scanning.")
     endif()
