@@ -776,6 +776,17 @@ def cond_errors_and_warnings(self, device, dtype):
     # this should change when at::inverse works with silent errors
     # NumPy works fine in this case because it's possible to silence the error and get the inverse matrix results
     # possibly filled with NANs
+    #
+    # Windows + oneMKL: getrf_batch / getrs_batch raise a Windows SEH access
+    # violation (not a catchable C++ exception) when a batch contains a
+    # singular matrix.  The crash propagates through the process and cannot be
+    # intercepted at the Python or UR adapter level without /EHa or a
+    # driver-level fix.  Skip on Windows until Intel oneMKL resolves the issue.
+    if IS_WINDOWS:
+        self.skipTest(
+            "oneMKL batched GETRF/GETRS raises Windows SEH AV for singular "
+            "matrices; not reproducible on Linux XPU with the same driver"
+        )
     batch_dim = 3
     a = torch.eye(3, 3, dtype=dtype, device=device)
     a = a.reshape((1, 3, 3))
