@@ -28,6 +28,7 @@
 #include <ATen/ops/addmv.h>
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
+#include <ATen/ops/linalg_solve.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/scalar_tensor_native.h>
@@ -512,6 +513,30 @@ std::tuple<Tensor&, Tensor&> triangular_solve_out_sparse_csr_xpu(
   at::triangular_solve_out(
       X, temp_clone_A, B, A.to_dense(), upper, transpose, unitriangular);
   return std::tuple<Tensor&, Tensor&>(X, clone_A);
+}
+
+// Solves the linear system A @ x = b, where A is a sparse CSR matrix and b is a
+// dense right-hand side. This mirrors the semantics of the CUDA (cuDSS) backend
+// in aten/src/ATen/native/sparse/cuda/SparseCsrTensorMath.cu. XPU has no direct
+// sparse solver available, so we fall back to a dense solve that still runs
+// entirely on the device.
+Tensor _sparse_csr_linear_solve_xpu(
+    const Tensor& A,
+    const Tensor& b,
+    const bool left) {
+  // layout check
+  TORCH_CHECK(A.is_sparse_csr(), "A must be a CSR matrix");
+  TORCH_CHECK(b.layout() == kStrided, "b must be a strided tensor");
+  // dim check
+  TORCH_CHECK(b.dim() == 1, "b must be a 1D tensor");
+  TORCH_CHECK(b.size(0) == A.size(0), "linear system size mismatch.");
+  TORCH_CHECK(b.size(0) == A.size(1), "linear system size mismatch.");
+  TORCH_CHECK(A.dtype() == b.dtype(), "A, x, and b must have the same dtype");
+  TORCH_CHECK(
+      left == true, "only left == true is supported by the Sparse CSR backend");
+
+  Tensor A_dense = A.to_dense();
+  return at::linalg_solve(A_dense, b, left);
 }
 
 } // namespace at::native
