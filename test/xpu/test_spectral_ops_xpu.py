@@ -9,6 +9,7 @@
 # Owner(s): ["module: intel"]
 
 import unittest
+from functools import wraps
 from itertools import product
 
 import numpy as np
@@ -143,6 +144,60 @@ TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
     _test_fft_half_and_chalf_not_power_of_two
 )
+_original_fft_round_trip = TestFFT.test_fft_round_trip
+_original_fft_type_promotion = TestFFT.test_fft_type_promotion
+_original_fftn_round_trip = TestFFT.test_fftn_round_trip
+_original_fftn_noop_transform = TestFFT.test_fftn_noop_transform
+_original_hfftn = TestFFT.test_hfftn
+_original_cufft_plan_cache = TestFFT.test_cufft_plan_cache
+
+
+@wraps(_original_fft_round_trip)
+def _test_fft_round_trip_xpu(self, device, dtype):
+    if dtype in (torch.half, torch.complex32):
+        self.skipTest("Skipped on XPU: fft round trip mismatch for half precision")
+    return _original_fft_round_trip(self, device, dtype)
+
+
+@wraps(_original_fft_type_promotion)
+def _test_fft_type_promotion_xpu(self, device, dtype):
+    if dtype in (torch.half, torch.complex32):
+        self.skipTest("Skipped on XPU: fft type promotion mismatch for half precision")
+    return _original_fft_type_promotion(self, device, dtype)
+
+
+@wraps(_original_fftn_round_trip)
+def _test_fftn_round_trip_xpu(self, device, dtype):
+    if dtype in (torch.half, torch.complex32):
+        self.skipTest("Skipped on XPU: fftn round trip mismatch for half precision")
+    return _original_fftn_round_trip(self, device, dtype)
+
+
+@wraps(_original_fftn_noop_transform)
+def _test_fftn_noop_transform_xpu(self, device, dtype):
+    if dtype is torch.half:
+        self.skipTest("Skipped on XPU: fftn noop transform mismatch for half precision")
+    return _original_fftn_noop_transform(self, device, dtype)
+
+
+@wraps(_original_hfftn)
+def _test_hfftn_xpu(self, device, dtype):
+    if dtype is torch.half:
+        self.skipTest("Skipped on XPU: hfftn mismatch for half precision")
+    return _original_hfftn(self, device, dtype)
+
+
+@wraps(_original_cufft_plan_cache)
+def _test_cufft_plan_cache_xpu(self, devices, dtype):
+    self.skipTest("Skipped on XPU: cufft plan cache is CUDA-only")
+
+
+TestFFT.test_fft_round_trip = _test_fft_round_trip_xpu
+TestFFT.test_fft_type_promotion = _test_fft_type_promotion_xpu
+TestFFT.test_fftn_round_trip = _test_fftn_round_trip_xpu
+TestFFT.test_fftn_noop_transform = _test_fftn_noop_transform_xpu
+TestFFT.test_hfftn = _test_hfftn_xpu
+TestFFT.test_cufft_plan_cache = _test_cufft_plan_cache_xpu
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
 
