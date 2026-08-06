@@ -30,9 +30,9 @@ args = parser.parse_args()
 
 from xpu_test_utils import launch_test
 if args.device == "b60":
-    from skip_list_common import skip_dict
+    from skip_list_b60 import skip_dict
 else:
-    from skip_list_pvc import skip_dict
+    from skip_list_common import skip_dict
 
 
 def should_skip_entire_file(skip_list):
