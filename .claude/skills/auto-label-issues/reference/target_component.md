@@ -28,13 +28,14 @@ failure remains relevant and cannot support an already-fixed conclusion.
 
 | Ownership or condition | `need_action` |
 |---|---|
+| A third party must fix the cause | `NEED_FIX_3RDPARTY` |
+| The issue is a feature request or a task or numerical accuracy issue or performance issue | `NEED_HUMAN` |
+| `os` is Windows | `NEED_HUMAN` |
+| Test file itself | `NEED_FIX_CASE` |
 | `pytorch` product code | `NEED_FIX` |
 | `torch-xpu-ops` product code | `NEED_FIX` |
 | Test file itself | `NEED_FIX_CASE` |
-| A third party must fix the cause | `NEED_FIX_3RDPARTY` |
 | Inconclusive trace | `NEED_FIX` |
-| The issue is a feature request or a task, not a bug | `NEED_HUMAN` |
-| `os` is Windows | `NEED_HUMAN` |
 | No resolvable path, or human planning required for another reason | `NEED_HUMAN` |
 
 An existing upstream fix may be reported in `evidence.upstream_fix`, but do

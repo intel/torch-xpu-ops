@@ -173,12 +173,10 @@ def fetch_repo_capabilities(owner: str, name: str) -> dict:
     rather than aborting the whole run, per the documented "skipped, not a
     hard error" behavior for repos lacking one or the other native feature.
     """
-    repository_id = None
     issue_types: dict = {}
     try:
         data = run_gh_graphql(TYPES_QUERY, {"owner": owner, "name": name})
         repo = data["repository"]
-        repository_id = repo["id"]
         issue_types = {n["name"]: n["id"] for n in (repo.get("issueTypes") or {}).get("nodes") or []}
     except (RuntimeError, KeyError):
         pass
@@ -197,20 +195,7 @@ def fetch_repo_capabilities(owner: str, name: str) -> dict:
     except (RuntimeError, KeyError):
         pass
 
-    if repository_id is None:
-        # Both probes failed to even resolve the repository; fall back to a
-        # minimal id-only lookup so callers still get a usable repository_id.
-        try:
-            data = run_gh_graphql(
-                "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }",
-                {"owner": owner, "name": name},
-            )
-            repository_id = data["repository"]["id"]
-        except (RuntimeError, KeyError):
-            pass
-
     return {
-        "repository_id": repository_id,
         "issue_types": issue_types,
         "issue_fields": issue_fields,
         "viewer_can_see_issue_fields": viewer_can_see_issue_fields,
@@ -317,9 +302,14 @@ class Actions:
             self.skipped.append(f"unrecognized priority value '{priority_value}'")
             return
         if not field:
-            self.skipped.append(
-                f"native Priority Issue Field unsupported on {self.repo}; skipping {priority_value}->{option_name}"
-            )
+            if not caps.get("viewer_can_see_issue_fields"):
+                reason = (
+                    f"viewer cannot see native Issue Fields on {self.repo} "
+                    "(insufficient token scope or feature disabled)"
+                )
+            else:
+                reason = f"native Priority Issue Field unsupported on {self.repo}"
+            self.skipped.append(f"{reason}; skipping {priority_value}->{option_name}")
             return
         option_id = field["options"].get(option_name)
         if not option_id:
@@ -362,9 +352,11 @@ class Actions:
                     "api",
                     f"repos/{self.repo}/issues/{self.number}/comments",
                     "--paginate",
+                    "--slurp",
                 ]
             )
-            comments = json.loads(out)
+            pages = json.loads(out)
+            comments = [comment for page in pages for comment in page]
         except (RuntimeError, ValueError):
             return None
         for comment in reversed(comments):
@@ -376,7 +368,7 @@ class Actions:
         return None
 
     def post_comment(self, body: str):
-        existing_id = None if self.dry_run else self.find_last_agent_comment_id()
+        existing_id = self.find_last_agent_comment_id()
         if self.dry_run:
             self.applied.append(
                 "[dry-run] would edit previous [agent_triage_result] comment"
@@ -392,7 +384,7 @@ class Actions:
                         "-X",
                         "PATCH",
                         f"repos/{self.repo}/issues/comments/{existing_id}",
-                        "-f",
+                        "-F",
                         "body=@-",
                     ],
                     input_text=body,

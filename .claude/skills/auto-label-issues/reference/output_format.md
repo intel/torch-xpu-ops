@@ -61,8 +61,8 @@ isolates the failure (`torch/_inductor/compiler_bisector.py:646-653`).
 | `test_module: ut` | Reproduce steps run `pytest test/test_...py`, no e2e/build/infra signal. |
 | `module: inductor` | Fails in `torch/_inductor/compiler_bisector.py:60-72` via the torch.compile path. |
 | `P2` | 3 UT cases, AssertionError without crash. |
-| `target_component: N/A` | Trace inconclusive: Windows-only divergence unexplained. |
-| `need_action: NEED_HUMAN` | `N/A` target_component. |
+| `target_component: pytorch` | Traced to `torch/_inductor/compiler_bisector.py:646-653`, upstream of torch-xpu-ops. |
+| `need_action: NEED_FIX` | `pytorch` target_component. |
 ```
 
 Bad — a paragraph of root cause, and reasons that argue the case:
@@ -94,5 +94,5 @@ Trace mode: evidence-only (no pytorch_folder provided).
 | `module: others` | Owning component not identifiable from traceback alone. |
 | `P2` | 3 UT cases, AssertionError without crash. |
 | `target_component: N/A` | insufficient evidence: no local checkout provided. |
-| `need_action: NEED_HUMAN` | `N/A` target_component. |
+| `need_action: NEED_FIX` | `N/A` target_component. |
 ```

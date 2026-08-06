@@ -69,6 +69,25 @@ Non-zero exit -> **hard-stop**. If `low_confidence` is non-empty, resolve those
 fields inline from the returned `body`/`title` per that skill's Inline LLM
 fallback, then overwrite them in `extract.json`.
 
+### Step 1.5 submit-subissues — Split multiple failure kinds
+
+Inspect `extract.json`'s `traceback`/`test_cases`/`body` for evidence of more
+than one distinct kind of failure in this single issue (e.g. different error
+messages/exception types, or unrelated test cases failing for different
+reasons). Group the evidence by distinct error message + associated test
+case(s).
+
+- **One group (or all failures share the same cause)**: no sub-issue is
+  created. Continue to Step 2 and run Steps 2-9 once, as usual, against the
+  original issue.
+- **Multiple groups**: for each group, run `gh issue create` on the same repo
+  with a title/body scoped to that group's error message and test case(s),
+  then set the original issue as parent via `gh issue edit <new_issue> --add-parent-issue <original_issue>`.
+  Then run Steps 2-9 independently for each newly created sub-issue (labels
+  and `[agent_triage_result]` comment are applied to that sub-issue, not the
+  original). After all sub-issues are processed, post one comment on the
+  original issue — not the full `labels.md` table — containing [agent_triage_result] and a table
+  of links to the created sub-issues (issue number<URL>/title per row).
 
 ### Step 2 — Root cause
 
@@ -147,16 +166,16 @@ reason. Priority derives from the observable failure mode (crash vs assertion,
 case count, cited regression percentage), so it stays decidable in evidence-only
 mode.
 
-## Output
+### Step 8 - Output
 
 Write `agent_space/auto_label_issues/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format, field rules, and brevity/evidence-only
 examples in `reference/output_format.md`. Read that file before producing
 `labels.md`. Also print the same table to stdout.
 
-## Apply (automatic, mutates GitHub)
+### Step 9 - Apply (automatic, mutates GitHub)
 
-Steps 1-7 only write `labels.md`; they do not themselves call `gh issue edit`,
+Steps 1-8 only write `labels.md`; they do not themselves call `gh issue edit`,
 `gh issue close`, or post comments. Step 8 runs immediately after Step 7 by
 default: it invokes `scripts/apply_auto_label_issues.py` for real (no `--dry-run`)
 to apply the derived table and post the `[agent_triage_result]` comment. Skip
@@ -188,6 +207,8 @@ The script maps each `labels.md` row to a mutation:
 | `dependency component: <component>` | `dependency component: <component>` label (created if missing). Row omitted or value `null`/`none` -> skipped entirely. |
 | `duplicated` | `duplicate` label (created if missing). Row absent -> skipped entirely. |
 | `not_target` | `not_target` label (created if missing). Row absent -> skipped entirely. |
+| `target_component: <value>` | Report-only; no label or mutation. Reaches GitHub solely via the `[agent_triage_result]` comment body. |
+| `need_action: <verdict>` | Report-only; no label or mutation. Reaches GitHub solely via the `[agent_triage_result]` comment body. |
 | (always, last) | A comment starting with `[agent_triage_result]` containing the full `labels.md` text, posted via `gh issue comment`. If the authenticated `gh` user already left an `[agent_triage_result]` comment on this issue, that comment is edited in place (`gh api -X PATCH`) instead of appending a new one, so re-running the skill does not accumulate duplicate comments. |
 
 Notes:
@@ -200,10 +221,6 @@ Notes:
   GraphQL queries, each degrading to an empty capability set on its own
   error, so a schema mismatch or missing scope on one probe never blocks the
   other or aborts the run.
-- The native repo-level "Priority" Issue Field (Urgent/High/Medium/Low) is
-  distinct from the org-level PyTorchXPU Project's "Priority" single-select
-  field (P0/P1/P2/P3) used by `validation/issue-triage/update-label`. This
-  script only touches the native repo Issue Field.
 - `gh issue edit --add-label` fails if the label does not exist on the repo;
   the script creates any missing label via `gh label create --force` before
   adding it.
@@ -219,7 +236,7 @@ Notes:
    and it does so using the exact `labels.md` table Steps 1-7 produced.
 2. Step 8 runs automatically after Step 7 unless `skip_apply: true` was given
    or the user explicitly asked for analysis-only output.
-3. No local test reproduce. That is `validation/issue-triage`'s job.
+3. No local test reproduce. 
 4. Read the reference file for an axis before deciding it. This applies even
    when the issue already carries a prior `[agent_triage_result]` comment or
    any other existing label/analysis: re-derive every axis (Steps 3-7) from
@@ -249,4 +266,3 @@ Not hard stops (normal degraded outcomes): a missing or nonexistent
 `pytorch_folder`, an inconclusive trace, `insufficient information for root
 causing`, any `null` axis, and any individual `apply_auto_label_issues.py` action
 recorded under `skipped` (e.g. a repo lacking a native Priority field).
-
