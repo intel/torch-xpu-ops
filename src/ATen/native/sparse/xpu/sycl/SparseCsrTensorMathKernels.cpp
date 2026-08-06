@@ -380,7 +380,7 @@ Tensor reduce_sparse_csr_xpu_template(
         ((dims[0] == 0 && dims[1] == 1) || (dims[0] == 1 && dims[1] == 0)));
     return reduce_sparse_csr_dim01_xpu_template<scalar_t>(sparse, rop);
   }
-  TORCH_INTERNAL_ASSERT(dims.size() == 0);
+  TORCH_INTERNAL_ASSERT(dims.empty());
   return sparse.clone();
 }
 

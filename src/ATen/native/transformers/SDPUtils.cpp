@@ -42,7 +42,7 @@ inline bool check_head_dim(sdp_params const& params, bool debug) {
   return true;
 }
 
-bool can_use_mem_efficient_attention(sdp::sdp_params params, bool debug) {
+bool can_use_mem_efficient_attention(const sdp::sdp_params& params, bool debug) {
   //  Define gate functions that determine if a flash kernel can be ran
   constexpr auto general_constraints =
       std::to_array<bool (*)(sdp_params const&, bool)>(

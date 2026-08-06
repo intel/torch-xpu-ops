@@ -153,19 +153,16 @@ Tensor NestedTensor_to_padded_tensor_xpu(
         "for now to_padded_tensor only supports contiguous nested tensor");
     const auto& nt_buffer = nt_input->get_buffer();
 
-    if (t_dim == 3) {
-      auto opt_size_2 = nt_input->opt_size(2);
-      if (opt_size_2 > 0 && !(output_size.has_value())) {
-        Tensor nt_sizes = nt_input->get_nested_sizes();
-        Tensor sizes_dim1 = at::native::narrow_symint(nt_sizes, 1, 0, 1);
-        Tensor sizes_dim2 = at::native::narrow_symint(nt_sizes, 1, 1, 1);
-        Tensor result = at::detail::make_tensor<NestedTensorImpl>(
-            nt_input->get_buffer(), sizes_dim1 * sizes_dim2[0]);
-        TORCH_INTERNAL_ASSERT_DEBUG_ONLY(result.dim() == 2);
-        result =
-            NestedTensor_to_padded_tensor_xpu(result, padding, output_size);
-        return result.reshape({result.sizes()[0], -1, *opt_size_2});
-      }
+    if (t_dim == 3 && !output_size.has_value() && nt_input->opt_size(2) > 0) {
+      const int64_t size_dim2 = *nt_input->opt_size(2);
+      Tensor nt_sizes = nt_input->get_nested_sizes();
+      Tensor sizes_dim1 = at::native::narrow_symint(nt_sizes, 1, 0, 1);
+      Tensor sizes_dim2 = at::native::narrow_symint(nt_sizes, 1, 1, 1);
+      Tensor result = at::detail::make_tensor<NestedTensorImpl>(
+          nt_input->get_buffer(), sizes_dim1 * sizes_dim2[0]);
+      TORCH_INTERNAL_ASSERT_DEBUG_ONLY(result.dim() == 2);
+      result = NestedTensor_to_padded_tensor_xpu(result, padding, output_size);
+      return result.reshape({result.sizes()[0], -1, size_dim2});
     }
 
     Tensor nt_sizes = nt_input->get_nested_sizes();

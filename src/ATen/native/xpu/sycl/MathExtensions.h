@@ -262,7 +262,7 @@ template <typename scalar_t>
 static scalar_t _igam_helper_series(scalar_t a, scalar_t x) {
   // Compute igam using DLMF 8.11.4. [igam1]
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   static const int MAXITER = 2000;
@@ -302,7 +302,7 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   accscalar_t sum = 0;
   accscalar_t term, logx;
   static const int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
 
@@ -572,7 +572,7 @@ static const scalar_t _igam_helper_asymptotic_series(
 
   int k, n, sgn;
   int maxpow = 0;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   accscalar_t lambda = x / a;
@@ -637,13 +637,12 @@ static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
   accscalar_t ans, ax, c, yc, r, t, y, z;
   accscalar_t pk, pkm1, pkm2, qk, qkm1, qkm2;
   int MAXITER = 2000;
-  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same_v<accscalar_t, double>
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  static const accscalar_t BIG = std::is_same<accscalar_t, double>::value
-      ? 4.503599627370496e15
-      : 16777216.;
-  static const accscalar_t BIGINV = std::is_same<accscalar_t, double>::value
+  static const accscalar_t BIG =
+      std::is_same_v<accscalar_t, double> ? 4.503599627370496e15 : 16777216.;
+  static const accscalar_t BIGINV = std::is_same_v<accscalar_t, double>
       ? 2.22044604925031308085e-16
       : 5.9604644775390625E-8;
 

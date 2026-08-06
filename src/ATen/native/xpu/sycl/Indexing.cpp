@@ -130,7 +130,7 @@ void index_fill_kernel(
     const int64_t self_dim_stride,
     const Scalar& source) {
   const Tensor& self = iter.tensor(0);
-  Tensor index = iter.tensor(1);
+  const Tensor& index = iter.tensor(1);
 
   // index_fill operator generates TensorIterator as kernel input,
   // self tensor is restrided to meet TensorIterator broadcast requirements. But
