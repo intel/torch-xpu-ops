@@ -107,9 +107,11 @@ jobs:
         continue-on-error: true
         id: reference_id
         run: |
-          # latest dir
-          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
-          mv ${{ github.workspace }}/op_benchmark_tmp/${latest_dir} ${{ github.workspace }}/op_benchmark
+          # latest dir; download-artifact v8 omits the per-artifact subdir when only one artifact matches
+          latest_dir=$(cd ${{ github.workspace }}/op_benchmark_tmp && find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
+          mkdir -p ${{ github.workspace }}/op_benchmark
+          mv "${{ github.workspace }}/op_benchmark_tmp/${latest_dir}"/* ${{ github.workspace }}/op_benchmark
           # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"

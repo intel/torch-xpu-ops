@@ -156,7 +156,9 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
           cd "${latest_dir}/${{ inputs.ut }}"
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
@@ -197,7 +199,9 @@ jobs:
         id: new-failures
         run: |
           cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
           ut_dir="${latest_dir}/${{ inputs.ut }}"
           if [ "${{ inputs.ut }}" == "basic" ]; then
             ut_list="op_regression op_extended op_regression_dev1"
