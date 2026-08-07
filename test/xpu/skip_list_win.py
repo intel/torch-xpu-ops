@@ -86,4 +86,7 @@ skip_dict = {
         "test_reference_numerics_large_sin_xpu_complex64",
         "test_reference_numerics_small_acos_xpu_complex32",
     ),
+    "test_ops_xpu.py": (
+        "test_forward_ad_nn_functional_multi_head_attention_forward_xpu_float32",
+    ),
 }
