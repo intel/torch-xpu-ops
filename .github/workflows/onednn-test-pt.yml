@@ -1,0 +1,84 @@
+name: oneDNN test_pt
+
+on:
+  repository_dispatch:
+    types: [onednn-test-pt]
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.client_payload.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onednn_test_pt:
+    name: onednn_test_pt
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print dispatch info
+        run: |
+          echo "repo=${{ github.event.client_payload.repo }}"
+          echo "pr_number=${{ github.event.client_payload.pr_number }}"
+          echo "head_sha=${{ github.event.client_payload.head_sha }}"
+          echo "base_sha=${{ github.event.client_payload.base_sha }}"
+          echo "head_ref=${{ github.event.client_payload.head_ref }}"
+          echo "base_ref=${{ github.event.client_payload.base_ref }}"
+
+      - name: Set pending status on oneDNN PR
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.ONEDNN_DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.event.client_payload.repo }}/statuses/${{ github.event.client_payload.head_sha }}" \
+            -d '{
+              "state": "pending",
+              "target_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "description": "test_pt running...",
+              "context": "${{ github.repository }} / onednn_test_pt"
+            }'
+
+      - name: Run tests
+        id: tests
+        run: |
+          echo "TODO: Add actual test_pt logic here"
+
+      - name: Set final status on oneDNN PR
+        if: always()
+        run: |
+          if [ "${{ steps.tests.outcome }}" == "success" ]; then
+            STATE="success"
+            DESC="test_pt passed"
+          else
+            STATE="failure"
+            DESC="test_pt failed"
+          fi
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token ${{ secrets.ONEDNN_DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.event.client_payload.repo }}/statuses/${{ github.event.client_payload.head_sha }}" \
+            -d "{
+              \"state\": \"$STATE\",
+              \"target_url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"description\": \"$DESC\",
+              \"context\": \"${{ github.repository }} / onednn_test_pt\"
+            }")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Response body: $BODY"
+          echo "HTTP status code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::warning::Failed to set status '$STATE' (HTTP $HTTP_CODE), retrying with 'failure'..."
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.ONEDNN_DISPATCH_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.event.client_payload.repo }}/statuses/${{ github.event.client_payload.head_sha }}" \
+              -d "{
+                \"state\": \"failure\",
+                \"target_url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+                \"description\": \"Failed to report status\",
+                \"context\": \"${{ github.repository }} / onednn_test_pt\"
+              }"
+          fi
