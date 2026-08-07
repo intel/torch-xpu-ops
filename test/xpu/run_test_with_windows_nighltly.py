@@ -107,9 +107,7 @@ for key in skip_dict:
         print(f"\n=== Skipping test file: {key} ===")
         continue
 
-    skip_list = skip_dict.get(key)
-    if skip_list is None:
-        skip_list = []
+    skip_list = list(skip_dict.get(key) or [])
 
     if IS_WINDOWS and key in skip_dict_win:
         win_skip_list = skip_dict_win[key]
