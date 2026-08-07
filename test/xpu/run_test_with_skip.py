@@ -10,7 +10,6 @@ import argparse
 import os
 import sys
 
-
 parser = argparse.ArgumentParser(description="Run specific unit tests")
 # By default, run the cases without the skipped cases
 parser.add_argument(
@@ -31,6 +30,7 @@ args = parser.parse_args()
 
 
 from xpu_test_utils import launch_test
+
 if args.device == "b60":
     from skip_list_b60 import skip_dict
 else:
