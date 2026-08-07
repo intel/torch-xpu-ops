@@ -21,6 +21,7 @@
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
+#include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 #include <numbers>
 
@@ -143,7 +144,7 @@ void exp2_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
-struct Logit0Functor {
+struct Logit0Functor : public improved_elementwise_kernel_tag {
   using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
     const T_ACC x_acc = static_cast<T_ACC>(x);
@@ -170,6 +171,13 @@ struct Logit1Functor {
   T_ACC hi_;
 };
 
+// Improved vectorized logit path is available generically via the element-wise
+// launcher in Loops.h: Logit0Functor derives from improved_elementwise_kernel_tag,
+// so any contiguous, no-cast case (float32 and beyond) can route through
+// launch_improved_vectorized_kernel, which reuses the functor's own sycl::log
+// (identical numerics to the regular path). It is opt-in (the upstream
+// vectorized kernel is already near peak on BMG); enable it at runtime with
+// TORCH_XPU_IMPROVED_ELEMENTWISE=1.
 void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
