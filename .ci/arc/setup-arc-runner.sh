@@ -426,6 +426,11 @@ template:
     nodeSelector:
       kubernetes.io/hostname: ${NODE_NAME}
     securityContext:
+      # Run the pod as the host cache owner so no in-container root drop is needed.
+      runAsNonRoot: true
+      runAsUser: ${run_uid}
+      runAsGroup: ${run_gid}
+      fsGroup: ${run_gid}
       seccompProfile:
         type: RuntimeDefault
     containers:

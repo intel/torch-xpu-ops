@@ -33,7 +33,9 @@ jobs:
               echo "runner_name=${RUNNER_NAME}"
               echo "runner_os=${RUNNER_OS}"
               echo "runner_arch=${RUNNER_ARCH}"
+              cat /etc/os-release
               uname -a
+              id
           - name: git-and-gh-tools
             run: |
               git --version
@@ -57,13 +59,17 @@ jobs:
     runs-on: xpu-ubuntu-24.04
     timeout-minutes: 3
     needs: smoke
-    if: ${{ !cancelled() && needs.smoke.result == 'failure' && secrets.ARC_OFFLINE_EMAIL_LIST != '' }}
+    if: ${{ !cancelled() && needs.smoke.result == 'failure' }}
     steps:
       - name: Email offline list
         env:
           ARC_OFFLINE_EMAIL_LIST: ${{ secrets.ARC_OFFLINE_EMAIL_LIST }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          if [ -z "${ARC_OFFLINE_EMAIL_LIST}" ]; then
+            echo "ARC_OFFLINE_EMAIL_LIST secret not set; skipping notification."
+            exit 0
+          fi
           subject="[ARC Runner Smoke] Failure on ${GITHUB_REPOSITORY}"
           body_file="$(mktemp)"
           cat > "${body_file}" <<EOF
