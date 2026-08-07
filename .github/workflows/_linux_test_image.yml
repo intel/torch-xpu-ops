@@ -29,6 +29,7 @@ on:
           - '22.04'
           - '24.04'
           - '25.04'
+          - '26.04'
       gcc:
         type: choice
         required: true

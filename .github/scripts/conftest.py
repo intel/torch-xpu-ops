@@ -18,6 +18,8 @@ patterns = [
     'illegal memory',
     re.compile(r'failed on setup with.*crashed while running'),
     re.compile(r'out.*of.*memory'),
+    # pytest-timeout failure, e.g. "Failed: Timeout >60.0s"
+    re.compile(r'timeout\s*>\s*[\d.]+\s*s'),
 ]
 
 @pytest.hookimpl(tryfirst=True)
@@ -28,7 +30,9 @@ def pytest_configure(config):
     except Exception:
         pass
 
-@pytest.hookimpl
+# trylast: let xdist send this failing report to the controller BEFORE we
+# os._exit, so results show the real failure reason instead of a worker crash.
+@pytest.hookimpl(trylast=True)
 def pytest_runtest_logreport(report):
     if not _worker_id or not report.failed:
         return
@@ -50,5 +54,6 @@ def pytest_runtest_logreport(report):
             # Silent fail - XPU ops might fail in some states
             pass
 
-        sys.stderr.write(f"\n!RESTART {_worker_id}\n")
+        sys.stderr.write(f"\n!RESTART {_worker_id} {report.nodeid}\n")
+        sys.stderr.flush()
         os._exit(_WORKER_RESTART_CODE)
