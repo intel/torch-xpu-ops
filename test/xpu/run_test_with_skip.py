@@ -10,18 +10,31 @@ import argparse
 import os
 import sys
 
-from skip_list_common import skip_dict
-from xpu_test_utils import launch_test
-
 parser = argparse.ArgumentParser(description="Run specific unit tests")
 # By default, run the cases without the skipped cases
 parser.add_argument(
+    "--device",
+    "-d",
+    choices=["b60", "pvc"],
+    default="b60",
+    help="Specify the device to run tests on (default: b60)",
+)
+parser.add_argument(
     "--test-cases",
+    "-k",
     choices=["selected", "skipped", "all"],
     default="selected",
     help="Test cases scope",
 )
 args = parser.parse_args()
+
+
+from xpu_test_utils import launch_test
+
+if args.device == "b60":
+    from skip_list_b60 import skip_dict
+else:
+    from skip_list_common import skip_dict
 
 
 def should_skip_entire_file(skip_list):
