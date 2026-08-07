@@ -1,21 +1,19 @@
 name: inductor-xpu-pt2e-test
+description: Run PT2E accuracy and performance benchmarks with the merged benchmark runner.
 
 inputs:
   dt:
     required: true
-    type: string
     default: 'float32'
-    description: Data precision of the test.float32,int8. Delimiter is comma
+    description: 'Data precisions. Comma-separated: float32,int8'
   scenario:
     required: true
-    type: string
     default: 'accuracy'
-    description: accuracy,performance. Delimiter is comma
+    description: 'Comma-separated scenarios: accuracy,performance'
   pytorch:
     required: false
-    type: string
     default: 'main'
-    description: Pytorch branch/commit
+    description: PyTorch branch or commit
 
 runs:
   using: composite
@@ -26,75 +24,38 @@ runs:
         which python && python -V
         which pip && pip list
     - name: Prepare dataset
+      if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}
       run: |
-        # dataset
-        dataset_dir="${RUNNER_TEMP}/_datasets/imagenet"
-        if [ ! -d ${dataset_dir} ];then
-          rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
+        dataset_dir="/opt/_datasets/imagenet"
+        if [ ! -d "${dataset_dir}" ]; then
+          rm -rf "${dataset_dir}"
+          mkdir -p "${dataset_dir}"
+          cd "${dataset_dir}"
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
           wget -q https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
           tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
-        echo "dataset_dir=${dataset_dir}" >> ${GITHUB_ENV}
+        echo "dataset_dir=${dataset_dir}" >> "${GITHUB_ENV}"
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
-        pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
-        rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
-        echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
-        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
-          models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
-          cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${dataset_dir} "
-          for model_name in $(echo $models |sed 's/,/ /g')
-          do
-            if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-              ${cmd_line} --model_list ${model_name} --is_fp32 2>&1 |tee "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || true
-              # setup acc1 and acc5 to failed if test failed.
-              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
-                      BEGIN{acc1 = "failed"; acc5 = "failed";}
-                      {acc1 = $(NF - 2); acc5 = $NF;}
-                      END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
-            fi
-            if [[ "${{ inputs.dt }}" == *"int8"* ]];then
-              ${cmd_line}  --model_list ${model_name} 2>&1 |tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || true
-              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
-                      BEGIN{acc1 = "failed"; acc5 = "failed";}
-                      {acc1 = $(NF - 2); acc5 = $NF;}
-                      END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
-            fi
-          done
+        set -o pipefail
+
+        # Run from the workspace root so pt2e-accuracy/ and pt2e-performance/
+        # relative paths resolve correctly.
+        rm -rf inductor_log && mkdir -p inductor_log
+        rsync -avz --delete ${GITHUB_WORKSPACE}/.github/scripts/run_benchmarks/ ./run_pt2e/
+
+        if [ -n "${MODEL_ONLY_NAME:-}" ]; then
+          model_list_args=(--model-only "${MODEL_ONLY_NAME}")
+        else
+          model_list_args=(--model-only "${GITHUB_WORKSPACE}/.ci/benchmarks/model_list.csv")
         fi
-        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
-          models="alexnet,demucs,dlrm,hf_Albert,hf_Bert,hf_Bert_large,hf_DistilBert,hf_Roberta_base,mnasnet1_0,mobilenet_v2,"
-          models+="mobilenet_v3_large,nvidia_deeprecommender,resnet152,resnet18,resnet50,resnext50_32x4d,"
-          models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
-          models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
-          cmd_line=" python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor "
-          for model_name in $(echo "${models}" |sed 's/,/ /g')
-          do
-            if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-              rm -rf pt2e-performance/.userbenchmark
-              ${cmd_line} -m ${model_name} 2>&1 |tee "${pt2e_logs_dir}/performance-float32-${model_name}.log" || true
-              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
-                      BEGIN{fps = "failed";}
-                      {fps = $NF;}
-                      END{printf("Performance,%s,float32,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
-            fi
-            if [[ "${{ inputs.dt }}" == *"int8"* ]];then
-              rm -rf pt2e-performance/.userbenchmark
-              XPU_QUANT_CONFIG=ASYMM ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-ASYMM-${model_name}.log" || true
-              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
-                      BEGIN{fps = "failed";}
-                      {fps = $NF;}
-                      END{printf("Performance,%s,ASYMM,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
-              rm -rf pt2e-performance/.userbenchmark
-              XPU_QUANT_CONFIG=SYMM  ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-SYMM-${model_name}.log" || true
-              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
-                      BEGIN{fps = "failed";}
-                      {fps = $NF;}
-                      END{printf("Performance,%s,SYMM,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
-            fi
-          done
-        fi
+
+        python -m run_pt2e --suite pt2e --mode inference \
+            --dtype "${{ inputs.dt }}" --scenario "${{ inputs.scenario }}" \
+            --dataset-dir "${dataset_dir}" "${model_list_args[@]}" \
+            2>&1 | tee inductor_log/run_pt2e.log || true
+        rsync -avz --delete inductor_log/ "${GITHUB_WORKSPACE}/pytorch/inductor_log/"
