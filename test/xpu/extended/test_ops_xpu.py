@@ -18,6 +18,8 @@ from torch.testing._internal.common_device_type import (
     onlyXPU,
     OpDTypes,
     ops,
+    skip,
+    skipOps,
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
@@ -119,6 +121,29 @@ class Namespace:
                 self.precision = test_case.precision
                 self.rel_tol = test_case.rel_tol
 
+        def test_compare_cpu(self, device, dtype, op):
+            # Copied and adapted from:
+            # https://github.com/pytorch/pytorch/blob/e9516b564737b0f1c172f0e0723130e0aba4f51f/test/test_ops.py#L499
+            def to_cpu(arg):
+                if isinstance(arg, torch.Tensor):
+                    return arg.to(device="cpu")
+                return arg
+
+            samples = op.reference_inputs(device, dtype)
+
+            for sample in samples:
+                cpu_sample = sample.transform(to_cpu)
+                xpu_results = op(sample.input, *sample.args, **sample.kwargs)
+                cpu_results = op(
+                    cpu_sample.input, *cpu_sample.args, **cpu_sample.kwargs
+                )
+
+                xpu_results = sample.output_process_fn_grad(xpu_results)
+                cpu_results = cpu_sample.output_process_fn_grad(cpu_results)
+
+                # CHANGED: Use 1e-3 for all dtypes on XPU
+                self.assertEqual(xpu_results, cpu_results, atol=1e-3, rtol=1e-3)
+
     class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
         def __init__(self, test_case=None):
             if test_case:
@@ -173,6 +198,18 @@ class TestCompositeCompliance(TestCase):
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
     )
+    @skipOps(
+        {
+            skip(
+                "nn.functional.embedding"
+            ),  # "nn.functional_embedding is not composite compliant"
+            skip(
+                "nn.functional.embedding_bag"
+            ),  # "nn.functional.embedding_bag is not composite compliant"
+            skip("resize_"),  # "resize is not composite compliant"
+            skip("resize_as_"),  # "resize_as is not composite compliant"
+        }
+    )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
     def test_operator(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
@@ -185,6 +222,13 @@ class TestCompositeCompliance(TestCase):
 
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
+    @skipOps(
+        {
+            skip(
+                "normal.number_mean"
+            ),  # normal.number_mean output is not differentiable
+        }
     )
     @ops(
         [op for op in _xpu_computation_ops if op.supports_autograd],
@@ -201,6 +245,12 @@ class TestCompositeCompliance(TestCase):
 
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
+    @skipOps(
+        {
+            skip("nn.functional.max_unpool2d"),
+            skip("nn.functional.max_unpool3d"),
+        }
     )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
     def test_forward_ad(self, device, dtype, op):

@@ -20,8 +20,8 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct FakeQuantizeTensorCachemaskKernelFunctor {
   std::tuple<scalar_t, bool> operator()(scalar_t input_val) const {
-    const auto qval = static_cast<int64_t>(
-        std::nearbyint(input_val * inv_scale_) + zero_point_);
+    const auto qval =
+        static_cast<int64_t>(sycl::rint(input_val * inv_scale_) + zero_point_);
     return {// fake_quantized value
             (fminf(quant_max_, fmaxf(quant_min_, qval)) - zero_point_) * scale_,
             // mask for grad
@@ -91,10 +91,10 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
       return {input_val, 1};
     }
     float inv_scale = 1.0f / (*scale_ptr_);
-    const auto qval = static_cast<int64_t>(
-        std::nearbyint(input_val * inv_scale) + (*zp_ptr_));
+    const auto qval =
+        static_cast<int64_t>(sycl::rint(input_val * inv_scale) + (*zp_ptr_));
     return {// fake_quantized value
-            (std::min(quant_max_, std::max(quant_min_, qval)) - (*zp_ptr_)) *
+            (sycl::clamp(qval, quant_min_, quant_max_) - (*zp_ptr_)) *
                 (*scale_ptr_),
             // mask for grad
             ((quant_min_ <= qval) && (qval <= quant_max_))};
@@ -102,9 +102,9 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
   FakeQuantizeTensorCachemaskTensorQparamsFunctor(
       int64_t quant_min,
       int64_t quant_max,
-      float* scale_ptr,
-      int32_t* zp_ptr,
-      int64_t* fake_quant_on)
+      const float* scale_ptr,
+      const int32_t* zp_ptr,
+      const int64_t* fake_quant_on)
       : quant_min_(quant_min),
         quant_max_(quant_max),
         scale_ptr_(scale_ptr),
@@ -114,9 +114,9 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
  private:
   int64_t quant_min_;
   int64_t quant_max_;
-  float* scale_ptr_;
-  int32_t* zp_ptr_;
-  int64_t* fake_quant_on_;
+  const float* scale_ptr_;
+  const int32_t* zp_ptr_;
+  const int64_t* fake_quant_on_;
 };
 
 void fake_quantize_tensor_cachemask_tensor_qparams_kernel(
@@ -128,9 +128,9 @@ void fake_quantize_tensor_cachemask_tensor_qparams_kernel(
     const Tensor& fake_quant_enabled,
     int64_t quant_min,
     int64_t quant_max) {
-  float* scale_ptr = scale.data_ptr<float>();
-  int32_t* zp_ptr = zero_point.data_ptr<int32_t>();
-  int64_t* fake_quant_on = fake_quant_enabled.data_ptr<int64_t>();
+  const float* scale_ptr = scale.const_data_ptr<float>();
+  const int32_t* zp_ptr = zero_point.const_data_ptr<int32_t>();
+  const int64_t* fake_quant_on = fake_quant_enabled.const_data_ptr<int64_t>();
   auto iter = TensorIteratorConfig()
                   .check_all_same_dtype(false)
                   .add_output(output)
@@ -163,11 +163,10 @@ struct FakeQuantizeGradLearnableTensorFunctor {
   std::tuple<float, float, float> operator()(float XInput, float dYInput)
       const {
     float dXOutput, dZeroPointOutput, dScaleOutput;
-    int64_t xq = std::nearbyint(XInput * inv_scale_) + zero_point_;
+    int64_t xq = sycl::rint(XInput * inv_scale_) + zero_point_;
     dXOutput = dYInput * (xq >= quant_min_ && xq <= quant_max_);
     float xfq = static_cast<float>(
-        (std::max(std::min(xq, quant_max_), quant_min_) - zero_point_) *
-        scale_);
+        (sycl::clamp(xq, quant_min_, quant_max_) - zero_point_) * scale_);
     if (xq < quant_min_ || xq > quant_max_) {
       dZeroPointOutput = (dYInput) * (-1) * scale_ * grad_factor_;
       dScaleOutput = ((xq < quant_min_) ? (dYInput * dscale_small_)
@@ -285,8 +284,7 @@ struct FakeQuantPerChannelCachemaskHelperCFunctor {
       const int64_t zero_point) const {
     const float inv_scale = 1.0f / scale;
     const auto qval =
-        static_cast<int64_t>(std::nearbyint(input_val * inv_scale)) +
-        zero_point;
+        static_cast<int64_t>(sycl::rint(input_val * inv_scale)) + zero_point;
     return ((quant_min_ <= qval) && (qval <= quant_max_));
   }
   FakeQuantPerChannelCachemaskHelperCFunctor(
@@ -307,9 +305,8 @@ struct FakeQuantPerChannelCachemaskHelperDFunctor {
       const int64_t zero_point) const {
     const float inv_scale = 1.0f / scale;
     const auto qval =
-        static_cast<int64_t>(std::nearbyint(input_val * inv_scale)) +
-        zero_point;
-    const auto bounded_qval = std::min(quant_max_, std::max(quant_min_, qval));
+        static_cast<int64_t>(sycl::rint(input_val * inv_scale)) + zero_point;
+    const auto bounded_qval = sycl::clamp(qval, quant_min_, quant_max_);
     return (bounded_qval - zero_point) * scale;
   }
   FakeQuantPerChannelCachemaskHelperDFunctor(
@@ -393,12 +390,12 @@ struct FakeQuantizeGradLearnableChannelFunctor {
     float dscale_small = quant_min_ - zero_point_input;
     float dscale_big = quant_max_ - zero_point_input;
     // Calculate gradients for X.
-    int64_t xqi = std::nearbyint(x_input * inv_scale) +
+    int64_t xqi = sycl::rint(x_input * inv_scale) +
         static_cast<int64_t>(zero_point_input);
     dx_output = dy_input * (xqi >= quant_min_ && xqi <= quant_max_);
     // Calculate gradients for scale and zero point.
     float xfqi = static_cast<float>(
-        (std::max(std::min(xqi, quant_max_), quant_min_) - zero_point_input) *
+        (sycl::clamp(xqi, quant_min_, quant_max_) - zero_point_input) *
         scale_input);
     if (xqi < quant_min_ || xqi > quant_max_) {
       dzero_point_output = dy_input * (-1) * scale_input * grad_factor_;

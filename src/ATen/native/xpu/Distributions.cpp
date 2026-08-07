@@ -55,6 +55,14 @@ Tensor _s_binomial_xpu(
     const Tensor& count,
     const Tensor& prob,
     std::optional<Generator> generator) {
+  TORCH_CHECK_VALUE(
+      at::isFloatingType(count.scalar_type()),
+      "binomial only supports floating-point dtypes for count, got: ",
+      count.scalar_type());
+  TORCH_CHECK_VALUE(
+      at::isFloatingType(prob.scalar_type()),
+      "binomial only supports floating-point dtypes for prob, got: ",
+      prob.scalar_type());
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       generator, at::xpu::detail::getDefaultXPUGenerator());
   Tensor ret = at::empty(count.sizes(), count.options());
@@ -75,7 +83,7 @@ Tensor _s_gamma_xpu(const Tensor& alpha, std::optional<Generator> gen_) {
   return ret;
 }
 
-Tensor _sample_dirichlet_xpu(
+Tensor _s_dirichlet_xpu(
     const Tensor& alpha,
     std::optional<Generator> generator) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(

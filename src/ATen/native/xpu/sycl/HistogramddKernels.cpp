@@ -12,11 +12,10 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
@@ -422,7 +421,7 @@ void histogramdd_xpu_contiguous(
   Tensor num_bin_edges_xpu =
       at::tensor(num_bin_edges, hist_strides_xpu.options());
 
-  if (algorithm == PARALLEL_SEARCH) {
+  if constexpr (algorithm == PARALLEL_SEARCH) {
     histogramdd_template<input_t>(
         accessor_in,
         reinterpret_cast<const input_t* const*>(
@@ -550,5 +549,6 @@ void histogram_select_outer_bin_edges_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

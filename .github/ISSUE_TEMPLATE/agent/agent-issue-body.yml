@@ -1,0 +1,90 @@
+# The issue-handler skills (issue-format, xpu-issues-triaging, test-verification,
+# issue-fix) fill this template directly. Placeholders use Python str.format()
+# syntax: {field_name}. The HTML comment markers (<!-- agent:* -->) are the
+# backward-compatible status/log anchors the legacy Python pipeline used; keep
+# them intact so older tooling that parses them keeps working.
+#
+# Canonical section names (the format step must produce these exact headings):
+#   Description, Reproducer, Error Log, Environment, Test Info,
+#   Root Cause Analysis, Proposed Fix Strategy, Target Repository,
+#   Additional Context
+#
+# Status marker stages (top of body):
+#   DISCOVERED -> UPSTREAM_VERIFYING -> WAITING_UPSTREAM -> TRIAGING -> TRIAGED
+#   -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED
+#   -> DONE | SKIPPED | NEEDS_HUMAN
+
+name: "Agent Issue Body"
+description: "Full body template for bug issues built by the format agent"
+
+body: |
+  <!-- agent:status:DISCOVERED -->
+
+  ## Description
+  {description}
+
+  ## Reproducer
+  {reproducer}
+
+  ## Error Log
+  {error_log}
+
+  ## Environment
+  {environment}
+
+  {footer}
+  ---
+
+  ## Test Info
+  - **Test Type:** {test_type}
+  - **Category:** {category}
+  - **Dependency:** {dependency}
+  - **Platform:** {platform}
+
+  ## Root Cause Analysis
+  {root_cause}
+
+  ## Proposed Fix Strategy
+  {fix_strategy}
+
+  ## Target Repository
+  {target_repo}
+
+  ## Additional Context
+  {additional_context}
+
+  ## Action Items
+  - [ ] 🔍 Issue formatted (Discovery Agent)
+    <details><summary>Discovery log</summary>
+    <!-- agent:discovery-log -->
+    </details>
+    <details><summary>Environment log (worktree, stashes, builds)</summary>
+    <!-- agent:env-log -->
+    </details>
+  - [ ] 🧠 Root cause identified (Triage Agent)
+    <details><summary>Upstream PR analysis</summary>
+    <!-- agent:upstream-log -->
+    </details>
+    <details><summary>Triage log</summary>
+    <!-- agent:triage-log -->
+    </details>
+  - [ ] 🎯 Triage complete — routed to fix agent (agent:triaged)
+  - [ ] 🔧 Fix implemented (Fix Agent)
+    <details><summary>Fix log</summary>
+    <!-- agent:fix-log -->
+    </details>
+  - [ ] ✅ Fix verified locally
+    <details><summary>Verification log</summary>
+
+    <!-- agent:verification-log -->
+    </details>
+  - [ ] 📋 PR proposed
+  - [ ] 👀 Human review
+  - [ ] 🎉 PR merged
+
+  ## Original Issue
+  <details><summary>Original issue body</summary>
+
+  {original_issue}
+
+  </details>

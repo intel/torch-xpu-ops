@@ -26,8 +26,8 @@ struct LogSigmoidForwardFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t in = in_;
     const auto min = std::min(opmath_t(0), in);
-    const auto z = std::exp(-std::abs(in));
-    return min - std::log1p(z);
+    const auto z = sycl::exp(-sycl::fabs(in));
+    return min - sycl::log1p(z);
   }
 };
 
@@ -50,7 +50,7 @@ struct LogSigmoidBackwardFunctor {
     auto in_negative = in < opmath_t(0);
     auto max_deriv = in_negative ? opmath_t(1) : opmath_t(0);
     auto sign = in_negative ? opmath_t(1) : -opmath_t(1);
-    const auto z = std::exp(-std::abs(in));
+    const auto z = sycl::exp(-sycl::fabs(in));
     return grad_out * (max_deriv - sign * (z / (opmath_t(1) + z)));
   }
 };

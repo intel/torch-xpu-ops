@@ -56,7 +56,6 @@
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/softmax.h>
 #include <ATen/ops/softmax_native.h>
-#include <ATen/ops/zeros.h>
 #include <ATen/ops/zeros_like.h>
 #endif
 
@@ -66,7 +65,6 @@
 #include <comm/Memory.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
-#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -212,7 +210,7 @@ struct SparseCooSoftmaxFunctor {
           auto values_row = input_values_acc[i];
           auto out_values_row = output_values_acc[i];
 
-          auto v = std::exp(values_row[j] - mx_row[j]);
+          auto v = sycl::exp(values_row[j] - mx_row[j]);
           if (!LogSoftMax) {
             out_values_row[j] = v;
           }
@@ -223,8 +221,8 @@ struct SparseCooSoftmaxFunctor {
           auto values_row = input_values_acc[i];
           auto out_values_row = output_values_acc[i];
 
-          if (LogSoftMax) {
-            out_values_row[j] = values_row[j] - mx_row[j] - std::log(exp_sums);
+          if constexpr (LogSoftMax) {
+            out_values_row[j] = values_row[j] - mx_row[j] - sycl::log(exp_sums);
           } else {
             out_values_row[j] *= 1.0 / exp_sums;
           }
@@ -297,7 +295,7 @@ struct SparseCooSoftmaxbBackwardFunctor {
            */
           if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
             auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               tmp_row -= grad_values_row[k];
             } else {
               tmp_row -= out_values_row[k] * grad_values_row[k];
@@ -313,16 +311,16 @@ struct SparseCooSoftmaxbBackwardFunctor {
           auto j = lower_bound_values[i];
           if (j < grad_nnz && (out_offsets[i] == grad_offsets[j])) {
             auto grad_values_row = grad_values_accessor[j];
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               values_row[k] =
-                  grad_values_row[k] + std::exp(out_values_row[k]) * tmp_row;
+                  grad_values_row[k] + sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] =
                   out_values_row[k] * (grad_values_row[k] + tmp_row);
             }
           } else {
-            if (LogSoftMax) {
-              values_row[k] = std::exp(out_values_row[k]) * tmp_row;
+            if constexpr (LogSoftMax) {
+              values_row[k] = sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] = out_values_row[k] * tmp_row;
             }
@@ -392,28 +390,10 @@ Tensor get_offsets(
       host_strides[i] = host_strides[i + 1] * (i + 1 == dim ? 1 : sizes[i + 1]);
     }
   }
-  // auto strides = host_strides;
-  auto strides = at::empty({ndim}, indices.options());
-  // auto strides_ptr = strides.data_ptr<int64_t>();
-
-  // syclMemcpyAsync(
-  //     strides_ptr,
-  //     host_strides.data(),
-  //     host_strides.size() * sizeof(int64_t),
-  //     HostToDevice);
-
-  for (int kk = 0; kk < ndim; kk++) {
-    strides[kk] = host_strides[kk];
-  }
-
-  // auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
   Tensor offsets = at::ones({nnz}, indices.options());
-
-  for (int i = 0; i < nnz; i++) {
-    for (int64_t j = 0; j < ndim; j++) {
-      if (j != dim) {
-        offsets[i] += (strides[j] * indices[j][i]);
-      }
+  for (int64_t j = 0; j < ndim; j++) {
+    if (j != dim) {
+      offsets.add_(indices[j], host_strides[j]);
     }
   }
   return offsets;
@@ -438,8 +418,9 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
 
   auto offsets = get_offsets(indices, sizes, dim);
   int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
-  auto offsets_sort = get_offsets(indices, sizes, dim);
-  int64_t* offsets_sort_ptr = offsets_sort.data_ptr<int64_t>();
+  // Same values as offsets, but pstl::sort permutes it in place below.
+  auto offsets_sort = offsets.clone();
+  int64_t* offsets_sort_ptr = offsets_sort.mutable_data_ptr<int64_t>();
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
@@ -448,16 +429,16 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
   SortFunctor<int64_t> sfn;
   pstl::sort<int64_t, int64_t>(offsets_sort_ptr, sorted_indices_ptr, nnz, sfn);
 
-  auto pool_sizes = at::ones({nnz}, indices.options());
+  auto pool_sizes = at::empty({nnz}, indices.options());
   auto constant_it = at::ones({nnz}, indices.options());
-  auto discard_it = at::zeros({nnz}, indices.options());
+  auto discard_it = at::empty({nnz}, indices.options());
   // sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
 
   auto new_end = pstl::reduce_by_key<int64_t>(
       sorted_indices_ptr,
       sorted_indices_ptr + nnz,
       constant_it.data_ptr<int64_t>(),
-      discard_it.data_ptr<int64_t>(),
+      discard_it.mutable_data_ptr<int64_t>(),
       pool_sizes.data_ptr<int64_t>(),
       ReducePred<int64_t>(offsets_ptr));
   auto new_sz = std::distance(pool_sizes.data_ptr<int64_t>(), new_end);
@@ -520,7 +501,7 @@ void xpu_sparse_coo_softmax(
   out_indices.copy_(indices);
 
   if (dim >= sparse_dim) {
-    if (LogSoftMax) {
+    if constexpr (LogSoftMax) {
       auto new_values = _log_softmax(values, dim - sparse_dim + 1, false);
       out_values.set_(new_values);
     } else {
@@ -603,7 +584,7 @@ void xpu_sparse_coo_softmax_backward(
   /* when dim >= sparse_dim the dense backward is used */
   if (dim >= sparse_dim) {
     if (at::equal(out_offsets, grad_offsets) == true) {
-      if (LogSoftMax) {
+      if constexpr (LogSoftMax) {
         auto r = at::_log_softmax_backward_data(
             grad_values, out_values, dim - sparse_dim + 1, input_dtype);
         values.set_(r);
@@ -634,7 +615,7 @@ void xpu_sparse_coo_softmax_backward(
         */
         if (j < grad_nnz &&
             out_offsets_accessor[i] == grad_offsets_accessor[j]) {
-          if (LogSoftMax) {
+          if constexpr (LogSoftMax) {
             auto r = at::_log_softmax_backward_data(
                 grad_values[j], out_values[i], dim - sparse_dim, input_dtype);
             values[i].copy_(r);

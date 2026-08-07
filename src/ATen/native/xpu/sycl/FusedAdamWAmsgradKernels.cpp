@@ -9,7 +9,7 @@
  */
 
 #include <ATen/ATen.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/native/ForeachUtils.h>
 
 #include <ATen/native/xpu/sycl/FusedAdamUtils.h>
@@ -46,12 +46,10 @@ void fused_adamw_amsgrad_kernel(
       found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
   const float* lr_ptr = nullptr;
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf,
-      kBFloat16,
+  AT_DISPATCH_V2(
       params[0].scalar_type(),
       "fused_adamw_amsgrad_kernel_xpu",
-      [&]() {
+      AT_WRAP([&]() {
         multi_tensor_apply_for_fused_optimizer<5>(
             tensor_lists,
             state_steps,
@@ -65,7 +63,10 @@ void fused_adamw_amsgrad_kernel(
             maximize,
             grad_scale_ptr,
             found_inf_ptr);
-      });
+      }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 void fused_adamw_amsgrad_kernel(
@@ -91,17 +92,15 @@ void fused_adamw_amsgrad_kernel(
       max_exp_avg_sqs.vec()};
 
   const float* grad_scale_ptr =
-      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+      grad_scale.has_value() ? grad_scale->const_data_ptr<float>() : nullptr;
   const float* found_inf_ptr =
-      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
+      found_inf.has_value() ? found_inf->const_data_ptr<float>() : nullptr;
   const float* lr_ptr = lr.const_data_ptr<float>();
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf,
-      kBFloat16,
+  AT_DISPATCH_V2(
       params[0].scalar_type(),
       "fused_adamw_amsgrad_kernel_xpu",
-      [&]() {
+      AT_WRAP([&]() {
         multi_tensor_apply_for_fused_optimizer<5>(
             tensor_lists,
             state_steps,
@@ -115,7 +114,10 @@ void fused_adamw_amsgrad_kernel(
             maximize,
             grad_scale_ptr,
             found_inf_ptr);
-      });
+      }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 } // namespace at::native::xpu

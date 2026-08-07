@@ -1,4 +1,9 @@
-#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "libcst",
+# ]
+# ///
 
 # Copyright 2020-2026 Intel Corporation
 #

@@ -16,7 +16,6 @@
 #include <ATen/native/ConvUtils.h>
 #include <ATen/native/xpu/sycl/DepthwiseConv3dKernels.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
-#include <comm/SYCLContext.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>

@@ -237,6 +237,52 @@ with XPUPatchForImport(False):
 
             next(iter(loader))
 
+    def _sparse_coo_collate(b):
+        lst = []
+        for x in b:
+            t = x.clone()
+            lst.append(t)
+            # Force sparse tensor invariants checks. check_pinning=True
+            # reproduces gh-153143.
+            torch._validate_sparse_coo_tensor_args(
+                t._indices(),
+                t._values(),
+                t.size(),
+                t.is_coalesced(),
+                check_pinning=False,
+            )
+        return lst
+
+    @parametrize(
+        "context",
+        [ctx for ctx in supported_multiprocessing_contexts if ctx is not None],
+    )
+    def sparse_tensor_multiprocessing(self, device, context):
+        # The 'fork' multiprocessing context doesn't work for XPU so skip it
+        if "xpu" in device and context == "fork":
+            self.skipTest(
+                f"{context} multiprocessing context not supported for {device}"
+            )
+
+        dataset = [torch.randn(5, 5).to_sparse().to(device) for _ in range(10)]
+
+        pin_memory_settings = [False]
+        if device == "cpu" and torch.xpu.is_available():
+            pin_memory_settings.append(True)
+
+        for pin_memory in pin_memory_settings:
+            loader = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=1,
+                num_workers=4,
+                collate_fn=_sparse_coo_collate,
+                pin_memory=pin_memory,
+                multiprocessing_context=context,
+            )
+
+            for i, batch in enumerate(loader):
+                self.assertEqual(batch[0], dataset[i])
+
     def multiple_dataloaders(self):
         for multiprocessing_context in supported_multiprocessing_contexts:
             loader1_it = iter(self._get_data_loader(self.dataset, num_workers=1))
@@ -317,6 +363,9 @@ with XPUPatchForImport(False):
     TestDataLoaderPersistentWorkers.test_shuffle_pin_memory = shuffle_pin_memory
     TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = (
         nested_tensor_multiprocessing
+    )
+    TestDataLoaderDeviceType.test_sparse_tensor_multiprocessing = (
+        sparse_tensor_multiprocessing
     )
 
 

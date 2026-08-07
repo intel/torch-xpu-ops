@@ -9,6 +9,7 @@
  */
 
 #include <ATen/ATen.h>
+#include <ATen/Context.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
@@ -16,6 +17,7 @@
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 
 #include <ATen/native/xpu/sycl/TensorTopKKernel.h>
+#include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 
 namespace at {
 namespace native {
@@ -26,11 +28,10 @@ void topk_out_with_sort(
     int64_t k,
     int64_t dim,
     bool largest,
+    bool stable,
     const Tensor& values,
     const Tensor& indices) {
-  Tensor sorted_values, sorted_indices;
-  std::tie(sorted_values, sorted_indices) =
-      at::sort(self, /* stable= */ false, dim, largest);
+  auto [sorted_values, sorted_indices] = at::sort(self, stable, dim, largest);
   values.copy_(sorted_values.narrow(dim, 0, k));
   indices.copy_(sorted_indices.narrow(dim, 0, k));
 }
@@ -75,34 +76,24 @@ void topk_kernel(
   indices.resize_(out_sizes);
 
   if (k > 256) { // The segmented_group_select_pairs supports k<=256
-    topk_out_with_sort(self.contiguous(), k, dim, largest, values, indices);
+    bool stable = at::globalContext().deterministicAlgorithms();
+    topk_out_with_sort(
+        self.contiguous(), k, dim, largest, stable, values, indices);
     return;
   }
 
-  Tensor self_;
   bool need_infer_dim = dim != ndim - 1;
-  if (!need_infer_dim) {
-    self_ = self.contiguous();
-  } else {
-    self_ = self.transpose(ndim - 1, dim).contiguous();
+  if (need_infer_dim) {
     std::swap(out_sizes[ndim - 1], out_sizes[dim]);
   }
+  Tensor self_ = need_infer_dim ? self.transpose(ndim - 1, dim).contiguous()
+                                : self.contiguous();
 
-  Tensor values_, indices_;
-  bool newvalues = false;
-  bool newindices = false;
-  if (!need_infer_dim && values.is_contiguous()) {
-    values_ = values;
-  } else {
-    values_ = at::empty(out_sizes, values.options());
-    newvalues = true;
-  }
-  if (!need_infer_dim && indices.is_contiguous()) {
-    indices_ = indices;
-  } else {
-    indices_ = at::empty(out_sizes, indices.options());
-    newindices = true;
-  }
+  bool newvalues = need_infer_dim || !values.is_contiguous();
+  bool newindices = need_infer_dim || !indices.is_contiguous();
+  Tensor values_ = newvalues ? at::empty(out_sizes, values.options()) : values;
+  Tensor indices_ =
+      newindices ? at::empty(out_sizes, indices.options()) : indices;
 
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
@@ -110,20 +101,28 @@ void topk_kernel(
       self_.scalar_type(),
       "topk_xpu",
       [&]() {
-        scalar_t* self_ptr = self_.data_ptr<scalar_t>();
+        const scalar_t* self_ptr = self_.const_data_ptr<scalar_t>();
         scalar_t* values_ptr = values_.data_ptr<scalar_t>();
         int64_t* indices_ptr = indices_.data_ptr<int64_t>();
-        segmented_group_select_pairs<scalar_t, int64_t>(
-            self_ptr,
-            (scalar_t*)values_ptr,
-            nullptr,
-            (int64_t*)indices_ptr,
-            nsegments,
-            nelements,
-            k,
-            largest);
 
-        if (sorted) {
+        SbtopkResult sbtopk_result = sbtopk_try_launch(
+            self_, nsegments, nelements, k, largest, values_, indices_);
+        if (sbtopk_result == SbtopkResult::FAILED) {
+          segmented_group_select_pairs<scalar_t, int64_t>(
+              self_ptr,
+              values_ptr,
+              nullptr,
+              (int64_t*)indices_ptr,
+              nsegments,
+              nelements,
+              k,
+              largest);
+        }
+
+        // Only sort if the user asked for sorted output AND the optimized
+        // kernel did not already produce a sorted result. The subgroup topk
+        // kernel returns SORTED; the original kernel returns FAILED.
+        if (sorted && sbtopk_result != SbtopkResult::SORTED) {
           segmented_sort_pairs<scalar_t, int64_t>(
               values_ptr,
               values_ptr,

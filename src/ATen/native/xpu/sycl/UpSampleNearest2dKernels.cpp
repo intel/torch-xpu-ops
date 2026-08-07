@@ -493,13 +493,14 @@ void upsample_nearest2d_frame(
 template <typename scalar_t, typename index_op_t>
 struct UpsampleNearest2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    const int index = item.get_global_linear_id();
+    size_t index = item.get_global_linear_id();
+    const size_t stride = item.get_global_range(0);
 
-    if (index < out_numel_) {
-      const int c = index % channels_;
-      const int w2 = (index / channels_) % width2_;
-      const int h2 = (index / channels_ / width2_) % height2_;
-      const int n = index / channels_ / width2_ / height2_;
+    for (; index < out_numel_; index += stride) {
+      const size_t c = index % channels_;
+      const size_t w2 = (index / channels_) % width2_;
+      const size_t h2 = (index / channels_ / width2_) % height2_;
+      const size_t n = index / channels_ / width2_ / height2_;
 
       const size_t h1 =
           height1_ == height2_ ? h2 : index_op_(height_scale_, h2, height1_);
@@ -566,6 +567,9 @@ void upsample_nearest2d_channels_last_frame(
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t global_range =
       (out_numel + work_group_size - 1) / work_group_size * work_group_size;
+  int64_t max_groups = syclMaxWorkItemsPerTile() / work_group_size;
+  max_groups = std::max<int64_t>(1, max_groups);
+  global_range = std::min<int64_t>(global_range, max_groups * work_group_size);
 
   auto kfn = UpsampleNearest2dChannelsLastKernelFunctor<scalar_t, index_op_t>(
       idata,

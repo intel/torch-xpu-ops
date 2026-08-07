@@ -76,7 +76,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  typedef NormBackward<scalar_t, mean_t, weight_t> NB;
+  using NB = NormBackward<scalar_t, mean_t, weight_t>;
 
   template <
       int vec_size,
@@ -222,9 +222,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item_id, val, welford_op, shared_);
 
     if (item_id.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       if constexpr (!rms_norm) {
         mean_[i] = m1;
         rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
@@ -360,7 +358,7 @@ WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
     U delta = val - curr_sum.mean;
     U new_count = curr_sum.count + 1.f;
     // proper division is slow, this is less accurate but noticeably faster
-    U new_mean = curr_sum.mean + delta * (1.f / new_count);
+    U new_mean = curr_sum.mean + delta * sycl::native::recip(new_count);
     return {
         static_cast<float>(new_mean),
         static_cast<float>(curr_sum.sigma2 + delta * (val - new_mean)),
@@ -380,9 +378,7 @@ WelfordDataLN WelfordCombine(
     U count = dataA.count + dataB.count;
     U mean, sigma2;
     if (count > decltype(dataB.count){0}) {
-      // NB we don't use --use_fast_math, but this is emulation, 1./count goes
-      // to intrinsic, `* coef` is multiplication, instead of slow fp division
-      auto coef = 1.f / count;
+      auto coef = sycl::native::recip(count);
       auto nA = dataA.count * coef;
       auto nB = dataB.count * coef;
       mean = nA * dataA.mean + nB * dataB.mean;
@@ -587,16 +583,38 @@ struct VectorizedLayerNormKernelFunctor
   T_ACC* mean_;
   T_ACC* rstd_;
   T* Y_;
-  int64_t sg_size_;
   int64_t wg_size_;
   sycl_local_acc_t<T_ACC> buf_;
 };
 
-int64_t layer_norm_wg_size_select(int64_t max_wg_size, int n) {
-  while (max_wg_size > n && max_wg_size > SIMD) {
-    max_wg_size >>= 1;
+int64_t layer_norm_wg_size_select(
+    const int64_t max_wg_size,
+    const int64_t M,
+    const int n) {
+  if (n > max_wg_size)
+    return max_wg_size;
+
+  int64_t wg_size = max_wg_size;
+  while (wg_size > n && wg_size > SIMD) {
+    wg_size >>= 1;
   }
-  return max_wg_size;
+
+  // To reduce the barrier overhead during tree-reduce
+  // with 4 subgroups per workgroup
+  constexpr int64_t threads_per_wg = 4;
+  constexpr int64_t preferred_wg_size = SIMD * threads_per_wg;
+
+  // keep wg_size when n is not large enough to utilize preferred_wg_size
+  if (wg_size <= preferred_wg_size)
+    return wg_size;
+
+  // (XeCore count * EUs per XeCore) * HW threads per EU
+  int64_t total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  // Only use preferred_wg_size when less than 50% HW threads would be left idle
+  if (M * threads_per_wg > total_hw_threads / 2)
+    return preferred_wg_size;
+
+  return wg_size;
 }
 
 template <typename T, typename T_ACC, bool rms_norm>
@@ -612,7 +630,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC, rms_norm>;
   auto wg_size = layer_norm_wg_size_select(
-      syclMaxWorkGroupSize<KernelClass>(), N / vec_size);
+      syclMaxWorkGroupSize<KernelClass>(), M, N / vec_size);
   KernelClass kfn(
       N,
       eps,
@@ -644,7 +662,10 @@ void layer_norm_kernel_impl(
   const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
   const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
   T* Y_data = Y->data_ptr<T>();
-  T_ACC* mean_data = !rms_norm ? mean->data_ptr<T_ACC>() : nullptr;
+  T_ACC* mean_data = nullptr;
+  if constexpr (!rms_norm) {
+    mean_data = mean->data_ptr<T_ACC>();
+  }
   T_ACC* rstd_data = rstd->data_ptr<T_ACC>();
 
   constexpr int num_vec_elems = vec_size;
@@ -1291,7 +1312,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1377,7 +1400,9 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else {
       return;
     }
@@ -1483,8 +1508,18 @@ void rms_norm_backward_kernel(
       "rms_norm_backward_xpu",
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        Tensor unused_dbeta;
         layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
-            dY.contiguous(), X, rstd, rstd, gamma, M, N, dX, dgamma, dgamma);
+            dY.contiguous(),
+            X,
+            rstd,
+            rstd,
+            gamma,
+            M,
+            N,
+            dX,
+            dgamma,
+            &unused_dbeta);
       });
 }
 
