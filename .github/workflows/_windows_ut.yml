@@ -179,8 +179,10 @@ jobs:
               cd ../..
             )
           ) else (
-            for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
-            python -m pip install "%TORCH_WHL%"
+            REM Install in the loop body: %TORCH_WHL% would expand when cmd
+            REM parses this block, before the for has assigned it.
+            for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do python -m pip install "%%f"
+            python -c "import torch" || exit /b 1
           )
           cd %GITHUB_WORKSPACE%\..\pytorch
           python -m pip install -r .ci\docker\requirements-ci.txt

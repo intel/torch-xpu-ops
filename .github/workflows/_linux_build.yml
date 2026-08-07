@@ -99,6 +99,9 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: dpclang
+      # NOTE: placement of this step is important as some environment variables it sets
+      # might be overriden or reset by certain actions. For example, PKG_CONFIG_PATH is
+      # overriden by actions/setup-python.
       - name: Setup dpclang
         if: ${{ inputs.category == 'dpclang' }}
         run: |
@@ -109,6 +112,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
           echo "USE_DPCLANG=yes" >> $GITHUB_ENV
+          echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
       - name: Prepare Pytorch Source
         run: |
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
