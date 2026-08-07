@@ -5,7 +5,8 @@ name: OnDemand P0 Scope Tests
 #
 # Test scope:
 #   * UT  : p0 only
-#   * E2E : huggingface, timm_models, torchbench (accuracy + performance)
+#   * E2E : huggingface, timm_models, torchbench (acceptance scope:
+#           training amp_fp16 + inference bfloat16, accuracy + performance)
 #
 # PyTorch source can be a public wheel or the nightly wheel:
 #   * release_wheel  -> https://download.pytorch.org/whl/xpu
@@ -36,6 +37,13 @@ on:
         type: string
         default: '3.10'
         description: "Python version by default is '3.10'"
+      run_ut:
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
+        description: 'Whether to run the p0 UT job.'
 
 permissions: read-all
 
@@ -76,6 +84,7 @@ jobs:
 
   Linux-Ondemand-UT-Tests:
     name: linux-ut
+    if: ${{ inputs.run_ut == 'true' }}
     needs: [pick-runner, Linux-Ondemand-Build]
     secrets: inherit
     permissions: write-all
@@ -98,7 +107,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ needs.pick-runner.outputs.runner_id }}
-      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand' }}
+      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-acceptance' || 'build-acceptance' }}
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
@@ -111,7 +120,7 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand' }}
+      test_type: ${{ endsWith(inputs.pytorch, '_wheel') && 'wheel-acceptance' || 'build-acceptance' }}
       python: ${{ inputs.python }}
 
   Upload-Results:
