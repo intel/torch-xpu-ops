@@ -382,11 +382,14 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     auto op = c10::Dispatcher::singleton().findOp(
         c10::OperatorName("aten::" + base, overload));
     if (op.has_value() && op->hasKernelForDispatchKey(c10::DispatchKey::XPU)) {
-      // Skip fallback to avoid overriding
-      TORCH_WARN_ONCE(
-          "aten::", base, (overload.empty() ? "" : "." + overload),
-          " already has a kernel registered for XPU, skipping fallback. "
-          "Please remove it from the fallback_list in XPUFallback.cpp.");
+      if (DEBUG_XPU_FALLBACK) {
+        TORCH_WARN_ONCE(
+            "aten::",
+            base,
+            (overload.empty() ? "" : "." + overload),
+            " already has a kernel registered for XPU, skipping fallback. "
+            "Please remove it from the fallback_list in XPUFallback.cpp.");
+      }
       continue;
     }
     m.impl(
