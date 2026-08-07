@@ -17,6 +17,7 @@ class TestTask:
     scenario: str
     model: str
     quant: str = ""
+    backend: str = "default"
 
 
 # Valid parameter sets
@@ -28,6 +29,28 @@ VALID_SCENARIOS: set[str] = {"accuracy", "performance"}
 # Per-suite dtype support: pt2e only runs float32/int8; int8 is pt2e-only.
 PT2E_DT: set[str] = {"float32", "int8"}
 INDUCTOR_DT: set[str] = VALID_DT - {"int8"}
+
+# Inductor backend variants. Each maps to the extra CLI flags and/or env vars it
+# contributes to an inductor-suite command; pt2e ignores the backend selection.
+VALID_BACKENDS: set[str] = {
+    "default",
+    "dynamic",
+    "cpp_wrapper",
+    "freezing",
+    "aot_inductor",
+    "inductor_deterministic_perf",
+}
+BACKEND_FLAGS: dict[str, list[str]] = {
+    "default": ["--backend=inductor"],
+    "dynamic": ["--backend=inductor", "--dynamic-shapes", "--dynamic-batch-only"],
+    "cpp_wrapper": ["--backend=inductor"],
+    "freezing": ["--backend=inductor", "--freezing"],
+    "aot_inductor": ["--export-aot-inductor"],
+    "inductor_deterministic_perf": ["--backend=inductor", "--deterministic"],
+}
+BACKEND_ENV: dict[str, dict[str, str]] = {
+    "cpp_wrapper": {"TORCHINDUCTOR_CPP_WRAPPER": "1"},
+}
 
 # GPU memory monitoring settings (mutable at runtime via CLI args)
 gpu_memory_threshold: float = 0.90 if IS_WINDOWS else 0.95

@@ -1,5 +1,6 @@
 """Benchmark orchestrator: single-task execution and multi-worker dispatch."""
 
+import csv
 import os
 import queue
 import shlex
@@ -33,6 +34,52 @@ def _build_cmd_list(cmd: str, cmd_prefix: str) -> tuple[list[str], str]:
     return cmd_list, cmd_str
 
 
+SUMMARY_FILES = {
+    "accuracy": "summary_accuracy.csv",
+    "performance": "summary_performance.csv",
+}
+
+
+def _write_scenario_summaries(base_log_dir: Path) -> None:
+    """Aggregate all per-task result CSVs into one summary per scenario.
+
+    Rows are grouped by their ``scenario`` column into ``summary_accuracy.csv``
+    and ``summary_performance.csv`` under *base_log_dir*; each summary's header is
+    the union of columns seen across the suites contributing to that scenario.
+    """
+    summary_paths = {sc: base_log_dir / name for sc, name in SUMMARY_FILES.items()}
+    summary_names = {p.name for p in summary_paths.values()}
+    grouped: dict[str, list[dict]] = {sc: [] for sc in SUMMARY_FILES}
+    fieldnames: dict[str, list[str]] = {sc: [] for sc in SUMMARY_FILES}
+
+    for csv_file in sorted(base_log_dir.rglob("*.csv")):
+        if csv_file.name in summary_names:
+            continue
+        try:
+            with open(csv_file, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    scenario = row.get("scenario", "")
+                    if scenario not in grouped:
+                        continue
+                    for col in reader.fieldnames or []:
+                        if col not in fieldnames[scenario]:
+                            fieldnames[scenario].append(col)
+                    grouped[scenario].append(row)
+        except Exception as e:
+            log(f"Error reading {csv_file} for summary: {e}", level="WARN")
+
+    for scenario, rows in grouped.items():
+        if not rows:
+            continue
+        out_path = summary_paths[scenario]
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames[scenario], restval="")
+            writer.writeheader()
+            writer.writerows(rows)
+        log(f"Wrote {scenario} summary: {out_path} ({len(rows)} rows)")
+
+
 def run_single(
     task: TestTask,
     card: int,
@@ -41,10 +88,11 @@ def run_single(
     log_dir: Path,
     worker_id: int,
     device: str,
-    shape: str,
+    backend: str,
     dataset_dir: str = "",
 ) -> tuple[int, bool, str, str | None]:
     """Run a single benchmark and return (exit_code, success, test_result, kill_reason)."""
+    task.backend = backend
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
     log_csv = log_dir / f"inductor-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
@@ -56,13 +104,14 @@ def run_single(
         os.close(tmp_fd)
 
     suite.prepare(task)
-    cmd = suite.build_command(task, device, shape, dataset_dir, tmp_log_csv)
+    cmd = suite.build_command(task, device, backend, dataset_dir, tmp_log_csv)
     full_cmd_list, full_cmd_str = _build_cmd_list(cmd, cmd_prefix)
     log(f"Running: {full_cmd_str[:200]}...", worker=worker_id)
 
     env = {**os.environ, **env_vars}
     if device != "cpu":
         env["ZE_AFFINITY_MASK"] = str(card)
+    env.update(config.BACKEND_ENV.get(backend, {}))
     env.update(suite.env_overrides(task))
 
     # Shared state for threads
@@ -192,7 +241,7 @@ def run_all(
     tasks: list[TestTask],
     workers: list[tuple[int, str, dict]],
     device: str,
-    shape: str,
+    backend: str = "default",
     dataset_dir: str = "",
 ) -> None:
     """Dispatch tasks across workers and print a summary."""
@@ -231,8 +280,8 @@ def run_all(
             try:
                 exit_code, success, test_result, kill_reason = run_single(
                     task=task, card=card, cmd_prefix=cmd_prefix, env_vars=env_vars,
-                    log_dir=log_dir, worker_id=worker_id, device=device, shape=shape,
-                    dataset_dir=dataset_dir,
+                    log_dir=log_dir, worker_id=worker_id, device=device,
+                    backend=backend, dataset_dir=dataset_dir,
                 )
             except Exception as e:
                 log(f"Exception running {task.model}: {e}", level="ERROR", worker=worker_id)
@@ -283,6 +332,8 @@ def run_all(
             break
         for t in pending:
             t.join(timeout=0.5)
+
+    _write_scenario_summaries(base_log_dir)
 
     # Summary
     from .log import banner

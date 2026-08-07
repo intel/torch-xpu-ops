@@ -119,13 +119,14 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
                 output_format = len(fields) >= 8
 
             if output_format:
-                # Output CSV: dev, elapsed, suite, dtype, mode, name, scenario, batch_size, ...
+                # Output CSV: dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, ...
                 if len(fields) < 8:
                     log(f"Skipping line {lineno}: expected 8+ fields, got {len(fields)}: {line!r}", level="WARN")
                     continue
                 suite, dt, mode, model, scenario = fields[2], fields[3], fields[4], fields[5], fields[6]
-                quant = fields[9] if len(fields) >= 10 else ""
-                tasks.append(TestTask(suite, dt, mode, scenario, model, quant))
+                backend = fields[1] if len(fields) >= 2 else "default"
+                quant = fields[10] if len(fields) >= 11 else ""
+                tasks.append(TestTask(suite, dt, mode, scenario, model, quant, backend))
             else:
                 # Legacy: suite, dtype, mode, model, result
                 if len(fields) < 5:
@@ -139,7 +140,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
     seen: set[tuple] = set()
     unique: list[TestTask] = []
     for t in tasks:
-        key = (t.suite, t.dt, t.mode, t.scenario, t.model, t.quant)
+        key = (t.suite, t.dt, t.mode, t.scenario, t.model, t.quant, t.backend)
         if key not in seen:
             seen.add(key)
             unique.append(t)

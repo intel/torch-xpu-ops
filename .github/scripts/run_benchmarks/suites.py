@@ -16,17 +16,17 @@ from pathlib import Path
 
 from packaging import version
 
-from .config import TestTask, csv_lock
+from .config import BACKEND_FLAGS, TestTask, csv_lock
 from .log import log
 from .tasks import get_torch_version
 
 # Common leading columns shared by every result CSV.
-CSV_PREFIX = ["dev", "elapsed", "suite", "dtype", "mode", "name", "scenario", "batch_size"]
+CSV_PREFIX = ["dev", "backend", "suite", "dtype", "mode", "name", "scenario", "batch_size", "elapsed"]
 
 
 def _prefix_row(device: str, task: TestTask, batch_size: str = "0", elapsed: float = 0.0) -> list[str]:
     """Build the leading CSV cells common to every suite."""
-    return [device, f"{elapsed:.3f}", task.suite, task.dt, task.mode, task.model, task.scenario, batch_size]
+    return [device, task.backend, task.suite, task.dt, task.mode, task.model, task.scenario, batch_size, f"{elapsed:.3f}"]
 
 
 def _append_row(log_csv: Path, header: list[str], row: list[str]) -> None:
@@ -56,7 +56,7 @@ class BenchmarkSuite(ABC):
 
     @abstractmethod
     def build_command(
-        self, task: TestTask, device: str, shape: str,
+        self, task: TestTask, device: str, backend: str,
         dataset_dir: str, output_csv: str | None,
     ) -> str:
         """Return the shell command that runs *task*."""
@@ -75,7 +75,7 @@ class InductorSuite(BenchmarkSuite):
 
     uses_temp_csv = True
 
-    def build_command(self, task, device, shape, dataset_dir, output_csv):
+    def build_command(self, task, device, backend, dataset_dir, output_csv):
         torch_ver = get_torch_version()
         if task.mode == "training":
             mode_flag = "--training"
@@ -89,7 +89,8 @@ class InductorSuite(BenchmarkSuite):
                   "amp_fp16": ("amp", "--amp-dtype float16")}
         real_dt, dt_extra = dt_map.get(task.dt, (task.dt, ""))
 
-        shape_flags = "--dynamic-shapes --dynamic-batch-only" if shape == "dynamic" else ""
+        # Dynamic shapes are selected via the "dynamic" backend, not a separate flag.
+        backend_flags = BACKEND_FLAGS.get(backend, ["--backend=inductor"])
 
         parts = [
             f"python benchmarks/dynamo/{task.suite}.py",
@@ -98,9 +99,8 @@ class InductorSuite(BenchmarkSuite):
             f"--{real_dt}",
             dt_extra,
             mode_flag,
-            shape_flags,
             f"--only {task.model}" if task.model else "",
-            "--backend=inductor",
+            " ".join(backend_flags),
             "--cold-start-latency",
             "-n10",
             "--timeout=10800",
@@ -182,7 +182,7 @@ class PT2ESuite(BenchmarkSuite):
     def env_overrides(self, task):
         return {"XPU_QUANT_CONFIG": task.quant.upper()} if task.quant else {}
 
-    def build_command(self, task, device, shape, dataset_dir, output_csv):
+    def build_command(self, task, device, backend, dataset_dir, output_csv):
         if task.scenario == "accuracy":
             parts = [
                 "python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py",

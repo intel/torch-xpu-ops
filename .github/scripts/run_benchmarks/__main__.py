@@ -49,7 +49,9 @@ def main() -> None:
     parser.add_argument("--model-only", default=None,
                         help="Run only specific model(s) (overrides list file).")
     parser.add_argument("--device", default="xpu", help="Device type (xpu, cuda, or cpu)")
-    parser.add_argument("--shape", default="static", help="Shape mode (static or dynamic)")
+    parser.add_argument("--backend", default="default", choices=sorted(config.VALID_BACKENDS),
+                        help="Inductor backend variant (default, dynamic, cpp_wrapper, freezing, "
+                             "aot_inductor, inductor_deterministic_perf). Applies to inductor suites only.")
     parser.add_argument("--task-file", default=None,
                         help="Load tasks from a delimited file. Overrides --suite/--dt/--mode/--scenario/--model-only.")
     parser.add_argument("--cores-per-instance", type=int, default=None,
@@ -120,7 +122,7 @@ def main() -> None:
     log(f"Modes:      {', '.join(modes)}")
     log(f"Scenarios:  {', '.join(scenarios)}")
     log(f"Device:     {args.device}")
-    log(f"Shape:      {args.shape}")
+    log(f"Backend:    {args.backend}")
     if args.cores_per_instance:
         log(f"Cores/inst: {args.cores_per_instance}")
     log(f"Tasks:      {len(tasks)}")
@@ -141,7 +143,7 @@ def main() -> None:
         log(f"Auto-generated {len(workers)} GPU worker(s)")
 
     banner("Running Benchmarks")
-    run_all(tasks, workers, args.device, args.shape, args.dataset_dir)
+    run_all(tasks, workers, args.device, args.backend, args.dataset_dir)
 
 
 if __name__ == "__main__":
