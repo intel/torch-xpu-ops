@@ -17,6 +17,11 @@ template:
     nodeSelector:
       kubernetes.io/hostname: skx3725
     securityContext:
+      # Run the pod as the host cache owner so no in-container root drop is needed.
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
       seccompProfile:
         type: RuntimeDefault
     containers:
