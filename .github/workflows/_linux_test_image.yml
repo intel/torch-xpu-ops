@@ -24,11 +24,11 @@ on:
         type: choice
         required: true
         default: '24.04'
-        description: 'Ubuntu version, 22.04 or 24.04'
+        description: 'Ubuntu version, 22.04, 24.04 or 26.04'
         options:
           - '22.04'
           - '24.04'
-          - '25.04'
+          - '26.04'
       gcc:
         type: choice
         required: true
