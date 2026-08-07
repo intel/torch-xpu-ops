@@ -115,6 +115,36 @@ class TestTorchMethod(TestCase):
         )
         self.assertEqual(res_cpu, res_xpu.cpu())
 
+    def test_cat_contiguous_vectorized_copy(self):
+        # A trailing extent of 8 BF16 values makes every concat slice 16-byte
+        # aligned, which is what the vectorized copy needs.
+        shapes = ((2, 3, 1139, 8), (2, 3, 1, 8), (2, 3, 3, 8))
+        inputs_cpu = [
+            torch.randn(shape, dtype=torch.float32).to(torch.bfloat16)
+            for shape in shapes
+        ]
+
+        expected = torch.cat(inputs_cpu, dim=2)
+        actual = torch.cat([tensor.xpu() for tensor in inputs_cpu], dim=2)
+
+        self.assertEqual(expected, actual.cpu())
+
+    def test_cat_contiguous_vectorized_copy_multi_batch(self):
+        # More inputs than fit in one launch, so the copy is split into several
+        # batches. Only the last input is misaligned, which must disable the
+        # wide store for every batch: an earlier batch that vectorized on its
+        # own would compute wrong offsets once the row pitch narrows.
+        shapes = [(4, 8)] * 2048 + [(4, 4)]
+        inputs_cpu = [
+            torch.randn(shape, dtype=torch.float32).to(torch.bfloat16)
+            for shape in shapes
+        ]
+
+        expected = torch.cat(inputs_cpu, dim=1)
+        actual = torch.cat([tensor.xpu() for tensor in inputs_cpu], dim=1)
+
+        self.assertEqual(expected, actual.cpu())
+
     def test_cat_array_2(self, dtype=torch.float):
         shapes = [
             (8, 7, 3, 2),
