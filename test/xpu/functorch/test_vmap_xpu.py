@@ -4410,7 +4410,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                         sample.kwargs["memory_format"] == torch.channels_last
                     ),
                 ),
-                xfail("native_group_norm"),
             }
         ),
     )
@@ -4574,7 +4573,6 @@ class TestVmapOperatorsOpInfo(TestCase):
                 skip("_softmax_backward_data"),
                 # One or more of the overload doesn't have a Batch rule.
                 xfail("bincount"),
-                xfail("native_group_norm"),
             }
         ),
     )
