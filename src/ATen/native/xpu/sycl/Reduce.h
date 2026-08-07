@@ -18,6 +18,7 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/WorkGroupUtils.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
 #include <comm/DeviceProperties.h>
@@ -85,7 +86,7 @@ template <
     int out_vec_sz = 1>
 inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     item_t item,
-    int wg_size,
+    [[maybe_unused]] int wg_size,
     sycl_local_ptr<void> shared,
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine,
@@ -93,15 +94,12 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
   sycl_local_ptr<vec_t> shared_(shared);
   int l_x = item.get_local_linear_id();
-  // int dim_x = wg_size;
   auto sg = item.get_sub_group();
   int sg_size = sg.get_local_range()[0];
   int sg_lid = sg.get_local_linear_id();
   int sg_gid = sg.get_group_linear_id();
   int sg_range = sg.get_group_range()[0];
-  // group reduce requests workgroup size is multiple of subgroup size
-  SYCL_KERNEL_ASSERT(
-      wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
+  // Workgroup geometry is aligned by launch configs before calling here.
 
   // tree reduce in subgroup
   subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
@@ -315,6 +313,11 @@ struct ReduceConfig {
       group_height = std::min(group_height, max_num_items / group_width);
       num_items = group_width * group_height;
     }
+
+    group_height =
+        static_cast<int>(detail::align_workgroup_2d_to_subgroup_multiple(
+            group_width, group_height, syclMaxSubGroupSize(), max_num_items));
+    num_items = group_width * group_height;
   }
 
   int split_input(int parallelism) {
@@ -607,7 +610,7 @@ struct ReduceOp {
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
 
-    auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
     };
 
@@ -1033,7 +1036,7 @@ struct ReduceOp {
         }
       }
 
-      auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
         return ops.combine(value, other);
       };
 

@@ -14,6 +14,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/WorkGroupUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
@@ -350,9 +351,12 @@ class LoopScanConfig {
       wg_range_x_ = wg_range_x_ >> 1;
     }
     wg_range_y_ = wg_size / wg_range_x_;
+
+    wg_range_y_ = detail::align_workgroup_2d_to_subgroup_multiple(
+        wg_range_x_, wg_range_y_, syclMaxSubGroupSize(), wg_size);
+    const auto total_wg_size = wg_range_x_ * wg_range_y_;
     const auto target_global_size = syclMaxWorkItemsPerTile();
-    ;
-    const size_t max_work_group_num = target_global_size / wg_size;
+    const size_t max_work_group_num = target_global_size / total_wg_size;
     const size_t wg_number =
         std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
     glb_range_x_ = wg_range_x_;
