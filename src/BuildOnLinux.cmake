@@ -40,7 +40,16 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+
+    # Sleep.cpp provides at::xpu::sleep, used by libtorch_python but not by any
+    # operator in libtorch_xpu. Since no symbol is referenced within
+    # libtorch_xpu, --as-needed drops it, leaving at::xpu::sleep unresolved at
+    # load time. Force-keep it as a NEEDED dependency.
+    if(name STREQUAL "Sleep")
+      target_link_libraries(torch_xpu_ops PUBLIC "-Wl,--no-as-needed" ${sycl_lib} "-Wl,--as-needed")
+    else()
+      target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    endif()
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.

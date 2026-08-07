@@ -13,16 +13,18 @@
 # Owner(s): ["module: intel"]
 # ruff: noqa: F401
 
+import os
+
 import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUImportCtx
+    from xpu_test_utils import ensure_pytorch_test_path, XPUImportCtx
 except Exception:
-    from .xpu_test_utils import XPUImportCtx
+    from .xpu_test_utils import ensure_pytorch_test_path, XPUImportCtx
 
-with XPUImportCtx(False):
+with XPUImportCtx(False) as patcher:
     from test_utils import (
         TestAssert,
         TestCheckpoint,
@@ -41,6 +43,9 @@ with XPUImportCtx(False):
         TestTryImport,
     )
 
+# Keep upstream test directory importable for Windows spawn workers.
+test_dir = os.path.abspath(patcher.test_package[0])
+ensure_pytorch_test_path(test_dir)
 
 # --- TestTraceback overrides ---
 

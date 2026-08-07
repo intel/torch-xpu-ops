@@ -679,9 +679,10 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
                lb_target_stride_ * (s * 2 + 1)] +
           nll - lp));
       atomicAdd(
-          &gradient_data_
-              [gr_batch_offset + t * gr_input_stride_ +
-               gr_char_stride_ * target],
+          sycl_global_ptr<scalar_t>(
+              &gradient_data_
+                  [gr_batch_offset + t * gr_input_stride_ +
+                   gr_char_stride_ * target]),
           -exp_val * gr);
     }
   }

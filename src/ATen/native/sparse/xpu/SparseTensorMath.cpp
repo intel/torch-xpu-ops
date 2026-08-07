@@ -366,13 +366,13 @@ Tensor& _sspaddmm_out_xpu(
   // Validate input types and dimensions
   TORCH_CHECK(
       self.layout() == kSparse,
-      "sspaddmm: expected 'self' to have sparse layout");
+      "sspaddmm: expected 'self' to have sparse layout", self.layout());
   TORCH_CHECK(
       mat1.layout() == kSparse,
-      "sspaddmm: expected 'mat1' to have sparse layout");
+      "sspaddmm: expected 'mat1' to have sparse layout", mat1.layout());
   TORCH_CHECK(
       mat2.layout() == kStrided,
-      "sspaddmm: expected 'mat2' to have strided layout");
+      "sspaddmm: expected 'mat2' to have strided layout", mat2.layout());
 
   TORCH_CHECK(
       self.sparse_dim() == 2,
