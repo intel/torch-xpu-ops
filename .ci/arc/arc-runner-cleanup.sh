@@ -29,7 +29,7 @@ detect_owner() {
 
 owner=$(detect_owner)
 case "${owner}" in
-    *[!0-9:]* | *:*:* | :* | *:)
+    *[!0-9:]* | *:*:* | :* | *: | 0:* | *:0)
         echo "Invalid ARC runner cache owner: ${owner}" >&2
         exit 1
         ;;

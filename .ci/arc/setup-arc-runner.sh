@@ -63,70 +63,94 @@ EXTRA_LABELS=""
 GITHUB_TOKEN=""
 SKIP_K8S_INSTALL="false"
 
+require_value() {
+    if [[ $# -lt 2 ]]; then
+        echo "Missing value for option: $1" >&2
+        usage >&2
+        exit 2
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --github-token)
-            GITHUB_TOKEN=${2:-}
+            require_value "$@"
+            GITHUB_TOKEN=$2
             shift 2
             ;;
         --repo-url)
-            REPO_URL=${2:-}
+            require_value "$@"
+            REPO_URL=$2
             shift 2
             ;;
         --node-name)
-            NODE_NAME=${2:-}
+            require_value "$@"
+            NODE_NAME=$2
             shift 2
             ;;
         --max-runners)
-            MAX_RUNNERS=${2:-}
+            require_value "$@"
+            MAX_RUNNERS=$2
             shift 2
             ;;
         --min-runners)
-            MIN_RUNNERS=${2:-}
+            require_value "$@"
+            MIN_RUNNERS=$2
             shift 2
             ;;
         --runner-label)
-            RUNNER_LABEL=${2:-}
+            require_value "$@"
+            RUNNER_LABEL=$2
             shift 2
             ;;
         --extra-labels)
-            EXTRA_LABELS=${2:-}
+            require_value "$@"
+            EXTRA_LABELS=$2
             shift 2
             ;;
         --runner-namespace)
-            RUNNER_NAMESPACE=${2:-}
+            require_value "$@"
+            RUNNER_NAMESPACE=$2
             shift 2
             ;;
         --controller-namespace)
-            CONTROLLER_NAMESPACE=${2:-}
+            require_value "$@"
+            CONTROLLER_NAMESPACE=$2
             shift 2
             ;;
         --controller-release)
-            CONTROLLER_RELEASE=${2:-}
+            require_value "$@"
+            CONTROLLER_RELEASE=$2
             shift 2
             ;;
         --runner-release)
-            RUNNER_RELEASE=${2:-}
+            require_value "$@"
+            RUNNER_RELEASE=$2
             shift 2
             ;;
         --image)
-            RUNNER_IMAGE=${2:-}
+            require_value "$@"
+            RUNNER_IMAGE=$2
             shift 2
             ;;
         --runner-cpu)
-            RUNNER_CPU=${2:-}
+            require_value "$@"
+            RUNNER_CPU=$2
             shift 2
             ;;
         --runner-memory)
-            RUNNER_MEMORY=${2:-}
+            require_value "$@"
+            RUNNER_MEMORY=$2
             shift 2
             ;;
         --reserve-cpu)
-            RESERVE_CPU=${2:-}
+            require_value "$@"
+            RESERVE_CPU=$2
             shift 2
             ;;
         --cache-root)
-            CACHE_ROOT=${2:-}
+            require_value "$@"
+            CACHE_ROOT=$2
             shift 2
             ;;
         --skip-k8s-install)
@@ -239,6 +263,9 @@ detect_capacity_defaults() {
         cpu_capacity=$((usable_cpu / RUNNER_CPU))
         total_mem=$(memory_gib)
         runner_mem=$(memory_to_gib "${RUNNER_MEMORY}")
+        if [[ "${runner_mem}" -lt 1 ]]; then
+            runner_mem=1
+        fi
         mem_capacity=$((total_mem / runner_mem))
         computed=${cpu_capacity}
         if [[ "${mem_capacity}" -lt "${computed}" ]]; then
@@ -360,23 +387,30 @@ prepare_cache_dirs() {
     "${SUDO[@]}" mkdir -p \
         "${CACHE_ROOT}/home-cache" \
         "${CACHE_ROOT}/tool-cache"
-        "${SUDO[@]}" chown -R "${host_uid}:${host_gid}" "${CACHE_ROOT}"
+    "${SUDO[@]}" chown -R "${host_uid}:${host_gid}" "${CACHE_ROOT}"
 }
 
 render_values() {
-        local values_file=$1
-        local label labels_yaml
-        labels_yaml=""
+    local values_file=$1
+    local label labels_yaml=""
+    local run_uid run_gid
+    run_uid=$(id -u)
+    run_gid=$(id -g)
+    # Never bake a root-owned runner; fall back to the unprivileged default.
+    if [[ "${run_uid}" == "0" || "${run_gid}" == "0" ]]; then
+        run_uid=1000
+        run_gid=1000
+    fi
 
-        IFS=',' read -ra labels <<<"${EXTRA_LABELS}"
-        for label in "${labels[@]}"; do
+    IFS=',' read -ra labels <<<"${EXTRA_LABELS}"
+    for label in "${labels[@]}"; do
         label=$(printf '%s' "${label}" | xargs)
         if [[ -n "${label}" ]]; then
             labels_yaml+="  - ${label}"$'\n'
         fi
-        done
+    done
 
-        cat >"${values_file}" <<EOF
+    cat >"${values_file}" <<EOF
 githubConfigUrl: ${REPO_URL}
 githubConfigSecret: github-token
 
@@ -387,58 +421,58 @@ minRunners: ${MIN_RUNNERS}
 maxRunners: ${MAX_RUNNERS}
 
 template:
-    spec:
-        automountServiceAccountToken: false
-        nodeSelector:
-            kubernetes.io/hostname: ${NODE_NAME}
+  spec:
+    automountServiceAccountToken: false
+    nodeSelector:
+      kubernetes.io/hostname: ${NODE_NAME}
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: runner
+        image: ${RUNNER_IMAGE}
+        imagePullPolicy: IfNotPresent
+        command:
+          - /usr/local/bin/arc-runner-entrypoint.sh
+        env:
+          - name: ACTIONS_RUNNER_TOOL_CACHE
+            value: /opt/hostedtoolcache
+          - name: ARC_RUNNER_UID
+            value: "${run_uid}"
+          - name: ARC_RUNNER_GID
+            value: "${run_gid}"
         securityContext:
-            seccompProfile:
-                type: RuntimeDefault
-        containers:
-            - name: runner
-                image: ${RUNNER_IMAGE}
-                imagePullPolicy: IfNotPresent
-                command:
-                    - /usr/local/bin/arc-runner-entrypoint.sh
-                env:
-                    - name: ACTIONS_RUNNER_TOOL_CACHE
-                        value: /opt/hostedtoolcache
-                    - name: ARC_RUNNER_UID
-                        value: "$(id -u)"
-                    - name: ARC_RUNNER_GID
-                        value: "$(id -g)"
-                securityContext:
-                    privileged: false
-                    allowPrivilegeEscalation: false
-                    capabilities:
-                        drop:
-                            - ALL
-                        add:
-                            - CHOWN
-                            - FOWNER
-                            - SETGID
-                            - SETUID
-                resources:
-                    requests:
-                        cpu: "${RUNNER_CPU}"
-                        memory: ${RUNNER_MEMORY}
-                    limits:
-                        cpu: "${RUNNER_CPU}"
-                        memory: ${RUNNER_MEMORY}
-                volumeMounts:
-                    - name: runner-home-cache
-                        mountPath: /home/runner/.cache
-                    - name: runner-tool-cache
-                        mountPath: /opt/hostedtoolcache
-        volumes:
-            - name: runner-home-cache
-                hostPath:
-                    path: ${CACHE_ROOT}/home-cache
-                    type: DirectoryOrCreate
-            - name: runner-tool-cache
-                hostPath:
-                    path: ${CACHE_ROOT}/tool-cache
-                    type: DirectoryOrCreate
+          privileged: false
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
+              - FOWNER
+              - SETGID
+              - SETUID
+        resources:
+          requests:
+            cpu: "${RUNNER_CPU}"
+            memory: ${RUNNER_MEMORY}
+          limits:
+            cpu: "${RUNNER_CPU}"
+            memory: ${RUNNER_MEMORY}
+        volumeMounts:
+          - name: runner-home-cache
+            mountPath: /home/runner/.cache
+          - name: runner-tool-cache
+            mountPath: /opt/hostedtoolcache
+    volumes:
+      - name: runner-home-cache
+        hostPath:
+          path: ${CACHE_ROOT}/home-cache
+          type: DirectoryOrCreate
+      - name: runner-tool-cache
+        hostPath:
+          path: ${CACHE_ROOT}/tool-cache
+          type: DirectoryOrCreate
 EOF
 }
 
@@ -488,6 +522,14 @@ install_runner_scale_set() {
     local values_file
     values_file=$(mktemp --suffix=.yaml)
     render_values "${values_file}"
+
+    if command -v python3 >/dev/null 2>&1; then
+        log "Validating rendered runner values file"
+        if ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "${values_file}"; then
+            echo "Rendered values file is not valid YAML: ${values_file}" >&2
+            exit 1
+        fi
+    fi
 
     log "Installing or updating ARC runner scale set"
     helm upgrade --install "${RUNNER_RELEASE}" \

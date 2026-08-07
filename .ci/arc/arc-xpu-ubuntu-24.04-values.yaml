@@ -34,7 +34,8 @@ template:
             value: "1000"
         securityContext:
           privileged: false
-          allowPrivilegeEscalation: false
+          # Runner image ships NOPASSWD sudo; escalation must stay enabled for it to work.
+          allowPrivilegeEscalation: true
           capabilities:
             drop:
               - ALL
