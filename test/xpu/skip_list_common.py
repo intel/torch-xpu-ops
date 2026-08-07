@@ -348,7 +348,7 @@ skip_dict = {
     "test_multiprocessing_xpu.py": None,
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    "test_out_dtype_op_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
     "test_python_dispatch_xpu.py": None,
