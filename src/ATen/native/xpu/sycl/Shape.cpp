@@ -43,6 +43,10 @@ inline bool is_aligned_vec4(const void* ptr) {
   return !(iptr % alignof(uint4));
 }
 
+inline bool is_aligned_to(const void* ptr, int64_t bytes) {
+  return !(reinterpret_cast<uintptr_t>(ptr) % static_cast<uintptr_t>(bytes));
+}
+
 inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
     unsigned int max_elements_per_tensor,
     ptrdiff_t nTensors) {
@@ -337,6 +341,76 @@ struct CatArrayBatchedCopy_alignedK_contig {
   IndexType dimStride;
 };
 
+// Like CatArrayBatchedCopy_alignedK_contig, but vectorizes both loads and
+// stores.
+//
+// When each input slice and the output row pitch are multiples of the vector
+// width, each input vector maps to one contiguous output vector. This allows a
+// single wide store and a simple direct output-offset calculation.
+template <
+    typename T,
+    typename IndexType,
+    int batch_size,
+    int stride_size,
+    int aligned_vec_load_bytes>
+struct CatArrayBatchedCopy_vectorized {
+  void operator()(sycl::nd_item<2> item) const {
+    static_assert(
+        aligned_vec_load_bytes % sizeof(T) == 0,
+        "the vector width must be a whole number of elements");
+    constexpr int kILP = aligned_vec_load_bytes / sizeof(T);
+    using LT = memory::aligned_vector<T, kILP>;
+
+    const IndexType group = item.get_group(0);
+
+    // Exact: the host guarantees whole vectors per slice.
+    const IndexType nVectors = inputs.nElements[group] / kILP;
+    // Empty inputs are legal, and skipping them keeps the division by
+    // inputSliceVectors below well defined (it would be 0).
+    if (nVectors == 0)
+      return;
+
+    IndexType vectorIndex =
+        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+    if (vectorIndex >= nVectors)
+      return;
+
+    const IndexType inputSliceVectors =
+        inputs.dimSize[group] * dimStride / kILP;
+    const IndexType outputSliceVectors = outputDimSize * dimStride / kILP;
+    const IndexType outputOffsetVectors =
+        inputs.offset[group] * dimStride / kILP;
+    const IndexType stride = item.get_group_range(1) * item.get_local_range(1);
+
+    const LT* in = reinterpret_cast<const LT*>(inputs.input[group]);
+    LT* out = reinterpret_cast<LT*>(output);
+
+    while (vectorIndex < nVectors) {
+      const IndexType outerIndex = vectorIndex / inputSliceVectors;
+      const IndexType innerIndex = vectorIndex - outerIndex * inputSliceVectors;
+      out[outerIndex * outputSliceVectors + outputOffsetVectors + innerIndex] =
+          in[vectorIndex];
+      vectorIndex += stride;
+    }
+  }
+
+  CatArrayBatchedCopy_vectorized(
+      T* output,
+      CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
+      IndexType outputDimSize,
+      IndexType dimStride)
+      : output(output),
+        inputs(inputs),
+        outputDimSize(outputDimSize),
+        dimStride(dimStride) {}
+
+ private:
+  T* output;
+  CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs;
+  IndexType outputDimSize;
+  IndexType dimStride;
+};
+
 template <typename scalar_t, int batch_size, int stride_size>
 void parallel_cat(
     const Tensor& out,
@@ -398,12 +472,46 @@ void parallel_cat(
                kAlignedKernelBytes ==
            0);
 
+  // Wide stores must not cross input-slice boundaries. Require every input
+  // slice and the output row pitch to be multiples of the vector width;
+  // prefix-sum offsets are then aligned automatically. Check this across all
+  // inputs because the output row pitch is global, not per batch.
+  const int64_t dimStride = outputParam.tensorStride[mapped_dimension];
+  const int64_t outputSliceBytes =
+      static_cast<int64_t>(outputParam.tensorSize[mapped_dimension]) *
+      dimStride * static_cast<int64_t>(sizeof(scalar_t));
+  auto fitsVector = [&](int64_t bytes) {
+    if (bytes < static_cast<int64_t>(sizeof(scalar_t)) ||
+        !is_aligned_to(data, bytes) || outputSliceBytes % bytes != 0) {
+      return false;
+    }
+    for (unsigned k = 0; k < inputs.size(); ++k) {
+      const int64_t dimSize = inputs[k].get().numel() > 0
+          ? inputs[k].get().size(logical_dimension)
+          : 0;
+      if ((dimSize * dimStride * static_cast<int64_t>(sizeof(scalar_t))) %
+              bytes !=
+          0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  // The strided instantiation cannot address its inputs linearly.
+  const int64_t vectorBytes = stride_size > 1 ? 0
+      : fitsVector(ALIGNED_VEC_LOAD_BYTES_16) ? ALIGNED_VEC_LOAD_BYTES_16
+      : fitsVector(ALIGNED_VEC_LOAD_BYTES_8)  ? ALIGNED_VEC_LOAD_BYTES_8
+                                              : 0;
+
   // Now we loop
   int batchCounter = 0;
   int64_t offset = 0;
   for (unsigned i = 0; i < inputs.size(); i += batch_size) {
     bool isContig = true;
     bool isAligned = true;
+    // OR of the batch's input addresses; one modulo then tests them all.
+    // Unlike the geometry above, alignment may vary from batch to batch.
+    uintptr_t inputAddressBits = 0;
     unsigned int max_elements_per_tensor = 0;
     for (batchCounter = 0;
          batchCounter < batch_size && (i + batchCounter) < inputs.size();
@@ -424,6 +532,8 @@ void parallel_cat(
       // If at least one of the inputs is not aligned, we can't call the
       // CatArrayBatchedCopy_alignedK_contig
       isAligned &= is_aligned_vec4(catMetaData.input[batchCounter]);
+      inputAddressBits |=
+          reinterpret_cast<uintptr_t>(catMetaData.input[batchCounter]);
 
       if (stride_size > 1) {
         auto strides = inputs[i + batchCounter].get().strides();
@@ -463,6 +573,40 @@ void parallel_cat(
     // Skip if the tensor is empty. Otherwise, the range dim is invalid
     if (max_elements_per_tensor == 0)
       continue;
+
+      // Independent of Dims, so dispatched ahead of the HANDLE_CASE switch.
+#define LAUNCH_VECTORIZED(VEC_BYTES)                                       \
+  {                                                                        \
+    sycl::range<2> vecGroup, vecRange;                                     \
+    std::tie(vecRange, vecGroup) = getCatRangeContig<scalar_t, VEC_BYTES>( \
+        max_elements_per_tensor, batchCounter);                            \
+    CatArrayBatchedCopy_vectorized<                                        \
+        scalar_t,                                                          \
+        unsigned int,                                                      \
+        batch_size,                                                        \
+        stride_size,                                                       \
+        VEC_BYTES>                                                         \
+        kfn(data,                                                          \
+            catMetaData,                                                   \
+            outputParam.tensorSize[mapped_dimension],                      \
+            outputParam.tensorStride[mapped_dimension]);                   \
+    auto& q = getCurrentSYCLQueue();                                       \
+    sycl_kernel_submit(vecRange, vecGroup, q, kfn);                        \
+    continue;                                                              \
+  }
+
+    if (isContig && vectorBytes > 0 &&
+        !(inputAddressBits % static_cast<uintptr_t>(vectorBytes))) {
+      if constexpr (ALIGNED_VEC_LOAD_BYTES_16 % sizeof(scalar_t) == 0) {
+        if (vectorBytes == ALIGNED_VEC_LOAD_BYTES_16)
+          LAUNCH_VECTORIZED(ALIGNED_VEC_LOAD_BYTES_16);
+      }
+      if constexpr (ALIGNED_VEC_LOAD_BYTES_8 % sizeof(scalar_t) == 0) {
+        if (vectorBytes == ALIGNED_VEC_LOAD_BYTES_8)
+          LAUNCH_VECTORIZED(ALIGNED_VEC_LOAD_BYTES_8);
+      }
+    }
+#undef LAUNCH_VECTORIZED
 
     sycl::range<2> applyGroup, catRange;
     if (isContig && sizeof(scalar_t) > 2) {
