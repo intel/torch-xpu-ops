@@ -83,17 +83,34 @@ def download_artifacts(repo, run_id, download_dir):
 
 
 def parse_new_failures(download_dir):
-    """Parse new_ut_failure_list.csv files from downloaded artifacts."""
+    """Parse new_ut_failure_list.csv from the New-UT-Failures-* artifact.
+
+    This artifact is the authoritative source for new failures. It is produced
+    by the CI summary job which filters all failures against the known issues
+    list. The file is a pipe-delimited markdown table:
+        | Category | Class name | Test name | Status | Message | Source |
+    """
     failures = []
     for csv_file in Path(download_dir).rglob("new_ut_failure_list.csv"):
         with open(csv_file) as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith("Category"):
+                if not line:
                     continue
-                # CSV format: Category | Class name | Test name | Status | Message | Source
+                # Skip header and separator lines
+                if "---" in line and "|" in line:
+                    continue
+                if not line.startswith("|"):
+                    continue
+                # Pipe-delimited: | Cat | Class | Test | Status | Msg | Source |
+                # Split by | gives ['', ' Cat ', ' Class ', ..., '']
                 parts = [p.strip() for p in line.split("|")]
+                # Remove empty strings from leading/trailing pipes
+                parts = [p for p in parts if p]
                 if len(parts) >= 4:
+                    # Skip header row
+                    if parts[0] == "Category":
+                        continue
                     failures.append(
                         {
                             "category": parts[0],
@@ -277,7 +294,7 @@ def collect_data(repo, pr_number, run_id_arg):
     run(f"rm -rf {download_dir}", check=False)
     has_new_failures = download_artifacts(repo, run_id, download_dir)
 
-    # Parse results
+    # Parse results from the New-UT-Failures artifact (authoritative source)
     failures = parse_new_failures(download_dir) if has_new_failures else []
     passed_tests = parse_passed_tests(download_dir)
 
