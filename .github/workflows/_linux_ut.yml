@@ -56,8 +56,6 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -96,7 +94,6 @@ jobs:
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
     steps:
       - name: Checkout torch-xpu-ops
