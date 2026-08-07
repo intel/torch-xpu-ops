@@ -14,42 +14,30 @@
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-template <typename index_t>
-struct RepeatInterleaveKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto rep_ptr = rep_data_;
-    auto cum_ptr = cum_data_;
-    auto res_ptr = res_data_;
 
-    for (int64_t i = item.get_global_id(0); i < size_;
-         i += item.get_global_range()[0]) {
-      int64_t end = cum_ptr[i];
-      int64_t repeat = rep_ptr[i];
-      int64_t start = end - repeat;
-      for (int64_t j = start; j < end; j++) {
-        res_ptr[j] = i;
-      }
+template <typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void repeat_interleave_kernel_implement(
+    const index_t* rep_data,
+    const int64_t* cum_data,
+    index_t* res_data,
+    int64_t size,
+    int64_t result_size) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto rep_ptr = rep_data;
+  auto cum_ptr = cum_data;
+  auto res_ptr = res_data;
+
+  for (int64_t i = item.get_global_id(0); i < size;
+       i += item.get_global_range()[0]) {
+    int64_t end = cum_ptr[i];
+    int64_t repeat = rep_ptr[i];
+    int64_t start = end - repeat;
+    for (int64_t j = start; j < end; j++) {
+      res_ptr[j] = i;
     }
   }
-  RepeatInterleaveKernelFunctor(
-      const index_t* rep_data,
-      const int64_t* cum_data,
-      index_t* res_data,
-      int64_t size,
-      int64_t result_size)
-      : rep_data_(rep_data),
-        cum_data_(cum_data),
-        res_data_(res_data),
-        size_(size),
-        result_size_(result_size) {}
-
- private:
-  const index_t* rep_data_;
-  const int64_t* cum_data_;
-  index_t* res_data_;
-  int64_t size_;
-  int64_t result_size_;
-};
+}
 
 template <typename index_t>
 static void compute_xpu(
@@ -61,15 +49,24 @@ static void compute_xpu(
   if (size == 0)
     return;
 
-  auto kfn = RepeatInterleaveKernelFunctor<index_t>(
-      repeat_ptr, cumsum_ptr, result_ptr, size, result_size);
+  int64_t wg_size =
+      syclMaxWorkGroupSize<repeat_interleave_kernel_implement<index_t>>();
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
   int64_t local_range = size < wg_size ? size : wg_size;
   int64_t global_range = ((size + local_range - 1) / local_range) * local_range;
 
   auto queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
+
+  sycl_kernel_submit<repeat_interleave_kernel_implement<index_t>>(
+      global_range,
+      local_range,
+      queue,
+      0,
+      repeat_ptr,
+      cumsum_ptr,
+      result_ptr,
+      size,
+      result_size);
 }
 
 Tensor repeat_interleave_kernel(

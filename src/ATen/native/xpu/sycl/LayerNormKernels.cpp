@@ -1312,7 +1312,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1398,7 +1400,9 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else {
       return;
     }
@@ -1504,8 +1508,18 @@ void rms_norm_backward_kernel(
       "rms_norm_backward_xpu",
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        Tensor unused_dbeta;
         layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
-            dY.contiguous(), X, rstd, rstd, gamma, M, N, dX, dgamma, dgamma);
+            dY.contiguous(),
+            X,
+            rstd,
+            rstd,
+            gamma,
+            M,
+            N,
+            dX,
+            dgamma,
+            &unused_dbeta);
       });
 }
 
