@@ -1,0 +1,67 @@
+githubConfigUrl: https://github.com/intel/torch-xpu-ops
+githubConfigSecret: github-token
+
+runnerScaleSetName: xpu-ubuntu-24.04
+# ARC automatically registers runnerScaleSetName as the dedicated runner label.
+# scaleSetLabels adds compatibility labels for jobs that still use GitHub-hosted labels.
+scaleSetLabels:
+  - ubuntu-24.04
+  - ubuntu-latest
+
+minRunners: 0
+maxRunners: 12
+
+template:
+  spec:
+    automountServiceAccountToken: false
+    nodeSelector:
+      kubernetes.io/hostname: skx3725
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: runner
+        image: arc-xpu-runner:ubuntu-24.04-tools
+        imagePullPolicy: IfNotPresent
+        command:
+          - /usr/local/bin/arc-runner-entrypoint.sh
+        env:
+          - name: ACTIONS_RUNNER_TOOL_CACHE
+            value: /opt/hostedtoolcache
+          - name: ARC_RUNNER_UID
+            value: "1000"
+          - name: ARC_RUNNER_GID
+            value: "1000"
+        securityContext:
+          privileged: false
+          # Runner image ships NOPASSWD sudo; escalation must stay enabled for it to work.
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
+              - FOWNER
+              - SETGID
+              - SETUID
+        resources:
+          requests:
+            cpu: "4"
+            memory: 16Gi
+          limits:
+            cpu: "4"
+            memory: 16Gi
+        volumeMounts:
+          - name: runner-home-cache
+            mountPath: /home/runner/.cache
+          - name: runner-tool-cache
+            mountPath: /opt/hostedtoolcache
+    volumes:
+      - name: runner-home-cache
+        hostPath:
+          path: /var/cache/arc/xpu-ubuntu-24.04/home-cache
+          type: DirectoryOrCreate
+      - name: runner-tool-cache
+        hostPath:
+          path: /var/cache/arc/xpu-ubuntu-24.04/tool-cache
+          type: DirectoryOrCreate
