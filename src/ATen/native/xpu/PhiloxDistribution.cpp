@@ -8,10 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// Dispatch layer for stateless Philox distribution operations.
-// Ported from CUDA: aten/src/ATen/native/cuda/PhiloxDistribution.cu
-// See PyTorch PR #177230.
-
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PhiloxDistributionKernels.h>
 
