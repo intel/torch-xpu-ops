@@ -239,7 +239,10 @@ void masked_scale_kernel(
 }
 
 template <typename scalar_t>
-int get_vector_size(at::Tensor self, at::Tensor ret, at::Tensor mask) {
+int get_vector_size(
+    const at::Tensor& self,
+    const at::Tensor& ret,
+    const at::Tensor& mask) {
   constexpr int MAX_VEC_SIZE =
       4; // Philox4x32 engine only support max vectorize size of 4
   int vec_size = MAX_VEC_SIZE;

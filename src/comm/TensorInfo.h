@@ -95,21 +95,16 @@ struct TensorInfo {
 };
 
 template <typename T, typename IndexType>
-TensorInfo<T, IndexType>::TensorInfo() {
-  data = nullptr;
-  dims = 0;
-  is_contiguous = true;
-  is_strict_contiguous = true;
-}
+TensorInfo<T, IndexType>::TensorInfo()
+    : data(nullptr), is_contiguous(true), is_strict_contiguous(true) {}
 
 template <typename T, typename IndexType>
 TensorInfo<T, IndexType>::TensorInfo(
     T* p,
     int dim,
     IndexType sz[XPU_MAX_TENSORINFO_DIMS],
-    IndexType st[XPU_MAX_TENSORINFO_DIMS]) {
-  data = p;
-  dims = dim;
+    IndexType st[XPU_MAX_TENSORINFO_DIMS])
+    : data(p), dims(dim) {
   TORCH_INTERNAL_ASSERT(dims <= XPU_MAX_TENSORINFO_DIMS);
 
   is_contiguous = true;

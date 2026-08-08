@@ -399,7 +399,7 @@ Tensor reduce_sparse_csr_xpu_template(
   TORCH_INTERNAL_ASSERT(input_dim == 2);
   auto dims = dims_to_sum.vec();
   maybe_wrap_dims(dims, input_dim);
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     dims.emplace_back(0);
     dims.emplace_back(1);
   }
