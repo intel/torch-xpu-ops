@@ -290,7 +290,7 @@ static inline OutputIt _scan_kernel(
   }
 
   const auto kssc_wgroup_size = syclMaxWorkGroupSize<KSScanWithCarrierKernel>();
-  auto ngroups = (N + kssc_wgroup_size - 1) / kssc_wgroup_size;
+  const auto ngroups = (N + kssc_wgroup_size - 1) / kssc_wgroup_size;
   Tensor carry = at::empty({ngroups}, options);
   T* carry_ptr = carry.data_ptr<T>();
 
@@ -307,14 +307,11 @@ static inline OutputIt _scan_kernel(
   _scan_kernel<0>(carry_ptr, carry_ptr + ngroups, carry_ptr, (T)0);
 
   // 3. reduce among all work groups and flush data to dst
+  // Same work-group size as step 1: each item finds its carry by group id.
   ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
-
-  const auto sa_wgroup_size = syclMaxWorkGroupSize(kfn3);
-  ngroups = (N + sa_wgroup_size - 1) / sa_wgroup_size;
-
   sycl_kernel_submit(
-      sycl::range<1>(ngroups * sa_wgroup_size),
-      sycl::range<1>(sa_wgroup_size),
+      sycl::range<1>(ngroups * kssc_wgroup_size),
+      sycl::range<1>(kssc_wgroup_size),
       q,
       kfn3);
 
