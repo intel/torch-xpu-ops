@@ -8,23 +8,20 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// SYCL kernels for _philox_uniform_ and _philox_normal_.
-// Ported from CUDA: aten/src/ATen/native/cuda/PhiloxDistribution.cu
-// See PyTorch PR #177230.
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/core/TransformationHelper.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/PhiloxDistributionKernels.h>
-#include <comm/DeviceProperties.h>
+#include <c10/util/SmallVector.h>
 #include <comm/SYCLContext.h>
 
-#include <algorithm>
 #include <type_traits>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -55,48 +52,43 @@ inline uint4 philox_4x32(uint64_t seed, uint64_t offset) {
 
 // --- Box-Muller normal transforms ---
 
-// Box-Muller: 4 uint32 -> 4 standard normal floats
-inline float4 box_muller_float(uint4 r) {
-  constexpr float M = 2.3283064365386963e-10f; // 1/2^32
-  constexpr float TWO_PI = 6.2831853071795864f;
-  float u1 = sycl::fma(static_cast<float>(r.x), M, M * 0.5f);
-  float u2 = sycl::fma(static_cast<float>(r.y), M, M * 0.5f);
-  float u3 = sycl::fma(static_cast<float>(r.z), M, M * 0.5f);
-  float u4 = sycl::fma(static_cast<float>(r.w), M, M * 0.5f);
+template <typename scalar_t>
+inline sycl::vec<scalar_t, elems_per_call<scalar_t>> box_muller(uint4 r) {
+  static_assert(
+      std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>);
+  constexpr int size = elems_per_call<scalar_t>;
+  constexpr scalar_t M = static_cast<scalar_t>(2.3283064365386963e-10);
+  constexpr scalar_t M_SQUARED = M * M;
+  constexpr scalar_t TWO_PI = static_cast<scalar_t>(6.2831853071795864);
+  sycl::vec<scalar_t, size> uniform;
+  if constexpr (std::is_same_v<scalar_t, double>) {
+    for (int i = 0; i < size; i++) {
+      uniform[i] = sycl::fma(
+          static_cast<scalar_t>(r.val[2 * i]),
+          M,
+          static_cast<scalar_t>(r.val[2 * i + 1]) * M_SQUARED +
+              M_SQUARED * static_cast<scalar_t>(0.5));
+    }
+  } else {
+    for (int i = 0; i < size; i++) {
+      uniform[i] = sycl::fma(
+          static_cast<scalar_t>(r.val[i]), M, M * static_cast<scalar_t>(0.5));
+    }
+  }
 
-  float radius1 = sycl::sqrt(-2.0f * sycl::log(u1));
-  float radius2 = sycl::sqrt(-2.0f * sycl::log(u3));
-  float angle1 = TWO_PI * u2;
-  float angle2 = TWO_PI * u4;
-
-  return {
-      radius1 * sycl::cos(angle1),
-      radius1 * sycl::sin(angle1),
-      radius2 * sycl::cos(angle2),
-      radius2 * sycl::sin(angle2)};
+  sycl::vec<scalar_t, size> result;
+  for (int i = 0; i < size; i += 2) {
+    const scalar_t radius =
+        sycl::sqrt(static_cast<scalar_t>(-2.0) * sycl::log(uniform[i]));
+    const scalar_t angle = TWO_PI * uniform[i + 1];
+    result[i] = radius * sycl::cos(angle);
+    result[i + 1] = radius * sycl::sin(angle);
+  }
+  return result;
 }
 
-// Box-Muller: 4 uint32 -> 2 standard normal doubles
-inline double2 box_muller_double(uint4 r) {
-  constexpr double M = 2.3283064365386963e-10; // 1/2^32
-  constexpr double TWO_PI = 6.2831853071795864;
-  double u1 = sycl::fma(
-      static_cast<double>(r.x),
-      M,
-      static_cast<double>(r.y) * M * M + M * M * 0.5);
-  double u2 = sycl::fma(
-      static_cast<double>(r.z),
-      M,
-      static_cast<double>(r.w) * M * M + M * M * 0.5);
-  double radius = sycl::sqrt(-2.0 * sycl::log(u1));
-  double angle = TWO_PI * u2;
-  return {radius * sycl::cos(angle), radius * sycl::sin(angle)};
-}
-
-// --- Single-key kernel ---
-
-template <typename scalar_t, bool is_uniform>
-struct PhiloxSingleKeyFunctor {
+template <typename scalar_t, bool is_uniform, typename key_offset_calc_t>
+struct PhiloxDistributionFunctor {
   // Uniform masks the raw bits against the output dtype's mantissa, so its
   // bounds stay in scalar_t. Normal is transformed in compute precision.
   using param_t = std::conditional_t<
@@ -105,34 +97,39 @@ struct PhiloxSingleKeyFunctor {
       std::conditional_t<std::is_same_v<scalar_t, double>, double, float>>;
 
   void operator()(sycl::nd_item<1> item) const {
-    auto key_vec = memory::ld_vec<16>(key_);
-    auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
-    uint64_t seed = key_vals[0];
-    uint64_t offset = key_vals[1];
-
     constexpr int epc = elems_per_call<scalar_t>;
-    int64_t num_full_chunks = num_elems_ / epc;
-    int64_t num_chunks = (num_elems_ + epc - 1) / epc;
-
-    XPU_KERNEL_LOOP_TYPE(item, chunk, num_chunks, int64_t) {
-      int64_t base = chunk * epc;
-      // The last chunk is partial when num_elems_ is not a multiple of epc.
-      int count =
-          chunk < num_full_chunks ? epc : static_cast<int>(num_elems_ - base);
-      auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
+    XPU_KERNEL_LOOP_TYPE(item, index, total_chunks_, int64_t) {
+      const int64_t key_idx = index / chunks_per_key_;
+      const int64_t chunk = index % chunks_per_key_;
+      const auto key_offset = key_offset_calc_.get(key_idx)[0];
+      const auto key_vec = memory::ld_vec<16>(keys_ + key_offset);
+      const auto* key_vals = reinterpret_cast<const uint64_t*>(&key_vec);
+      const uint64_t seed = key_vals[0];
+      const uint64_t offset = key_vals[1];
+      const int64_t chunk_offset = chunk * epc;
+      const int64_t base = key_idx * elems_per_key_ + chunk_offset;
+      const int64_t remaining = elems_per_key_ - chunk_offset;
+      const int count = static_cast<int>(remaining < epc ? remaining : epc);
+      const auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
       write_values(r, base, count);
     }
   }
 
-  PhiloxSingleKeyFunctor(
+  PhiloxDistributionFunctor(
       scalar_t* output,
-      const uint64_t* key,
-      int64_t num_elems,
+      const uint64_t* keys,
+      int64_t elems_per_key,
+      int64_t chunks_per_key,
+      int64_t total_chunks,
+      key_offset_calc_t key_offset_calc,
       param_t param0,
       param_t param1)
       : output_(output),
-        key_(key),
-        num_elems_(num_elems),
+        keys_(keys),
+        elems_per_key_(elems_per_key),
+        chunks_per_key_(chunks_per_key),
+        total_chunks_(total_chunks),
+        key_offset_calc_(key_offset_calc),
         param0_(param0),
         param1_(param1) {}
 
@@ -147,46 +144,53 @@ struct PhiloxSingleKeyFunctor {
 
   void write_uniform(uint4 r, int64_t base, int count) const {
     if constexpr (std::is_same_v<scalar_t, double>) {
-      uint64_t packed[2] = {
+      const uint64_t packed[2] = {
           (static_cast<uint64_t>(r.x) << 32) | r.y,
           (static_cast<uint64_t>(r.z) << 32) | r.w};
       for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(
-            transformation::uniform_real(packed[j], param0_, param1_));
+        output_[base + j] = transform_uniform(packed[j]);
       }
     } else {
-      uint32_t vals[4] = {r.x, r.y, r.z, r.w};
+      const uint32_t vals[4] = {r.x, r.y, r.z, r.w};
       for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(
-            transformation::uniform_real(vals[j], param0_, param1_));
+        output_[base + j] = transform_uniform(vals[j]);
       }
+    }
+  }
+
+  template <typename rand_t>
+  scalar_t transform_uniform(rand_t rand) const {
+    if constexpr (
+        std::is_same_v<scalar_t, float> || std::is_same_v<scalar_t, double>) {
+      const auto unit = transformation::uniform_real(
+          rand, static_cast<scalar_t>(0), static_cast<scalar_t>(1));
+      // Preserve CPU's intermediate rounding instead of contracting the FMA.
+      volatile scalar_t scaled = unit * (param1_ - param0_);
+      return scaled + param0_;
+    } else {
+      return static_cast<scalar_t>(
+          transformation::uniform_real(rand, param0_, param1_));
     }
   }
 
   void write_normal(uint4 r, int64_t base, int count) const {
-    if constexpr (std::is_same_v<scalar_t, double>) {
-      auto normals = box_muller_double(r);
-      double vals[2] = {normals.x, normals.y};
-      for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(vals[j] * param1_ + param0_);
-      }
-    } else {
-      auto normals = box_muller_float(r);
-      float vals[4] = {normals.x, normals.y, normals.z, normals.w};
-      for (int j = 0; j < count; j++) {
-        output_[base + j] = static_cast<scalar_t>(vals[j] * param1_ + param0_);
-      }
+    using compute_t =
+        std::conditional_t<std::is_same_v<scalar_t, double>, double, float>;
+    const auto normals = box_muller<compute_t>(r);
+    for (int j = 0; j < count; j++) {
+      output_[base + j] = static_cast<scalar_t>(normals[j] * param1_ + param0_);
     }
   }
 
   scalar_t* output_;
-  const uint64_t* key_;
-  int64_t num_elems_;
+  const uint64_t* keys_;
+  int64_t elems_per_key_;
+  int64_t chunks_per_key_;
+  int64_t total_chunks_;
+  key_offset_calc_t key_offset_calc_;
   param_t param0_; // low or mean
   param_t param1_; // high or stddev
 };
-
-// --- Distribution dispatch ---
 
 void philox_distribution_validate(
     const char* op_name,
@@ -233,18 +237,43 @@ void philox_distribution_validate(
         " is not broadcastable with output shape ",
         self.sizes());
   }
+}
 
-  if (self.numel() == 0) {
-    return;
-  }
+template <typename scalar_t, bool is_uniform, typename key_offset_calc_t>
+void philox_distribution_kernel(
+    Tensor& output,
+    const Tensor& key,
+    int64_t num_keys,
+    int64_t elems_per_key,
+    key_offset_calc_t key_offset_calc,
+    double param0,
+    double param1) {
+  using functor_t =
+      PhiloxDistributionFunctor<scalar_t, is_uniform, key_offset_calc_t>;
+  using param_t = typename functor_t::param_t;
+  constexpr int64_t epc = elems_per_call<scalar_t>;
+  const int64_t chunks_per_key = at::ceil_div(elems_per_key, epc);
+  const int64_t total_chunks = num_keys * chunks_per_key;
+  constexpr int64_t work_group_size =
+      256; // TODO: Investigate impact of wg_size 256 on XPU performance.
+  const int64_t work_group_num =
+      xpuKernelLoopGroupRange(total_chunks, work_group_size);
 
-  // For now, only single-key (non-batched) is implemented.
-  // Batched key support can be added following the CUDA multi-key pattern.
-  TORCH_CHECK(
-      key.dim() == 1,
-      op_name,
-      ": batched keys not yet supported on XPU, got key shape ",
-      key.sizes());
+  const auto functor = functor_t(
+      output.mutable_data_ptr<scalar_t>(),
+      key.const_data_ptr<uint64_t>(),
+      elems_per_key,
+      chunks_per_key,
+      total_chunks,
+      key_offset_calc,
+      static_cast<param_t>(param0),
+      static_cast<param_t>(param1));
+
+  sycl_kernel_submit(
+      sycl::range<1>(work_group_num * work_group_size),
+      sycl::range<1>(work_group_size),
+      at::xpu::getCurrentSYCLQueue(),
+      functor);
 }
 
 template <bool is_uniform>
@@ -254,7 +283,23 @@ void philox_distribution_launch(
     double param0,
     double param1) {
   auto output = self.contiguous();
-  auto key_contig = key.contiguous();
+  const auto key_contig = key.contiguous();
+
+  int64_t elems_per_key = 1;
+  int64_t key_dims = self.dim();
+  if (key.dim() == 1) {
+    elems_per_key = self.numel();
+    key_dims = 0;
+  } else {
+    for (int64_t dim = self.dim() - 1; dim >= 0; dim--) {
+      if (key.size(dim) != 1) {
+        break;
+      }
+      elems_per_key *= self.size(dim);
+      key_dims--;
+    }
+  }
+  const int64_t num_keys = self.numel() / elems_per_key;
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,
@@ -262,35 +307,41 @@ void philox_distribution_launch(
       self.scalar_type(),
       is_uniform ? "_philox_uniform_" : "_philox_normal_",
       [&] {
-        using param_t =
-            typename PhiloxSingleKeyFunctor<scalar_t, is_uniform>::param_t;
-        constexpr int epc = elems_per_call<scalar_t>;
-        int64_t num_chunks = ceil_div(self.numel(), static_cast<int64_t>(epc));
-        constexpr int64_t work_group_size =
-            256; // TODO: Investigate impact of wg_size 256 on XPU performance.
-        // The kernel is grid-strided, so cap the launched work items at what
-        // the device can keep resident instead of one work item per chunk.
-        const int64_t work_items =
-            std::min(num_chunks, syclMaxWorkItemsPerTile());
-        const int64_t work_group_num = ceil_div(work_items, work_group_size);
-
-        auto functor = PhiloxSingleKeyFunctor<scalar_t, is_uniform>(
-            output.mutable_data_ptr<scalar_t>(),
-            key_contig.const_data_ptr<uint64_t>(),
-            self.numel(),
-            static_cast<param_t>(param0),
-            static_cast<param_t>(param1));
-
-        sycl_kernel_submit(
-            sycl::range<1>(work_group_num * work_group_size),
-            sycl::range<1>(work_group_size),
-            at::xpu::getCurrentSYCLQueue(),
-            functor);
-
-        if (output.data_ptr() != self.data_ptr()) {
-          self.copy_(output);
+        if (key.dim() == 1) {
+          philox_distribution_kernel<scalar_t, is_uniform>(
+              output,
+              key_contig,
+              num_keys,
+              elems_per_key,
+              TrivialOffsetCalculator<1, int64_t>(),
+              param0,
+              param1);
+        } else {
+          c10::SmallVector<int64_t, MAX_DIMS> key_sizes(key_dims);
+          c10::SmallVector<int64_t, MAX_DIMS> key_strides(key_dims);
+          for (int64_t i = 0; i < key_dims; i++) {
+            const int64_t dim = key_dims - 1 - i;
+            key_sizes[i] = self.size(dim);
+            key_strides[i] =
+                key_contig.size(dim) > 1 ? key_contig.stride(dim) : 0;
+          }
+          const int64_t* key_strides_ptr = key_strides.data();
+          const auto key_offset_calc = OffsetCalculator<1, int64_t>(
+              key_dims, key_sizes.data(), &key_strides_ptr);
+          philox_distribution_kernel<scalar_t, is_uniform>(
+              output,
+              key_contig,
+              num_keys,
+              elems_per_key,
+              key_offset_calc,
+              param0,
+              param1);
         }
       });
+
+  if (output.data_ptr() != self.data_ptr()) {
+    self.copy_(output);
+  }
 }
 
 Tensor& _philox_uniform_xpu_(
