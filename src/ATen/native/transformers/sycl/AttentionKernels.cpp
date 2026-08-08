@@ -28,7 +28,6 @@
 
 #include <ATen/native/transformers/sycl/AttentionKernels.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <ATen/xpu/PhiloxXpuState.h>
 #include <comm/SYCLContext.h>
 #include <cstdint>
 
@@ -47,270 +46,79 @@ static inline bool is_aligned_for_vec(const void* ptr) {
 }
 
 template <typename scalar_t, typename accscalar_t, int VEC>
-struct TransformBiasRescaleQKVAddPaddingFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const auto NH = q_k_v_.size(2);
-    const auto T = q_k_v_.size(3);
-    const auto DH = q_k_v_.size(4);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void transform_bias_rescale_qkv_add_padding_kernel(
+    const PackedTensorAccessor64<scalar_t, 1> qkv_,
+    const PackedTensorAccessor64<scalar_t, 1> qkv_bias_,
+    const int* offsets_,
+    const int* input_sizes_,
+    PackedTensorAccessor64<scalar_t, 5> q_k_v_,
+    const scalar_t inv_sqrt_dim_per_head_,
+    const bool assume_aligned_) {
+  const auto NH = q_k_v_.size(2);
+  const auto T = q_k_v_.size(3);
+  const auto DH = q_k_v_.size(4);
 
-    const auto stride_0 = q_k_v_.stride(0);
-    const auto stride_1 = q_k_v_.stride(1);
-    const auto stride_2 = q_k_v_.stride(2);
-    const auto stride_3 = q_k_v_.stride(3);
-    const auto stride_4 = q_k_v_.stride(4);
-    scalar_t* const data = q_k_v_.data();
+  const auto stride_0 = q_k_v_.stride(0);
+  const auto stride_1 = q_k_v_.stride(1);
+  const auto stride_2 = q_k_v_.stride(2);
+  const auto stride_3 = q_k_v_.stride(3);
+  const auto stride_4 = q_k_v_.stride(4);
+  scalar_t* const data = q_k_v_.data();
 
-    const int32_t local_id = item.get_local_id(0);
-    const int32_t global_id = item.get_group(0);
+  sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
+  const int32_t local_id = item.get_local_id(0);
+  const int32_t global_id = item.get_group(0);
 
-    const auto t = global_id % T;
-    const auto b = global_id / T;
+  const auto t = global_id % T;
+  const auto b = global_id / T;
 
-    const auto D = NH * DH;
-    const auto _3D = 3 * D;
+  const auto D = NH * DH;
+  const auto _3D = 3 * D;
 
-    const auto offset_for_batch = offsets_[b];
-    const auto input_dim = 1;
-    const auto* sizes_i = input_sizes_ + b * input_dim;
+  const auto offset_for_batch = offsets_[b];
+  const auto input_dim = 1;
+  const auto* sizes_i = input_sizes_ + b * input_dim;
 
-    if (assume_aligned_) {
-      for (int32_t d_v = local_id; d_v < D / VEC;
-           d_v += item.get_local_range(0)) {
-        auto d = d_v * VEC;
-        auto nh = d / DH;
-        auto dh = d % DH;
-        LoadT<scalar_t, VEC> qkv_bias_q;
-        LoadT<scalar_t, VEC> qkv_bias_k;
-        LoadT<scalar_t, VEC> qkv_bias_v;
-        LoadT<scalar_t, VEC> qkv_q;
-        LoadT<scalar_t, VEC> qkv_k;
-        LoadT<scalar_t, VEC> qkv_v;
+  if (assume_aligned_) {
+    using LoadT = at::detail::Array<scalar_t, VEC>;
+    for (int32_t d_v = local_id; d_v < D / VEC;
+         d_v += item.get_local_range(0)) {
+      auto d = d_v * VEC;
+      auto nh = d / DH;
+      auto dh = d % DH;
+      scalar_t qkv_bias_q[VEC];
+      scalar_t qkv_bias_k[VEC];
+      scalar_t qkv_bias_v[VEC];
+      scalar_t qkv_q[VEC];
+      scalar_t qkv_k[VEC];
+      scalar_t qkv_v[VEC];
 
-        const auto first_item_offset = t * _3D + d;
-        const auto last_item_offset = first_item_offset + VEC - 1;
-        const bool first_item_in_bounds = first_item_offset < sizes_i[0];
-        const bool entire_vec_in_bounds = last_item_offset < sizes_i[0];
+      const auto first_item_offset = t * _3D + d;
+      const auto last_item_offset = first_item_offset + VEC - 1;
+      const bool first_item_in_bounds = first_item_offset < sizes_i[0];
+      const bool entire_vec_in_bounds = last_item_offset < sizes_i[0];
 
-        // Here we require D % VEC == 0 for these vectorized loads.
-        qkv_bias_q = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 0 * D]);
-        qkv_bias_k = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 1 * D]);
-        qkv_bias_v = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 2 * D]);
+      // Here we require D % VEC == 0 for these vectorized loads.
+      *reinterpret_cast<LoadT*>(&qkv_bias_q) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 0 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_bias_k) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 1 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_bias_v) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 2 * D]);
 
-        if (entire_vec_in_bounds) {
-          const auto offset = offset_for_batch + first_item_offset;
-          qkv_q = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-              &qkv_[offset + 0 * D]);
-          qkv_k = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-              &qkv_[offset + 1 * D]);
-          qkv_v = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-              &qkv_[offset + 2 * D]);
-
-#pragma unroll
-          for (auto ii = 0; ii < VEC; ++ii) {
-            qkv_q[ii] = static_cast<scalar_t>(
-                (static_cast<accscalar_t>(qkv_q[ii]) +
-                 static_cast<accscalar_t>(qkv_bias_q[ii])) *
-                static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
-            qkv_k[ii] = static_cast<scalar_t>(
-                (static_cast<accscalar_t>(qkv_k[ii]) +
-                 static_cast<accscalar_t>(qkv_bias_k[ii])));
-            qkv_v[ii] = static_cast<scalar_t>(
-                (static_cast<accscalar_t>(qkv_v[ii]) +
-                 static_cast<accscalar_t>(qkv_bias_v[ii])));
-          }
-        } else if (first_item_in_bounds) {
-          const auto offset = offset_for_batch + first_item_offset;
-          qkv_q[0] = qkv_[offset + 0 * D];
-          qkv_k[0] = qkv_[offset + 1 * D];
-          qkv_v[0] = qkv_[offset + 2 * D];
-          qkv_q[0] = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_q[0]) +
-               static_cast<accscalar_t>(qkv_bias_q[0])) *
-              static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
-          qkv_k[0] = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_k[0]) +
-               static_cast<accscalar_t>(qkv_bias_k[0])));
-          qkv_v[0] = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_v[0]) +
-               static_cast<accscalar_t>(qkv_bias_v[0])));
-#pragma unroll
-          for (auto ii = 1; ii < VEC; ++ii) {
-            const auto loop_offset = offset + ii;
-            if (loop_offset < sizes_i[0]) {
-              qkv_q[ii] = qkv_[loop_offset + 0 * D];
-              qkv_k[ii] = qkv_[loop_offset + 1 * D];
-              qkv_v[ii] = qkv_[loop_offset + 2 * D];
-              qkv_q[ii] = static_cast<scalar_t>(
-                  (static_cast<accscalar_t>(qkv_q[ii]) +
-                   static_cast<accscalar_t>(qkv_bias_q[ii])) *
-                  static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
-              qkv_k[ii] = static_cast<scalar_t>(
-                  (static_cast<accscalar_t>(qkv_k[ii]) +
-                   static_cast<accscalar_t>(qkv_bias_k[ii])));
-              qkv_v[ii] = static_cast<scalar_t>(
-                  (static_cast<accscalar_t>(qkv_v[ii]) +
-                   static_cast<accscalar_t>(qkv_bias_v[ii])));
-            } else {
-              qkv_q[ii] = 0;
-              qkv_k[ii] = 0;
-              qkv_v[ii] = 0;
-            }
-          }
-        } else {
-#pragma unroll
-          for (auto ii = 0; ii < VEC; ++ii) {
-            qkv_q[ii] = 0;
-            qkv_k[ii] = 0;
-            qkv_v[ii] = 0;
-          }
-        }
-
-        // Here we require DH % VEC == 0 for these vectorized stores.
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &data
-                [0 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-                 dh * stride_4]) = qkv_q;
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &data
-                [1 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-                 dh * stride_4]) = qkv_k;
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &data
-                [2 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-                 dh * stride_4]) = qkv_v;
-      }
-    } else {
-      for (int32_t d = local_id; d < D; d += item.get_local_range(0)) {
-        auto nh = d / DH;
-        auto dh = d % DH;
-        scalar_t qkv_bias_q = qkv_bias_[d + 0 * D];
-        scalar_t qkv_bias_k = qkv_bias_[d + 1 * D];
-        scalar_t qkv_bias_v = qkv_bias_[d + 2 * D];
-
-        const auto item_offset = t * _3D + d;
-        const bool in_bounds = item_offset < sizes_i[0];
-        scalar_t qkv_q, qkv_k, qkv_v;
-
-        if (in_bounds) {
-          const auto qkv_offset = offset_for_batch + item_offset;
-          qkv_q = qkv_[qkv_offset + 0 * D];
-          qkv_k = qkv_[qkv_offset + 1 * D];
-          qkv_v = qkv_[qkv_offset + 2 * D];
-          qkv_q = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_q) +
-               static_cast<accscalar_t>(qkv_bias_q)) *
-              static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
-          qkv_k = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_k) +
-               static_cast<accscalar_t>(qkv_bias_k)));
-          qkv_v = static_cast<scalar_t>(
-              (static_cast<accscalar_t>(qkv_v) +
-               static_cast<accscalar_t>(qkv_bias_v)));
-        } else {
-          qkv_q = 0;
-          qkv_k = 0;
-          qkv_v = 0;
-        }
-
-        data
-            [0 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-             dh * stride_4] = qkv_q;
-        data
-            [1 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-             dh * stride_4] = qkv_k;
-        data
-            [2 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
-             dh * stride_4] = qkv_v;
-      }
-    }
-  }
-
-  TransformBiasRescaleQKVAddPaddingFunctor(
-      const PackedTensorAccessor64<scalar_t, 1> qkv,
-      const PackedTensorAccessor64<scalar_t, 1> qkv_bias,
-      const int* offsets,
-      const int* input_sizes,
-      PackedTensorAccessor64<scalar_t, 5> q_k_v,
-      const scalar_t inv_sqrt_dim_per_head,
-      const bool assume_aligned)
-      : qkv_(qkv),
-        qkv_bias_(qkv_bias),
-        offsets_(offsets),
-        input_sizes_(input_sizes),
-        q_k_v_(q_k_v),
-        inv_sqrt_dim_per_head_(inv_sqrt_dim_per_head),
-        assume_aligned_(assume_aligned) {}
-
- private:
-  // [B, T, 3 * D], but it's a NestedTensor buffer
-  const PackedTensorAccessor64<scalar_t, 1> qkv_;
-  // [3 * D]
-  const PackedTensorAccessor64<scalar_t, 1> qkv_bias_;
-  const int* offsets_;
-  const int* input_sizes_;
-  // [3, B, NH, T, DH]
-  PackedTensorAccessor64<scalar_t, 5> q_k_v_;
-  const scalar_t inv_sqrt_dim_per_head_;
-  const bool assume_aligned_;
-};
-
-// each nd_range is dealing with one qkv tensor, each nd_group is dealing with D
-// dim
-template <typename scalar_t, typename accscalar_t, int VEC>
-struct TransformBiasRescaleQKVKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto NH = q_k_v_.size(2);
-    auto T = q_k_v_.size(3);
-    auto DH = q_k_v_.size(4);
-
-    const auto qkv_stride_0 = q_k_v_.stride(0);
-    const auto qkv_stride_1 = q_k_v_.stride(1);
-    const auto qkv_stride_2 = q_k_v_.stride(2);
-    const auto qkv_stride_3 = q_k_v_.stride(3);
-    const auto qkv_stride_4 = q_k_v_.stride(4);
-    scalar_t* const qkv_data = q_k_v_.data();
-
-    const auto group_id = item.get_group(0);
-    const auto local_id = item.get_local_id(0);
-    const auto local_range = item.get_local_range(0);
-
-    auto t = group_id % T;
-    auto b = group_id / T;
-
-    const auto D = NH * DH;
-
-    if (assume_aligned_) {
-      // here is aligned, no more need ceiling for D / VEC
-      for (int32_t d_v = local_id; d_v < D / VEC; d_v += local_range) {
-        auto d = d_v * VEC;
-        auto nh = d / DH;
-        auto dh = d % DH;
-        LoadT<scalar_t, VEC> qkv_bias_q;
-        LoadT<scalar_t, VEC> qkv_bias_k;
-        LoadT<scalar_t, VEC> qkv_bias_v;
-        LoadT<scalar_t, VEC> qkv_q;
-        LoadT<scalar_t, VEC> qkv_k;
-        LoadT<scalar_t, VEC> qkv_v;
-
-        qkv_bias_q = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 0 * D]);
-        qkv_bias_k = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 1 * D]);
-        qkv_bias_v = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_bias_[d + 2 * D]);
-
-        qkv_q = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_[b][t][d + 0 * D]);
-        qkv_k = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_[b][t][d + 1 * D]);
-        qkv_v = *reinterpret_cast<const LoadT<scalar_t, VEC>*>(
-            &qkv_[b][t][d + 2 * D]);
+      if (entire_vec_in_bounds) {
+        const auto offset = offset_for_batch + first_item_offset;
+        *reinterpret_cast<LoadT*>(&qkv_q) =
+            *reinterpret_cast<const LoadT*>(&qkv_[offset + 0 * D]);
+        *reinterpret_cast<LoadT*>(&qkv_k) =
+            *reinterpret_cast<const LoadT*>(&qkv_[offset + 1 * D]);
+        *reinterpret_cast<LoadT*>(&qkv_v) =
+            *reinterpret_cast<const LoadT*>(&qkv_[offset + 2 * D]);
 
 #pragma unroll
-        for (auto ii = 0; ii < VEC; ii++) {
+        for (auto ii = 0; ii < VEC; ++ii) {
           qkv_q[ii] = static_cast<scalar_t>(
               (static_cast<accscalar_t>(qkv_q[ii]) +
                static_cast<accscalar_t>(qkv_bias_q[ii])) *
@@ -322,79 +130,239 @@ struct TransformBiasRescaleQKVKernelFunctor {
               (static_cast<accscalar_t>(qkv_v[ii]) +
                static_cast<accscalar_t>(qkv_bias_v[ii])));
         }
-
-        // Here we require DH % VEC == 0 for these vectorized stores.
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &qkv_data
-                [0 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-                 t * qkv_stride_3 + dh * qkv_stride_4]) = qkv_q;
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &qkv_data
-                [1 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-                 t * qkv_stride_3 + dh * qkv_stride_4]) = qkv_k;
-        *reinterpret_cast<LoadT<scalar_t, VEC>*>(
-            &qkv_data
-                [2 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-                 t * qkv_stride_3 + dh * qkv_stride_4]) = qkv_v;
+      } else if (first_item_in_bounds) {
+        const auto offset = offset_for_batch + first_item_offset;
+        qkv_q[0] = qkv_[offset + 0 * D];
+        qkv_k[0] = qkv_[offset + 1 * D];
+        qkv_v[0] = qkv_[offset + 2 * D];
+        qkv_q[0] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_q[0]) +
+             static_cast<accscalar_t>(qkv_bias_q[0])) *
+            static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
+        qkv_k[0] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_k[0]) +
+             static_cast<accscalar_t>(qkv_bias_k[0])));
+        qkv_v[0] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_v[0]) +
+             static_cast<accscalar_t>(qkv_bias_v[0])));
+#pragma unroll
+        for (auto ii = 1; ii < VEC; ++ii) {
+          const auto loop_offset = offset + ii;
+          if (loop_offset < sizes_i[0]) {
+            qkv_q[ii] = qkv_[loop_offset + 0 * D];
+            qkv_k[ii] = qkv_[loop_offset + 1 * D];
+            qkv_v[ii] = qkv_[loop_offset + 2 * D];
+            qkv_q[ii] = static_cast<scalar_t>(
+                (static_cast<accscalar_t>(qkv_q[ii]) +
+                 static_cast<accscalar_t>(qkv_bias_q[ii])) *
+                static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
+            qkv_k[ii] = static_cast<scalar_t>(
+                (static_cast<accscalar_t>(qkv_k[ii]) +
+                 static_cast<accscalar_t>(qkv_bias_k[ii])));
+            qkv_v[ii] = static_cast<scalar_t>(
+                (static_cast<accscalar_t>(qkv_v[ii]) +
+                 static_cast<accscalar_t>(qkv_bias_v[ii])));
+          } else {
+            qkv_q[ii] = 0;
+            qkv_k[ii] = 0;
+            qkv_v[ii] = 0;
+          }
+        }
+      } else {
+#pragma unroll
+        for (auto ii = 0; ii < VEC; ++ii) {
+          qkv_q[ii] = 0;
+          qkv_k[ii] = 0;
+          qkv_v[ii] = 0;
+        }
       }
-    } else {
-      // without vectorize load and store
-      for (int32_t d = local_id; d < D; d += local_range) {
-        auto nh = d / DH;
-        auto dh = d % DH;
-        scalar_t qkv_bias_q = qkv_bias_[0 * D + d];
-        scalar_t qkv_bias_k = qkv_bias_[1 * D + d];
-        scalar_t qkv_bias_v = qkv_bias_[2 * D + d];
-        scalar_t qkv_q = qkv_[b][t][0 * D + d];
-        scalar_t qkv_k = qkv_[b][t][1 * D + d];
-        scalar_t qkv_v = qkv_[b][t][2 * D + d];
 
+      // Here we require DH % VEC == 0 for these vectorized stores.
+      *reinterpret_cast<LoadT*>(
+          &data
+              [0 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+               dh * stride_4]) = *reinterpret_cast<const LoadT*>(&qkv_q);
+      *reinterpret_cast<LoadT*>(
+          &data
+              [1 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+               dh * stride_4]) = *reinterpret_cast<const LoadT*>(&qkv_k);
+      *reinterpret_cast<LoadT*>(
+          &data
+              [2 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+               dh * stride_4]) = *reinterpret_cast<const LoadT*>(&qkv_v);
+    }
+  } else {
+    for (int32_t d = local_id; d < D; d += item.get_local_range(0)) {
+      auto nh = d / DH;
+      auto dh = d % DH;
+      scalar_t qkv_bias_q = qkv_bias_[d + 0 * D];
+      scalar_t qkv_bias_k = qkv_bias_[d + 1 * D];
+      scalar_t qkv_bias_v = qkv_bias_[d + 2 * D];
+
+      const auto item_offset = t * _3D + d;
+      const bool in_bounds = item_offset < sizes_i[0];
+      scalar_t qkv_q, qkv_k, qkv_v;
+
+      if (in_bounds) {
+        const auto qkv_offset = offset_for_batch + item_offset;
+        qkv_q = qkv_[qkv_offset + 0 * D];
+        qkv_k = qkv_[qkv_offset + 1 * D];
+        qkv_v = qkv_[qkv_offset + 2 * D];
         qkv_q = static_cast<scalar_t>(
             (static_cast<accscalar_t>(qkv_q) +
              static_cast<accscalar_t>(qkv_bias_q)) *
             static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
         qkv_k = static_cast<scalar_t>(
-            static_cast<accscalar_t>(qkv_k) +
-            static_cast<accscalar_t>(qkv_bias_k));
+            (static_cast<accscalar_t>(qkv_k) +
+             static_cast<accscalar_t>(qkv_bias_k)));
         qkv_v = static_cast<scalar_t>(
-            static_cast<accscalar_t>(qkv_v) +
-            static_cast<accscalar_t>(qkv_bias_v));
-
-        qkv_data
-            [0 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-             t * qkv_stride_3 + dh * qkv_stride_4] = qkv_q;
-        qkv_data
-            [1 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-             t * qkv_stride_3 + dh * qkv_stride_4] = qkv_k;
-        qkv_data
-            [2 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
-             t * qkv_stride_3 + dh * qkv_stride_4] = qkv_v;
+            (static_cast<accscalar_t>(qkv_v) +
+             static_cast<accscalar_t>(qkv_bias_v)));
+      } else {
+        qkv_q = 0;
+        qkv_k = 0;
+        qkv_v = 0;
       }
+
+      data
+          [0 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+           dh * stride_4] = qkv_q;
+      data
+          [1 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+           dh * stride_4] = qkv_k;
+      data
+          [2 * stride_0 + b * stride_1 + nh * stride_2 + t * stride_3 +
+           dh * stride_4] = qkv_v;
     }
   }
+}
 
-  TransformBiasRescaleQKVKernelFunctor(
-      const PackedTensorAccessor64<scalar_t, 3> qkv,
-      const PackedTensorAccessor64<scalar_t, 1> qkv_bias,
-      PackedTensorAccessor64<scalar_t, 5> q_k_v,
-      const scalar_t inv_sqrt_dim_per_head,
-      const bool assume_aligned)
-      : qkv_(qkv),
-        qkv_bias_(qkv_bias),
-        q_k_v_(q_k_v),
-        inv_sqrt_dim_per_head_(inv_sqrt_dim_per_head),
-        assume_aligned_(assume_aligned) {}
+// each nd_range is dealing with one qkv tensor, each nd_group is dealing with D
+// dim
+template <typename scalar_t, typename accscalar_t, int VEC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void transform_bias_rescale_qkv_kernel(
+    const PackedTensorAccessor64<scalar_t, 3> qkv_,
+    const PackedTensorAccessor64<scalar_t, 1> qkv_bias_,
+    PackedTensorAccessor64<scalar_t, 5> q_k_v_,
+    const scalar_t inv_sqrt_dim_per_head_,
+    const bool assume_aligned_) {
+  auto NH = q_k_v_.size(2);
+  auto T = q_k_v_.size(3);
+  auto DH = q_k_v_.size(4);
 
- private:
-  // [B, T, 3 * D]
-  const PackedTensorAccessor64<scalar_t, 3> qkv_;
-  // [3 * D]
-  const PackedTensorAccessor64<scalar_t, 1> qkv_bias_;
-  // [3, B, num_heads, T, dim_per_head]
-  PackedTensorAccessor64<scalar_t, 5> q_k_v_;
-  const scalar_t inv_sqrt_dim_per_head_;
-  const bool assume_aligned_;
-};
+  const auto qkv_stride_0 = q_k_v_.stride(0);
+  const auto qkv_stride_1 = q_k_v_.stride(1);
+  const auto qkv_stride_2 = q_k_v_.stride(2);
+  const auto qkv_stride_3 = q_k_v_.stride(3);
+  const auto qkv_stride_4 = q_k_v_.stride(4);
+  scalar_t* const qkv_data = q_k_v_.data();
+
+  sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
+  const auto group_id = item.get_group(0);
+  const auto local_id = item.get_local_id(0);
+  const auto local_range = item.get_local_range(0);
+
+  auto t = group_id % T;
+  auto b = group_id / T;
+
+  const auto D = NH * DH;
+
+  if (assume_aligned_) {
+    using LoadT = at::detail::Array<scalar_t, VEC>;
+    // here is aligned, no more need ceiling for D / VEC
+    for (int32_t d_v = local_id; d_v < D / VEC; d_v += local_range) {
+      auto d = d_v * VEC;
+      auto nh = d / DH;
+      auto dh = d % DH;
+      scalar_t qkv_bias_q[VEC];
+      scalar_t qkv_bias_k[VEC];
+      scalar_t qkv_bias_v[VEC];
+      scalar_t qkv_q[VEC];
+      scalar_t qkv_k[VEC];
+      scalar_t qkv_v[VEC];
+
+      *reinterpret_cast<LoadT*>(&qkv_bias_q) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 0 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_bias_k) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 1 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_bias_v) =
+          *reinterpret_cast<const LoadT*>(&qkv_bias_[d + 2 * D]);
+
+      *reinterpret_cast<LoadT*>(&qkv_q) =
+          *reinterpret_cast<const LoadT*>(&qkv_[b][t][d + 0 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_k) =
+          *reinterpret_cast<const LoadT*>(&qkv_[b][t][d + 1 * D]);
+      *reinterpret_cast<LoadT*>(&qkv_v) =
+          *reinterpret_cast<const LoadT*>(&qkv_[b][t][d + 2 * D]);
+
+#pragma unroll
+      for (auto ii = 0; ii < VEC; ii++) {
+        qkv_q[ii] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_q[ii]) +
+             static_cast<accscalar_t>(qkv_bias_q[ii])) *
+            static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
+        qkv_k[ii] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_k[ii]) +
+             static_cast<accscalar_t>(qkv_bias_k[ii])));
+        qkv_v[ii] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(qkv_v[ii]) +
+             static_cast<accscalar_t>(qkv_bias_v[ii])));
+      }
+
+      // Here we require DH % VEC == 0 for these vectorized stores.
+      *reinterpret_cast<LoadT*>(
+          &qkv_data
+              [0 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+               t * qkv_stride_3 + dh * qkv_stride_4]) =
+          *reinterpret_cast<const LoadT*>(&qkv_q);
+      *reinterpret_cast<LoadT*>(
+          &qkv_data
+              [1 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+               t * qkv_stride_3 + dh * qkv_stride_4]) =
+          *reinterpret_cast<const LoadT*>(&qkv_k);
+      *reinterpret_cast<LoadT*>(
+          &qkv_data
+              [2 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+               t * qkv_stride_3 + dh * qkv_stride_4]) =
+          *reinterpret_cast<const LoadT*>(&qkv_v);
+    }
+  } else {
+    // without vectorize load and store
+    for (int32_t d = local_id; d < D; d += local_range) {
+      auto nh = d / DH;
+      auto dh = d % DH;
+      scalar_t qkv_bias_q = qkv_bias_[0 * D + d];
+      scalar_t qkv_bias_k = qkv_bias_[1 * D + d];
+      scalar_t qkv_bias_v = qkv_bias_[2 * D + d];
+      scalar_t qkv_q = qkv_[b][t][0 * D + d];
+      scalar_t qkv_k = qkv_[b][t][1 * D + d];
+      scalar_t qkv_v = qkv_[b][t][2 * D + d];
+
+      qkv_q = static_cast<scalar_t>(
+          (static_cast<accscalar_t>(qkv_q) +
+           static_cast<accscalar_t>(qkv_bias_q)) *
+          static_cast<accscalar_t>(inv_sqrt_dim_per_head_));
+      qkv_k = static_cast<scalar_t>(
+          static_cast<accscalar_t>(qkv_k) +
+          static_cast<accscalar_t>(qkv_bias_k));
+      qkv_v = static_cast<scalar_t>(
+          static_cast<accscalar_t>(qkv_v) +
+          static_cast<accscalar_t>(qkv_bias_v));
+
+      qkv_data
+          [0 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+           t * qkv_stride_3 + dh * qkv_stride_4] = qkv_q;
+      qkv_data
+          [1 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+           t * qkv_stride_3 + dh * qkv_stride_4] = qkv_k;
+      qkv_data
+          [2 * qkv_stride_0 + b * qkv_stride_1 + nh * qkv_stride_2 +
+           t * qkv_stride_3 + dh * qkv_stride_4] = qkv_v;
+    }
+  }
+}
 
 static Tensor collapse_dims_1_and_2(const Tensor& sizes) {
   auto sizes_dim1 = at::native::narrow_symint(sizes, 1, 0, 1);
@@ -475,125 +443,69 @@ void _transform_bias_rescale_qkv_kernel(
           const auto sizes_ptr = offsets_ptr + sizes.numel() + 1;
           // const auto input_dim = sizes.sizes()[1];
           auto qkv_acc = q_k_v.packed_accessor64<scalar_t, 5>();
-          const bool input_aligned =
-              is_aligned_for_vec<scalar_t, TRANSFORM_BIAS_RESCALE_VEC>(
-                  nt_qkv_buffer.const_data_ptr());
-          if (bias_and_shape_aligned && input_aligned) {
-            TransformBiasRescaleQKVAddPaddingFunctor<
+          if (bias_and_shape_aligned &&
+              ((reinterpret_cast<intptr_t>(qkv.const_data_ptr()) %
+                TRANSFORM_BIAS_RESCALE_VEC) == 0)) {
+            sycl_kernel_submit<transform_bias_rescale_qkv_add_padding_kernel<
                 scalar_t,
                 accscalar_t,
-                TRANSFORM_BIAS_RESCALE_VEC>
-                kfn(nt_qkv_buffer.packed_accessor64<scalar_t, 1>(),
-                    qkv_bias.packed_accessor64<scalar_t, 1>(),
-                    offsets_ptr,
-                    sizes_ptr,
-                    qkv_acc,
-                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
-                    true);
-            sycl_kernel_submit(
+                TRANSFORM_BIAS_RESCALE_VEC>>(
                 global_range * local_range,
                 local_range,
                 getCurrentSYCLQueue(),
-                kfn);
+                0,
+                nt_qkv_buffer.packed_accessor64<scalar_t, 1>(),
+                qkv_bias.packed_accessor64<scalar_t, 1>(),
+                offsets_ptr,
+                sizes_ptr,
+                qkv_acc,
+                static_cast<scalar_t>(
+                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head))),
+                true);
           } else {
-            TransformBiasRescaleQKVAddPaddingFunctor<
+            sycl_kernel_submit<transform_bias_rescale_qkv_add_padding_kernel<
                 scalar_t,
                 accscalar_t,
-                TRANSFORM_BIAS_RESCALE_VEC>
-                kfn(nt_qkv_buffer.packed_accessor64<scalar_t, 1>(),
-                    qkv_bias.packed_accessor64<scalar_t, 1>(),
-                    offsets_ptr,
-                    sizes_ptr,
-                    qkv_acc,
-                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
-                    false);
-
-            sycl_kernel_submit(
+                TRANSFORM_BIAS_RESCALE_VEC>>(
                 global_range * local_range,
                 local_range,
                 getCurrentSYCLQueue(),
-                kfn);
+                0,
+                nt_qkv_buffer.packed_accessor64<scalar_t, 1>(),
+                qkv_bias.packed_accessor64<scalar_t, 1>(),
+                offsets_ptr,
+                sizes_ptr,
+                qkv_acc,
+                static_cast<scalar_t>(
+                    1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head))),
+                false);
           }
         } else {
-          const bool input_aligned =
-              is_aligned_for_vec<scalar_t, TRANSFORM_BIAS_RESCALE_VEC>(
-                  qkv.const_data_ptr());
-          const bool qkv_aligned = bias_and_shape_aligned && input_aligned;
-          TransformBiasRescaleQKVKernelFunctor<
+          sycl_kernel_submit<transform_bias_rescale_qkv_kernel<
               scalar_t,
               accscalar_t,
-              TRANSFORM_BIAS_RESCALE_VEC>
-              kfn(qkv.packed_accessor64<scalar_t, 3>(),
-                  qkv_bias.packed_accessor64<scalar_t, 1>(),
-                  q_k_v.packed_accessor64<scalar_t, 5>(),
-                  1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head)),
-                  qkv_aligned);
-
-          sycl_kernel_submit(
+              TRANSFORM_BIAS_RESCALE_VEC>>(
               global_range * local_range,
               local_range,
               getCurrentSYCLQueue(),
-              kfn);
+              0,
+              qkv.packed_accessor64<scalar_t, 3>(),
+              qkv_bias.packed_accessor64<scalar_t, 1>(),
+              q_k_v.packed_accessor64<scalar_t, 5>(),
+              static_cast<scalar_t>(
+                  1.0 / std::sqrt(static_cast<scalar_t>(dim_per_head))),
+              bias_and_shape_aligned);
         }
       });
 }
-
-struct UnpackPhiloxFunctor {
-  void operator()() const {
-    if (captured_) {
-      *seed_ptr_ = static_cast<int64_t>(*seed_dev_ptr_);
-      *offset_ptr_ = static_cast<int64_t>(
-          *offset_dev_ptr_ + static_cast<int64_t>(offset_intragraph_));
-    } else {
-      *seed_ptr_ = static_cast<int64_t>(seed_val_);
-      *offset_ptr_ = static_cast<int64_t>(offset_val_);
-    }
-  }
-
-  UnpackPhiloxFunctor(
-      bool captured,
-      int64_t* seed_dev_ptr,
-      int64_t* offset_dev_ptr,
-      uint32_t offset_intragraph,
-      uint64_t seed_val,
-      uint64_t offset_val,
-      int64_t* seed_ptr,
-      int64_t* offset_ptr)
-      : captured_(captured),
-        seed_dev_ptr_(seed_dev_ptr),
-        offset_dev_ptr_(offset_dev_ptr),
-        offset_intragraph_(offset_intragraph),
-        seed_val_(seed_val),
-        offset_val_(offset_val),
-        seed_ptr_(seed_ptr),
-        offset_ptr_(offset_ptr) {}
-
- private:
-  bool captured_;
-  int64_t* seed_dev_ptr_;
-  int64_t* offset_dev_ptr_;
-  uint32_t offset_intragraph_;
-  uint64_t seed_val_;
-  uint64_t offset_val_;
-  int64_t* seed_ptr_;
-  int64_t* offset_ptr_;
-};
 
 void unpack_philox_kernel(
     at::PhiloxXpuState arg,
     int64_t* seed_ptr,
     int64_t* offset_ptr) {
-  auto& queue = at::xpu::getCurrentSYCLQueue();
-  UnpackPhiloxFunctor functor(
-      arg.captured_,
-      arg.seed_.ptr,
-      arg.offset_.ptr,
-      arg.offset_intragraph_,
-      arg.seed_.val,
-      arg.offset_.val,
-      seed_ptr,
-      offset_ptr);
-  queue.submit([&](sycl::handler& cgh) { cgh.single_task(functor); });
+  auto [seed, offset] = at::xpu::philox::unpack(arg);
+  *seed_ptr = static_cast<int64_t>(seed);
+  *offset_ptr = static_cast<int64_t>(offset);
 }
 
 } // namespace at::native::xpu
