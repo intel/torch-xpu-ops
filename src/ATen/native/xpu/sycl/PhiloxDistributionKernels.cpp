@@ -38,18 +38,6 @@ namespace at::native::xpu {
 template <typename scalar_t>
 constexpr int elems_per_call = std::is_same_v<scalar_t, double> ? 2 : 4;
 
-// Stateless Philox-4x32: 4 pseudo-random uint32 determined entirely by
-// (seed, offset). The subsequence half of the counter is fixed to 0 so the
-// whole counter space is addressed by the 64-bit offset alone, which keeps
-// the generated values consistent across devices.
-inline uint4 philox_4x32(uint64_t seed, uint64_t offset) {
-  const uint2 key = {
-      static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-  const uint4 counter = {
-      static_cast<uint32_t>(offset), static_cast<uint32_t>(offset >> 32), 0, 0};
-  return philox4x32_10(counter, key);
-}
-
 // --- Box-Muller normal transforms ---
 
 template <typename scalar_t>
@@ -110,7 +98,18 @@ struct PhiloxDistributionFunctor {
       const int64_t base = key_idx * elems_per_key_ + chunk_offset;
       const int64_t remaining = elems_per_key_ - chunk_offset;
       const int count = static_cast<int>(remaining < epc ? remaining : epc);
-      const auto r = philox_4x32(seed, offset + static_cast<uint64_t>(chunk));
+
+      const uint64_t chunk_seq = offset + static_cast<uint64_t>(chunk);
+      const uint2 philox_key = {
+          static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+      // Subsequence half is fixed to 0 so the 64-bit offset alone addresses
+      // the whole counter space, keeping values consistent across devices.
+      const uint4 counter = {
+          static_cast<uint32_t>(chunk_seq),
+          static_cast<uint32_t>(chunk_seq >> 32),
+          0,
+          0};
+      const auto r = philox4x32_10(counter, philox_key);
       write_values(r, base, count);
     }
   }
