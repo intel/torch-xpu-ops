@@ -26,7 +26,7 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from profiling_test_utils import (  # noqa: E402
+from profiling_test_utils import (
     kernel_events,
     kernel_summary,
     parse_profiler_table,
