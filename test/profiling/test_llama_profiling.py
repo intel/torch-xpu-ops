@@ -11,8 +11,7 @@
 """Pass/fail wrapper around test/profiling/llama.py.
 
 Kept in its own file because it needs `transformers` and a downloadable model,
-so CI runs it as a separate step. The per-iteration profiler tables are still
-printed: .github/scripts/llama_summary.py parses them out of the same log.
+so CI runs it as a separate step.
 """
 
 import os
@@ -22,11 +21,7 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from profiling_test_utils import (
-    assert_common,
-    kernel_summary,
-    load_script_module,
-)
+from profiling_test_utils import assert_common, kernel_summary, load_script_module
 
 EXPECTED_GEMM_CALLS = int(os.environ.get("LLAMA_EXPECTED_GEMM_CALLS", "226"))
 GEMM_KERNEL_PATTERN = os.environ.get("LLAMA_GEMM_KERNEL_PATTERN", "gemm_kernel")
