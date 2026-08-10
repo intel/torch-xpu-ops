@@ -78,8 +78,16 @@ op_assert_ref_tol_table.update(
 
 # XPU: max_pool2d_with_indices_backward tests are not applicable
 # More details in https://github.com/pytorch/pytorch/pull/182619
-CROSS_REF_EXCLUDE_SET.add(("xpu", None, "max_pool2d_with_indices_backward"))
-
+CROSS_REF_EXCLUDE_SET.update(
+    {
+        ("xpu", None, "max_pool2d_with_indices_backward"),
+        ("xpu", torch.int8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for int8
+        ("xpu", torch.uint8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for uint8
+        ("xpu", torch.int8, "tensordot"),  # "dot_xpu_mkl" not implemented for int8
+        ("xpu", torch.uint8, "tensordot"),  # "dot_xpu_mkl" not implemented for uint8
+        ("xpu", torch.half, "polar"),  # "polar_xpu" not implemented for half
+    }
+)
 
 # ======================================================================
 # CROSS_REF_BACKWARD_EXCLUDE_SET patches (XPU-specific exclusions)

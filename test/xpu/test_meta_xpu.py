@@ -246,6 +246,52 @@ TestMeta.test_dispatch_symbolic_meta_outplace_all_strides = (
 )
 
 
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        xfail("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip("polar", dtypes=[torch.half]),  # "polar_xpu" not implemented for half
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+@onlyOn(["cuda", "xpu"])
+def _test_dispatch_symbolic_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=True, inplace=False)
+
+
+_test_dispatch_symbolic_meta_outplace.__name__ = "test_dispatch_symbolic_meta_outplace"
+TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_outplace
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip("polar", dtypes=[torch.half]),  # "polar_xpu" not implemented for half
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+def _test_dispatch_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=False, inplace=False)
+
+
+_test_dispatch_meta_outplace.__name__ = "test_dispatch_meta_outplace"
+TestMeta.test_dispatch_meta_outplace = _test_dispatch_meta_outplace
+
+
 # Removed @onlyCUDA; replaced with @onlyOn(["cuda", "xpu"]).
 @skipIfCrossRef
 @suppress_warnings
