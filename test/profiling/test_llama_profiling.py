@@ -22,8 +22,8 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from profiling_test_utils import (
-    assert_common,  # noqa: E402
+from profiling_test_utils import (  # noqa: E402
+    assert_common,
     kernel_summary,
     load_script_module,
 )
