@@ -34,22 +34,6 @@ namespace impl {
 
 constexpr int64_t mkl_max_ndim = 3;
 
-// Sort transform dimensions by input layout, for best performance
-// exclude_last is for onesided transforms where the last dimension cannot be
-// reordered
-static DimVector _sort_dims(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool exclude_last = false) {
-  DimVector sorted_dims(dim.begin(), dim.end());
-  auto self_strides = self.strides();
-  std::sort(
-      sorted_dims.begin(),
-      sorted_dims.end() - exclude_last,
-      [&](int64_t a, int64_t b) { return self_strides[a] > self_strides[b]; });
-  return sorted_dims;
-}
-
 template <precision prec, domain signal_type, typename scalar_t>
 void _mkl_dft(
     const Tensor& input,
@@ -287,48 +271,8 @@ Tensor& _exec_fft(
   return out;
 }
 
-double _dft_scale(
-    IntArrayRef dim,
-    IntArrayRef norm_sizes,
-    int64_t normalization) {
-  const auto norm = static_cast<fft_norm_mode>(normalization);
-  double double_scale = 1.0;
-
-  if (norm == fft_norm_mode::none) {
-    return double_scale;
-  }
-
-  int64_t signal_numel = 1;
-  for (const int64_t& d : dim) {
-    signal_numel *= norm_sizes[d];
-  }
-  if (norm == fft_norm_mode::by_root_n) {
-    double_scale = 1.0 / std::sqrt(signal_numel);
-  } else {
-    double_scale = 1.0 / static_cast<double>(signal_numel);
-  }
-
-  return double_scale;
-}
-
-const Tensor& _fft_apply_normalization(
-    const Tensor& self,
-    int64_t normalization,
-    IntArrayRef norm_sizes,
-    IntArrayRef dims) {
-  auto scale = _dft_scale(dims, norm_sizes, normalization);
-  return (scale == 1.0) ? self : self.mul_(scale);
-}
-
-// TODO: Remove this work-around in future.
-Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half ||
-      input.scalar_type() == ScalarType::BFloat16)
-    return input.to(ScalarType::Float);
-  if (input.scalar_type() == ScalarType::ComplexHalf)
-    return input.to(ScalarType::ComplexFloat);
-  return input;
-}
+// _sort_dims, _dft_scale, _fft_apply_normalization, and promote_fft_input are
+// defined in sycl/FFTKernelFunctor.cpp and declared in sycl/FFTKernelFunctor.h
 
 } // namespace impl
 

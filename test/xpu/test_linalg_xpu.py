@@ -789,7 +789,7 @@ def cond_errors_and_warnings(self, device, dtype):
     a = torch.ones(3, 3, dtype=dtype, device=device)
     for p in ["wrong_norm", 5]:
         with self.assertRaisesRegex(
-            RuntimeError, f"linalg.cond got an invalid norm type: {p}"
+            ValueError, f"linalg.cond got an invalid norm type: {p}"
         ):
             torch.linalg.cond(a, p)
 
