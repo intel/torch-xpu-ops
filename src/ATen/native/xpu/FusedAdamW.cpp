@@ -9,9 +9,6 @@
  */
 
 #include <ATen/native/ForeachUtils.h>
-#include <ATen/native/xpu/FusedAdamMixedPrecisionUtils.h>
-
-#include <vector>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -25,114 +22,6 @@
 
 namespace at {
 namespace native {
-
-namespace {
-
-template <typename LrT>
-void run_mixed_precision_fused_adamw_xpu_(
-    at::TensorList params,
-    at::TensorList grads,
-    at::TensorList exp_avgs,
-    at::TensorList exp_avg_sqs,
-    at::TensorList max_exp_avg_sqs,
-    at::TensorList state_steps,
-    const LrT& lr,
-    const double beta1,
-    const double beta2,
-    const double weight_decay,
-    const double eps,
-    const bool amsgrad,
-    const bool maximize,
-    const std::optional<at::Tensor>& grad_scale,
-    const std::optional<at::Tensor>& found_inf) {
-  if (params.empty()) {
-    return;
-  }
-
-  if (amsgrad) {
-    at::native::validate_fused_mixed_precision_dtypes(
-        params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, "_fused_adamw");
-  } else {
-    at::native::validate_fused_mixed_precision_dtypes(
-        params, grads, exp_avgs, exp_avg_sqs, "_fused_adamw");
-  }
-
-  const auto param_dtype = params[0].scalar_type();
-
-  std::vector<at::Tensor> exp_avgs_fp32;
-  std::vector<at::Tensor> exp_avg_sqs_fp32;
-  std::vector<at::Tensor> max_exp_avg_sqs_fp32;
-  exp_avgs_fp32.reserve(exp_avgs.size());
-  exp_avg_sqs_fp32.reserve(exp_avg_sqs.size());
-  if (amsgrad) {
-    max_exp_avg_sqs_fp32.reserve(max_exp_avg_sqs.size());
-  }
-
-  for (const auto i : c10::irange(params.size())) {
-    exp_avgs_fp32.emplace_back(exp_avgs[i].to(param_dtype));
-    exp_avg_sqs_fp32.emplace_back(exp_avg_sqs[i].to(param_dtype));
-    if (amsgrad) {
-      max_exp_avg_sqs_fp32.emplace_back(max_exp_avg_sqs[i].to(param_dtype));
-    }
-  }
-
-  const bool upcast_fast_path = amsgrad
-      ? at::native::check_fast_path_restrictions(
-            {params,
-             grads,
-             exp_avgs_fp32,
-             exp_avg_sqs_fp32,
-             max_exp_avg_sqs_fp32})
-      : at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs_fp32, exp_avg_sqs_fp32});
-  TORCH_CHECK(
-      upcast_fast_path,
-      "_fused_adamw: params, grads, and (upcast) states must share device and "
-      "layout for the mixed-precision fused path");
-
-  if (amsgrad) {
-    xpu::fused_adamw_amsgrad_kernel(
-        params,
-        grads,
-        exp_avgs_fp32,
-        exp_avg_sqs_fp32,
-        max_exp_avg_sqs_fp32,
-        state_steps,
-        lr,
-        beta1,
-        beta2,
-        weight_decay,
-        eps,
-        maximize,
-        grad_scale,
-        found_inf);
-  } else {
-    xpu::fused_adamw_kernel(
-        params,
-        grads,
-        exp_avgs_fp32,
-        exp_avg_sqs_fp32,
-        state_steps,
-        lr,
-        beta1,
-        beta2,
-        weight_decay,
-        eps,
-        maximize,
-        grad_scale,
-        found_inf);
-  }
-
-  for (const auto i : c10::irange(params.size())) {
-    exp_avgs[i].copy_(exp_avgs_fp32[i]);
-    exp_avg_sqs[i].copy_(exp_avg_sqs_fp32[i]);
-    if (amsgrad) {
-      max_exp_avg_sqs[i].copy_(max_exp_avg_sqs_fp32[i]);
-    }
-  }
-}
-
-} // namespace
 
 void _fused_adamw_kernel_xpu_(
     at::TensorList params,
@@ -150,47 +39,22 @@ void _fused_adamw_kernel_xpu_(
     const bool maximize,
     const std::optional<at::Tensor>& grad_scale,
     const std::optional<at::Tensor>& found_inf) {
-  const bool fast_path = amsgrad
-      ? at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs})
-      : at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs});
+  if (params.empty()) {
+    return;
+  }
 
-  if (fast_path) {
-    if (amsgrad) {
-      xpu::fused_adamw_amsgrad_kernel(
-          params,
-          grads,
-          exp_avgs,
-          exp_avg_sqs,
-          max_exp_avg_sqs,
-          state_steps,
-          lr,
-          beta1,
-          beta2,
-          weight_decay,
-          eps,
-          maximize,
-          grad_scale,
-          found_inf);
-    } else {
-      xpu::fused_adamw_kernel(
-          params,
-          grads,
-          exp_avgs,
-          exp_avg_sqs,
-          state_steps,
-          lr,
-          beta1,
-          beta2,
-          weight_decay,
-          eps,
-          maximize,
-          grad_scale,
-          found_inf);
-    }
-  } else {
-    run_mixed_precision_fused_adamw_xpu_(
+  const bool is_mixed_precision =
+      params[0].scalar_type() != exp_avgs[0].scalar_type();
+  if (amsgrad) {
+    TORCH_CHECK(
+        at::native::check_fast_path_restrictions(
+            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
+        "_fused_adamw: params, grads, exp_avgs, exp_avg_sqs, and "
+        "max_exp_avg_sqs must have same dtype, device, and layout");
+    xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -202,7 +66,29 @@ void _fused_adamw_kernel_xpu_(
         beta2,
         weight_decay,
         eps,
-        amsgrad,
+        maximize,
+        grad_scale,
+        found_inf);
+  } else {
+    TORCH_CHECK(
+        at::native::check_fast_path_restrictions(
+            {params, grads, exp_avgs, exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
+        "_fused_adamw: params, grads, exp_avgs, and exp_avg_sqs "
+        "must have same dtype, device, and layout");
+    xpu::fused_adamw_kernel(
+        params,
+        grads,
+        exp_avgs,
+        exp_avg_sqs,
+        state_steps,
+        lr,
+        beta1,
+        beta2,
+        weight_decay,
+        eps,
         maximize,
         grad_scale,
         found_inf);
@@ -246,6 +132,10 @@ void _fused_adamw_kernel_xpu_(
     return;
   }
 
+  if (params.empty()) {
+    return;
+  }
+
   Device param_device = params[0].device();
   TORCH_CHECK(
       lr.device() == param_device,
@@ -262,47 +152,18 @@ void _fused_adamw_kernel_xpu_(
         "found_inf must be on the same GPU device as the params");
   }
 
-  const bool fast_path = amsgrad
-      ? at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs})
-      : at::native::check_fast_path_restrictions(
-            {params, grads, exp_avgs, exp_avg_sqs});
-
-  if (fast_path) {
-    if (amsgrad) {
-      xpu::fused_adamw_amsgrad_kernel(
-          params,
-          grads,
-          exp_avgs,
-          exp_avg_sqs,
-          max_exp_avg_sqs,
-          state_steps,
-          lr,
-          beta1,
-          beta2,
-          weight_decay,
-          eps,
-          maximize,
-          grad_scale,
-          found_inf);
-    } else {
-      xpu::fused_adamw_kernel(
-          params,
-          grads,
-          exp_avgs,
-          exp_avg_sqs,
-          state_steps,
-          lr,
-          beta1,
-          beta2,
-          weight_decay,
-          eps,
-          maximize,
-          grad_scale,
-          found_inf);
-    }
-  } else {
-    run_mixed_precision_fused_adamw_xpu_(
+  const bool is_mixed_precision =
+      params[0].scalar_type() != exp_avgs[0].scalar_type();
+  if (amsgrad) {
+    TORCH_CHECK(
+        at::native::check_fast_path_restrictions(
+            {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
+        "_fused_adamw: params, grads, exp_avgs, exp_avg_sqs, and "
+        "max_exp_avg_sqs must have same dtype, device, and layout");
+    xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -314,7 +175,29 @@ void _fused_adamw_kernel_xpu_(
         beta2,
         weight_decay,
         eps,
-        amsgrad,
+        maximize,
+        grad_scale,
+        found_inf);
+  } else {
+    TORCH_CHECK(
+        at::native::check_fast_path_restrictions(
+            {params, grads, exp_avgs, exp_avg_sqs},
+            /*scalarList=*/{},
+            /*does_op_promote_integer_inputs_to_float=*/false,
+            /*skip_cross_list_dtype_check=*/is_mixed_precision),
+        "_fused_adamw: params, grads, exp_avgs, and exp_avg_sqs "
+        "must have same dtype, device, and layout");
+    xpu::fused_adamw_kernel(
+        params,
+        grads,
+        exp_avgs,
+        exp_avg_sqs,
+        state_steps,
+        lr,
+        beta1,
+        beta2,
+        weight_decay,
+        eps,
         maximize,
         grad_scale,
         found_inf);
