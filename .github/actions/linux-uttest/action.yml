@@ -99,6 +99,8 @@ runs:
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
+        # xdist ignores -s and drops the profiler tables the cases print for manual check
+        export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed -E 's/(^| )-n +[^ ]+//g')"
         # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
         python -m pytest -s -v \
           --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/rn50.xml \
