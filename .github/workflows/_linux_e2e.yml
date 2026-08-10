@@ -228,7 +228,7 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: ${{ inputs.scenario }}
-          overwrite_model_list: 'false'
+          overwrite_model_list: 'p0'
       - name: Acceptance Test - inference (${{ inputs.suite }})
         if: ${{ contains(inputs.test_type, 'acceptance') }}
         uses: ./.github/actions/linux-e2etest
@@ -237,7 +237,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: ${{ inputs.scenario }}
-          overwrite_model_list: 'false'
+          overwrite_model_list: 'p0'
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

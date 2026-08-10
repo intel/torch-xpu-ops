@@ -24,7 +24,7 @@ inputs:
   overwrite_model_list:
     type: string
     default: 'true'
-    description: 'Overwrite pytorch model lists with torch-xpu-ops .ci/benchmarks/ overlay'
+    description: "Model-list overlay: 'true' full .ci/benchmarks/ overlay (no -k filter), 'false' use pytorch default lists, 'p0' use the .ci/benchmarks/p0/ subset"
 
 runs:
   using: composite
@@ -42,6 +42,10 @@ runs:
         if [ "${{ inputs.overwrite_model_list }}" == "true" ];then
           # overlay torch-xpu-ops model lists for nightly / PR tests
           rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+        elif [ "${{ inputs.overwrite_model_list }}" == "p0" ];then
+          # overlay torch-xpu-ops configs, then apply the P0 model-list subset
+          # rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/    # use upstream configs, but overlay P0 model-list subset
+          rsync -avz ../.ci/benchmarks/p0/ benchmarks/dynamo/
         fi
         rm -rf inductor_log torch
         sed -i 's/choices=range(1, 16),/choices=range(1, 17),/g' benchmarks/dynamo/common.py
@@ -62,6 +66,7 @@ runs:
           if [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
           elif [ "${{ inputs.overwrite_model_list }}" != "true" ];then
+            # 'false' -> pytorch default lists; 'p0' -> overlaid P0 subset
             models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
           else
             models_list_args=""
