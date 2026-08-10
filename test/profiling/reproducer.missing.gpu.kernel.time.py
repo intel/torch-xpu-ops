@@ -9,6 +9,8 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
+SORT_BY = "xpu_time_total"
+
 
 def maxUnpool2d(shape, dtype, channels_last, backward):
     N, C, H, W = int(shape[0]), int(shape[1]), int(shape[2]), int(shape[3])
@@ -60,6 +62,23 @@ def maxUnpool2d(shape, dtype, channels_last, backward):
         y_dpcpp.backward(grad_dpcpp)
 
 
+def run_profile(
+    shape=(4, 64, 128, 128),
+    dtype=torch.float32,
+    channels_last=False,
+    backward=True,
+    warmups=3,
+):
+    for _ in range(warmups):
+        maxUnpool2d(shape, dtype, channels_last, backward=backward)
+
+    with profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+    ) as prof:
+        maxUnpool2d(shape, dtype, channels_last, backward=backward)
+    return prof
+
+
 if __name__ == "__main__":
     dtype = torch.bfloat16
     dtype = torch.float32
@@ -67,16 +86,5 @@ if __name__ == "__main__":
     for channels_last in [False]:
         for shape in [[4, 64, 128, 128]]:
             print("======================================")
-
-            # warm up
-            maxUnpool2d(shape, dtype, channels_last, backward=backward)
-            maxUnpool2d(shape, dtype, channels_last, backward=backward)
-            maxUnpool2d(shape, dtype, channels_last, backward=backward)
-
-            # go
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-            ) as prof:
-                for i in range(1):
-                    maxUnpool2d(shape, dtype, channels_last, backward=backward)
-            print(prof.key_averages().table(sort_by="xpu_time_total"))
+            prof = run_profile(shape, dtype, channels_last, backward)
+            print(prof.key_averages().table(sort_by=SORT_BY))
