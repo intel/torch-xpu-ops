@@ -102,9 +102,7 @@ def quiet_iterations(iterable, keep_first=1):
     index = 0
     while True:
         muted = (
-            contextlib.nullcontext()
-            if index < keep_first
-            else suppress_native_stderr()
+            contextlib.nullcontext() if index < keep_first else suppress_native_stderr()
         )
         with muted:
             try:
@@ -272,8 +270,7 @@ def dump_profile_report(prof, case_name, sort_by="self_xpu_time_total", events=N
     trace_total = sum(
         event.get("dur", 0)
         for event in events
-        if event.get("ph") == "X"
-        and event.get("cat") in DEVICE_ACTIVITY_CATEGORIES
+        if event.get("ph") == "X" and event.get("cat") in DEVICE_ACTIVITY_CATEGORIES
     )
     delta = key_averages_total - trace_total
     print(f"----- [{case_name}] cross check -----")

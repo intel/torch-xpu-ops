@@ -22,8 +22,8 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from profiling_test_utils import (  # noqa: E402
-    assert_common,
+from profiling_test_utils import (
+    assert_common,  # noqa: E402
     kernel_summary,
     load_script_module,
 )
@@ -57,9 +57,7 @@ class TestLlamaProfiling(TestCase):
             # problem, not a profiler regression.
             self.skipTest(f"llama model is not available: {exc}")
 
-        self.assertTrue(
-            calls_per_iteration, "llama produced no profiling iterations"
-        )
+        self.assertTrue(calls_per_iteration, "llama produced no profiling iterations")
 
         distinct = set(calls_per_iteration.values())
         self.assertEqual(
