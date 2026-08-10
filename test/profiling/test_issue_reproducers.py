@@ -24,7 +24,7 @@ from torch.utils._triton import has_triton
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from profiling_test_utils import (  # noqa: E402
+from profiling_test_utils import (
     assert_common,
     device_time_by_op,
     dump_profile_report,
