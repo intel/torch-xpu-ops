@@ -11,14 +11,8 @@ PYTORCH_TEST_DIR = "../../../../test"
 skip_dict = {
     # torch-xpu-ops tests, not upstreamed yet, must be sorted alphabetically
     "complex_tensor/test_complex_tensor_xpu.py": None,
-    "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
-        "test_cache_hot_load_device_cpu",
-        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
-        "test_cache_lazy_backward_for_compiled_autograd",
-    ),
-    "dynamo/test_compiler_bisector_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_aot_autograd_cache.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_compiler_bisector.py": None,
     "dynamo/test_ctx_manager_xpu.py": (
         # Autocast to float64 is CUDA-specific and not supported on XPU.
         # More details in https://github.com/pytorch/pytorch/pull/179141
@@ -26,12 +20,12 @@ skip_dict = {
         "test_cuda_amp_autocast",
     ),
     "dynamo/test_cudagraphs_xpu.py": None,
-    "dynamo/test_deviceguard_xpu.py": None,
-    "dynamo/test_export_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_deviceguard.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_export.py": None,
     "dynamo/test_logging_xpu.py": None,
     "dynamo/test_misc_xpu.py": None,
     "dynamo/test_recompiles_xpu.py": None,
-    "dynamo/test_regional_inductor_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_regional_inductor.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_cpp_serdes_xpu.py": None,
@@ -427,4 +421,8 @@ skip_dict = {
     f"{PYTORCH_TEST_DIR}/test_stateless.py": None,
     f"{PYTORCH_TEST_DIR}/test_view_ops.py": None,
     f"{PYTORCH_TEST_DIR}/torch_np/test_basic.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_structured_trace.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_subclasses.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_trace_rules.py": None,
 }
