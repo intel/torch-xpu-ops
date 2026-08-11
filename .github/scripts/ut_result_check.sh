@@ -418,6 +418,15 @@ check_profiling_ut() {
             echo "   ✅ ${report}: ${tests} tests"
         fi
     done
+    local suite="xpu_profiling"
+    if [[ -f "passed_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+        echo -e "\\n✅ Passing Known Issues:"
+        check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
+    fi
+    if [[ -f "failures_${suite}.log" ]] && [[ -f "Known_issue.log" ]]; then
+        echo -e "\\nChecking New Failures:"
+        check_new_failed "failures_${suite}.log" "Known_issue.log"
+    fi
     echo -e "\\n📈 Final Summary:"
     echo "   Reports: ${report_count}, Tests: ${total_tests}, Failed: ${total_failures}, Errors: ${total_errors}"
     if [[ "$total_failures" -gt 0 ]] || [[ "$total_errors" -gt 0 ]] || [[ "$total_tests" -le 0 ]]; then
