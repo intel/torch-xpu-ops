@@ -27,6 +27,9 @@
 #include <ATen/ops/narrow.h>
 #include <ATen/ops/size_native.h>
 
+#include <algorithm>
+#include <vector>
+
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
 
@@ -506,31 +509,75 @@ void parallel_cat(
       : fitsVector(ALIGNED_VEC_LOAD_BYTES_8)  ? ALIGNED_VEC_LOAD_BYTES_8
                                               : 0;
 
+  // Inputs are batched in size order rather than in argument order. A batch's
+  // launch range covers its largest input, so mixing a large input with much
+  // smaller ones leaves most of the smaller inputs' work items idle. Every
+  // input carries its own output offset, so any batching order is equivalent
+  // as long as the offsets are resolved in argument order up front.
+  const unsigned nInputs = static_cast<unsigned>(inputs.size());
+  std::vector<int64_t> inputOffset(nInputs);
+  std::vector<unsigned> order(nInputs);
+  {
+    int64_t running = 0;
+    for (unsigned k = 0; k < nInputs; ++k) {
+      order[k] = k;
+      inputOffset[k] = running;
+      // There is a legacy case where a 1-D empty tensor can be concat with
+      // high-dimensional tensor
+      if (inputs[k].get().numel() > 0) {
+        running += inputs[k].get().size(logical_dimension);
+      }
+    }
+    std::stable_sort(order.begin(), order.end(), [&](unsigned a, unsigned b) {
+      return inputs[a].get().numel() > inputs[b].get().numel();
+    });
+  }
+
   // Now we loop
   int batchCounter = 0;
-  int64_t offset = 0;
-  for (unsigned i = 0; i < inputs.size(); i += batch_size) {
+  unsigned i = 0;
+  while (i < nInputs) {
+    // The largest input comes first and fixes the launch range. Close the
+    // batch once the idle work items it would accumulate outweigh the useful
+    // ones; what is left starts a new, smaller batch. A uniformly sized input
+    // list never splits, so the common case keeps a single launch.
+    const int64_t batchMax = inputs[order[i]].get().numel();
+    int64_t usefulElements = batchMax;
+    int64_t idleElements = 0;
+    unsigned batchEnd = i + 1;
+    while (batchEnd < nInputs &&
+           (batchEnd - i) < static_cast<unsigned>(batch_size)) {
+      const int64_t n = inputs[order[batchEnd]].get().numel();
+      if (idleElements + (batchMax - n) > usefulElements + n)
+        break;
+      idleElements += batchMax - n;
+      usefulElements += n;
+      ++batchEnd;
+    }
+    const unsigned batchStart = i;
+    // Advanced ahead of the launch, which ends the iteration early.
+    i = batchEnd;
+
     bool isContig = true;
     bool isAligned = true;
     // OR of the batch's input addresses; one modulo then tests them all.
     // Unlike the geometry above, alignment may vary from batch to batch.
     uintptr_t inputAddressBits = 0;
     unsigned int max_elements_per_tensor = 0;
-    for (batchCounter = 0;
-         batchCounter < batch_size && (i + batchCounter) < inputs.size();
+    for (batchCounter = 0; batchStart + batchCounter < batchEnd;
          ++batchCounter) {
+      const unsigned inputIndex = order[batchStart + batchCounter];
       int64_t dimSize = 0;
       // There is a legacy case where a 1-D empty tensor can be concat with
       // high-dimensional tensor
-      if (inputs[i + batchCounter].get().numel() > 0) {
-        dimSize = inputs[i + batchCounter].get().size(logical_dimension);
+      if (inputs[inputIndex].get().numel() > 0) {
+        dimSize = inputs[inputIndex].get().size(logical_dimension);
       }
       catMetaData.input[batchCounter] = static_cast<const scalar_t*>(
-          inputs[i + batchCounter].get().const_data_ptr());
-      catMetaData.offset[batchCounter] = offset;
+          inputs[inputIndex].get().const_data_ptr());
+      catMetaData.offset[batchCounter] = inputOffset[inputIndex];
       catMetaData.dimSize[batchCounter] = dimSize;
-      catMetaData.nElements[batchCounter] =
-          inputs[i + batchCounter].get().numel();
+      catMetaData.nElements[batchCounter] = inputs[inputIndex].get().numel();
 
       // If at least one of the inputs is not aligned, we can't call the
       // CatArrayBatchedCopy_alignedK_contig
@@ -539,8 +586,8 @@ void parallel_cat(
           reinterpret_cast<uintptr_t>(catMetaData.input[batchCounter]);
 
       if (stride_size > 1) {
-        auto strides = inputs[i + batchCounter].get().strides();
-        auto sizes = inputs[i + batchCounter].get().sizes();
+        auto strides = inputs[inputIndex].get().strides();
+        auto sizes = inputs[inputIndex].get().sizes();
         if (memory_format == c10::MemoryFormat::Contiguous) {
           for (int j = 0; j < nDims; j++) {
             catMetaData.tensorStride[batchCounter].tensorSize[j] = sizes[j];
@@ -565,15 +612,13 @@ void parallel_cat(
         catMetaData.isContiguous[batchCounter] = true;
       }
 
-      // Update offset
-      offset += dimSize;
-
       // We need max elements per tensor to compute range parameters
       max_elements_per_tensor = std::max(
           max_elements_per_tensor, catMetaData.nElements[batchCounter]);
     }
 
-    // Skip if the tensor is empty. Otherwise, the range dim is invalid
+    // Skip if every input in the batch is empty. Otherwise the range dim is
+    // invalid. Sorting puts the empty inputs last, so this ends the loop.
     if (max_elements_per_tensor == 0)
       continue;
 

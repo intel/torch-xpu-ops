@@ -145,6 +145,42 @@ class TestTorchMethod(TestCase):
 
         self.assertEqual(expected, actual.cpu())
 
+    def test_cat_size_skewed_batches(self):
+        # A batch's launch range is sized by its largest input, so widely
+        # different sizes are split into several launches. Inputs are also
+        # reordered by size, so this checks that every input still lands at its
+        # argument-order offset. Sizes are interleaved to force a permutation,
+        # and an empty input is included because those sort to the end.
+        shapes = []
+        for _ in range(6):
+            shapes += [(2, 3, 512, 8), (2, 3, 1, 8), (2, 3, 37, 8)]
+        shapes.append((2, 3, 0, 8))
+        inputs_cpu = [
+            torch.randn(shape, dtype=torch.float32).to(torch.bfloat16)
+            for shape in shapes
+        ]
+
+        expected = torch.cat(inputs_cpu, dim=2)
+        actual = torch.cat([tensor.xpu() for tensor in inputs_cpu], dim=2)
+
+        self.assertEqual(expected, actual.cpu())
+
+    def test_cat_size_skewed_batches_strided(self):
+        # Same skew, but on non-contiguous inputs so the strided kernel runs
+        # and the per-input stride metadata is reordered along with the rest.
+        shapes = []
+        for _ in range(6):
+            shapes += [(2, 3, 512, 8), (2, 3, 1, 8), (2, 3, 37, 8)]
+        inputs_cpu = [
+            torch.randn(shape, dtype=torch.float32).to(torch.bfloat16)[:, :, :, ::2]
+            for shape in shapes
+        ]
+
+        expected = torch.cat(inputs_cpu, dim=2)
+        actual = torch.cat([tensor.xpu() for tensor in inputs_cpu], dim=2)
+
+        self.assertEqual(expected, actual.cpu())
+
     def test_cat_array_2(self, dtype=torch.float):
         shapes = [
             (8, 7, 3, 2),
