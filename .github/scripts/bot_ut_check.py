@@ -520,8 +520,6 @@ def collect_data(repo, pr_number, run_id_arg):
         "changed_files": changed_files,
         "new_tests": new_tests,
         "new_tests_summary": new_summary,
-        "new_tests_passed": new_summary["passed"],
-        "new_tests_not_run": new_summary["not_run"],
         "passed_tests_count": len(passed_tests),
         "totals": totals,
         "verdict": verdict,

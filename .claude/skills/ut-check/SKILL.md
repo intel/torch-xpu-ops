@@ -8,6 +8,16 @@ description: Analyze UT (unit test) results for a torch-xpu-ops PR. Use when ask
 Analyze unit test results for a torch-xpu-ops PR: identify new failures, assess
 whether they relate to the PR changes, and verify new test coverage.
 
+## Quick start
+
+1. Read the UT data JSON at the path given in the request (default
+   `/tmp/ut_data.json`). If it is missing or unreadable, say so and stop --
+   never reconstruct the data from elsewhere.
+2. Analyze it following the workflow below. The data is self-contained; no
+   sub-agents or extra CI queries are needed.
+3. Emit the report as your final message. The calling workflow posts it as the
+   PR comment -- do not post a comment yourself.
+
 ## Input
 
 The UT data is provided as a JSON file (typically `/tmp/ut_data.json`) produced
