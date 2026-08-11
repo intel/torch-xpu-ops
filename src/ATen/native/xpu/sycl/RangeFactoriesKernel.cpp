@@ -239,6 +239,37 @@ Tensor& linspace_kernel(
   return result;
 }
 
+template <typename scalar_t>
+struct LogspaceIntegralFunctor {
+  scalar_t operator()(int64_t ind) const {
+    double exp = ind < halfway_
+        ? start_ + step_ * static_cast<double>(ind)
+        : end_ - step_ * static_cast<double>(steps_ - ind - 1);
+    double result = sycl::pow(base_, exp);
+    return static_cast<scalar_t>(result);
+  }
+  LogspaceIntegralFunctor(
+      double start,
+      double end,
+      double base,
+      int64_t steps,
+      double step,
+      int64_t halfway)
+      : start_(start),
+        end_(end),
+        base_(base),
+        steps_(steps),
+        step_(step),
+        halfway_(halfway) {}
+
+ private:
+  double start_;
+  double end_;
+  double base_;
+  int64_t steps_;
+  double step_;
+  int64_t halfway_;
+};
 template <typename scalar_t, typename step_type>
 struct LogspaceFunctor {
   scalar_t operator()(int64_t ind) const {
@@ -308,13 +339,13 @@ Tensor& logspace_kernel(
     }
   } else if (isIntegralType(r.scalar_type(), false)) {
     AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "logspace_xpu", [&]() {
-      float scalar_base =
-          static_cast<float>(base); // Use float to avoid promotion to double
+      double scalar_base = static_cast<double>(base);
       scalar_t scalar_start = start.to<scalar_t>();
       scalar_t scalar_end = end.to<scalar_t>();
-      float step = static_cast<float>(scalar_end - scalar_start) / (steps - 1);
+      double step =
+          static_cast<double>(scalar_end - scalar_start) / (steps - 1);
       const int64_t halfway = steps / 2;
-      auto f = LogspaceFunctor<scalar_t, float>(
+      auto f = LogspaceIntegralFunctor<scalar_t>(
           scalar_start, scalar_end, scalar_base, steps, step, halfway);
 
       gpu_kernel_with_index(r, f);
