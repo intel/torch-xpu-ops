@@ -33,7 +33,7 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(2 * 1024 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 16))
+TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 8))
 HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 2048))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
