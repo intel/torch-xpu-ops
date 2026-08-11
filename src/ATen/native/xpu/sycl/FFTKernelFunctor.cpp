@@ -936,7 +936,8 @@ struct HermitianSymmetryOffsetCalculator {
       IntArrayRef sizes,
       IntArrayRef strides,
       IntArrayRef dim,
-      const int64_t element_size) {
+      const int64_t element_size)
+      : mirror_dim_(0) {
     TORCH_INTERNAL_ASSERT(sizes.size() == strides.size());
     TORCH_INTERNAL_ASSERT(sizes.size() <= XPU_MAX_TENSORINFO_DIMS);
     dims = sizes.size();
@@ -953,7 +954,6 @@ struct HermitianSymmetryOffsetCalculator {
       }
     }
 
-    mirror_dim_ = 0;
     for (int64_t i = 0; i < dim.size(); ++i) {
       mirror_dim_ |= (uint32_t{1} << dim[i]);
     }
