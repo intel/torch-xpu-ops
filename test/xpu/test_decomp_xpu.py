@@ -88,6 +88,26 @@ CROSS_REF_EXCLUDE_SET.update(
     }
 )
 
+# XPU: oneDNN uses saturated arithmetic for int8/uint8 BLAS ops (values clamp to
+# the dtype boundary), while PyTorch's decompositions compute in wider types and
+# wrap modularly. For example, the fused native baddbmm saturates the full
+# batch1@batch2 + self result, while the decomposition does bmm (saturated) then
+# a separate int8 addition (which wraps). mv/addmv/addmm have the same mismatch
+# because their native XPU path routes through onednn::matmul.
+CROSS_REF_EXCLUDE_SET.update(
+    {
+        ("xpu", torch.int8, "baddbmm"),
+        ("xpu", torch.uint8, "baddbmm"),
+        ("xpu", torch.int8, "addmm"),
+        ("xpu", torch.uint8, "addmm"),
+        ("xpu", torch.int8, "addmv"),
+        ("xpu", torch.uint8, "addmv"),
+        ("xpu", torch.int8, "mv"),
+        ("xpu", torch.uint8, "mv"),
+    }
+)
+
+
 # ======================================================================
 # CROSS_REF_BACKWARD_EXCLUDE_SET patches (XPU-specific exclusions)
 # ======================================================================
