@@ -144,12 +144,18 @@ runs:
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
-        cd pytorch/third_party/torch-xpu-ops/test/xpu
+
+        PYTHON_BIN="$(python -c 'import sys; print(sys.executable)')"
+        export PATH="$(dirname "$PYTHON_BIN"):$PATH"
+        export CCL_ROOT="$(realpath $(dirname "$PYTHON_BIN")/..)"
+        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
+        export LD_LIBRARY_PATH="${CCL_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
+        cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
