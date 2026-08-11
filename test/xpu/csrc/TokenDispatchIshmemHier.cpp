@@ -19,16 +19,17 @@
 // in Python, exactly as the flat op computes it). Because the slot is explicit,
 // forwarding order is irrelevant and sources never get mixed up.
 //
-// Kernel 1 (cross-domain RDMA, mirror push): rank r pushes every cross-domain
-// token to mirror(r)'s staging region along with, per token, its final_slot and
-// dest_pos (the destination's position within the domain, 0..P-1). It then
-// writes the staged count, fences, and raises the staging flag. It ALWAYS
-// raises the flag (even for zero cross tokens) so the peer's kernel 2 never
-// hangs.
+// Kernel 1 (cross-domain RDMA, mirror exchange): rank r pushes every
+// cross-domain token to mirror(r)'s staging region along with, per token, its
+// final_slot and dest_pos (the destination's position within the domain,
+// 0..P-1). It writes the staged count, fences, and raises the staging flag
+// (ALWAYS, even for zero cross tokens). Each work-group then waits on its OWN
+// local staging flag, so kernel 1 also RECEIVES the mirror's push: the
+// cross-domain send+recv is fully closed before kernel 1 returns.
 //
-// Kernel 2 (intra-domain dispatch): each rank first device-side waits on its
-// staging flag (its mirror partner's kernel 1 has landed). Then one work-group
-// per domain peer e (final dest = my_domain*P + e):
+// Kernel 2 (intra-domain switch): the cross-domain staging is already in place,
+// so this kernel is a pure local switch. One work-group per domain peer e
+// (final dest = my_domain*P + e):
 //   Part A: push local SAME-domain tokens with dest_pos==e to dest's final slot.
 //   Part B: push staged tokens with dest_pos==e to dest's final slot.
 // After quiet+fence it raises the intra-domain flag on the dest peer, then waits
@@ -222,8 +223,10 @@ int32_t* ensure_i32_array(int32_t*& ptr, int& have_slots, int slots) {
 // Kernel 1: nwg work-groups push the cross-domain tokens (plus their
 // final_slot / dest_pos metadata) to the mirror partner's staging region. Each
 // work-group takes a contiguous chunk of the cross tokens and raises its OWN
-// staging flag after fencing, so the mirror's kernel 2 waits on all nwg flags.
-// nwg is fixed (== dispatch_max_wg) so the receiver knows how many to wait on;
+// staging flag after fencing. It then waits on its own local flag, so the
+// mirror's matching push has landed by the time kernel 1 returns; this closes
+// cross-domain send+recv inside kernel 1 and leaves kernel 2 a pure switch.
+// nwg is fixed (== dispatch_max_wg) so both sides agree on the flag count;
 // work-groups whose chunk is empty still raise their flag.
 struct TokenDispatchIshmemHierK1 {
   uint8_t* symm_send;           // local [S, token_bytes]
@@ -288,29 +291,44 @@ struct TokenDispatchIshmemHierK1 {
     }
 
     // Fence (not quiet) suffices: payload, count and flag all target the mirror
-    // PE, and fence orders delivery to a single PE, so kernel 2 sees data before
-    // the flag. Local send-buffer reuse is ordered by the in-order SYCL queue.
+    // PE, and fence orders delivery to a single PE, so the receiver sees data
+    // before the flag. Local send-buffer reuse is ordered by the in-order SYCL
+    // queue.
     if (wg == 0 && lid == 0) {
       ishmem_uint64_atomic_set(
           stage_count, static_cast<uint64_t>(num_cross), mirror);
     }
     ishmemx_fence_work_group(grp);
     if (lid == 0) {
+      // atomic_set targets the REMOTE mirror PE; wait_until below always polls
+      // our LOCAL copy of the same symmetric offset.
       ishmem_uint64_atomic_set(stage_pad + wg, tag, mirror);
     }
+
+    // Receive side: wait for the mirror partner's matching work-group to land
+    // its push into our OWN staging (its WG wg raises our stage_pad[wg]). All
+    // nwg WGs together confirm the full incoming staging, so kernel 2 needs no
+    // cross-domain wait. Both sides raise before waiting, so this cannot
+    // deadlock.
+    if (lid == 0) {
+      ishmem_uint64_wait_until(stage_pad + wg, ISHMEM_CMP_EQ, tag);
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+    sycl::atomic_fence(
+        sycl::memory_order::acquire, sycl::memory_scope::system);
   }
 };
 
-// Kernel 2: one work-group per domain peer performs the intra-domain dispatch of
+// Kernel 2: one work-group per domain peer performs the intra-domain switch of
 // both the local same-domain tokens (Part A) and the staged cross-domain tokens
-// received in kernel 1 (Part B).
+// received in kernel 1 (Part B). Kernel 1 already closed the cross-domain
+// exchange, so this kernel does no cross-domain wait.
 struct TokenDispatchIshmemHierK2 {
   uint8_t* symm_send;           // local [S, token_bytes]
   uint8_t* stage;               // local staging base (filled by kernel 1)
   uint8_t* final_buf;           // symmetric final base (write on dest peer)
   int32_t* stage_slot;          // local [S]
   int32_t* stage_destpos;       // local [S]
-  uint64_t* stage_pad;          // local [nwg] this-call half (wait)
   uint64_t* stage_count;        // local [1] this-call half (read)
   uint64_t* intra_pad;          // symmetric [P] this-call half (write on dest / wait local)
   const int32_t* local_order;   // local [num_local]
@@ -319,7 +337,6 @@ struct TokenDispatchIshmemHierK2 {
   int64_t token_bytes;
   int32_t num_local;
   int32_t P;
-  int32_t nwg;
   int32_t my_domain;
   int32_t my_pos;
   uint64_t tag;
@@ -333,14 +350,8 @@ struct TokenDispatchIshmemHierK2 {
     }
     const int32_t dest = my_domain * P + e;
 
-    // Gate Part B on the mirror partner's kernel 1 having landed: wait on every
-    // per-WG staging flag it raised.
-    if (lid == 0) {
-      for (int32_t w = 0; w < nwg; ++w) {
-        ishmem_uint64_wait_until(stage_pad + w, ISHMEM_CMP_EQ, tag);
-      }
-    }
-    item.barrier(sycl::access::fence_space::local_space);
+    // Cross-domain staging already landed in kernel 1; this kernel is a pure
+    // intra-domain switch. Acquire so the mirror's RDMA writes are visible.
     sycl::atomic_fence(
         sycl::memory_order::acquire, sycl::memory_scope::system);
 
@@ -602,7 +613,6 @@ at::Tensor token_dispatch_ishmem_hier(
             symm_final,
             stage_slot_half,
             stage_destpos_half,
-            stage_pad_half,
             stage_count_half,
             intra_pad_half,
             local_order.data_ptr<int32_t>(),
@@ -611,7 +621,6 @@ at::Tensor token_dispatch_ishmem_hier(
             token_bytes,
             num_local,
             static_cast<int32_t>(P),
-            dispatch_wg,
             my_domain,
             my_pos,
             tag});

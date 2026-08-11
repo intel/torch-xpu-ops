@@ -209,6 +209,12 @@ def main():
         recv_counts_in,
     ) = build_hier_routing(dst_rank, rank, world_size, pcie_domain, capacity)
 
+    print(
+        f"[rank {rank}] num_cross={cross_order.numel()} "
+        f"num_local={local_order.numel()} (total={TOKENS_PER_RANK})",
+        flush=True,
+    )
+
     recv_buffer = torch.zeros(
         world_size * capacity, HIDDEN_SIZE, device=device, dtype=dtype
     )
