@@ -250,11 +250,10 @@ TestMeta.test_dispatch_symbolic_meta_outplace_all_strides = (
 @suppress_warnings
 @skipOps(
     (
-        xfail("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
         skip(
             "narrow_copy"
         ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
-        skip("polar", dtypes=[torch.half]),  # "polar_xpu" not implemented for half
         skip(
             "tensordot", dtypes=[torch.int8, torch.uint8]
         ),  # "tensordot" not implemented for int8/uint8
@@ -277,7 +276,6 @@ TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_out
         skip(
             "narrow_copy"
         ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
-        skip("polar", dtypes=[torch.half]),  # "polar_xpu" not implemented for half
         skip(
             "tensordot", dtypes=[torch.int8, torch.uint8]
         ),  # "tensordot" not implemented for int8/uint8

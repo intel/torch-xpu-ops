@@ -85,7 +85,6 @@ CROSS_REF_EXCLUDE_SET.update(
         ("xpu", torch.uint8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for uint8
         ("xpu", torch.int8, "tensordot"),  # "dot_xpu_mkl" not implemented for int8
         ("xpu", torch.uint8, "tensordot"),  # "dot_xpu_mkl" not implemented for uint8
-        ("xpu", torch.half, "polar"),  # "polar_xpu" not implemented for half
     }
 )
 
