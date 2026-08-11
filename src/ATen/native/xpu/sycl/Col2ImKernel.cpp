@@ -228,7 +228,6 @@ void col2im_kernel(
   auto n_output_plane = n_input_plane / (kernel_width * kernel_height);
 
   output.resize_({batch_size, n_output_plane, output_height, output_width});
-  output.zero_();
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       at::ScalarType::BFloat16,

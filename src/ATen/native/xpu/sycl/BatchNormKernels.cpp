@@ -576,8 +576,6 @@ void batch_norm_stats_template(
     double epsilon) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   int64_t n_input = input_.size(1);
-  Tensor dummy_mean_;
-  Tensor dummy_var_;
   auto input_reshaped = input_.reshape(
       {input_.size(0),
        input_.size(1),
@@ -2364,8 +2362,8 @@ batch_norm_backward_reduce_channels_last_template(
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
 
-  at::Tensor sumn_dy = at::zeros({stride}, mean.options());
-  at::Tensor sum_dy_xmu = at::zeros({stride}, mean.options());
+  at::Tensor sumn_dy = at::empty({stride}, mean.options());
+  at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
 
   at::Tensor grad_weight;
   at::Tensor grad_bias;
@@ -5174,17 +5172,14 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel_template(
     double momentum,
     double epsilon,
     const Tensor& counts_) {
-  Tensor save_mean_;
-  Tensor save_invstd_;
-
   auto features = mean_.size(1);
   auto input_options = mean_.options();
   if (mean_.scalar_type() == at::ScalarType::Half ||
       mean_.scalar_type() == at::ScalarType::BFloat16) {
     input_options = input_options.dtype(ScalarType::Float);
   }
-  save_mean_ = at::empty({features}, input_options);
-  save_invstd_ = at::empty({features}, input_options);
+  Tensor save_mean_ = at::empty({features}, input_options);
+  Tensor save_invstd_ = at::empty({features}, input_options);
 
   auto mean =
       packed_accessor_or_dummy<accscalar_t, 2, RestrictPtrTraits, index_t>(

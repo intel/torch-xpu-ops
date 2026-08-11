@@ -38,6 +38,7 @@ macro(set_build_flags)
   endif()
   set(SYCL_HOST_FLAGS)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
+  set(SYCL_HOST_PER_CONFIG_FLAGS)
   set(SYCL_KERNEL_OPTIONS)
   set(SYCL_COMPILE_FLAGS ${SYCL_FLAGS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_LINK_FLAGS})
@@ -64,27 +65,24 @@ macro(set_build_flags)
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
     list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
 
-    # -fsycl-host-compiler-options never sees CMAKE_CXX_FLAGS_<CONFIG>, so
-    # spell per-config flags here. /Z7 (not /Zi) avoids parallel PDB contention.
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND SYCL_HOST_FLAGS /Od /Z7)
-    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-      list(APPEND SYCL_HOST_FLAGS /O2 /Z7)
-    endif()
+    # -fsycl-host-compiler-options never sees CMAKE_CXX_FLAGS_<CONFIG>, so spell
+    # per-config flags here via $<CONFIG:>. /Z7 (not /Zi) avoids PDB contention.
+    set(SYCL_HOST_PER_CONFIG_FLAGS
+      $<$<CONFIG:Debug>:/Od;/Z7>
+      $<$<CONFIG:RelWithDebInfo>:/O2;/Z7>)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
     list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
 
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
-    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-      list(APPEND SYCL_HOST_FLAGS -g -O2)
-    endif()
+    # PyTorch forces -O2 into the base CMAKE_CXX_FLAGS this path inherits, so
+    # Debug must override it back to -O0; RelWithDebInfo only adds debug info.
+    set(SYCL_HOST_PER_CONFIG_FLAGS
+      $<$<CONFIG:Debug>:-g;-fno-omit-frame-pointer;-O0>
+      $<$<CONFIG:RelWithDebInfo>:-g>)
   endif()
 
   if(USE_PER_OPERATOR_HEADERS)
@@ -164,9 +162,8 @@ macro(set_build_flags)
   if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
     list(APPEND SYCL_KERNEL_OPTIONS -g -O0 -Rno-debug-disables-optimization)
   elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
-    if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
-      list(APPEND SYCL_KERNEL_OPTIONS -gline-tables-only -O2)
-    endif()
+    list(APPEND SYCL_KERNEL_OPTIONS
+      $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only;-O2>)
   endif()
 
   CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
@@ -177,7 +174,13 @@ macro(set_build_flags)
     or a Native API failed error.")
   endif()
 
+  # TORCH_XPU_OPS_FLAGS stays config-agnostic: its target_compile_options
+  # consumers already get PyTorch's per-config host flags via
+  # CMAKE_CXX_FLAGS_<CONFIG> (which carries -fno-omit-frame-pointer/-O0 in
+  # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). The genexes below
+  # feed only -fsycl-host-compiler-options, which never sees those.
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+  list(APPEND SYCL_HOST_FLAGS ${SYCL_HOST_PER_CONFIG_FLAGS})
 
   # -- SYCL device object linkage flags
   include(ProcessorCount)
