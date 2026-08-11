@@ -929,15 +929,14 @@ struct HermitianSymmetryOffsetCalculator {
   dim_type dims;
   at::detail::IntDivider<index_t> sizes_[XPU_MAX_TENSORINFO_DIMS];
   index_t strides_[XPU_MAX_TENSORINFO_DIMS];
-  uint32_t mirror_dim_; // bit mask
+  uint32_t mirror_dim_ = 0; // bit mask
   static_assert(XPU_MAX_TENSORINFO_DIMS < 32, "Need a bigger mask type");
 
   HermitianSymmetryOffsetCalculator(
       IntArrayRef sizes,
       IntArrayRef strides,
       IntArrayRef dim,
-      const int64_t element_size)
-      : mirror_dim_(0) {
+      const int64_t element_size) {
     TORCH_INTERNAL_ASSERT(sizes.size() == strides.size());
     TORCH_INTERNAL_ASSERT(sizes.size() <= XPU_MAX_TENSORINFO_DIMS);
     dims = sizes.size();
