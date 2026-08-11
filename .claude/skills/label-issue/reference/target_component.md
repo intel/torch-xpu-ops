@@ -29,7 +29,6 @@ failure remains relevant and cannot support an already-fixed conclusion.
 | Ownership or condition | `need_action` |
 |---|---|
 | A third party must fix the cause | `NEED_FIX_3RDPARTY` |
-| The issue is a feature request or a task or numerical accuracy issue or performance issue | `NEED_HUMAN` |
 | `os` is Windows | `NEED_HUMAN` |
 | Test file itself | `NEED_FIX_CASE` |
 | `pytorch` product code | `NEED_FIX` |

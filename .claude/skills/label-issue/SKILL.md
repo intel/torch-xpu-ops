@@ -1,14 +1,14 @@
 ---
-name: auto-label-issues
-description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive target_component/need_action, dependency, duplicate, module, and priority. Emits a markdown label+reason table under agent_space/auto_label_issues/, then automatically runs apply_auto_label_issues.py to apply the derived Type/labels/Priority field and post an [agent_triage_result] comment to GitHub. Use when you want labels for an issue without running the full issue-triage pipeline (no local reproduce, no per-axis subagent fan-out)."
+name: label-issue
+description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive target_component/need_action, dependency, duplicate, module, and priority. Emits a markdown label+reason table under agent_space/label_issue/, then automatically runs apply_label_issue.py to apply the derived Type/labels/Priority field and post an [agent_triage_result] comment to GitHub. Use when you want labels for an issue without running the full issue-triage pipeline (no local reproduce, no per-axis subagent fan-out)."
 ---
 
-# Auto Label Issues
+# Label Issue
 
 Derive the label set for ONE GitHub issue and write a `label | reason` table to
 disk. This is the fast path: no local test reproduce, no per-axis subagent
 fan-out. Steps 1-7 (analysis) never add labels, close issues, or comment
-themselves. Step 8 then **automatically** runs `scripts/apply_auto_label_issues.py`
+themselves. Step 8 then **automatically** runs `scripts/apply_label_issue.py`
 to apply the derived table to GitHub — labels.md analysis and its application
 are one continuous run by default; pass `skip_apply: true` (or `--dry-run`) to
 stop short of mutating GitHub when analysis-only output is wanted instead.
@@ -36,7 +36,7 @@ stop; it degrades the trace, not the run.
 
 ## Reference rule packs
 
-All rules live in `.claude/skills/auto-label-issues/reference/`. Read the
+All rules live in `.claude/skills/label-issue/reference/`. Read the
 file for an axis before deciding it; do not decide from memory.
 
 | Axis | File |
@@ -52,13 +52,13 @@ file for an axis before deciding it; do not decide from memory.
 
 ### Step 1 — Extract issue information
 
-Run the `auto-label-issues/extract-issue-information` skill's script:
+Run the `label-issue/extract-issue-information` skill's script:
 
 ```bash
-mkdir -p agent_space/auto_label_issues/<repo_underscored>_issue_<id>
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py \
+mkdir -p agent_space/label_issue/<repo_underscored>_issue_<id>
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py \
   <issue_ref> [--repo <repo>] [--pytorch-folder <pytorch_folder>] \
-  --output agent_space/auto_label_issues/<repo_underscored>_issue_<id>/extract.json
+  --output agent_space/label_issue/<repo_underscored>_issue_<id>/extract.json
 ```
 
 `<repo_underscored>` replaces `/` with `_` (e.g. `intel_torch-xpu-ops`).
@@ -168,7 +168,7 @@ mode.
 
 ### Step 8 - Output
 
-Write `agent_space/auto_label_issues/<repo_underscored>_issue_<id>/labels.md`
+Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format, field rules, and brevity/evidence-only
 examples in `reference/output_format.md`. Read that file before producing
 `labels.md`. Also print the same table to stdout.
@@ -177,16 +177,16 @@ examples in `reference/output_format.md`. Read that file before producing
 
 Steps 1-8 only write `labels.md`; they do not themselves call `gh issue edit`,
 `gh issue close`, or post comments. Step 8 runs immediately after Step 7 by
-default: it invokes `scripts/apply_auto_label_issues.py` for real (no `--dry-run`)
+default: it invokes `scripts/apply_label_issue.py` for real (no `--dry-run`)
 to apply the derived table and post the `[agent_triage_result]` comment. Skip
 Step 8 only when `skip_apply: true` was given, or when the user explicitly
 asked for analysis-only output.
 
 ```bash
-python3 .claude/skills/auto-label-issues/scripts/apply_auto_label_issues.py \
+python3 .claude/skills/label-issue/scripts/apply_label_issue.py \
   <issue_ref> --repo <owner/name> \
-  --labels-md agent_space/auto_label_issues/<repo_underscored>_issue_<id>/labels.md \
-  --output agent_space/auto_label_issues/<repo_underscored>_issue_<id>/apply_result.json
+  --labels-md agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md \
+  --output agent_space/label_issue/<repo_underscored>_issue_<id>/apply_result.json
 ```
 
 Run it for real directly — do not gate behind `--dry-run` or ask for
@@ -232,7 +232,7 @@ Notes:
 ## Constraints
 
 1. Steps 1-7 (analysis) never call `gh issue edit`, `gh issue close`, or post
-   comments directly — only `apply_auto_label_issues.py` (Step 8) mutates GitHub,
+   comments directly — only `apply_label_issue.py` (Step 8) mutates GitHub,
    and it does so using the exact `labels.md` table Steps 1-7 produced.
 2. Step 8 runs automatically after Step 7 unless `skip_apply: true` was given
    or the user explicitly asked for analysis-only output.
@@ -258,11 +258,11 @@ Notes:
 - `gh` CLI missing or unauthenticated.
 - `extract_basic_info.py` exits non-zero (404, network failure, PR reference,
   malformed input).
-- `apply_auto_label_issues.py` hard error (bad ref, unreadable `labels.md`, issue
+- `apply_label_issue.py` hard error (bad ref, unreadable `labels.md`, issue
   fetch failure) — report the stderr and the partial `labels.md` already
   written; do not retry blindly.
 
 Not hard stops (normal degraded outcomes): a missing or nonexistent
 `pytorch_folder`, an inconclusive trace, `insufficient information for root
-causing`, any `null` axis, and any individual `apply_auto_label_issues.py` action
+causing`, any `null` axis, and any individual `apply_label_issue.py` action
 recorded under `skipped` (e.g. a repo lacking a native Priority field).

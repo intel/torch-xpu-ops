@@ -1,9 +1,9 @@
 # Output
 
-Write `agent_space/auto_label_issues/<repo_underscored>_issue_<id>/labels.md`:
+Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`:
 
 ```markdown
-auto-label-issues: <repo>#<id>
+label-issue: <repo>#<id>
 
 Root cause: <=2 lines, specific, with file:line>
 

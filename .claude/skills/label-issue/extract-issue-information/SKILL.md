@@ -15,8 +15,7 @@ Use this when you have a single issue number or URL and want structured JSON:
 issue identity fields, GitHub labels, a rule-based `type`/`module`/`test_module`/`dependency`
 classification, and the issue's PyTorchXPU project fields.
 
-Give it a full issue URL to target any repo (e.g.
-`https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8`). A bare number
+Give it a full issue URL to target any repo. A bare number
 defaults to `intel/torch-xpu-ops` unless you pass `--repo owner/name`.
 
 Do NOT use this for batch/multi-issue runs or Excel output. It handles exactly
@@ -26,8 +25,8 @@ traceback, and reproduce steps for that single issue.
 ## Prerequisites
 
 - Authenticated `gh` CLI on `PATH`. The PyTorchXPU project fields and native issue type
-  are fetched through GraphQL, so the token needs the `read:project` scope. Without that
-  scope the project fields degrade to empty (the run still succeeds).
+  are fetched through GraphQL. Without that
+  the project fields degrade to empty (the run still succeeds).
 - Python 3.
 
 The PyTorchXPU project fields (`priority`, `pytorchxpu_*`) and `github_type` are populated
@@ -45,25 +44,25 @@ Run from the repository root.
 By issue number (defaults to intel/torch-xpu-ops):
 
 ```bash
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 4344
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 4344
 ```
 
 By issue URL for any repo:
 
 ```bash
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8
 ```
 
 By intel/torch-xpu-ops issue URL:
 
 ```bash
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py https://github.com/intel/torch-xpu-ops/issues/4344
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py https://github.com/intel/torch-xpu-ops/issues/4344
 ```
 
 Override the repo for a bare issue number with `--repo owner/name`:
 
 ```bash
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 8 --repo CuiYifeng/torch-xpu-ops-sandbox
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 8 --repo CuiYifeng/torch-xpu-ops-sandbox
 ```
 
 The `--repo owner/name` flag sets the repository for a bare issue number. It is
@@ -73,7 +72,7 @@ default is `intel/torch-xpu-ops`.
 Also write the JSON to a file (still printed to stdout):
 
 ```bash
-python3 .claude/skills/auto-label-issues/extract-issue-information/scripts/extract_basic_info.py 4344 --output out.json
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 4344 --output out.json
 ```
 
 ## Output schema

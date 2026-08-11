@@ -3,10 +3,10 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-Apply GitHub Issue labels/type/priority/comment derived from an auto-label-issues
+Apply GitHub Issue labels/type/priority/comment derived from a label-issue
 `labels.md` report.
 
-Reads the markdown table produced by the auto-label-issues skill, maps each row to
+Reads the markdown table produced by the label-issue skill, maps each row to
 a concrete GitHub mutation, and applies them via `gh`:
 
   - `issue_type: <Bug|Task|Feature|Epic>` row
@@ -37,11 +37,11 @@ a concrete GitHub mutation, and applies them via `gh`:
     already posted an `[agent_triage_result]` comment on this issue, that
     comment is edited in place instead of appending a duplicate.
 
-Analysis in `labels.md` is produced separately by the auto-label-issues skill.
+Analysis in `labels.md` is produced separately by the label-issue skill.
 This script is the only piece that mutates GitHub state.
 
 Usage:
-    python3 apply_auto_label_issues.py <issue_ref> --labels-md PATH [--repo owner/name] [--dry-run]
+    python3 apply_label_issue.py <issue_ref> --labels-md PATH [--repo owner/name] [--dry-run]
 
 Exit codes:
     0  - all reachable actions attempted (some may have been skipped with a
@@ -102,7 +102,7 @@ ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|\s*$")
 
 
 def parse_labels_md(path: str) -> dict:
-    """Parse the auto-label-issues markdown table into a structured dict.
+    """Parse the label-issue markdown table into a structured dict.
 
     Returns:
         {
@@ -407,10 +407,10 @@ PRIORITY_VALUES = {"P0", "P1", "P2", "P3"}
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Apply labels/type/priority/comment from an auto-label-issues labels.md report"
+        description="Apply labels/type/priority/comment from a label-issue labels.md report"
     )
     parser.add_argument("issue_ref", help="Bare issue number or full issue URL")
-    parser.add_argument("--labels-md", required=True, help="Path to the auto-label-issues labels.md file")
+    parser.add_argument("--labels-md", required=True, help="Path to the label-issue labels.md file")
     parser.add_argument("--repo", default=None, help="owner/name, required for a bare issue number")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without mutating GitHub")
     parser.add_argument("--output", "-o", help="Write JSON result summary to this file")
