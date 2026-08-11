@@ -149,6 +149,9 @@ runs:
           test_xpu_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
 
+        find ${{ github.workspace }}/ut_log/xpu_profiling -type f -name "*.xml" \
+          -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
+
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
