@@ -23,8 +23,8 @@
 // Work assignment: ONE work-group per destination (num_wg == world_size). The
 // work-group index doubles as both axes:
 //   - as a SENDER to destination d: WG d pushes all local tokens destined for d
-//     into PE d's receive slots, work-group-quiets to guarantee the data has
-//     landed, then the leader writes the per-source count and finally raises the
+//     into PE d's receive slots, work-group-fences to order the data before the
+//     flag, then the leader writes the per-source count and finally raises the
 //     signal pad on PE d (count ordered before the flag by a work-group fence).
 //   - as a RECEIVER from source d: WG d waits on its own pad[d] slot for source
 //     d's flag, after which recv slots [d*capacity ..] and counts[d] are valid.
@@ -34,8 +34,7 @@
 // Only ISHMEM APIs are used for communication:
 //   - ishmemx_putmem_nbi_work_group  (work-group-collective RDMA write of one
 //                                     token to the destination slot)
-//   - ishmemx_quiet_work_group       (device-side completion of the data puts)
-//   - ishmemx_fence_work_group       (order the count write before the flag)
+//   - ishmemx_fence_work_group       (order the data + count before the flag)
 //   - ishmem_uint64_atomic_set       (leader writes the count / the flag)
 //   - ishmem_uint64_wait_until       (device-side wait on our own pad slot)
 //   - ishmem_malloc / ishmem_free / ishmem_barrier_all (symmetric heap)
@@ -218,11 +217,10 @@ struct TokenDispatchIshmemKernel {
           grp);
     }
 
-    // Guarantee all our data puts to d have landed, then write the per-source
-    // count and finally raise the flag. The intervening work-group fence orders
-    // the count write BEFORE the flag on the remote PE, so a receiver that has
-    // observed the flag is guaranteed to read the matching count.
-    ishmemx_quiet_work_group(grp);
+    // Fence (not quiet) suffices: the data puts, the count and the flag all
+    // target PE d, and fence orders delivery to a single PE, so a receiver that
+    // observes the flag sees both the data and the matching count. Local
+    // send-buffer reuse is ordered by the in-order SYCL queue.
     if (lid == 0) {
       ishmem_uint64_atomic_set(
           counts + rank, static_cast<uint64_t>(cnt), d);

@@ -371,6 +371,15 @@ def build():
         )
     )
     outputs.append(
+        build_one_ishmem(
+            cfg,
+            ishmem_cfg,
+            "TokenDispatchIshmemHier.cpp",
+            "libtoken_dispatch_ishmem_hier.so",
+            "TokenDispatchIshmemHier",
+        )
+    )
+    outputs.append(
         build_one_ishmem_topo(
             cfg,
             ishmem_cfg,
@@ -401,6 +410,7 @@ def clean():
         os.path.join(base_dir, "libring_allgather_ishmem.so"),
         os.path.join(base_dir, "libring_reduce_scatter_ishmem.so"),
         os.path.join(base_dir, "libtoken_dispatch_ishmem.so"),
+        os.path.join(base_dir, "libtoken_dispatch_ishmem_hier.so"),
         os.path.join(base_dir, "libring_allgather_ishmem_ipc.so"),
         os.path.join(
             base_dir,
