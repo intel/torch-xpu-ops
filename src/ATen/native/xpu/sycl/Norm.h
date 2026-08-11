@@ -231,10 +231,6 @@ class NormConfig {
         problem_size(problem_size),
         problem_dim(problem_dim),
         element_size_bytes(element_size_bytes) {
-    semaphores_ptr = nullptr;
-    scratchpad_ptr = nullptr;
-    sub_group_num_global = 1;
-
     get_max_vec_size();
     if (problem_dim == 1) {
       get_workgroup_size();
@@ -258,9 +254,9 @@ class NormConfig {
   int workgroup_size;
   int sub_group_num;
 
-  int* semaphores_ptr;
-  void* scratchpad_ptr;
-  int sub_group_num_global;
+  int* semaphores_ptr = nullptr;
+  void* scratchpad_ptr = nullptr;
+  int sub_group_num_global = 1;
 
   template <typename scalar_t>
   void init_global_reduce(
