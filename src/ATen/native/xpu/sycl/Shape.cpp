@@ -52,13 +52,16 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
     ptrdiff_t nTensors) {
   constexpr unsigned int items_per_group = 256;
   constexpr unsigned int elements_per_item = 8;
-  constexpr unsigned int max_group_per_eu = 32;
 
   unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
   unsigned int item_groups = ceil_div(max_items, items_per_group);
 
-  const unsigned int num_eu = syclGpuEUCountPerSubslice();
-  item_groups = std::min(num_eu * max_group_per_eu, item_groups);
+  // One wave is enough to saturate the tile. The kernel is grid-strided, so
+  // additional groups do not increase parallelism and can increase idle work
+  // for smaller tensors in the batch.
+  const unsigned int max_item_groups =
+      static_cast<unsigned int>(syclMaxWorkItemsPerTile() / items_per_group);
+  item_groups = std::min(max_item_groups, item_groups);
 
   sycl::range<2> global_range(
       (long long)nTensors, items_per_group * item_groups);
@@ -72,15 +75,15 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
     ptrdiff_t nTensors) {
   constexpr unsigned int items_per_group = 256;
   constexpr unsigned int min_aligned_vec_per_item = 1;
-  constexpr unsigned int max_group_per_eu = 32;
 
   unsigned int elements_per_item =
       aligned_vec_load_bytes / sizeof(T) * min_aligned_vec_per_item;
   unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
   unsigned int item_groups = ceil_div(max_items, items_per_group);
 
-  const unsigned int num_eu = syclGpuEUCountPerSubslice();
-  item_groups = std::min(num_eu * max_group_per_eu, item_groups);
+  const unsigned int max_item_groups =
+      static_cast<unsigned int>(syclMaxWorkItemsPerTile() / items_per_group);
+  item_groups = std::min(max_item_groups, item_groups);
 
   sycl::range<2> global_range(
       (long long)nTensors, item_groups * items_per_group);
