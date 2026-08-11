@@ -25,14 +25,10 @@
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLHelpers.h>
-#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <cstdint>
 #include <limits>
 
 namespace at::native::xpu {
-
-namespace syclex = sycl::ext::oneapi::experimental;
-namespace intelex = sycl::ext::intel::experimental;
 
 static constexpr int SG_SIZE = 32;
 // Number of pairwise merge levels in Phase 2 = log2(SG_SIZE).
@@ -175,7 +171,7 @@ struct SubgroupTopKFunctor {
     }
   }
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<1> item) const {
     sycl::sub_group sg = item.get_sub_group();
     int sg_lid = sg.get_local_linear_id();
 
@@ -315,12 +311,7 @@ inline void sbtopk_launch_impl(
       input, topK, indices, numSlices, sliceSize, k);
 
   sycl_kernel_submit(
-      num_wgs * WG_SIZE,
-      WG_SIZE,
-      at::xpu::getCurrentSYCLQueue(),
-      syclex::properties{
-          syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>},
-      functor);
+      num_wgs * WG_SIZE, WG_SIZE, at::xpu::getCurrentSYCLQueue(), functor);
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with

@@ -37,7 +37,6 @@
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <comm/SYCLHelpers.h>
-#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
 #include <bit>
@@ -381,7 +380,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // With ELEMS_PER_THREAD=32 and 1024 threads, each iteration covers
   // 32K elements, so dim=131072 needs only 4 iterations.
   // ================================================================
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     IndexT slice = static_cast<IndexT>(item.get_group_linear_id());
     if (slice >= numSlices_)
       return;
@@ -583,9 +582,6 @@ static void single_wg_launch_impl(
     IndexT sliceSize,
     int k,
     bool largest) {
-  namespace syclex = sycl::ext::oneapi::experimental;
-  namespace intelex = sycl::ext::intel::experimental;
-
   constexpr int SIMD = 32;
   using Functor =
       SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
@@ -596,7 +592,6 @@ static void single_wg_launch_impl(
       static_cast<int64_t>(numSlices) * SBTOPK_BLOCK,
       static_cast<int64_t>(SBTOPK_BLOCK),
       at::xpu::getCurrentSYCLQueue(),
-      syclex::properties{syclex::sub_group_size<SIMD>, intelex::grf_size<128>},
       functor);
 }
 
