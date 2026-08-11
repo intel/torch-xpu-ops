@@ -50,9 +50,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             nullptr,
             nullptr),
         M(M),
-        N(N) {
-    numel = M * N;
-  }
+        N(N) {}
 
   LayerNormBackward(
       const scalar_t* X_data,
@@ -188,7 +186,6 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
   int64_t M;
   int64_t N;
-  int64_t numel;
 };
 
 // we could make it dependent on dtype, but that would lead to different results
@@ -222,9 +219,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item_id, val, welford_op, shared_);
 
     if (item_id.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       if constexpr (!rms_norm) {
         mean_[i] = m1;
         rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
@@ -1314,7 +1309,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1400,7 +1397,9 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else {
       return;
     }
@@ -1506,8 +1505,18 @@ void rms_norm_backward_kernel(
       "rms_norm_backward_xpu",
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        Tensor unused_dbeta;
         layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
-            dY.contiguous(), X, rstd, rstd, gamma, M, N, dX, dgamma, dgamma);
+            dY.contiguous(),
+            X,
+            rstd,
+            rstd,
+            gamma,
+            M,
+            N,
+            dX,
+            dgamma,
+            &unused_dbeta);
       });
 }
 
