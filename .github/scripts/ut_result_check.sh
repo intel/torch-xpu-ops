@@ -387,7 +387,8 @@ check_profiling_ut() {
     echo "Running tests for: xpu_profiling"
     echo "========================================================================="
     local reports=() total_tests=0 total_failures=0 total_errors=0 report_count=0
-    mapfile -t reports < <(find . -type f -name '*.xml' | sort)
+    # check-ut.py only globs ut_log/*.xml, so the reports live one level above this ut dir
+    mapfile -t reports < <({ find . -type f -name '*.xml'; find .. -maxdepth 1 -type f -name '*.xml'; } | sort -u)
     if [[ "${#reports[@]}" -eq 0 ]]; then
         echo "❌ TEST FAILED: xpu_profiling - no pytest junit xml report found"
         exit 1
