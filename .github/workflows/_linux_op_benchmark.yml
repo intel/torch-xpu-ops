@@ -42,7 +42,7 @@ jobs:
               -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -73,7 +73,7 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
@@ -91,14 +91,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
         uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: ${{ inputs.python }}
           activate-environment: true
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/op_benchmark_tmp
@@ -106,9 +106,11 @@ jobs:
         continue-on-error: true
         id: reference_id
         run: |
-          # latest dir
-          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
-          mv ${{ github.workspace }}/op_benchmark_tmp/${latest_dir} ${{ github.workspace }}/op_benchmark
+          # latest dir; download-artifact v8 omits the per-artifact subdir when only one artifact matches
+          latest_dir=$(cd ${{ github.workspace }}/op_benchmark_tmp && find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
+          mkdir -p ${{ github.workspace }}/op_benchmark
+          mv "${{ github.workspace }}/op_benchmark_tmp/${latest_dir}"/* ${{ github.workspace }}/op_benchmark
           # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
@@ -143,7 +145,7 @@ jobs:
           cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark

@@ -16,8 +16,46 @@
 #include <ATen/ops/_fft_c2r_native.h>
 #include <ATen/ops/_fft_r2c_native.h>
 #endif // USE_ONEMKL_XPU
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
+#include <c10/util/env.h>
+
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <unordered_map>
 
 namespace at::native {
+namespace {
+
+bool to_bool(std::string str) {
+  static const std::unordered_map<std::string, bool> bool_map = {
+      {"1", true},
+      {"0", false},
+      {"on", true},
+      {"off", false},
+      {"true", true},
+      {"false", false}};
+
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  auto it = bool_map.find(str);
+  if (it != bool_map.end()) {
+    return it->second;
+  }
+  return false;
+}
+
+bool use_sycl_spectral() {
+  const bool enabled = [] {
+    auto env = c10::utils::get_env("USE_SYCL_SPECTRAL");
+    return env.has_value() && to_bool(*env);
+  }();
+  return enabled;
+}
+
+} // anonymous namespace
 
 Tensor _fft_c2c_xpu(
     const Tensor& self,
@@ -26,6 +64,10 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
+  if (use_sycl_spectral() &&
+      native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+    return native::xpu::_fft_c2c_sycl(self, dim, normalization, forward);
+  }
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl(self, dim, normalization, forward);
 #else
@@ -43,6 +85,11 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
+  if (use_sycl_spectral() &&
+      native::xpu::_is_fft_size_supported_sycl(self, dim)) {
+    return native::xpu::_fft_c2c_sycl_out(
+        self, dim, normalization, forward, out);
+  }
 #if defined(USE_ONEMKL_XPU)
   return native::xpu::_fft_c2c_mkl_out(self, dim, normalization, forward, out);
 #else

@@ -35,7 +35,7 @@ jobs:
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
     steps:
       - name: Checkout intel-llvm
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: intel/llvm
           ref: v7.0.0

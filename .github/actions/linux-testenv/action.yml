@@ -47,7 +47,7 @@ runs:
         uv pip list
         uv pip install -U pip wheel setuptools
     - name: Checkout torch-xpu-ops
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         path: torch-xpu-ops
     - name: Download dpclang
@@ -71,7 +71,7 @@ runs:
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch

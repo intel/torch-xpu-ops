@@ -21,7 +21,7 @@ target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 if(BUILD_SEPARATE_OPS)
   target_link_libraries(torch_xpu_ops PUBLIC torch_xpu torch_cpu c10)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE)
+    cmake_path(GET sycl_src STEM LAST_ONLY name)
     set(sycl_lib torch-xpu-ops-sycl-${name})
     sycl_add_library(
       ${sycl_lib}
