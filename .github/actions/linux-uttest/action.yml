@@ -103,49 +103,50 @@ runs:
         # the profiler tables the cases print for manual check
         export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread"
         # RN50 Test (runs rn50.py, then checks its kernel events, runtime op time and .pt artifact)
+        # the xpu_profiling_ prefix is what check-ut.py uses to group these reports
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/rn50.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_rn50.xml \
           test/profiling/test_rn50_profiling.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/rn50.log
         cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling || true
         # All Issue Reproduce UT (-s keeps the profiler tables in the log for manual check)
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_issue_reproducers.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_issue_reproducers.xml \
           test/profiling/test_issue_reproducers.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_issue_reproducers.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_profiler_correctness.xml \
           test/profiling/test_profiler_correctness.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/xpu_profiling_test_for_overlapping_kernels.xml \
           test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
         # llama case for calls number test
         uv pip install transformers
         python -m pytest -s -v \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/llama.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_llama.xml \
           test/profiling/test_llama_profiling.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_execution_trace.xml \
           test_execution_trace.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_memory_profiler.xml \
           test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_profiler_tree.xml \
           test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
         python -m pytest -s \
-          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.xml \
+          --junitxml=${{ github.workspace }}/ut_log/xpu_profiling/xpu_profiling_test_xpu_profiler.xml \
           test_xpu_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
 
