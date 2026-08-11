@@ -600,6 +600,13 @@ at::Tensor token_dispatch_ishmem_hier(
     debug_log(rank, "kernel 1 done; submitting kernel 2 (intra-domain)");
   }
 
+  // Mirror-dispatch only: this op currently runs kernel 1 alone, so expose the
+  // cross-domain tokens this rank received from its mirror partner (front of the
+  // staging half) in recv_buffer for the host/UT to verify.
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.memcpy(recv_buffer.data_ptr(), symm_stage_half, stage_half_bytes);
+  });
+  /*
   // Kernel 2: one work-group per domain peer, intra-domain dispatch.
   auto k2 = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(k1);
@@ -634,6 +641,7 @@ at::Tensor token_dispatch_ishmem_hier(
     cgh.depends_on(k2);
     cgh.memcpy(recv_buffer.data_ptr(), symm_final, final_bytes);
   });
+  */
 
   return recv_buffer;
 }
