@@ -601,7 +601,6 @@ static void single_wg_launch_impl(
       static_cast<int64_t>(numSlices) * SBTOPK_BLOCK,
       static_cast<int64_t>(SBTOPK_BLOCK),
       at::xpu::getCurrentSYCLQueue(),
-      syclex::properties{syclex::sub_group_size<SIMD>, intelex::grf_size<128>},
       functor);
 }
 

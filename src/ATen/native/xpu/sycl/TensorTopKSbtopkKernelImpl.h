@@ -320,12 +320,7 @@ inline void sbtopk_launch_impl(
       input, topK, indices, numSlices, sliceSize, k);
 
   sycl_kernel_submit(
-      num_wgs * WG_SIZE,
-      WG_SIZE,
-      at::xpu::getCurrentSYCLQueue(),
-      syclex::properties{
-          syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>},
-      functor);
+      num_wgs * WG_SIZE, WG_SIZE, at::xpu::getCurrentSYCLQueue(), functor);
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with
