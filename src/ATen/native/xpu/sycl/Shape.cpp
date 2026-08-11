@@ -509,11 +509,11 @@ void parallel_cat(
       : fitsVector(ALIGNED_VEC_LOAD_BYTES_8)  ? ALIGNED_VEC_LOAD_BYTES_8
                                               : 0;
 
-  // Inputs are batched in size order rather than in argument order. A batch's
-  // launch range covers its largest input, so mixing a large input with much
-  // smaller ones leaves most of the smaller inputs' work items idle. Every
-  // input carries its own output offset, so any batching order is equivalent
-  // as long as the offsets are resolved in argument order up front.
+  // Batch inputs by size to reduce idle work items. A batch's launch range is
+  // determined by its largest input, so grouping similarly sized inputs avoids
+  // overprovisioning smaller ones. Output offsets are computed in argument
+  // order, allowing inputs to be reordered for batching without changing the
+  // result.
   const unsigned nInputs = static_cast<unsigned>(inputs.size());
   std::vector<int64_t> inputOffset(nInputs);
   std::vector<unsigned> order(nInputs);
@@ -537,10 +537,10 @@ void parallel_cat(
   int batchCounter = 0;
   unsigned i = 0;
   while (i < nInputs) {
-    // The largest input comes first and fixes the launch range. Close the
-    // batch once the idle work items it would accumulate outweigh the useful
-    // ones; what is left starts a new, smaller batch. A uniformly sized input
-    // list never splits, so the common case keeps a single launch.
+    // Inputs are sorted by size, so the first input determines the batch's
+    // maximum workload. Extend the batch while the estimated idle work does not
+    // exceed the useful work; otherwise, start a new batch with the remaining
+    // inputs.
     const int64_t batchMax = inputs[order[i]].get().numel();
     int64_t usefulElements = batchMax;
     int64_t idleElements = 0;
