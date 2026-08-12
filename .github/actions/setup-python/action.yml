@@ -33,6 +33,7 @@ runs:
         [ -e "${BIN_DIR}/pip3" ] || ln -s pip "${BIN_DIR}/pip3"
         [ -e "${BIN_DIR}/pip" ] || ln -s pip3 "${BIN_DIR}/pip"
         echo "${BIN_DIR}" >> "${GITHUB_PATH}"
+        echo "VENV_ROOT=${VENV_ROOT}" >> "${GITHUB_ENV}"
         echo "LD_LIBRARY_PATH=${VENV_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
     - name: Check python and pip version
       shell: bash -xe {0}
