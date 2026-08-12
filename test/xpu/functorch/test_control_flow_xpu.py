@@ -2324,6 +2324,17 @@ def forward(self, pred_1, x_1):
             )
             self.assertEqual(cnt.frame_count, 6)
 
+    def test_scan_init_scanned_0(self):
+        def body(c, x):
+            y = c + x
+            return y, y.clone()
+
+        init = torch.randn(3, 2)
+        xs = torch.randn(3, 0, 2)
+        result = scan(body, init, xs, dim=1)
+        expected = _fake_scan(body, init, xs, dim=1)
+        self.assertEqual(result, expected)
+
     @skipIfTorchDynamo("don't test compile on compile")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
