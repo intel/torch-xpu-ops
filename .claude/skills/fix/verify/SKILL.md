@@ -73,7 +73,26 @@ with `blocker: "no staged changes; fix/implement contract requires uncommitted c
 
 ## Step 4: Run test
 
-Run ALL failing test cases from the original report individually. Result interpretation: `all skipped` → `CANNOT_VERIFY`; `xfailed` → `FAILED`.
+Run ALL failing test cases from the original report individually.
+
+Result interpretation:
+
+- `all skipped` → read pytest's `SKIPPED [N] <file:line>: <reason>` line
+  to classify:
+  - Reason matches an XPU marker (`skipIfXpu`, `xfailIfXPU`,
+    `expectedFailureXPU`, `skipXPU`, or a message containing "xpu")
+    → `FAILED`. Rationale: a fix that leaves the failing test skipped
+    is an incomplete fix. This is intentionally different from
+    `fix/reproduce`'s handling - reproduce temporarily unskips to
+    confirm the bug, but verify's job is to confirm the fix; if the
+    XPU-marker skip is still in place, the fix did not touch what it
+    should have. Include suggestion: "test still skipped after fix -
+    the stale skip decorator should have been removed as part of the
+    fix (see `fix/skip-management`)."
+  - Reason is environmental (missing dep, no GPU, tool not found, "no
+    accelerator", etc.) → `CANNOT_VERIFY` with
+    `blocker: "test skipped for environmental reason: <marker>"`.
+- `xfailed` → `FAILED`.
 
 ## Step 5: Lint (if run_lint=true)
 

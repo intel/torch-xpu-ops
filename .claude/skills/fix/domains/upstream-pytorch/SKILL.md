@@ -9,7 +9,6 @@ description: >
 # Domain: Upstream PyTorch Framework
 
 - `target_repo` must be `"pytorch"`. Never `third_party/torch-xpu-ops/`.
-- Never stage `third_party/xpu.txt`.
 
 ## Common signatures that belong here
 

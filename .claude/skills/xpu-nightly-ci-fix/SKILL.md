@@ -73,7 +73,7 @@ commit: abc1234
 **Recovery:** on restart, read `progress.md`. Skip `done`/`needs_human` rows.
 Resume `in_progress` from its current `stage`. Start `pending` from scratch.
 
-> **Before starting:** Read the `## Working Principles` section of `CLAUDE.md`.
+> **Before starting:** Read the `## Working Principles` section of `AGENTS.md`.
 > State which principles apply to this task before proceeding.
 
 ## Inputs
@@ -93,8 +93,8 @@ Immediately after parsing the failure report, create a TodoWrite list:
 - [ ] Step 2: Reproduce <failure_1> with `fix/reproduce` (ci_commit, test command)
 - [ ] Step 3: Reproduce <failure_2> with `fix/reproduce` (ci_commit, test command)
       ... (one entry per failure)
-- [ ] Step 4-6: Fix <failure_1> (checkout fix branch -> triage → implement → verify → commit)
-- [ ] Step 4-6: Fix <failure_2> (checkout fix branch -> triage → implement → verify → commit)
+- [ ] Step 4-6: Fix <failure_1> (checkout fix branch -> triage → load domain → implement → verify → commit)
+- [ ] Step 4-6: Fix <failure_2> (checkout fix branch -> triage → load domain → implement → verify → commit)
       ... (one entry per failure)
 - [ ] Step 7: Generate summary report
 ```
@@ -143,8 +143,9 @@ Interpret output per failure:
 
 | Output | Action |
 |--------|--------|
-| `REPRODUCED` | Continue to Step 4 for this failure. Record `base` from the output — it is `origin/main` normally, or `<ci_commit_sha>` if reproduce fell back. |
+| `REPRODUCED` | Continue to Step 4 for this failure. Record `base` from the output. `fix/reproduce` only emits `base=<ci_commit_sha>` when the `stage=source_build` fallback path was used; for `stage=nightly` REPRODUCED (or when `base` is absent for any other reason), default `base=origin/main`. |
 | `NOT_REPRODUCED` | Mark in summary: "already fixed on trunk"; skip to next failure |
+| `NO_REPRODUCER` | Mark in summary: "no reproducer command available"; skip to next failure |
 | `CANNOT_VERIFY` | Mark in summary: "cannot verify (+ blocker)"; skip to next failure |
 
 ## Step 4: Triage each reproduced failure
@@ -165,8 +166,16 @@ Call `fix/triage` with the failure description and error log.
 
 | Verdict | Action |
 |---------|--------|
-| `IMPLEMENTING` | Continue to Step 5 (domain skill already loaded) |
+| `IMPLEMENTING` | Continue to Step 4.5 (load domain skill), then Step 5 |
 | `NEEDS_HUMAN` | Mark in summary: "needs human (+ reason)"; skip to next failure |
+
+## Step 4.5: Load the domain skill
+
+Read the `domain` field from the triage output (Step 4). Use the skill
+tool to load `fix/domains/<domain>` (e.g. `fix/domains/xpu-kernel`,
+`fix/domains/inductor`, `fix/domains/upstream-pytorch`). If no domain
+skill exists for the reported domain, proceed without it. This mirrors
+`issue-handler` Stage 3.5.
 
 ## Step 5: Implement each fix
 
@@ -175,25 +184,20 @@ Call `fix/implement` with:
 - `pytorch_dir` — `agent_space_xpu/pytorch/`
 - `allow_skip=true` — nightly-ci-fix may add `@skipIfXpu` with tracking issue
   when implementation is out of scope for a nightly fix
-- `commit_message_template`:
-  ```
-  [xpu][fix] <short description>
+- `patch_proposal_mode=false` — nightly-ci-fix always commits its own
+  fixes; patch-proposal is issue-handler's mode.
 
-  ## Motivation
-  <why this fix is needed>
-
-  ## Solution
-  <what was changed and CUDA alignment if applicable>
-
-  ## Test plan
-  <how it was verified>
-
-  Note: This commit was authored with AI assistance.
-  ```
+`fix/implement` returns the machine-readable block described in its
+"Output" section. Step 6 reads `changed_files`, `skip_added`, and
+`tracking_issue` from it.
 
 ## Step 6: Verify and commit each fix
 
-Call `fix/verify` with:
+If `fix/implement` returned `ready_for_verify: false`, do NOT call
+`fix/verify`. Mark in summary: "needs human (implement bailed after
+Step 3.5 rejected the diff)"; skip to next failure.
+
+Otherwise call `fix/verify` with:
 - `refined_command` from Step 3 (`fix/reproduce` output)
 - `pytorch_dir` — `agent_space_xpu/pytorch/`
 - `changed_files` from Step 5
@@ -225,14 +229,31 @@ attempt N (starting at 1 after the first fix/verify returns FAILED):
 
 If loop exits without `PASSED`, mark in summary: "needs human (fix loop exhausted after 3 attempts)"; record each attempt's `failure_output` and `suggestion` in the summary under a "Fix Attempts" subsection; skip to next failure.
 
-Commit after each verified fix:
+Commit after each verified fix. The orchestrator (not `fix/implement`)
+owns the commit; use this template for the commit message:
+
+```
+[xpu][fix] <short description>
+
+## Motivation
+<why this fix is needed>
+
+## Solution
+<what was changed and CUDA alignment if applicable>
+
+## Test plan
+<how it was verified>
+
+Note: This commit was authored with AI assistance.
+```
+
 ```bash
-git -C agent_space_xpu/pytorch add <changed_files>
+# fix/implement leaves changes already staged; commit directly.
 git -C agent_space_xpu/pytorch commit -m "<commit_message>"
 ```
 
-If the fix was a skip (`fix/implement` output has `skip_added: yes`):
-- Record the tracking issue URL in the summary under "Needs Human" (skip added).
+If the fix was a skip (`fix/implement` output has `skip_added: true`):
+- Record the `tracking_issue` URL in the summary under "Needs Human" (skip added).
 - The tracking issue already contains the root cause and fix strategy from triage.
 
 Each fix is one commit. Do not batch multiple fixes into one commit.
@@ -286,7 +307,7 @@ Total failures: N | Fixed: X | Skipped (already fixed): Y | Needs human: Z | Can
 
 - **Never cherry-pick** upstream fixes. Rebase (`git rebase origin/main`) instead.
 - **Always rebuild after rebase or branch switch** before running tests.
-- **Fix in torch-xpu-ops?** Use the dev override from `CLAUDE.md` "Commit Pin
+- **Fix in torch-xpu-ops?** Use the dev override from `AGENTS.md` "Commit Pin
   & Development Override": clone your torch-xpu-ops branch into
   `agent_space_xpu/pytorch/third_party/torch-xpu-ops/`, then update the pin
   so CMake's checkout becomes a no-op:

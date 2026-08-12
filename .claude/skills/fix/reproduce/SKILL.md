@@ -18,7 +18,10 @@ the result.
 ## Inputs
 
 - `reproducer_command` — pytest/python command or test name. If absent, return
-  `NO_REPRODUCER` immediately.
+  `NO_REPRODUCER` immediately. Also return `NO_REPRODUCER` if the command runs
+  but pytest reports `collected 0 items` (the referenced test does not exist
+  in the tree at this base) — this is the same "no runnable reproducer"
+  condition as an absent command, just discovered a step later.
 - `ci_commit` — upstream commit hash from the CI report. Only used as a
   fallback base when `origin/main` fails to build (optional).
 - `pytorch_dir` — path to a local PyTorch checkout (optional). If absent and
@@ -108,7 +111,7 @@ T().test_x(device='xpu')
 ### Run test
 
 Run the test. Result interpretation: if `all skipped` by `@skipIfXpu`, load
-`fix/pytorch-skip` and follow its "Temporarily remove for reproduction"
+`fix/skip-management` and follow its "Temporarily remove for reproduction"
 procedure before concluding — only return `CANNOT_VERIFY` if the skip is
 environmental (not an XPU marker). `xfailed` → `FAILED`.
 
@@ -167,7 +170,8 @@ build also fails, escalate as
 rather than silently reproducing on some other base.
 
 Then run the test. Result interpretation: same `all skipped` handling as
-Stage 1 (try `fix/pytorch-skip` temp-removal first); `xfailed` → `FAILED`.
+Stage 1 (load `fix/skip-management` and try its "Temporarily remove for
+reproduction" procedure first); `xfailed` → `FAILED`.
 
 ### Decision
 
@@ -232,7 +236,9 @@ NOT_REPRODUCED
   reason: <which stage passed and what was checked>
 
 NO_REPRODUCER
-  (no reproducer_command was provided)
+  reason: no_command | collected_zero
+  (returned when either no reproducer_command was provided, or pytest
+  reports `collected 0 items` for the provided command)
 
 CANNOT_VERIFY
   stage: nightly | source_build | ci_env

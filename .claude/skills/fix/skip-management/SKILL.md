@@ -1,13 +1,18 @@
 ---
-name: fix/pytorch-skip
+name: fix/skip-management
 description: >
-  Manage XPU skip decorators in PyTorch tests. Use when removing stale skip
-  markers, temporarily removing them to confirm a bug, or adding new skips with
-  tracking issues. Covers all skip patterns: method decorators, OpInfo
-  DecorateInfo entries, and instantiate_device_type_tests dict entries.
+  Manage XPU skip decorators in PyTorch tests. Cross-cutting concern — usable
+  from any bug domain. Use when removing stale skip markers, temporarily
+  removing them to confirm a bug, or adding new skips with tracking issues.
+  Covers all skip patterns: method decorators, OpInfo DecorateInfo entries,
+  and instantiate_device_type_tests dict entries.
 ---
 
 # PyTorch XPU Skip Decorator Management
+
+Skip decorators live in the pytorch test tree regardless of the triaged bug
+domain (xpu-kernel, inductor, or upstream-pytorch). Load this skill when you
+need to find, remove (temporarily or permanently), or add an XPU skip marker.
 
 ## Find skip markers
 

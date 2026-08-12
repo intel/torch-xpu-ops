@@ -14,7 +14,6 @@ description: >
   Inside a PyTorch checkout: `third_party/torch-xpu-ops/<path>`.
 - pytorch: `torch/`, `aten/src/ATen/`, `test/`, `c10/`, `torch/_dynamo/`,
   `torch/_inductor/`. Never `third_party/torch-xpu-ops/`.
-- Never stage `third_party/xpu.txt`.
 
 ## CUDA cross-reference
 

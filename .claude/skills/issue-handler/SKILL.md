@@ -350,29 +350,40 @@ exists for the reported domain, proceed without it.
 
 In pipeline mode with multiple issues, first switch to the per-issue
 branch in `target_repo` (see "Pipeline mode: per-issue branch
-isolation" above):
+isolation" above for the full rules — including the fail-loud `-b`
+requirement and `<base>` selection):
 
 ```bash
 git -C <target_repo_dir> fetch origin
-git -C <target_repo_dir> checkout -B agent/issue-<N> origin/main
+git -C <target_repo_dir> checkout -b agent/issue-<N> <base>
+# <base> is origin/main normally, or <ci_commit_sha> if reproduce fell
+# back to it. Use `-b` (not `-B`) so a stale branch fails loudly.
 ```
 
 Then call `fix/implement` with:
 - `triage_result` from Stage 3
 - `pytorch_dir`
 - `allow_skip=false` — issue-handler never allows adding skip decorators
-- no `commit_message_template` (use standard format)
+- `patch_proposal_mode=<true|false>` — set to `true` if Stage 3 chose
+  patch-proposal mode (`target_repo != pr_repo`), otherwise `false`
+- no `commit_message_template` (Stage 6 supplies the commit message)
 
 In patch-proposal mode (Stage 3 chose it), additionally:
-- Instruct `fix/implement` to leave changes **staged but uncommitted** in
-  `target_repo`'s working tree. Stage 6 will read them back via
+- `fix/implement` will leave changes **staged but uncommitted** in
+  `target_repo`'s working tree per its `patch_proposal_mode` contract.
+  Stage 6 reads them back via
   `git -C <target_repo_dir> diff --cached`.
 - Do NOT invoke any PR-creation skill later. The deliverable is the diff
   on the issue, not a branch.
 
 ### Stage 5 — fix/verify
 
-Call `fix/verify` with:
+If `fix/implement` returned `ready_for_verify: false` (Step 3.5 rejected
+the diff and the implementer bailed with `NEEDS_HUMAN`), do NOT call
+`fix/verify`. Skip directly to reporting `NEEDS_HUMAN` in Stage 6 with
+the reviewer's citations.
+
+Otherwise call `fix/verify` with:
 - `refined_command` from Stage 2
 - `pytorch_dir`
 - `changed_files` from Stage 4
@@ -573,22 +584,21 @@ reject anything that does not clear this bar.
 
 **REJECTED — return `NEEDS_HUMAN`, not `PATCH_PROPOSED`:**
 
-- Adding `@expectedFailureXPU` / `@skipXPU` / `@skipIfXpu` /
-  `@unittest.skip` / `@unittest.expectedFailure` to a failing test.
-  That hides the bug; it does not fix it. `issue-handler` never allows
-  `fix/implement` to add skips (`allow_skip=false`).
-- Hardcoding `set_rng_seed(...)` / `torch.manual_seed(...)` to dodge a
-  numerical failure region.
-- Loosening `atol` / `rtol` on `assertEqual` (or any tolerance-carrying
-  assertion) beyond a small, quantitatively justified bump. The
-  tightened value must be on the order of the actual observed drift; a
-  bump of several orders of magnitude is not acceptable and is a
-  workaround, not a fix.
-- Deleting the failing test outright.
+Any construct in the "skip-shaped workarounds" list in
+`fix/implement` Step 3.5. That list is the authoritative catalogue
+(new skip decorators, `DecorateInfo` skip entries, `raise SkipTest`,
+loosening `atol`/`rtol` more than an order of magnitude without a
+quantitative justification, hardcoded seeds, deleting the failing
+assertion / test function, broad `try/except` suppressing the failure).
+This orchestrator runs `fix/implement` with `allow_skip=false`, so
+Step 3.5 will already have rejected these; Stage 5.5 is the
+second-line defence.
+
+Also rejected as "hide, don't fix":
+
 - Any change whose stated rationale is "hide until real fix lands" /
-  "unblock CI" / "align with MPS/CUDA which is also skipped here".
-- Wrapping the failing call in an overly broad `try/except` that
-  suppresses the failure mode.
+  "unblock CI" / "align with MPS/CUDA which is also skipped here" —
+  even if it does not literally match Step 3.5's syntactic patterns.
 
 If reproduction shows the failure is a real product-code issue but the
 root-cause fix is out of scope for this run (multi-day kernel work,

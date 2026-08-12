@@ -13,7 +13,6 @@ description: >
 - pytorch: `torch/_inductor/`, `torch/_dynamo/`, `test/inductor/`.
   Inside a PyTorch checkout, XPU-specific overrides may live under
   `third_party/torch-xpu-ops/test/xpu/`.
-- Never stage `third_party/xpu.txt`.
 
 ## Reproduce: disable Inductor caches
 

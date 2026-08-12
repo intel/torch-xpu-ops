@@ -85,11 +85,13 @@ description: Brief description of what this does and when to use it
 
 - **name**:
   - Lowercase letters, numbers, hyphens only; forward slashes (`/`) are
-    allowed as hierarchy separators for nested skills
+    allowed (but not required) as hierarchy separators for nested skills
   - Max 64 characters
-  - Must match the skill's directory path relative to `.claude/skills/`
-    (e.g. skill at `.claude/skills/fix/reproduce/` → `name: fix/reproduce`)
-  - Good: `pdf-processor`, `git-commit-helper`, `fix/reproduce`, `fix/domains/xpu-kernel`
+  - Should be unique within the skills tree; using the directory path
+    relative to `.claude/skills/` (e.g. `fix/reproduce` for a skill at
+    `.claude/skills/fix/reproduce/`) is a common convention but the
+    basename (`reproduce`) is also acceptable
+  - Good: `pdf-processor`, `git-commit-helper`, `fix/reproduce`, `reproduce`, `fix/domains/xpu-kernel`
   - Bad: `PDF_Processor`, `Git Commits!`
 
 - **description**:
@@ -336,7 +338,7 @@ Detailed reference: See [reference.md](reference.md)
 
 Before finalizing a Skill, verify:
 
-- [ ] Name is lowercase, hyphens and forward slashes only, max 64 chars; matches directory path relative to `.claude/skills/`
+- [ ] Name is lowercase, hyphens (and optional forward slashes) only, max 64 chars; unique in the skills tree
 - [ ] Description is specific and < 1024 chars
 - [ ] Description includes "what" and "when"
 - [ ] YAML frontmatter is valid

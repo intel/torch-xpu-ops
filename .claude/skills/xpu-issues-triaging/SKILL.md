@@ -6,6 +6,12 @@ description: >
 
 # Triage XPU / PyTorch Issue
 
+> **Note:** For automated pipelines (issue-handler, xpu-nightly-ci-fix), use
+> `fix/triage` instead — those orchestrators load `fix/triage` directly and
+> do not go through this skill. This skill is retained as a **standalone /
+> manual triage entry point** for one-off issue analysis where the full
+> orchestrator pipeline is not being used.
+
 > **Scope note:** This skill is **analysis-only**. Implementation belongs to the
 > `fix/implement` skill. Any existing workflow that expected this skill to produce a
 > code fix should delegate to `fix/implement` after this skill returns a verdict of

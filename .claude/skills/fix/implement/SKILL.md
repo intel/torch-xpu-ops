@@ -66,16 +66,19 @@ See `fix/triage` Step 1 for domain routing. Common strategies:
   apply a fix aligned with upstream intent; document any divergence in comments.
 - **Newly added test:** enable backend support. If `allow_skip=false` and
   support is genuinely missing, report `NEEDS_HUMAN` — do not add a skip. If
-  `allow_skip=true`, load `fix/pytorch-skip` to add a skip with tracking issue.
+  `allow_skip=true`, load `fix/skip-management` and use its "Add a new skip"
+  procedure to add a skip with tracking issue.
 - **Unknown root cause:** compare with upstream backend behavior.
 
 ### Skip operations
 
-For removing stale skip decorators or adding new skips, load `fix/pytorch-skip`.
+XPU skip decorators live in the pytorch test tree regardless of the triaged
+domain. For removing stale skip decorators or adding new skips, load
+`fix/skip-management`.
 
-When **adding** a new skip (`allow_skip=true`), load `fix/pytorch-skip` and
-follow its "Add a new skip" procedure. It handles filing the tracking issue
-and returning the issue URL. Include that URL in the implement output
+When **adding** a new skip (`allow_skip=true`), follow the "Add a new skip"
+procedure in `fix/skip-management`. It handles filing the tracking issue and
+returning the issue URL. Include that URL in the implement output
 (`tracking_issue` field).
 
 ## Step 3: Stage changes
@@ -85,7 +88,9 @@ git add <your_files>
 git diff --cached --stat   # verify only intended files are staged
 ```
 
-Never stage `third_party/xpu.txt` or unrelated files.
+Never stage unrelated files. In particular, **never stage
+`third_party/xpu.txt`** — it is a submodule pin managed by build
+tooling, not part of any bug fix (see HARD RULES).
 
 ## Step 3.5: Skip-guard review (only when `allow_skip=false`)
 
@@ -177,7 +182,11 @@ is on `torch-xpu-ops`, or vice versa). In this mode:
 
 ## Output
 
-Return to the orchestrator:
+Return to the orchestrator BOTH a human-readable summary and a
+machine-readable block. The machine-readable block is authoritative;
+`fix/verify` and both orchestrators read specific fields from it.
+
+Human-readable:
 
 ```
 ### Implement Result
@@ -186,6 +195,42 @@ Return to the orchestrator:
 - **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) / no>
 - **Ready for verify:** yes
 ```
+
+Machine-readable (must appear once, exactly as shown, at the end of the
+response):
+
+```json
+{
+  "changed_files": ["path/to/file1.py", "src/ATen/native/xpu/Foo.cpp"],
+  "skip_added": false,
+  "tracking_issue": null,
+  "patch_proposal_mode": false,
+  "ready_for_verify": true
+}
+```
+
+Field contract:
+
+- `changed_files` — list of paths (relative to `target_repo` root) that
+  are staged. `fix/verify` reads this to decide whether a C++/SYCL
+  rebuild is required. Must equal `git -C <target_repo> diff --cached
+  --name-only` **at output time**. Re-run that command immediately
+  before emitting the JSON block; do not cache a pre-Step-3.5 file
+  list, because Step 3.5's reviewer may have unstaged offending files.
+- `skip_added` — `true` only when this run added a new skip decorator
+  under `allow_skip=true`. Removing a stale skip is NOT `skip_added`.
+- `tracking_issue` — issue URL returned by `fix/skip-management` when
+  `skip_added=true`; `null` otherwise. `xpu-nightly-ci-fix` reads this
+  to populate the "Needs Human (skip added)" section of its summary.
+- `patch_proposal_mode` — echo the input flag verbatim. The orchestrator
+  is the source of truth for the branching decision (issue-handler
+  Stage 6 branches on `target_repo == pr_repo`; nightly always passes
+  `false`). This echo lets a reviewer or a post-hoc log check confirm
+  which mode the implementer actually ran under.
+- `ready_for_verify` — `true` when Stage 3.5 (if it ran) returned
+  `APPROVE`; `false` if the implementer decided to bail out with
+  `NEEDS_HUMAN` (in which case the orchestrator should not call
+  `fix/verify`).
 
 **Contract:** changes are left staged (`git add`) but NOT committed. The
 orchestrator commits only after `fix/verify` returns `PASSED`. `fix/verify`
@@ -221,6 +266,9 @@ a claim that was never verified.
 - When `allow_skip=false`, Step 3.5 (skip-guard reviewer subagent) is
   MANDATORY before returning to the orchestrator. Do not skip it, do
   not run it inline in your own context.
+- NEVER stage `third_party/xpu.txt`. It is a submodule pin managed by
+  build tooling; staging it is never part of a bug fix, regardless of
+  domain (xpu-kernel / inductor / upstream-pytorch).
 - NEVER modify files outside your repo scope.
 - NEVER modify unrelated files.
 - NEVER cherry-pick upstream commits. Rebase instead.
