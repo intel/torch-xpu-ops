@@ -294,11 +294,6 @@ struct TokenDispatchIshmemHierK1 {
           grp);
     }
 
-    // quiet (not just fence): the mirror is cross-domain, so this work-group's
-    // nbi puts sit in the device send queue until flushed. quiet guarantees
-    // they have remotely completed before we count this WG as done.
-    ishmemx_quiet_work_group(grp);
-
     // Elect the last work-group to finish. Only it publishes the staged count
     // and raises the single per-PE staging-arrived flag on the mirror; only WG0
     // spin-waits for the incoming flag. This bounds spinning work-groups to one
@@ -315,7 +310,7 @@ struct TokenDispatchIshmemHierK1 {
       if (done == static_cast<uint64_t>(nwg)) {
         ishmem_uint64_atomic_set(
             stage_count, static_cast<uint64_t>(num_cross), mirror);
-        ishmem_fence(); // order count before the ready flag on the mirror
+        ishmemx_fence_work_group(grp); // order count before the ready flag on the mirror
         ishmem_uint64_atomic_set(stage_ready, tag, mirror);
       }
     }

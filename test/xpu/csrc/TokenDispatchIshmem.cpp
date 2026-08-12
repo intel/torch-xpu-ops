@@ -235,9 +235,6 @@ struct TokenDispatchIshmemKernel {
     if (lid == 0) {
       ishmem_uint64_wait_until(pad + d, ISHMEM_CMP_EQ, tag);
     }
-    item.barrier(sycl::access::fence_space::local_space);
-    sycl::atomic_fence(
-        sycl::memory_order::acquire, sycl::memory_scope::system);
   }
 };
 
