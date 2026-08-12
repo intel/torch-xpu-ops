@@ -25,6 +25,15 @@ CUDA counterparts live in `agent_space_xpu/pytorch/`:
 For ported tests, find the original under `agent_space_xpu/pytorch/test/` and
 compare tolerances, dtypes, and device assumptions.
 
+## Missing kernel
+
+If the XPU kernel for an op doesn't exist yet (`NotImplementedError`, "could
+not run ... with backend XPU", or a UT skip citing a missing XPU kernel), the
+fix strategy is to **implement it aligned with the CUDA kernel**
+(`aten/src/ATen/native/cuda/<Op>.cu` / its structured/composite counterpart),
+not to skip or xfail the UT. See "CUDA cross-reference" above for the file
+mapping.
+
 ## Test path resolution
 
 Working directory is `$PYTORCH_DIR/`.

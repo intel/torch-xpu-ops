@@ -49,6 +49,10 @@ Skip deep analysis if any of these apply:
   gaps (wrong tolerances, missing kernel, incorrect device assumptions).
 - **core framework bug** (`domain: upstream-pytorch`) — failure in
   device-agnostic framework code that surfaces on XPU.
+- **Inductor / torch.compile bug** (`domain: inductor`) — failure in an
+  Inductor UT (`test/inductor/`, `torch._inductor`, `torch._dynamo`). Before
+  triaging further, if `fix/reproduce` hasn't already, re-run with
+  `TORCHINDUCTOR_FORCE_DISABLE_CACHES=1` to rule out stale-cache pollution.
 
 Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
 
@@ -144,7 +148,7 @@ Return to the orchestrator:
 
 ```
 ### Triage Result
-- **Issue type:** <kernel/operator bug | core framework bug>
+- **Issue type:** <kernel/operator bug | core framework bug | inductor bug>
 - **Fix repo:** <pytorch | torch-xpu-ops | N/A>
 - **Root cause:** <2-3 sentences>
 - **Fix strategy:** <files/functions to change, or "None">
@@ -156,7 +160,7 @@ Return to the orchestrator:
   "root_cause": "2-3 sentences",
   "fix_strategy": "specific files/functions to change",
   "target_repo": "pytorch or torch-xpu-ops",
-  "domain": "xpu-kernel or upstream-pytorch",
+  "domain": "xpu-kernel or upstream-pytorch or inductor",
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
   "reason": "one-line reason"
 }
