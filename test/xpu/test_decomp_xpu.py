@@ -80,6 +80,21 @@ op_assert_ref_tol_table.update(
 # More details in https://github.com/pytorch/pytorch/pull/182619
 CROSS_REF_EXCLUDE_SET.add(("xpu", None, "max_pool2d_with_indices_backward"))
 
+# XPU: logspace with integral output dtypes diverges from decomposition refs
+_logspace_integral_dtypes = {
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+}
+for _unsigned_dtype in ("uint16", "uint32", "uint64"):
+    if hasattr(torch, _unsigned_dtype):
+        _logspace_integral_dtypes.add(getattr(torch, _unsigned_dtype))
+CROSS_REF_EXCLUDE_SET.update(
+    {("xpu", _dtype, "logspace") for _dtype in _logspace_integral_dtypes}
+)
+
 
 # ======================================================================
 # CROSS_REF_BACKWARD_EXCLUDE_SET patches (XPU-specific exclusions)
