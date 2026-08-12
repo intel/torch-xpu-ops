@@ -108,6 +108,7 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          use_uv: 'true'
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:

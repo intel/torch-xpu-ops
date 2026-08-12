@@ -21,6 +21,10 @@ inputs:
     type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
+  use_uv:
+    type: string
+    default: 'false'
+    description: 'Use uv-managed Python environment (distributed debug path)'
 
 runs:
   using: composite
@@ -38,7 +42,13 @@ runs:
           rm -rf ${AGENT_TOOLSDIRECTORY}
         fi
         rm -rf Torch-XPU-Wheel-*
+    - name: Setup python-${{ inputs.python }} with uv
+      if: ${{ inputs.use_uv == 'true' }}
+      uses: ./.github/actions/setup-python
+      with:
+        python: ${{ inputs.python }}
     - name: Setup python-${{ inputs.python }}
+      if: ${{ inputs.use_uv != 'true' }}
       uses: actions/setup-python@v7
       with:
         python-version: ${{ inputs.python }}
