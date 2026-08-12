@@ -1,0 +1,42 @@
+name: Setup Python
+description: Setup uv python, clear the virtual environment, and export the virtual environment bin and lib to the global PATH and LD_LIBRARY_PATH
+
+inputs:
+  python:
+    type: string
+    default: '3.10'
+    description: Python version
+
+runs:
+  using: composite
+  steps:
+    - name: Setup python-${{ inputs.python }}
+      uses: astral-sh/setup-uv@v9.0.0
+      with:
+        python-version: ${{ inputs.python }}
+        activate-environment: true
+    - name: Clear venv
+      shell: bash -xe {0}
+      run: |
+        uv venv --clear --python ${{ inputs.python }}
+        uv pip install -U pip wheel "setuptools<81"
+    - name: Setup venv paths
+      shell: bash -xe {0}
+      run: |
+        PYTHON_CMD="$(command -v python || command -v python3)"
+        PYTHON_BIN="$("${PYTHON_CMD}" -c 'import sys; print(sys.executable)')"
+        BIN_DIR="$(dirname "${PYTHON_BIN}")"
+        VENV_ROOT="$(realpath "${BIN_DIR}/..")"
+        # ensure both python/python3 and pip/pip3 are available in the venv
+        [ -e "${BIN_DIR}/python3" ] || ln -s python "${BIN_DIR}/python3"
+        [ -e "${BIN_DIR}/python" ] || ln -s python3 "${BIN_DIR}/python"
+        [ -e "${BIN_DIR}/pip3" ] || ln -s pip "${BIN_DIR}/pip3"
+        [ -e "${BIN_DIR}/pip" ] || ln -s pip3 "${BIN_DIR}/pip"
+        echo "${BIN_DIR}" >> "${GITHUB_PATH}"
+        echo "LD_LIBRARY_PATH=${VENV_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
+    - name: Check python and pip version
+      shell: bash -xe {0}
+      run: |
+        which python && which python3 && which pip && which pip3
+        python -V && python3 -V && pip -V && pip3 -V
+        pip list

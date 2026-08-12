@@ -168,14 +168,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Setup python
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          python-version: ${{ inputs.python }}
-          activate-environment: true
-
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
 
       - name: Print configuration
         run: |

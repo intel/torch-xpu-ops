@@ -212,15 +212,9 @@ jobs:
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python-${{ env.python }}
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
-          python-version: ${{ env.python }}
-          activate-environment: true
-      - name: Check python
-        run: |
-          which python && python -V
-          uv pip list
-          uv pip install -U pip wheel setuptools
+          python: ${{ env.python }}
       - name: Prepare pytorch and deps
         run: |
           uv pip install junitparser
@@ -322,10 +316,9 @@ jobs:
         with:
           path: torch-xpu-ops
       - name: Setup python-${{ env.python }}
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
-          python-version: ${{ env.python }}
-          activate-environment: true
+          python: ${{ env.python }}
       - name: Install pip deps
         run: |
           uv pip install junitparser

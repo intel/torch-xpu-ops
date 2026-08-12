@@ -88,15 +88,9 @@ jobs:
           ref: ${{ env.accelerate }}
           path: accelerate
       - name: Setup python-${{ env.python }}
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ env.python }}
-          activate-environment: true
-      - name: Check python
-        run: |
-          which python && python -V
-          uv pip list
-          uv pip install -U pip wheel setuptools
+          python: ${{ env.python }}
       - name: Install pytorch and deps
         run: |
           uv pip install junitparser

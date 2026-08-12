@@ -270,10 +270,9 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ inputs.python }}
-          activate-environment: true
+          python: ${{ inputs.python }}
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v8
         with:

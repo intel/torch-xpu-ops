@@ -36,16 +36,9 @@ runs:
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
-      uses: astral-sh/setup-uv@v9.0.0
+      uses: ./.github/actions/setup-python
       with:
-        python-version: ${{ inputs.python }}
-        activate-environment: true
-    - name: Check python
-      shell: bash -xe {0}
-      run: |
-        which python && python -V
-        uv pip list
-        uv pip install -U pip wheel setuptools
+        python: ${{ inputs.python }}
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v7
       with:

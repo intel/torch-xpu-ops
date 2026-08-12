@@ -22,13 +22,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Setup python
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          python-version: '3.10'
-          activate-environment: true
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: '3.10'
       - name: Downlaod artifacts
         run: |
           rm -rf target && mkdir target && cd target
