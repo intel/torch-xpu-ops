@@ -15035,8 +15035,8 @@ class TestNNDeviceType(NNTestCase):
     @dtypes(torch.half, torch.float)
     def test_softmax(self, device, dtype):
         input = torch.rand(32, 100, device=device, dtype=dtype, requires_grad=True)
-        inputf = input.to(torch.float).detach().requires_grad_(True)
-        out = F.softmax(input, dim=-1, dtype=torch.float)
+        inputf = input.to(dtype).detach().requires_grad_(True)
+        out = F.softmax(input, dim=-1, dtype=dtype)
         outf = F.softmax(inputf, dim=-1)
         # should be bitwise equal
         self.assertEqual(out, outf, atol=0, rtol=0)
