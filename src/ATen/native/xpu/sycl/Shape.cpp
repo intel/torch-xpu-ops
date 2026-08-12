@@ -19,6 +19,7 @@
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <c10/core/MemoryFormat.h>
+#include <c10/util/SmallVector.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -28,7 +29,7 @@
 #include <ATen/ops/size_native.h>
 
 #include <algorithm>
-#include <vector>
+#include <cstddef>
 
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
@@ -348,11 +349,9 @@ struct CatArrayBatchedCopy_alignedK_contig {
 };
 
 // Like CatArrayBatchedCopy_alignedK_contig, but vectorizes both loads and
-// stores.
-//
-// When each input slice and the output row pitch are multiples of the vector
-// width, each input vector maps to one contiguous output vector. This allows a
-// single wide store and a simple direct output-offset calculation.
+// stores. When each input slice and the output row pitch are multiples of the
+// vector width, each input vector maps to one contiguous output vector. This
+// allows a single wide store and a simple direct output-offset calculation.
 template <
     typename T,
     typename IndexType,
@@ -371,15 +370,13 @@ struct CatArrayBatchedCopy_vectorized {
 
     // Exact: the host guarantees whole vectors per slice.
     const IndexType nVectors = inputs.nElements[group] / kILP;
-    // Empty inputs are legal, and skipping them keeps the division by
-    // inputSliceVectors below well defined (it would be 0).
+    // Empty inputs are valid and require no work. Return early to avoid
+    // dividing by inputSliceVectors, which is zero in this case.
     if (nVectors == 0)
       return;
 
     IndexType vectorIndex =
         item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
-    if (vectorIndex >= nVectors)
-      return;
 
     const IndexType inputSliceVectors =
         inputs.dimSize[group] * dimStride / kILP;
@@ -478,10 +475,37 @@ void parallel_cat(
                kAlignedKernelBytes ==
            0);
 
-  // Wide stores must not cross input-slice boundaries. Require every input
-  // slice and the output row pitch to be multiples of the vector width;
-  // prefix-sum offsets are then aligned automatically. Check this across all
-  // inputs because the output row pitch is global, not per batch.
+  // Cache per-input geometry for vectorization, sorting, batching, and metadata
+  // setup. Empty tensors are handled here to avoid querying an invalid
+  // dimension.
+  constexpr size_t kInlineInputs = 8;
+  const unsigned nInputs = static_cast<unsigned>(inputs.size());
+  c10::SmallVector<int64_t, kInlineInputs> nElements(nInputs);
+  c10::SmallVector<int64_t, kInlineInputs> dimSize(nInputs);
+  // Keep output offsets in the original input order, independent of batching
+  // order.
+  c10::SmallVector<int64_t, kInlineInputs> inputOffset(nInputs);
+  c10::SmallVector<unsigned, kInlineInputs> order(nInputs);
+  {
+    int64_t running = 0;
+    for (unsigned k = 0; k < nInputs; ++k) {
+      const Tensor& input = inputs[k].get();
+      nElements[k] = input.numel();
+      dimSize[k] = nElements[k] > 0 ? input.size(logical_dimension) : 0;
+      inputOffset[k] = running;
+      running += dimSize[k];
+      order[k] = k;
+    }
+    // Sort inputs by size so tensors with similar workloads are batched
+    // together, reducing idle work from smaller tensors in the same launch.
+    std::stable_sort(order.begin(), order.end(), [&](unsigned a, unsigned b) {
+      return nElements[a] > nElements[b];
+    });
+  }
+
+  // Vectorized stores must stay within each input slice. Require both input
+  // slice sizes and the output slice size to be multiples of the vector width,
+  // so all slice offsets remain aligned.
   const int64_t dimStride = outputParam.tensorStride[mapped_dimension];
   const int64_t outputSliceBytes =
       static_cast<int64_t>(outputParam.tensorSize[mapped_dimension]) *
@@ -491,11 +515,8 @@ void parallel_cat(
         !is_aligned_to(data, bytes) || outputSliceBytes % bytes != 0) {
       return false;
     }
-    for (unsigned k = 0; k < inputs.size(); ++k) {
-      const int64_t dimSize = inputs[k].get().numel() > 0
-          ? inputs[k].get().size(logical_dimension)
-          : 0;
-      if ((dimSize * dimStride * static_cast<int64_t>(sizeof(scalar_t))) %
+    for (unsigned k = 0; k < nInputs; ++k) {
+      if ((dimSize[k] * dimStride * static_cast<int64_t>(sizeof(scalar_t))) %
               bytes !=
           0) {
         return false;
@@ -509,45 +530,26 @@ void parallel_cat(
       : fitsVector(ALIGNED_VEC_LOAD_BYTES_8)  ? ALIGNED_VEC_LOAD_BYTES_8
                                               : 0;
 
-  // Batch inputs by size to reduce idle work items. A batch's launch range is
-  // determined by its largest input, so grouping similarly sized inputs avoids
-  // overprovisioning smaller ones. Output offsets are computed in argument
-  // order, allowing inputs to be reordered for batching without changing the
-  // result.
-  const unsigned nInputs = static_cast<unsigned>(inputs.size());
-  std::vector<int64_t> inputOffset(nInputs);
-  std::vector<unsigned> order(nInputs);
-  {
-    int64_t running = 0;
-    for (unsigned k = 0; k < nInputs; ++k) {
-      order[k] = k;
-      inputOffset[k] = running;
-      // There is a legacy case where a 1-D empty tensor can be concat with
-      // high-dimensional tensor
-      if (inputs[k].get().numel() > 0) {
-        running += inputs[k].get().size(logical_dimension);
-      }
-    }
-    std::stable_sort(order.begin(), order.end(), [&](unsigned a, unsigned b) {
-      return inputs[a].get().numel() > inputs[b].get().numel();
-    });
-  }
-
-  // Now we loop
+  // Process inputs in size-sorted batches.
   int batchCounter = 0;
   unsigned i = 0;
   while (i < nInputs) {
-    // Inputs are sorted by size, so the first input determines the batch's
-    // maximum workload. Extend the batch while the estimated idle work does not
-    // exceed the useful work; otherwise, start a new batch with the remaining
-    // inputs.
-    const int64_t batchMax = inputs[order[i]].get().numel();
+    // The first input is the largest in this batch.
+    const int64_t batchMax = nElements[order[i]];
+    // All remaining inputs are empty, so there is nothing left to launch.
+    if (batchMax == 0)
+      break;
+
+    // Grow the batch while idle work stays within the useful-work budget.
     int64_t usefulElements = batchMax;
     int64_t idleElements = 0;
     unsigned batchEnd = i + 1;
     while (batchEnd < nInputs &&
            (batchEnd - i) < static_cast<unsigned>(batch_size)) {
-      const int64_t n = inputs[order[batchEnd]].get().numel();
+      const int64_t n = nElements[order[batchEnd]];
+      // Limit batching when the padding overhead becomes too large. Smaller
+      // tensors leave idle elements up to batchMax; stop once idle work exceeds
+      // useful work.
       if (idleElements + (batchMax - n) > usefulElements + n)
         break;
       idleElements += batchMax - n;
@@ -555,29 +557,25 @@ void parallel_cat(
       ++batchEnd;
     }
     const unsigned batchStart = i;
-    // Advanced ahead of the launch, which ends the iteration early.
+    // Advance before dispatch since LAUNCH_VECTORIZED may continue the loop,
+    // which would otherwise skip the cursor update.
     i = batchEnd;
 
     bool isContig = true;
     bool isAligned = true;
-    // OR of the batch's input addresses; one modulo then tests them all.
-    // Unlike the geometry above, alignment may vary from batch to batch.
+    // OR input addresses so a single alignment check covers the whole batch.
     uintptr_t inputAddressBits = 0;
-    unsigned int max_elements_per_tensor = 0;
+    // Inputs are sorted by size, so batchMax is the batch maximum.
+    const unsigned int max_elements_per_tensor =
+        static_cast<unsigned int>(batchMax);
     for (batchCounter = 0; batchStart + batchCounter < batchEnd;
          ++batchCounter) {
       const unsigned inputIndex = order[batchStart + batchCounter];
-      int64_t dimSize = 0;
-      // There is a legacy case where a 1-D empty tensor can be concat with
-      // high-dimensional tensor
-      if (inputs[inputIndex].get().numel() > 0) {
-        dimSize = inputs[inputIndex].get().size(logical_dimension);
-      }
       catMetaData.input[batchCounter] = static_cast<const scalar_t*>(
           inputs[inputIndex].get().const_data_ptr());
       catMetaData.offset[batchCounter] = inputOffset[inputIndex];
-      catMetaData.dimSize[batchCounter] = dimSize;
-      catMetaData.nElements[batchCounter] = inputs[inputIndex].get().numel();
+      catMetaData.dimSize[batchCounter] = dimSize[inputIndex];
+      catMetaData.nElements[batchCounter] = nElements[inputIndex];
 
       // If at least one of the inputs is not aligned, we can't call the
       // CatArrayBatchedCopy_alignedK_contig
@@ -611,18 +609,9 @@ void parallel_cat(
       } else {
         catMetaData.isContiguous[batchCounter] = true;
       }
-
-      // We need max elements per tensor to compute range parameters
-      max_elements_per_tensor = std::max(
-          max_elements_per_tensor, catMetaData.nElements[batchCounter]);
     }
 
-    // Skip if every input in the batch is empty. Otherwise the range dim is
-    // invalid. Sorting puts the empty inputs last, so this ends the loop.
-    if (max_elements_per_tensor == 0)
-      continue;
-
-      // Independent of Dims, so dispatched ahead of the HANDLE_CASE switch.
+// Independent of Dims, so dispatched ahead of the HANDLE_CASE switch.
 #define LAUNCH_VECTORIZED(VEC_BYTES)                                       \
   {                                                                        \
     sycl::range<2> vecGroup, vecRange;                                     \
