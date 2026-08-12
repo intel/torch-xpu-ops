@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/complex.h>
+#include <ATen/ops/empty_strided.h>
 #include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/real.h>
@@ -32,22 +33,6 @@ namespace at::native::xpu {
 namespace impl {
 
 constexpr int64_t mkl_max_ndim = 3;
-
-// Sort transform dimensions by input layout, for best performance
-// exclude_last is for onesided transforms where the last dimension cannot be
-// reordered
-static DimVector _sort_dims(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool exclude_last = false) {
-  DimVector sorted_dims(dim.begin(), dim.end());
-  auto self_strides = self.strides();
-  std::sort(
-      sorted_dims.begin(),
-      sorted_dims.end() - exclude_last,
-      [&](int64_t a, int64_t b) { return self_strides[a] > self_strides[b]; });
-  return sorted_dims;
-}
 
 template <precision prec, domain signal_type, typename scalar_t>
 void _mkl_dft(
@@ -172,7 +157,7 @@ void _fft_with_size(
         ? _mkl_dft<precision::DOUBLE, domain::COMPLEX, double>
         : _mkl_dft<precision::DOUBLE, domain::REAL, double>;
   } else {
-    AT_ERROR("MKL FFT doesn't support tensor of type");
+    TORCH_CHECK(false, "MKL FFT doesn't support tensor of type");
   }
 
   dft_func(
@@ -286,47 +271,8 @@ Tensor& _exec_fft(
   return out;
 }
 
-double _dft_scale(
-    IntArrayRef dim,
-    IntArrayRef norm_sizes,
-    int64_t normalization) {
-  const auto norm = static_cast<fft_norm_mode>(normalization);
-  double double_scale = 1.0;
-
-  if (norm == fft_norm_mode::none) {
-    return double_scale;
-  }
-
-  int64_t signal_numel = 1;
-  for (const int64_t& d : dim) {
-    signal_numel *= norm_sizes[d];
-  }
-  if (norm == fft_norm_mode::by_root_n) {
-    double_scale = 1.0 / std::sqrt(signal_numel);
-  } else {
-    double_scale = 1.0 / static_cast<double>(signal_numel);
-  }
-
-  return double_scale;
-}
-
-const Tensor& _fft_apply_normalization(
-    const Tensor& self,
-    int64_t normalization,
-    IntArrayRef norm_sizes,
-    IntArrayRef dims) {
-  auto scale = _dft_scale(dims, norm_sizes, normalization);
-  return (scale == 1.0) ? self : self.mul_(scale);
-}
-
-// TODO: Remove this work-around in future.
-Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half)
-    return input.to(ScalarType::Float);
-  if (input.scalar_type() == ScalarType::ComplexHalf)
-    return input.to(ScalarType::ComplexFloat);
-  return input;
-}
+// _sort_dims, _dft_scale, _fft_apply_normalization, and promote_fft_input are
+// defined in sycl/FFTKernelFunctor.cpp and declared in sycl/FFTKernelFunctor.h
 
 } // namespace impl
 
@@ -438,6 +384,15 @@ Tensor _fft_c2r_mkl(
         /*forward=*/false);
   }
 
+  // HermitSymm mutates in-place; avoid mutating user-visible input when
+  // aliased.
+  if (input.is_same(self)) {
+    auto input_copy =
+        at::empty_strided(input.sizes(), input.strides(), input.options());
+    input_copy.copy_(input);
+    input = input_copy;
+  }
+
   auto in_sizes = input.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
@@ -445,8 +400,6 @@ Tensor _fft_c2r_mkl(
   auto out = at::empty(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
-
-  input = input.clone(MemoryFormat::Contiguous);
 
   HermitSymm(input, dim.back(), out_sizes[dim.back()]);
 

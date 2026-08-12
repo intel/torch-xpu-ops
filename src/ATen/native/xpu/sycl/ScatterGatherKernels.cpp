@@ -25,6 +25,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
+#include <bit>
 
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 
@@ -392,10 +393,10 @@ struct ScatterGatherBaseKernel {
         iter.dtype(),
         "scatter_gather_base_kernel_func",
         [&] {
-          using dtype = typename std::conditional<
+          using dtype = std::conditional_t<
               cast_to_opaque,
               OpaqueType<sizeof(scalar_t)>,
-              scalar_t>::type;
+              scalar_t>;
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_gather_base_kernel_func", [&]() {
                 ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
@@ -452,10 +453,10 @@ struct ScatterGatherBaseKernel {
           self.qscheme() == kPerTensorAffine,
           "Only per_tensor quantized quantized tensors are supported by gather.")
       AT_DISPATCH_QINT_TYPES(iter.dtype(), "gather_quant_xpu", [&] {
-        using dtype = typename std::conditional<
+        using dtype = std::conditional_t<
             cast_to_opaque,
             OpaqueType<sizeof(scalar_t)>,
-            scalar_t>::type;
+            scalar_t>;
         AT_DISPATCH_INDEX_TYPES(
             index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
               ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
@@ -467,10 +468,10 @@ struct ScatterGatherBaseKernel {
           iter.dtype(),
           "gather_xpu",
           AT_WRAP([&] {
-            using dtype = typename std::conditional<
+            using dtype = std::conditional_t<
                 cast_to_opaque,
                 OpaqueType<sizeof(scalar_t)>,
-                scalar_t>::type;
+                scalar_t>;
             AT_DISPATCH_INDEX_TYPES(
                 index.scalar_type(),
                 "xpu_scatter_gather_base_kernel_func",
@@ -486,6 +487,7 @@ struct ScatterGatherBaseKernel {
           AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
           AT_EXPAND(AT_FLOAT8_TYPES),
           kComplexHalf,
+          kBComplex32,
           kHalf,
           kBool,
           kBFloat16);
@@ -669,7 +671,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
                 ScatterFillInternalKernel<dtype, index_t>()(
@@ -717,7 +719,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(),
               "scatter_fill_base_kernel_reduce_multiply",

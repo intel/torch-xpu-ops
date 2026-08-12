@@ -10,15 +10,14 @@ set(ONEMKL_FOUND FALSE)
 
 set(ONEMKL_LIBRARIES)
 
-# In order to be compatible with various situations of Pytorch development
-# bundle setup, ENV{MKLROOT} and SYCL_ROOT will be checked sequentially to get
-# the root directory of oneMKL.
+# ENV{MKLROOT} is authoritative when set; otherwise fall back to the oneAPI
+# bundle layout next to the SYCL compiler.
 if(DEFINED ENV{MKLROOT})
-  # Directly get the root directory of oneMKL if ENV{MKLROOT} exists.
   set(ONEMKL_ROOT $ENV{MKLROOT})
 elseif(SYCL_FOUND)
-  # oneMKL configuration may not be imported into the build system. Get the root
-  # directory of oneMKL based on the root directory of compiler relatively.
+  # Not cmake_path(NORMAL_PATH): it only recognizes '/' as a separator, and on
+  # Windows SYCL_ROOT arrives backslashed from setvars.bat, which would make
+  # the whole thing one component for ../.. to swallow.
   get_filename_component(ONEMKL_ROOT "${SYCL_ROOT}/../../mkl/latest" REALPATH)
 endif()
 
@@ -30,7 +29,7 @@ if(NOT DEFINED ONEMKL_ROOT)
   return()
 endif()
 
-if(NOT EXISTS ${ONEMKL_ROOT})
+if(NOT EXISTS "${ONEMKL_ROOT}")
   message(
     WARNING
       "${ONEMKL_ROOT} not found, please setup oneAPI environment before building!!"
@@ -74,6 +73,10 @@ foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
     NAMES ${LIB_NAME}
     HINTS ${ONEMKL_LIB_DIR}
     NO_CMAKE_PATH NO_CMAKE_ENVIRONMENT_PATH)
+  if(NOT ${LIB_NAME}_library)
+    message(WARNING "${LIB_NAME} not found in ${ONEMKL_LIB_DIR}!!")
+    return()
+  endif()
   list(APPEND ONEMKL_LIBRARIES ${${LIB_NAME}_library})
 endforeach()
 

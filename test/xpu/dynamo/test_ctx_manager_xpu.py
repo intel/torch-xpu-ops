@@ -1309,15 +1309,15 @@ class GraphModule(torch.nn.Module):
     def forward(self):
         _saved_tensors_hooks_disable = torch._C._autograd._saved_tensors_hooks_disable('This is not supported');  _saved_tensors_hooks_disable = None
 
-        x: "f32[1]" = torch.ones(1)
+        ones: "f32[1]" = torch.ones(1)
 
-        y: "f32[1]" = torch.zeros(1)
+        zeros: "f32[1]" = torch.zeros(1)
 
-        add: "f32[1]" = x + y;  x = y = None
+        add: "f32[1]" = ones + zeros;  ones = zeros = None
 
         _saved_tensors_hooks_enable = torch._C._autograd._saved_tensors_hooks_enable();  _saved_tensors_hooks_enable = None
         return (add,)
-""",  # NOQA: B950
+""",
         )
 
     def test_disable_saved_tensors_hooks_prev_disabled(self):
@@ -1352,15 +1352,15 @@ class GraphModule(torch.nn.Module):
     def forward(self):
         _saved_tensors_hooks_disable = torch._C._autograd._saved_tensors_hooks_disable('This is not supported');  _saved_tensors_hooks_disable = None
 
-        x: "f32[1]" = torch.ones(1)
+        ones: "f32[1]" = torch.ones(1)
 
-        y: "f32[1]" = torch.zeros(1)
+        zeros: "f32[1]" = torch.zeros(1)
 
-        add: "f32[1]" = x + y;  x = y = None
+        add: "f32[1]" = ones + zeros;  ones = zeros = None
 
         _saved_tensors_hooks_disable_1 = torch._C._autograd._saved_tensors_hooks_disable('Previously disabled message');  _saved_tensors_hooks_disable_1 = None
         return (add,)
-""",  # NOQA: B950
+""",
         )
 
     def test_disable_saved_tensors_hooks_prev_disabled_nested(self):
@@ -1401,21 +1401,21 @@ class GraphModule(torch.nn.Module):
     def forward(self):
         _saved_tensors_hooks_disable = torch._C._autograd._saved_tensors_hooks_disable('This is not supported');  _saved_tensors_hooks_disable = None
 
-        x: "f32[1]" = torch.ones(1)
+        ones: "f32[1]" = torch.ones(1)
 
-        y: "f32[1]" = torch.zeros(1)
+        zeros: "f32[1]" = torch.zeros(1)
 
         _saved_tensors_hooks_disable_1 = torch._C._autograd._saved_tensors_hooks_disable('This is not supported inner');  _saved_tensors_hooks_disable_1 = None
 
-        add: "f32[1]" = x + y;  y = None
+        add: "f32[1]" = ones + zeros;  zeros = None
 
         _saved_tensors_hooks_disable_2 = torch._C._autograd._saved_tensors_hooks_disable('This is not supported');  _saved_tensors_hooks_disable_2 = None
 
-        add_1: "f32[1]" = add + x;  add = x = None
+        add_1: "f32[1]" = add + ones;  add = ones = None
 
         _saved_tensors_hooks_disable_3 = torch._C._autograd._saved_tensors_hooks_disable('Previously disabled message');  _saved_tensors_hooks_disable_3 = None
         return (add_1,)
-""",  # NOQA: B950
+""",
         )
 
     def test_disable_saved_tensors_hooks_graph_break(self):
@@ -1430,7 +1430,7 @@ class GraphModule(torch.nn.Module):
         eager = EagerAndRecordGraphs()
         torch.compile(fn, backend=eager, fullgraph=False)(torch.randn(()))
 
-        def check_graph(actual, expected):  # noqa: F841
+        def check_graph(actual, expected):
             self.assertExpectedInline(actual, expected)
 
         graph = eager.graphs[0]
@@ -1444,11 +1444,11 @@ class GraphModule(torch.nn.Module):
 
         _saved_tensors_hooks_disable = torch._C._autograd._saved_tensors_hooks_disable('This is not supported');  _saved_tensors_hooks_disable = None
 
-        y: "f32[]" = l_x_ + 1;  l_x_ = None
+        add: "f32[]" = l_x_ + 1;  l_x_ = None
 
         _saved_tensors_hooks_enable = torch._C._autograd._saved_tensors_hooks_enable();  _saved_tensors_hooks_enable = None
-        return (y,)
-""",  # NOQA: B950
+        return (add,)
+""",
         )
 
         graph = eager.graphs[1]
@@ -1466,7 +1466,7 @@ class GraphModule(torch.nn.Module):
 
         _saved_tensors_hooks_enable = torch._C._autograd._saved_tensors_hooks_enable();  _saved_tensors_hooks_enable = None
         return (mul,)
-""",  # NOQA: B950
+""",
         )
 
     def test_context_wrapping_grad_mode_decorator(self):
@@ -1906,8 +1906,9 @@ class GraphModule(torch.nn.Module):
         opt_fn = torch.compile(fn, backend="eager")
         self.assertEqual(fn(inp), opt_fn(inp))
 
-    def test_store_attr_graph_break_key_error(self):
-        # STORE_ATTR on dummy should result in graph break
+    def test_store_attr_on_function(self):
+        # setattr on a function object is traced as a generic attribute
+        # mutation and replayed at runtime -- no graph break.
         def dummy():
             pass
 
@@ -1918,9 +1919,12 @@ class GraphModule(torch.nn.Module):
             return x + 4
 
         inp = torch.ones(3)
-        opt_fn = torch.compile(fn, backend="eager")
-        self.assertEqual(fn(inp), opt_fn(inp))
-        self.assertGreater(len(counters["graph_break"]), 0)
+        opt_fn = torch.compile(fn, backend="eager", fullgraph=True)
+        # Check the compiled run applied the mutation before the eager run
+        # below overwrites dummy.attr1.
+        compiled_res = opt_fn(inp)
+        self.assertEqual(dummy.attr1, inp + 2)
+        self.assertEqual(fn(inp), compiled_res)
 
 
 class ContextlibContextManagerTests(torch._dynamo.test_case.TestCase):
@@ -1966,10 +1970,10 @@ class GraphModule(torch.nn.Module):
     def forward(self):
         set_default_dtype = torch.set_default_dtype(torch.float64);  set_default_dtype = None
 
-        x: "c128[2]" = torch.tensor([3.0, (3+5j)])
+        tensor: "c128[2]" = torch.tensor([3.0, (3+5j)])
 
         set_default_dtype_1 = torch.set_default_dtype(torch.float32);  set_default_dtype_1 = None
-        return (x,)
+        return (tensor,)
 """,
         )
 

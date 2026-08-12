@@ -33,9 +33,9 @@ jobs:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python }}
       - name: Install gh-cli
@@ -102,7 +102,7 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Add comment for performance outliers
         if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && steps.summary.outputs.performance_regression == 1 }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Read the comment content from a file

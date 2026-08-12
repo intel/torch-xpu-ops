@@ -94,6 +94,7 @@ void where_kernel(TensorIterator& iter) {
       "where_xpu",
       [&] { gpu_kernel(iter, WhereFunctor<scalar_t>()); },
       kComplexHalf,
+      kBComplex32,
       kHalf,
       kBFloat16,
       kBool,
@@ -102,28 +103,34 @@ void where_kernel(TensorIterator& iter) {
 }
 
 void isposinf_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_V2(
       iter.input_dtype(),
       "isposinf_xpu",
-      [&] { gpu_kernel(iter, IsposinfFunctor<scalar_t>()); });
+      AT_WRAP([&] { gpu_kernel(iter, IsposinfFunctor<scalar_t>()); }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 void isneginf_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_V2(
       iter.input_dtype(),
       "isneginf_xpu",
-      [&] { gpu_kernel(iter, IsneginfFunctor<scalar_t>()); });
+      AT_WRAP([&] { gpu_kernel(iter, IsneginfFunctor<scalar_t>()); }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 void clamp_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "clamp_xpu", [&] {
-        gpu_kernel(iter, ClampFunctor<scalar_t>());
-      });
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "clamp_xpu",
+      AT_WRAP([&] { gpu_kernel(iter, ClampFunctor<scalar_t>()); }),
+      AT_EXPAND(AT_ALL_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 void inline launch_clamp_scalar(
@@ -131,14 +138,20 @@ void inline launch_clamp_scalar(
     Scalar lim0,
     Scalar lim1,
     at::native::detail::ClampLimits minmax) {
-  AT_DISPATCH_ALL_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "clamp_scalar_xpu", [&] {
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "clamp_scalar_xpu",
+      AT_WRAP([&] {
         using opmath_t = at::opmath_type<scalar_t>;
         auto lim0_val = lim0.to<opmath_t>();
         auto lim1_val = lim1.to<opmath_t>();
         gpu_kernel(
             iter, ClampScalarFunctor<scalar_t>(lim0_val, lim1_val, minmax));
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kHalf,
+      kBFloat16);
 }
 
 void clamp_scalar_kernel(

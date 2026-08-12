@@ -1,4 +1,5 @@
 #include <ATen/core/Tensor.h>
+#include <ATen/core/dispatch/Dispatcher.h>
 #include <ATen/native/CPUFallback.h>
 
 namespace at {
@@ -357,6 +358,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "linalg_lstsq.out",
       "linalg_lu.out",
       "linalg_matrix_exp",
+      "linalg_matrix_sqrth",
+      "linalg_polar.out",
       "_linalg_svd.U",
       "lu_unpack.out",
       "ormqr",
@@ -365,6 +368,25 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "_validate_compressed_sparse_indices",
   };
   for (auto& op_name : fallback_list) {
+    // Parse "name" or "name.overload" into an OperatorName
+    auto dot_pos = op_name.find('.');
+    std::string base =
+        (dot_pos == std::string::npos) ? op_name : op_name.substr(0, dot_pos);
+    std::string overload =
+        (dot_pos == std::string::npos) ? "" : op_name.substr(dot_pos + 1);
+    auto op = c10::Dispatcher::singleton().findOp(
+        c10::OperatorName("aten::" + base, overload));
+    if (op.has_value() && op->hasKernelForDispatchKey(c10::DispatchKey::XPU)) {
+      if (DEBUG_XPU_FALLBACK) {
+        TORCH_WARN_ONCE(
+            "aten::",
+            base,
+            (overload.empty() ? "" : "." + overload),
+            " already has a kernel registered for XPU, skipping fallback. "
+            "Please remove it from the fallback_list in XPUFallback.cpp.");
+      }
+      continue;
+    }
     m.impl(
         op_name.c_str(),
         torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());

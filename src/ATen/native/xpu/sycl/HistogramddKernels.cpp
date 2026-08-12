@@ -421,7 +421,7 @@ void histogramdd_xpu_contiguous(
   Tensor num_bin_edges_xpu =
       at::tensor(num_bin_edges, hist_strides_xpu.options());
 
-  if (algorithm == PARALLEL_SEARCH) {
+  if constexpr (algorithm == PARALLEL_SEARCH) {
     histogramdd_template<input_t>(
         accessor_in,
         reinterpret_cast<const input_t* const*>(

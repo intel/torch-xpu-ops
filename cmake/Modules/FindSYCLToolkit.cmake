@@ -104,12 +104,11 @@ function(SYCL_CMPLR_TEST_RUN error TEST_EXE)
     TIMEOUT 60
     )
 
-  if(test_result)
-    set(SYCLTOOLKIT_FOUND False)
-    set(SYCL_REASON_FAILURE "SYCL: feature test execution failed!!")
+  if(result)
+    message("SYCL: feature test execution failed!!")
+    message("test output is: ${output}")
   endif()
 
-  set(test_result "${result}" PARENT_SCOPE)
   set(test_output "${output}" PARENT_SCOPE)
 
   set(${error} ${result} PARENT_SCOPE)
@@ -163,7 +162,7 @@ if(${has_werror} EQUAL -1)
   endif()
 
   # Extract test output for information
-  SYCL_CMPLR_TEST_EXTRACT(${test_output} "SYCL_LANGUAGE_VERSION")
+  SYCL_CMPLR_TEST_EXTRACT("${test_output}" "SYCL_LANGUAGE_VERSION")
 
   # As per specification, all the SYCL compatible compilers should
   # define macro  SYCL_LANGUAGE_VERSION

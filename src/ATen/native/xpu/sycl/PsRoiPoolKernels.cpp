@@ -66,10 +66,10 @@ struct PsRoiPoolForwardKernel {
           static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
-      hstart = std::min(std::max(hstart + roi_start_h, 0), height_ - 1);
-      hend = std::min(std::max(hend + roi_start_h, 0), height_ - 1);
-      wstart = std::min(std::max(wstart + roi_start_w, 0), width_ - 1);
-      wend = std::min(std::max(wend + roi_start_w, 0), width_ - 1);
+      hstart = sycl::clamp(hstart + roi_start_h, 0, height_ - 1);
+      hend = sycl::clamp(hend + roi_start_h, 0, height_ - 1);
+      wstart = sycl::clamp(wstart + roi_start_w, 0, width_ - 1);
+      wend = sycl::clamp(wend + roi_start_w, 0, width_ - 1);
       bool is_empty = (hend <= hstart) || (wend <= wstart);
 
       const T* offset_input =
@@ -150,9 +150,8 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       at::zeros(output.sizes(), input.options().dtype(at::kInt));
 
   auto output_size = output.numel();
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(output_size), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
 
   if (output_size == 0) {
@@ -220,10 +219,10 @@ struct PsRoiPoolBackwardKernel {
           static_cast<opmath_t>(pw + 1) * static_cast<opmath_t>(bin_size_w)));
 
       // Add roi offsets and clip to input boundaries
-      hstart = std::min(std::max(hstart + roi_start_h, 0), height_);
-      hend = std::min(std::max(hend + roi_start_h, 0), height_);
-      wstart = std::min(std::max(wstart + roi_start_w, 0), width_);
-      wend = std::min(std::max(wend + roi_start_w, 0), width_);
+      hstart = sycl::clamp(hstart + roi_start_h, 0, height_);
+      hend = sycl::clamp(hend + roi_start_h, 0, height_);
+      wstart = sycl::clamp(wstart + roi_start_w, 0, width_);
+      wend = sycl::clamp(wend + roi_start_w, 0, width_);
       bool is_empty = (hend <= hstart) || (wend <= wstart);
 
       int c_in = channel_mapping_[index];
@@ -296,9 +295,8 @@ Tensor ps_roi_pool_backward_kernel(
     int64_t width) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients

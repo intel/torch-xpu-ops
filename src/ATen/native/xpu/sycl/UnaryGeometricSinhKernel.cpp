@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -36,10 +37,13 @@ struct SinhFunctor {
 void sinh_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "sinh_xpu", [&]() {
-          gpu_kernel(iter, SinhComplexFunctor<scalar_t>());
-        });
+    AT_DISPATCH_V2(
+        common_dtype,
+        "sinh_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, SinhComplexFunctor<scalar_t>()); }),
+        AT_EXPAND(AT_COMPLEX_TYPES),
+        kComplexHalf,
+        kBComplex32);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         ScalarType::Half,

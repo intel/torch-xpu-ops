@@ -39,7 +39,7 @@ struct MaxUnpooling2dForwardKernelFunctor {
           ? n * numChannels_ * outputHeight_ * outputWidth_ + c
           : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
       output += offset;
-      if (is_channels_last_) {
+      if constexpr (is_channels_last_) {
         output[maxind * numChannels_] = input_data_[linearIndex];
       } else {
         output[maxind] = input_data_[linearIndex];
@@ -178,7 +178,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       output.mutable_data_ptr<scalar_t>());
 
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
@@ -199,7 +200,8 @@ Tensor& max_unpooling2d_forward_kernel(
                       owidth,
                       output.mutable_data_ptr<scalar_t>());
                   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-                  int64_t num_groups = (count + group_size - 1) / group_size;
+                  int64_t num_groups =
+                      xpuKernelLoopGroupRange(count, group_size);
                   sycl_kernel_submit(
                       num_groups * group_size,
                       group_size,
@@ -409,7 +411,7 @@ void max_unpooling3d_cl_forward_template(
       output);
 
   int64_t group_size = syclMaxWorkItemsPerSubSlice();
-  int64_t num_groups = (numInputElements + group_size - 1) / group_size;
+  int64_t num_groups = xpuKernelLoopGroupRange(numInputElements, group_size);
   int64_t total_items = num_groups * group_size;
   sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
 }
@@ -486,22 +488,21 @@ static void max_unpooling3d_shape_check(
   int nslices = input.size(dimn);
 
   if (gradOutput.defined()) {
-    if (oT != gradOutput.size(dimt) || oH != gradOutput.size(dimh) ||
-        oW != gradOutput.size(dimw)) {
-      AT_ERROR(
-          "Inconsistent gradOutput size. oT= ",
-          oT,
-          ", oH= ",
-          oH,
-          ", oW= ",
-          oW,
-          ". gradOutput: ",
-          gradOutput.size(dimt),
-          "x",
-          gradOutput.size(dimh),
-          "x",
-          gradOutput.size(dimw));
-    }
+    TORCH_CHECK(
+        oT == gradOutput.size(dimt) && oH == gradOutput.size(dimh) &&
+            oW == gradOutput.size(dimw),
+        "Inconsistent gradOutput size. oT= ",
+        oT,
+        ", oH= ",
+        oH,
+        ", oW= ",
+        oW,
+        ". gradOutput: ",
+        gradOutput.size(dimt),
+        "x",
+        gradOutput.size(dimh),
+        "x",
+        gradOutput.size(dimw));
     TORCH_CHECK(
         gradOutput.ndimension() == input.ndimension() &&
             gradOutput.size(dimn) == nslices,
