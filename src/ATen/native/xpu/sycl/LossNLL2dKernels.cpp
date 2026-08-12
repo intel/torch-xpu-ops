@@ -527,8 +527,7 @@ void nll_loss2d_backward_kernel(
                     NllLoss2dBackwardKernelFunctor<scalar_t, index_t>;
                 int64_t max_work_group_size =
                     syclMaxWorkGroupSize<KernelClass>();
-                int blocks_per_sample =
-                    (map_nelem + max_work_group_size - 1) /
+                int blocks_per_sample = (map_nelem + max_work_group_size - 1) /
                     max_work_group_size / 128;
                 blocks_per_sample =
                     (blocks_per_sample == 0) ? 1 : blocks_per_sample;
