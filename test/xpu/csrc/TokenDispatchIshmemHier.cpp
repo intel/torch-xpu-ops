@@ -68,8 +68,10 @@ struct HierState {
   int stage_slot_slots = 0;
   int32_t* stage_destpos = nullptr; // symmetric [S] dest position of staged tokens
   int stage_destpos_slots = 0;
-  uint64_t* stage_pad = nullptr;    // symmetric [2*nwg] per-WG staging flags (tag parity)
-  int stage_pad_slots = 0;
+  uint64_t* stage_ready = nullptr;  // symmetric [2] per-PE staging-arrived flag (tag parity)
+  int stage_ready_slots = 0;
+  uint64_t* done_counter = nullptr; // local [2] device WG completion counter (tag parity)
+  int done_counter_slots = 0;
   uint64_t* stage_count = nullptr;  // symmetric [2] staged token count (tag parity)
   int stage_count_slots = 0;
   uint64_t* intra_pad = nullptr;    // symmetric [2*P] intra-domain flags (tag parity)
@@ -222,19 +224,21 @@ int32_t* ensure_i32_array(int32_t*& ptr, int& have_slots, int slots) {
 
 // Kernel 1: nwg work-groups push the cross-domain tokens (plus their
 // final_slot / dest_pos metadata) to the mirror partner's staging region. Each
-// work-group takes a contiguous chunk of the cross tokens and raises its OWN
-// staging flag after fencing. It then waits on its own local flag, so the
-// mirror's matching push has landed by the time kernel 1 returns; this closes
-// cross-domain send+recv inside kernel 1 and leaves kernel 2 a pure switch.
-// nwg is fixed (== dispatch_max_wg) so both sides agree on the flag count;
-// work-groups whose chunk is empty still raise their flag.
+// work-group takes a contiguous chunk of the cross tokens and, after quieting
+// its own puts, bumps a device-wide completion counter. The LAST work-group to
+// finish publishes the staged count and raises a SINGLE per-PE staging-arrived
+// flag on the mirror; only WG0 spin-waits for the mirror's flag. Bounding the
+// spinning work-groups to one per PE means a large nwg cannot cause an
+// occupancy (scheduling) deadlock. nwg is fixed (== dispatch_max_wg) so both
+// sides launch the same number of pushers.
 struct TokenDispatchIshmemHierK1 {
   uint8_t* symm_send;           // local [S, token_bytes]
   uint8_t* stage;               // symmetric staging base (write on mirror)
   int32_t* stage_slot;          // symmetric [S] (write on mirror)
   int32_t* stage_destpos;       // symmetric [S] (write on mirror)
   uint64_t* stage_count;        // symmetric [1] this-call half (write on mirror)
-  uint64_t* stage_pad;          // symmetric [nwg] this-call half (write on mirror)
+  uint64_t* stage_ready;        // symmetric [1] this-call half (write on mirror)
+  uint64_t* done_counter;       // local [1] this-call half (device WG counter)
   const int32_t* cross_order;   // local [num_cross]
   const int32_t* cross_slot;    // local [num_cross]
   const int32_t* cross_destpos; // local [num_cross]
@@ -290,32 +294,40 @@ struct TokenDispatchIshmemHierK1 {
           grp);
     }
 
-    // Fence (not quiet) suffices: payload, count and flag all target the mirror
-    // PE, and fence orders delivery to a single PE, so the receiver sees data
-    // before the flag. Local send-buffer reuse is ordered by the in-order SYCL
-    // queue.
-    if (wg == 0 && lid == 0) {
-      ishmem_uint64_atomic_set(
-          stage_count, static_cast<uint64_t>(num_cross), mirror);
-    }
-    ishmemx_fence_work_group(grp);
+    // quiet (not just fence): the mirror is cross-domain, so this work-group's
+    // nbi puts sit in the device send queue until flushed. quiet guarantees
+    // they have remotely completed before we count this WG as done.
+    ishmemx_quiet_work_group(grp);
+
+    // Elect the last work-group to finish. Only it publishes the staged count
+    // and raises the single per-PE staging-arrived flag on the mirror; only WG0
+    // spin-waits for the incoming flag. This bounds spinning work-groups to one
+    // per PE, so a large nwg cannot deadlock on GPU scheduling: every non-WG0
+    // work-group increments and exits, freeing slots for the rest to run.
     if (lid == 0) {
-      // atomic_set targets the REMOTE mirror PE; wait_until below always polls
-      // our LOCAL copy of the same symmetric offset.
-      ishmem_uint64_atomic_set(stage_pad + wg, tag, mirror);
+      sycl::atomic_ref<
+          uint64_t,
+          sycl::memory_order::relaxed,
+          sycl::memory_scope::device,
+          sycl::access::address_space::global_space>
+          ctr(done_counter[0]);
+      const uint64_t done = ctr.fetch_add(static_cast<uint64_t>(1)) + 1;
+      if (done == static_cast<uint64_t>(nwg)) {
+        ishmem_uint64_atomic_set(
+            stage_count, static_cast<uint64_t>(num_cross), mirror);
+        ishmem_fence(); // order count before the ready flag on the mirror
+        ishmem_uint64_atomic_set(stage_ready, tag, mirror);
+      }
     }
 
-    // Receive side: wait for the mirror partner's matching work-group to land
-    // its push into our OWN staging (its WG wg raises our stage_pad[wg]). All
-    // nwg WGs together confirm the full incoming staging, so kernel 2 needs no
-    // cross-domain wait. Both sides raise before waiting, so this cannot
-    // deadlock.
-    if (lid == 0) {
-      ishmem_uint64_wait_until(stage_pad + wg, ISHMEM_CMP_EQ, tag);
+    // Only WG0 waits for the mirror's single staging-arrived flag; wait_until
+    // polls our LOCAL copy of the symmetric offset. No trailing barrier/fence
+    // is needed: nothing in this kernel reads the staging after the wait; the
+    // host memcpy (ordered after kernel completion) and kernel 2 (own acquire
+    // fence at entry) handle visibility of the mirror's RDMA writes.
+    if (wg == 0 && lid == 0) {
+      ishmem_uint64_wait_until(stage_ready, ISHMEM_CMP_EQ, tag);
     }
-    item.barrier(sycl::access::fence_space::local_space);
-    sycl::atomic_fence(
-        sycl::memory_order::acquire, sycl::memory_scope::system);
   }
 };
 
@@ -527,7 +539,8 @@ at::Tensor token_dispatch_ishmem_hier(
 
   int32_t* stage_slot;
   int32_t* stage_destpos;
-  uint64_t* stage_pad;
+  uint64_t* stage_ready;
+  uint64_t* done_counter;
   uint64_t* stage_count;
   uint64_t* intra_pad;
   {
@@ -537,8 +550,10 @@ at::Tensor token_dispatch_ishmem_hier(
         state.stage_slot, state.stage_slot_slots, 2 * static_cast<int>(S));
     stage_destpos = ensure_i32_array(
         state.stage_destpos, state.stage_destpos_slots, 2 * static_cast<int>(S));
-    stage_pad = ensure_u64_array(
-        state.stage_pad, state.stage_pad_slots, 2 * dispatch_wg, queue);
+    stage_ready =
+        ensure_u64_array(state.stage_ready, state.stage_ready_slots, 2, queue);
+    done_counter = ensure_u64_array(
+        state.done_counter, state.done_counter_slots, 2, queue);
     stage_count =
         ensure_u64_array(state.stage_count, state.stage_count_slots, 2, queue);
     intra_pad = ensure_u64_array(
@@ -555,12 +570,16 @@ at::Tensor token_dispatch_ishmem_hier(
     tag = ++state.iteration;
   }
   const int64_t parity = static_cast<int64_t>(tag % 2);
-  uint64_t* stage_pad_half = stage_pad + parity * dispatch_wg;
+  uint64_t* stage_ready_half = stage_ready + parity;
+  uint64_t* done_counter_half = done_counter + parity;
   uint64_t* stage_count_half = stage_count + parity;
   uint64_t* intra_pad_half = intra_pad + parity * P;
   uint8_t* symm_stage_half = symm_stage + parity * stage_half_bytes;
   int32_t* stage_slot_half = stage_slot + parity * S;
   int32_t* stage_destpos_half = stage_destpos + parity * S;
+
+  // Reset this call's per-PE WG completion counter before launching kernel 1.
+  sycl::event zero_ctr = queue.memset(done_counter_half, 0, sizeof(uint64_t));
 
   const int32_t my_domain = static_cast<int32_t>(rank / P);
   const int32_t my_pos = static_cast<int32_t>(rank % P);
@@ -575,6 +594,7 @@ at::Tensor token_dispatch_ishmem_hier(
   // Kernel 1: dispatch_wg work-groups, cross-domain mirror push.
   auto k1 = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(seed);
+    cgh.depends_on(zero_ctr);
     cgh.parallel_for(
         sycl::nd_range<1>(
             sycl::range<1>(static_cast<size_t>(dispatch_wg) * threads),
@@ -585,7 +605,8 @@ at::Tensor token_dispatch_ishmem_hier(
             stage_slot_half,
             stage_destpos_half,
             stage_count_half,
-            stage_pad_half,
+            stage_ready_half,
+            done_counter_half,
             cross_order.data_ptr<int32_t>(),
             cross_slot.data_ptr<int32_t>(),
             cross_destpos.data_ptr<int32_t>(),
@@ -675,8 +696,10 @@ void token_dispatch_ishmem_hier_finalize(const at::Tensor&) {
   state.stage_slot_slots = 0;
   free_symm(reinterpret_cast<void*&>(state.stage_destpos));
   state.stage_destpos_slots = 0;
-  free_symm(reinterpret_cast<void*&>(state.stage_pad));
-  state.stage_pad_slots = 0;
+  free_symm(reinterpret_cast<void*&>(state.stage_ready));
+  state.stage_ready_slots = 0;
+  free_symm(reinterpret_cast<void*&>(state.done_counter));
+  state.done_counter_slots = 0;
   free_symm(reinterpret_cast<void*&>(state.stage_count));
   state.stage_count_slots = 0;
   free_symm(reinterpret_cast<void*&>(state.intra_pad));
