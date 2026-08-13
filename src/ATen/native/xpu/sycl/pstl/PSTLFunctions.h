@@ -309,6 +309,10 @@ static inline OutputIt _scan_kernel(
   // 3. reduce among all work groups and flush data to dst
   // Same work-group size as step 1: each item finds its carry by group id.
   ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
+
+  const auto sa_wgroup_size = syclMaxWorkGroupSize(kfn3);
+  TORCH_CHECK(kssc_wgroup_size <= sa_wgroup_size, "_scan_kernel: work group size doesn't match!")
+
   sycl_kernel_submit(
       sycl::range<1>(ngroups * kssc_wgroup_size),
       sycl::range<1>(kssc_wgroup_size),
