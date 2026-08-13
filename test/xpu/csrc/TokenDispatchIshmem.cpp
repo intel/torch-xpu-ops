@@ -52,6 +52,7 @@
 #include <mpi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -89,6 +90,17 @@ void debug_log(int64_t pe, const char* msg) {
   if (debug_enabled()) {
     std::cerr << "[token_dispatch_ishmem pe " << pe << "] " << msg << std::endl;
   }
+}
+
+// Opt-in, host-side kernel timing: when enabled, the caller does an extra
+// queue.wait() right before submitting the kernel (so the "start" timestamp is
+// clean) and another right after the kernel completes, and reports the elapsed
+// wall time in microseconds for JUST the dispatch kernel. This is a dedicated
+// diagnostic path (NOT used by default) since forcing a queue.wait() here
+// serializes the queue and will perturb steady-state pipelining/throughput --
+// only turn it on when you specifically want a single-kernel latency number.
+bool kernel_timing_enabled() {
+  return env_enabled("TOKEN_DISPATCH_ISHMEM_KERNEL_TIME");
 }
 
 // Lazily bring up ISHMEM. Safe to co-exist with another extension that also
@@ -349,6 +361,14 @@ at::Tensor token_dispatch_ishmem(
   uint64_t* counts_half = counts + half;
 
   constexpr int64_t threads = 256;
+  const bool time_kernel = kernel_timing_enabled();
+  std::chrono::high_resolution_clock::time_point t0;
+  if (time_kernel) {
+    // Drain everything queued so far (memcpy seed) so the timer below only
+    // covers the dispatch kernel itself.
+    queue.wait();
+    t0 = std::chrono::high_resolution_clock::now();
+  }
   auto dispatch_event = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(dep);
     cgh.parallel_for(
@@ -369,6 +389,14 @@ at::Tensor token_dispatch_ishmem(
             static_cast<int32_t>(world_size),
             tag});
   });
+  if (time_kernel) {
+    queue.wait();
+    const auto t1 = std::chrono::high_resolution_clock::now();
+    const double us =
+        std::chrono::duration<double, std::micro>(t1 - t0).count();
+    std::cerr << "[token_dispatch_ishmem pe " << rank << "] kernel tag=" << tag
+               << " elapsed=" << us << " us" << std::endl;
+  }
 
   queue.memcpy(recv_buffer.data_ptr(), symm_recv, recv_bytes);
   queue.memcpy(

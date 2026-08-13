@@ -202,17 +202,21 @@ def _summarize_profiled_kernel(
 def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
     import time as _time
 
-    begin = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
-    end = [torch.xpu.Event(enable_timing=True) for _ in range(loop)]
     dist.barrier()
+    torch.xpu.synchronize()
 
-    wall0 = _time.time()
-    for i in range(loop):
-        if i >= warmup:
-            begin[i].record()
+    # Warmup iterations: not timed, no progress prints.
+    for _ in range(warmup):
         fn()
-        if i >= warmup:
-            end[i].record()
+
+    torch.xpu.synchronize()
+    # Pure host (wall-clock) timing of the timed region: no per-iter sycl
+    # events, since inserting an enable_timing event around each launch
+    # perturbs the in-order queue's kernel scheduling/PTI-reported durations.
+    timed_iters = loop - warmup
+    wall0 = _time.time()
+    for i in range(timed_iters):
+        fn()
         if (
             PROGRESS_EVERY
             and progress_rank is not None
@@ -222,13 +226,15 @@ def timed_loop(fn, loop, warmup, progress_rank=None, label=""):
             elapsed = _time.time() - wall0
             print(
                 f"[progress rank {progress_rank}] {label} "
-                f"{i + 1}/{loop} iters done ({elapsed:.1f}s, "
+                f"{i + 1}/{timed_iters} iters done ({elapsed:.1f}s, "
                 f"{elapsed / (i + 1) * 1000:.1f} ms/iter avg)",
                 flush=True,
             )
     torch.xpu.synchronize()
+    timed_wall = (_time.time() - wall0) * 1000.0
     dist.barrier()
-    return [begin[i].elapsed_time(end[i]) for i in range(warmup, loop)]
+    per_iter = timed_wall / timed_iters
+    return [per_iter for _ in range(timed_iters)]
 
 
 def main():

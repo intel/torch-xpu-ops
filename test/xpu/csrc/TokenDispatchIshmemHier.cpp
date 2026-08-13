@@ -52,6 +52,7 @@
 #include <mpi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -76,6 +77,12 @@ struct HierState {
   int stage_count_slots = 0;
   uint64_t* intra_pad = nullptr;    // symmetric [2*P] intra-domain flags (tag parity)
   int intra_pad_slots = 0;
+  // RDMA-safe local copies of cross_slot/cross_destpos (must be in ishmem heap
+  // so that the local lkey covers them when used as NBI PUT source).
+  int32_t* cross_slot_src = nullptr;
+  int cross_slot_src_slots = 0;
+  int32_t* cross_destpos_src = nullptr;
+  int cross_destpos_src_slots = 0;
   uint64_t iteration = 0;
 };
 
@@ -98,6 +105,18 @@ void debug_log(int64_t pe, const char* msg) {
     std::cerr << "[token_dispatch_ishmem_hier pe " << pe << "] " << msg
               << std::endl;
   }
+}
+
+// Opt-in, host-side kernel timing: when enabled, an extra wait is inserted
+// right before submitting kernel 1 (so the "start" timestamp is clean of any
+// prior queued work) and another right after it completes, and the elapsed
+// wall time in microseconds for JUST the dispatch kernel is reported. This is
+// a dedicated diagnostic path (NOT used by default): forcing a queue.wait()
+// here serializes the queue and will perturb steady-state pipelining/
+// throughput -- only turn it on when you specifically want a single-kernel
+// latency number.
+bool kernel_timing_enabled() {
+  return env_enabled("TOKEN_DISPATCH_ISHMEM_KERNEL_TIME");
 }
 
 // Number of work-groups kernel 1 launches for the cross-domain push. Fixed per
@@ -308,9 +327,9 @@ struct TokenDispatchIshmemHierK1 {
           ctr(done_counter[0]);
       const uint64_t done = ctr.fetch_add(static_cast<uint64_t>(1)) + 1;
       if (done == static_cast<uint64_t>(nwg)) {
+        ishmem_fence();
         ishmem_uint64_atomic_set(
             stage_count, static_cast<uint64_t>(num_cross), mirror);
-        ishmemx_fence_work_group(grp); // order count before the ready flag on the mirror
         ishmem_uint64_atomic_set(stage_ready, tag, mirror);
       }
     }
@@ -538,6 +557,8 @@ at::Tensor token_dispatch_ishmem_hier(
   uint64_t* done_counter;
   uint64_t* stage_count;
   uint64_t* intra_pad;
+  int32_t* cross_slot_src;
+  int32_t* cross_destpos_src;
   {
     auto& state = get_state();
     std::lock_guard<std::mutex> lock(state.mutex);
@@ -553,10 +574,23 @@ at::Tensor token_dispatch_ishmem_hier(
         ensure_u64_array(state.stage_count, state.stage_count_slots, 2, queue);
     intra_pad = ensure_u64_array(
         state.intra_pad, state.intra_pad_slots, 2 * static_cast<int>(P), queue);
+    // RDMA-safe copies of cross_slot/cross_destpos: ishmem_malloc ensures lkey
+    // coverage for NBI PUT source buffers.
+    cross_slot_src = ensure_i32_array(
+        state.cross_slot_src, state.cross_slot_src_slots, num_cross);
+    cross_destpos_src = ensure_i32_array(
+        state.cross_destpos_src, state.cross_destpos_src_slots, num_cross);
   }
 
   // Seed the send region with the local tokens.
   sycl::event seed = queue.memcpy(symm_send, tokens.data_ptr(), send_bytes);
+  // Copy cross_slot/cross_destpos into lkey-covered ishmem buffers for RDMA.
+  sycl::event copy_slot = queue.memcpy(
+      cross_slot_src, cross_slot.data_ptr<int32_t>(),
+      static_cast<size_t>(num_cross) * sizeof(int32_t));
+  sycl::event copy_destpos = queue.memcpy(
+      cross_destpos_src, cross_destpos.data_ptr<int32_t>(),
+      static_cast<size_t>(num_cross) * sizeof(int32_t));
 
   uint64_t tag;
   {
@@ -582,14 +616,24 @@ at::Tensor token_dispatch_ishmem_hier(
 
   constexpr int64_t threads = 256;
   const bool dbg = debug_enabled();
+  const bool time_kernel = kernel_timing_enabled();
 
   if (dbg) {
     debug_log(rank, "submitting kernel 1 (cross-domain mirror push)");
+  }
+  std::chrono::high_resolution_clock::time_point t0;
+  if (time_kernel) {
+    // Drain everything queued so far (seed memcpy + prep copies) so the timer
+    // below only covers kernel 1 itself.
+    queue.wait();
+    t0 = std::chrono::high_resolution_clock::now();
   }
   // Kernel 1: dispatch_wg work-groups, cross-domain mirror push.
   auto k1 = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(seed);
     cgh.depends_on(zero_ctr);
+    cgh.depends_on(copy_slot);
+    cgh.depends_on(copy_destpos);
     cgh.parallel_for(
         sycl::nd_range<1>(
             sycl::range<1>(static_cast<size_t>(dispatch_wg) * threads),
@@ -603,14 +647,23 @@ at::Tensor token_dispatch_ishmem_hier(
             stage_ready_half,
             done_counter_half,
             cross_order.data_ptr<int32_t>(),
-            cross_slot.data_ptr<int32_t>(),
-            cross_destpos.data_ptr<int32_t>(),
+            cross_slot_src,
+            cross_destpos_src,
             token_bytes,
             num_cross,
             dispatch_wg,
             mirror,
             tag});
   });
+  if (time_kernel) {
+    queue.wait();
+    const auto t1 = std::chrono::high_resolution_clock::now();
+    const double us =
+        std::chrono::duration<double, std::micro>(t1 - t0).count();
+    std::cerr << "[token_dispatch_ishmem_hier pe " << rank
+               << "] kernel1 tag=" << tag << " elapsed=" << us << " us"
+               << std::endl;
+  }
   if (dbg) {
     k1.wait_and_throw();
     debug_log(rank, "kernel 1 done; submitting kernel 2 (intra-domain)");
@@ -699,6 +752,10 @@ void token_dispatch_ishmem_hier_finalize(const at::Tensor&) {
   state.stage_count_slots = 0;
   free_symm(reinterpret_cast<void*&>(state.intra_pad));
   state.intra_pad_slots = 0;
+  free_symm(reinterpret_cast<void*&>(state.cross_slot_src));
+  state.cross_slot_src_slots = 0;
+  free_symm(reinterpret_cast<void*&>(state.cross_destpos_src));
+  state.cross_destpos_src_slots = 0;
   if (state.initialized) {
     int initialized = 0;
     ishmemx_query_initialized(&initialized);

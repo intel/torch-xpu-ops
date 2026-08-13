@@ -40,8 +40,8 @@ export RING_ALLGATHER_ISHMEM_DEBUG=1
 RING_WORLD_SIZE="${RING_WORLD_SIZE:-4}"
 #GPU_IDS=(0 1 2 3 4 5 6 7)
 #NIC_IDS=(0 1 2 3 4 5 6 7)
-GPU_IDS=(0 1 2 3)
-NIC_IDS=(0 1 2 3)
+GPU_IDS=(0 2 4 6)
+NIC_IDS=(0 2 4 6)
 
 #GPU_IDS=(4 6)
 #NIC_IDS=(4 6)
@@ -127,7 +127,12 @@ mpirun -np "${RING_WORLD_SIZE}" --prepend-rank bash -c '
   nic_ids=($RING_NIC_IDS)
   export ZE_AFFINITY_MASK=${gpu_ids[PMI_RANK]}
   export ISHMEM_IBGDA_NIC=mlx5_${nic_ids[PMI_RANK]}
-  exec python test_token_dispatch_ishmem.py 
+  exec python test_token_dispatch_ishmem_hier.py
+
+
+# test_token_dispatch_ishmem_hier.py
+
+# test_token_dispatch_ishmem.py 
 
 # test_ring_allgather_ishmem.py
 '

@@ -109,8 +109,8 @@ def get_ishmem_config():
     env_root = os.environ.get("ISHMEM_HOME") or os.environ.get("ISHMEM_ROOT")
     candidates = [
         env_root,
-        "/root/cherry/ishmem_ws/ishmem_ibgda/build/_install",
-        "/root/cherry/ishmem_ws/ishmem_ibgda/build",
+        "/opt/intel/ishmem_ibgda/",
+        "/opt/intel/ishmem_ibgda/",
     ]
     for root in candidates:
         if not root:
