@@ -13,7 +13,7 @@ runs:
       shell: bash -xe {0}
       run: |
         which python && python -V
-        which pip && pip list
+        uv pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
@@ -120,7 +120,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
         # llama case for calls number test
-        pip install transformers
+        uv pip install transformers
         python test/profiling/llama.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
         python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
@@ -144,12 +144,7 @@ runs:
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
-
-        PYTHON_BIN="$(python -c 'import sys; print(sys.executable)')"
-        export PATH="$(dirname "$PYTHON_BIN"):$PATH"
-        export CCL_ROOT="$(realpath $(dirname "$PYTHON_BIN")/..)"
-        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
-        export LD_LIBRARY_PATH="${CCL_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
@@ -185,7 +180,7 @@ runs:
       if: ${{ !cancelled() }}
       shell: timeout 180 bash -xe {0}
       run: |
-        pip install junitparser
+        uv pip install junitparser
         python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
