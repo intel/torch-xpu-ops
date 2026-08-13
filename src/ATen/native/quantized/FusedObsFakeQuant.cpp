@@ -124,38 +124,36 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
   const at::Tensor x_for_fake_quant =
       needs_double_fallback ? x.to(at::kFloat) : x;
 
+  std::tuple<at::Tensor, at::Tensor> out;
+
   if (per_row_fq) {
     if (fake_quant_on.item().toInt()) {
-      auto out = at::fake_quantize_per_channel_affine_cachemask(
+      out = at::fake_quantize_per_channel_affine_cachemask(
           x_for_fake_quant,
           scale_for_qparams,
           zero_point_for_qparams,
           0,
           quant_min,
           quant_max);
-      if (needs_double_fallback) {
-        return std::make_tuple(
-            std::get<0>(out).to(x.scalar_type()), std::move(std::get<1>(out)));
-      }
-      return out;
     } else {
       auto mask = at::ones_like(x, at::kBool, MemoryFormat::Preserve);
-      return std::make_tuple(x.clone(), mask);
+      out = std::make_tuple(x.clone(), mask);
     }
   } else {
-    auto out = at::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+    out = at::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         x_for_fake_quant,
         scale_for_qparams,
         zero_point_for_qparams,
         fake_quant_on.to(at::kLong),
         quant_min,
         quant_max);
-    if (needs_double_fallback) {
-      return std::make_tuple(
-          std::get<0>(out).to(x.scalar_type()), std::move(std::get<1>(out)));
-    }
-    return out;
   }
+
+  if (needs_double_fallback) {
+    return std::make_tuple(
+        std::get<0>(out).to(x.scalar_type()), std::move(std::get<1>(out)));
+  }
+  return out;
 }
 
 } // namespace native

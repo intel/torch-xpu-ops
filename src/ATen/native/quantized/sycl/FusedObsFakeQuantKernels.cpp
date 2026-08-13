@@ -124,15 +124,20 @@ void _calculate_moving_average(
     std::tie(x_min, x_max) = at::aminmax(x);
   }
 
-  if (x_min.scalar_type() != running_min.scalar_type()) {
-    x_min = x_min.to(running_min.scalar_type());
-    x_max = x_max.to(running_min.scalar_type());
+  TORCH_CHECK(
+      running_min.scalar_type() == running_max.scalar_type(),
+      "running_min and running_max must have the same dtype");
+  const auto running_state_dtype = running_min.scalar_type();
+
+  if (x_min.scalar_type() != running_state_dtype) {
+    x_min = x_min.to(running_state_dtype);
+    x_max = x_max.to(running_state_dtype);
   }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::kBFloat16,
       at::kHalf,
-      running_min.scalar_type(),
+      running_state_dtype,
       "MovingAverageMinMax",
       [&] {
         scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
