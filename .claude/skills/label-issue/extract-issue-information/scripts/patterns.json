@@ -1,0 +1,633 @@
+{
+  "_comment": "Pattern and keyword tables for extract_basic_info.py. LIST ORDER IS SEMANTIC: several tables are first-match-wins (module_keywords, dep_keywords, platform_keywords, dtype_patterns). Do not sort or dedupe. platform_keywords entries beginning or ending with \\b are matched as regex; all others as lowercase substrings.",
+  "known_test_types": [
+    "op_ut",
+    "op_extend",
+    "op_extended",
+    "e2e",
+    "benchmark",
+    "ut",
+    "test_xpu"
+  ],
+  "benchmark_list_files": {
+    "huggingface": "huggingface_models_list.txt",
+    "timm": "timm_models_list.txt",
+    "torchbench": "torchbench_models_list.txt"
+  },
+  "pytorchxpu_field_map": {
+    "Priority": "priority",
+    "Status": "project_status",
+    "Estimate": "project_estimate",
+    "Depending": "project_depending",
+    "Short Comment": "project_short_comments",
+    "Short Comments": "project_short_comments"
+  },
+  "platform_keywords": [
+    [
+      "PVC",
+      [
+        "ponte vecchio",
+        "data center gpu max",
+        "gpu max 1550",
+        "gpu max 1100",
+        "max 1550",
+        "max 1100",
+        "\\bpvc\\b",
+        "\\b1550\\b",
+        "\\b1100\\b",
+        "0x0bd5",
+        "0x0bd6",
+        "0x0bd9",
+        "0x0bda",
+        "0x0bdb"
+      ]
+    ],
+    [
+      "BMG",
+      [
+        "battlemage",
+        "\\bb580\\b",
+        "\\bb570\\b",
+        "\\bbmg\\b",
+        "0xe20b",
+        "0xe20c",
+        "0xe223"
+      ]
+    ],
+    [
+      "ARC",
+      [
+        "alchemist",
+        "\\ba770\\b",
+        "\\ba750\\b",
+        "\\ba380\\b",
+        "\\barc\\b",
+        "arc a",
+        "arc graphics"
+      ]
+    ],
+    [
+      "ARL",
+      [
+        "arrow lake",
+        "\\barl\\b"
+      ]
+    ],
+    [
+      "LNL",
+      [
+        "lunar lake",
+        "\\blnl\\b"
+      ]
+    ],
+    [
+      "MTL",
+      [
+        "meteor lake",
+        "\\bmtl\\b"
+      ]
+    ],
+    [
+      "CRI",
+      [
+        "crescent island",
+        "\\bcri\\b"
+      ]
+    ]
+  ],
+  "issue_type": {
+    "type_map": {
+      "functionality bug": "Bug",
+      "accuracy issue": "Bug",
+      "performance issue": "Bug",
+      "feature request": "Feature",
+      "internal task": "Task"
+    },
+    "performance_keywords": [
+      "performance regression",
+      "performance dropped",
+      "performance issue",
+      "latency",
+      "throughput",
+      "slow performance",
+      "performance slow",
+      "execution time",
+      "runtime performance",
+      "performance fail"
+    ],
+    "bug_keywords": [
+      "assertionerror",
+      "runtimeerror",
+      "valueerror",
+      "typeerror",
+      "indexerror",
+      "keyerror",
+      "importerror",
+      "notimplementederror",
+      "attributeerror",
+      "inductorerror",
+      "crash",
+      "fail",
+      "bug",
+      "error",
+      "not implemented",
+      "not supported",
+      "missing",
+      "incorrect",
+      "wrong",
+      "unexpected"
+    ],
+    "accuracy_keywords": [
+      "accuracy",
+      "accurate",
+      "inaccurate",
+      "accuracy fail",
+      "tolerance",
+      "atol",
+      "rtol",
+      "within tolerance",
+      "exceeds tolerance",
+      "not close",
+      "allclose",
+      "assert_close",
+      "assertallclose",
+      "tensor-likes are not close",
+      "element mismatch",
+      "numerical mismatch",
+      "numerical error",
+      "numerical difference",
+      "eager_two_runs_differ",
+      "reference_in_float",
+      "wrong result",
+      "wrong output",
+      "incorrect result",
+      "incorrect output",
+      "result differs",
+      "output differs",
+      "does not match",
+      "do not match"
+    ],
+    "feature_keywords": [
+      "feature request",
+      "support for",
+      "implement",
+      "add support",
+      "need feature"
+    ]
+  },
+  "e2e": {
+    "patterns": [
+      "benchmarks/dynamo/",
+      "benchmarks/timm/",
+      "benchmarks/huggingface/",
+      "benchmarks/torchbench/",
+      "run_benchmark\\.py"
+    ],
+    "model_prefixes": [
+      "hf_",
+      "timm_"
+    ],
+    "paths": [
+      "benchmarks/dynamo",
+      "run_benchmark",
+      "torchbenchmark",
+      "benchmark.py"
+    ]
+  },
+  "test_module": {
+    "pytest_patterns": [
+      "pytest\\s+.*test[/._]",
+      "python\\s+.*test[/._]",
+      "test/test_",
+      "test/xpu/test_"
+    ],
+    "build_patterns": [
+      "\\[win\\]\\[build\\]",
+      "build from source",
+      "compile from source",
+      "source build",
+      "build script",
+      "BUILD_SEPARATE",
+      "BUILD_SHARED",
+      "cmake build",
+      "cmake error",
+      "cmake fail",
+      "setup\\.py install",
+      "pip install -e \\.",
+      "python setup\\.py develop"
+    ],
+    "infra_patterns": [
+      "workflow\\s+(error|fail|issue|problem)",
+      "github\\s+action\\s+(error|fail|issue)",
+      "azure\\s+pipeline\\s+(error|fail)",
+      "ci\\s+(runner|config|setup)\\s+(error|fail)",
+      "runner\\s+(error|fail|timeout)\\s+in\\s+ci",
+      "checkout\\s+(error|fail)\\s+in\\s+(workflow|ci)",
+      "githubaction"
+    ]
+  },
+  "module": {
+    "torch_ops": [
+      "add",
+      "sub",
+      "mul",
+      "div",
+      "matmul",
+      "mm",
+      "dot",
+      "vdot",
+      "bmm",
+      "addmm",
+      "addmv",
+      "addbmm",
+      "smm",
+      "spmm",
+      "mv",
+      "vecdot",
+      "conv",
+      "conv1d",
+      "conv2d",
+      "conv3d",
+      "conv_transpose",
+      "batch_norm",
+      "layer_norm",
+      "group_norm",
+      "instance_norm",
+      "dropout",
+      "embedding",
+      "linear",
+      "lstm",
+      "gru",
+      "rnn",
+      "softmax",
+      "log_softmax",
+      "sigmoid",
+      "tanh",
+      "relu",
+      "leaky_relu",
+      "pool",
+      "avg_pool",
+      "max_pool",
+      "adaptive_pool",
+      "fft",
+      "ifft",
+      "fft2",
+      "ifft2",
+      "chunk",
+      "split",
+      "view",
+      "reshape",
+      "transpose",
+      "permute",
+      "cat",
+      "stack",
+      "gather",
+      "scatter",
+      "index",
+      "where",
+      "sum",
+      "mean",
+      "std",
+      "var",
+      "min",
+      "max",
+      "argmin",
+      "argmax",
+      "norm",
+      "linalg.norm",
+      "linalg.matrix_norm",
+      "linalg.vector_norm",
+      "eig",
+      "svd",
+      "qr",
+      "cholesky",
+      "solve",
+      "inverse",
+      "det",
+      "logdet",
+      "slogdet",
+      "trace",
+      "clone",
+      "copy_",
+      "to",
+      "cuda",
+      "cpu",
+      "xpu",
+      "device",
+      "zeros",
+      "ones",
+      "empty",
+      "full",
+      "arange",
+      "linspace",
+      "logspace",
+      "tensor",
+      "scalar_tensor",
+      "tensor.tensor",
+      "getitem",
+      "setitem",
+      "call",
+      "forward",
+      "backward",
+      "gelu",
+      "silu",
+      "mish",
+      "softplus",
+      "elu",
+      "selu",
+      "celu",
+      "flash_attention",
+      "scaled_dot_product_attention",
+      "sdpa",
+      "interpolate",
+      "grid_sample",
+      "affine_grid",
+      "grid_sampler",
+      "grid_sampler_2d",
+      "bernoulli",
+      "normal",
+      "uniform",
+      "randn",
+      "rand",
+      "randint",
+      "multinomial",
+      "poisson",
+      "exponential",
+      "geometric",
+      "lerp",
+      "lerp_",
+      "fmod",
+      "remainder",
+      "nextafter",
+      "geomspace",
+      "complex",
+      "real",
+      "imag",
+      "angle",
+      "conj",
+      "view_as_real",
+      "view_as_complex"
+    ],
+    "keywords": [
+      [
+        "distributed",
+        [
+          "distributed",
+          "device_mesh",
+          "processgroup",
+          "fsdp",
+          "ddp",
+          "c10d",
+          "tensor parallel"
+        ]
+      ],
+      [
+        "inductor",
+        [
+          "inductor",
+          "inductor error",
+          "compile error",
+          "lower",
+          "kernel code"
+        ]
+      ],
+      [
+        "dynamo",
+        [
+          "dynamo",
+          "torch.compile",
+          "_dynamo"
+        ]
+      ],
+      [
+        "autograd",
+        [
+          "autograd",
+          "backward",
+          "grad",
+          "gradient"
+        ]
+      ],
+      [
+        "aten_ops",
+        [
+          "aten::",
+          "torch.ops.aten",
+          "test_ops"
+        ]
+      ],
+      [
+        "low_precision",
+        [
+          "quantization",
+          "int8",
+          "fp8",
+          "int4",
+          "amp",
+          "bf16",
+          "fp16",
+          "float8"
+        ]
+      ],
+      [
+        "optimizer",
+        [
+          "optimizer",
+          "lr_scheduler",
+          "adam",
+          "sgd"
+        ]
+      ],
+      [
+        "profiling",
+        [
+          "profiling",
+          "profile",
+          "benchmark"
+        ]
+      ],
+      [
+        "fx",
+        [
+          "torch.fx",
+          "fx.",
+          "symbolic"
+        ]
+      ],
+      [
+        "export",
+        [
+          "torch.export",
+          "exported"
+        ]
+      ]
+    ]
+  },
+  "dependency": {
+    "version_headers": [
+      "###\\s*version",
+      "###\\s*versions",
+      "###\\s*environment",
+      "###\\s*reproduction",
+      "###\\s*steps?\\s+to\\s+reproduce",
+      "###\\s*additional\\s*context"
+    ],
+    "keywords": [
+      [
+        "transformers",
+        [
+          "caused by transformers",
+          "transformers issue",
+          "transformers bug",
+          "depends on transformers",
+          "need transformers fix",
+          "waiting for transformers",
+          "huggingface issue",
+          "huggingface bug",
+          "depends on huggingface"
+        ]
+      ],
+      [
+        "AO",
+        [
+          "caused by torchao",
+          "torchao issue",
+          "torchao bug",
+          "depends on torchao",
+          "need torchao fix",
+          "waiting for torchao"
+        ]
+      ],
+      [
+        "oneDNN",
+        [
+          "caused by onednn",
+          "onednn issue",
+          "onednn bug",
+          "depends on onednn",
+          "need onednn fix",
+          "waiting for onednn",
+          "mkl-dnn issue",
+          "dnnl issue"
+        ]
+      ],
+      [
+        "oneCCL",
+        [
+          "caused by oneccl",
+          "oneccl issue",
+          "oneccl bug",
+          "depends on oneccl",
+          "need oneccl fix",
+          "waiting for oneccl",
+          "xccl issue",
+          "ccl issue",
+          "depends on ccl"
+        ]
+      ],
+      [
+        "oneMKL",
+        [
+          "caused by onemkl",
+          "onemkl issue",
+          "onemkl bug",
+          "depends on onemkl",
+          "need onemkl fix",
+          "waiting for onemkl",
+          "caused by mkl",
+          "mkl issue"
+        ]
+      ],
+      [
+        "driver",
+        [
+          "caused by driver",
+          "driver issue",
+          "driver bug",
+          "depends on driver",
+          "need driver fix",
+          "waiting for driver"
+        ]
+      ],
+      [
+        "Triton",
+        [
+          "caused by triton",
+          "triton issue",
+          "triton bug",
+          "depends on triton",
+          "need triton fix",
+          "waiting for triton",
+          "triton-xpu issue",
+          "tl. issue"
+        ]
+      ],
+      [
+        "oneAPI",
+        [
+          "caused by oneapi",
+          "oneapi issue",
+          "oneapi bug",
+          "sycl issue",
+          "depends on oneapi",
+          "need oneapi fix",
+          "waiting for oneapi",
+          "icpx issue",
+          "dpcpp issue",
+          "sycl compiler issue"
+        ]
+      ]
+    ]
+  },
+  "reproduce_steps": {
+    "simple_starts": [
+      "pytest",
+      "python3",
+      "python",
+      "./",
+      "pip install",
+      "cd ",
+      "export ",
+      "bash ",
+      "sh ",
+      "source ",
+      "git ",
+      "cmake",
+      "make",
+      "ninja",
+      "wget ",
+      "curl ",
+      "conda ",
+      "pip "
+    ]
+  },
+  "e2e_reproducer": {
+    "cmd_patterns": [
+      "(pytest\\s+[^\\n]+)",
+      "(python\\s+test/[^\\n]+)",
+      "(python\\s+-m\\s+pytest[^\\n]+)",
+      "(XPU_QUANT_CONFIG=[^\\n]+python[^\\n]+)",
+      "(python\\s+benchmarks/dynamo/[^\\n]+)",
+      "(python\\s+[^\\n]+run_benchmark[^\\n]+)"
+    ]
+  },
+  "e2e_dtype_patterns": [
+    [
+      "bfloat16|bf16",
+      "bfloat16"
+    ],
+    [
+      "float16|fp16",
+      "float16"
+    ],
+    [
+      "float32|fp32",
+      "float32"
+    ],
+    [
+      "int8|int\\s*8",
+      "int8"
+    ]
+  ]
+
+}

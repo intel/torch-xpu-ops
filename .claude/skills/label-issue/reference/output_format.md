@@ -21,6 +21,7 @@ Trace mode: evidence-only (no pytorch_folder provided).>
 | `not_target` | <own_labels or duplicate:<repo>#<n>>; omit row when false |
 | `target_component: <value>` | <traced fix location file:line, 1 line> |
 | `need_action: <verdict>` | <deriving condition, 1 line> |
+| `pr_link` | <PR URL from extract.json; omit row when pr_link is blank> |
 ```
 
 Rules for the table:
@@ -28,9 +29,11 @@ Rules for the table:
 - `issue_type` and `test_module` come straight from `extract.json` (Step 1); no
   reference file governs them. Always emit both rows — they are never omitted.
 - Emit a row only when the axis produced a value. Omit `dependency component:`,
-  `duplicated`, and `not_target` rows entirely when they do not apply, but
-  Step 4 must still have been run against `reference/dependnecy.md` to reach
+  `duplicated`, `not_target`, and `pr_link` rows entirely when they do not apply,
+  but Step 4 must still have been run against `reference/dependency.md` to reach
   that `null`/`none` conclusion — an omitted row is not a skipped step.
+- The `pr_link` row carries the bare URL from `extract.json` as its reason, with
+  no prose. Omit the row when `pr_link` is `""`.
 - **Every reason is ONE line: one sentence or clause, no more than ~140
   characters.** State the deciding signal and its evidence, nothing else. No
   multi-sentence justifications, no restating the rule text, no listing the

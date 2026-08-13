@@ -5,298 +5,207 @@ description: Extract basic metadata from a single intel/torch-xpu-ops GitHub iss
 
 # Extract Basic Issue Info
 
-Fetch one GitHub issue and emit its basic metadata plus rule-based classification as JSON.
-It works on any GitHub repo's issue when given a full issue URL. A bare issue number
-defaults to `intel/torch-xpu-ops` (override with `--repo owner/name`).
+Fetch ONE GitHub issue and emit its metadata plus rule-based classification as
+JSON, including test cases (unit-test and E2E), traceback, and reproduce steps.
 
-## When to use
-
-Use this when you have a single issue number or URL and want structured JSON:
-issue identity fields, GitHub labels, a rule-based `type`/`module`/`test_module`/`dependency`
-classification, and the issue's PyTorchXPU project fields.
-
-Give it a full issue URL to target any repo. A bare number
-defaults to `intel/torch-xpu-ops` unless you pass `--repo owner/name`.
-
-Do NOT use this for batch/multi-issue runs or Excel output. It handles exactly
-one issue per invocation. It DOES extract test cases (unit-test and E2E),
-traceback, and reproduce steps for that single issue.
+Do NOT use this for batch/multi-issue runs or Excel output; it handles exactly
+one issue per invocation and never verifies test files on disk.
 
 ## Prerequisites
 
-- Authenticated `gh` CLI on `PATH`. The PyTorchXPU project fields and native issue type
-  are fetched through GraphQL. Without that
-  the project fields degrade to empty (the run still succeeds).
-- Python 3.
-
-The PyTorchXPU project fields (`priority`, `pytorchxpu_*`) and `github_type` are populated
-only for issues that belong to the PyTorchXPU project (intel/torch-xpu-ops). For issues in
-any other repo, or intel/torch-xpu-ops issues that are not in the project, these fields are
-"" (best-effort, graceful degradation; the run still exits 0).
-
-If `python3` or its dependencies are missing, check for a `.venv` in the project root
-or a parent directory and activate it, then retry. Do NOT install tools yourself.
+- Authenticated `gh` CLI on `PATH`, with `read:project` scope for the GraphQL
+  project fields.
+- Python 3. If missing, activate a `.venv` in the repo root or a parent
+  directory and retry. Do NOT install tools yourself.
 
 ## Usage
 
 Run from the repository root.
 
-By issue number (defaults to intel/torch-xpu-ops):
-
 ```bash
-python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 4344
+python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py \
+  <issue> [--repo owner/name] [--pytorch-folder <path>] [--output out.json]
 ```
 
-By issue URL for any repo:
+| Argument | Purpose |
+|---|---|
+| `<issue>` | Bare issue number, or a full GitHub issue URL. |
+| `--repo owner/name` | Repo for a bare number. Default `intel/torch-xpu-ops`. Ignored when a full URL is given, since the URL's own owner/name wins. |
+| `--pytorch-folder` | Local checkout used only to load authoritative benchmark model lists. Never validated or modified. |
+| `--output` | Also write the JSON to this path. It is always printed to stdout. |
+
+Examples:
 
 ```bash
-python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py https://github.com/CuiYifeng/torch-xpu-ops-sandbox/issues/8
+# bare number -> intel/torch-xpu-ops
+... extract_basic_info.py 4344
+
+# full URL -> any repo
+... extract_basic_info.py https://github.com/usernmae/torch-xpu-ops-sandbox/issues/8
+
+# bare number against another repo
+... extract_basic_info.py 8 --repo username/torch-xpu-ops-sandbox
 ```
 
-By intel/torch-xpu-ops issue URL:
+## Script layout
 
-```bash
-python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py https://github.com/intel/torch-xpu-ops/issues/4344
-```
+`scripts/` holds one entry point, five logic modules, and one data file. All
+pattern and keyword tables live in `patterns.json`, not in code.
 
-Override the repo for a bare issue number with `--repo owner/name`:
+| File | Role |
+|---|---|
+| `extract_basic_info.py` | CLI entry point: argparse, orchestration, JSON assembly. |
+| `patterns.py` | Loads `patterns.json` and exposes the tables as constants. |
+| `patterns.json` | All regex/keyword tables. **List order is semantic** for `module.keywords`, `dependency.keywords`, `platform_keywords`, and `e2e_dtype_patterns` (first match wins) - do not sort or dedupe. In `platform_keywords`, an entry starting or ending with `\b` is matched as a regex; every other entry as a lowercase substring. |
+| `classifiers.py` | `type`, `issue_type`, `module`, `test_module`, `dependency`, `os`, `platform`. |
+| `testcases.py` | Test-case and E2E parsing, file resolution, de-duplication. |
+| `benchmarks.py` | Benchmark model lists and model-name detection. |
+| `github.py` | `gh` REST/GraphQL fetches and issue-reference parsing. |
+| `text.py` | Traceback, reproduce steps, and PR link extraction. |
 
-```bash
-python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 8 --repo CuiYifeng/torch-xpu-ops-sandbox
-```
-
-The `--repo owner/name` flag sets the repository for a bare issue number. It is
-ignored when a full issue URL is given (the URL's own owner/name wins). The
-default is `intel/torch-xpu-ops`.
-
-Also write the JSON to a file (still printed to stdout):
-
-```bash
-python3 .claude/skills/label-issue/extract-issue-information/scripts/extract_basic_info.py 4344 --output out.json
-```
+To change a keyword or pattern, edit `patterns.json` only. Two constraints:
+`patterns.json` must sit beside `patterns.py` (a missing or malformed file is a
+fatal error), and modules that read a mutable global must import the module
+(`import benchmarks`) rather than the value (`from benchmarks import X`), so a
+later `set_benchmark_models()` call is visible.
 
 ## Output schema
 
-The script prints a single JSON object with these fields.
+A single JSON object.
 
 | Field | Source | Notes |
 |-------|--------|-------|
 | issue_id | gh REST | Issue number (integer). |
-| repo | gh REST (input) | The issue's repository as "owner/name" (from the URL, or --repo/default for a bare number). |
+| repo | input | Resolved `owner/name`. |
 | title | gh REST | Issue title. |
-| body | gh REST | Raw issue body. Included so callers can resolve `low_confidence` fields without another remote fetch. |
-| status | gh REST | Issue state, "open" or "closed". |
+| body | gh REST | Raw body. Included so callers can resolve `low_confidence` without another fetch. |
+| status | gh REST | `open` or `closed`. |
 | assignee | gh REST | First assignee login, or "". |
 | reporter | gh REST | Issue author login. |
 | labels | gh REST | Array of label name strings. |
-| created_time | gh REST | ISO 8601 creation timestamp. |
-| updated_time | gh REST | ISO 8601 last-update timestamp. |
+| created_time / updated_time | gh REST | ISO 8601 timestamps. |
 | milestone | gh REST | Milestone title, or "". |
-| summary | classifier | Issue title truncated to 150 chars. |
-| type | classifier | See Classification reference. |
-| issue_type | classifier | Canonical type: Bug, Task, Feature, or Epic. Derived from github_type > labels > classifier heuristic. |
-| github_type | gh GraphQL issueType | Native GitHub issue type name, or "". |
-| module | classifier | See Classification reference. |
-| test_module | classifier | See Classification reference. |
-| dependency | classifier | See Classification reference; "" when none detected. |
-| priority | gh GraphQL project | Normalized to P0-P3, or "". |
-| pytorchxpu_status | gh GraphQL project | PyTorchXPU project Status field, or "". |
-| pytorchxpu_estimate | gh GraphQL project | PyTorchXPU project Estimate field, or "". |
-| pytorchxpu_depending | gh GraphQL project | PyTorchXPU project Depending field, or "". |
-| pytorchxpu_short_comments | gh GraphQL project | PyTorchXPU project Short Comment field, or "". |
-| os | classifier (regex) | "Linux" or "Windows" detected from the issue body; "" if not found. |
-| platform | classifier (regex) | Canonical Intel GPU platform code (PVC, BMG, ARC, ARL, LNL, MTL, CRI); "" if not found. |
-| platform_specific | classifier (runtime) | `true` if issue platform differs from the local GPU family, `false` otherwise. Empty platform → `false`. Local detection failure → `true` (conservative). |
-| traceback | classifier (regex) | Full Python traceback (call stack frames + error/exception message) if present, else "". |
-| reproduce_steps | classifier (regex) | Shell command lines (cd/export/git/bash/pytest/python/etc.) extracted from the body, newline-joined; "" if none found. |
-| test_file | classifier (regex) | Primary unit-test file (first parsed unit-test case); "" if none. |
-| test_class | classifier (regex) | Primary unit-test class; "" if none. |
-| test_case | classifier (regex) | Primary unit-test case/method; "" if none. |
-| test_cases | classifier (regex) | Array of all test cases found in the issue (de-duplicated). Empty array if none. See Test cases below. |
-| pr_context | classifier (regex+LLM) | PR or branch context if the issue is tied to a specific PR/branch. See PR/branch context below. |
-| low_confidence | classifier | Array of field names the script could not confidently classify. |
+| summary | classifier | Title truncated to 150 chars. |
+| type | classifier | `feature request` \| `performance issue` \| `accuracy issue` \| `functionality bug` \| `internal task` \| `unknown`. |
+| issue_type | classifier | Canonical `Bug` \| `Task` \| `Feature` \| `Epic`. Precedence: `github_type` > labels > `type` heuristic. |
+| github_type | gh GraphQL | Native GitHub issue type name, or "". |
+| module | classifier | `distributed` \| `inductor` \| `dynamo` \| `aten_ops` \| `AO` \| `low_precision` \| `profiling` \| `optimizer` \| `fx` \| `export` \| `autograd` \| `unknown`. |
+| test_module | classifier | `ut` \| `e2e` \| `build` \| `infrastructure`. |
+| dependency | classifier | `oneDNN` \| `oneMKL` \| `Triton` \| `AO` \| `transformers` \| `oneAPI` \| `driver` \| `oneCCL` \| "". |
+| priority | gh GraphQL | Normalized to P0-P3, or "". |
+| pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | PyTorchXPU project fields, or "". |
+| os | classifier | `Linux` \| `Windows` \| "". From body keywords and a collect_env `OS:` line. |
+| platform | classifier | Intel GPU code (PVC, BMG, ARC, ARL, LNL, MTL, CRI), or "". See Platform below. |
+| platform_specific | runtime | `true` when the issue platform differs from the local GPU family. Empty platform -> `false`; local detection failure -> `true` (conservative). |
+| traceback | classifier | Full Python traceback (frames + error message), else "". |
+| reproduce_steps | classifier | Shell command lines from the body, newline-joined; "" if none. |
+| test_file / test_class / test_case | classifier | Mirror of the first parsed unit-test case; "" if none. |
+| test_cases | classifier | All parsed test cases. See Test cases below. |
+| pr_link | classifier | PR URL the issue is tied to; "" when none. See PR link below. |
+| low_confidence | classifier | Field names needing LLM resolution. See Inline LLM fallback. |
 
-## Classification reference
-
-Enum outputs for the rule-based classifier fields:
-
-- `issue_type`: Bug | Task | Feature | Epic (canonical; priority: github_type > labels > type heuristic)
-- `type`: feature request | performance issue | accuracy issue | functionality bug | internal task | unknown
-- `module`: distributed | inductor | dynamo | aten_ops | AO | low_precision | profiling | optimizer | fx | export | autograd | unknown
-- `test_module`: ut | e2e | build | infrastructure
-- `dependency`: oneDNN | oneMKL | Triton | AO | transformers | oneAPI | driver | oneCCL | "" (empty)
+`github_type`, `priority`, and the `pytorchxpu_*` fields are populated only for
+issues in the PyTorchXPU project (intel/torch-xpu-ops). Anywhere else, or when
+the GraphQL fetch fails, they degrade to "" and the run still exits 0.
 
 ## Test cases
 
-`test_cases` is an array of every test case parsed from the issue, de-duplicated
-per issue. Elements take one of two shapes.
+`test_cases` is an array, de-duplicated per issue, using string-only path
+mapping. Elements take one of two shapes.
 
-Unit-test entries (when `test_module` is `ut`, `build`, or `infrastructure`):
+**Unit-test entries** (`test_module` is `ut`, `build`, or `infrastructure`) have
+the shape `{test_type, test_file, origin_test_file, test_class, test_case, source}`:
 
-- `test_type`: one of the known test types (op_ut, op_extend, e2e, benchmark, ut, test_xpu, ...).
-- `test_file`: reconstructed test file path (string-only mapping, no on-disk verification).
-- `origin_test_file`: upstream file path derived from `test_file`.
-- `test_class`: test class name, or "".
-- `test_case`: test method name, or "".
-- `source`: `"torch-xpu-ops"` when the test file name ends with `_xpu`
-  (e.g. test_masked_xpu.py), otherwise `"pytorch"` (an upstream PyTorch test).
+- `test_type`: a known test type (`op_ut`, `op_extend`, `e2e`, `benchmark`, `ut`, `test_xpu`, ...).
+- `test_file`: reconstructed test file path; `origin_test_file` is the upstream path derived from it.
+- `test_class` / `test_case`: names, or "".
+- `source`: `torch-xpu-ops` when the file name ends with `_xpu`
+  (e.g. `test_masked_xpu.py`), else `pytorch`.
 
-So a unit-test entry has the shape
-`{test_type, test_file, origin_test_file, test_class, test_case, source}`.
-Module-level entries carry the same keys but may have empty `test_class` and
-`test_case` (they record only the file that failed to import).
+Module-level entries carry the same keys with empty `test_class`/`test_case`,
+recording only the file that failed to import. An empty-case row is dropped when
+a real case exists for the same file.
 
-E2E entries (when `test_module` is `e2e`):
+**E2E entries** (`test_module` is `e2e`) carry `reproducer`, `benchmark`,
+`model`, `phase`, `dtype`, `amp`, `test_type`, `backend`,
+`disable_cudagraphs` - and no `source` field.
 
-- `reproducer`, `benchmark`, `model`, `phase`, `dtype`, `amp`, `test_type`,
-  `backend`, `disable_cudagraphs`.
+E2E classification triggers on an `e2e` label, a
+`benchmarks/{dynamo,timm,huggingface,torchbench}/` or `run_benchmark.py` path,
+or an authoritative-list model name (torchbench names like `alexnet` /
+`BERT_pytorch`, huggingface class names - not just `hf_`/`timm_` prefixes)
+mentioned with explicit benchmark-framework context.
 
-E2E entries do NOT have a `source` field.
+The `benchmark` field (huggingface | timm | torchbench) and model detection use
+`.ci/benchmarks/{huggingface,timm,torchbench}_models_list.txt`. The script
+searches `third_party/torch-xpu-ops/.ci/benchmarks` then `.ci/benchmarks` under,
+in order: `--pytorch-folder`, `$PYTORCH_FOLDER`, the current directory.
 
-Notes:
+There is **no hardcoded fallback list**. If a list cannot be found, that bucket
+stays empty, a warning names it on stderr, and model-name-based e2e detection is
+disabled for it - label- and path-based e2e signals still work. A stale built-in
+list would silently mis-classify issues, so an empty list plus a warning is
+preferred over a wrong answer.
 
-- Entries are de-duplicated per issue.
-- The `benchmark` field (huggingface | timm | torchbench) and e2e model
-  detection use the authoritative model lists in
-  `intel/torch-xpu-ops/.ci/benchmarks/{huggingface,timm,torchbench}_models_list.txt`.
-  The script loads these from a local checkout at runtime (pass `--pytorch-folder`,
-  set `PYTORCH_FOLDER`, or rely on the `~/ai4ee` default; it searches
-   `third_party/torch-xpu-ops/.ci/benchmarks` and `.ci/benchmarks`). Hardcoded
-   lists in the script are only a fallback when no checkout is found.
-- E2E classification (`test_module` = `e2e`) triggers on an `e2e` label, a
-  `benchmarks/{dynamo,timm,huggingface,torchbench}/` or `run_benchmark.py` path,
-  or any authoritative-list model name (torchbench names like `alexnet` /
-  `BERT_pytorch` and huggingface class names, not just `hf_`/`timm_` prefixes)
-  mentioned together with an explicit benchmark-framework context.
-- For unit-test entries, an empty-case row is dropped when a real case exists
-  for the same test file.
-- `test_cases` uses string-only path mapping; there is no on-disk verification.
+## PR link
 
-## PR/branch context
-
-`pr_context` captures when an issue is tied to a specific PR or branch (e.g., a
-CI failure on a PR, not on main/nightly). Structure:
+`pr_link` is the URL of the PR the issue is tied to (e.g. a CI failure on a PR
+rather than on main/nightly), or `""`.
 
 ```json
-{
-  "has_pr_context": true,
-  "repo": "pytorch/pytorch",
-  "pr_number": 12345,
-  "branch": "feature-branch-name",
-  "source": "regex|llm"
-}
+"pr_link": "https://github.com/pytorch/pytorch/pull/12345"
 ```
 
-- `has_pr_context`: `true` when a PR or branch reference is detected, `false` otherwise.
-- `repo`: repository of the PR/branch (`pytorch/pytorch` or `intel/torch-xpu-ops`).
-- `pr_number`: integer PR number, or `null` if only a branch is referenced.
-- `branch`: branch name string, or `null` if only a PR number is referenced.
-- `source`: `"regex"` when extracted via URL/pattern matching, `"llm"` when
-  determined by LLM fallback.
+Regex pass, first match wins over the title and body:
 
-When `has_pr_context` is `false`, the value is simply:
-```json
-{"has_pr_context": false, "repo": null, "pr_number": null, "branch": null, "source": null}
-```
+- PR URLs `https://github.com/<owner>/<repo>/pull/<number>`
+- Cross-repo shorthand `owner/repo#<number>`, normalized to a PR URL
 
-### Regex extraction (first pass)
+A bare `#<number>` is NOT matched - without an `owner/repo` prefix it is a
+same-repo issue reference. A branch-only reference yields `""`, since it has no
+PR URL.
 
-Look for these patterns in the issue title and body:
+## Platform
 
-- GitHub PR URLs: `https://github.com/<owner>/<repo>/pull/<number>`
-- PR references: `#<number>` in context of "PR", "pull request", "merge"
-- Branch references: `branch: <name>`, `on branch <name>`, `refs/heads/<name>`
-- CI log URLs containing `/pull/<number>/` or `/tree/<branch>`
+`platform` is inferred in priority order: a `hw: <CODE>` label (e.g. `hw: BMG`),
+then device names/aliases in the title, then in the body. Most-specific match
+wins; `""` if none.
 
-### LLM fallback
-
-When regex extraction finds nothing but the issue body contains signals that
-it occurred on a non-main branch or PR (e.g., mentions "this PR", "my branch",
-"cherry-pick", "backport", CI failure context referencing a specific change),
-the calling agent MUST read the issue body and determine the PR/branch context.
-Add `pr_context` to `low_confidence` when regex finds nothing but signals exist.
-
-## OS and platform
-
-Two best-effort fields describe the reporting environment:
-
-- `os`: `"Linux"` | `"Windows"` | `""`. Detected from OS keywords in the body
-  and from a collect_env `OS:` line when present.
-- `platform`: canonical Intel GPU code inferred in priority order:
-  1. Labels matching `hw: <CODE>` (e.g. `hw: BMG`, `hw: PVC`).
-  2. Device names/aliases in the title.
-  3. Device names/aliases in the body.
-  Mappings: Data Center GPU Max / Ponte Vecchio -> PVC; Battlemage / B580 -> BMG;
-  Alchemist / A770 -> ARC; Arrow Lake -> ARL; Lunar Lake -> LNL;
-  Meteor Lake -> MTL; Crescent Island -> CRI. A single value is chosen,
-  most-specific first; `""` if none matches.
-
-Both fields are BEST-EFFORT and are NEVER added to `low_confidence`.
+Mappings: Data Center GPU Max / Ponte Vecchio -> PVC; Battlemage / B580 -> BMG;
+Alchemist / A770 -> ARC; Arrow Lake -> ARL; Lunar Lake -> LNL;
+Meteor Lake -> MTL; Crescent Island -> CRI.
 
 ## Unit-test detection
 
-An issue is treated as a unit test if ANY of the following hold:
-
-- it carries a `module: ut` label;
-- a parsed test file lives under `test/` or `test/xpu/`, or its name starts
-  with `test_`;
-- a parsed test class name starts with `Test`;
-- a parsed test case/method name starts with `test_`.
-
-When the issue is a unit test, the top-level `test_file` / `test_class` /
-`test_case` mirror the primary parsed case, and `reproduce_steps` is NOT
-required: the test id is itself the reproducer, so an empty `reproduce_steps`
-is not flagged in `low_confidence`.
+An issue is a unit test if ANY hold: it carries a `module: ut` label; a parsed
+test file lives under `test/` or `test/xpu/` or its name starts with `test_`; a
+parsed class name starts with `Test`; a parsed case name starts with `test_`.
 
 ## Inline LLM fallback
 
-The script populates `low_confidence` with the names of fields it could not
-confidently extract. It contains ONLY these field names:
+`low_confidence` lists ONLY these fields, and only under these conditions:
 
-- `reproduce_steps` - listed when NO shell command was found AND the issue is
-  NOT a unit test (a unit test's test id is its own reproducer).
-- `test_cases` - listed when no test case parsed but the issue looks
-  test-related (`test_module` is `ut` or `e2e`).
-- `pr_context` - listed when regex found no PR/branch but the issue body
-  contains signals of a non-main context (mentions "this PR", "my branch",
-  CI log URLs, etc.).
+| Field | Listed when |
+|---|---|
+| `reproduce_steps` | No shell command found AND the issue is not a unit test (a unit test's id is its own reproducer). |
+| `test_cases` | No test case parsed but `test_module` is `ut` or `e2e`. |
+| `pr_link` | Regex found no PR, but the body signals a non-main context ("this PR", "my branch", "cherry-pick", "backport", a CI run URL). |
 
-`dependency` and `traceback` ARE output fields, but they are NEVER flagged in
-`low_confidence`. The `os` and `platform` fields are best-effort and are also
-never flagged.
+`dependency`, `traceback`, `os`, and `platform` are output fields that are NEVER
+flagged.
 
-When `low_confidence` is non-empty, the calling agent MUST:
+When `low_confidence` is non-empty, the calling agent MUST read `body`/`title`,
+resolve each listed field, overwrite it in the JSON, and remove its name from
+`low_confidence`. For `pr_link`, leave `""` if the issue is tied only to a
+branch or to no PR. This fallback is inline: no disk queue, no sub-agent, no
+batch processing.
 
-1. Read the `body` and `title` fields in the extracted JSON.
-2. For `reproduce_steps`, extract the real shell commands that reproduce the
-   issue.
-3. For `test_cases`, read the body and fill in the real test cases.
-4. For `pr_context`, determine the PR number/branch from context and populate
-   the `pr_context` object (set `source: "llm"`).
-5. Overwrite those fields in the JSON with the determined values.
-6. Remove each resolved field name from `low_confidence`.
+## Exit codes
 
-This fallback is inline: no disk queue, no sub-agent, no batch processing.
+| Code | Meaning |
+|---|---|
+| 0 | Success; JSON on stdout. A failed project/issueType fetch still exits 0 with those fields "". |
+| 1 | Fetch failure (404, network), or the reference is a pull request. PRs are rejected. |
+| 2 | Malformed reference (not a number, not a recognizable issue URL), or `--repo` without a `/`. |
 
-## Edge cases / exit codes
-
-- Exit 0: success. The JSON is printed to stdout. If the project / issueType fetch fails
-  (missing scope, network error, timeout), those project fields degrade to "" and the run
-  still exits 0.
-- Exit 1: fetch failure (404 or network error), or the input number refers to a pull
-  request. Pull requests are rejected.
-- Exit 2: malformed input reference (not a number and not a recognizable issue URL),
-  or a `--repo` value without a `/` separator.
-- Closed issues are allowed; `status` will be "closed".
-
-## Scope
-
-This script does exactly one thing: emit JSON metadata for a single issue. It does NOT:
-
-- produce Excel output,
-- process batches or multiple issues,
-- verify test files on disk (test_cases uses string-only path mapping),
-- generate a Not-applicable sheet,
-- accept a `conda_env` argument. It accepts optional `--pytorch-folder` only
-  to load authoritative benchmark model lists; it does not validate or modify
-  that checkout.
+Closed issues are allowed; `status` will be `closed`.
