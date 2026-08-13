@@ -1048,13 +1048,14 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       IndexType current_offset = smem_offsets[smem_idx];
 
       if (current_offset == dstOffset) {
-        atomicAddLocal(
-            static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
+        atomicAdd(static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
       } else if (current_offset == (IndexType)-1) {
         IndexType expected = (IndexType)-1;
-        if (atomicCAS(&smem_offsets[smem_idx], expected, dstOffset) ==
-            expected) {
-          atomicAddLocal(
+        if (atomicCAS(
+                sycl_local_ptr<IndexType>(&smem_offsets[smem_idx]),
+                expected,
+                dstOffset) == expected) {
+          atomicAdd(
               static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
         } else {
           op_(dst_.data, dstOffset, dstNumel_, &val);
