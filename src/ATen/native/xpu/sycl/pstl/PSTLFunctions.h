@@ -311,9 +311,9 @@ static inline OutputIt _scan_kernel(
   ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
 
   const auto sa_wgroup_size = syclMaxWorkGroupSize(kfn3);
-  TORCH_CHECK(
+  TORCH_INTERNAL_ASSERT(
       kssc_wgroup_size <= sa_wgroup_size,
-      "_scan_kernel: work group size doesn't match!")
+      "_scan_kernel: work group size doesn't match!");
 
   sycl_kernel_submit(
       sycl::range<1>(ngroups * kssc_wgroup_size),
