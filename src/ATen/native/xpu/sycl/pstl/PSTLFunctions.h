@@ -1909,7 +1909,7 @@ OutputIt2 reduce_by_key(
   Tensor scanned_values = at::empty({N}, value_options);
   auto scanned_values_first = scanned_values.data_ptr<ValueType>();
 
-  Tensor scanned_tail_flags = at::ones({N}, flag_options);
+  Tensor scanned_tail_flags = at::empty({N}, flag_options);
   ValueType* scanned_tail_flags_first =
       scanned_tail_flags.data_ptr<ValueType>();
 

@@ -1,0 +1,31 @@
+# Models excluded from specific test cases for priority p1.
+#
+# torchbench_models_list.txt, huggingface_models_list.txt and
+# timm_models_list.txt in this folder contain the full model set for this
+# priority. A model listed under a given suite/scenario/mode here is skipped for
+# that run configuration.
+#
+# p1 currently runs the same model set across all scenarios and modes, so no
+# skips are defined.
+skip:
+  huggingface:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  timm:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []
+  torchbench:
+    accuracy:
+      inference: []
+      training: []
+    performance:
+      inference: []
+      training: []

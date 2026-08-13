@@ -76,7 +76,6 @@ env:
     libswscale-dev
     pciutils
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
-  AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
 defaults:
   run:
@@ -174,13 +173,13 @@ jobs:
             filter: 'not test_load_img_url_timeout'
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
       - name: Detect devices
         run: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/detect-devices.sh --pytest-others-args '-rsf'
       - name: Checkout Transformers
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: huggingface/transformers
           ref: ${{ env.transformers }}
@@ -213,18 +212,13 @@ jobs:
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
-          python-version: ${{ env.python }}
-      - name: Check python
-        run: |
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
+          python: ${{ env.python }}
       - name: Prepare pytorch and deps
         run: |
-          pip install junitparser
-          pip install $TORCH_INDEX \
+          uv pip install junitparser
+          uv pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
             torchaudio==${{ needs.prepare.outputs.torchaudio }} \
@@ -233,11 +227,11 @@ jobs:
         run: |
           pwd
           cd transformers
-          pip install \
+          uv pip install \
             accelerate==${{ env.accelerate }} \
             datasets==${{ env.datasets }}
-          pip install -e .
-          pip install -e ".[dev-torch,testing,video]"
+          uv pip install -e .
+          uv pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
@@ -245,7 +239,7 @@ jobs:
         run: |
           LOGS_DIR="${{ github.workspace }}/transformers/logs"
           echo "pip installed packages:"
-          pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
+          uv pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee "$LOGS_DIR/lspci_0380-$TEST_CASE.txt"
           echo "GPU render nodes:"
@@ -255,12 +249,12 @@ jobs:
       - name: Sanity check installed packages
         run: |
           # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist pytest-shard
+          uv pip install -U pytest pytest-timeout pytest-xdist pytest-shard
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run tests
         run: |
@@ -287,13 +281,13 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
       - name: Upload reports
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/reports
       - name: Upload logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logs-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/logs
@@ -304,30 +298,30 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'reports-*'
           path: 'transformers/reports/'
           merge-multiple: true
       - name: Download logs
         if: ${{ ! cancelled() }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'logs-*'
           path: 'transformers/logs/'
           merge-multiple: true
       - name: Checkout torch-xpu-ops
         if: ${{ ! cancelled() }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: torch-xpu-ops
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: ./torch-xpu-ops/.github/actions/setup-python
         with:
-          python-version: ${{ env.python }}
+          python: ${{ env.python }}
       - name: Install pip deps
         run: |
-          pip install junitparser
+          uv pip install junitparser
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |
