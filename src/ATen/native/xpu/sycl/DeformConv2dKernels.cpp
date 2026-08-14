@@ -302,9 +302,9 @@ void deformable_im2col(
         input.scalar_type(), "deformable_im2col_xpu", ([&] {
           auto kfn = DeformableIm2ColKernel<scalar_t, int64_t>(
               num_kernels,
-              input.data_ptr<scalar_t>(),
-              data_offset.data_ptr<scalar_t>(),
-              data_mask.data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
+              data_offset.const_data_ptr<scalar_t>(),
+              data_mask.const_data_ptr<scalar_t>(),
               height,
               width,
               weight_h,
@@ -333,9 +333,9 @@ void deformable_im2col(
         input.scalar_type(), "deformable_im2col_xpu", ([&] {
           auto kfn = DeformableIm2ColKernel<scalar_t, int>(
               num_kernels,
-              input.data_ptr<scalar_t>(),
-              data_offset.data_ptr<scalar_t>(),
-              data_mask.data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
+              data_offset.const_data_ptr<scalar_t>(),
+              data_mask.const_data_ptr<scalar_t>(),
               height,
               width,
               weight_h,
@@ -548,9 +548,9 @@ void compute_grad_input(
         columns.scalar_type(), "compute_grad_input", ([&] {
           auto kfn = DeformableCol2ImKernel<scalar_t, int64_t>(
               num_kernels,
-              columns.data_ptr<scalar_t>(),
-              offset.data_ptr<scalar_t>(),
-              mask.data_ptr<scalar_t>(),
+              columns.const_data_ptr<scalar_t>(),
+              offset.const_data_ptr<scalar_t>(),
+              mask.const_data_ptr<scalar_t>(),
               channels,
               height,
               width,
@@ -579,9 +579,9 @@ void compute_grad_input(
         columns.scalar_type(), "compute_grad_input", ([&] {
           auto kfn = DeformableCol2ImKernel<scalar_t, int>(
               num_kernels,
-              columns.data_ptr<scalar_t>(),
-              offset.data_ptr<scalar_t>(),
-              mask.data_ptr<scalar_t>(),
+              columns.const_data_ptr<scalar_t>(),
+              offset.const_data_ptr<scalar_t>(),
+              mask.const_data_ptr<scalar_t>(),
               channels,
               height,
               width,
@@ -859,10 +859,10 @@ void compute_grad_offset_and_mask(
         columns.scalar_type(), "compute_grad_offset_and_mask_xpu", ([&] {
           auto kfn = DeformableCol2ImCoordKernel<scalar_t, int64_t>(
               num_kernels,
-              columns.data_ptr<scalar_t>(),
-              input.data_ptr<scalar_t>(),
-              offset.data_ptr<scalar_t>(),
-              mask.data_ptr<scalar_t>(),
+              columns.const_data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
+              offset.const_data_ptr<scalar_t>(),
+              mask.const_data_ptr<scalar_t>(),
               channels,
               height,
               width,
@@ -893,10 +893,10 @@ void compute_grad_offset_and_mask(
         columns.scalar_type(), "compute_grad_offset_and_mask", ([&] {
           auto kfn = DeformableCol2ImCoordKernel<scalar_t, int>(
               num_kernels,
-              columns.data_ptr<scalar_t>(),
-              input.data_ptr<scalar_t>(),
-              offset.data_ptr<scalar_t>(),
-              mask.data_ptr<scalar_t>(),
+              columns.const_data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
+              offset.const_data_ptr<scalar_t>(),
+              mask.const_data_ptr<scalar_t>(),
               channels,
               height,
               width,
