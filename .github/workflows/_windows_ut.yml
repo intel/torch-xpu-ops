@@ -270,9 +270,9 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ inputs.python }}
+          python: ${{ inputs.python }}
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v8
         with:
@@ -281,7 +281,7 @@ jobs:
       - name: UT Test Results Summary
         shell: bash
         run: |
-          python -m pip install junitparser
+          uv pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
           python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs
