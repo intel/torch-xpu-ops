@@ -1048,13 +1048,14 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       IndexType current_offset = smem_offsets[smem_idx];
 
       if (current_offset == dstOffset) {
-        atomicAddLocal(
-            static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
+        atomicAdd(static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
       } else if (current_offset == (IndexType)-1) {
         IndexType expected = (IndexType)-1;
-        if (atomicCAS(&smem_offsets[smem_idx], expected, dstOffset) ==
-            expected) {
-          atomicAddLocal(
+        if (atomicCAS(
+                sycl_local_ptr<IndexType>(&smem_offsets[smem_idx]),
+                expected,
+                dstOffset) == expected) {
+          atomicAdd(
               static_cast<sycl_local_ptr<T>>(&smem_values[smem_idx]), val);
         } else {
           op_(dst_.data, dstOffset, dstNumel_, &val);
@@ -2394,8 +2395,7 @@ Tensor index_select_sparse_kernel(
     const auto idx_nneg_index = at::arange(index_len, nneg_index.options());
     const auto idx_dim_indices = at::arange(nnz, dim_indices.options());
 
-    Tensor sorted_dim_indices, argsort_dim_indices;
-    std::tie(sorted_dim_indices, argsort_dim_indices) =
+    auto [sorted_dim_indices, argsort_dim_indices] =
         [&]() -> std::tuple<Tensor, Tensor> {
       if (dim == 0 && self.is_coalesced()) {
         return std::make_tuple(dim_indices, idx_dim_indices);
@@ -2404,9 +2404,7 @@ Tensor index_select_sparse_kernel(
       }
     }();
 
-    Tensor intrsc_counts_nneg_index;
-    Tensor intrsc_first_match_nneg_index;
-    std::tie(intrsc_counts_nneg_index, intrsc_first_match_nneg_index) =
+    auto [intrsc_counts_nneg_index, intrsc_first_match_nneg_index] =
         [&]() -> std::tuple<Tensor, Tensor> {
       auto intrsc_counts_nneg_index = at::zeros_like(nneg_index);
       auto intrsc_first_match_nneg_index = at::zeros_like(nneg_index);

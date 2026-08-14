@@ -23,6 +23,7 @@ import unittest
 from contextlib import redirect_stderr
 
 import torch
+from packaging import version
 from torch.testing import FileCheck, make_tensor
 from torch.testing._internal.common_cuda import (
     SM53OrLater,
@@ -92,10 +93,13 @@ from torch.testing._internal.opinfo.definitions.sparse import (
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import operator
 
-from test_sparse_xpu import (
-    CUSPARSE_SPMM_COMPLEX128_SUPPORTED,
-    HIPSPARSE_SPMM_COMPLEX128_SUPPORTED,
+CUSPARSE_SPMM_COMPLEX128_SUPPORTED = (IS_WINDOWS and torch.version.cuda) or (
+    not IS_WINDOWS and not TEST_WITH_ROCM
 )
+
+HIPSPARSE_SPMM_COMPLEX128_SUPPORTED = torch.version.hip and version.parse(
+    torch.version.hip.split("-")[0]
+) >= version.parse("6.0")
 
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"

@@ -134,7 +134,8 @@ struct AngleWrapper {
     if (at::_isnan(v)) {
       return v;
     }
-    return v < 0 ? std::numbers::pi_v<scalar_t> : scalar_t(0);
+    return v < 0 ? static_cast<scalar_t>(std::numbers::pi_v<double>)
+                 : scalar_t(0);
   }
 };
 
@@ -156,9 +157,13 @@ void angle_kernel(TensorIteratorBase& iter) {
         kComplexHalf,
         kBComplex32);
   } else {
-    AT_DISPATCH_FLOATING_TYPES(dtype, "angle_xpu", [&]() {
-      gpu_kernel(iter, AngleWrapper<scalar_t>());
-    });
+    AT_DISPATCH_V2(
+        dtype,
+        "angle_xpu",
+        AT_WRAP([&]() { gpu_kernel(iter, AngleWrapper<scalar_t>()); }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16);
   }
 }
 
