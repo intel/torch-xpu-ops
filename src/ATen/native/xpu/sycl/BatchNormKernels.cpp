@@ -377,7 +377,6 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
     const int max_wg_size,
     const int reduction,
     const int stride,
-    const bool coop_flag = false,
     const int loops_per_item = 1) {
   int group_x = std::min(last_pow2(stride), 32);
   int group_y = std::min(
@@ -392,12 +391,6 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
       at::ceil_div(reduction, group_y * loops_per_item),
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_x) / (group_y));
   nwg_y = std::max(nwg_y, 1);
-
-  if (coop_flag) {
-    // it's not worth having a grid reduction if the reduction dimension is not
-    // big enough
-    nwg_y = nwg_y < 4 ? 1 : nwg_y;
-  }
 
   sycl::range<2> local_range(group_y, group_x);
   sycl::range<2> global_range(nwg_y * group_y, nwg_x * group_x);
@@ -904,15 +897,16 @@ void batch_norm_stats_channels_last_template(
   at::Tensor staging_data;
   at::Tensor semaphores;
 
+  auto input_ptr = input.const_data_ptr<scalar_t>();
+  auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
+  auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
+  bool use_vec_kernel = false;
+
   using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
       accscalar_t,
       PREFERRED_VEC_SIZE>;
-  auto input_ptr = input.const_data_ptr<scalar_t>();
-  auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
-  auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
-  bool use_vec_kernel = false;
 
   if (VecKernel::valid(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
@@ -958,7 +952,6 @@ void batch_norm_stats_channels_last_template(
         syclMaxWorkGroupSize<KernelT>(),
         reduction_size,
         stride,
-        true,
         ELEMENTS_PER_WORK_ITEM);
     auto global_range = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -2467,7 +2460,6 @@ batch_norm_backward_reduce_channels_last_template(
       syclMaxWorkItemsPerSubSlice() * 2,
       reduction_size,
       stride,
-      false,
       ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -3498,7 +3490,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
-                true,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3527,7 +3518,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
-                true,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3555,7 +3545,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
-                true,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3581,7 +3570,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
-                true,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3646,7 +3634,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
-                false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3677,7 +3664,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
-                false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3729,7 +3715,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride,
-                false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
@@ -3761,7 +3746,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 syclMaxWorkGroupSize(kfn),
                 reduction_size,
                 stride / VEC_SIZE,
-                false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
