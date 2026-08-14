@@ -19,9 +19,10 @@
 #
 # generated_file:STRING=<> File to generate.  This argument must be passed in.
 
-cmake_policy(PUSH)
-cmake_policy(SET CMP0007 NEW)
-cmake_policy(SET CMP0010 NEW)
+# This script runs via `cmake -P`, which does not inherit the project's policy
+# version, so pin it to the same one CMakeLists.txt requires.
+cmake_minimum_required(VERSION 3.27)
+
 if(NOT generated_file)
   message(FATAL_ERROR "You must specify generated_file on the command line")
 endif()
@@ -156,5 +157,3 @@ endif()
 if(verbose)
   message("Generated ${generated_file} successfully.")
 endif()
-
-cmake_policy(POP)
