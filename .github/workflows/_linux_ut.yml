@@ -221,12 +221,19 @@ jobs:
             # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
             # build the report from matched rows only.
             : > "$new_failure_csv"
-            # Match rows by class_name AND test_name to avoid substring false positives
-            # filtered log format: category,class_name,test_name
-            while IFS=',' read -r category class_name test_name; do
+            # Distributed filtered logs contain pytest node ids rather than CSV rows.
+            while IFS=',' read -r category class_name test_name || [ -n "$category$class_name$test_name" ]; do
+              class_prefix="| "
+              if [ "${{ inputs.ut }}" == "xpu_distributed" ]; then
+                node_id="${category##* }"
+                test_name="${node_id##*::}"
+                class_name="${node_id%::*}"
+                class_name="${class_name##*::}"
+                class_prefix="."
+              fi
               [ -z "$test_name" ] && continue
-              # Use both class_name and test_name for precise matching in pipe-delimited CSV
-              grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
+              grep -F "$class_prefix$class_name | $test_name |" "$ut_failure_csv" \
+                >> "$new_failure_csv" || true
             done < "$new_failure_list"
             # Verify count matches filtered log
             expected_count=$(grep -c . "$new_failure_list")
