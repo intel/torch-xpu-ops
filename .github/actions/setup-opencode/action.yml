@@ -1,0 +1,70 @@
+name: Setup opencode
+description: Install the opencode CLI (cached) and write an amazon-bedrock provider config
+
+inputs:
+  version:
+    required: false
+    default: ''
+    description: "opencode version to install (e.g. 0.15.6). Empty installs the latest release."
+  aws_region:
+    required: true
+    description: "AWS region for the amazon-bedrock provider"
+  config_path:
+    required: false
+    default: 'opencode.json'
+    description: "Path to write the generated opencode config"
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve opencode version
+      id: version
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.version }}" ]; then
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          v=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest \
+                | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          echo "version=${v:-latest}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Cache opencode
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.opencode/bin
+        key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    - name: Install opencode
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: curl -fsSL https://opencode.ai/install | VERSION="${{ steps.version.outputs.version }}" bash
+
+    - name: Add opencode to PATH
+      shell: bash
+      run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+    - name: Write opencode config
+      shell: bash
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
+        CONFIG_PATH: ${{ inputs.config_path }}
+      run: |
+        cat > "${CONFIG_PATH}" <<EOF
+        {
+          "\$schema": "https://opencode.ai/config.json",
+          "provider": {
+            "amazon-bedrock": {
+              "options": {
+                "region": "${AWS_REGION}"
+              }
+            }
+          }
+        }
+        EOF
+        cat "${CONFIG_PATH}"
+
+    - name: Verify opencode
+      shell: bash
+      run: opencode --version
