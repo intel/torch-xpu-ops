@@ -90,7 +90,6 @@ std::tuple<int, int, int, int, int> get_adaptive_config(
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x, row_outer);
 }
-}
 
 
 

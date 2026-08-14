@@ -376,6 +376,7 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
     const int max_wg_size,
     const int reduction,
     const int stride,
+    const bool coop_flag = false,
     const int loops_per_item = 1) {
   int group_x = std::min(last_pow2(stride), 32);
   int group_y = std::min(
