@@ -58,11 +58,14 @@ inline void welford_merge(
     const C& count_new,
     const T& mean_new,
     const T& m2n_new) {
-  T factor = T(1.0) / std::max(1, (count + count_new));
-  T delta0 = mean - mean_new;
-  mean = (mean_new * count_new + mean * count) * factor;
-  m2n += m2n_new + delta0 * delta0 * count_new * count * factor;
-  count += count_new;
+  if (count_new == 0)
+    return;
+  C new_count = count + count_new;
+  T nb_over_n = T(count_new) / T(new_count);
+  T delta = mean_new - mean;
+  mean += delta * nb_over_n;
+  m2n += m2n_new + delta * delta * T(count) * nb_over_n;
+  count = new_count;
 }
 
 template <int VEC_SIZE, typename T, typename C, typename TACC, typename CACC>
@@ -74,7 +77,6 @@ inline void welford_vertical_merge(
     CACC& shmem_count,
     TACC& shmem_mean,
     TACC& shmem_m2n) {
-  // write to shared memory
   auto address_base = item.get_local_linear_id();
 #pragma unroll
   for (int offset = item.get_local_range(0) / 2; offset > 0; offset >>= 1) {
@@ -87,14 +89,18 @@ inline void welford_vertical_merge(
     if (item.get_local_id(0) < offset &&
         item.get_local_id(0) + offset < item.get_local_range(0)) {
       auto address = address_base + offset * item.get_local_range(1);
-      // read shared memory back to register for reduction
       auto count_new = shmem_count[address];
       auto mean_new = shmem_mean[address];
       auto m2n_new = shmem_m2n[address];
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         welford_merge(
-            count[v], mean[v], m2n[v], count_new[v], mean_new[v], m2n_new[v]);
+            count[v],
+            mean[v],
+            m2n[v],
+            count_new[v],
+            mean_new[v],
+            m2n_new[v]);
       }
     }
   }
@@ -120,25 +126,26 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
 
-  auto item = sycl::ext::oneapi::this_work_item::get_nd_item<2>();
-  auto local_size = item.get_local_range(0) * item.get_local_range(1);
+  // K independent accumulators + K-way load unroll to expose more in-flight
+  // DRAM loads (mirrors upstream CUDA batch_norm_collect_statistics_channels_
+  // last_kernel PARALLEL_LOADS). Removes the single-outstanding-load SbidStall
+  // bottleneck identified on B580 (single sbid slot reused per iteration).
+  static constexpr int K = 4;
 
-  char* scratch = static_cast<char*>(
-      sycl::ext::oneapi::experimental::get_work_group_scratch_memory());
-  acc_vec_t* shmem_mean = reinterpret_cast<acc_vec_t*>(scratch);
-  acc_vec_t* shmem_m2n = shmem_mean + local_size;
-  int_vec_t* shmem_count = reinterpret_cast<int_vec_t*>(shmem_m2n + local_size);
-  bool* is_last_group_done = reinterpret_cast<bool*>(shmem_count + local_size);
-
-  acc_vec_t mean;
-  acc_vec_t m2n;
-  int_vec_t count;
+  void operator()(sycl::nd_item<2> item) const {
+    //  init K private accumulators
+    acc_vec_t sum_k[K];
+    acc_vec_t sum_sq_k[K];
+    int_vec_t count_k[K];
 #pragma unroll
-  for (int v = 0; v < VEC_SIZE; ++v) {
-    mean[v] = acc_t(0);
-    m2n[v] = acc_t(0);
-    count[v] = int(0);
-  }
+    for (int k = 0; k < K; ++k) {
+#pragma unroll
+      for (int v = 0; v < VEC_SIZE; ++v) {
+        sum_k[k][v] = acc_t(0);
+        sum_sq_k[k][v] = acc_t(0);
+        count_k[k][v] = int(0);
+      }
+    }
 
   int gy = item.get_group(0);
   int gx = item.get_group(1);
@@ -146,12 +153,149 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
   int num_cooperative_groups = item.get_group_range(0);
   int inner_loop_stride = item.get_local_range(0) * num_cooperative_groups;
 
-  for (int m_offset = item.get_global_id(0); m_offset < reduction_size;
-       m_offset += inner_loop_stride) {
-    if (c_vec_offset < n_channels) {
-      int address_vec_base = m_offset * n_channels + c_vec_offset;
-      auto input_vec = *reinterpret_cast<vec_t*>(
-          const_cast<scalar_t*>(&input[address_vec_base]));
+
+    if (c_vec_offset < n_channels_) {
+      int m_offset = item.get_global_id(0);
+      int unroll_stride = inner_loop_stride * K;
+
+      // Pre-compute pointer base and strides to eliminate per-iteration
+      // multiply. Converts addr = (m_offset + k*stride)*n_channels + c_offset
+      // into ptr arithmetic: ptr += stride_bytes each iteration.
+      const vec_t* base_ptr = reinterpret_cast<const vec_t*>(
+          const_cast<scalar_t*>(&input_[m_offset * n_channels_ + c_vec_offset]));
+      // stride between consecutive K loads (in vec_t units)
+      const int k_stride_vec = inner_loop_stride * (n_channels_ / VEC_SIZE);
+      // stride per full unrolled iteration (in vec_t units)
+      const int iter_stride_vec = unroll_stride * (n_channels_ / VEC_SIZE);
+
+      // main unrolled loop: issue K loads, then consume
+      int m_end = reduction_size_ - (K - 1) * inner_loop_stride;
+      for (; m_offset < m_end;
+           m_offset += unroll_stride, base_ptr += iter_stride_vec) {
+        vec_t xv[K];
+#pragma unroll
+        for (int k = 0; k < K; ++k) {
+          xv[k] = *(base_ptr + k * k_stride_vec);
+        }
+#pragma unroll
+        for (int k = 0; k < K; ++k) {
+#pragma unroll
+          for (int v = 0; v < VEC_SIZE; ++v) {
+            acc_t x = acc_t(xv[k][v]);
+            count_k[k][v]++;
+            sum_k[k][v] += x;
+            sum_sq_k[k][v] += x * x;
+          }
+        }
+      }
+      // tail: continue with pointer-based addressing
+      for (; m_offset < reduction_size_;
+           m_offset += inner_loop_stride, base_ptr += k_stride_vec) {
+        auto input_vec = *base_ptr;
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; ++v) {
+          acc_t x = acc_t(input_vec[v]);
+          count_k[0][v]++;
+          sum_k[0][v] += x;
+          sum_sq_k[0][v] += x * x;
+        }
+      }
+    }
+
+
+    // Convert each K sum-based accumulator to Welford tuple, then combine.
+    acc_vec_t mean;
+    acc_vec_t m2n;
+    int_vec_t count;
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      int c0 = count_k[0][v];
+      acc_t m0 = c0 > 0 ? sum_k[0][v] / acc_t(c0) : acc_t(0);
+      mean[v] = m0;
+      m2n[v] = sum_sq_k[0][v] - sum_k[0][v] * m0;
+      count[v] = c0;
+#pragma unroll
+      for (int k = 1; k < K; ++k) {
+        int ck = count_k[k][v];
+        if (ck == 0)
+          continue;
+        acc_t mk = sum_k[k][v] / acc_t(ck);
+        acc_t m2k = sum_sq_k[k][v] - sum_k[k][v] * mk;
+        welford_merge(count[v], mean[v], m2n[v], ck, mk, m2k);
+      }
+    }
+
+    welford_vertical_merge<VEC_SIZE>(
+        item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
+
+
+    // cross-WG merge via staging buffer
+    if (num_cooperative_groups > 1) {
+      acc_t* staging_mean = staging_data_;
+      acc_t* staging_m2n =
+          &staging_data_[n_channels_ * num_cooperative_groups];
+      int* staging_count = reinterpret_cast<int*>(
+          &staging_m2n[n_channels_ * num_cooperative_groups]);
+      int address_vec_base = c_vec_offset + gy * n_channels_;
+
+      // write data to staging_data;
+      if (item.get_local_id(0) == 0 && c_vec_offset < n_channels_) {
+        *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
+        *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
+        *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;
+      }
+      sycl::group_barrier(item.get_group());
+
+      // mark group done
+      if (item.get_local_linear_id() == 0) {
+        sycl_atomic_ref_rlx_dev_global_t<int> atomic_count(semaphores_[gx]);
+        int old = atomic_count.fetch_add(
+            1, sycl_mem_odr_acq_rel
+            /* , default memory scope is device */);
+        is_last_group_done_[0] = (old == (num_cooperative_groups - 1));
+      }
+      sycl::group_barrier(item.get_group());
+
+      // check that all data is now available in global memory
+      if (is_last_group_done_[0]) {
+#pragma unroll
+        for (int v = 0; v < VEC_SIZE; ++v) {
+          mean[v] = acc_t(0);
+          m2n[v] = acc_t(0);
+          count[v] = int(0);
+        }
+
+        for (int y = item.get_local_id(0); y < num_cooperative_groups;
+             y += item.get_local_range(0)) {
+          if (c_vec_offset < n_channels_) {
+            address_vec_base = y * n_channels_ + c_vec_offset;
+            auto mean_new =
+                *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]);
+            auto m2n_new = *reinterpret_cast<acc_vec_t*>(
+                &staging_m2n[address_vec_base]);
+            auto count_new =
+                *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]);
+#pragma unroll
+            for (int v = 0; v < VEC_SIZE; ++v) {
+              welford_merge(
+                  count[v],
+                  mean[v],
+                  m2n[v],
+                  count_new[v],
+                  mean_new[v],
+                  m2n_new[v]);
+            }
+          }
+        }
+        welford_vertical_merge<VEC_SIZE>(
+            item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
+      }
+    }
+
+    if (item.get_local_id(0) == 0 &&
+        (num_cooperative_groups == 1 || is_last_group_done_[0]) &&
+        c_vec_offset < n_channels_) {
+      acc_vec_t invstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         auto x = input_vec[v];
@@ -164,63 +308,13 @@ void welford_batch_norm_stat_channels_last_vec_kernel(
     }
   }
 
-  welford_vertical_merge<VEC_SIZE>(
-      item, count, mean, m2n, shmem_count, shmem_mean, shmem_m2n);
-
-  if (num_cooperative_groups > 1) {
-    acc_t* staging_mean = staging_data;
-    acc_t* staging_m2n = &staging_data[n_channels * num_cooperative_groups];
-    int* staging_count = reinterpret_cast<int*>(
-        &staging_m2n[n_channels * num_cooperative_groups]);
-    int address_vec_base = c_vec_offset + gy * n_channels;
-
-    if (item.get_local_id(0) == 0 && c_vec_offset < n_channels) {
-      *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
-      *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
-      *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;
-    }
-    sycl::group_barrier(item.get_group());
-
-    if (item.get_local_linear_id() == 0) {
-      sycl_atomic_ref_rlx_dev_global_t<int> atomic_count(semaphores[gx]);
-      int old = atomic_count.fetch_add(1, sycl_mem_odr_acq_rel);
-      is_last_group_done[0] = (old == (num_cooperative_groups - 1));
-    }
-    sycl::group_barrier(item.get_group());
-
-    if (is_last_group_done[0]) {
-#pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        mean[v] = acc_t(0);
-        m2n[v] = acc_t(0);
-        count[v] = int(0);
-      }
-
-      for (int y = item.get_local_id(0); y < num_cooperative_groups;
-           y += item.get_local_range(0)) {
-        if (c_vec_offset < n_channels) {
-          address_vec_base = y * n_channels + c_vec_offset;
-          auto mean_new =
-              *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]);
-          auto m2n_new =
-              *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]);
-          auto count_new =
-              *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]);
-#pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v) {
-            welford_merge(
-                count[v],
-                mean[v],
-                m2n[v],
-                count_new[v],
-                mean_new[v],
-                m2n_new[v]);
-          }
-        }
-      }
-      welford_vertical_merge<VEC_SIZE>(
-          item, count, mean, m2n, shmem_count, shmem_mean, shmem_m2n);
-    }
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    auto local_size = group_size_x_ * group_size_y_;
+    shmem_mean_ = sycl_local_acc_t<acc_vec_t>(sycl::range<1>(local_size), cgh);
+    shmem_m2n_ =
+        sycl_local_acc_t<acc_vec_t>(sycl::range<1>(local_size), cgh);
+    shmem_count_ = sycl_local_acc_t<int_vec_t>(sycl::range<1>(local_size), cgh);
+    is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>(1), cgh);
   }
 
   if (item.get_local_id(0) == 0 &&
