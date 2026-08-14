@@ -174,7 +174,7 @@ jobs:
           cp "${snapshot_dir}/issues_snapshot.log" issues.log || true
           echo "Fetching current known-failure issues from GitHub."
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
-          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open >> issues.log
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" >> issues.log
           if [ "${{ inputs.ut }}" == "basic" ];then
             ut_list="op_regression op_extended op_regression_dev1"
           else

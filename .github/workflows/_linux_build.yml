@@ -85,7 +85,7 @@ jobs:
         run: |
           touch known_issue_static.log issues_snapshot.log
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7

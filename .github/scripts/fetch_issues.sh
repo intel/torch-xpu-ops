@@ -11,8 +11,14 @@ fetch_static() {
 }
 
 fetch_open() {
+  local category="${1:-}"
+  local labels="label:skipped OR label:skipped_bmg"
+  if [[ "${category}" == "dpclang" ]]; then
+    labels="${labels} OR label:skipped_dpclang"
+  fi
+
   gh api --method GET --paginate search/issues \
-    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open (label:skipped OR label:skipped_bmg)" \
+    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open (${labels})" \
     --jq '.items[] | "Issue #\(.number): \(.title)\n\(.body)\n"'
 }
 
@@ -25,4 +31,4 @@ else
   exit 1
 fi
 
-"$fetch_function"
+"$fetch_function" "${2:-}"
