@@ -157,35 +157,24 @@ struct alignas(N) OpaqueType {
 };
 
 template <typename func_t>
-struct ScatterGatherElementwiseKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int nv = work_group_size_ * thread_work_size_;
-    auto wg_id = item.get_group_linear_id();
-    auto local_id = item.get_local_linear_id();
-    int idx = nv * wg_id + local_id;
-    for (int i = 0; i < thread_work_size_; ++i) {
-      if (idx < N_) {
-        f_(idx);
-        idx += work_group_size_;
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void scatter_gather_elementwise_kernel(
+    int N_,
+    func_t f_,
+    int work_group_size_,
+    int thread_work_size_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int nv = work_group_size_ * thread_work_size_;
+  auto wg_id = item.get_group_linear_id();
+  auto local_id = item.get_local_linear_id();
+  int idx = nv * wg_id + local_id;
+  for (int i = 0; i < thread_work_size_; ++i) {
+    if (idx < N_) {
+      f_(idx);
+      idx += work_group_size_;
     }
   }
-  ScatterGatherElementwiseKernelFunctor(
-      int N,
-      func_t f,
-      int work_group_size,
-      int thread_work_size)
-      : N_(N),
-        f_(f),
-        work_group_size_(work_group_size),
-        thread_work_size_(thread_work_size) {}
-
- private:
-  int N_;
-  func_t f_;
-  int work_group_size_;
-  int thread_work_size_;
-};
+}
 
 template <typename func_t>
 static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
@@ -194,8 +183,8 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  using KernelFn = ScatterGatherElementwiseKernelFunctor<func_t>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelFn>();
+  int64_t max_wg_size =
+      syclMaxWorkGroupSize<scatter_gather_elementwise_kernel<func_t>>();
   int outputSize = N;
   int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
   const auto target_global_size = syclMaxWorkItemsPerTile();
@@ -213,9 +202,15 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
   sycl::range<1> local_range(work_group_size);
   sycl::range<1> global_range(work_group_num * work_group_size);
 
-  auto caller = KernelFn((int)N, f, work_group_size, thread_work_size);
-  sycl_kernel_submit(
-      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit<scatter_gather_elementwise_kernel<func_t>>(
+      global_range,
+      local_range,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
+      (int)N,
+      f,
+      work_group_size,
+      thread_work_size);
 }
 
 template <
