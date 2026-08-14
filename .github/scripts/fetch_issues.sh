@@ -11,8 +11,9 @@ fetch_static() {
 }
 
 fetch_open() {
-  gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?labels=skipped&state=open" \
-    --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"'
+  gh api --method GET --paginate search/issues \
+    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open (label:skipped OR label:skipped_bmg)" \
+    --jq '.items[] | "Issue #\(.number): \(.title)\n\(.body)\n"'
 }
 
 if [[ "$1" == "static" ]]; then
