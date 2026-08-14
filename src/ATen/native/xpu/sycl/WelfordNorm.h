@@ -18,7 +18,7 @@
 
 namespace at::native::xpu {
 
-std::tuple<int, int, int, int> get_adaptive_config(
+std::tuple<int, int, int, int, int> get_adaptive_config(
     const int reduction,
     const int n_channels,
     const int vec_size,
@@ -34,41 +34,52 @@ std::tuple<int, int, int, int> get_adaptive_config(
         std::min(last_pow2(n_channels / vec_size), max_wg_size / group_size_y);
   }
 
-  int nwg_x = at::ceil_div(n_channels, group_size_x * vec_size);
+  int num_per_wi = group_size_x * vec_size;
+
+  // Each WG should process >= 256B per row to avoid DRAM read amplification
+  // from partial cache-line transactions shared by adjacent WGs on B580.
+  // For fp16/bf16 (2B/elem): target 128 ch / WG; for fp32 (4B/elem):
+  // 32*2*4B=256B naturally aligned, no row_outer needed.
+  // row_outer: each WG traverses this many channel blocks in a row-outer
+  // loop inside the kernel, giving row_outer * num_per_wi channels per WG.
+  int bytes_per_elem = (vec_size == 2) ? 2 : 4;
+  int per_wg_row_bytes_target = 256;
+  int target_channels = per_wg_row_bytes_target / bytes_per_elem;
+  int row_outer = std::min(target_channels / num_per_wi,
+                           at::ceil_div(n_channels, num_per_wi));
+  if (row_outer < 1)
+    row_outer = 1;
+  int ch_per_wg = num_per_wi * row_outer;
+
+  int nwg_x = at::ceil_div(n_channels, ch_per_wg);
   int nwg_y = std::min(
       at::ceil_div(reduction, group_size_y * loops_per_item),
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
-  // When per-WG row bytes is not a multiple of 256B (DRAM read granularity),
-  // nwg_x > 1 causes adjacent WGs to share DRAM transactions, leading to
-  // read amplification. Collapse to nwg_x=1 when occupancy permits.
-  int per_wg_channels = group_size_x * vec_size;
-  int per_wg_row_bytes = per_wg_channels * 2; // fp16 Vec kernel
+  nwg_y = std::max(nwg_y, 1);
+
+  // If channels per WG is still not 256B-aligned (e.g. C too small),
+  // collapse to nwg_x=1 to avoid adjacent-WG DRAM transaction sharing.
+  int per_wg_row_bytes = ch_per_wg * bytes_per_elem;
   if (nwg_x > 1 && per_wg_row_bytes % 256 != 0) {
-    // Check whether nwg_x=1 would leave tile occupancy unchanged.
-    // For B580 with WG=1024, tile has at most 2 such WGs, so nwg_x=1
-    // is preferred whenever it does not reduce total WG count.
     int nwg_y_x1 = std::min(
         at::ceil_div(reduction, group_size_y * loops_per_item),
         int(syclMaxWorkItemsPerTile()) / (1 * group_size_x) / (group_size_y));
     nwg_y_x1 = std::max(nwg_y_x1, 1);
     if (nwg_y_x1 >= nwg_y) {
       nwg_x = 1;
+      row_outer = at::ceil_div(n_channels, num_per_wi);
     }
   }
-  // Cap per-WG streaming volume at ~1MB so each WG's working set stays
-  // L2-resident. Large-reduction shapes would otherwise be pinned to a low
-  // nwg_y by the tile cap and stream multi-MB per WG, which inflates L3
-  // partial-write traffic and caps bandwidth. Splitting the reduction into
-  // more cooperative groups keeps each WG's slice L2-friendly. Shapes whose
-  // per-WG read is already under budget (good residency) are left untouched,
-  // and nwg_y stays bounded by the work actually required.
-  const int64_t per_wg_byte_budget = 1 << 20;  // ~1MB
-  const int bytes_per_elem = 2;                // fp16 Vec kernel
+
+  // Cap per-WG streaming volume at ~1MB so each WG.s working set stays
+  // L2-resident.
+  const int64_t per_wg_byte_budget = 1 << 20;
+  const int bytes_per_elem_budget = 2;
   const int64_t bytes_per_row =
-      int64_t(n_channels / nwg_x) * bytes_per_elem;
+      int64_t(n_channels / nwg_x) * bytes_per_elem_budget;
   const int64_t rows_budget =
       std::max<int64_t>(per_wg_byte_budget / bytes_per_row, 1);
-  nwg_y = std::max(nwg_y, 1);  // must be >= 1 before dividing below
+  nwg_y = std::max(nwg_y, 1);
   const int64_t rows_now = at::ceil_div((int64_t)reduction, (int64_t)nwg_y);
   if (rows_now > rows_budget) {
     nwg_y = (int)at::ceil_div((int64_t)reduction, rows_budget);
@@ -76,10 +87,9 @@ std::tuple<int, int, int, int> get_adaptive_config(
   nwg_y = std::min(
       nwg_y, at::ceil_div(reduction, group_size_y * loops_per_item));
   nwg_y = std::max(nwg_y, 1);
-  // dimension is not big enough
-  // nwg_y = nwg_y < 4 ? 1 : nwg_y; // removed: allow small nwg_y for better occupancy
 
-  return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
+  return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x, row_outer);
+}
 }
 
 
@@ -181,59 +191,55 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
 
     int gy = item.get_group(0);
     int gx = item.get_group(1);
-    int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
     int num_cooperative_groups = item.get_group_range(0);
     int inner_loop_stride = item.get_local_range(0) * num_cooperative_groups;
 
+    int c_vec_offset_base = (item.get_global_id(1) * row_outer_) * VEC_SIZE;
 
-    if (c_vec_offset < n_channels_) {
-      int m_offset = item.get_global_id(0);
-      int unroll_stride = inner_loop_stride * K;
+    for (int c_outer = 0; c_outer < row_outer_; ++c_outer) {
+      int c_vec_offset = c_vec_offset_base + c_outer * VEC_SIZE;
 
-      // Pre-compute pointer base and strides to eliminate per-iteration
-      // multiply. Converts addr = (m_offset + k*stride)*n_channels + c_offset
-      // into ptr arithmetic: ptr += stride_bytes each iteration.
-      const vec_t* base_ptr = reinterpret_cast<const vec_t*>(
-          const_cast<scalar_t*>(&input_[m_offset * n_channels_ + c_vec_offset]));
-      // stride between consecutive K loads (in vec_t units)
-      const int k_stride_vec = inner_loop_stride * (n_channels_ / VEC_SIZE);
-      // stride per full unrolled iteration (in vec_t units)
-      const int iter_stride_vec = unroll_stride * (n_channels_ / VEC_SIZE);
+      if (c_vec_offset < n_channels_) {
+        int m_offset = item.get_global_id(0);
+        int unroll_stride = inner_loop_stride * K;
 
-      // main unrolled loop: issue K loads, then consume
-      int m_end = reduction_size_ - (K - 1) * inner_loop_stride;
-      for (; m_offset < m_end;
-           m_offset += unroll_stride, base_ptr += iter_stride_vec) {
-        vec_t xv[K];
+        const vec_t* base_ptr = reinterpret_cast<const vec_t*>(
+            const_cast<scalar_t*>(&input_[m_offset * n_channels_ + c_vec_offset]));
+        const int k_stride_vec = inner_loop_stride * (n_channels_ / VEC_SIZE);
+        const int iter_stride_vec = unroll_stride * (n_channels_ / VEC_SIZE);
+
+        int m_end = reduction_size_ - (K - 1) * inner_loop_stride;
+        for (; m_offset < m_end;
+             m_offset += unroll_stride, base_ptr += iter_stride_vec) {
+          vec_t xv[K];
 #pragma unroll
-        for (int k = 0; k < K; ++k) {
-          xv[k] = *(base_ptr + k * k_stride_vec);
+          for (int k = 0; k < K; ++k) {
+            xv[k] = *(base_ptr + k * k_stride_vec);
+          }
+#pragma unroll
+          for (int k = 0; k < K; ++k) {
+#pragma unroll
+            for (int v = 0; v < VEC_SIZE; ++v) {
+              acc_t x = acc_t(xv[k][v]);
+              count_k[k][v]++;
+              sum_k[k][v] += x;
+              sum_sq_k[k][v] += x * x;
+            }
+          }
         }
-#pragma unroll
-        for (int k = 0; k < K; ++k) {
+        for (; m_offset < reduction_size_;
+             m_offset += inner_loop_stride, base_ptr += k_stride_vec) {
+          auto input_vec = *base_ptr;
 #pragma unroll
           for (int v = 0; v < VEC_SIZE; ++v) {
-            acc_t x = acc_t(xv[k][v]);
-            count_k[k][v]++;
-            sum_k[k][v] += x;
-            sum_sq_k[k][v] += x * x;
+            acc_t x = acc_t(input_vec[v]);
+            count_k[0][v]++;
+            sum_k[0][v] += x;
+            sum_sq_k[0][v] += x * x;
           }
         }
       }
-      // tail: continue with pointer-based addressing
-      for (; m_offset < reduction_size_;
-           m_offset += inner_loop_stride, base_ptr += k_stride_vec) {
-        auto input_vec = *base_ptr;
-#pragma unroll
-        for (int v = 0; v < VEC_SIZE; ++v) {
-          acc_t x = acc_t(input_vec[v]);
-          count_k[0][v]++;
-          sum_k[0][v] += x;
-          sum_sq_k[0][v] += x * x;
-        }
-      }
     }
-
 
     // Convert each K sum-based accumulator to Welford tuple, then combine.
     acc_vec_t mean;
@@ -268,10 +274,10 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
           &staging_data_[n_channels_ * num_cooperative_groups];
       int* staging_count = reinterpret_cast<int*>(
           &staging_m2n[n_channels_ * num_cooperative_groups]);
-      int address_vec_base = c_vec_offset + gy * n_channels_;
+      int address_vec_base = c_vec_offset_base + gy * n_channels_;
 
       // write data to staging_data;
-      if (item.get_local_id(0) == 0 && c_vec_offset < n_channels_) {
+      if (item.get_local_id(0) == 0 && c_vec_offset_base < n_channels_) {
         *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
         *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
         *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;
@@ -299,8 +305,8 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
 
         for (int y = item.get_local_id(0); y < num_cooperative_groups;
              y += item.get_local_range(0)) {
-          if (c_vec_offset < n_channels_) {
-            address_vec_base = y * n_channels_ + c_vec_offset;
+          if (c_vec_offset_base < n_channels_) {
+            address_vec_base = y * n_channels_ + c_vec_offset_base;
             auto mean_new =
                 *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]);
             auto m2n_new = *reinterpret_cast<acc_vec_t*>(
@@ -326,15 +332,15 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
 
     if (item.get_local_id(0) == 0 &&
         (num_cooperative_groups == 1 || is_last_group_done_[0]) &&
-        c_vec_offset < n_channels_) {
+        c_vec_offset_base < n_channels_) {
       acc_vec_t invstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
       }
 
-      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = mean;
-      *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) = invstd_vec;
+      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset_base]) = mean;
+      *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset_base]) = invstd_vec;
     }
   }
 
@@ -372,7 +378,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         acc_t,
         VEC_SIZE>;
     auto max_group_size = syclMaxWorkGroupSize<KernelT>();
-    std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
+    std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_, row_outer_) =
         get_adaptive_config(
             reduction_size_, n_channels_, VEC_SIZE, max_group_size);
   }
@@ -440,6 +446,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   size_t group_size_x_;
   size_t ngroups_y_;
   size_t ngroups_x_;
+  size_t row_outer_;
 
   sycl_local_acc_t<acc_vec_t> shmem_mean_;
   sycl_local_acc_t<acc_vec_t> shmem_m2n_;
