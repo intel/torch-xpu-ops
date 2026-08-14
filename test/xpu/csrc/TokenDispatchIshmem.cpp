@@ -9,11 +9,9 @@
 // host launches and no host barriers inside the dispatch.
 //
 // Routing (precomputed on the host / in Python and passed in):
-//   dst_rank[t]     : destination PE of local token t (0..world_size-1)
-//   order[S]        : local token indices sorted by destination (stable), so
-//                     tokens for dst d are order[send_offsets[d] ..
-//                     send_offsets[d]+send_counts[d]) in original source order.
-//   send_offsets[d] : start index into `order` for destination d
+//   order           : local token indices sorted by destination (stable)
+//   expert_ids[t]   : global expert id of token row t (aligned with `tokens`)
+//   send_offsets[d] : start index in `order` for destination d
 //   send_counts[d]  : number of local tokens destined for d
 //
 // Receive layout (per PE): a symmetric buffer of world_size * capacity token
@@ -32,9 +30,8 @@
 // and a send never waits on a receive, the kernel cannot deadlock.
 //
 // Only ISHMEM APIs are used for communication:
-//   - ishmemx_putmem_nbi_work_group  (work-group-collective RDMA write of one
-//                                     token to the destination slot)
-//   - ishmemx_fence_work_group       (order the data + count before the flag)
+//   - ishmemx_putmem_nbi_qp          (QP-selected RDMA write per token)
+//   - ishmem_fence                   (order count before the flag)
 //   - ishmem_uint64_atomic_set       (leader writes the count / the flag)
 //   - ishmem_uint64_wait_until       (device-side wait on our own pad slot)
 //   - ishmem_malloc / ishmem_free / ishmem_barrier_all (symmetric heap)
@@ -194,19 +191,21 @@ struct TokenDispatchIshmemKernel {
   uint8_t* symm_send;          // [S, token_bytes] seeded local tokens
   uint64_t* pad;               // this call's half: [world_size] uint64
   uint64_t* counts;            // this call's half: [world_size] uint64
-  const int32_t* order;        // [S] local token idx sorted by destination
+  const int32_t* order;        // [S], stable destination-sorted token indices
+  const int32_t* expert_ids;   // [S], global expert id for each token row
   const int32_t* send_offsets; // [world_size]
   const int32_t* send_counts;  // [world_size]
   int64_t token_bytes;
   int64_t capacity;
   int32_t rank;
   int32_t world_size;
+  int32_t experts_per_rank;
   uint64_t tag;
 
   void operator()(sycl::nd_item<1> item) const {
-    auto grp = item.get_group();
     const int32_t d = static_cast<int32_t>(item.get_group(0)); // destination
     const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
     if (d >= world_size) {
       return;
     }
@@ -214,31 +213,38 @@ struct TokenDispatchIshmemKernel {
     const int32_t off = send_offsets[d];
     const int32_t cnt = send_counts[d];
 
-    // SEND: push every local token destined for rank d into PE d's slots.
-    for (int32_t j = 0; j < cnt; ++j) {
+    // SEND: non-contiguous per-token RDMA writes selected by `order`,
+    // parallelized across threads in this work-group.
+    const int64_t dst_slot_base = static_cast<int64_t>(rank) * capacity;
+    for (int32_t j = lid; j < cnt; j += lsize) {
       const int32_t tok = order[off + j];
       const int64_t src_off = static_cast<int64_t>(tok) * token_bytes;
-      const int64_t dst_slot =
-          static_cast<int64_t>(rank) * capacity + static_cast<int64_t>(j);
+      const int64_t dst_slot = dst_slot_base + j;
       const int64_t dst_off = dst_slot * token_bytes;
-      ishmemx_putmem_nbi_work_group(
+      const int32_t expert = expert_ids[tok];
+      const int32_t qp = expert - d * experts_per_rank;
+      ishmem_putmem_nbi(
+          static_cast<void*>(symm_recv + dst_off),
+          static_cast<const void*>(symm_send + src_off),
+          static_cast<size_t>(token_bytes),
+          d);
+      /*
+      ishmemx_putmem_nbi_qp(
           static_cast<void*>(symm_recv + dst_off),
           static_cast<const void*>(symm_send + src_off),
           static_cast<size_t>(token_bytes),
           d,
-          grp);
+          qp);
+      */
     }
 
-    // Fence (not quiet) suffices: the data puts, the count and the flag all
-    // target PE d, and fence orders delivery to a single PE, so a receiver that
-    // observes the flag sees both the data and the matching count. Local
-    // send-buffer reuse is ordered by the in-order SYCL queue.
+    // Ensure all work-group threads have issued their puts before leader
+    // orders count/flag publication.
+    item.barrier(sycl::access::fence_space::local_space);
     if (lid == 0) {
+      ishmem_fence();
       ishmem_uint64_atomic_set(
           counts + rank, static_cast<uint64_t>(cnt), d);
-    }
-    ishmemx_fence_work_group(grp);
-    if (lid == 0) {
       ishmem_uint64_atomic_set(pad + rank, tag, d);
     }
 
@@ -253,13 +259,15 @@ struct TokenDispatchIshmemKernel {
 at::Tensor token_dispatch_ishmem(
     const at::Tensor& tokens,
     const at::Tensor& order,
+  const at::Tensor& expert_ids,
     const at::Tensor& send_offsets,
     const at::Tensor& send_counts,
     at::Tensor recv_buffer,
     at::Tensor recv_counts,
     int64_t capacity,
     int64_t rank,
-    int64_t world_size) {
+  int64_t world_size,
+  int64_t experts_per_rank) {
   TORCH_CHECK(tokens.dim() == 2, "token_dispatch_ishmem: tokens must be 2D");
   TORCH_CHECK(
       tokens.is_contiguous(), "token_dispatch_ishmem: tokens must be contiguous");
@@ -279,13 +287,22 @@ at::Tensor token_dispatch_ishmem(
       order.scalar_type() == at::kInt && send_offsets.scalar_type() == at::kInt &&
           send_counts.scalar_type() == at::kInt,
       "token_dispatch_ishmem: order/send_offsets/send_counts must be int32");
+    TORCH_CHECK(
+      expert_ids.scalar_type() == at::kInt,
+      "token_dispatch_ishmem: expert_ids must be int32");
   TORCH_CHECK(
       order.is_contiguous() && send_offsets.is_contiguous() &&
           send_counts.is_contiguous(),
       "token_dispatch_ishmem: routing tensors must be contiguous");
+    TORCH_CHECK(
+      expert_ids.is_contiguous(),
+      "token_dispatch_ishmem: expert_ids must be contiguous");
   TORCH_CHECK(
       order.numel() == tokens.size(0),
       "token_dispatch_ishmem: order length must equal number of tokens");
+    TORCH_CHECK(
+      expert_ids.numel() == tokens.size(0),
+      "token_dispatch_ishmem: expert_ids length must equal number of tokens");
   TORCH_CHECK(
       send_offsets.numel() == world_size && send_counts.numel() == world_size,
       "token_dispatch_ishmem: send_offsets/send_counts length must equal world_size");
@@ -299,6 +316,9 @@ at::Tensor token_dispatch_ishmem(
   TORCH_CHECK(
       capacity >= tokens.size(0),
       "token_dispatch_ishmem: capacity must be >= number of local tokens");
+    TORCH_CHECK(
+      experts_per_rank > 0,
+      "token_dispatch_ishmem: experts_per_rank must be > 0");
 
   const int64_t S = tokens.size(0);
   const int64_t H = tokens.size(1);
@@ -344,7 +364,8 @@ at::Tensor token_dispatch_ishmem(
         queue);
   }
 
-  // Seed the send region with the local tokens.
+  // Seed the send region with local tokens. Kernel reads by `order` and does
+  // non-contiguous per-token puts.
   sycl::event dep =
       queue.memcpy(symm_send, tokens.data_ptr(), send_bytes);
 
@@ -381,12 +402,14 @@ at::Tensor token_dispatch_ishmem(
             pad_half,
             counts_half,
             order.data_ptr<int32_t>(),
+            expert_ids.data_ptr<int32_t>(),
             send_offsets.data_ptr<int32_t>(),
             send_counts.data_ptr<int32_t>(),
             token_bytes,
             capacity,
             static_cast<int32_t>(rank),
             static_cast<int32_t>(world_size),
+            static_cast<int32_t>(experts_per_rank),
             tag});
   });
   if (time_kernel) {
@@ -453,9 +476,9 @@ void token_dispatch_ishmem_finalize(const at::Tensor&) {
 
 TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
   m.def(
-      "token_dispatch_ishmem(Tensor tokens, Tensor order, Tensor send_offsets, "
+      "token_dispatch_ishmem(Tensor tokens, Tensor order, Tensor expert_ids, Tensor send_offsets, "
       "Tensor send_counts, Tensor(a!) recv_buffer, Tensor(b!) recv_counts, "
-      "int capacity, int rank, int world_size) -> Tensor(a!)");
+      "int capacity, int rank, int world_size, int experts_per_rank) -> Tensor(a!)");
   m.def("token_dispatch_ishmem_finalize(Tensor dummy) -> ()");
 }
 

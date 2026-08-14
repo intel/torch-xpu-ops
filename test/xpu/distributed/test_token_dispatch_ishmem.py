@@ -1,14 +1,15 @@
 """Standalone test/benchmark for the ISHMEM token-dispatch op.
 
-Each rank holds `TOKENS_PER_RANK` local tokens of shape [tokens, hidden]. Every
-token is assigned a random destination rank; the op dispatches each token to its
-destination PE's receive buffer using ISHMEM RDMA puts, with all cross-rank
+Each rank holds `TOKENS_PER_RANK` local tokens of shape [tokens, hidden]. Each
+token is assigned `TOPK` experts. `NUM_EXPERTS` are uniformly sharded across
+`WORLD_SIZE` PEs/devices, and each (token, expert) pair is dispatched to the
+expert-owner PE's receive buffer using ISHMEM RDMA puts, with all cross-rank
 completion signalling done on-device.
 
 Receive layout (per PE): recv_buffer[src * capacity + j] holds the j-th token
 that source `src` sent to this PE, and recv_counts[src] is how many it sent.
-`capacity == TOKENS_PER_RANK` (worst case: a source sends all its tokens to one
-destination).
+`capacity == TOKENS_PER_RANK * TOPK` (worst case: a source sends all
+(token, expert) pairs to one destination).
 
 Run:
     mpirun -np 4 --prepend-rank python test_token_dispatch_ishmem.py
@@ -34,10 +35,12 @@ import torch
 import torch.distributed as dist
 
 TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 8))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 2048))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 7168))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 SEED = int(os.environ.get("SEED", 1234))
+TOPK = int(os.environ.get("TOPK", 8))
+NUM_EXPERTS = int(os.environ.get("NUM_EXPERTS", 256))
 # Enable the PTI-based torch.profiler to capture a chrome trace of the timed
 # loop so the reported BW is computed from pure dispatch-kernel time and thus
 # excludes the host seed/copy-out memcpys the op does around the kernel. Set
@@ -241,15 +244,33 @@ def main():
     rank, world_size, dev = init_distributed()
     device = f"xpu:{dev}"
     dtype = parse_dtype()
-    capacity = TOKENS_PER_RANK
+    if TOPK <= 0:
+        raise ValueError(f"TOPK must be > 0, got TOPK={TOPK}")
+    if NUM_EXPERTS <= 0:
+        raise ValueError(f"NUM_EXPERTS must be > 0, got NUM_EXPERTS={NUM_EXPERTS}")
+    if TOPK > NUM_EXPERTS:
+        raise ValueError(
+            f"TOPK must be <= NUM_EXPERTS, got TOPK={TOPK}, NUM_EXPERTS={NUM_EXPERTS}"
+        )
+    if NUM_EXPERTS % world_size != 0:
+        raise ValueError(
+            f"NUM_EXPERTS must be divisible by WORLD_SIZE for uniform sharding, "
+            f"got NUM_EXPERTS={NUM_EXPERTS}, WORLD_SIZE={world_size}"
+        )
+
+    experts_per_rank = NUM_EXPERTS // world_size
+    capacity = TOKENS_PER_RANK * TOPK
 
     _load("libtoken_dispatch_ishmem.so")
 
     torch.manual_seed(SEED + rank)
-    tokens = torch.randn(TOKENS_PER_RANK, HIDDEN_SIZE, device=device, dtype=dtype)
-    dst_rank = torch.randint(
-        0, world_size, (TOKENS_PER_RANK,), device=device, dtype=torch.int32
-    )
+    base_tokens = torch.randn(TOKENS_PER_RANK, HIDDEN_SIZE, device=device, dtype=dtype)
+    # Sample distinct TOPK experts per token, then map expert id -> owner rank.
+    probs = torch.ones(TOKENS_PER_RANK, NUM_EXPERTS, device=device, dtype=torch.float32)
+    token_topk_experts = torch.multinomial(probs, TOPK, replacement=False)
+    expert_ids = token_topk_experts.reshape(-1).to(torch.int32).contiguous()
+    dst_rank = (token_topk_experts // experts_per_rank).reshape(-1).to(torch.int32)
+    tokens = base_tokens.repeat_interleave(TOPK, dim=0)
     order, send_offsets, send_counts = build_routing(dst_rank, world_size)
 
     recv_buffer = torch.zeros(
@@ -257,10 +278,17 @@ def main():
     )
     recv_counts = torch.zeros(world_size, device=device, dtype=torch.int64)
 
+    if rank == 0:
+        print(
+            f"[config] ws={world_size} num_experts={NUM_EXPERTS} topk={TOPK} "
+            f"experts/rank={experts_per_rank} dispatched_pairs/rank={tokens.size(0)}",
+            flush=True,
+        )
+
     print("start to verify correctness", flush=True)
     torch.ops.symm_mem.token_dispatch_ishmem(
-        tokens, order, send_offsets, send_counts,
-        recv_buffer, recv_counts, capacity, rank, world_size,
+        tokens, order, expert_ids, send_offsets, send_counts,
+        recv_buffer, recv_counts, capacity, rank, world_size, experts_per_rank,
     )
     torch.xpu.synchronize()
 
@@ -298,8 +326,8 @@ def main():
     # ---- performance ----
     def run():
         torch.ops.symm_mem.token_dispatch_ishmem(
-            tokens, order, send_offsets, send_counts,
-            recv_buffer, recv_counts, capacity, rank, world_size,
+            tokens, order, expert_ids, send_offsets, send_counts,
+            recv_buffer, recv_counts, capacity, rank, world_size, experts_per_rank,
         )
 
     run()
@@ -321,10 +349,10 @@ def main():
         lat = timed_loop(run, LOOP, WARMUP, progress_rank=rank, label="dispatch")
 
     avg = sum(lat) / len(lat)
-    # Bytes each PE pushes out per dispatch: every local token is put exactly
-    # once (self-dispatch included as a local put).
+    # Bytes each PE pushes out per dispatch: every (token, expert) pair is put
+    # exactly once (self-dispatch included as a local put).
     elem = tokens.element_size()
-    bytes_per_pe = TOKENS_PER_RANK * HIDDEN_SIZE * elem
+    bytes_per_pe = TOKENS_PER_RANK * TOPK * HIDDEN_SIZE * elem
 
     if ENABLE_PROFILE:
         trace_path = f"./profile_token_dispatch_ishmem_rank{rank}.json"
@@ -345,7 +373,8 @@ def main():
         print("=" * 68)
         print(
             f"[TOKEN dispatch] ws={world_size} tokens/rank={TOKENS_PER_RANK} "
-            f"hidden={HIDDEN_SIZE} dtype={dtype} capacity={capacity}"
+            f"topk={TOPK} experts={NUM_EXPERTS} hidden={HIDDEN_SIZE} "
+            f"dtype={dtype} capacity={capacity}"
         )
         print(
             f"  end2end: avg={avg:.3f} ms  min={min(lat):.3f}  max={max(lat):.3f}  "

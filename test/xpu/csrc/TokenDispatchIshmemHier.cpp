@@ -286,19 +286,20 @@ struct TokenDispatchIshmemHierK1 {
       end = num_cross;
     }
 
-    for (int32_t k = start; k < end; ++k) {
-      const int32_t tok = cross_order[k];
-      const int64_t src_off = static_cast<int64_t>(tok) * token_bytes;
-      const int64_t dst_off = static_cast<int64_t>(k) * token_bytes;
+    const int32_t cnt = end - start;
+    if (cnt > 0) {
+      // Assume token ids in this chunk are contiguous in cross_order so the
+      // payload in symm_send is contiguous and can be sent in one bulk put.
+      const int32_t first_tok = cross_order[start];
+      const int64_t src_off = static_cast<int64_t>(first_tok) * token_bytes;
+      const int64_t dst_off = static_cast<int64_t>(start) * token_bytes;
       ishmemx_putmem_nbi_work_group(
           static_cast<void*>(stage + dst_off),
           static_cast<const void*>(symm_send + src_off),
-          static_cast<size_t>(token_bytes),
+          static_cast<size_t>(cnt) * static_cast<size_t>(token_bytes),
           mirror,
           grp);
-    }
-    const int32_t cnt = end - start;
-    if (cnt > 0) {
+
       ishmemx_putmem_nbi_work_group(
           static_cast<void*>(stage_slot + start),
           static_cast<const void*>(cross_slot + start),
