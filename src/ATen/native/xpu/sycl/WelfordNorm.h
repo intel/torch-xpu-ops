@@ -38,15 +38,59 @@ std::tuple<int, int, int, int> get_adaptive_config(
   int nwg_y = std::min(
       at::ceil_div(reduction, group_size_y * loops_per_item),
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
+  // When per-WG row bytes is not a multiple of 256B (DRAM read granularity),
+  // nwg_x > 1 causes adjacent WGs to share DRAM transactions, leading to
+  // read amplification. Collapse to nwg_x=1 when occupancy permits.
+  int per_wg_channels = group_size_x * vec_size;
+  int per_wg_row_bytes = per_wg_channels * 2; // fp16 Vec kernel
+  if (nwg_x > 1 && per_wg_row_bytes % 256 != 0) {
+    // Check whether nwg_x=1 would leave tile occupancy unchanged.
+    // For B580 with WG=1024, tile has at most 2 such WGs, so nwg_x=1
+    // is preferred whenever it does not reduce total WG count.
+    int nwg_y_x1 = std::min(
+        at::ceil_div(reduction, group_size_y * loops_per_item),
+        int(syclMaxWorkItemsPerTile()) / (1 * group_size_x) / (group_size_y));
+    nwg_y_x1 = std::max(nwg_y_x1, 1);
+    if (nwg_y_x1 >= nwg_y) {
+      nwg_x = 1;
+    }
+  }
+  // Cap per-WG streaming volume at ~1MB so each WG's working set stays
+  // L2-resident. Large-reduction shapes would otherwise be pinned to a low
+  // nwg_y by the tile cap and stream multi-MB per WG, which inflates L3
+  // partial-write traffic and caps bandwidth. Splitting the reduction into
+  // more cooperative groups keeps each WG's slice L2-friendly. Shapes whose
+  // per-WG read is already under budget (good residency) are left untouched,
+  // and nwg_y stays bounded by the work actually required.
+  const int64_t per_wg_byte_budget = 1 << 20;  // ~1MB
+  const int bytes_per_elem = 2;                // fp16 Vec kernel
+  const int64_t bytes_per_row =
+      int64_t(n_channels / nwg_x) * bytes_per_elem;
+  const int64_t rows_budget =
+      std::max<int64_t>(per_wg_byte_budget / bytes_per_row, 1);
+  nwg_y = std::max(nwg_y, 1);  // must be >= 1 before dividing below
+  const int64_t rows_now = at::ceil_div((int64_t)reduction, (int64_t)nwg_y);
+  if (rows_now > rows_budget) {
+    nwg_y = (int)at::ceil_div((int64_t)reduction, rows_budget);
+  }
+  nwg_y = std::min(
+      nwg_y, at::ceil_div(reduction, group_size_y * loops_per_item));
   nwg_y = std::max(nwg_y, 1);
-
-  // it's not worth having reduction between work groups if the reduction
   // dimension is not big enough
-  nwg_y = nwg_y < 4 ? 1 : nwg_y;
+  // nwg_y = nwg_y < 4 ? 1 : nwg_y; // removed: allow small nwg_y for better occupancy
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
 }
 
+
+
+// Hot loop uses sum-based accumulators (sum, sum_sq, count) to avoid the
+// loop-carried divide chain that caused large DistStall on B580. Once per
+// work-item the K sum-based accumulators are converted to Welford tuples
+// (mean, m2n, count) and all downstream reductions (K-merge, in-WG vertical
+// merge, cross-WG merge) use numerically stable Welford combine. This
+// mirrors the pattern used in torch-xpu-ops PR #4132 (fused GroupNorm) and
+// upstream CUDA batch_norm_collect_statistics_channels_last_kernel.
 template <typename T, typename C>
 inline void welford_merge(
     C& count,
