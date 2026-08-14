@@ -18,34 +18,12 @@ namespace cute {
 template <typename T, int Headdim, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
-template <typename T, bool is_causal>
-void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params) {
-  const int headdim = params.head_size_vo;
-
-  if (headdim <= 32) {
-    run_mha_bwd_<T, 32, is_causal>(queue, params);
-  } else if (headdim <= 64) {
-    run_mha_bwd_<T, 64, is_causal>(queue, params);
-  } else if (headdim <= 96) {
-    run_mha_bwd_<T, 96, is_causal>(queue, params);
-  } else if (headdim <= 128) {
-    run_mha_bwd_<T, 128, is_causal>(queue, params);
-  } else if (headdim <= 192) {
-    run_mha_bwd_<T, 192, is_causal>(queue, params);
-  } else if (headdim <= 256) {
-    run_mha_bwd_<T, 256, is_causal>(queue, params);
-  } else {
-    TORCH_CHECK(
-        false,
-        "FlashAttentionBackwardXPU only support headdim up to 256, got ",
-        headdim);
-  }
-}
-
 void run_mha_bwd(sycl::queue& queue, FLASH_BWD_params& params) {
   FP16_SWITCH(params.is_fp16, [&] {
     BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
-      run_mha_bwd_<elem_type, IS_CAUSAL>(queue, params);
+      HEADDIM_SWITCH(params.head_size_vo, [&] {
+        run_mha_bwd_<elem_type, Headdim, IS_CAUSAL>(queue, params);
+      });
     });
   });
 }
@@ -78,8 +56,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     const bool deterministic,
     const at::Tensor philox_seed,
     const at::Tensor philox_offset) {
-  TORCH_CHECK(
-      p_dropout == 0.0, "mha_bwd on xpu does not support dropout > 0.0 yet");
   TORCH_CHECK(
       !alibi_slopes_.has_value(),
       "mha_bwd on xpu does not support alibi slopes yet");
@@ -321,7 +297,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
       tensor_dqaccum,
       tensor_pbuff,
       softmax_scale,
+      p_dropout,
       is_causal);
+
+  params.rng_seed = reinterpret_cast<uint64_t*>(philox_seed.data_ptr());
+  params.rng_offset = reinterpret_cast<uint64_t*>(philox_offset.data_ptr());
 
   if (seqlen_qo > 0) {
     cute::run_mha_bwd(sycl_queue, params);

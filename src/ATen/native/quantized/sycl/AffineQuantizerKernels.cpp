@@ -103,7 +103,7 @@ struct DequantizerTensorPerChannelAffineFunctor {
     return static_cast<float>(value.val_ - zero_point) * scale;
   }
 
-  DequantizerTensorPerChannelAffineFunctor() {}
+  DequantizerTensorPerChannelAffineFunctor() = default;
 };
 
 void dequantize_tensor_per_channel_affine_kernel(
@@ -201,7 +201,7 @@ struct DequantizerTensorPerChannelFloatQparamsFunctor {
         scale;
   }
 
-  DequantizerTensorPerChannelFloatQparamsFunctor() {}
+  DequantizerTensorPerChannelFloatQparamsFunctor() = default;
 };
 
 void dequantize_tensor_per_channel_float_qparams_kernel(

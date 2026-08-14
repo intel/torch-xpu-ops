@@ -8,49 +8,26 @@
 
 # Owner(s): ["module: intel"]
 
-
 import torch
-from torch.testing._internal.common_utils import run_tests, TestCase
+from torch.testing._internal.common_utils import run_tests
+
+try:
+    from xpu_test_utils import XPUImportCtx
+except Exception:
+    from .xpu_test_utils import XPUImportCtx
+
+with XPUImportCtx(False):
+    from test_comparison_utils import TestComparisonUtils
 
 
-class TestComparisonUtils(TestCase):
-    def test_all_equal_no_assert(self):
-        t = torch.tensor([0.5])
-        torch._assert_tensor_metadata(t, [1], [1], torch.float)
+def _test_assert_device(self):
+    t = torch.tensor([0.5], device="cpu")
 
-    def test_all_equal_no_assert_nones(self):
-        t = torch.tensor([0.5])
-        torch._assert_tensor_metadata(t, None, None, None)
+    with self.assertRaises(RuntimeError):
+        torch._assert_tensor_metadata(t, device="xpu")
 
-    def test_assert_dtype(self):
-        t = torch.tensor([0.5])
 
-        with self.assertRaises(RuntimeError):
-            torch._assert_tensor_metadata(t, None, None, torch.int32)
-
-    def test_assert_strides(self):
-        t = torch.tensor([0.5])
-
-        with self.assertRaises(RuntimeError):
-            torch._assert_tensor_metadata(t, None, [3], torch.float)
-
-    def test_assert_sizes(self):
-        t = torch.tensor([0.5])
-
-        with self.assertRaises(RuntimeError):
-            torch._assert_tensor_metadata(t, [3], [1], torch.float)
-
-    def test_assert_device(self):
-        t = torch.tensor([0.5], device="cpu")
-
-        with self.assertRaises(RuntimeError):
-            torch._assert_tensor_metadata(t, device="xpu")
-
-    def test_assert_layout(self):
-        t = torch.tensor([0.5])
-
-        with self.assertRaises(RuntimeError):
-            torch._assert_tensor_metadata(t, layout=torch.sparse_coo)
+TestComparisonUtils.test_assert_device = _test_assert_device
 
 
 if __name__ == "__main__":

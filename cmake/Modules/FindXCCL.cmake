@@ -10,7 +10,7 @@
 # XCCL_FOUND               : True if the system has the XCCL library.
 # XCCL_INCLUDE_DIR         : Include directories needed to use XCCL.
 # XCCL_LIBRARY_DIR         ：The path to the XCCL library.
-# XCCL_LIBRARY             : XCCL library fullname.
+# XCCL_LIBRARY             : XCCL library fullname. (oneCCL v2 C API).
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
@@ -47,22 +47,18 @@ find_file(
   NO_DEFAULT_PATH
 )
 
-# Find XCCL library fullname.
+# Find XCCL v2 C-API library (libccl.so.2.0).
+set(CCL_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".so.2.0")
 find_library(
   XCCL_LIBRARY
-  NAMES libccl.so.1
+  NAMES ccl
   HINTS ${XCCL_LIBRARY_DIR}
   NO_DEFAULT_PATH
 )
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${CCL_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 
-find_file(
-  XCCL_LIBRARY_2_0
-  NAMES libccl.so.2.0
-  HINTS ${XCCL_LIBRARY_DIR}
-  NO_DEFAULT_PATH
-)
-
-if((NOT XCCL_INCLUDE_DIR) OR (NOT XCCL_INCLUDE_ONEAPI_DIR) OR (NOT XCCL_LIBRARY_DIR) OR (NOT XCCL_LIBRARY) OR (NOT XCCL_LIBRARY_2_0))
+if((NOT XCCL_INCLUDE_DIR) OR (NOT XCCL_INCLUDE_ONEAPI_DIR) OR (NOT XCCL_LIBRARY_DIR) OR (NOT XCCL_LIBRARY))
   set(XCCL_FOUND False)
   set(XCCL_NOT_FOUND_MESSAGE "OneCCL library not found!!")
   return()
@@ -78,6 +74,6 @@ SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH}
 find_package_handle_standard_args(
   XCCL
   FOUND_VAR XCCL_FOUND
-  REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY XCCL_LIBRARY_2_0
+  REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY
   REASON_FAILURE_MESSAGE "${XCCL_NOT_FOUND_MESSAGE}"
 )

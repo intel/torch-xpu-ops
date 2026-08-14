@@ -12,6 +12,7 @@
 #include <cassert>
 
 #include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
 
 #include <ATen/native/transformers/xpu/flash_attn/flash_api.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/flash_api.h>
@@ -59,6 +60,31 @@
     }                                     \
   }()
 
+#define HEADDIM_SWITCH(HEADDIM, ...)                        \
+  [&] {                                                     \
+    if (HEADDIM <= 32) {                                    \
+      constexpr static int Headdim = 32;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 64) {                             \
+      constexpr static int Headdim = 64;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 96) {                             \
+      constexpr static int Headdim = 96;                    \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 128) {                            \
+      constexpr static int Headdim = 128;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 192) {                            \
+      constexpr static int Headdim = 192;                   \
+      return __VA_ARGS__();                                 \
+    } else if (HEADDIM <= 256) {                            \
+      constexpr static int Headdim = 256;                   \
+      return __VA_ARGS__();                                 \
+    } else {                                                \
+      TORCH_CHECK(false, "Unsupported headdim: ", HEADDIM); \
+    }                                                       \
+  }()
+
 struct QKV_params {
   using index_t = int64_t;
   // The QKV matrices.
@@ -90,6 +116,9 @@ struct FLASH_FWD_params : public QKV_params {
   // The pointer to the softmax logsumexp.
   void* lse_ptr;
 
+  // The pointer to the P matrix.
+  void* p_ptr;
+
   // The dimensions of the problem.
   int batch_size;
   int num_heads_qo;
@@ -103,6 +132,19 @@ struct FLASH_FWD_params : public QKV_params {
 
   bool is_causal;
   float scale;
+  // The dropout probability (probability of keeping an activation).
+  float p_dropout;
+  uint16_t p_dropout_in_uint16_t;
+  // Scale factor of 1 / (1 - p_dropout).
+  float rp_dropout;
+
+  // Random state.
+  at::PhiloxXpuState philox_args;
+
+  // Pointer to the RNG seed and offset.
+  void* rng_seed;
+  void* rng_offset;
+
   bool is_fp16;
 };
 
@@ -155,7 +197,9 @@ inline void set_params_fprop(
     const at::Tensor& v,
     at::Tensor& out,
     at::Tensor& logsumexp,
+    std::optional<at::Tensor> p,
     float scale,
+    float p_dropout,
     bool is_causal) {
   // Reset the parameters
   params = {};
@@ -168,6 +212,7 @@ inline void set_params_fprop(
   params.v_ptr = v.data_ptr();
   params.o_ptr = out.data_ptr();
   params.lse_ptr = logsumexp.data_ptr();
+  params.p_ptr = p.has_value() ? p->data_ptr() : nullptr;
   // All stride are in elements, not bytes.
   params.q_batch_stride = q.stride(0);
   params.k_batch_stride = k.stride(0);
@@ -196,6 +241,12 @@ inline void set_params_fprop(
   // Other params
   params.is_causal = is_causal;
   params.scale = scale;
+  // Set this to probability of keeping an element to simplify things.
+  TORCH_CHECK(p_dropout >= 0.0f && p_dropout < 1.0f);
+  params.p_dropout = 1.f - p_dropout;
+  params.p_dropout_in_uint16_t =
+      uint16_t(std::floor(params.p_dropout * 65535.0));
+  params.rp_dropout = 1.f / params.p_dropout;
 }
 
 inline void set_params_dgrad(
@@ -226,6 +277,7 @@ inline void set_params_dgrad(
     at::Tensor& tensor_pbuff,
     // other params
     float scale,
+    float p_dropout,
     bool is_causal) {
   params = {};
   set_params_fprop(
@@ -244,7 +296,9 @@ inline void set_params_dgrad(
       v,
       const_cast<at::Tensor&>(out),
       const_cast<at::Tensor&>(logsumexp),
+      std::nullopt, // p is not needed for backward
       scale,
+      p_dropout,
       is_causal);
 
   params.do_ptr = grad_out.data_ptr();
@@ -273,6 +327,9 @@ inline void set_params_dgrad(
 // Backward kernel padding constants.
 constexpr int kBwdMPad = 128;
 constexpr int kBwdNPad = 128;
+
+// same as subgroup size used in the kernel, which is 16 for Xe.
+constexpr int kSubgroupSize = 16;
 
 // block 2D restrictions:
 //

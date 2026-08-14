@@ -71,10 +71,10 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
           if constexpr (norm_type == NormType::LInf) {
             vals[ii] = max_impl(vals[ii], sycl::fabs((opmath_t)next));
+          } else if constexpr (norm_type == NormType::L1) {
+            vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
           } else {
-            vals[ii] += norm_type == NormType::L1
-                ? static_cast<opmath_t>(sycl::fabs((opmath_t)next))
-                : static_cast<opmath_t>(next * next);
+            vals[ii] += static_cast<opmath_t>(next * next);
           }
         }
       }
@@ -89,10 +89,10 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             if constexpr (norm_type == NormType::LInf) {
               vals[ii] =
                   max_impl(vals[ii], sycl::fabs(sycl::fabs((opmath_t)next)));
+            } else if constexpr (norm_type == NormType::L1) {
+              vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
             } else {
-              vals[ii] += norm_type == NormType::L1
-                  ? static_cast<opmath_t>(sycl::fabs((opmath_t)next))
-                  : static_cast<opmath_t>(next * next);
+              vals[ii] += static_cast<opmath_t>(next * next);
             }
           }
         }
@@ -108,9 +108,14 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
-        ? GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_)
-        : GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    opmath_t sum_val;
+    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
+      sum_val =
+          GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    } else {
+      sum_val =
+          GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    }
 
     if (item_idx == 0) {
       output_per_tensor[tensor_loc * max_chunks_per_tensor + chunk_idx] =
@@ -148,9 +153,14 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         val += output_this_tensor[i];
       }
     }
-    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
-        ? GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_)
-        : GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    opmath_t sum_val;
+    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
+      sum_val =
+          GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    } else {
+      sum_val =
+          GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
+    }
     if (lid == 0) {
       // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
       // raw sum of squares. L1 and LInf never apply a root.
@@ -709,7 +719,8 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
       max_chunks_per_tensor = max_chunks_this_tensor;
     }
   }
-  auto output_per_tensor = at::zeros(
+  // Cleanup reads only chunks_per_tensor[t] slots, never the padding.
+  auto output_per_tensor = at::empty(
       {static_cast<int64_t>(ntensors) * max_chunks_per_tensor}, options);
 
   std::vector<at::Tensor> vec_res;
