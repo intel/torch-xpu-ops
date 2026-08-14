@@ -2093,25 +2093,37 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
     # also checks to see that GPU values are present in trace if cuda is used
     def _validate_basic_json(self, traceEvents, device_type="cpu"):
         MAX_GPU_COUNT = 8
-        PROFILER_IDX = -7 if TEST_XPU else -4
-        RECORD_END = -1
-        RECORD_START = -5 if TEST_XPU else -2
-        traceEventProfiler = traceEvents[PROFILER_IDX]
 
-        self.assertTrue(traceEventProfiler["name"] == "PyTorch Profiler (0)")
-        self.assertTrue(traceEvents[RECORD_END]["name"] == "Record Window End")
-        self.assertTrue(
-            traceEvents[RECORD_START]["name"] == "Iteration Start: PyTorch Profiler"
+        def _find_event(name):
+            for event in traceEvents:
+                if event.get("name") == name:
+                    return event
+            return None
+
+        # Locate the profiler bracket events by name rather than by fixed index:
+        # the count of trailing trace events varies by device/runtime, so the
+        # previous hardcoded negative offsets were fragile (issue #4902).
+        traceEventProfiler = _find_event("PyTorch Profiler (0)")
+        recordStart = _find_event("Iteration Start: PyTorch Profiler")
+        recordEnd = _find_event("Record Window End")
+
+        self.assertIsNotNone(
+            traceEventProfiler, "missing 'PyTorch Profiler (0)' trace event"
         )
+        self.assertIsNotNone(
+            recordStart, "missing 'Iteration Start: PyTorch Profiler' trace event"
+        )
+        self.assertIsNotNone(recordEnd, "missing 'Record Window End' trace event")
+
         # check that the profiler starts/ends within the record interval
         self.assertGreaterEqual(
             traceEventProfiler["ts"],
-            traceEvents[RECORD_START]["ts"],
+            recordStart["ts"],
             "Profiler starts before record!",
         )
 
         # Compare to nextafter value to avoid errors due to floating point precision
-        RECORDS_END_TS = math.nextafter(traceEvents[RECORD_END]["ts"], math.inf)
+        RECORDS_END_TS = math.nextafter(recordEnd["ts"], math.inf)
 
         self.assertLessEqual(
             traceEventProfiler["ts"] + traceEventProfiler["dur"],
@@ -2121,10 +2133,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
 
         gpu_dict = collections.defaultdict(int)
         for i, traceEvent in enumerate(traceEvents):
-            if (
-                i == len(traceEvents) + RECORD_END
-                or i == len(traceEvents) + RECORD_START
-            ):
+            if traceEvent is recordStart or traceEvent is recordEnd:
                 continue
             # make sure all valid trace events are within the bounds of the profiler
             if "ts" in traceEvent:
