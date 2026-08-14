@@ -102,7 +102,8 @@ void erfc_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfinvFunctor {
   scalar_t operator()(scalar_t in) const {
-    return calc_erfinv(in);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_erfinv(static_cast<opmath_t>(in));
   }
 };
 
