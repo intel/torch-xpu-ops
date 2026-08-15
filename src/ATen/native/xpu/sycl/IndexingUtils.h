@@ -15,25 +15,27 @@
 #include <ATen/native/IndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/ops/_assert_async.h>
-#include <ATen/ops/aminmax.h>
-
+#include <ATen/ops/max.h>
+#include <ATen/ops/min.h>
 namespace at::native::xpu {
 
-static Tensor wrapIndexOnce(
+  static Tensor wrapIndexOnce(
     const Tensor& index,
     [[maybe_unused]] int64_t dim,
     int64_t dim_size,
     bool check_range = true) {
-  // we don't need to check range in backward - if there were out of bounds
-  // indices forward should already have errored out
+  // We don't need to check range in backward. If there were out-of-bounds
+  // indices, forward should already have errored.
   if (index.numel() != 0 && check_range) {
-    auto [index_min, index_max] = at::aminmax(index);
+    auto index_min = at::min(index);
+    auto index_max = at::max(index);
+
     at::_assert_async(index_max < dim_size);
     at::_assert_async(index_min >= -dim_size);
   }
+
   return index.remainder(dim_size);
 }
-
 static std::vector<int64_t> computeLinearStride(const Tensor& tensor) {
   // computes the stride as if tensor were contiguous
   auto sizes = tensor.sizes();
@@ -106,27 +108,32 @@ static std::tuple<
     int64_t>
 makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
   checkIndexTensorTypes(orig, /*allow_int*/ true);
-  // first expand BoolTensor (masks) or ByteTensor (masks) into 1 or more
-  // LongTensors
+
+  // First expand BoolTensor or ByteTensor masks into one or more LongTensors.
   auto indices = expandTensors(self, orig);
+
   for (auto& i : indices) {
     if (i.defined() && i.dtype() == at::kInt) {
       i = i.to(at::kLong);
     }
   }
-  // next broadcast all index tensors together
+
+  // Broadcast all index tensors together.
   indices = expand_outplace(indices);
-  // add missing null Tensors so that it matches self.dim()
-  while (indices.size() < (size_t)self.dim()) {
+
+  // Add missing null tensors so that the list matches self.dim().
+  while (indices.size() < static_cast<size_t>(self.dim())) {
     indices.emplace_back();
   }
-  // if the non-null indices are not all adjacent, transpose self and indices
-  // together so that they're adjacent at the front
+
+  // If the non-null indices are not adjacent, transpose self and indices
+  // together so that they are adjacent at the front.
   std::vector<int64_t> inversePerm;
   if (!hasContiguousSubspace(indices)) {
     std::tie(self, indices, inversePerm) =
         transposeToFrontAndInvPerm(self, indices);
   }
+
   auto
       [linearIndex,
        nElemBefore,
@@ -134,6 +141,7 @@ makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
        nElemAfter,
        dims_before,
        dims_indexed] = computeLinearIndex(self, indices, check_range);
+
   return std::make_tuple(
       std::move(linearIndex),
       std::move(self),
@@ -144,5 +152,4 @@ makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
       dims_before,
       dims_indexed);
 }
-
 } // namespace at::native::xpu

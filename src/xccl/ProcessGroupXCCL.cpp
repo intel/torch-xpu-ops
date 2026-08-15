@@ -1701,43 +1701,86 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single(
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::all_gather_single_coalesced(
-    std::vector<at::Tensor>& outputs,
-    std::vector<at::Tensor>& inputs,
-    const AllgatherOptions& opts) {
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      std::make_tuple(
-          static_cast<int64_t>(seqCollective_) + 1,
-          false), // seq + 1 to match collective and assume only one collective
-                  // in coalesed range
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      inputs, // inputTensors
-      outputs, // outputTensors
-      rank_, // rank
-      "allgather_into_tensor_coalesced", // collective name
-      getTensorsNumel(inputs), // inNelems
-      getTensorsNumel(outputs), // outNelems
-      inputs[0].scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      globalRankStart_, // globalRankStart_
-      globalRankStride_, // globalRankStride_
-      this->getSize(), // worldSize
-      opts.asyncOp, // async_op
-      "N/A"); // reductionOp
+  std::vector<at::Tensor>& outputs,
+  std::vector<at::Tensor>& inputs,
+  const AllgatherOptions& opts) {
+TORCH_CHECK(
+    !inputs.empty(),
+    "all_gather_single_coalesced expects at least one input tensor");
 
-  return collectiveCoalesced(
-      inputs,
-      outputs,
-      [&](at::Tensor& input,
-          at::Tensor& output,
-          onecclComm_t& comm,
-          at::xpu::XPUStream& stream) {
-        xccl::onecclAllGather(input, output, comm, stream);
-        return;
-      },
-      OpType::COALESCED,
-      opts.asyncOp,
-      "xccl:all_gather_into_tensor_coalesced");
+TORCH_CHECK(
+    inputs.size() == outputs.size(),
+    "all_gather_single_coalesced expects the same number of inputs "
+    "and outputs, but got ",
+    inputs.size(),
+    " inputs and ",
+    outputs.size(),
+    " outputs");
+
+const auto capture_status =
+    c10::xpu::currentStreamCaptureStatusMayInitCtx();
+
+// CaptureStatus::Executing represents ordinary execution.
+// Other statuses indicate graph capture.
+const bool is_capturing =
+    capture_status != c10::xpu::CaptureStatus::Executing;
+
+if (is_capturing) {
+  // collectiveCoalesced eventually calls onecclGroupEnd(), which currently
+  // waits on an event associated with the XPUGraph command graph.
+  // The underlying non-coalesced all-gather operation is graph-capturable,
+  // so bypass the coalesced path during capture.
+  TORCH_CHECK(
+      inputs.size() == 1,
+      "XPUGraph capture currently supports "
+      "all_gather_single_coalesced only when it contains one tensor, "
+      "but got ",
+      inputs.size(),
+      " tensors");
+
+  return all_gather_single(
+      outputs.front(),
+      inputs.front(),
+      opts);
+}
+
+RECORD_PARAM_COMMS_DATA_WITH_LOG(
+    std::make_tuple(
+        static_cast<int64_t>(seqCollective_) + 1,
+        false), // seq + 1 to match collective and assume only one collective
+                // in coalesced range
+    std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+    inputs, // inputTensors
+    outputs, // outputTensors
+    rank_, // rank
+    "allgather_into_tensor_coalesced", // collective name
+    getTensorsNumel(inputs), // inNelems
+    getTensorsNumel(outputs), // outNelems
+    inputs[0].scalar_type(), // dType
+    std::vector<int64_t>(), // inSplitSizes
+    std::vector<int64_t>(), // outSplitSizes
+    globalRankStart_, // globalRankStart_
+    globalRankStride_, // globalRankStride_
+    this->getSize(), // worldSize
+    opts.asyncOp, // async_op
+    "N/A"); // reductionOp
+
+return collectiveCoalesced(
+    inputs,
+    outputs,
+    [&](at::Tensor& input,
+        at::Tensor& output,
+        onecclComm_t& comm,
+        at::xpu::XPUStream& stream) {
+      xccl::onecclAllGather(
+          input,
+          output,
+          comm,
+          stream);
+    },
+    OpType::COALESCED,
+    opts.asyncOp,
+    "xccl:all_gather_into_tensor_coalesced");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
@@ -1869,44 +1912,88 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single(
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_single_coalesced(
-    std::vector<at::Tensor>& outputs,
-    std::vector<at::Tensor>& inputs,
-    const ReduceScatterOptions& opts) {
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      std::make_tuple(
-          static_cast<int64_t>(seqCollective_) + 1,
-          false), // seq + 1 to match collective and assume only one collective
-                  // in coalesced range
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      inputs, // inputTensors
-      outputs, // outputTensors
-      rank_, // rank
-      "reduce_scatter_tensor_coalesced", // collective name
-      getTensorsNumel(inputs), // inNelems
-      getTensorsNumel(outputs), // outNelems
-      inputs[0].scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      globalRankStart_, // globalRankStart_
-      globalRankStride_, // globalRankStride_
-      this->getSize(), // worldSize
-      opts.asyncOp, // async_op
-      reduceOpToString(opts.reduceOp)); // reductionOp
+  std::vector<at::Tensor>& outputs,
+  std::vector<at::Tensor>& inputs,
+  const ReduceScatterOptions& opts) {
+TORCH_CHECK(
+    !inputs.empty(),
+    "reduce_scatter_single_coalesced expects at least one input tensor");
 
-  return collectiveCoalesced(
-      inputs,
-      outputs,
-      [&](at::Tensor& input,
-          at::Tensor& output,
-          onecclComm_t& comm,
-          at::xpu::XPUStream& stream) {
-        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
-        xccl::onecclReduceScatter(input, output, comm, actualReduceOp, stream);
-        return;
-      },
-      OpType::COALESCED,
-      opts.asyncOp,
-      "xccl:reduce_scatter_tensor_coalesced");
+TORCH_CHECK(
+    inputs.size() == outputs.size(),
+    "reduce_scatter_single_coalesced expects the same number of inputs "
+    "and outputs, but got ",
+    inputs.size(),
+    " inputs and ",
+    outputs.size(),
+    " outputs");
+
+const auto capture_status =
+    c10::xpu::currentStreamCaptureStatusMayInitCtx();
+
+// CaptureStatus::Executing means ordinary eager execution.
+// Any other status means the stream is participating in graph capture.
+const bool is_capturing =
+    capture_status != c10::xpu::CaptureStatus::Executing;
+
+if (is_capturing) {
+  // onecclGroupEnd() currently waits on the grouped collective event.
+  // That wait is invalid when the event belongs to an XPUGraph command
+  // graph. The ordinary single-tensor reduce-scatter path is already
+  // XPUGraph-capturable, so bypass coalescing during capture.
+  TORCH_CHECK(
+      inputs.size() == 1,
+      "XPUGraph capture currently supports "
+      "reduce_scatter_single_coalesced only when it contains one tensor, "
+      "but got ",
+      inputs.size(),
+      " tensors");
+
+  return reduce_scatter_single(
+      outputs.front(),
+      inputs.front(),
+      opts);
+}
+
+RECORD_PARAM_COMMS_DATA_WITH_LOG(
+    std::make_tuple(
+        static_cast<int64_t>(seqCollective_) + 1,
+        false), // seq + 1 to match collective and assume only one collective
+                // in coalesced range
+    std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+    inputs, // inputTensors
+    outputs, // outputTensors
+    rank_, // rank
+    "reduce_scatter_tensor_coalesced", // collective name
+    getTensorsNumel(inputs), // inNelems
+    getTensorsNumel(outputs), // outNelems
+    inputs[0].scalar_type(), // dType
+    std::vector<int64_t>(), // inSplitSizes
+    std::vector<int64_t>(), // outSplitSizes
+    globalRankStart_, // globalRankStart_
+    globalRankStride_, // globalRankStride_
+    this->getSize(), // worldSize
+    opts.asyncOp, // async_op
+    reduceOpToString(opts.reduceOp)); // reductionOp
+
+return collectiveCoalesced(
+    inputs,
+    outputs,
+    [&](at::Tensor& input,
+        at::Tensor& output,
+        onecclComm_t& comm,
+        at::xpu::XPUStream& stream) {
+      auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
+      xccl::onecclReduceScatter(
+          input,
+          output,
+          comm,
+          actualReduceOp,
+          stream);
+    },
+    OpType::COALESCED,
+    opts.asyncOp,
+    "xccl:reduce_scatter_tensor_coalesced");
 }
 
 c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
