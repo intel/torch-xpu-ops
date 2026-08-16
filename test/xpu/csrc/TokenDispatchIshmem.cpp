@@ -185,6 +185,34 @@ uint64_t* ensure_u64_array(
   return ptr;
 }
 
+// Self-PE scatter kernel: copies local-destination tokens into symm_recv.
+// Runs in PARALLEL with the dispatch kernel (writes disjoint recv slots).
+struct SelfScatterKernel {
+  uint8_t* symm_recv;
+  const uint8_t* symm_send;
+  const int32_t* order;
+  const int32_t* send_offsets;
+  const int32_t* send_counts;
+  int64_t token_bytes;
+  int64_t capacity;
+  int32_t rank;
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int32_t lid = static_cast<int32_t>(item.get_local_id(0));
+    const int32_t lsize = static_cast<int32_t>(item.get_local_range(0));
+    const int32_t off = send_offsets[rank];
+    const int32_t cnt = send_counts[rank];
+    const int64_t dst_slot_base = static_cast<int64_t>(rank) * capacity;
+    for (int32_t j = lid; j < cnt; j += lsize) {
+      const int32_t tok = order[off + j];
+      const int64_t src_off = static_cast<int64_t>(tok) * token_bytes;
+      const int64_t dst_off = (dst_slot_base + j) * token_bytes;
+      __builtin_memcpy(symm_recv + dst_off, symm_send + src_off,
+                       static_cast<size_t>(token_bytes));
+    }
+  }
+};
+
 // Single-kernel ISHMEM token dispatch. One work-group per destination rank.
 struct TokenDispatchIshmemKernel {
   uint8_t* symm_recv;          // [world_size * capacity, token_bytes]
@@ -200,6 +228,7 @@ struct TokenDispatchIshmemKernel {
   int32_t rank;
   int32_t world_size;
   int32_t experts_per_rank;
+  int32_t num_qps;
   uint64_t tag;
 
   void operator()(sycl::nd_item<1> item) const {
@@ -213,6 +242,17 @@ struct TokenDispatchIshmemKernel {
     const int32_t off = send_offsets[d];
     const int32_t cnt = send_counts[d];
 
+    // Self-PE: data copy handled by SelfScatterKernel in parallel.
+    // Just publish count/signal immediately so our own wait_until succeeds.
+    if (d == rank) {
+      if (lid == 0) {
+        counts[rank] = static_cast<uint64_t>(cnt);
+        sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
+        pad[rank] = tag;
+      }
+      return;
+    }
+
     // SEND: non-contiguous per-token RDMA writes selected by `order`,
     // parallelized across threads in this work-group.
     const int64_t dst_slot_base = static_cast<int64_t>(rank) * capacity;
@@ -221,21 +261,12 @@ struct TokenDispatchIshmemKernel {
       const int64_t src_off = static_cast<int64_t>(tok) * token_bytes;
       const int64_t dst_slot = dst_slot_base + j;
       const int64_t dst_off = dst_slot * token_bytes;
-      const int32_t expert = expert_ids[tok];
-      const int32_t qp = expert - d * experts_per_rank;
-      ishmem_putmem_nbi(
-          static_cast<void*>(symm_recv + dst_off),
-          static_cast<const void*>(symm_send + src_off),
-          static_cast<size_t>(token_bytes),
-          d);
-      /*
       ishmemx_putmem_nbi_qp(
           static_cast<void*>(symm_recv + dst_off),
           static_cast<const void*>(symm_send + src_off),
           static_cast<size_t>(token_bytes),
           d,
-          qp);
-      */
+          static_cast<unsigned int>(lid & (num_qps - 1)));
     }
 
     // Ensure all work-group threads have issued their puts before leader
@@ -381,15 +412,34 @@ at::Tensor token_dispatch_ishmem(
   uint64_t* pad_half = pad + half;
   uint64_t* counts_half = counts + half;
 
+  // QPS_PER_PE from env (must be power of 2 for bitmask selection in library)
+  const char* qps_env = std::getenv("ISHMEM_IBGDA_QPS_PER_PE");
+  const int32_t num_qps = qps_env ? std::max(1, std::atoi(qps_env)) : 2;
+
   constexpr int64_t threads = 256;
   const bool time_kernel = kernel_timing_enabled();
   std::chrono::high_resolution_clock::time_point t0;
   if (time_kernel) {
-    // Drain everything queued so far (memcpy seed) so the timer below only
-    // covers the dispatch kernel itself.
     queue.wait();
     t0 = std::chrono::high_resolution_clock::now();
   }
+
+  // Self-PE scatter runs in parallel with RDMA dispatch (disjoint recv slots).
+  auto self_event = queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on(dep);
+    cgh.parallel_for(
+        sycl::nd_range<1>(sycl::range<1>(threads), sycl::range<1>(threads)),
+        SelfScatterKernel{
+            symm_recv,
+            symm_send,
+            order.data_ptr<int32_t>(),
+            send_offsets.data_ptr<int32_t>(),
+            send_counts.data_ptr<int32_t>(),
+            token_bytes,
+            capacity,
+            static_cast<int32_t>(rank)});
+  });
+
   auto dispatch_event = queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(dep);
     cgh.parallel_for(
@@ -410,6 +460,7 @@ at::Tensor token_dispatch_ishmem(
             static_cast<int32_t>(rank),
             static_cast<int32_t>(world_size),
             static_cast<int32_t>(experts_per_rank),
+            num_qps,
             tag});
   });
   if (time_kernel) {
@@ -421,11 +472,16 @@ at::Tensor token_dispatch_ishmem(
                << " elapsed=" << us << " us" << std::endl;
   }
 
-  queue.memcpy(recv_buffer.data_ptr(), symm_recv, recv_bytes);
-  queue.memcpy(
-      recv_counts.data_ptr(),
-      counts_half,
-      static_cast<size_t>(world_size) * sizeof(uint64_t));
+  // Wait for both dispatch and self-scatter before copying out.
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on({dispatch_event, self_event});
+    cgh.memcpy(recv_buffer.data_ptr(), symm_recv, recv_bytes);
+  });
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on(dispatch_event);
+    cgh.memcpy(recv_counts.data_ptr(), counts_half,
+               static_cast<size_t>(world_size) * sizeof(uint64_t));
+  });
 
   return recv_buffer;
 }

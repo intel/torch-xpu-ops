@@ -273,6 +273,13 @@ def main():
     tokens = base_tokens.repeat_interleave(TOPK, dim=0)
     order, send_offsets, send_counts = build_routing(dst_rank, world_size)
 
+    # Per-destination dispatch counts: send_counts[d] tokens go to device d.
+    print(
+        f"[rank {rank}] send_counts (tokens dispatched per dst device)="
+        f"{send_counts.tolist()} total={int(send_counts.sum().item())}",
+        flush=True,
+    )
+
     recv_buffer = torch.zeros(
         world_size * capacity, HIDDEN_SIZE, device=device, dtype=dtype
     )

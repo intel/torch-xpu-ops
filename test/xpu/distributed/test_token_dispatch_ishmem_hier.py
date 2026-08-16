@@ -36,8 +36,8 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(2 * 1024 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 2048))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 4096))
+TOKENS_PER_RANK = int(os.environ.get("TOKENS_PER_RANK", 4096))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 7168))
 LOOP = int(os.environ.get("LOOP", 40))
 WARMUP = int(os.environ.get("WARMUP", 20))
 SEED = int(os.environ.get("SEED", 1234))
@@ -189,7 +189,7 @@ def _extract_profiled_dispatch_latencies(trace_path, expected_iters):
 
 
 def _summarize_profiled_kernel(
-    rank, world_size, trace_path_fmt, expected_iters, bytes_per_pe=None
+    rank, world_size, trace_path_fmt, expected_iters, bytes_per_rank=None
 ):
     # All ranks write their trace to the same directory, so rank 0 reads every
     # rank's json straight off disk.
@@ -206,9 +206,17 @@ def _summarize_profiled_kernel(
 
     for r, rank_latencies in enumerate(gathered):
         rank_avg = sum(rank_latencies) / len(rank_latencies)
+        rank_bw = None
+        if bytes_per_rank is not None:
+            rank_bw = bytes_per_rank[r] / 1e6 / rank_avg
         print(
             f"[dispatch_hier kernel] rank={r} avg={rank_avg:.3f} ms "
-            f"min={min(rank_latencies):.3f} ms max={max(rank_latencies):.3f} ms",
+            f"min={min(rank_latencies):.3f} ms max={max(rank_latencies):.3f} ms"
+            + (
+                f" BW={rank_bw:.2f} GB/s/PE (real cross bytes)"
+                if rank_bw is not None
+                else ""
+            ),
             flush=True,
         )
 
@@ -229,13 +237,14 @@ def _summarize_profiled_kernel(
         f"min={min(per_iter_max):.3f} ms max={max(per_iter_max):.3f} ms",
         flush=True,
     )
-    if bytes_per_pe is not None:
-        kernel_bw = bytes_per_pe / 1e6 / kernel_avg
-        kernel_bw_min = bytes_per_pe / 1e6 / max(per_iter_max)
-        kernel_bw_max = bytes_per_pe / 1e6 / min(per_iter_max)
+    if bytes_per_rank is not None:
+        rank_bws = [
+            bytes_per_rank[r] / 1e6 / (sum(gathered[r]) / len(gathered[r]))
+            for r in range(world_size)
+        ]
         print(
-            f"[dispatch_hier kernel] BW avg={kernel_bw:.2f} GB/s/PE "
-            f"min={kernel_bw_min:.2f} GB/s/PE max={kernel_bw_max:.2f} GB/s/PE",
+            f"[dispatch_hier kernel] BW per-rank GB/s "
+            f"{[round(v, 2) for v in rank_bws]} (real cross bytes)",
             flush=True,
         )
 
@@ -390,9 +399,19 @@ def main():
     with prof:
         lat = timed_loop(run, LOOP, WARMUP, progress_rank=rank, label="dispatch_hier")
 
-    avg = sum(lat) / len(lat)
     elem = tokens.element_size()
-    bytes_per_pe = TOKENS_PER_RANK * HIDDEN_SIZE * elem
+    cross_tokens_local = int(cross_order.numel())
+    cross_tokens_t = torch.tensor([cross_tokens_local], dtype=torch.int64, device=device)
+    gathered_cross_tokens = [torch.empty_like(cross_tokens_t) for _ in range(world_size)]
+    dist.all_gather(gathered_cross_tokens, cross_tokens_t)
+    bytes_per_rank = [
+        int(t.item()) * HIDDEN_SIZE * elem for t in gathered_cross_tokens
+    ]
+    avg = sum(lat) / len(lat)
+    avg_t = torch.tensor([avg], dtype=torch.float64, device=device)
+    gathered_avg = [torch.empty_like(avg_t) for _ in range(world_size)]
+    dist.all_gather(gathered_avg, avg_t)
+    avg_per_rank = [float(t.item()) for t in gathered_avg]
 
     if ENABLE_PROFILE:
         trace_path = f"./profile_token_dispatch_ishmem_hier_rank{rank}.json"
@@ -405,11 +424,14 @@ def main():
             world_size,
             "./profile_token_dispatch_ishmem_hier_rank{rank}.json",
             len(lat),
-            bytes_per_pe=bytes_per_pe,
+            bytes_per_rank=bytes_per_rank,
         )
 
     if rank == 0:
-        bw = bytes_per_pe / 1e6 / avg
+        rank_bws = [
+            bytes_per_rank[r] / 1e6 / avg_per_rank[r]
+            for r in range(world_size)
+        ]
         print("=" * 68)
         print(
             f"[TOKEN dispatch HIER] ws={world_size} pcie_domain={pcie_domain} "
@@ -418,7 +440,11 @@ def main():
         )
         print(
             f"  end2end: avg={avg:.3f} ms  min={min(lat):.3f}  max={max(lat):.3f}  "
-            f"BW={bw:.2f} GB/s/PE (sent, incl. host copies)"
+            f"BW(rank0)={rank_bws[0]:.2f} GB/s/PE (real cross bytes, incl. host copies)"
+        )
+        print(
+            f"  end2end BW per-rank GB/s {[round(v, 2) for v in rank_bws]} "
+            f"(real cross bytes, each rank uses its own avg latency)"
         )
         print("=" * 68)
 
