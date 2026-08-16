@@ -188,7 +188,7 @@ runs:
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           uv pip install -r .ci/docker/requirements-ci.txt
-          uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
+          uv pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures pytest-forked
         fi
         # install the corresponding torchao
         uv pip uninstall torchao
@@ -222,7 +222,9 @@ runs:
         fi
     - name: Detect devices
       shell: bash -euo pipefail {0}
-      run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2'
+      env:
+        FORK_OPT: ${{ inputs.category == 'dpclang' && ' --forked' || '' }}
+      run: ${{ github.workspace }}/.github/scripts/detect-devices.sh --pytest-others-args '-v -rfEsxw --only-rerun crashed.*while.*running --reruns 2 ${FORK_OPT}'
     - name: Torch Config
       shell: bash -xe {0}
       run: |
