@@ -12,13 +12,14 @@ fetch_static() {
 
 fetch_open() {
   local category="${1:-}"
-  local labels="label:skipped OR label:skipped_bmg"
+  # GitHub issue search OR's labels via a comma-separated list, not the word OR.
+  local labels="skipped,skipped_bmg"
   if [[ "${category}" == "dpclang" ]]; then
-    labels="${labels} OR label:skipped_dpclang"
+    labels="${labels},skipped_dpclang"
   fi
 
   gh api --method GET --paginate search/issues \
-    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open (${labels})" \
+    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open label:${labels}" \
     --jq '.items[] | "Issue #\(.number): \(.title)\n\(.body)\n"'
 }
 

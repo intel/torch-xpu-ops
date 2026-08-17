@@ -180,6 +180,8 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
+          # Check every ut in the list; do not stop at the first failure.
+          check_ret=0
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
@@ -189,8 +191,9 @@ jobs:
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
             sed -i 's/[[:space:]]*$//g' Known_issue.log
-            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
+            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}" || check_ret=1
           done
+          exit $check_ret
       - name: Collect new failures with error messages
         if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
         id: new-failures
