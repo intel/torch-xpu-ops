@@ -23,8 +23,8 @@ since the fix lives in local code.
   operations run against `target_repo_dir`. The rebuild (Step 2) still
   runs from `pytorch_dir` because `pip install -e .` builds pytorch
   and pulls its submodule pin.
-- `changed_files` — list of changed files; if any are `.cpp`/`.h`/`.sycl`,
-  a rebuild is required before running.
+- `changed_files` — list of changed files; if any are C++/SYCL
+  (`.cpp`, `.h`, `.cu`, `.sycl`), a rebuild is required before running.
 - `run_before_after_diff` (bool, default `false`) — if `true`, runs the test
   before and after the fix to produce a comparison table. Set to `true` by
   `nightly-ci-fix`.

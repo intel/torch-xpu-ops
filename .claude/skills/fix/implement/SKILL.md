@@ -1,9 +1,10 @@
 ---
 name: fix/implement
 description: >
-  Implement a fix for a triaged failure. Takes triage output and produces a
-  verified code change. Used by both issue-handler and nightly-ci-fix
-  orchestrators via the allow_skip parameter.
+  Implement a fix for a root-caused failure. Takes fix/root-cause output and
+  produces a staged (uncommitted) code change — running tests is fix/verify's
+  job and committing is the orchestrator's. Used by both issue-handler
+  (allow_skip=false) and nightly-ci-fix (allow_skip=true).
 ---
 
 # Implement — Apply the Fix
@@ -115,7 +116,7 @@ tooling, not part of any bug fix (see HARD RULES).
 Skip this step entirely when `allow_skip=true` (nightly-ci-fix flow).
 
 When `allow_skip=false`, spawn a fresh-context subagent via the `Task`
-tool (`subagent_type=general`) to inspect the staged diff for
+tool (`subagent_type=general-purpose`) to inspect the staged diff for
 skip-shaped workarounds before returning to the orchestrator. The
 implementer must not review its own diff for this specific bias — the
 gatekeeper here is a separate agent with no memory of the reasoning

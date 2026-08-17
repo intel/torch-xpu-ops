@@ -388,7 +388,8 @@ start of this run and remain constant across all failures.
 
 ## Step 7: Generate summary report
 
-Write to `agent_space_xpu/summary_<report_date>.md`:
+Write to `agent_space_xpu/runs/<report_date>/summary.md` (the path
+declared in "Progress tracking" above):
 
 ```markdown
 # Nightly CI Fix Summary — <report_date>

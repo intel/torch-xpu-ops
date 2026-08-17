@@ -235,8 +235,8 @@ DISCOVERED -> UPSTREAM_VERIFYING -> WAITING_UPSTREAM -> TRIAGING ->
 TRIAGED -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED
 ```
 
-Terminal stages: `DONE`, `SKIPPED`, `NEEDS_HUMAN`, `PATCH_PROPOSED`,
-`DONE_SKIP_TRIAGED`, `SKIP_TRIAGED_NEEDS_HUMAN`.
+Terminal stages: `DONE`, `SKIPPED`, `NOT_REPRODUCED`, `NEEDS_HUMAN`,
+`PATCH_PROPOSED`, `DONE_SKIP_TRIAGED`, `SKIP_TRIAGED_NEEDS_HUMAN`.
 
 Stage → label mapping:
 
@@ -245,7 +245,7 @@ Stage → label mapping:
 | DISCOVERED, UPSTREAM_VERIFYING, TRIAGING, IMPLEMENTING, IN_REVIEW, PUBLIC_PR, CI_WATCH, MERGED | `agent:active` |
 | WAITING_UPSTREAM | `agent:waiting-upstream` |
 | TRIAGED, PATCH_PROPOSED | `agent:triaged` |
-| DONE, SKIPPED, DONE_SKIP_TRIAGED | `agent:done` |
+| DONE, SKIPPED, NOT_REPRODUCED, DONE_SKIP_TRIAGED | `agent:done` |
 | NEEDS_HUMAN, SKIP_TRIAGED_NEEDS_HUMAN | `agent:needs-human` |
 
 **Label operation error handling.** Every `gh issue edit --add-label`
@@ -346,7 +346,8 @@ Where the following stages call it:
     do NOT call `apply_terminal_label` — it will be applied when the
     PR opens or lands.
   - `PATCH_PROPOSED` → `apply_terminal_label ... agent:triaged`.
-  - `DONE`, `DONE_SKIP_TRIAGED` → `apply_terminal_label ... agent:done`.
+  - `DONE`, `SKIPPED`, `NOT_REPRODUCED`, `DONE_SKIP_TRIAGED` →
+    `apply_terminal_label ... agent:done`.
   - `NEEDS_HUMAN`, `SKIP_TRIAGED_NEEDS_HUMAN` →
     `apply_terminal_label ... agent:needs-human`.
 
@@ -449,7 +450,9 @@ comment.
 ## Pipeline
 
 ```
-issue-triage → reproduce → triage → implement → verify → review → report
+issue-triage → reproduce → root-cause → implement → verify → review → report
+                 (Stage 1 dispatches to fix/skip-list instead when
+                  issue_type == "skip-list")
 ```
 
 ### Stage 1 — issue-triage
@@ -615,7 +618,9 @@ Then call `fix/implement` with:
 - `allow_skip=false` — issue-handler never allows adding skip decorators
 - `patch_proposal_mode=<true|false>` — set to `true` if Stage 3 chose
   patch-proposal mode (`target_repo != pr_repo`), otherwise `false`
-- no `commit_message_template` (Stage 6 supplies the commit message)
+
+Stage 6 owns the commit message; `fix/implement` neither commits nor
+takes a commit-message parameter.
 
 In patch-proposal mode (Stage 3 chose it), additionally:
 - `fix/implement` will leave changes **staged but uncommitted** in
@@ -635,6 +640,8 @@ the reviewer's citations.
 Otherwise call `fix/verify` with:
 - `refined_command` from Stage 2
 - `pytorch_dir`
+- `target_repo_dir` (the same path derived in Stage 4 — verify's
+  `git stash` / `git diff --cached` must run where the fix is staged)
 - `changed_files` from Stage 4
 - `run_before_after_diff=false`
 - `run_lint=false`
@@ -658,7 +665,7 @@ context to review the change. This is a gatekeeper step, mirroring the
 `fix-issue` skill in pytorch: the implementer must not review its own
 work. Skipping this stage is not allowed.
 
-Use the `Task` tool with `subagent_type=general`. Pass the reviewer:
+Use the `Task` tool with `subagent_type=general-purpose`. Pass the reviewer:
 
 - The GitHub issue body and comments (raw).
 - The verified `refined_command` and its output from Stage 5.
@@ -738,7 +745,8 @@ Routing by `target_repo` vs `pr_repo` (see Stage 3):
   - Target repo (`target_repo`) and a one-line rationale for why the fix
     lives there
   - For each changed file: absolute repo-relative path + a fenced
-    ```diff block of `git diff` output (unified format)
+    ```diff block of `git -C <target_repo_dir> diff --cached` output
+    (unified format; the fix is staged, so plain `git diff` is empty)
   - Reproducer command and verification result
   - A "how to apply" line, e.g. `cd <target_repo>; git apply <<'EOF' ...`
   - **Every claim in the rationale and root-cause description that references
