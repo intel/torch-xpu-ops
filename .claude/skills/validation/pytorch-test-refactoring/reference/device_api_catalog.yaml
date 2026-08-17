@@ -1,0 +1,726 @@
+# PyTorch Device API Catalog
+# =============================
+# Machine-readable reference for classifying torch.{device}.* API calls.
+# Consumed by: Analyst, Coder, and Checker agents during test refactoring.
+#
+# Classification hierarchy (first match wins):
+#   category_c > category_b > category_a > none
+#
+# Decision rules:
+#   category_a → Strategy 2: replace with torch.accelerator.*
+#   category_b → Strategy 3: no accelerator wrapper exists, keep device-specific
+#   category_c → Strategy 3: truly device-specific, must stay
+
+meta:
+  version: "2.0"
+  date: "2026-06-10"
+  backends:
+    cuda: { module: torch.cuda, has_stream: true, has_event: true, has_graph: true, accelerator_coverage: high }
+    xpu:  { module: torch.xpu,  has_stream: true, has_event: true, has_graph: true, accelerator_coverage: high }
+    mps:  { module: torch.mps,  has_stream: false, has_event: true, has_graph: false, accelerator_coverage: minimal }
+    mtia: { module: torch.mtia, has_stream: true, has_event: true, has_graph: true, accelerator_coverage: medium }
+
+# ── Category A: Replaceable by torch.accelerator ──────────────────────────
+# rule: test using ONLY these APIs → Strategy 2 (accelerator-agnostic)
+# action: replace device module call with torch.accelerator equivalent
+
+category_a:
+  # A1: Same name — drop-in module replacement
+  same_name:
+    - accelerator_api: device_count
+      backends: [cuda, xpu, mps, mtia]
+      note: "Delegates to device module"
+
+    - accelerator_api: is_available
+      backends: [cuda, xpu, mps, mtia]
+      note: "Delegates to device module"
+
+    - accelerator_api: current_stream
+      backends: [cuda, xpu, mtia]
+      note: "Returns torch.Stream vs device-specific Stream"
+
+    - accelerator_api: set_stream
+      backends: [cuda, xpu, mtia]
+
+    - accelerator_api: synchronize
+      backends: [cuda, xpu, mps, mtia]
+
+    - accelerator_api: get_device_capability
+      backends: [cuda, xpu, mtia]
+      note: "RETURN TYPE DIFFERS: CUDA/MTIA→tuple[int,int], Accelerator/XPU→dict[str,Any]"
+
+    - accelerator_api: empty_cache
+      backends: [cuda, xpu, mps, mtia]
+
+    - accelerator_api: memory_stats
+      backends: [cuda, xpu, mtia]
+      note: "Accelerator flattens the dict"
+
+    - accelerator_api: memory_allocated
+      backends: [cuda, xpu, mtia]
+
+    - accelerator_api: max_memory_allocated
+      backends: [cuda, xpu, mtia]
+
+    - accelerator_api: memory_reserved
+      backends: [cuda, xpu]
+
+    - accelerator_api: max_memory_reserved
+      backends: [cuda, xpu]
+
+    - accelerator_api: reset_accumulated_memory_stats
+      backends: [cuda, xpu]
+
+    - accelerator_api: reset_peak_memory_stats
+      backends: [cuda, xpu, mtia]
+
+  # A2: Name differs — MUST use correct accelerator name
+  name_differs:
+    - accelerator_api: current_device_index
+      device_apis:
+        - { device: cuda, api: current_device }
+        - { device: xpu, api: current_device }
+        - { device: mtia, api: current_device }
+      note: "HIGH RISK — most common refactoring mistake"
+
+    - accelerator_api: set_device_index
+      device_apis:
+        - { device: cuda, api: set_device }
+        - { device: xpu, api: set_device }
+        - { device: mtia, api: set_device }
+      note: "HIGH RISK — most common refactoring mistake"
+
+    - accelerator_api: device_index
+      device_apis:
+        - { device: cuda, api: device, kind: context_manager }
+        - { device: xpu, api: device, kind: context_manager }
+        - { device: mtia, api: device, kind: context_manager }
+      note: "HIGH RISK — context manager name differs"
+
+    - accelerator_api: get_memory_info
+      device_apis:
+        - { device: cuda, api: mem_get_info }
+        - { device: xpu, api: mem_get_info }
+      note: "Name differs: mem_get_info → get_memory_info"
+
+    - accelerator_api: Graph
+      device_apis:
+        - { device: cuda, api: CUDAGraph, kind: class }
+        - { device: xpu, api: XPUGraph, kind: class }
+        - { device: mtia, api: MTIAGraph, kind: class }
+      note: "Unified graph class"
+
+  # A3: Accelerator-only (no device-specific equivalent exists)
+  accelerator_only:
+    - accelerator_api: current_accelerator
+      note: "Returns current accelerator device"
+
+    - accelerator_api: empty_host_cache
+      note: "New, only exists in accelerator"
+
+# ── Category B: General concepts WITHOUT accelerator wrappers ─────────────
+# rule: exists on ≥2 backends, but no torch.accelerator.* equivalent
+# action: treat as device-specific for now, keep original module call
+
+category_b:
+
+  device_management:
+    - api: is_initialized
+      backends: [cuda, xpu, mtia]
+      reason: "Init semantics differ per backend"
+    - api: init
+      backends: [cuda, xpu, mtia]
+      reason: "Explicit initialization is backend-specific"
+    - api: device_of
+      backends: [cuda, xpu]
+      reason: "Tensor-based device switching"
+    - api: can_device_access_peer
+      backends: [cuda, xpu]
+      reason: "P2P access is hardware-specific"
+    - api: get_device_name
+      backends: [cuda, xpu]
+      reason: "Naming format is vendor-specific"
+    - api: get_device_properties
+      backends: [cuda, xpu, mtia]
+      reason: "Properties structs differ per backend"
+    - api: is_bf16_supported
+      backends: [cuda, xpu, mtia]
+      reason: "Check logic varies per vendor"
+    - api: is_tf32_supported
+      backends: [cuda, xpu]
+      reason: "TF32/DPAS check varies"
+    - api: get_arch_list
+      backends: [cuda, xpu]
+      reason: "Arch flags are vendor-specific"
+    - api: get_gencode_flags
+      backends: [cuda, xpu]
+      reason: "Codegen flags are vendor-specific"
+    - api: default_generators
+      backends: [cuda, xpu, mtia]
+      reason: "Generator objects are backend-specific"
+
+  stream_event:
+    - api: default_stream
+      backends: [cuda, mtia]
+      reason: "XPU has no default_stream(); MPS has no streams at all"
+    - api: stream
+      backends: [cuda, xpu, mtia]
+      reason: "Only set_stream is wrapped; stream() is a ctx mgr function"
+    - api: StreamContext
+      backends: [cuda, xpu, mtia]
+      reason: "No unified version"
+    - api: Stream
+      backends: [cuda, xpu, mtia]
+      reason: "Different internals per backend; MPS uses implicit command buffer"
+    - api: Event
+      backends: [cuda, xpu, mps, mtia]
+      reason: "Different internals per backend"
+
+  random:
+    - api: manual_seed
+      backends: [cuda, xpu, mps, mtia]
+      reason: "Per-device RNG, no unified wrapper"
+    - api: manual_seed_all
+      backends: [cuda, xpu, mtia]
+      reason: "Multi-device seeding"
+    - api: seed
+      backends: [cuda, xpu, mps, mtia]
+      reason: "Random seed for current device"
+    - api: seed_all
+      backends: [cuda, xpu, mtia]
+      reason: "Random seed for all devices"
+    - api: initial_seed
+      backends: [cuda, xpu, mtia]
+      reason: "No unified wrapper"
+    - api: get_rng_state
+      backends: [cuda, xpu, mps, mtia]
+      reason: "Per-device RNG state"
+    - api: set_rng_state
+      backends: [cuda, xpu, mps, mtia]
+      reason: "Per-device RNG state"
+    - api: get_rng_state_all
+      backends: [cuda, xpu, mtia]
+      reason: "Multi-device RNG state"
+    - api: set_rng_state_all
+      backends: [cuda, xpu, mtia]
+      reason: "Multi-device RNG state"
+
+  memory:
+    - api: set_per_process_memory_fraction
+      backends: [cuda, xpu, mps]
+      reason: "Allocator-specific"
+    - api: get_per_process_memory_fraction
+      backends: [cuda, xpu]
+      reason: "Allocator-specific"
+    - api: memory_stats_as_nested_dict
+      backends: [cuda, xpu]
+      reason: "Nested format varies"
+    - api: memory_snapshot
+      backends: [cuda, xpu]
+      reason: "Snapshot format is allocator-specific"
+    - api: mem_get_info
+      backends: [cuda, xpu]
+      reason: "Same concept as accelerator.get_memory_info (Cat A)"
+    - api: temperature
+      backends: [cuda, xpu]
+      reason: "Hardware monitoring, vendor-specific impl"
+    - api: power_draw
+      backends: [cuda, xpu]
+      reason: "Vendor-specific impl (NVML / Level Zero Sysman)"
+    - api: clock_rate
+      backends: [cuda, xpu]
+      reason: "Vendor-specific impl"
+    - api: utilization
+      backends: [cuda, xpu]
+      reason: "Vendor-specific impl"
+    - api: memory_usage
+      backends: [cuda, xpu]
+      reason: "Vendor-specific impl"
+    - api: device_memory_used
+      backends: [cuda, xpu]
+      reason: "Vendor-specific query"
+    - api: MemPool
+      backends: [cuda, xpu]
+      reason: "Allocator-specific pool management"
+    - api: use_mem_pool
+      backends: [cuda, xpu]
+      reason: "Allocator-specific pool management"
+    - api: change_current_allocator
+      backends: [cuda, xpu]
+      reason: "Allocator-specific"
+    - api: PluggableAllocator
+      backends: [cuda, xpu]
+      reason: "Device-specific function signatures"
+
+  graph:
+    - api: is_current_stream_capturing
+      backends: [cuda, xpu]
+      reason: "No unified wrapper"
+    - api: graph_pool_handle
+      backends: [cuda, xpu, mtia]
+      reason: "Available in accelerator.Graph internally"
+    - api: make_graphed_callables
+      backends: [cuda, xpu]
+      reason: "No unified wrapper"
+    - api: graph
+      backends: [cuda, xpu, mtia]
+      reason: "torch.accelerator.Graph can be used as ctx mgr instead"
+
+  sync_debug:
+    - api: set_sync_debug_mode
+      backends: [cuda]
+      reason: "Only in CUDA"
+    - api: get_sync_debug_mode
+      backends: [cuda]
+      reason: "Only in CUDA"
+
+# ── Category C: Truly Device-Specific ────────────────────────────────────
+# rule: exists on exactly 1 backend, no cross-device equivalent possible
+# action: MUST stay in device-specific test class, NEVER remove guards
+
+category_c:
+
+  cuda:
+    nccl:
+      desc: "NCCL distributed communication (NVIDIA only)"
+      apis:
+        - torch.cuda.nccl.is_available
+        - torch.cuda.nccl.version
+        - torch.cuda.nccl.unique_id
+        - torch.cuda.nccl.init_rank
+        - torch.cuda.nccl.all_reduce
+        - torch.cuda.nccl.broadcast
+        - torch.cuda.nccl.all_gather
+        - torch.cuda.nccl.reduce_scatter
+        - torch.cuda.nccl.reduce
+        - torch.cuda.nccl.SUM
+
+    nvtx:
+      desc: "NVIDIA Tools Extension profiling annotations"
+      apis:
+        - torch.cuda.nvtx.range_push
+        - torch.cuda.nvtx.range_pop
+        - torch.cuda.nvtx.range_start
+        - torch.cuda.nvtx.range_end
+        - torch.cuda.nvtx.mark
+        - torch.cuda.nvtx.range
+        - torch.cuda.nvtx._device_range_start
+        - torch.cuda.nvtx._device_range_end
+
+    cuda_profiler:
+      desc: "CUDA profiler (cudaProfilerStart/Stop)"
+      apis:
+        - torch.cuda.profiler.start
+        - torch.cuda.profiler.stop
+        - torch.cuda.profiler.profile
+
+    cuda_runtime:
+      desc: "CUDA runtime API wrappers"
+      apis:
+        - torch.cuda.cudart
+        - torch.cuda.check_error
+        - torch.cuda.CudaError
+        - torch.cuda.cudaStatus
+        - torch.cuda.DeferredCudaCallError
+
+    cuda_graphs_legacy:
+      desc: "CUDA graph native handles (partially replaced by accelerator.Graph)"
+      apis:
+        - torch.cuda.CUDAGraph.raw_cuda_graph
+        - torch.cuda.CUDAGraph.raw_cuda_graph_exec
+        - torch.cuda.CUDAGraph.get_graph_data
+        - torch.cuda.is_current_stream_capturing
+        - torch.cuda.make_graphed_callables
+
+    green_contexts:
+      desc: "SM partitioning (CUDA-only)"
+      apis:
+        - torch.cuda.GreenContext.create
+        - torch.cuda.GreenContext.set_context
+        - torch.cuda.GreenContext.pop_context
+        - torch.cuda.GreenContext.Stream
+        - torch.cuda.GreenContext.max_workqueue_concurrency
+        - torch.cuda.GreenContext.SUPPORTED
+
+    library_handles:
+      desc: "CUDA library handles (cublasHandle_t, cusolverDnHandle_t)"
+      apis:
+        - torch.cuda.current_blas_handle
+        - torch.cuda.current_solver_handle
+
+    gds:
+      desc: "GPUDirect Storage (cuFile)"
+      apis:
+        - torch.cuda.gds_register_buffer
+        - torch.cuda.gds_deregister_buffer
+        - torch.cuda.GdsFile
+        - torch.cuda.GdsFile.load_storage
+        - torch.cuda.GdsFile.save_storage
+
+    jiterator:
+      desc: "JIT CUDA kernel compilation via NVRTC"
+      apis:
+        - torch.cuda._create_jit_fn
+        - torch.cuda._create_multi_output_jit_fn
+
+    tunable:
+      desc: "CUDA-specific tuning infrastructure"
+      apis:
+        - torch.cuda.tunable.enable
+        - torch.cuda.tunable.is_enabled
+        - torch.cuda.tunable.tuning_enable
+        - torch.cuda.tunable.tuning_is_enabled
+        - torch.cuda.tunable.set_filename
+        - torch.cuda.tunable.get_filename
+        - torch.cuda.tunable.get_results
+        - torch.cuda.tunable.get_validators
+        - torch.cuda.tunable.set_rotating_buffer_size
+        - torch.cuda.tunable.get_rotating_buffer_size
+        - torch.cuda.tunable.record_untuned_enable
+        - torch.cuda.tunable.record_untuned_is_enabled
+        - torch.cuda.tunable.set_max_tuning_duration
+        - torch.cuda.tunable.get_max_tuning_duration
+        - torch.cuda.tunable.set_max_tuning_iterations
+        - torch.cuda.tunable.get_max_tuning_iterations
+        - torch.cuda.tunable.read_file
+        - torch.cuda.tunable.tune_gemm_in_file
+        - torch.cuda.tunable.mgpu_tune_gemm_in_file
+        - torch.cuda.tunable.set_numerical_check_tolerances
+
+    amp_deprecated:
+      desc: "Deprecated CUDA AMP wrappers (use torch.amp with device_type='cuda')"
+      apis:
+        - torch.cuda.amp.autocast
+        - torch.cuda.amp.custom_fwd
+        - torch.cuda.amp.custom_bwd
+        - torch.cuda.amp.GradScaler
+        - torch.cuda.amp.amp_definitely_not_available
+
+    pinned_memory:
+      desc: "CUDA pinned/host memory (cudaHostRegister/Unregister)"
+      apis:
+        - torch.cuda.host_memory_stats
+        - torch.cuda.host_memory_stats_as_nested_dict
+        - torch.cuda.reset_accumulated_host_memory_stats
+        - torch.cuda.reset_peak_host_memory_stats
+        - torch.cuda.pin_memory
+        - torch.cuda.unpin_memory
+
+    memory_diagnostics:
+      desc: "NVML/AMDSMI memory diagnostics"
+      apis:
+        - torch.cuda.memory_summary
+        - torch.cuda.list_gpu_processes
+
+    ipc:
+      desc: "CUDA inter-process communication"
+      apis:
+        - torch.cuda.ipc_collect
+        - torch.cuda.Event.ipc_handle
+        - torch.cuda.Event.from_ipc_handle
+
+    device_properties:
+      desc: "CUDA-specific device properties struct"
+      apis:
+        - torch.cuda.get_device_capability  # returns tuple[int,int]
+        - torch.cuda.get_device_properties  # returns _CudaDeviceProperties
+        - torch.cuda.is_tf32_supported
+
+    arch_compilation:
+      desc: "NVCC-specific architecture and compilation"
+      apis:
+        - torch.cuda.get_arch_list
+        - torch.cuda.get_gencode_flags
+        - torch.cuda.has_half
+        - torch.cuda.has_magma
+        - torch.cuda._compile_kernel
+
+    device_limits:
+      desc: "Hardcoded Ampere/Hopper/Blackwell FMA/cycle values"
+      apis:
+        - torch.cuda.GPULimits
+        - torch.cuda.GPULimits.get_fma_per_cycle_per_sm_cuda_cores
+        - torch.cuda.GPULimits.get_fma_per_cycle_per_sm_tensor_cores
+        - torch.cuda.GPULimits.get_tflops_per_second
+        - torch.cuda.GPULimits.get_memory_bandwidth_Bps
+        - torch.cuda.GPULimits.get_shared_memory_bandwidth_Bps
+
+    raw_allocator:
+      desc: "CUDA-specific raw allocator access"
+      apis:
+        - torch.cuda.caching_allocator_alloc
+        - torch.cuda.caching_allocator_delete
+        - torch.cuda.caching_allocator_enable
+        - torch.cuda.caching_allocator_disabled
+        - torch.cuda.CUDAPluggableAllocator
+        - torch.cuda.get_allocator_backend
+
+    external_streams:
+      desc: "cudaStream_t external interop"
+      apis:
+        - torch.cuda.ExternalStream
+        - torch.cuda.get_stream_from_external
+        - torch.cuda.Stream.__cuda_stream__
+
+    sanitizer:
+      desc: "CUDA stream capture race detection"
+      apis:
+        - torch.cuda.enable_cuda_sanitizer
+        - torch.cuda.CUDASanitizerErrors
+        - torch.cuda.CUDASanitizerDispatchMode
+        - torch.cuda.SynchronizationError
+        - torch.cuda.UnsynchronizedAccessError
+
+    sparse:
+      desc: "CUDA sparse tensor type registration"
+      apis:
+        - torch.cuda.sparse
+
+    deprecated_storage:
+      desc: "Legacy CUDA typed storage classes (13 types)"
+      apis:
+        - torch.cuda.ByteStorage
+        - torch.cuda.FloatStorage
+        - torch.cuda.DoubleStorage
+        - torch.cuda.HalfStorage
+        - torch.cuda.LongStorage
+        - torch.cuda.IntStorage
+        - torch.cuda.ShortStorage
+        - torch.cuda.CharStorage
+        - torch.cuda.BoolStorage
+        - torch.cuda.BFloat16Storage
+        - torch.cuda.ComplexDoubleStorage
+        - torch.cuda.ComplexFloatStorage
+
+    deprecated_tensor:
+      desc: "Legacy CUDA typed tensor aliases (13 types)"
+      apis:
+        - torch.cuda.BFloat16Tensor
+        - torch.cuda.BoolTensor
+        - torch.cuda.ByteTensor
+        - torch.cuda.CharTensor
+        - torch.cuda.ComplexDoubleTensor
+        - torch.cuda.ComplexFloatTensor
+        - torch.cuda.DoubleTensor
+        - torch.cuda.FloatTensor
+        - torch.cuda.HalfTensor
+        - torch.cuda.IntTensor
+        - torch.cuda.LongTensor
+        - torch.cuda.ShortTensor
+
+  xpu:
+    sycl_handles:
+      desc: "SYCL queue/event native handles"
+      apis:
+        - torch.xpu.Stream.sycl_queue
+        - torch.xpu.Event.sycl_event
+        - torch.xpu.get_stream_from_external
+
+    xpu_graph_handles:
+      desc: "XPU graph native handles"
+      apis:
+        - torch.xpu.XPUGraph.raw_xpu_graph
+        - torch.xpu.XPUGraph.raw_xpu_graph_exec
+
+    xpu_device_properties:
+      desc: "Intel GPU device properties struct"
+      apis:
+        - torch.xpu.get_device_properties  # returns _XpuDeviceProperties
+
+    xpu_allocator:
+      desc: "XPU-specific pluggable allocator"
+      apis:
+        - torch.xpu.XPUPluggableAllocator
+
+    level_zero_telemetry:
+      desc: "Level Zero Sysman hardware telemetry"
+      apis:
+        - torch.xpu.temperature
+        - torch.xpu.clock_rate
+        - torch.xpu.power_draw
+        - torch.xpu.utilization
+        - torch.xpu.memory_usage
+        - torch.xpu.device_memory_used
+
+    xpu_arch_flags:
+      desc: "Intel GPU architecture flags"
+      apis:
+        - torch.xpu.get_arch_list
+        - torch.xpu.get_gencode_flags
+
+  mps:
+    metal_shader:
+      desc: "Metal shader compilation"
+      apis:
+        - torch.mps.compile_shader
+        - torch.mps.load_metallib
+
+    metal_memory:
+      desc: "Metal-specific memory queries"
+      apis:
+        - torch.mps.recommended_max_memory
+        - torch.mps.driver_allocated_memory
+        - torch.mps.current_allocated_memory
+
+    host_alias_storage:
+      desc: "Zero-copy CPU↔GPU via MTLBuffer"
+      apis:
+        - torch.mps._host_alias_storage
+
+    mps_memory_fraction:
+      desc: "MPS memory fraction (range 0-2, unlike CUDA/XPU 0-1)"
+      apis:
+        - torch.mps.set_per_process_memory_fraction
+
+    mps_profiler:
+      desc: "OS Signpost / Metal Capture profiler"
+      apis:
+        - torch.mps.profiler.ProfilerMode
+        - torch.mps.profiler.start
+        - torch.mps.profiler.stop
+        - torch.mps.profiler.profile
+        - torch.mps.is_metal_capture_enabled
+        - torch.mps.is_capturing_metal
+        - torch.mps.metal_capture
+
+    mps_event:
+      desc: "MPS Event (single command buffer, no stream param)"
+      apis:
+        - torch.mps.Event.record
+        - torch.mps.Event.wait
+        - torch.mps.Event.query
+        - torch.mps.Event.synchronize
+        - torch.mps.Event.elapsed_time
+
+  mtia:
+    memory_profiling:
+      desc: "MTIA memory allocator profiling hooks"
+      apis:
+        - torch.mtia.record_memory_history
+        - torch.mtia.snapshot
+        - torch.mtia.attach_out_of_memory_observer
+
+    mtia_device_properties:
+      desc: "MTIA-specific device properties"
+      apis:
+        - torch.mtia.get_device_properties  # returns dict[str,Any]
+        - torch.mtia.is_bf16_supported
+
+    mtia_init:
+      desc: "MTIA initialization (includes Buck resource manager)"
+      apis:
+        - torch.mtia.init
+        - torch.mtia.is_initialized
+        - torch.mtia.DeferredMtiaCallError
+
+    mtia_graph:
+      desc: "MTIA graph (separate from accelerator.Graph)"
+      apis:
+        - torch.mtia.MTIAGraph
+        - torch.mtia.graph
+        - torch.mtia.graph_pool_handle
+
+    mtia_unified:
+      desc: "MTIA uses unified torch.Stream/torch.Event directly (re-exports, not unique APIs)"
+      apis:
+        - torch.mtia.Event   # = torch.Event
+        - torch.mtia.Stream  # = torch.Stream
+
+# ── Decision Rules (for test refactoring) ─────────────────────────────────
+
+decision_rules:
+  classification:
+    hierarchy: [category_c, category_b, category_a, none]
+    description: "First match wins. A test using ANY Cat C API is Strategy 3."
+
+  decorators:
+    blacklist_keep:
+      rule: "NEVER remove these. Keep as-is."
+      values:
+        - "@skipXPU"
+        - "@skipCUDAIf"
+        - "@skipMPS"
+        - "@skipMeta"
+        - "@onlyNativeDeviceTypesAnd"
+
+    whitelist_enlarge:
+      rule: "ENLARGE to @onlyAccelerator IF the guarded test uses only Cat A/B APIs. KEEP as @onlyCUDA IF the guarded test uses any Cat C API."
+      values:
+        - "@onlyCUDA"
+        - "@onlyOn"
+
+  api_replacement:
+    category_a_same_name:
+      rule: "Replace torch.{device}.<api> with torch.accelerator.<api>"
+    category_a_name_differs:
+      rule: "Replace with the CORRECT accelerator name (see name_differs mapping)"
+    category_b:
+      rule: "DO NOT REPLACE. No accelerator wrapper exists. Keep device module call."
+    category_c:
+      rule: "DO NOT REPLACE. Truly device-specific. Test stays in device-specific class."
+
+  import_cleanup:
+    rule: >
+      Remove `import torch.{device}` if NO Category B/C usage remains.
+      Keep `import torch.{device}` if ANY Category B/C usage remains.
+
+  strategy_assignment:
+    strategy_1:
+      condition: "No device API usage"
+      class_suffix: ""  # TestFoo
+    strategy_2:
+      condition: "Only Category A API usage"
+      class_suffix: "Device"  # TestFooDevice
+    strategy_3:
+      condition: "Any Category B or C API usage"
+      class_suffix: "{Device}"  # TestFooCUDA, TestFooXPU, etc.
+
+# ── Architecture Notes ────────────────────────────────────────────────────
+
+architecture:
+  dispatch_chain: >
+    torch.accelerator.<api>()
+    → torch._C._accelerator_<api>()           [C++ binding, dispatches to registered backend]
+    → OR torch.get_device_module(acc).<api>()  [Python delegation to torch.cuda/xpu/etc.]
+
+  get_device_module:
+    location: "torch/__init__.py:2960-2982"
+    signature: "get_device_module(device=None) -> module"
+    caching: "@functools.cache"
+    behavior: "None → torch._C._get_accelerator() to find current accelerator"
+
+  private_use1:
+    desc: "Out-of-tree backends (HPU, etc.) implement PrivateUse1HooksInterface"
+    registration: "torch.utils.backend_registration._register_backend()"
+
+  backend_integration_levels:
+    most_integrated: { backend: mtia, note: "Uses torch.Stream/torch.Event directly" }
+    middle: { backends: [cuda, xpu], note: "Own Stream/Event/Graph classes" }
+    least_integrated: { backend: mps, note: "No streams, no device switching, 4 accelerator APIs only" }
+
+  accelerator_definition: >
+    From docs/source/torch.md: A torch.device used alongside CPU for computation,
+    using torch.Stream and torch.Event for synchronization. Only ONE accelerator
+    can be active at once on a given host.
+
+# ── Statistics ────────────────────────────────────────────────────────────
+
+statistics:
+  category_a: { count: 21, pct: "~8%", desc: "APIs with torch.accelerator equivalents (14 same_name + 5 name_differs + 2 accelerator_only)" }
+  category_b: { count: 46, pct: "~19%", desc: "Same pattern across devices, candidates for abstraction" }
+  category_c:
+    total: { count: 182, pct: "~73%", desc: "Truly device-specific (individual API endpoints, not groups)" }
+    cuda: { count: 135, desc: "NCCL, NVTX, GDS, green contexts, IPC, pinned memory, etc." }
+    xpu: { count: 15, desc: "SYCL handles, Level Zero telemetry, XPU allocator, Intel arch flags" }
+    mps: { count: 19, desc: "Metal shader compilation, host alias storage, Metal profiler, etc." }
+    mtia: { count: 13, desc: "MTIA memory profiling, MTIA init, MTIA properties, graph pool" }
+
+# ── Sources ────────────────────────────────────────────────────────────────
+
+sources:
+  accelerator: [torch/accelerator/__init__.py, torch/accelerator/memory.py, torch/accelerator/graphs.py, torch/accelerator/_utils.py]
+  cuda: [torch/cuda/__init__.py, torch/cuda/streams.py, torch/cuda/graphs.py, torch/cuda/memory.py, torch/cuda/nccl.py, torch/cuda/nvtx.py, torch/cuda/profiler.py, torch/cuda/amp/, torch/cuda/random.py, torch/cuda/comm.py, torch/cuda/gds.py, torch/cuda/sparse.py, torch/cuda/jiterator.py, torch/cuda/tunable.py, torch/cuda/green_contexts.py, torch/cuda/_device_limits.py, torch/cuda/_sanitizer.py, torch/cuda/_pin_memory_utils.py]
+  xpu: [torch/xpu/__init__.py, torch/xpu/streams.py, torch/xpu/memory.py, torch/xpu/random.py, torch/xpu/graphs.py]
+  mps: [torch/mps/__init__.py, torch/mps/profiler.py, torch/mps/event.py]
+  mtia: [torch/mtia/__init__.py, torch/mtia/memory.py, torch/mtia/mtia_graph.py]
+  core: [torch/__init__.py, docs/source/accelerator/, docs/source/torch.md]
