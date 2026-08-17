@@ -54,3 +54,74 @@ class TestNNMethod(TestCase):
         self.assertTrue((values == 0.0).all())
         # Indices must be valid positions within the input dimension.
         self.assertTrue((indices >= 0).all() and (indices < n).all())
+
+    def test_topk_nan_input(self):
+        num_cols = 128
+        k = 6
+        for dtype in (torch.float32, torch.bfloat16):
+            for num_rows in (16, 1024, 4096, 8192):
+                x = torch.randn(num_rows, num_cols, device="cpu", dtype=dtype)
+                n_nan = max(1, num_rows // 16)
+                x[-n_nan:, :] = float("nan")
+                cpu_vals, cpu_ids = torch.topk(x, k=k, dim=-1, sorted=True)
+                xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True)
+                torch.xpu.synchronize()
+                self.assertEqual(cpu_vals.isnan(), xpu_vals.cpu().isnan())
+                self.assertEqual(cpu_vals.nan_to_num(), xpu_vals.cpu().nan_to_num())
+                self.assertTrue(
+                    (xpu_ids >= 0).all() and (xpu_ids < num_cols).all(),
+                    f"Out-of-range indices for dtype={dtype}, N={num_rows}",
+                )
+
+    def test_topk_neginf_input(self):
+        num_cols = 128
+        k = 6
+        for dtype in (torch.float32, torch.bfloat16):
+            x = torch.full((2048, num_cols), float("-inf"), device="cpu", dtype=dtype)
+            cpu_vals, cpu_ids = torch.topk(x, k=k, dim=-1, sorted=True)
+            xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True)
+            torch.xpu.synchronize()
+            self.assertEqual(cpu_vals, xpu_vals.cpu())
+            self.assertTrue(
+                (xpu_ids >= 0).all() and (xpu_ids < num_cols).all(),
+                f"Out-of-range indices for all -inf input, dtype={dtype}",
+            )
+            # indices must be unique per row
+            for r in range(x.shape[0]):
+                ids_list = xpu_ids[r].cpu().tolist()
+                self.assertEqual(
+                    len(set(ids_list)), k,
+                    f"Duplicate indices in row {r} for dtype={dtype}: {ids_list}",
+                )
+
+    def test_topk_equal_values(self):
+        num_cols = 128
+        for k in (1, 6, 8):
+            for dtype in (torch.float32, torch.bfloat16):
+                x = torch.ones(2048, num_cols, device="cpu", dtype=dtype)
+                cpu_vals, _ = torch.topk(x, k=k, dim=-1, sorted=True)
+                xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True)
+                torch.xpu.synchronize()
+                self.assertEqual(cpu_vals, xpu_vals.cpu())
+                self.assertTrue(
+                    (xpu_ids >= 0).all() and (xpu_ids < num_cols).all(),
+                    f"Out-of-range indices for k={k}, dtype={dtype}",
+                )
+                for r in range(x.shape[0]):
+                    ids_list = xpu_ids[r].cpu().tolist()
+                    self.assertEqual(
+                        len(set(ids_list)), k,
+                        f"Duplicate indices in row {r} for k={k}, dtype={dtype}: {ids_list}",
+                    )
+
+    def test_topk_random_values(self):
+        num_cols = 128
+        for k in (1, 6, 8):
+            for largest in (True, False):
+                torch.manual_seed(0)
+                x = torch.randn(2048, num_cols, dtype=torch.float32)
+                cpu_vals, cpu_ids = torch.topk(x, k=k, dim=-1, sorted=True, largest=largest)
+                xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True, largest=largest)
+                torch.xpu.synchronize()
+                self.assertEqual(cpu_vals, xpu_vals.cpu())
+                self.assertEqual(cpu_ids, xpu_ids.cpu())

@@ -20,6 +20,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
@@ -59,6 +60,34 @@ template <
     bool Largest,
     typename IndexT = int>
 struct SubgroupTopKFunctor {
+  // NaN-propagating "better" comparison: NaN is treated as better than
+  // any non-NaN value
+  inline bool better(scalar_t a, scalar_t b) const {
+    bool a_nan = at::_isnan(a);
+    bool b_nan = at::_isnan(b);
+    if (a_nan != b_nan) return a_nan;
+    if (a_nan) return false; // both NaN
+    if constexpr (Largest) {
+      return a > b;
+    } else {
+      return a < b;
+    }
+  }
+
+  // Tie-breaking variant: when values are equal, prefer larger index
+  // (real entries with idx>=0 beat sentinels with idx=-1).
+  inline bool better(scalar_t a, IndexT a_idx, scalar_t b, IndexT b_idx) const {
+    bool a_nan = at::_isnan(a);
+    bool b_nan = at::_isnan(b);
+    if (a_nan != b_nan) return a_nan;
+    if (a_nan) return a_idx > b_idx;
+    if constexpr (Largest) {
+      return a > b || (a == b && a_idx > b_idx);
+    } else {
+      return a < b || (a == b && a_idx > b_idx);
+    }
+  }
+
   // Insert val into a K-sorted buffer. For Largest=true the buffer is sorted
   // descending (top_vals[0] is max); for Largest=false it is sorted ascending
   // (top_vals[0] is min). The comparator `better(a, b)` means "a should sit
@@ -72,14 +101,8 @@ struct SubgroupTopKFunctor {
       int count,
       scalar_t val,
       IndexT idx) const {
-    // Threshold is at the bottom of the buffer (top_vals[K-1]).
-    if constexpr (Largest) {
-      if (count >= K && !(val > top_vals[K - 1]))
-        return;
-    } else {
-      if (count >= K && !(val < top_vals[K - 1]))
-        return;
-    }
+    if (count >= K && !better(val, top_vals[K - 1]))
+      return;
     bool inserted = false;
 #pragma unroll
     for (int i = K - 1; i >= 0; --i) {
@@ -90,12 +113,7 @@ struct SubgroupTopKFunctor {
       // value equal to the sentinel (e.g. all -inf for largest=true)
       // would always stop at position K-1, overwriting it repeatedly
       // instead of filling lower positions.
-      bool stop;
-      if constexpr (Largest) {
-        stop = (i == 0) || (i <= count && !(val > top_vals[i - 1]));
-      } else {
-        stop = (i == 0) || (i <= count && !(val < top_vals[i - 1]));
-      }
+      bool stop = (i == 0) || (i <= count && !better(val, top_vals[i - 1]));
       if (!inserted && stop) {
         top_vals[i] = val;
         top_idx[i] = idx;
@@ -120,13 +138,7 @@ struct SubgroupTopKFunctor {
     for (int i = 0; i < K; ++i) {
       scalar_t bv = B[K - 1 - i];
       IndexT bi = B_idx[K - 1 - i];
-      bool take;
-      if constexpr (Largest) {
-        take = bv > A[i];
-      } else {
-        take = bv < A[i];
-      }
-      if (take) {
+      if (better(bv, bi, A[i], A_idx[i])) {
         A[i] = bv;
         A_idx[i] = bi;
       }
@@ -157,12 +169,8 @@ struct SubgroupTopKFunctor {
 #pragma unroll
       for (int i = 0; i < K; ++i) {
         int j = i ^ stride;
-        bool swap;
-        if constexpr (Largest) {
-          swap = (j > i) && (A[i] < A[j]);
-        } else {
-          swap = (j > i) && (A[i] > A[j]);
-        }
+        // Swap if j is the higher-index partner and A[j] is better than A[i]
+        bool swap = (j > i) && better(A[j], A_idx[j], A[i], A_idx[i]);
         if (swap) {
           scalar_t tv = A[i];
           A[i] = A[j];
