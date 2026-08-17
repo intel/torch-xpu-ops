@@ -25,7 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'issue_comment'
-      && github.event.issue.pull_request
       && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
       pull-requests: read
@@ -37,6 +36,9 @@ jobs:
       pytorch_ref: ${{ steps.parse.outputs.pytorch_ref }}
       revert_reason: ${{ steps.parse.outputs.revert_reason }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
+      issue_number: ${{ steps.parse.outputs.issue_number }}
+      is_pr: ${{ steps.parse.outputs.is_pr }}
+      invalid_reason: ${{ steps.parse.outputs.invalid_reason }}
       actor: ${{ steps.parse.outputs.actor }}
       authorized: ${{ steps.parse.outputs.authorized }}
     steps:
@@ -60,7 +62,20 @@ jobs:
             const body = context.payload.comment.body;
             const actor = context.payload.comment.user.login;
             const assoc = context.payload.comment.author_association;
-            const prNumber = context.payload.issue.number;
+            const issueNumber = context.payload.issue.number;
+            const isPR = !!context.payload.issue.pull_request;
+            const prNumber = isPR ? issueNumber : '';
+
+            core.setOutput('issue_number', String(issueNumber));
+            core.setOutput('pr_number', prNumber === '' ? '' : String(prNumber));
+            core.setOutput('is_pr', String(isPR));
+            core.setOutput('actor', actor);
+
+            const reject = (reason) => {
+              core.setOutput('command', 'invalid');
+              core.setOutput('invalid_reason', reason);
+              core.setOutput('authorized', 'false');
+            };
 
             // Extract the @torchxpubot command line
             const match = body.match(/^@torchxpubot\s+(\S+)(.*)/i);
@@ -72,13 +87,10 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'fix', 'help'];
 
             if (!validCommands.includes(command)) {
-              core.setOutput('command', 'invalid');
-              core.setOutput('pr_number', prNumber);
-              core.setOutput('actor', actor);
-              core.setOutput('authorized', 'false');
+              reject('Unknown command. Use `@torchxpubot help` to see available commands.');
               return;
             }
 
@@ -86,6 +98,21 @@ jobs:
             const normalizedCommand = (command === 'pr-review') ? 'review'
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
+
+            // Context check: fix is issue-only, help works on both, the rest are PR-only
+            if (normalizedCommand === 'fix') {
+              if (isPR) {
+                reject('`@torchxpubot fix` can only be used on issue comments, not on pull requests.');
+                return;
+              }
+              if (context.payload.issue.state !== 'open') {
+                reject('`@torchxpubot fix` can only be used on open issues.');
+                return;
+              }
+            } else if (normalizedCommand !== 'help' && !isPR) {
+              reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on pull request comments.`);
+              return;
+            }
 
             // Permission check
             const privileged = ['OWNER', 'MEMBER', 'COLLABORATOR'];
@@ -136,8 +163,6 @@ jobs:
             core.setOutput('rerun_mode', rerunMode);
             core.setOutput('pytorch_ref', pytorchRef);
             core.setOutput('revert_reason', revertReason);
-            core.setOutput('pr_number', prNumber);
-            core.setOutput('actor', actor);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -147,14 +172,19 @@ jobs:
     steps:
       - name: Post invalid command message
         uses: actions/github-script@v9
+        env:
+          INVALID_REASON: ${{ needs.parse-command.outputs.invalid_reason }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
+            const reason = process.env.INVALID_REASON
+              || 'Unknown command. Use `@torchxpubot help` to see available commands.';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: 'Unknown command. Use `@torchxpubot help` to see available commands.'
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: reason
             });
 
   permission-denied:
@@ -181,7 +211,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
               body: msg
             });
 
@@ -195,7 +225,8 @@ jobs:
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const helpText = `## @torchxpubot Commands
+            const isPR = '${{ needs.parse-command.outputs.is_pr }}' === 'true';
+            const prCommands = `## @torchxpubot Commands (pull request)
 
             | Command | Description |
             |---------|-------------|
@@ -209,11 +240,25 @@ jobs:
             | \`@torchxpubot rerun -b <branch_or_commit>\` | Rerun CI against a pytorch ref |
             | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review |
             | \`@torchxpubot ut-check\` (or \`check-ut\`, \`ut\`) | Analyze UT results: new failures, relevance, coverage |
-            | \`@torchxpubot help\` | Show this help message |`;
+            | \`@torchxpubot help\` | Show this help message |
+
+            \`@torchxpubot fix\` is only available on issue comments.`;
+
+            const issueCommands = `## @torchxpubot Commands (issue)
+
+            | Command | Description |
+            |---------|-------------|
+            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host, implement a fix, and open a PR |
+            | \`@torchxpubot help\` | Show this help message |
+
+            All other commands (merge, revert, rebase, lint, rerun, review, ut-check)
+            are only available on pull request comments.`;
+
+            const helpText = isPR ? prCommands : issueCommands;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
               body: helpText.replace(/^ +/gm, '')
             });
 
@@ -967,6 +1012,166 @@ jobs:
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --deterministic
+
+  fix:
+    needs: parse-command
+    runs-on: xpu-agent
+    timeout-minutes: 180
+    if: >-
+      needs.parse-command.outputs.command == 'fix'
+      && needs.parse-command.outputs.authorized == 'true'
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN
+              --shm-size=8g --privileged -e ZE_AFFINITY_MASK
+    env:
+      ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+      GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+    steps:
+      - name: Post starting message
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).`
+            });
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config --global --add safe.directory "${{ github.workspace }}"
+          git config --global user.name "torchxpubot"
+          git config --global user.email "torchxpubot@intel.com"
+
+      - name: Setup Python
+        uses: ./.github/actions/setup-python
+        with:
+          python: '3.10'
+
+      - name: Install latest nightly PyTorch-XPU
+        run: |
+          # Reproduce/verify environment: latest nightly XPU build.
+          uv pip install --prerelease=allow torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/nightly/xpu
+          python -c "import torch; print('torch', torch.__version__); print('xpu available:', torch.xpu.is_available())"
+
+      - name: Run AI fix
+        id: ai-fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
+          prompt: |
+            Use the /issue-handler skill in pipeline mode to fix issue
+            #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
+            Reproduce and verify the failure locally on this XPU host, implement the
+            fix, re-verify, then hand off to the /xpu-ops-pr-creation skill to open a
+            pull request. The repository checkout is at ${{ github.workspace }}.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post result comment
+        if: always() && steps.ai-fix.outputs.execution_file
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: header + result.result + footer
+            });
+
+      - name: "Verify: AI fix succeeded"
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            let ok = false;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+              ok = result && !result.is_error && result.total_cost_usd > 0;
+            }
+            if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: Number(process.env.ISSUE_NUMBER),
+                body: '@chuanqi129 `@torchxpubot fix` failed: Bedrock returned an error or no output. Please check AWS token validity and the workflow run.'
+              });
+              core.setFailed('AI fix failed.');
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
 
   token-permission-test:
     runs-on: ubuntu-latest
