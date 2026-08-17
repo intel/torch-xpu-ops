@@ -56,25 +56,9 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Download dpclang
-        if: ${{ inputs.category == 'dpclang' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: dpclang
-      - name: Setup dpclang
-        if: ${{ inputs.category == 'dpclang' }}
-        run: |
-          rm -rf install-dpclang && mkdir install-dpclang
-          tar xzvf install-dpclang.tgz -C install-dpclang
-          echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
+        uses: actions/checkout@v7
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -88,14 +72,14 @@ jobs:
           ut_name: ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
@@ -110,11 +94,10 @@ jobs:
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -128,14 +111,14 @@ jobs:
           ut_name: ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
@@ -152,15 +135,15 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
       - name: Download skipped issues snapshot
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: ${{ github.workspace }}/issues_snapshot
@@ -170,7 +153,9 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
           cd "${latest_dir}/${{ inputs.ut }}"
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
@@ -211,7 +196,9 @@ jobs:
         id: new-failures
         run: |
           cd ${{ github.workspace }}/ut_log/
+          # download-artifact v8 drops the per-artifact dir when only one artifact matches; fall back to ut_log root
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir="${latest_dir:-.}"
           ut_dir="${latest_dir}/${{ inputs.ut }}"
           if [ "${{ inputs.ut }}" == "basic" ]; then
             ut_list="op_regression op_extended op_regression_dev1"
@@ -231,13 +218,30 @@ jobs:
           ut_failure_csv=$(find "${{ github.workspace }}/ut_log" -name "ut_failure_list.csv" -type f | head -1)
           new_failure_csv="${{ github.workspace }}/ut_log/new_ut_failure_list.csv"
           if [ -s "$new_failure_list" ] && [ -n "$ut_failure_csv" ] && [ -f "$ut_failure_csv" ]; then
-            # Keep header lines
-            head -2 "$ut_failure_csv" > "$new_failure_csv"
-            # Match rows by test_name from filtered log (format: category,class_name,test_name)
-            while IFS=',' read -r category class_name test_name; do
+            # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
+            # build the report from matched rows only.
+            : > "$new_failure_csv"
+            # Match rows by class_name AND test_name to avoid substring false positives
+            # filtered log format: category,class_name,test_name
+            while IFS=',' read -r category class_name test_name || [ -n "$category$class_name$test_name" ]; do
+              class_prefix="| "
+              if [ "${{ inputs.ut }}" == "xpu_distributed" ]; then
+                node_id="${category##* }"
+                test_name="${node_id##*::}"
+                class_name="${node_id%::*}"
+                class_name="${class_name##*::}"
+                class_prefix="."
+              fi
               [ -z "$test_name" ] && continue
-              grep -F "$test_name" "$ut_failure_csv" >> "$new_failure_csv" || true
-            done < "$new_failure_list"
+              # Use both class_name and test_name for precise matching in pipe-delimited CSV
+              grep -F "$class_prefix$class_name | $test_name |" "$ut_failure_csv" \
+                >> "$new_failure_csv" || true
+            # Verify count matches filtered log
+            expected_count=$(grep -c . "$new_failure_list")
+            actual_count=$(grep -c . "$new_failure_csv")
+            if [ "$actual_count" -ne "$expected_count" ]; then
+              echo "::warning::New failure count mismatch: filtered=$expected_count, csv=$actual_count"
+            fi
             echo "has_new_failures=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_new_failures=false" >> "$GITHUB_OUTPUT"
@@ -245,13 +249,13 @@ jobs:
       - name: Upload new failure report
         if: ${{ ! cancelled() && steps.new-failures.outputs.has_new_failures == 'true' }}
         id: upload-new-failures
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: New-UT-Failures-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/new_ut_failure_list.csv
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
@@ -263,7 +267,7 @@ jobs:
           && github.event.pull_request.head.repo.full_name == github.repository
           && (contains(github.event.pull_request.labels.*.name, 'ai_generated')
               || github.event.pull_request.user.login == 'copilot[bot]') }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.COPILOT_TOKEN }}
           script: |
@@ -330,10 +334,12 @@ jobs:
             });
       - name: Fail if UT check failed
         if: ${{ steps.ut-check.outcome == 'failure' }}
+        shell: bash {0}
         run: |
           new_failure_list="${{ github.workspace }}/ut_log/new_failure_list.txt"
           if [ -s "$new_failure_list" ]; then
-            echo "::error::UT check failed with new failures:"
+            new_failure_count=$(grep -c . "$new_failure_list")
+            echo "::error::UT check failed with ${new_failure_count} new failures:"
             cat "$new_failure_list"
           else
             echo "::error::UT check failed"

@@ -34,29 +34,37 @@ runs:
         uname -a
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
-        if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
-          rm -rf ${AGENT_TOOLSDIRECTORY}
-        fi
         rm -rf Torch-XPU-Wheel-*
-    - name: Setup uv and python-${{ inputs.python }}
-      # actions/setup-python does not provide prebuilt Python for Ubuntu 26.04,
-      # so use uv to install the requested interpreter instead.
-      uses: astral-sh/setup-uv@v5
+    - name: Setup python-${{ inputs.python }}
+      uses: ./.github/actions/setup-python
       with:
-        python-version: ${{ inputs.python }}
-    - name: Check python
-      shell: bash -xe {0}
-      run: |
-        uv run python -V
-        uv --version && uv pip list
-        uv pip install -U pip wheel setuptools
+        python: ${{ inputs.python }}
     - name: Checkout torch-xpu-ops
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         path: torch-xpu-ops
+    - name: Download dpclang
+      if: ${{ inputs.category == 'dpclang' }}
+      uses: actions/download-artifact@v8
+      with:
+        name: dpclang
+    # NOTE: placement of this step is important as some environment variables it sets
+    # might be overriden or reset by certain actions. For example, PKG_CONFIG_PATH is
+    # overriden by actions/setup-python.
+    - name: Setup dpclang
+      if: ${{ inputs.category == 'dpclang' }}
+      shell: bash -xe {0}
+      run: |
+        rm -rf install-dpclang && mkdir install-dpclang
+        tar xzvf install-dpclang.tgz -C install-dpclang
+        echo "CMAKE_PREFIX_PATH=$(pwd)/install-dpclang" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(pwd)/install-dpclang/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
+        echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
     - name: Prepare Stock Pytorch
@@ -73,7 +81,7 @@ runs:
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
         fi
-        TORCH_COMMIT_ID=$(uv run python -c 'import torch; print(torch.version.git_version)')
+        TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
         else
@@ -84,6 +92,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         uv pip install requests
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
@@ -116,7 +125,7 @@ runs:
           # for new LLM models
           uv pip install accelerate
           uv pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || uv pip install transformers==4.54.0 soxr==0.5.0
-          TRANSFORMERS_VERSION_ID="$(uv run python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
+          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
           TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
           uv pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
@@ -139,10 +148,10 @@ runs:
           uv pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line; do
-              uv run python install.py $(echo $line |awk -F, '{printf $1}')
+              python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
-            uv run python install.py --continue_on_fail
+            python install.py --continue_on_fail
           fi
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
@@ -161,10 +170,10 @@ runs:
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           sed -i 's/^ *pynvml.*//' requirements.txt
           uv pip install -r requirements.txt
-          # uv run python install.py --continue_on_fail
+          # python install.py --continue_on_fail
           echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           uv pip install dominate
-          uv run python install.py Super_SloMo
+          python install.py Super_SloMo
           # for dlrm
           uv pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs uv pip install
@@ -195,11 +204,11 @@ runs:
       run: |
         # TODO: Remove this step once Python 3.10 is no longer supported.
         if [[ "${{ inputs.python }}" == "3.10" ]]; then
-          CURRENT_NUMPY=$(uv run python -c "import numpy as np; print(np.__version__)")
+          CURRENT_NUMPY=$(python -c "import numpy as np; print(np.__version__)")
           if [[ "${CURRENT_NUMPY}" == 1.23.* ]]; then
             echo "Detected numpy ${CURRENT_NUMPY}; upgrading to 1.24.4"
             uv pip install -U "numpy==1.24.4"
-            uv run python -c "import numpy as np; print(f'numpy version after conditional upgrade: {np.__version__}')"
+            python -c "import numpy as np; print(f'numpy version after conditional upgrade: {np.__version__}')"
           else
             echo "numpy is ${CURRENT_NUMPY}; skipping upgrade because version is not 1.23.*"
           fi
@@ -213,15 +222,15 @@ runs:
       shell: bash -xe {0}
       run: |
         printenv
-        uv run python -c "import torch; print(torch.__config__.show())"
-        uv run python -c "import torch; print(torch.__config__.parallel_info())"
-        uv run python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-        uv run python -c "import torchvision; print(torchvision.__version__)"
-        uv run python -c "import torchaudio; print(torchaudio.__version__)"
-        uv run python -c "import triton; print(triton.__version__)"
-        uv run python pytorch/torch/utils/collect_env.py
+        python -c "import torch; print(torch.__config__.show())"
+        python -c "import torch; print(torch.__config__.parallel_info())"
+        python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+        python -c "import torchvision; print(torchvision.__version__)"
+        python -c "import torchaudio; print(torchaudio.__version__)"
+        python -c "import triton; print(triton.__version__)"
+        python pytorch/torch/utils/collect_env.py
         uv pip list |grep -E 'torch|intel'
-        TORCH_CHECK_ID=$(uv run python -c 'import torch; print(torch.version.git_version)')
+        TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
           exit 1
