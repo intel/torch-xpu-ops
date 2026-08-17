@@ -168,13 +168,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Setup python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ inputs.python }}
-
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Setup python
+        uses: ./.github/actions/setup-python
+        with:
+          python: ${{ inputs.python }}
 
       - name: Print configuration
         run: |
@@ -237,7 +237,7 @@ jobs:
 
       - name: Install comparison dependencies
         run: |
-          python -m pip install --quiet pandas numpy openpyxl PyGithub
+          uv pip install --quiet pandas numpy openpyxl PyGithub
 
       - name: E2E comparison (compare-e2e.py)
         id: e2e-cmp
