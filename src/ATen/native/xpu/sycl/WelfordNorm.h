@@ -42,7 +42,7 @@ std::tuple<int, int, int, int> get_adaptive_config(
 
   // it's not worth having reduction between work groups if the reduction
   // dimension is not big enough
-  nwg_y = nwg_y < 4 ? 1 : nwg_y;
+  // nwg_y = nwg_y < 4 ? 1 : nwg_y; // removed: allow small nwg_y for better occupancy
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
 }
