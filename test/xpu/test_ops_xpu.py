@@ -84,17 +84,18 @@ with XPUPatchForImport(False):
 fake_autocast_device_skips["xpu"] = {"linalg.pinv", "pinverse"}
 
 
-# XPU stft with float16 returns complex64 instead of complex32 (ComplexHalf unsupported).
 # XPU stft returns complex64 for float16 input; complex32 (ComplexHalf) is unsupported.
-@skipOps((skip("_refs.stft", dtypes=[torch.float16]),))
+@skipOps(
+    (
+        skip("_refs.stft", dtypes=[torch.float16]),
+        skip(
+            "_refs.div.floor_rounding", dtypes=[torch.bfloat16]
+        ),  # Divide by 0: _refs produces NaN, torch produces +/-inf
+    )
+)
 @ops(python_ref_db)
 @skipIfTorchInductor("Takes too long for inductor")
 def _test_python_ref_torch_fallback(self, device, dtype, op):
-    if op.full_name == "_refs.div.floor_rounding" and dtype == torch.bfloat16:
-        self.skipTest(
-            "Skipped _refs.div.floor_rounding with bfloat16"
-            "Divide by 0: _refs produces NaN, torch produces +/-inf"
-        )
     self._ref_test_helper(contextlib.nullcontext, device, dtype, op)
 
 
