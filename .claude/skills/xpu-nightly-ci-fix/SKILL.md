@@ -169,12 +169,26 @@ Call `fix/triage` with the failure description and error log.
 | `IMPLEMENTING` | Continue to Step 4.5 (load domain skill), then Step 5 |
 | `NEEDS_HUMAN` | Mark in summary: "needs human (+ reason)"; skip to next failure |
 
-## Step 4.5: Load the domain skill
+## Step 4.5: Load the domain skill (via registry)
 
-Read the `domain` field from the triage output (Step 4). Use the skill
-tool to load `fix/domains/<domain>` (e.g. `fix/domains/xpu-kernel`,
-`fix/domains/inductor`, `fix/domains/upstream-pytorch`). If no domain
-skill exists for the reported domain, proceed without it. This mirrors
+Consult `.claude/skills/fix/domains/README.md` — the domain registry —
+before loading anything:
+
+1. Read the `domain` field from the triage output (Step 4).
+2. Look it up in the registry's JSON list. If not present → **mark the
+   failure `NEEDS_HUMAN`** in the summary, reason: `"fix/triage emitted
+   domain not in fix/domains/README.md: <domain>"`; skip to next
+   failure.
+3. Check the registry row: `skill_path` directory must exist. If not →
+   **`NEEDS_HUMAN`**, reason: `"registry lists <domain> but
+   <skill_path> is missing"`.
+4. Compare the row's `target_repo` with triage's `target_repo` output.
+   Mismatch → **`NEEDS_HUMAN`**, reason: `"triage target_repo=<x>
+   conflicts with registry <y> for domain <domain>"`.
+5. Only then, use the skill tool to load the `skill_path`.
+
+Do NOT fall back to "proceed without a domain skill" — that silent
+no-op is the bug the registry exists to prevent. Mirrors
 `issue-handler` Stage 3.5.
 
 ## Step 5: Implement each fix

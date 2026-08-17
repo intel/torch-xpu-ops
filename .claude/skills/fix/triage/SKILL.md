@@ -59,6 +59,15 @@ Skip deep analysis if any of these apply:
 
 ## Step 1: Classify the failure type and domain
 
+Emit exactly one `domain` value from the registry at
+`.claude/skills/fix/domains/README.md` — that file is the closed set
+of valid values and their `target_repo` mapping. If none of the
+registered domains fits the failure, emit `NEEDS_HUMAN` instead of
+inventing a new value.
+
+Current registered domains (see the registry for the authoritative
+list and each domain's `target_repo`, test/fix locations):
+
 - **kernel/operator bug** (`domain: xpu-kernel`) — failure in XPU backend
   kernel or operator code, including ported CUDA tests that fail due to porting
   gaps (wrong tolerances, missing kernel, incorrect device assumptions).
@@ -134,13 +143,18 @@ See domain skill (loaded by orchestrator) for path conventions.
 
 ## Step 5.5: Sanity check
 
-Before emitting output, confirm all three:
+Before emitting output, confirm all four:
 
 1. **Root cause and fix strategy are consistent** — the fix location is where
    the bug originates, not just where the error fires.
 2. **`target_repo` matches the fix location** — if the fix is in pytorch core
    code, `target_repo` must be `"pytorch"`, not `"torch-xpu-ops"`.
-3. **Not concluding "already fixed" from a skip decorator** — a skip confirms
+3. **`target_repo` matches the domain registry** — cross-check against the
+   `target_repo` column in `.claude/skills/fix/domains/README.md` for the
+   `domain` you're about to emit. A mismatch means one of them is wrong; fix
+   it before emitting (do not rely on the orchestrator's downstream check as
+   a safety net).
+4. **Not concluding "already fixed" from a skip decorator** — a skip confirms
    the issue exists; it is not a fix.
 
 If any check fails, revise before emitting.
