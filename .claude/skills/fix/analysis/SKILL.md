@@ -1,32 +1,40 @@
 ---
-name: fix/triage
+name: fix/analysis
 description: >
   Analyze a failure and determine root cause, fix strategy, target repo,
   domain, and verdict (IMPLEMENTING or NEEDS_HUMAN). Analysis-only — no code
   changes. Used by both issue-handler and nightly-ci-fix orchestrators.
 ---
 
-# Triage — Root Cause Analysis
+# Analysis — Root Cause Analysis
 
 Analysis-only. You may run read-only inspection commands (`read`/`grep`,
 `git clone`, `git show`) to inspect source, but do not run tests or edit
 files. After returning `IMPLEMENTING`, the orchestrator hands off to
 `fix/implement`.
 
-## Scope vs `issue-format`
+May also override the initial verdict from `issue-triage`: if
+`issue-triage` said `agent-fixable` but source inspection reveals the
+failure genuinely cannot be fixed statically (hardware-specific,
+requires missing feature work, non-public dependencies), this skill
+returns `NEEDS_HUMAN` and the pipeline stops.
 
-`issue-format` and `fix/triage` both "classify", but at different depths and
+## Scope vs `issue-triage`
+
+`issue-triage` and `fix/analysis` both "classify", but at different depths and
 on different inputs:
 
-- **`issue-format`** — cheap text-only classification of the raw GitHub issue
-  (bug / skip-list / nonbug) and metadata extraction (test_type, platform,
-  dependency). No source access, no root-cause analysis. Runs first on every
-  issue.
-- **`fix/triage`** (this skill) — deep root-cause analysis on a confirmed
-  failure: reads source, cross-references upstream, decides `target_repo`,
-  `domain`, and `IMPLEMENTING`/`NEEDS_HUMAN`. Runs only after `issue-format`
-  says `bug` **and** `fix/reproduce` produces a result. Also entered directly
-  by `xpu-nightly-ci-fix` (no issue body to format).
+- **`issue-triage`** — cheap text-only classification of the raw GitHub issue
+  (bug / skip-list / nonbug), initial `scope` estimate, `runtime_dependencies`,
+  and a preliminary `verdict` (agent-fixable / NEEDS_HUMAN). No source access,
+  no root-cause analysis. Runs first on every issue.
+- **`fix/analysis`** (this skill) — deep root-cause analysis on a confirmed
+  failure: reads source, cross-references upstream, decides final
+  `target_repo`, `domain`, and `IMPLEMENTING`/`NEEDS_HUMAN`. Has authority
+  to override `issue-triage`'s initial `scope`/`verdict` after seeing the
+  code. Runs only after `issue-triage` says `bug` with verdict
+  `agent-fixable` **and** `fix/reproduce` produces a result. Also entered
+  directly by `xpu-nightly-ci-fix` (no issue body to triage).
 
 ## Inputs
 

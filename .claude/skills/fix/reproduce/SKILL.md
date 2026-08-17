@@ -31,7 +31,7 @@ the result.
   - **Per-entry loop** — one test entry from a skip-list issue (via
     `issue-handler` skip-triage branch).
 
-  `fix/triage` is **not** a provider. It runs after this skill and only
+  `fix/analysis` is **not** a provider. It runs after this skill and only
   analyzes; if it finds the reproducer was wrong (e.g. wrong assertion), it
   asks the orchestrator to re-invoke this skill with a corrected command.
 - `ci_commit` — upstream commit hash from the CI report. Only used as a

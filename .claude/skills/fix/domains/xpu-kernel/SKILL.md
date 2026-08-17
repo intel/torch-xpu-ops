@@ -2,7 +2,7 @@
 name: fix/domains/xpu-kernel
 description: >
   Domain knowledge pack for XPU kernel and operator bugs. Loaded by
-  orchestrators after fix/triage returns domain=xpu-kernel. Not loaded directly
+  orchestrators after fix/analysis returns domain=xpu-kernel. Not loaded directly
   by users.
 ---
 

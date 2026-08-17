@@ -9,7 +9,7 @@ description: >
 
 # Issue Handler — Orchestrator
 
-Sequences `issue-format`, `fix/reproduce`, `fix/triage`, `fix/implement`,
+Sequences `issue-format`, `fix/reproduce`, `fix/analysis`, `fix/implement`,
 `fix/verify`, and a fresh-context **review subagent** into a single pipeline
 for one GitHub issue, then reports the outcome. For skip-list issues, Stage 1
 dispatches to `fix/skip-triage` instead of the bug pipeline. Leaf-skill logic
@@ -299,9 +299,9 @@ Interpret the output:
 | `NO_REPRODUCER` | Continue to Stage 3 (static triage only). Stages 4-5 need a runnable command: if triage cannot name one, stop after Stage 3 with `NEEDS_HUMAN` (root cause + fix location reported, nothing implemented) |
 | `CANNOT_VERIFY` | Report blocker to user; stop |
 
-### Stage 3 — fix/triage
+### Stage 3 — fix/analysis
 
-Call `fix/triage` with the failure description (error log, context, and
+Call `fix/analysis` with the failure description (error log, context, and
 `refined_command` if available from Stage 2).
 
 Triage returns `target_repo` (`pytorch` or `torch-xpu-ops`) alongside the
@@ -326,7 +326,7 @@ before loading anything:
 
 1. Read the `domain` field from the triage output.
 2. Look it up in the registry's JSON list. If not present → **abort
-   with `NEEDS_HUMAN`**, reason: `"fix/triage emitted domain not in
+   with `NEEDS_HUMAN`**, reason: `"fix/analysis emitted domain not in
    fix/domains/README.md: <domain>"`.
 3. Check the registry row: `skill_path` directory must exist. If not →
    **abort with `NEEDS_HUMAN`**, reason: `"registry lists <domain> but
@@ -541,7 +541,7 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
   label operations are adding or removing labels in the `agent:*`
   namespace (`agent:active`, `agent:triaged`, `agent:done`,
   `agent:needs-human`, `agent:waiting-upstream`).
-- **`agent:triaged` label requires a real `fix/triage` run.** Do not
+- **`agent:triaged` label requires a real `fix/analysis` run.** Do not
   apply that label from a stage that only ran `fix/reproduce`.
 - **`PATCH_PROPOSED` requires** Stage 4 -> Stage 5 PASSED -> Stage 5.5
   APPROVE. No speculative diffs.

@@ -1,14 +1,14 @@
 # fix/domains — Domain Registry
 
-Authoritative mapping from `fix/triage` domain values to loadable
+Authoritative mapping from `fix/analysis` domain values to loadable
 domain skills. This file is the single source of truth for:
 
-1. **Which `domain` values `fix/triage` is allowed to emit** — the JSON
+1. **Which `domain` values `fix/analysis` is allowed to emit** — the JSON
    array below is the closed set.
 2. **Which skill each `domain` value maps to** — orchestrators load
    the `skill_path` after triage.
 3. **Which `target_repo` each `domain` implies** — used to sanity-check
-   `fix/triage`'s independent `target_repo` output.
+   `fix/analysis`'s independent `target_repo` output.
 
 ## Registry
 
@@ -26,7 +26,7 @@ Machine-readable list of valid `domain` values (must match the table above):
 
 ## Contracts
 
-**`fix/triage`:**
+**`fix/analysis`:**
 - MUST emit `domain` from the JSON list above; if none applies, emit
   `NEEDS_HUMAN` instead of inventing a new value.
 - MUST emit `target_repo` matching the registry entry for the chosen
@@ -47,6 +47,6 @@ Machine-readable list of valid `domain` values (must match the table above):
 1. Create `.claude/skills/fix/domains/<name>/SKILL.md`.
 2. Add one row to the table above.
 3. Add `<name>` to the JSON list.
-4. Update `fix/triage` Step 1 to describe when to emit `<name>`.
+4. Update `fix/analysis` Step 1 to describe when to emit `<name>`.
 5. Optionally add `<name>` to `.claude/skills/fix/skip-management/`'s
    caller list if the domain interacts with skip decorators.

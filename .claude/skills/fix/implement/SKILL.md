@@ -14,7 +14,7 @@ orchestrator's job).
 
 ## Inputs
 
-- `triage_result` — JSON output from `fix/triage` (root_cause, fix_strategy,
+- `triage_result` — JSON output from `fix/analysis` (root_cause, fix_strategy,
   target_repo, domain).
 - `pytorch_dir` — path to local PyTorch checkout.
 - `allow_skip` — controls skip decorator strategy:
@@ -43,7 +43,7 @@ Read `triage_result` carefully before touching any file. Understand:
 - Why the failure occurs (if applicable, why CUDA works but XPU fails)
 - Whether the fix is in pytorch or the backend repo
 
-If the issue is not yet triaged, run `fix/triage` first.
+If the issue is not yet triaged, run `fix/analysis` first.
 
 ## Step 2: Implement the fix
 
@@ -59,7 +59,7 @@ If the issue is not yet triaged, run `fix/triage` first.
 
 ### Fix strategies by category
 
-See `fix/triage` Step 1 for domain routing. Common strategies:
+See `fix/analysis` Step 1 for domain routing. Common strategies:
 
 - **Tolerance:** match upstream `atol`/`rtol` values exactly.
 - **Regression:** find the guilty commit (`git log --oneline -20 -- <file>`),
