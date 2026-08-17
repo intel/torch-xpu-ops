@@ -17,6 +17,16 @@ orchestrator's job).
 - `triage_result` — JSON output from `fix/root-cause` (root_cause, fix_strategy,
   target_repo, domain).
 - `pytorch_dir` — path to local PyTorch checkout.
+- `target_repo_dir` — path to the checkout that will be edited. Derived
+  from `pytorch_dir` and `triage_result.target_repo`:
+  - `target_repo == "pytorch"` → `target_repo_dir = pytorch_dir`.
+  - `target_repo == "torch-xpu-ops"` →
+    `target_repo_dir = <pytorch_dir>/third_party/torch-xpu-ops`
+    (per AGENTS.md "Commit Pin & Development Override"; the caller
+    is expected to have cloned the working branch there ahead of
+    time).
+  All git and edit operations in this skill run against
+  `target_repo_dir`, never against `pytorch_dir` when the two differ.
 - `allow_skip` — controls skip decorator strategy:
   - `false` (**issue-handler**): never add skip decorators; must unskip and
     really fix.
@@ -26,8 +36,6 @@ orchestrator's job).
 - `patch_proposal_mode` (optional, default `false`) — set by the
   orchestrator when the fix must land in a repo the current run is not
   allowed to open a PR against. See "Patch-proposal mode" below.
-- `commit_message_template` (optional) — orchestrator-provided format. If
-  absent, use a concise imperative message.
 
 ## Step 0: Verify environment
 

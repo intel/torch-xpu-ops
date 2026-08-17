@@ -19,7 +19,7 @@ description: >
 
 > **Execution mode:** this skill behaves differently in interactive (default)
 > vs pipeline mode (e.g. whether it comments on the issue). See
-> `issue-handler/SKILL.md` "Pipeline mode: issue body contract".
+> `issue-handler/SKILL.md` "Pipeline mode: comment contract".
 
 You **analyze**; you do not execute code or edit files. Implementation belongs
 to the `fix/implement` skill. In this triage stage, you could only do modification for
@@ -182,12 +182,18 @@ Classify the root cause to structure the fix strategy:
 
 | Category | Description | Typical fix location |
 |----------|-------------|---------------------|
-| **XPU backend bug** | Bug in XPU kernel or backend code | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
+| **XPU backend bug** | Bug in XPU kernel or backend code | `third_party/torch-xpu-ops/src/ATen/native/xpu/` (target_repo: `torch-xpu-ops`) |
+| **Inductor / dynamo bug** | Bug in `torch._inductor` or `torch._dynamo` (device-agnostic codegen / graph capture) that surfaces on XPU | `torch/_inductor/` or `torch/_dynamo/` (target_repo: `pytorch`) |
 | **Tolerance too tight** | Numerical precision mismatch vs CUDA | Adjust `atol`/`rtol` to match CUDA |
 | **Edge case / numerical accuracy** | NaN/Inf from extreme inputs, CPU-vs-XPU or fp32-vs-fp16 divergence, values near `finfo.max`/`min`, fuzzer-generated cases | Compare against CUDA/CPU reference; confirm it is a real bug, not expected precision behavior |
 | **Skip decorator stale** | `@skipIfXpu`/`@expectedFailure` but test now passes | Remove decorator (see `fix/implement`) |
-| **Upstream regression** | New upstream code broke XPU; needs XPU workaround | `torch/`, `aten/`, `test/` |
+| **Upstream regression** | New upstream code broke XPU; needs XPU workaround | `torch/`, `aten/`, `test/` (target_repo: `pytorch`) |
 | **Test infrastructure** | Environment, import, or setup issue | Test file or CI config |
+
+`torch/_inductor/` and `torch/_dynamo/` NEVER live in `torch-xpu-ops` —
+that path is device-agnostic pytorch code and always maps to
+`target_repo: pytorch` (`domain: inductor` in `fix/domains/README.md`).
+Do not open a torch-xpu-ops PR for a fix in `torch/_inductor/`.
 
 When the issue describes a newly added test, check the commit/PR that introduced
 it to see if XPU support is expected — this affects the fix strategy.
@@ -203,26 +209,30 @@ it to see if XPU support is expected — this affects the fix strategy.
 - **Issue-driven, not reproducer-driven** — the strategy must address the root
   cause, not merely make one reproducer pass.
 
-## Issue-body status (backward compatible)
+## Pipeline-mode contract (comment-only)
 
 **Pipeline mode only.** In interactive mode (default), return the triage result
-to the user/orchestrator and do not write to the issue body. See
-`issue-handler/SKILL.md` "Pipeline mode: issue body contract"
-for the full contract.
+to the user/orchestrator and do not write to the issue anywhere. See
+`issue-handler/SKILL.md` "Pipeline mode: comment contract" for the full
+contract.
 
-This stage corresponds to legacy status stages `TRIAGING` -> `TRIAGED`. It
-produces the Root Cause Analysis / Proposed Fix Strategy / Target Repository
-content and the `<!-- agent:upstream-log -->` / `<!-- agent:triage-log -->` log
-text. In pipeline mode the `issue-handler` orchestrator writes that content into
-the issue body, advances `<!-- agent:status:... -->`, and sets the label
-(`agent:active` while triaging, `agent:triaged` when done, `agent:needs-human`
-on a `NEEDS_HUMAN` verdict).
+**HARD RULE: never modify the issue body.** In pipeline mode this stage
+corresponds to legacy status stages `TRIAGING` → `TRIAGED`. It produces
+the Root Cause Analysis / Proposed Fix Strategy / Target Repository
+content and returns it to the orchestrator. The `issue-handler`
+orchestrator surfaces it inside the single state comment (marked
+`<!-- agent:state -->`) and advances the `agent:*` label — never into
+the issue body, never via separate `<!-- agent:status:... -->` /
+`<!-- agent:upstream-log -->` / `<!-- agent:triage-log -->` markers.
+Those legacy markers are removed; the state comment is the only
+agent-owned artifact on the issue timeline besides posted result
+comments.
 
 ## Output
 
 **Pipeline mode:** Return ONLY this JSON block as the LAST thing in your
 response, with no text after it. The `issue-handler` orchestrator is responsible
-for writing it into the issue body and advancing the status marker.
+for surfacing it inside the state comment.
 ```json
 {
   "root_cause": "detailed analysis (2-3 sentences)",

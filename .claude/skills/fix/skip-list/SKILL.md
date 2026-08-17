@@ -25,7 +25,7 @@ the bug pipeline directly when the issue is a skip-list.
   and MUST be skipped.
 - `pytorch_dir` — local pytorch checkout path.
 - `pr_repo` — the ONE repo this run is allowed to open a PR against.
-  In skip-triage the deliverable is always patch-proposals on the
+  In skip-list processing the deliverable is always patch-proposals on the
   issue, not PRs — so this skill treats every sub-bug as
   patch-proposal mode regardless of `pr_repo`. The orchestrator still
   passes `pr_repo` so future work can lift this restriction if
@@ -79,7 +79,37 @@ here; final table format lives in Step 6.
 ### Step 5 — Per-sub-bug pipeline (STILL_FAILING only)
 
 For every `STILL_FAILING` entry, treat that single test as a
-**sub-bug** and run the full bug pipeline in patch-proposal mode:
+**sub-bug** and run the full bug pipeline in patch-proposal mode.
+
+**Isolation between sub-bugs.** Sub-bugs share the same working-tree
+checkout, but each sub-bug's `git diff --cached` MUST contain only
+that sub-bug's changes (the HARD RULE "NEVER bundle multiple sub-bug
+fixes into one diff" would otherwise be violated by construction —
+`fix/implement` leaves changes staged, and without cleanup the next
+sub-bug's `fix/implement` accumulates on top of the previous one).
+
+Before each sub-bug's `fix/root-cause` call:
+
+```bash
+# Determine target_repo_dir once (same rule as issue-handler Stage 4):
+# target_repo comes from the last sub-bug's root-cause output (or from
+# a lightweight probe on the first sub-bug). Same working tree across
+# all sub-bugs.
+
+# Reset to the base the sub-bug pipeline started from.
+git -C <target_repo_dir> reset --hard <base>
+git -C <target_repo_dir> clean -fdx  # drop untracked artifacts
+
+# Capture this sub-bug's patch AFTER fix/implement + fix/verify:
+sub_patch=$(git -C <target_repo_dir> diff --cached)
+# Store sub_patch immediately; it belongs to this sub-bug's output.
+```
+
+The base is `origin/main` in the normal case, or the CI commit sha if
+`fix/reproduce` fell back to it — same base the top-level orchestrator
+would have branched from.
+
+Pipeline for each sub-bug:
 
 1. `fix/root-cause` (full — root_cause, fix_strategy, target_repo,
    domain, verdict). This step resolves `target_repo` for the
@@ -94,6 +124,9 @@ For every `STILL_FAILING` entry, treat that single test as a
 4. `fix/verify`.
 5. Fresh-context review subagent (same one `issue-handler` Stage 5.5
    uses).
+6. Capture `git diff --cached` as `sub_patch` for this sub-bug's
+   `sub_bugs[]` entry.
+7. Reset (as above) before starting the next sub-bug.
 
 Produce one **patch-proposal comment** per sub-bug. Each comment MUST
 contain:

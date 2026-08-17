@@ -92,6 +92,12 @@ need to change to fix the bug. Values:
 
 Emit `agent-fixable` or `NEEDS_HUMAN` based on issue text alone.
 
+**Special case: `issue_type == "skip-list"` always returns
+`agent-fixable`.** Skip-list issues by definition have no traceback
+(they list already-skipped tests), so the "no error signal" rule
+below does not apply. Per-entry fixability is decided later by
+`fix/skip-list`.
+
 **Return `NEEDS_HUMAN` when the issue itself indicates the agent
 cannot make progress:**
 
@@ -100,9 +106,12 @@ cannot make progress:**
   many independent items.
 - **No error signal** — bug label but zero traceback, zero error
   message, zero failing test name. Agent has nothing to grep for.
+  (Skip-list issues exempted per the special case above.)
 - **No minimal reproducer AND no test-name reference** — no
   reproducer command, no `test_x.py::TestY::test_z` mentioned
   anywhere, no code snippet that triggers the failure.
+  (Skip-list issues exempted per the special case above — their
+  test-name references are the entries in the checklist.)
 - **Hardware-only failure** — issue explicitly requires a specific
   hardware setup the agent does not have access to (e.g. multi-node
   distributed, non-public silicon, requires custom firmware).
@@ -111,8 +120,8 @@ cannot make progress:**
 
 **Return `agent-fixable` when** the issue has enough signal for the
 downstream pipeline to at least attempt reproduction and analysis.
-`fix/root-cause` may still return `NEEDS_HUMAN` later after seeing the
-code — that is expected and not a failure of this stage.
+`fix/root-cause` may still return `NEEDS_HUMAN` later after seeing
+the code — that is expected and not a failure of this stage.
 
 Note: `scope=unclear` alone does NOT force `NEEDS_HUMAN`. Most bugs
 have unclear scope until source is read.

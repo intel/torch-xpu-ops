@@ -29,7 +29,7 @@ the result.
   - **CI failure log** — the failing pytest node id from the nightly CI report
     (via `xpu-nightly-ci-fix`).
   - **Per-entry loop** — one test entry from a skip-list issue (via
-    `issue-handler` skip-triage branch).
+    `fix/skip-list`).
 
   `fix/root-cause` is **not** a provider. It runs after this skill and only
   analyzes; if it finds the reproducer was wrong (e.g. wrong assertion), it

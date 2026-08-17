@@ -39,8 +39,30 @@ interactive.
 Preflight at Stage 0:
 
 ```bash
-gh auth status                              # must show "Logged in to github.com"
-gh auth status -t 2>&1 | grep -i 'scopes'   # confirm 'repo' or 'write:issues'
+# 1. Confirm gh is authenticated.
+gh auth status 2>&1 | grep -q "Logged in to github.com" \
+  || abort "gh not authenticated; run: gh auth login"
+
+# 2. Extract the scope list and check for a write-capable scope.
+#    Interactive mode requires 'repo' (or at minimum 'read:issues').
+#    Pipeline mode requires 'repo' or 'write:issues' (write access
+#    to issues + PRs).
+scopes=$(gh auth status -t 2>&1 | grep -oE "'[a-z:_-]+'" | tr -d "'")
+case "$MODE" in
+  pipeline)
+    echo "$scopes" | grep -qE '^(repo|write:issues)$' \
+      || abort "pipeline mode requires 'repo' or 'write:issues' scope; got: $scopes"
+    ;;
+  interactive)
+    echo "$scopes" | grep -qE '^(repo|read:issues|write:issues)$' \
+      || abort "interactive mode requires at least 'read:issues' scope; got: $scopes"
+    ;;
+esac
+
+# 3. Every subsequent gh call in this skill MUST check its exit code.
+#    A non-zero exit from any 'gh issue comment', 'gh issue edit',
+#    'gh api ... PATCH' is treated as pipeline failure (retry once,
+#    then NEEDS_HUMAN).
 ```
 
 If either check fails, do not enter the pipeline. Emit `NEEDS_HUMAN` naming
@@ -199,6 +221,31 @@ Stage → label mapping:
 | DONE, SKIPPED, DONE_SKIP_TRIAGED | `agent:done` |
 | NEEDS_HUMAN, SKIP_TRIAGED_NEEDS_HUMAN | `agent:needs-human` |
 
+**Label operation error handling.** Every `gh issue edit --add-label`
+or `--remove-label` call MUST check its exit code. Failure modes:
+
+- Rate limit / transient network → retry once with a 5s sleep.
+- Second retry still fails **and** the label being applied is a
+  terminal-state label (`agent:done`, `agent:needs-human`,
+  `agent:triaged`) → downgrade the pipeline outcome to `NEEDS_HUMAN`,
+  reason: `"failed to apply terminal label <name>: <gh stderr>"`.
+  Post a comment on the issue with the same reason so the maintainer
+  sees why the outcome does not match what the state comment claims.
+- Second retry still fails **and** the label is a mid-flight state
+  (`agent:active`, `agent:waiting-upstream`) → log a warning in the
+  state comment `Discovery log` section but continue the pipeline;
+  the terminal label at the end will still surface the outcome.
+
+Silent-no-op is forbidden — the label state is what batch tooling and
+issue filters rely on to find agent-owned issues.
+
+**Label transitions on `agent:*`** — when applying a terminal label,
+remove any prior non-terminal `agent:*` label first (e.g. moving from
+`agent:active` → `agent:needs-human` must also remove `agent:active`).
+This applies especially when `fix/root-cause` downgrades an
+`agent-fixable` verdict to `NEEDS_HUMAN`: remove `agent:triaged` /
+`agent:active` before adding `agent:needs-human`.
+
 **Single state-comment pattern.** Keep exactly one machine-readable
 "state comment" per issue. On the first pipeline run, post it as a new
 comment starting with a fenced marker:
@@ -227,11 +274,49 @@ comment starting with a fenced marker:
 ````
 
 On subsequent runs, find the existing state comment by the
-`<!-- agent:state -->` marker (via
-`gh issue view N --comments --json comments -q '.comments[]'`) and
-**edit it in place** (`gh issue comment --edit-last` is not enough
-because the state comment may not be the last one; use the API:
-`gh api /repos/<owner>/<repo>/issues/comments/<id> -X PATCH -f body=@file`).
+`<!-- agent:state -->` marker and edit it in place. `gh issue comment
+--edit-last` is not enough because the state comment may not be the
+last one — use the concrete recipe below:
+
+```bash
+OWNER=<owner> REPO=<repo> N=<issue_number>
+
+# 1. Find the state-comment id by marker. Take the OLDEST match if
+#    multiple exist (a duplicate can only appear if a prior run's
+#    first post failed after write — dedupe by deleting the newer
+#    ones later).
+comment_id=$(gh issue view "$N" --repo "$OWNER/$REPO" \
+  --json comments \
+  --jq '.comments
+        | map(select(.body | startswith("<!-- agent:state -->")))
+        | sort_by(.createdAt)
+        | .[0].id')
+
+# 2. If no existing state comment, post a new one; else PATCH it.
+if [ -z "$comment_id" ] || [ "$comment_id" = "null" ]; then
+    gh issue comment "$N" --repo "$OWNER/$REPO" --body-file state.md
+else
+    # `--field` reads the value literally (no @file expansion); use
+    # command substitution to inline the file body. `-f` is NOT
+    # equivalent here — gh does not expand @path for POST/PATCH
+    # fields the way curl does.
+    gh api "/repos/$OWNER/$REPO/issues/comments/$comment_id" \
+      --method PATCH \
+      --field body="$(cat state.md)"
+fi
+
+# 3. If step 1 returned more than one id, delete the newer duplicates
+#    so the next run finds a single unambiguous state comment.
+gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
+  --jq '.comments
+        | map(select(.body | startswith("<!-- agent:state -->")))
+        | sort_by(.createdAt)
+        | .[1:][] | .id' \
+  | while read dup_id; do
+      gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
+        --method DELETE
+    done
+```
 
 **Additional comments** (patch proposals, per-test verdict tables,
 etc.) are posted as separate comments and linked from the state
@@ -260,35 +345,38 @@ issue-triage → reproduce → triage → implement → verify → review → re
 Run `issue-triage` to classify the issue and extract shallow metadata
 (`issue_type`, `runtime_dependencies`, `scope`, preliminary `verdict`).
 
-Route on `verdict` first, then `issue_type`:
+Route on `verdict` and `issue_type` together. `issue_type=skip-list`
+takes precedence over any `verdict` value — per-entry fixability is
+what matters for skip-lists, decided by `fix/skip-list`:
 
-- `verdict == "NEEDS_HUMAN"` (any `issue_type`) → record classification
-  and `reason`, report to user, **stop**. This covers non-bugs,
-  umbrella tasks, and bugs with insufficient signal (no traceback, no
-  reproducer, hardware-only, non-public deps). No Stage 2+ work.
+- `issue_type == "skip-list"` (any `verdict`) → invoke `fix/skip-list`
+  with `issue_body`, `pytorch_dir`, and `pr_repo`. That skill owns the
+  full skip-list pipeline (per-entry reproduce, classification,
+  per-sub-bug fix pipeline in patch-proposal mode, verdict table +
+  per-sub-bug patch-proposal outputs). When it returns:
+  1. Post its `verdict_table` as a GitHub comment on the issue
+     (mandatory deliverable — required even if every entry is
+     `ALREADY_FIXED`).
+  2. Post one patch-proposal comment per entry in its `sub_bugs`,
+     using the fields `test`, `root_cause`, `patch_diff`,
+     `reproducer_command`, `verify_before`, `verify_after`, and a
+     `git apply` instruction line built from `patch_diff`. Skip
+     `sub_bugs` entries whose status is `NEEDS_HUMAN` without a
+     `patch_diff` — post them as NEEDS_HUMAN comments naming the
+     reason and a concrete fix location instead.
+  3. Set the state comment `Outcome` from `outcome`
+     (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
+     `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
+  4. **Never modify the issue body** regardless of outcome.
+- `verdict == "NEEDS_HUMAN"` and `issue_type != "skip-list"` → record
+  classification and `reason`, report to user, **stop**. This covers
+  non-bugs, umbrella tasks, and bugs with insufficient signal (no
+  traceback, no reproducer, hardware-only, non-public deps). No
+  Stage 2+ work.
 - `verdict == "agent-fixable"`:
   - `issue_type == "nonbug"` — should not happen (nonbug forces
     `NEEDS_HUMAN` in `issue-triage`); if it does, treat as
     `NEEDS_HUMAN` defensively and stop.
-  - `issue_type == "skip-list"` → invoke `fix/skip-list` with
-    `issue_body`, `pytorch_dir`, and `pr_repo`. That skill owns the
-    full skip-list pipeline (per-entry reproduce, classification,
-    per-sub-bug fix pipeline in patch-proposal mode, verdict table +
-    per-sub-bug patch-proposal outputs). When it returns:
-    1. Post its `verdict_table` as a GitHub comment on the issue
-       (mandatory deliverable — required even if every entry is
-       `ALREADY_FIXED`).
-    2. Post one patch-proposal comment per entry in its `sub_bugs`,
-       using the fields `test`, `root_cause`, `patch_diff`,
-       `reproducer_command`, `verify_before`, `verify_after`, and a
-       `git apply` instruction line built from `patch_diff`. Skip
-       `sub_bugs` entries whose status is `NEEDS_HUMAN` without a
-       `patch_diff` — post them as NEEDS_HUMAN comments naming the
-       reason and a concrete fix location instead.
-    3. Set the state comment `Outcome` from `outcome`
-       (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
-       `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
-    4. **Never modify the issue body** regardless of outcome.
   - `issue_type == "bug"` → carry `runtime_dependencies` and the
     preliminary `scope` forward into Stage 2/3 for reference, and
     continue to Stage 2. Do NOT stop on `scope == "both"` or
@@ -371,10 +459,23 @@ no-op is the bug the registry exists to prevent.
 
 ### Stage 4 — fix/implement
 
-In pipeline mode with multiple issues, first switch to the per-issue
-branch in `target_repo` (see "Pipeline mode: per-issue branch
-isolation" above for the full rules — including the fail-loud `-b`
-requirement and `<base>` selection):
+**Derive `target_repo_dir` from Stage 3's `target_repo`:**
+
+- `target_repo == "pytorch"` → `target_repo_dir = pytorch_dir`.
+- `target_repo == "torch-xpu-ops"` →
+  `target_repo_dir = <pytorch_dir>/third_party/torch-xpu-ops`. The
+  caller (or `xpu-build-pytorch` earlier in the pipeline) must have
+  already cloned the working branch there per AGENTS.md "Commit Pin
+  & Development Override"; if the directory is missing, abort with
+  `NEEDS_HUMAN` reason `"third_party/torch-xpu-ops override checkout
+  missing; run xpu-build-pytorch first"`.
+
+In pipeline mode with multiple issues, switch to the per-issue branch
+in `target_repo_dir` (see "Pipeline mode: per-issue branch isolation"
+above for the full rules — including the fail-loud `-b` requirement
+and `<base>` selection).
+
+**First attempt:**
 
 ```bash
 git -C <target_repo_dir> fetch origin
@@ -383,9 +484,22 @@ git -C <target_repo_dir> checkout -b agent/issue-<N> <base>
 # back to it. Use `-b` (not `-B`) so a stale branch fails loudly.
 ```
 
+**Loop-back re-entry (from Stage 5 FAILED or Stage 5.5 REQUEST_CHANGES):**
+
+```bash
+# The agent/issue-<N> branch already exists and HEAD is on it — do NOT
+# re-run `checkout -b` (that would fail loudly per the branch-isolation
+# rule). Just confirm HEAD:
+[ "$(git -C <target_repo_dir> rev-parse --abbrev-ref HEAD)" = "agent/issue-<N>" ] \
+  || git -C <target_repo_dir> checkout agent/issue-<N>
+# fix/implement's previous staged changes are still present; the loop
+# refines them on top.
+```
+
 Then call `fix/implement` with:
 - `triage_result` from Stage 3
 - `pytorch_dir`
+- `target_repo_dir` (derived above)
 - `allow_skip=false` — issue-handler never allows adding skip decorators
 - `patch_proposal_mode=<true|false>` — set to `true` if Stage 3 chose
   patch-proposal mode (`target_repo != pr_repo`), otherwise `false`
@@ -393,8 +507,8 @@ Then call `fix/implement` with:
 
 In patch-proposal mode (Stage 3 chose it), additionally:
 - `fix/implement` will leave changes **staged but uncommitted** in
-  `target_repo`'s working tree per its `patch_proposal_mode` contract.
-  Stage 6 reads them back via
+  `target_repo_dir`'s working tree per its `patch_proposal_mode`
+  contract. Stage 6 reads them back via
   `git -C <target_repo_dir> diff --cached`.
 - Do NOT invoke any PR-creation skill later. The deliverable is the diff
   on the issue, not a branch.

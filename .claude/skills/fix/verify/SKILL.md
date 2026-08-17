@@ -16,6 +16,13 @@ since the fix lives in local code.
 
 - `refined_command` — the exact test command from `fix/reproduce` output.
 - `pytorch_dir` — path to local PyTorch checkout.
+- `target_repo_dir` — path to the checkout that holds the staged fix
+  (same derivation rule as in `fix/implement`: equals `pytorch_dir` for
+  `target_repo=pytorch`, `<pytorch_dir>/third_party/torch-xpu-ops` for
+  `target_repo=torch-xpu-ops`). All `git stash`/`git diff --cached`
+  operations run against `target_repo_dir`. The rebuild (Step 2) still
+  runs from `pytorch_dir` because `pip install -e .` builds pytorch
+  and pulls its submodule pin.
 - `changed_files` — list of changed files; if any are `.cpp`/`.h`/`.sycl`,
   a rebuild is required before running.
 - `run_before_after_diff` (bool, default `false`) — if `true`, runs the test
@@ -50,11 +57,33 @@ If `run_before_after_diff=true` and the stash finds nothing (orchestrator
 committed the changes early), the contract is violated — return `CANNOT_VERIFY`
 (see below), do not silently produce an after-only table.
 
+All git commands here run against `target_repo_dir` (not `pytorch_dir`);
+these can differ when `target_repo == "torch-xpu-ops"`.
+
 ```bash
+# Capture the staged diff BEFORE stashing so we can compare after pop.
+staged_before=$(git -C <target_repo_dir> diff --cached)
+[ -z "$staged_before" ] && \
+  abort "CANNOT_VERIFY: no staged changes; fix/implement contract requires uncommitted staged changes"
+
 # Record BEFORE (without the fix)
-git stash -u   # stash staged, unstaged, and untracked changes
+git -C <target_repo_dir> stash -u   # stash staged, unstaged, untracked
 # run test, capture output
-git stash pop --index   # --index restores the staged state the orchestrator commits from
+
+# Restore the fix. `--index` restores the staged state the orchestrator
+# commits from — but git will silently fall back to a non-index pop
+# if the working tree conflicts with the popped state (e.g. a rebuild
+# artifact appearing at a path that clashes with a stashed file).
+# Verify the staged diff matches what we captured before stashing.
+git -C <target_repo_dir> stash pop --index || \
+  abort "CANNOT_VERIFY: git stash pop failed; staged fix state cannot be restored"
+
+staged_after=$(git -C <target_repo_dir> diff --cached)
+if [ -z "$staged_after" ] || [ "$staged_after" != "$staged_before" ]; then
+    abort "CANNOT_VERIFY: git stash pop --index did not restore staged state; \
+staged_before=$(echo "$staged_before" | wc -c) bytes, \
+staged_after=$(echo "$staged_after" | wc -c) bytes"
+fi
 
 # Record AFTER (with the fix)
 # run test, capture output

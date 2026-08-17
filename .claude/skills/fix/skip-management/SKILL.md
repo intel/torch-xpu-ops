@@ -91,10 +91,12 @@ upstream feature, dependencies on onednn/triton etc).
    Record the issue URL returned by `gh` and return it to the caller.
 2. Record the skip in the orchestrator's summary report.
 
-File the tracking issue with a heredoc so the body keeps real newlines:
+File the tracking issue with a heredoc so the body keeps real newlines,
+and **capture the URL** — the caller expects it as the `tracking_issue`
+return value:
 
 ```bash
-gh issue create --repo intel/torch-xpu-ops \
+issue_url=$(gh issue create --repo intel/torch-xpu-ops \
   --title "[skip] <test_name>: <short reason>" \
   --body-file - <<'EOF'
 ## Why skipped
@@ -106,6 +108,18 @@ gh issue create --repo intel/torch-xpu-ops \
 ## Test
 <reproducer command>
 EOF
+)
+
+# `gh issue create` prints only the URL to stdout on success. If it
+# printed anything else or nothing, abort — silently returning an
+# empty URL would break the caller's audit trail.
+if [ -z "$issue_url" ] || ! [[ "$issue_url" =~ ^https://github.com/ ]]; then
+    abort "gh issue create returned unexpected output: '$issue_url'"
+fi
+
+# issue_url is now the tracking issue URL, e.g.
+# https://github.com/intel/torch-xpu-ops/issues/1234
+# Return it to the caller as tracking_issue.
 ```
 
 Format:
