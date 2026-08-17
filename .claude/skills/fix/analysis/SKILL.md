@@ -42,6 +42,15 @@ on different inputs:
 - Read-only codebase access (`read`/`grep`).
 - If a runnable test command is available, the orchestrator should have already
   run `fix/reproduce` before calling this skill. Do NOT run tests yourself.
+- Optional hints from `issue-triage` (when called via `issue-handler`):
+  - `preliminary_scope` — `"pytorch" | "torch-xpu-ops" | "both" | "unclear"`.
+    Treat as a hint; verify against source. `"unclear"` is the common
+    case, do not treat it as suspicious. `"both"` requires special
+    handling — see Step 4.
+  - `runtime_dependencies` — array of externally-named deps (`triton`,
+    `onednn`, `onemkl`, `driver`, `sycl`, `ipex`, `xccl`). Use this to
+    prioritize which upstream repos to check for existing fixes.
+  These hints are absent when called directly by `xpu-nightly-ci-fix`.
 
 ## Your task
 
@@ -140,6 +149,20 @@ See domain skill (loaded by orchestrator) for upstream path mappings.
 - Root cause in **device-agnostic/framework code** → fix belongs in **pytorch**.
 - Root cause in **backend-specific kernel/dispatch code** → fix belongs in the
   backend repo (e.g. **torch-xpu-ops**).
+
+**Cross-repo (`preliminary_scope == "both"`) handling.** When
+`issue-triage` flagged the scope as `"both"`, decide whether the fix
+can be isolated to a single repo:
+
+- If source inspection shows one repo alone suffices (the other's
+  change is optional or already present) → return that single
+  `target_repo`; note in `root_cause` that the preliminary scope was
+  `both` and why one side is not needed.
+- If both repos genuinely require coordinated changes (e.g. a new
+  pytorch API AND its XPU implementation, and neither can land
+  independently) → return `NEEDS_HUMAN`, reason:
+  `"Cross-repo coordinated fix (pytorch + torch-xpu-ops) required;
+  agent supports only single-repo fixes in this run."`
 
 See domain skill (loaded by orchestrator) for path conventions.
 

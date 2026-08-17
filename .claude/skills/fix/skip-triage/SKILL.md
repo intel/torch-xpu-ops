@@ -6,7 +6,7 @@ description: >
   via fix/reproduce, classify (still-failing / already-fixed / env /
   flaky), and for still-failing entries run the full fix pipeline as a
   sub-bug producing one patch-proposal per test. Called by issue-handler
-  Stage 1 when issue-format returns issue_type=skip-list.
+  Stage 1 when issue-triage returns issue_type=skip-list.
 ---
 
 # Skip-Triage — Bug Skip Issue Handler

@@ -24,7 +24,7 @@ the result.
   condition as an absent command, just discovered a step later.
 
   Providers (set by the orchestrator, not this skill):
-  - **Issue body** — extracted by `issue-format` from the reproducer section
+  - **Issue body** — extracted by `issue-triage` from the reproducer section
     (via `issue-handler`).
   - **CI failure log** — the failing pytest node id from the nightly CI report
     (via `xpu-nightly-ci-fix`).

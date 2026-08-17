@@ -9,7 +9,7 @@ description: >
 
 # Issue Handler — Orchestrator
 
-Sequences `issue-format`, `fix/reproduce`, `fix/analysis`, `fix/implement`,
+Sequences `issue-triage`, `fix/reproduce`, `fix/analysis`, `fix/implement`,
 `fix/verify`, and a fresh-context **review subagent** into a single pipeline
 for one GitHub issue, then reports the outcome. For skip-list issues, Stage 1
 dispatches to `fix/skip-triage` instead of the bug pipeline. Leaf-skill logic
@@ -252,35 +252,48 @@ comment.
 ## Pipeline
 
 ```
-issue-format → reproduce → triage → implement → verify → review → report
+issue-triage → reproduce → triage → implement → verify → review → report
 ```
 
-### Stage 1 — issue-format
+### Stage 1 — issue-triage
 
-Classify as `bug`, `skip-list`, or `nonbug` and extract metadata.
+Run `issue-triage` to classify the issue and extract shallow metadata
+(`issue_type`, `runtime_dependencies`, `scope`, preliminary `verdict`).
 
-- `nonbug` → record classification, report to user, **stop**.
-- `skip-list` → invoke `fix/skip-triage` with `issue_body`,
-  `pytorch_dir`, and `pr_repo`. That skill owns the full skip-list
-  pipeline (per-entry reproduce, classification, per-sub-bug fix
-  pipeline in patch-proposal mode, verdict table + per-sub-bug
-  patch-proposal outputs). When it returns:
-  1. Post its `verdict_table` as a GitHub comment on the issue
-     (mandatory deliverable — required even if every entry is
-     `ALREADY_FIXED`).
-  2. Post one patch-proposal comment per entry in its `sub_bugs`,
-     using the fields `test`, `root_cause`, `patch_diff`,
-     `reproducer_command`, `verify_before`, `verify_after`, and a
-     `git apply` instruction line built from `patch_diff`. Skip
-     `sub_bugs` entries whose status is `NEEDS_HUMAN` without a
-     `patch_diff` — post them as NEEDS_HUMAN comments naming the
-     reason and a concrete fix location instead.
-  3. Set the state comment `Outcome` from `outcome`
-     (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
-     `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
-  4. **Never modify the issue body** regardless of outcome.
-- `bug` → continue to Stage 2.
-- `bug` → continue to Stage 2.
+Route on `verdict` first, then `issue_type`:
+
+- `verdict == "NEEDS_HUMAN"` (any `issue_type`) → record classification
+  and `reason`, report to user, **stop**. This covers non-bugs,
+  umbrella tasks, and bugs with insufficient signal (no traceback, no
+  reproducer, hardware-only, non-public deps). No Stage 2+ work.
+- `verdict == "agent-fixable"`:
+  - `issue_type == "nonbug"` — should not happen (nonbug forces
+    `NEEDS_HUMAN` in `issue-triage`); if it does, treat as
+    `NEEDS_HUMAN` defensively and stop.
+  - `issue_type == "skip-list"` → invoke `fix/skip-triage` with
+    `issue_body`, `pytorch_dir`, and `pr_repo`. That skill owns the
+    full skip-list pipeline (per-entry reproduce, classification,
+    per-sub-bug fix pipeline in patch-proposal mode, verdict table +
+    per-sub-bug patch-proposal outputs). When it returns:
+    1. Post its `verdict_table` as a GitHub comment on the issue
+       (mandatory deliverable — required even if every entry is
+       `ALREADY_FIXED`).
+    2. Post one patch-proposal comment per entry in its `sub_bugs`,
+       using the fields `test`, `root_cause`, `patch_diff`,
+       `reproducer_command`, `verify_before`, `verify_after`, and a
+       `git apply` instruction line built from `patch_diff`. Skip
+       `sub_bugs` entries whose status is `NEEDS_HUMAN` without a
+       `patch_diff` — post them as NEEDS_HUMAN comments naming the
+       reason and a concrete fix location instead.
+    3. Set the state comment `Outcome` from `outcome`
+       (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
+       `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
+    4. **Never modify the issue body** regardless of outcome.
+  - `issue_type == "bug"` → carry `runtime_dependencies` and the
+    preliminary `scope` forward into Stage 2/3 for reference, and
+    continue to Stage 2. Do NOT stop on `scope == "both"` or
+    `scope == "unclear"` here — those are preliminary and refined by
+    `fix/analysis` in Stage 3.
 
 ### Stage 2 — fix/reproduce
 
@@ -301,11 +314,28 @@ Interpret the output:
 
 ### Stage 3 — fix/analysis
 
-Call `fix/analysis` with the failure description (error log, context, and
-`refined_command` if available from Stage 2).
+Call `fix/analysis` with the failure description (error log, context,
+`refined_command` if available from Stage 2), and the preliminary
+`scope` and `runtime_dependencies` from `issue-triage` as hints.
 
-Triage returns `target_repo` (`pytorch` or `torch-xpu-ops`) alongside the
-verdict. Compare it to `pr_repo`:
+`fix/analysis` reads source and produces the **final** `target_repo`,
+`domain`, and `verdict`. It may override `issue-triage`'s preliminary
+outputs:
+
+- Preliminary `scope=unclear` → analysis resolves to a specific
+  `target_repo`.
+- Preliminary `scope=pytorch` or `scope=torch-xpu-ops` → analysis may
+  confirm or (rarely) correct.
+- Preliminary `scope=both` → analysis decides whether the fix can be
+  isolated to one repo (single-repo `target_repo` output) or truly
+  requires cross-repo changes (returns `NEEDS_HUMAN`, reason:
+  cross-repo fix out of scope for this run).
+- Preliminary `verdict=agent-fixable` → analysis may downgrade to
+  `NEEDS_HUMAN` if source inspection reveals hidden complexity.
+- Preliminary `verdict=NEEDS_HUMAN` never reaches this stage — Stage 1
+  stops on that.
+
+Compare `fix/analysis`'s `target_repo` to `pr_repo`:
 
 | Verdict | `target_repo` vs `pr_repo` | Action |
 |---------|----------------------------|--------|
