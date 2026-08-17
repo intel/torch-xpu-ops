@@ -11,7 +11,7 @@ import math
 from functools import partial
 
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestGroupNorm(TestCase):
@@ -270,3 +270,7 @@ class TestGroupNormFusedForward(TestCase):
                     rtol=1e-5,
                     msg=f"Y mismatch for shape ({N},{C},{H},{W}) G={G}",
                 )
+
+
+if __name__ == "__main__":
+    run_tests()

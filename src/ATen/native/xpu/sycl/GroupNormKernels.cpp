@@ -437,7 +437,7 @@ struct GNFusedForwardSmallFunctor {
   static constexpr int DS = LANES_PER_GROUP * VEC_SIZE;
   static constexpr int GROUPS_PER_SG = SIMD / LANES_PER_GROUP;
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -458,14 +458,14 @@ struct GNFusedForwardSmallFunctor {
 
     // Pre-load gamma/beta (g is invariant across iterations since
     // stride % G == 0 for power-of-2 G and GROUPS_PER_SG).
-    T_ACC my_gamma[VEC_SIZE];
-    T_ACC my_beta[VEC_SIZE];
+    T_ACC gamma_v[VEC_SIZE];
+    T_ACC beta_v[VEC_SIZE];
     const index_t g_offset = g * D_;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; v++) {
       const index_t cv = (local_lid * VEC_SIZE + v) >> log2_S_;
-      my_gamma[v] = static_cast<T_ACC>(gamma_[g_offset + cv]);
-      my_beta[v] = static_cast<T_ACC>(beta_[g_offset + cv]);
+      gamma_v[v] = static_cast<T_ACC>(gamma_[g_offset + cv]);
+      beta_v[v] = static_cast<T_ACC>(beta_[g_offset + cv]);
     }
 
     for (index_t ng = flat_base; ng < total_groups; ng += stride) {
@@ -511,8 +511,8 @@ struct GNFusedForwardSmallFunctor {
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; v++) {
         yv[v] = static_cast<T>(
-            rstd_val * my_gamma[v] * (static_cast<T_ACC>(xv[v]) - mean_val) +
-            my_beta[v]);
+            rstd_val * gamma_v[v] * (static_cast<T_ACC>(xv[v]) - mean_val) +
+            beta_v[v]);
       }
       *reinterpret_cast<vec_t*>(y_base + local_lid * VEC_SIZE) = yv;
     }
@@ -570,7 +570,7 @@ struct GNFusedForwardMediumFunctor {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
   static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     auto sg = item.get_sub_group();
     const int sg_lid = sg.get_local_linear_id();
     const index_t wg_id = item.get_group(0);
@@ -711,7 +711,7 @@ template <typename T, typename T_ACC, int SIMD, int VEC_SIZE, typename index_t>
 struct GNFusedForwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
-  void operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     static_assert(VEC_SIZE == 4, "Tree reduction assumes VEC_SIZE == 4");
     const index_t ng = item.get_group(0);
     const int lid = item.get_local_id(0);
@@ -1077,7 +1077,7 @@ void group_norm_kernel_impl(
   auto try_small_path = [&](auto index_tag) -> bool {
     if (!gamma_beta_defined)
       return false;
-    if (simd != 32)
+    if (simd != SIMD32)
       return false;
     using index_t = decltype(index_tag);
     if (DS % FUSED_VEC_SIZE != 0)
@@ -1136,9 +1136,6 @@ void group_norm_kernel_impl(
           kfn);
     };
     switch (lanes) {
-      case 1:
-        launch(std::integral_constant<int, 1>{});
-        break;
       case 2:
         launch(std::integral_constant<int, 2>{});
         break;
@@ -1162,7 +1159,7 @@ void group_norm_kernel_impl(
   auto try_medium_path = [&](auto index_tag) -> bool {
     if (!gamma_beta_defined)
       return false;
-    if (simd != 32)
+    if (simd != SIMD32)
       return false;
     using index_t = decltype(index_tag);
     constexpr int64_t MAX_LOADS = 4;
@@ -1175,6 +1172,7 @@ void group_norm_kernel_impl(
     using K =
         GNFusedForwardMediumFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
     int64_t n_wgs = std::max(G, std::min(N * G, thread_slots));
+    n_wgs = (n_wgs / G) * G;
     constexpr int64_t wg_sz = SIMD32;
     auto kfn =
         K(static_cast<index_t>(D),
@@ -1219,7 +1217,7 @@ void group_norm_kernel_impl(
   int64_t n_groups = N * G;
   int64_t max_wg_est = std::min((int64_t)1024, DS / FUSED_VEC_SIZE);
   bool fused_has_occupancy = (n_groups * max_wg_est >= thread_slots / 2);
-  if (fused_has_occupancy && simd == 32 && gamma_beta_defined) {
+  if (fused_has_occupancy && simd == SIMD32 && gamma_beta_defined) {
     constexpr int64_t wg_choices[] = {32, 64, 128, 256, 512, 1024};
     int64_t wg_size = 32;
     auto launch = [&](auto index_tag) {
