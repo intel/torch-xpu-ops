@@ -46,6 +46,11 @@ jobs:
           /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
           pip install cmake ninja
           dnf install -y libtool libzstd-devel
+      - name: Patch sources
+        run: |
+          # WA for https://github.com/intel/llvm/issues/22893
+          sed -i '2224,2225d' sycl/source/detail/scheduler/commands.cpp
+        working-directory: ./intel-llvm
       - name: Build intel-llvm
         run: |
           source /opt/rh/gcc-toolset-13/enable
