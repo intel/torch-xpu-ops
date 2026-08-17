@@ -18,9 +18,11 @@ Placed at the top of `fix/` alongside pipeline stages and domains rather
 than under `fix/domains/` because XPU skips live in the pytorch test tree
 regardless of which domain triaged the failure.
 
-Skip decorators live in the pytorch test tree regardless of the triaged bug
-domain (xpu-kernel, inductor, or upstream-pytorch). Load this skill when you
-need to find, remove (temporarily or permanently), or add an XPU skip marker.
+Skip decorators live wherever the failing test lives — usually the pytorch
+test tree (that is why this skill is not a domain pack), but XPU-owned tests
+under `test/xpu/` live in torch-xpu-ops. Load this skill when you need to
+find, remove (temporarily or permanently), or add an XPU skip marker; the
+caller decides whether the file is inside its allowed repo scope.
 
 ## Find skip markers
 

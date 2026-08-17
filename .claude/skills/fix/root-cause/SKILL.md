@@ -226,6 +226,13 @@ Return to the orchestrator:
 }
 ```
 
+`target_repo`, `domain`, and `fix_strategy` are required (non-null) only
+when `verdict == "IMPLEMENTING"`. On `NEEDS_HUMAN` — including the Step 0
+early exits and the "no registered domain fits" case — emit `null` for
+whichever of them the analysis could not determine, and put the
+explanation in `reason`. Do not invent a domain or a repo just to fill
+the schema; orchestrators only consult those fields on `IMPLEMENTING`.
+
 ## HARD RULES
 - NEVER make code changes or create PRs for `task`-labeled issues.
 - NEVER submit a torch-xpu-ops PR for a bug whose root cause is in pytorch.

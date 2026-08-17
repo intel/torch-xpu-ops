@@ -91,9 +91,19 @@ See `fix/root-cause` Step 1 for domain routing. Common strategies:
 
 ### Skip operations
 
-XPU skip decorators live in the pytorch test tree regardless of the triaged
-domain. For removing stale skip decorators or adding new skips, load
-`fix/skip-management`.
+Skip decorators for a failing test live wherever that test lives: the
+pytorch test tree for upstream tests, `test/xpu/` inside torch-xpu-ops
+for its own tests. For removing stale skip decorators or adding new
+skips, load `fix/skip-management`.
+
+**The skip must live inside `target_repo_dir`.** This skill only ever
+produces a single-repo diff, and the orchestrator commits (or reads)
+only `target_repo_dir`. If the skip would have to be added to a file
+outside `target_repo_dir` — e.g. `target_repo == "torch-xpu-ops"` but
+the failing test is in pytorch's `test/` tree — do NOT edit it: that
+change would be left uncommitted and then wiped by the orchestrator's
+reset between failures. Return `NEEDS_HUMAN` naming the file that would
+need the skip.
 
 When **adding** a new skip (`allow_skip=true`), follow the "Add a new skip"
 procedure in `fix/skip-management`. It handles filing the tracking issue and
@@ -282,6 +292,9 @@ a claim that was never verified.
 
 ## HARD RULES
 - NEVER add skip decorators when `allow_skip=false`.
+- NEVER edit a file outside `target_repo_dir` — including when the skip
+  or fix "belongs" in the other repo. That diff cannot be committed or
+  read back by the orchestrator; return `NEEDS_HUMAN` instead.
 - When `allow_skip=false`, Step 3.5 (skip-guard reviewer subagent) is
   MANDATORY before returning to the orchestrator. Do not skip it, do
   not run it inline in your own context.

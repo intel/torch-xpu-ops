@@ -125,13 +125,19 @@ Pipeline for each sub-bug:
    `fix/domains/README.md`).
 3. Derive **this sub-bug's** `target_repo_dir` from Step 1's
    `target_repo` (same rule as `issue-handler` Stage 4).
-4. `fix/implement` with `allow_skip=false`,
-   `patch_proposal_mode=true`, and the derived `target_repo_dir` —
+4. `fix/implement` with `triage_result` from step 1, `pytorch_dir`,
+   the derived `target_repo_dir`, `allow_skip=false`, and
+   `patch_proposal_mode=true` —
    the STRICT patch-acceptance rules apply exactly the same as in
    the bug branch: no skip/xfail/seed/tolerance workarounds, no
    assertion deletion, no broad `try/except` around the failing
-   call.
-5. `fix/verify` with the same `target_repo_dir`.
+   call. Skip the remaining steps for this sub-bug when it returns
+   `ready_for_verify: false` (record it as `NEEDS_HUMAN`).
+5. `fix/verify` with this entry's `refined_command`, `pytorch_dir`,
+   the same `target_repo_dir`, `changed_files` from step 4, and
+   `run_before_after_diff=true` — the `verify_before` / `verify_after`
+   fields this skill must output come from that comparison, so the
+   default `false` would leave them empty.
 6. Fresh-context review subagent (same one `issue-handler`
    Stage 5.5 uses).
 7. **Capture this sub-bug's patch NOW, before any reset:**

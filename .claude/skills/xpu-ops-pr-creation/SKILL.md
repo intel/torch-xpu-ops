@@ -20,7 +20,7 @@ placeholders:
 
 **MANDATORY STEPS**:
 
-- You MUST read the issue body "Root Cause Analysis" and "Proposed Fix Strategy" BEFORE proposing any fix.
+- You MUST read the root-cause analysis and fix strategy for the issue BEFORE proposing any fix — from `fix/root-cause`'s output when running under the `issue-handler` pipeline, or from the issue's agent state comment (`<!-- agent:state -->`) / the issue body when a human wrote them. The agent pipeline never writes those sections into the issue body.
 - If there is a CUDA kernel implementation, you have to refer to it first.
 - Before you make any changes, you need to understand the root cause, and answer yourself "why CUDA works but XPU failed". If there is any misalignment, you need to write in the PR body description.
 - After you make changes, you need to answer "If the implementation is different with the CUDA logic, is it reasonable?" If there is any misalignment, you need to write in the PR body description.

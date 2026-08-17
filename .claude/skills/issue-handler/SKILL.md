@@ -415,45 +415,44 @@ last one — use the concrete recipe below:
 ```bash
 OWNER=<owner> REPO=<repo> N=<issue_number>
 
+# Use the REST comments endpoint, NOT `gh issue view --json comments`:
+# that command goes through GraphQL and its `.id` is a node id
+# (`IC_kwDO...`), which the REST /issues/comments/<id> endpoint below
+# does not accept. The REST list returns the numeric database id these
+# PATCH/DELETE calls need.
+
 # 1. Find the state-comment id by marker. Take the OLDEST match if
 #    multiple exist (a duplicate can only appear if a prior run's
-#    first post failed after write — dedupe by deleting the newer
-#    ones later).
-comment_id=$(gh issue view "$N" --repo "$OWNER/$REPO" \
-  --json comments \
-  --jq '.comments
-        | map(select(.body | startswith("<!-- agent:state -->")))
-        | sort_by(.createdAt)
-        | .[0].id')
+#    first post failed after write - dedupe by deleting the newer
+#    ones later). REST returns comments in ascending created_at.
+state_ids=$(gh api "repos/$OWNER/$REPO/issues/$N/comments" --paginate \
+  --jq '.[] | select(.body | startswith("<!-- agent:state -->")) | .id')
+comment_id=$(printf '%s\n' "$state_ids" | head -1)
 
 # 2. If no existing state comment, post a new one; else PATCH it.
-if [ -z "$comment_id" ] || [ "$comment_id" = "null" ]; then
+if [ -z "$comment_id" ]; then
     gh issue comment "$N" --repo "$OWNER/$REPO" --body-file state.md
 else
     # `--field` reads the value literally (no @file expansion); use
     # command substitution to inline the file body. `-f` is NOT
-    # equivalent here — gh does not expand @path for POST/PATCH
+    # equivalent here - gh does not expand @path for POST/PATCH
     # fields the way curl does.
-    gh api "/repos/$OWNER/$REPO/issues/comments/$comment_id" \
+    gh api "repos/$OWNER/$REPO/issues/comments/$comment_id" \
       --method PATCH \
       --field body="$(cat state.md)"
 fi
 
 # 3. If step 1 returned more than one id, delete the newer duplicates
 #    so the next run finds a single unambiguous state comment.
-#    Best-effort — a DELETE failure (403 on another user's comment,
+#    Best-effort - a DELETE failure (403 on another user's comment,
 #    422 on already-deleted, etc.) is logged but does NOT downgrade
 #    the pipeline outcome; the state comment itself is intact.
-gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
-  --jq '.comments
-        | map(select(.body | startswith("<!-- agent:state -->")))
-        | sort_by(.createdAt)
-        | .[1:][] | .id' \
-  | while read dup_id; do
-      gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
-        --method DELETE \
-        || log_warn "could not delete duplicate state comment $dup_id; continuing"
-    done
+printf '%s\n' "$state_ids" | tail -n +2 | while read -r dup_id; do
+    [ -n "$dup_id" ] || continue
+    gh api "repos/$OWNER/$REPO/issues/comments/$dup_id" \
+      --method DELETE \
+      || log_warn "could not delete duplicate state comment $dup_id; continuing"
+done
 ```
 
 **Additional comments** (patch proposals, per-test verdict tables,

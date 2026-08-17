@@ -47,17 +47,23 @@ silently".
 
 ## Step 1: Confirm source build environment
 
+The installed `torch` must be the one built from `pytorch_dir`, not a
+wheel. Checking `torch.version.git_version` is NOT sufficient —
+released and nightly wheels also carry a real commit hash there.
+Check where `torch` is imported from instead:
+
 ```bash
-python -c "import torch; print(torch.version.git_version)"
+python -c "import torch, os; print(os.path.realpath(torch.__file__))"
 ```
 
-This must return a commit hash (source build), not a version string like
-`2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and return
-`CANNOT_VERIFY` with `blocker: "wheel install; verify requires a source
-build"` — a fix staged in the local tree has no effect on an installed
-wheel. Producing the source build is the orchestrator's job (both
-orchestrators load `xpu-build-pytorch` before calling this skill when
-`fix/reproduce` reproduced at `stage=nightly`).
+The printed path must be under `$(realpath <pytorch_dir>)/torch/`. If it
+resolves into `site-packages` of an unrelated prefix, the environment is
+a wheel install: return `CANNOT_VERIFY` with `blocker: "wheel install
+(torch imported from <path>); verify requires a source build"` — a fix
+staged in the local tree has no effect on an installed wheel. Producing
+the source build is the orchestrator's job (both orchestrators load
+`xpu-build-pytorch` before calling this skill when `fix/reproduce`
+reproduced at `stage=nightly`).
 
 ## Step 2: Rebuild if needed
 
@@ -192,6 +198,13 @@ repo that owns the changed files — not in `pytorch_dir`:
 ```bash
 cd <target_repo_dir>
 spin fixlint
+# fixlint rewrites files in the working tree, which UNSTAGES those
+# hunks. The orchestrator commits what is staged, so re-stage the
+# same files or the lint fixes are silently dropped from the commit.
+git -C <target_repo_dir> add -- <changed_files>
+# Nothing outside changed_files may become staged; if `git status`
+# shows fixlint touched other files, return FAILED rather than
+# widening the diff.
 spin lint 2>&1 | tail -40
 ```
 
