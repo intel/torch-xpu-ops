@@ -9,7 +9,7 @@ description: >
 # Nightly CI Fix — Orchestrator
 
 Processes a batch of nightly CI failures. Each failure runs through the same
-`fix/reproduce` → `fix/analysis` → `fix/implement` → `fix/verify` pipeline
+`fix/reproduce` → `fix/root-cause` → `fix/implement` → `fix/verify` pipeline
 independently. All detailed fix logic lives in the `fix/` leaf skills — this
 skill owns the batch scheduling, branch strategy, commit format, and progress
 tracking.
@@ -150,7 +150,7 @@ Interpret output per failure:
 
 ## Step 4: Triage each reproduced failure
 
-Before calling `fix/analysis`, checkout a new branch for this failure off
+Before calling `fix/root-cause`, checkout a new branch for this failure off
 the `base` reproduce reported (so Step 6's rebuild lands on the same
 base as the reproduction). One branch per failure; name it
 `fix-<report_date>-<short_test_name>` where `short_test_name` is the
@@ -162,7 +162,7 @@ git checkout -b fix-<report_date>-<short_test_name> <base>
 # e.g. git checkout -b fix-20260608-test_add origin/main
 ```
 
-Call `fix/analysis` with the failure description and error log.
+Call `fix/root-cause` with the failure description and error log.
 
 | Verdict | Action |
 |---------|--------|
@@ -176,7 +176,7 @@ before loading anything:
 
 1. Read the `domain` field from the triage output (Step 4).
 2. Look it up in the registry's JSON list. If not present → **mark the
-   failure `NEEDS_HUMAN`** in the summary, reason: `"fix/analysis emitted
+   failure `NEEDS_HUMAN`** in the summary, reason: `"fix/root-cause emitted
    domain not in fix/domains/README.md: <domain>"`; skip to next
    failure.
 3. Check the registry row: `skill_path` directory must exist. If not →
@@ -228,7 +228,7 @@ Otherwise call `fix/verify` with:
 
 ```
 attempt N (starting at 1 after the first fix/verify returns FAILED):
-  1. Call fix/analysis again, passing:
+  1. Call fix/root-cause again, passing:
      - original failure description
      - fix/verify failure_output from this attempt
      - fix/verify suggestion from this attempt

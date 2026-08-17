@@ -2,7 +2,7 @@
 name: fix/domains/upstream-pytorch
 description: >
   Domain knowledge pack for device-agnostic PyTorch framework bugs that surface
-  on XPU. Loaded by orchestrators after fix/analysis returns
+  on XPU. Loaded by orchestrators after fix/root-cause returns
   domain=upstream-pytorch. Not loaded directly by users.
 ---
 

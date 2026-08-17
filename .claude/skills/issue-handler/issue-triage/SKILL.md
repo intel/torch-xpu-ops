@@ -7,14 +7,14 @@ description: >
   unclear); and emit a preliminary verdict (agent-fixable / NEEDS_HUMAN)
   based on issue body/labels alone. No source access. Use as the first
   stage of issue handling; deep root-cause analysis and any override of
-  the preliminary verdict happen later in `fix/analysis`.
+  the preliminary verdict happen later in `fix/root-cause`.
 ---
 
 # Issue Triage — Shallow Classification & Preliminary Verdict
 
 Text-only triage. Reads the issue title/body/labels and emits a
 structured JSON classification without touching source code. This is
-the shallow layer; the deep counterpart is `fix/analysis`, which reads
+the shallow layer; the deep counterpart is `fix/root-cause`, which reads
 source and may override this skill's `scope` / `verdict` outputs.
 
 ## Inputs
@@ -36,7 +36,7 @@ tests should still be skipped. Indicators: `Bug Skip` in the title or template,
 `agent_test: skip-list` label, body is a checklist of test node ids (often with
 `~~strike-through~~` for entries already resolved), no fresh error traceback.
 Distinct from a plain bug because the fix path is per-entry re-verification, not
-root-cause analysis of a single failure — see `fix/skip-triage`.
+root-cause analysis of a single failure — see `fix/skip-list`.
 
 **Non-bug** — feature requests, tasks, performance issues, questions, discussions,
 tracking issues, enhancement proposals, feature gaps.
@@ -81,10 +81,10 @@ need to change to fix the bug. Values:
   ported CUDA test failing on XPU due to a kernel gap.
 - `"both"` — issue text names changes needed in BOTH repos (e.g.
   pytorch API addition + XPU implementation of that API). This is
-  passed down to `fix/analysis`, which decides whether to attempt or
+  passed down to `fix/root-cause`, which decides whether to attempt or
   fall back to `NEEDS_HUMAN`.
 - `"unclear"` — issue text does not specify. This is the common case
-  for most bug reports; `fix/analysis` will decide the final
+  for most bug reports; `fix/root-cause` will decide the final
   `target_repo` after reading source. **`"unclear"` is NOT
   `NEEDS_HUMAN`** — it is the normal handoff to the deep triage stage.
 
@@ -111,7 +111,7 @@ cannot make progress:**
 
 **Return `agent-fixable` when** the issue has enough signal for the
 downstream pipeline to at least attempt reproduction and analysis.
-`fix/analysis` may still return `NEEDS_HUMAN` later after seeing the
+`fix/root-cause` may still return `NEEDS_HUMAN` later after seeing the
 code — that is expected and not a failure of this stage.
 
 Note: `scope=unclear` alone does NOT force `NEEDS_HUMAN`. Most bugs
@@ -143,10 +143,10 @@ Field notes:
 - `runtime_dependencies`: array of strings from the closed set above.
   Empty `[]` when none named. Do NOT invent values not explicitly in
   the issue.
-- `scope`: preliminary — `fix/analysis` may override after reading
+- `scope`: preliminary — `fix/root-cause` may override after reading
   source. `"unclear"` is a valid, common value; do NOT default to
   `NEEDS_HUMAN` just because scope is unclear.
-- `verdict`: preliminary — `fix/analysis` may downgrade
+- `verdict`: preliminary — `fix/root-cause` may downgrade
   `agent-fixable` to `NEEDS_HUMAN` after reading source. This skill
   never upgrades `NEEDS_HUMAN` to `agent-fixable` from source; it
   only sees text.

@@ -7,7 +7,7 @@ description: >
 # Triage XPU / PyTorch Issue
 
 > **Note:** For automated pipelines (issue-handler, xpu-nightly-ci-fix), use
-> `fix/analysis` instead — those orchestrators load `fix/analysis` directly and
+> `fix/root-cause` instead — those orchestrators load `fix/root-cause` directly and
 > do not go through this skill. This skill is retained as a **standalone /
 > manual triage entry point** for one-off issue analysis where the full
 > orchestrator pipeline is not being used.

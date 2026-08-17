@@ -1,5 +1,5 @@
 ---
-name: fix/skip-triage
+name: fix/skip-list
 description: >
   Process a "Bug Skip" tracking issue — a list of already-skipped tests
   asking whether each skip is still needed. For each entry: re-verify
@@ -9,12 +9,12 @@ description: >
   Stage 1 when issue-triage returns issue_type=skip-list.
 ---
 
-# Skip-Triage — Bug Skip Issue Handler
+# Skip-List — Bug Skip Issue Handler
 
 Mini-orchestrator for skip-list issues. Loops `fix/reproduce` over each
 test entry, then recursively runs the full bug pipeline
-(`fix/analysis` → `fix/implement` → `fix/verify` → review) for
-still-failing entries. Peer of `fix/analysis` (not a child of it); the
+(`fix/root-cause` → `fix/implement` → `fix/verify` → review) for
+still-failing entries. Peer of `fix/root-cause` (not a child of it); the
 top-level orchestrator dispatches to this skill instead of running
 the bug pipeline directly when the issue is a skip-list.
 
@@ -62,7 +62,7 @@ in `fix/reproduce` Inputs).
 
 `fix/reproduce` only reports whether the test fails — it does NOT
 determine which repo owns the root cause. That decision is made by
-the per-entry `fix/analysis` run in Step 5. The verdict table (assembled
+the per-entry `fix/root-cause` run in Step 5. The verdict table (assembled
 in Step 6, after Step 5 completes) records each `STILL_FAILING` entry
 as either `STILL_FAILING_UPSTREAM_BUG` (root cause in pytorch) or
 `STILL_FAILING_XPU_BUG` (root cause in torch-xpu-ops), using
@@ -81,7 +81,7 @@ here; final table format lives in Step 6.
 For every `STILL_FAILING` entry, treat that single test as a
 **sub-bug** and run the full bug pipeline in patch-proposal mode:
 
-1. `fix/analysis` (full — root_cause, fix_strategy, target_repo,
+1. `fix/root-cause` (full — root_cause, fix_strategy, target_repo,
    domain, verdict). This step resolves `target_repo` for the
    verdict-table classification.
 2. Load domain skill via the registry (see

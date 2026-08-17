@@ -14,7 +14,7 @@ placeholders:
 # PR Creation — torch-xpu-ops
 
 - Read `.github/copilot-instructions.md` for full repo context before starting.
-- For issue triaging before creating a PR, use `.claude/skills/fix/analysis/SKILL.md`
+- For issue triaging before creating a PR, use `.claude/skills/fix/root-cause/SKILL.md`
   (pipeline entry point) or `.claude/skills/xpu-issues-triaging/SKILL.md`
   (standalone/manual entry point).
 

@@ -1,12 +1,12 @@
 ---
-name: fix/analysis
+name: fix/root-cause
 description: >
   Analyze a failure and determine root cause, fix strategy, target repo,
   domain, and verdict (IMPLEMENTING or NEEDS_HUMAN). Analysis-only — no code
   changes. Used by both issue-handler and nightly-ci-fix orchestrators.
 ---
 
-# Analysis — Root Cause Analysis
+# Root Cause — Deep Source Analysis
 
 Analysis-only. You may run read-only inspection commands (`read`/`grep`,
 `git clone`, `git show`) to inspect source, but do not run tests or edit
@@ -21,14 +21,14 @@ returns `NEEDS_HUMAN` and the pipeline stops.
 
 ## Scope vs `issue-triage`
 
-`issue-triage` and `fix/analysis` both "classify", but at different depths and
+`issue-triage` and `fix/root-cause` both "classify", but at different depths and
 on different inputs:
 
 - **`issue-triage`** — cheap text-only classification of the raw GitHub issue
   (bug / skip-list / nonbug), initial `scope` estimate, `runtime_dependencies`,
   and a preliminary `verdict` (agent-fixable / NEEDS_HUMAN). No source access,
   no root-cause analysis. Runs first on every issue.
-- **`fix/analysis`** (this skill) — deep root-cause analysis on a confirmed
+- **`fix/root-cause`** (this skill) — deep root-cause analysis on a confirmed
   failure: reads source, cross-references upstream, decides final
   `target_repo`, `domain`, and `IMPLEMENTING`/`NEEDS_HUMAN`. Has authority
   to override `issue-triage`'s initial `scope`/`verdict` after seeing the

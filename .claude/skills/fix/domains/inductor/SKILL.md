@@ -2,7 +2,7 @@
 name: fix/domains/inductor
 description: >
   Domain knowledge pack for Inductor (torch.compile) UT bugs on XPU. Loaded by
-  orchestrators after fix/analysis returns domain=inductor. Not loaded directly
+  orchestrators after fix/root-cause returns domain=inductor. Not loaded directly
   by users.
 ---
 

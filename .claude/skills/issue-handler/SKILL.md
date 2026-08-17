@@ -9,10 +9,10 @@ description: >
 
 # Issue Handler — Orchestrator
 
-Sequences `issue-triage`, `fix/reproduce`, `fix/analysis`, `fix/implement`,
+Sequences `issue-triage`, `fix/reproduce`, `fix/root-cause`, `fix/implement`,
 `fix/verify`, and a fresh-context **review subagent** into a single pipeline
 for one GitHub issue, then reports the outcome. For skip-list issues, Stage 1
-dispatches to `fix/skip-triage` instead of the bug pipeline. Leaf-skill logic
+dispatches to `fix/skip-list` instead of the bug pipeline. Leaf-skill logic
 lives in those files; this skill owns the scheduling, mode handling,
 review-loop orchestration, and reporting. See the "Pipeline" section below
 for the full stage list.
@@ -270,7 +270,7 @@ Route on `verdict` first, then `issue_type`:
   - `issue_type == "nonbug"` — should not happen (nonbug forces
     `NEEDS_HUMAN` in `issue-triage`); if it does, treat as
     `NEEDS_HUMAN` defensively and stop.
-  - `issue_type == "skip-list"` → invoke `fix/skip-triage` with
+  - `issue_type == "skip-list"` → invoke `fix/skip-list` with
     `issue_body`, `pytorch_dir`, and `pr_repo`. That skill owns the
     full skip-list pipeline (per-entry reproduce, classification,
     per-sub-bug fix pipeline in patch-proposal mode, verdict table +
@@ -293,7 +293,7 @@ Route on `verdict` first, then `issue_type`:
     preliminary `scope` forward into Stage 2/3 for reference, and
     continue to Stage 2. Do NOT stop on `scope == "both"` or
     `scope == "unclear"` here — those are preliminary and refined by
-    `fix/analysis` in Stage 3.
+    `fix/root-cause` in Stage 3.
 
 ### Stage 2 — fix/reproduce
 
@@ -312,13 +312,13 @@ Interpret the output:
 | `NO_REPRODUCER` | Continue to Stage 3 (static triage only). Stages 4-5 need a runnable command: if triage cannot name one, stop after Stage 3 with `NEEDS_HUMAN` (root cause + fix location reported, nothing implemented) |
 | `CANNOT_VERIFY` | Report blocker to user; stop |
 
-### Stage 3 — fix/analysis
+### Stage 3 — fix/root-cause
 
-Call `fix/analysis` with the failure description (error log, context,
+Call `fix/root-cause` with the failure description (error log, context,
 `refined_command` if available from Stage 2), and the preliminary
 `scope` and `runtime_dependencies` from `issue-triage` as hints.
 
-`fix/analysis` reads source and produces the **final** `target_repo`,
+`fix/root-cause` reads source and produces the **final** `target_repo`,
 `domain`, and `verdict`. It may override `issue-triage`'s preliminary
 outputs:
 
@@ -335,7 +335,7 @@ outputs:
 - Preliminary `verdict=NEEDS_HUMAN` never reaches this stage — Stage 1
   stops on that.
 
-Compare `fix/analysis`'s `target_repo` to `pr_repo`:
+Compare `fix/root-cause`'s `target_repo` to `pr_repo`:
 
 | Verdict | `target_repo` vs `pr_repo` | Action |
 |---------|----------------------------|--------|
@@ -356,7 +356,7 @@ before loading anything:
 
 1. Read the `domain` field from the triage output.
 2. Look it up in the registry's JSON list. If not present → **abort
-   with `NEEDS_HUMAN`**, reason: `"fix/analysis emitted domain not in
+   with `NEEDS_HUMAN`**, reason: `"fix/root-cause emitted domain not in
    fix/domains/README.md: <domain>"`.
 3. Check the registry row: `skill_path` directory must exist. If not →
    **abort with `NEEDS_HUMAN`**, reason: `"registry lists <domain> but
@@ -571,7 +571,7 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
   label operations are adding or removing labels in the `agent:*`
   namespace (`agent:active`, `agent:triaged`, `agent:done`,
   `agent:needs-human`, `agent:waiting-upstream`).
-- **`agent:triaged` label requires a real `fix/analysis` run.** Do not
+- **`agent:triaged` label requires a real `fix/root-cause` run.** Do not
   apply that label from a stage that only ran `fix/reproduce`.
 - **`PATCH_PROPOSED` requires** Stage 4 -> Stage 5 PASSED -> Stage 5.5
   APPROVE. No speculative diffs.
