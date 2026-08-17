@@ -44,10 +44,32 @@ to the orchestrator — verify requires source build.
 ## Step 2: Rebuild if needed
 
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
-activate the environment and rebuild — load the `xpu-build-pytorch` skill now,
-then run its build command.
+a rebuild is required.
 
-Python-only changes (`*.py`) need no rebuild.
+**When `target_repo_dir != pytorch_dir`** (i.e. the fix is inside
+`third_party/torch-xpu-ops`), the pytorch build reads
+`third_party/xpu.txt` and would clobber the staged fix by resetting
+the submodule to the pinned commit. Apply the "Commit Pin & Development
+Override" procedure from AGENTS.md **before** loading `xpu-build-pytorch`:
+
+```bash
+# Rewrite the pin to the working branch's HEAD so CMake's checkout
+# becomes a no-op. Do NOT stage or commit this file (never stage
+# third_party/xpu.txt is a HARD RULE in fix/implement).
+git -C <target_repo_dir> rev-parse HEAD > <pytorch_dir>/third_party/xpu.txt
+```
+
+**When `run_before_after_diff=true` and the changed files include
+C++/SYCL sources**, DO NOT rebuild first. A rebuild with the fix
+staged compiles the fix into `torch/lib/*.so`, and the later "before"
+run (Step 3, after `git stash -u`) would still load the fix's `.so`
+even with sources removed — producing a false-negative "before" that
+already passes. Instead, defer the rebuild into Step 3's before/after
+loop where it is done at each phase.
+
+Otherwise (python-only OR `run_before_after_diff=false`), load
+`xpu-build-pytorch` now and run its build command. Python-only
+changes need no rebuild.
 
 ## Step 3: Before/after comparison (if run_before_after_diff=true)
 
@@ -60,6 +82,10 @@ committed the changes early), the contract is violated — return `CANNOT_VERIFY
 All git commands here run against `target_repo_dir` (not `pytorch_dir`);
 these can differ when `target_repo == "torch-xpu-ops"`.
 
+**When any `changed_files` are C++/SYCL, the before/after phases each
+run their own rebuild** (see Step 2 rationale). For python-only
+changes the rebuild lines below are no-ops.
+
 ```bash
 # Capture the staged diff BEFORE stashing so we can compare after pop.
 staged_before=$(git -C <target_repo_dir> diff --cached)
@@ -68,25 +94,39 @@ staged_before=$(git -C <target_repo_dir> diff --cached)
 
 # Record BEFORE (without the fix)
 git -C <target_repo_dir> stash -u   # stash staged, unstaged, untracked
-# run test, capture output
+# For torch-xpu-ops fixes, also restore xpu.txt to the base commit's pin
+# so the rebuild sees the ORIGINAL submodule state.
+if [ "<target_repo_dir>" != "<pytorch_dir>" ]; then
+    git -C <pytorch_dir> checkout -- third_party/xpu.txt
+fi
+# Rebuild WITHOUT the fix (only if C++/SYCL changed):
+#   invoke xpu-build-pytorch skill here
+# run test, capture output as before_output
 
 # Restore the fix. `--index` restores the staged state the orchestrator
 # commits from — but git will silently fall back to a non-index pop
 # if the working tree conflicts with the popped state (e.g. a rebuild
 # artifact appearing at a path that clashes with a stashed file).
-# Verify the staged diff matches what we captured before stashing.
 git -C <target_repo_dir> stash pop --index || \
   abort "CANNOT_VERIFY: git stash pop failed; staged fix state cannot be restored"
 
-staged_after=$(git -C <target_repo_dir> diff --cached)
-if [ -z "$staged_after" ] || [ "$staged_after" != "$staged_before" ]; then
-    abort "CANNOT_VERIFY: git stash pop --index did not restore staged state; \
-staged_before=$(echo "$staged_before" | wc -c) bytes, \
-staged_after=$(echo "$staged_after" | wc -c) bytes"
+# Verify the staged diff matches what we captured before stashing.
+# Compare via hash to handle diffs that exceed ARG_MAX.
+before_sha=$(printf %s "$staged_before" | sha256sum | cut -d' ' -f1)
+after_sha=$(printf %s "$(git -C <target_repo_dir> diff --cached)" \
+            | sha256sum | cut -d' ' -f1)
+if [ "$before_sha" != "$after_sha" ]; then
+    abort "CANNOT_VERIFY: git stash pop --index did not restore staged state"
 fi
 
+# Re-apply the xpu.txt override so the rebuild sees the working branch.
+if [ "<target_repo_dir>" != "<pytorch_dir>" ]; then
+    git -C <target_repo_dir> rev-parse HEAD > <pytorch_dir>/third_party/xpu.txt
+fi
+# Rebuild WITH the fix (only if C++/SYCL changed):
+#   invoke xpu-build-pytorch skill here
 # Record AFTER (with the fix)
-# run test, capture output
+# run test, capture output as after_output
 ```
 
 Output a comparison table:

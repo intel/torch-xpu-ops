@@ -198,6 +198,27 @@ reproduction" procedure first); `xfailed` → `FAILED`.
 Only reached when nightly wheel and source build at `origin/main` both pass.
 The failure may be specific to the CI environment (docker image, artifacts, env vars).
 
+### Clean up Stage 2 artifacts before entering the container
+
+Stage 3 bind-mounts `pytorch_dir` into the container. Stage 2 may have
+left behind `build/`, `torch/lib/*.so`, or a modified
+`third_party/xpu.txt` from the dev-override — inside the container,
+Python will pick the host-built (stale-relative-to-wheel) `torch/_C.so`
+off `sys.path` and error with `undefined symbol` before the reproducer
+even runs.
+
+```bash
+# Restore xpu.txt to origin's pinned commit (in case Stage 2 rewrote it).
+git -C "$pytorch_dir" checkout -- third_party/xpu.txt
+# Discard stage-2 build outputs so the container sees a clean tree.
+git -C "$pytorch_dir" clean -fdx -e agent_space_xpu
+```
+
+Alternatively, run the container reproducer from `cd /workspace`
+(outside the pytorch tree) so `import torch` resolves against
+site-packages, matching Stage 1's "Working directory" rule. Either
+strategy is fine; do at least one.
+
 ### Set up the CI environment
 
 Use the setup script to automatically find the latest run with successful

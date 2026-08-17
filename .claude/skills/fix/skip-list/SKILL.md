@@ -81,52 +81,66 @@ here; final table format lives in Step 6.
 For every `STILL_FAILING` entry, treat that single test as a
 **sub-bug** and run the full bug pipeline in patch-proposal mode.
 
-**Isolation between sub-bugs.** Sub-bugs share the same working-tree
-checkout, but each sub-bug's `git diff --cached` MUST contain only
-that sub-bug's changes (the HARD RULE "NEVER bundle multiple sub-bug
+**Isolation between sub-bugs.** Sub-bugs share the same checkouts,
+but each sub-bug's `git diff --cached` MUST contain only that
+sub-bug's changes (the HARD RULE "NEVER bundle multiple sub-bug
 fixes into one diff" would otherwise be violated by construction —
 `fix/implement` leaves changes staged, and without cleanup the next
 sub-bug's `fix/implement` accumulates on top of the previous one).
 
-Before each sub-bug's `fix/root-cause` call:
+**Two checkouts to consider.** Because different sub-bugs may triage
+to different repos, both potential target checkouts must be reset
+between sub-bugs, not just the last one used:
 
-```bash
-# Determine target_repo_dir once (same rule as issue-handler Stage 4):
-# target_repo comes from the last sub-bug's root-cause output (or from
-# a lightweight probe on the first sub-bug). Same working tree across
-# all sub-bugs.
+- `pytorch_dir` — used when `target_repo=pytorch`.
+- `<pytorch_dir>/third_party/torch-xpu-ops` — used when
+  `target_repo=torch-xpu-ops`.
 
-# Reset to the base the sub-bug pipeline started from.
-git -C <target_repo_dir> reset --hard <base>
-git -C <target_repo_dir> clean -fdx  # drop untracked artifacts
-
-# Capture this sub-bug's patch AFTER fix/implement + fix/verify:
-sub_patch=$(git -C <target_repo_dir> diff --cached)
-# Store sub_patch immediately; it belongs to this sub-bug's output.
-```
-
-The base is `origin/main` in the normal case, or the CI commit sha if
-`fix/reproduce` fell back to it — same base the top-level orchestrator
-would have branched from.
+**Base commit for reset.** Same `<base>` the top-level orchestrator
+would have branched from: `origin/main` in the normal case, or the
+CI commit sha if `fix/reproduce` fell back to it. For the torch-xpu-ops
+override checkout, `<base>` is the branch's origin/main equivalent
+(the working branch you cloned into `third_party/torch-xpu-ops`).
 
 Pipeline for each sub-bug:
 
 1. `fix/root-cause` (full — root_cause, fix_strategy, target_repo,
    domain, verdict). This step resolves `target_repo` for the
-   verdict-table classification.
+   verdict-table classification and for choosing `target_repo_dir`
+   below.
 2. Load domain skill via the registry (see
    `fix/domains/README.md`).
-3. `fix/implement` with `allow_skip=false` and
-   `patch_proposal_mode=true` — the STRICT patch-acceptance rules
-   apply exactly the same as in the bug branch: no skip/xfail/seed/
-   tolerance workarounds, no assertion deletion, no broad `try/except`
-   around the failing call.
-4. `fix/verify`.
-5. Fresh-context review subagent (same one `issue-handler` Stage 5.5
-   uses).
-6. Capture `git diff --cached` as `sub_patch` for this sub-bug's
-   `sub_bugs[]` entry.
-7. Reset (as above) before starting the next sub-bug.
+3. Derive **this sub-bug's** `target_repo_dir` from Step 1's
+   `target_repo` (same rule as `issue-handler` Stage 4).
+4. `fix/implement` with `allow_skip=false`,
+   `patch_proposal_mode=true`, and the derived `target_repo_dir` —
+   the STRICT patch-acceptance rules apply exactly the same as in
+   the bug branch: no skip/xfail/seed/tolerance workarounds, no
+   assertion deletion, no broad `try/except` around the failing
+   call.
+5. `fix/verify` with the same `target_repo_dir`.
+6. Fresh-context review subagent (same one `issue-handler`
+   Stage 5.5 uses).
+7. **Capture this sub-bug's patch NOW, before any reset:**
+   ```bash
+   sub_patch=$(git -C <target_repo_dir> diff --cached)
+   # Also capture xpu.txt override state if torch-xpu-ops, so the
+   # patch-proposal comment can note the pin update the human needs.
+   ```
+   Store `sub_patch` in this sub-bug's `sub_bugs[]` entry immediately.
+8. **Reset BOTH checkouts before the next sub-bug:**
+   ```bash
+   git -C <pytorch_dir> reset --hard <base>
+   git -C <pytorch_dir> clean -fdx
+   # Restore third_party/xpu.txt to its origin/main state so the
+   # next sub-bug's rebuild starts from a clean pin.
+   git -C <pytorch_dir> checkout -- third_party/xpu.txt
+
+   if [ -d "<pytorch_dir>/third_party/torch-xpu-ops/.git" ]; then
+       git -C <pytorch_dir>/third_party/torch-xpu-ops reset --hard <base>
+       git -C <pytorch_dir>/third_party/torch-xpu-ops clean -fdx
+   fi
+   ```
 
 Produce one **patch-proposal comment** per sub-bug. Each comment MUST
 contain:

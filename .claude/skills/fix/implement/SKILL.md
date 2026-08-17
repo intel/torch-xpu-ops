@@ -40,9 +40,19 @@ orchestrator's job).
 ## Step 0: Verify environment
 
 ```bash
-basename $(git rev-parse --show-toplevel)  # confirm which repo you're in
-git status                                  # confirm clean worktree
+basename $(git -C <target_repo_dir> rev-parse --show-toplevel)  # confirm which repo
+git -C <target_repo_dir> status                                 # inspect current state
 ```
+
+**On the first attempt** (fresh branch just created by the
+orchestrator), the worktree is clean.
+
+**On a loop-back attempt** (orchestrator returned here after
+`fix/verify` FAILED or the reviewer requested changes), staged
+changes from the previous attempt are still present by design. Do
+NOT abort. Refine those changes on top; do not `git reset` or
+`git clean` — the orchestrator would have done it if a fresh start
+were intended.
 
 ## Step 1: Read the triage output
 

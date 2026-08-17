@@ -39,6 +39,12 @@ interactive.
 Preflight at Stage 0:
 
 ```bash
+# The orchestrator MUST decide execution mode (see "Execution modes"
+# below) before running this preflight. Set MODE accordingly:
+#   MODE=interactive   # human present
+#   MODE=pipeline      # automated
+MODE=${MODE:-interactive}
+
 # 1. Confirm gh is authenticated.
 gh auth status 2>&1 | grep -q "Logged in to github.com" \
   || abort "gh not authenticated; run: gh auth login"
@@ -56,6 +62,9 @@ case "$MODE" in
   interactive)
     echo "$scopes" | grep -qE '^(repo|read:issues|write:issues)$' \
       || abort "interactive mode requires at least 'read:issues' scope; got: $scopes"
+    ;;
+  *)
+    abort "unknown MODE='$MODE' (expected 'interactive' or 'pipeline')"
     ;;
 esac
 
@@ -246,6 +255,63 @@ This applies especially when `fix/root-cause` downgrades an
 `agent-fixable` verdict to `NEEDS_HUMAN`: remove `agent:triaged` /
 `agent:active` before adding `agent:needs-human`.
 
+**Concrete `apply_terminal_label` subroutine** — every stage that
+lands on a terminal outcome (Stage 3 NEEDS_HUMAN, Stage 5.5 BLOCK,
+Stage 6 for DONE / PATCH_PROPOSED / NEEDS_HUMAN / DONE_SKIP_TRIAGED /
+SKIP_TRIAGED_NEEDS_HUMAN) MUST call this exact sequence rather than
+issuing raw `--add-label` calls:
+
+```bash
+apply_terminal_label() {
+    # Args: $1=owner/repo, $2=issue_number, $3=new_terminal_label
+    local repo="$1" n="$2" new_label="$3"
+    # Terminal labels this pipeline may apply. Anything else is a bug.
+    case "$new_label" in
+      agent:done|agent:needs-human|agent:triaged) ;;
+      *) abort "apply_terminal_label: '$new_label' is not a terminal label" ;;
+    esac
+    # Remove any prior non-terminal or conflicting terminal labels
+    # before adding the new one. Ignore "label not found" (416 / 404)
+    # — the label may not have been applied on this issue.
+    for stale in agent:active agent:waiting-upstream agent:triaged \
+                 agent:done agent:needs-human; do
+        [ "$stale" = "$new_label" ] && continue
+        for attempt in 1 2; do
+            gh issue edit "$n" --repo "$repo" --remove-label "$stale" \
+              2>/dev/null && break
+            [ "$attempt" = 2 ] && log_warn "remove-label $stale failed twice; continuing"
+            sleep 5
+        done
+    done
+    # Add the new terminal label with the same retry policy.
+    for attempt in 1 2; do
+        gh issue edit "$n" --repo "$repo" --add-label "$new_label" && return 0
+        [ "$attempt" = 2 ] && \
+          abort "apply_terminal_label: failed to add '$new_label' after 2 attempts"
+        sleep 5
+    done
+}
+```
+
+Where the following stages call it:
+
+- Stage 3 → `apply_terminal_label ... agent:needs-human` when
+  `fix/root-cause` returns `NEEDS_HUMAN` (before "Report reason to
+  user; stop").
+- Stage 5.5 → `apply_terminal_label ... agent:needs-human` on `BLOCK`.
+- Stage 6 → dispatch by outcome:
+  - `IMPLEMENTING` (ready for PR): keep `agent:active` (mid-flight);
+    do NOT call `apply_terminal_label` — it will be applied when the
+    PR opens or lands.
+  - `PATCH_PROPOSED` → `apply_terminal_label ... agent:triaged`.
+  - `DONE`, `DONE_SKIP_TRIAGED` → `apply_terminal_label ... agent:done`.
+  - `NEEDS_HUMAN`, `SKIP_TRIAGED_NEEDS_HUMAN` →
+    `apply_terminal_label ... agent:needs-human`.
+
+Mid-flight label sets (`agent:active`, `agent:waiting-upstream`) are
+applied by their originating stage with the retry-then-warn rule from
+above; they are NOT terminal and do not go through this subroutine.
+
 **Single state-comment pattern.** Keep exactly one machine-readable
 "state comment" per issue. On the first pipeline run, post it as a new
 comment starting with a fenced marker:
@@ -307,6 +373,9 @@ fi
 
 # 3. If step 1 returned more than one id, delete the newer duplicates
 #    so the next run finds a single unambiguous state comment.
+#    Best-effort — a DELETE failure (403 on another user's comment,
+#    422 on already-deleted, etc.) is logged but does NOT downgrade
+#    the pipeline outcome; the state comment itself is intact.
 gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
   --jq '.comments
         | map(select(.body | startswith("<!-- agent:state -->")))
@@ -314,7 +383,8 @@ gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
         | .[1:][] | .id' \
   | while read dup_id; do
       gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
-        --method DELETE
+        --method DELETE \
+        || log_warn "could not delete duplicate state comment $dup_id; continuing"
     done
 ```
 

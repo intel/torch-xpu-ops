@@ -102,9 +102,23 @@ Immediately after parsing the failure report, create a TodoWrite list:
 Mark a fix item `completed` only after the test actually passes and is
 committed. Never skip to Step 7.
 
-## Step 0: Ensure PyTorch checkout
+## Step 0: Preflight — gh auth + PyTorch checkout
 
-Check `agent_space_xpu/pytorch/`:
+**gh auth preflight** — this skill will `gh issue create` in
+`fix/skip-management` (via `fix/implement` with `allow_skip=true`),
+so a write-capable token is mandatory. Fail early if not authenticated,
+so partial runs don't strand fixes mid-loop:
+
+```bash
+gh auth status 2>&1 | grep -q "Logged in to github.com" \
+  || abort "gh not authenticated; run: gh auth login"
+
+scopes=$(gh auth status -t 2>&1 | grep -oE "'[a-z:_-]+'" | tr -d "'")
+echo "$scopes" | grep -qE '^(repo|write:issues)$' \
+  || abort "nightly-ci-fix requires 'repo' or 'write:issues' scope; got: $scopes"
+```
+
+**PyTorch checkout** — check `agent_space_xpu/pytorch/`:
 ```bash
 ls agent_space_xpu/pytorch/ 2>/dev/null || echo "NOT FOUND"
 ```
@@ -150,23 +164,14 @@ Interpret output per failure:
 
 ## Step 4: Triage each reproduced failure
 
-Before calling `fix/root-cause`, checkout a new branch for this failure off
-the `base` reproduce reported (so Step 6's rebuild lands on the same
-base as the reproduction). One branch per failure; name it
-`fix-<report_date>-<short_test_name>` where `short_test_name` is the
-last component of the test method name (e.g. `test_add` from
-`TestBinaryUfuncsXPU::test_add_xpu`):
-
-```bash
-git checkout -b fix-<report_date>-<short_test_name> <base>
-# e.g. git checkout -b fix-20260608-test_add origin/main
-```
-
 Call `fix/root-cause` with the failure description and error log.
+Branch creation is deferred to Step 4.6 (below), because it depends
+on `target_repo` from triage — a torch-xpu-ops fix needs its branch
+inside `third_party/torch-xpu-ops/`, not in the pytorch checkout.
 
 | Verdict | Action |
 |---------|--------|
-| `IMPLEMENTING` | Continue to Step 4.5 (load domain skill), then Step 5 |
+| `IMPLEMENTING` | Continue to Step 4.5 (load domain skill), then Step 4.6 (create branch), then Step 5 |
 | `NEEDS_HUMAN` | Mark in summary: "needs human (+ reason)"; skip to next failure |
 
 ## Step 4.5: Load the domain skill (via registry)
@@ -191,11 +196,42 @@ Do NOT fall back to "proceed without a domain skill" — that silent
 no-op is the bug the registry exists to prevent. Mirrors
 `issue-handler` Stage 3.5.
 
+## Step 4.6: Create the fix branch in the target checkout
+
+Now that `target_repo` is known, create the per-failure branch **in
+the checkout that will actually hold the diff**:
+
+```bash
+# Pick the checkout by target_repo.
+case "$target_repo" in
+  pytorch)        target_repo_dir=agent_space_xpu/pytorch ;;
+  torch-xpu-ops)  target_repo_dir=agent_space_xpu/pytorch/third_party/torch-xpu-ops ;;
+  *)              abort "unknown target_repo='$target_repo'" ;;
+esac
+
+# One branch per failure; name it fix-<report_date>-<short_test_name>
+# where short_test_name is the last component of the test method
+# name (e.g. test_add from TestBinaryUfuncsXPU::test_add_xpu).
+git -C "$target_repo_dir" checkout -b fix-<report_date>-<short_test_name> <base>
+# e.g. git -C agent_space_xpu/pytorch checkout -b fix-20260608-test_add origin/main
+
+# For torch-xpu-ops fixes, also apply the dev-override pin so the
+# pytorch build sees this branch's HEAD (Critical rules "Fix in
+# torch-xpu-ops?" below). Do NOT commit third_party/xpu.txt.
+if [ "$target_repo" = "torch-xpu-ops" ]; then
+    git -C "$target_repo_dir" rev-parse HEAD \
+      > agent_space_xpu/pytorch/third_party/xpu.txt
+fi
+```
+
+Pass `target_repo_dir` (and `target_repo`) into Step 5 and Step 6.
+
 ## Step 5: Implement each fix
 
 Call `fix/implement` with:
 - `triage_result` from Step 4
 - `pytorch_dir` — `agent_space_xpu/pytorch/`
+- `target_repo_dir` — from Step 4.6
 - `allow_skip=true` — nightly-ci-fix may add `@skipIfXpu` with tracking issue
   when implementation is out of scope for a nightly fix
 - `patch_proposal_mode=false` — nightly-ci-fix always commits its own
@@ -214,6 +250,7 @@ Step 3.5 rejected the diff)"; skip to next failure.
 Otherwise call `fix/verify` with:
 - `refined_command` from Step 3 (`fix/reproduce` output)
 - `pytorch_dir` — `agent_space_xpu/pytorch/`
+- `target_repo_dir` — from Step 4.6
 - `changed_files` from Step 5
 - `run_before_after_diff=true`
 - `run_lint=true`
@@ -263,7 +300,29 @@ Note: This commit was authored with AI assistance.
 
 ```bash
 # fix/implement leaves changes already staged; commit directly.
-git -C agent_space_xpu/pytorch commit -m "<commit_message>"
+# The commit MUST happen in the checkout that holds the staged diff,
+# which depends on triage's target_repo:
+#   target_repo == "pytorch"        -> agent_space_xpu/pytorch/
+#   target_repo == "torch-xpu-ops"  -> agent_space_xpu/pytorch/third_party/torch-xpu-ops/
+# A pytorch-only commit against a torch-xpu-ops fix would either be
+# empty or capture only a submodule-pointer bump, losing the real
+# kernel diff. Always commit in the repo that owns the changes.
+case "$target_repo" in
+  pytorch)
+    commit_dir=agent_space_xpu/pytorch
+    ;;
+  torch-xpu-ops)
+    commit_dir=agent_space_xpu/pytorch/third_party/torch-xpu-ops
+    ;;
+  *)
+    abort "unknown target_repo='$target_repo'"
+    ;;
+esac
+git -C "$commit_dir" commit -m "<commit_message>"
+
+# After committing in torch-xpu-ops, do NOT commit the resulting
+# third_party/xpu.txt pointer change in pytorch — the dev-override
+# pin is local-only per AGENTS.md.
 ```
 
 If the fix was a skip (`fix/implement` output has `skip_added: true`):
