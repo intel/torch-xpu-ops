@@ -10,6 +10,14 @@ description: >
 
 # PyTorch XPU Skip Decorator Management
 
+**Category: cross-cutting utility.** Not a pipeline stage and not a domain
+pack — a shared helper loaded on demand by `fix/reproduce` (temp-remove to
+confirm a bug), `fix/implement` (add-with-tracking-issue when
+`allow_skip=true`, remove-stale when the fix lands), and no one else.
+Placed at the top of `fix/` alongside pipeline stages and domains rather
+than under `fix/domains/` because XPU skips live in the pytorch test tree
+regardless of which domain triaged the failure.
+
 Skip decorators live in the pytorch test tree regardless of the triaged bug
 domain (xpu-kernel, inductor, or upstream-pytorch). Load this skill when you
 need to find, remove (temporarily or permanently), or add an XPU skip marker.

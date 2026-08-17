@@ -9,10 +9,12 @@ description: >
 
 # Issue Handler — Orchestrator
 
-Sequences `fix/reproduce`, `fix/triage`, `fix/implement`, `fix/verify`, and
-a fresh-context **review subagent** into a single pipeline for one GitHub
-issue. Leaf-skill logic lives in those files; this skill owns the
-scheduling, mode handling, review-loop orchestration, and reporting.
+Sequences `issue-format`, `fix/reproduce`, `fix/triage`, `fix/implement`,
+`fix/verify`, and a fresh-context **review subagent** into a single pipeline
+for one GitHub issue, then reports the outcome. Leaf-skill logic lives in
+those files; this skill owns the scheduling, mode handling, review-loop
+orchestration, and reporting. See the "Pipeline" section below for the full
+stage list.
 
 ## Prerequisites
 

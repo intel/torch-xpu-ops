@@ -13,6 +13,21 @@ Analysis-only. You may run read-only inspection commands (`read`/`grep`,
 files. After returning `IMPLEMENTING`, the orchestrator hands off to
 `fix/implement`.
 
+## Scope vs `issue-format`
+
+`issue-format` and `fix/triage` both "classify", but at different depths and
+on different inputs:
+
+- **`issue-format`** — cheap text-only classification of the raw GitHub issue
+  (bug / skip-list / nonbug) and metadata extraction (test_type, platform,
+  dependency). No source access, no root-cause analysis. Runs first on every
+  issue.
+- **`fix/triage`** (this skill) — deep root-cause analysis on a confirmed
+  failure: reads source, cross-references upstream, decides `target_repo`,
+  `domain`, and `IMPLEMENTING`/`NEEDS_HUMAN`. Runs only after `issue-format`
+  says `bug` **and** `fix/reproduce` produces a result. Also entered directly
+  by `xpu-nightly-ci-fix` (no issue body to format).
+
 ## Inputs
 
 - Failure description: error log, reproducer command or test name, context.

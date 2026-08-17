@@ -23,12 +23,21 @@ identify those portions yourself from the raw body before classifying.
 Indicators: error tracebacks, failing test names, "RuntimeError", "AssertionError",
 "fails with", `### 🐛 Describe the bug`, test logs.
 
+**Skip-list** — a "Bug Skip" tracking issue asking whether a list of already-skipped
+tests should still be skipped. Indicators: `Bug Skip` in the title or template,
+`agent_test: skip-list` label, body is a checklist of test node ids (often with
+`~~strike-through~~` for entries already resolved), no fresh error traceback.
+Distinct from a plain bug because the fix path is per-entry re-verification, not
+root-cause analysis of a single failure — see `issue-handler` Stage 1 skip-list
+branch for the downstream handling.
+
 **Non-bug** — feature requests, tasks, performance issues, questions, discussions,
 tracking issues, enhancement proposals, feature gaps.
 Indicators: "Enable", "[Task]", "Consider", "Align", "feature gap", "clarification",
 checklists of work items, `enhancement` label, `performance` label, no failing tests.
 
-**Labels are authoritative** — if labels say `agent_test: ut`, test_type is `ut`.
+**Labels are authoritative** — if labels say `agent_test: ut`, test_type is `ut`;
+if labels say `agent_test: skip-list`, issue_type is `skip-list`.
 
 ## Output
 
@@ -36,7 +45,7 @@ Return ONLY this JSON object, no markdown fences, no explanation:
 
 ```json
 {
-  "issue_type": "bug | nonbug",
+  "issue_type": "bug | skip-list | nonbug",
   "test_type": "ut | e2e | \"\"",
   "dependency": "upstream | \"\"",
   "platform": "xpu | <specific GPU model>",

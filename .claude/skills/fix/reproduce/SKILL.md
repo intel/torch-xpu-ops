@@ -22,6 +22,18 @@ the result.
   but pytest reports `collected 0 items` (the referenced test does not exist
   in the tree at this base) — this is the same "no runnable reproducer"
   condition as an absent command, just discovered a step later.
+
+  Providers (set by the orchestrator, not this skill):
+  - **Issue body** — extracted by `issue-format` from the reproducer section
+    (via `issue-handler`).
+  - **CI failure log** — the failing pytest node id from the nightly CI report
+    (via `xpu-nightly-ci-fix`).
+  - **Per-entry loop** — one test entry from a skip-list issue (via
+    `issue-handler` skip-triage branch).
+
+  `fix/triage` is **not** a provider. It runs after this skill and only
+  analyzes; if it finds the reproducer was wrong (e.g. wrong assertion), it
+  asks the orchestrator to re-invoke this skill with a corrected command.
 - `ci_commit` — upstream commit hash from the CI report. Only used as a
   fallback base when `origin/main` fails to build (optional).
 - `pytorch_dir` — path to a local PyTorch checkout (optional). If absent and
