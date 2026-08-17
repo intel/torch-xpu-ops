@@ -138,7 +138,7 @@ struct InvStd {
   inline T operator()(T var, double epsilon) const {
     T invstd = 0.0f;
     if (var != static_cast<T>(0.0f) || epsilon != static_cast<T>(0.0f)) {
-      invstd = static_cast<T>(1.0f) / sycl::sqrt(var + static_cast<T>(epsilon));
+      invstd = sycl::rsqrt(var + static_cast<T>(epsilon));
     }
     return invstd;
   }
@@ -1048,9 +1048,7 @@ struct BatchNormTransformInputKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
+      invstd = sycl::rsqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -1168,9 +1166,7 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
+      invstd = sycl::rsqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -3972,7 +3968,7 @@ template <typename scalar_t, typename acc_t>
 struct BatchNormCalcInvstdFunctor {
   acc_t operator()(scalar_t var) const {
     volatile acc_t v = var + eps_;
-    return c10::xpu::compat::rsqrt(v);
+    return sycl::rsqrt(v);
   }
 
   BatchNormCalcInvstdFunctor(acc_t eps) : eps_(eps) {}
@@ -4177,9 +4173,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
+      invstd = sycl::rsqrt(
               static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
@@ -4384,9 +4378,7 @@ struct BatchNormBackwardVectorizedKernelFunctor
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
+      invstd = sycl::rsqrt(
               static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
@@ -5099,8 +5091,7 @@ struct BatchNormReduceStatisticsKernelFunctor {
         n += count;
       }
       mean[i] = avg;
-      invstd[i] =
-          static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
+      invstd[i] = sycl::rsqrt(var_n / n + epsilon_);
       if (running_mean.data() != NULL) {
         running_mean[i] = static_cast<scalar_t>(
             (1 - momentum_) * running_mean[i] + momentum_ * avg);
