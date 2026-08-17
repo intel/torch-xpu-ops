@@ -65,8 +65,10 @@ struct SubgroupTopKFunctor {
   inline bool better(scalar_t a, scalar_t b) const {
     bool a_nan = at::_isnan(a);
     bool b_nan = at::_isnan(b);
-    if (a_nan != b_nan) return a_nan;
-    if (a_nan) return false; // both NaN
+    if (a_nan != b_nan)
+      return a_nan;
+    if (a_nan)
+      return false; // both NaN
     if constexpr (Largest) {
       return a > b;
     } else {
@@ -79,8 +81,10 @@ struct SubgroupTopKFunctor {
   inline bool better(scalar_t a, IndexT a_idx, scalar_t b, IndexT b_idx) const {
     bool a_nan = at::_isnan(a);
     bool b_nan = at::_isnan(b);
-    if (a_nan != b_nan) return a_nan;
-    if (a_nan) return a_idx > b_idx;
+    if (a_nan != b_nan)
+      return a_nan;
+    if (a_nan)
+      return a_idx > b_idx;
     if constexpr (Largest) {
       return a > b || (a == b && a_idx > b_idx);
     } else {

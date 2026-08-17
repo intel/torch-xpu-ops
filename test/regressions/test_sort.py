@@ -90,7 +90,8 @@ class TestNNMethod(TestCase):
             for r in range(x.shape[0]):
                 ids_list = xpu_ids[r].cpu().tolist()
                 self.assertEqual(
-                    len(set(ids_list)), k,
+                    len(set(ids_list)),
+                    k,
                     f"Duplicate indices in row {r} for dtype={dtype}: {ids_list}",
                 )
 
@@ -110,7 +111,8 @@ class TestNNMethod(TestCase):
                 for r in range(x.shape[0]):
                     ids_list = xpu_ids[r].cpu().tolist()
                     self.assertEqual(
-                        len(set(ids_list)), k,
+                        len(set(ids_list)),
+                        k,
                         f"Duplicate indices in row {r} for k={k}, dtype={dtype}: {ids_list}",
                     )
 
@@ -120,8 +122,12 @@ class TestNNMethod(TestCase):
             for largest in (True, False):
                 torch.manual_seed(0)
                 x = torch.randn(2048, num_cols, dtype=torch.float32)
-                cpu_vals, cpu_ids = torch.topk(x, k=k, dim=-1, sorted=True, largest=largest)
-                xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True, largest=largest)
+                cpu_vals, cpu_ids = torch.topk(
+                    x, k=k, dim=-1, sorted=True, largest=largest
+                )
+                xpu_vals, xpu_ids = torch.topk(
+                    x.xpu(), k=k, dim=-1, sorted=True, largest=largest
+                )
                 torch.xpu.synchronize()
                 self.assertEqual(cpu_vals, xpu_vals.cpu())
                 self.assertEqual(cpu_ids, xpu_ids.cpu())
