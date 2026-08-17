@@ -1,7 +1,7 @@
 ---
 name: issue-format
 description: >
-  Classify a GitHub issue as bug or nonbug and extract metadata
+  Classify a GitHub issue as bug, skip-list, or nonbug and extract metadata
   (test_type, category, dependency, platform, context). Use as the first
   stage of issue handling, when you need a structured classification of an
   issue's type and key attributes returned as JSON.
@@ -74,4 +74,5 @@ carries all agent-side state (stage, discovery log, etc.). This stage
 owns the "Discovery log" section inside that state comment, not the
 issue body.
 
-See the pipeline mode comment contract in `issue-handler/SKILL.md`.
+See the pipeline mode comment contract in [`../SKILL.md`](../SKILL.md)
+(`issue-handler`).

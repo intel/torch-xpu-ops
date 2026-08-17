@@ -193,7 +193,7 @@ Human-readable:
 - **What I changed:** <bullet list of files and what changed in each>
 - **Why:** <one sentence connecting each change to the triage root cause>
 - **Skip added:** <yes (tracking: intel/torch-xpu-ops#N, url: <url>) / no>
-- **Ready for verify:** yes
+- **Ready for verify:** <yes / no>
 ```
 
 Machine-readable (must appear once, exactly as shown, at the end of the
@@ -227,7 +227,7 @@ Field contract:
   Stage 6 branches on `target_repo == pr_repo`; nightly always passes
   `false`). This echo lets a reviewer or a post-hoc log check confirm
   which mode the implementer actually ran under.
-- `ready_for_verify` — `true` when Stage 3.5 (if it ran) returned
+- `ready_for_verify` — `true` when Step 3.5 (if it ran) returned
   `APPROVE`; `false` if the implementer decided to bail out with
   `NEEDS_HUMAN` (in which case the orchestrator should not call
   `fix/verify`).

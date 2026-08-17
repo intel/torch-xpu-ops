@@ -54,7 +54,7 @@ committed the changes early), the contract is violated — return `CANNOT_VERIFY
 # Record BEFORE (without the fix)
 git stash -u   # stash staged, unstaged, and untracked changes
 # run test, capture output
-git stash pop
+git stash pop --index   # --index restores the staged state the orchestrator commits from
 
 # Record AFTER (with the fix)
 # run test, capture output

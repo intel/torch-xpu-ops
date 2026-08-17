@@ -150,7 +150,9 @@ Sequence:
   | `NEEDS_HUMAN` after Stage 5/5.5 | `WIP: needs human — <reason>` |
 
   Every terminal state commits. The branch is the audit trail; a
-  branch with no commit is not an audit trail.
+  branch with no commit is not an audit trail. For `PATCH_PROPOSED`
+  the commit happens only **after** Stage 6 has read the staged diff
+  and posted it to the issue, and the branch is never pushed.
 
 - **Then switch away** before starting the next issue:
 
@@ -264,18 +266,21 @@ Classify as `bug`, `skip-list`, or `nonbug` and extract metadata.
   2. For each remaining entry, call `fix/reproduce` with just that test as
      the reproducer.
   3. Classify each result:
-     - `REPRODUCED` (FAILED) with root cause in pytorch → `STILL_FAILING_UPSTREAM_BUG`
-     - `REPRODUCED` (FAILED) with root cause in torch-xpu-ops → `STILL_FAILING_XPU_BUG`
+     - `REPRODUCED` (FAILED) → `STILL_FAILING`. Which repo owns the root
+       cause is **not** known yet — `fix/reproduce` only reports whether
+       the test fails. The per-entry `fix/triage` run in step 5 decides
+       it, and the verdict table records the entry as
+       `STILL_FAILING_UPSTREAM_BUG` (root cause in pytorch) or
+       `STILL_FAILING_XPU_BUG` (root cause in torch-xpu-ops) once triage
+       has returned `target_repo`.
      - `NOT_REPRODUCED` (PASSED on nightly / source build) → `ALREADY_FIXED`
      - `NO_REPRODUCER` (test does not exist / `collected 0 items`) or
        `CANNOT_VERIFY` due to test-name drift → `ENVIRONMENT`
      - Intermittent (pass on retry) → `FLAKY`
-  4. Post the per-test verdict table as an issue comment. This is a
-     mandatory deliverable of the skip-triage branch, not the only one.
-  5. **For every `STILL_FAILING_UPSTREAM_BUG` or `STILL_FAILING_XPU_BUG`
-     entry**, treat that single test as a sub-bug and run the full
-     bug-branch pipeline (Stages 2–5.5) for it, then post one
-     patch-proposal comment per sub-bug on the same skip-list issue.
+  4. **For every `STILL_FAILING` entry**, treat that single test as a
+     sub-bug and run the full bug-branch pipeline (Stages 2–5.5) for it,
+     then post one patch-proposal comment per sub-bug on the same
+     skip-list issue.
      Each sub-bug patch-proposal comment MUST contain:
      - The test's node id (unique identifier within the skip-list issue)
      - Root cause (one paragraph, cites the specific line / symbol)
@@ -293,6 +298,10 @@ Classify as `bug`, `skip-list`, or `nonbug` and extract metadata.
      `ALREADY_FIXED`, `ENVIRONMENT`, and `FLAKY` entries need no
      patch-proposal (the verdict table already tells the maintainer to
      remove or ignore the skip).
+  5. Post the per-test verdict table as an issue comment, now that each
+     `STILL_FAILING` entry's owning repo is known from its triage run.
+     This is a mandatory deliverable of the skip-triage branch, not the
+     only one.
   6. Outcome selection:
      - Every sub-bug produced a verified `PATCH_PROPOSED` (or is
        `ALREADY_FIXED` / `ENVIRONMENT` / `FLAKY`) → outcome
@@ -319,7 +328,7 @@ Interpret the output:
 |--------|--------|
 | `REPRODUCED` | Continue to Stage 3 with `refined_command` |
 | `NOT_REPRODUCED` | Triage to collect why; report to user; stop |
-| `NO_REPRODUCER` | Continue to Stage 3 (static triage only) |
+| `NO_REPRODUCER` | Continue to Stage 3 (static triage only). Stages 4-5 need a runnable command: if triage cannot name one, stop after Stage 3 with `NEEDS_HUMAN` (root cause + fix location reported, nothing implemented) |
 | `CANNOT_VERIFY` | Report blocker to user; stop |
 
 ### Stage 3 — fix/triage
@@ -557,8 +566,11 @@ Stop with `NEEDS_HUMAN` when either cap is hit.
 - **Do not open a PR on any repo other than `pr_repo`.** If
   `target_repo != pr_repo`, use patch-proposal only. The default
   `pr_repo` is the repo that hosts the issue.
-- **Do not commit in `patch_proposal_mode`.** `fix/implement` leaves
-  changes staged.
+- **Do not commit the fix while `patch_proposal_mode` is in flight.**
+  `fix/implement` leaves changes staged and Stage 6 reads them with
+  `git diff --cached`; the single local audit commit made *after* Stage 6
+  has posted the diff (see "Pipeline mode: per-issue branch isolation")
+  is the only commit allowed, and it is never pushed.
 - **Never run `fix/implement` from `main` or another issue's branch.**
   In pipeline mode with multiple issues, each issue's fix lives on
   `agent/issue-<N>`. If the branch is wrong, abort with `NEEDS_HUMAN`
