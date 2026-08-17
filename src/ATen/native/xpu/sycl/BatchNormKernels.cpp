@@ -1049,7 +1049,7 @@ struct BatchNormTransformInputKernelFunctor {
       invstd = var_or_invstd_[plane];
     } else {
       invstd = sycl::rsqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -1167,7 +1167,7 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
       invstd = var_or_invstd_[plane];
     } else {
       invstd = sycl::rsqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -3856,8 +3856,8 @@ void batch_norm_mean_var(
           save_var,
           save_mean,
           self,
-          /*dims=*/reduce_dims,
-          /*unbiased=*/false,
+          /*dim=*/reduce_dims,
+          /*correction=*/false,
           /*keepdim=*/false);
       return;
     }
@@ -4174,7 +4174,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
       invstd = sycl::rsqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
@@ -4379,7 +4379,7 @@ struct BatchNormBackwardVectorizedKernelFunctor
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
       invstd = sycl::rsqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
