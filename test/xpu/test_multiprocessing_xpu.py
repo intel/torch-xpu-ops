@@ -82,6 +82,7 @@ if __name__ == "__main__":
     self.assertRegex(stderr, "Cannot re-initialize XPU in forked subprocess.")
 
 
+@unittest.skipIf(IS_WINDOWS, "XPU IPC tensor sharing is not supported on Windows")
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 def _test_empty_tensor_sharing_xpu(self):
     self._test_empty_tensor_sharing(torch.float32, torch.device("xpu"))
