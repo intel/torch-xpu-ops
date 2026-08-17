@@ -93,7 +93,13 @@ upstream feature, dependencies on onednn/triton etc).
 
 File the tracking issue with a heredoc so the body keeps real newlines,
 and **capture the URL** — the caller expects it as the `tracking_issue`
-return value:
+return value. The recipe calls `abort` (exit non-zero with a
+diagnostic), which is not a shell builtin; define it first if your
+shell does not already have it:
+
+```bash
+abort() { echo "ABORT: $*" >&2; exit 1; }
+```
 
 ```bash
 issue_url=$(gh issue create --repo intel/torch-xpu-ops \

@@ -131,6 +131,7 @@ environmental (not an XPU marker). `xfailed` → `FAILED`.
 
 | Result | Condition | Action |
 |--------|-----------|--------|
+| `NO_REPRODUCER` | pytest reports `collected 0 items` (test does not exist at this base) | Report to orchestrator, stop — do not fall through to stage 2 |
 | `CANNOT_VERIFY` | env problem (wheel install failed, runtime missing) | Report to orchestrator, stop |
 | `REPRODUCED` | FAILED | Return `REPRODUCED(stage=nightly, refined_command=...)` |
 | → stage 2 | PASSED (any nightly age) | Proceed to source build at `origin/main` to confirm |
@@ -189,6 +190,7 @@ reproduction" procedure first); `xfailed` → `FAILED`.
 
 | Result | Action |
 |--------|--------|
+| `NO_REPRODUCER` | `collected 0 items` at this base — report to orchestrator, stop |
 | `CANNOT_VERIFY` | Report to orchestrator, stop |
 | `REPRODUCED` | Return `REPRODUCED(stage=source_build, base=origin/main\|<ci_commit_sha>, refined_command=...)` |
 | `PASSED` | Proceed to stage 3 |

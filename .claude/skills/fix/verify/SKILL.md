@@ -31,6 +31,20 @@ since the fix lives in local code.
 - `run_lint` (bool, default `false`) — if `true`, runs `spin fixlint` after a
   passing result. Set to `true` by `nightly-ci-fix`.
 
+### Shell helpers
+
+The recipes below call `abort` (exit non-zero with a diagnostic). It is
+not a shell builtin — define it once at the top of your shell, same as
+the orchestrators do:
+
+```bash
+abort() { echo "ABORT: $*" >&2; exit 1; }
+```
+
+An `abort` in this skill means "return `CANNOT_VERIFY` to the
+orchestrator with that message as the `blocker`", never "continue
+silently".
+
 ## Step 1: Confirm source build environment
 
 ```bash
@@ -38,8 +52,12 @@ python -c "import torch; print(torch.version.git_version)"
 ```
 
 This must return a commit hash (source build), not a version string like
-`2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and report
-to the orchestrator — verify requires source build.
+`2.8.0.dev` with no hash (wheel install). If it is a wheel, stop and return
+`CANNOT_VERIFY` with `blocker: "wheel install; verify requires a source
+build"` — a fix staged in the local tree has no effect on an installed
+wheel. Producing the source build is the orchestrator's job (both
+orchestrators load `xpu-build-pytorch` before calling this skill when
+`fix/reproduce` reproduced at `stage=nightly`).
 
 ## Step 2: Rebuild if needed
 
@@ -168,9 +186,11 @@ Result interpretation:
 
 ## Step 5: Lint (if run_lint=true)
 
-Only run after a passing test result.
+Only run after a passing test result. Run it in `target_repo_dir` — the
+repo that owns the changed files — not in `pytorch_dir`:
 
 ```bash
+cd <target_repo_dir>
 spin fixlint
 spin lint 2>&1 | tail -40
 ```

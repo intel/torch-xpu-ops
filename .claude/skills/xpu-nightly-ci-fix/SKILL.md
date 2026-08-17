@@ -154,6 +154,24 @@ Extract:
   extracted when the report supplies it.
 - Failing test list: group by test file/module
 
+Also establish the two base commits used by every failure in this run.
+They are separate values because the two repos have distinct commit
+graphs — a pytorch sha does not exist in torch-xpu-ops:
+
+```bash
+# pytorch base: origin/main, or the ci_commit sha if fix/reproduce
+# later reports base=<ci_commit_sha> (Step 2-3).
+base=origin/main
+# torch-xpu-ops base: the base of the working branch cloned into
+# third_party/torch-xpu-ops per AGENTS.md "Commit Pin & Development
+# Override" (that repo's own origin/main unless the caller pinned it).
+xpu_ops_base=$(git -C agent_space_xpu/pytorch/third_party/torch-xpu-ops \
+                 rev-parse HEAD)
+```
+
+Both stay constant for the whole run and are reused by Step 4.6
+(branch creation) and by "Reset between failures".
+
 
 ## Step 2-3: Reproduce each failure
 
@@ -213,15 +231,22 @@ the checkout that will actually hold the diff**:
 ```bash
 # Pick the checkout by target_repo.
 case "$target_repo" in
-  pytorch)        target_repo_dir=agent_space_xpu/pytorch ;;
-  torch-xpu-ops)  target_repo_dir=agent_space_xpu/pytorch/third_party/torch-xpu-ops ;;
+  pytorch)        target_repo_dir=agent_space_xpu/pytorch
+                  branch_base=$base ;;
+  torch-xpu-ops)  target_repo_dir=agent_space_xpu/pytorch/third_party/torch-xpu-ops
+                  branch_base=$xpu_ops_base ;;
   *)              abort "unknown target_repo='$target_repo'" ;;
 esac
 
+# The two repos have distinct commit graphs: $base is a pytorch ref
+# (origin/main or the CI commit sha) and does NOT exist in
+# torch-xpu-ops, so branch off that repo's own base ($xpu_ops_base,
+# established in Step 1).
+#
 # One branch per failure; name it fix-<report_date>-<short_test_name>
 # where short_test_name is the last component of the test method
 # name (e.g. test_add from TestBinaryUfuncsXPU::test_add_xpu).
-git -C "$target_repo_dir" checkout -b fix-<report_date>-<short_test_name> <base>
+git -C "$target_repo_dir" checkout -b fix-<report_date>-<short_test_name> "$branch_base"
 # e.g. git -C agent_space_xpu/pytorch checkout -b fix-20260608-test_add origin/main
 
 # For torch-xpu-ops fixes, also apply the dev-override pin so the
@@ -255,6 +280,14 @@ Call `fix/implement` with:
 If `fix/implement` returned `ready_for_verify: false`, do NOT call
 `fix/verify`. Mark in summary: "needs human (implement bailed after
 Step 3.5 rejected the diff)"; skip to next failure.
+
+**Source-build precondition.** `fix/verify` Step 1 refuses to run
+against a wheel install. If this failure was reproduced at
+`stage=nightly` (Step 2-3), no source build exists yet — load
+`xpu-build-pytorch` and build `agent_space_xpu/pytorch/` at `$base`
+with the fix staged before calling verify. If that build fails, mark
+in summary: "cannot verify (source build failed: <error>)"; skip to
+next failure.
 
 Otherwise call `fix/verify` with:
 - `refined_command` from Step 3 (`fix/reproduce` output)
@@ -381,10 +414,9 @@ if [ "$target_repo" = "torch-xpu-ops" ] && \
 fi
 ```
 
-Where `<base>` is the pytorch base commit (`origin/main` normally, or
-the CI commit sha if reproduce fell back) and `<xpu_ops_base>` is the
-torch-xpu-ops working branch's base. Both were established at the
-start of this run and remain constant across all failures.
+Where `<base>` is the pytorch base commit and `<xpu_ops_base>` is the
+torch-xpu-ops working branch's base, both established in Step 1 and
+constant across all failures.
 
 ## Step 7: Generate summary report
 

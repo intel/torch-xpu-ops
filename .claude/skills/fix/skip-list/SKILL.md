@@ -30,6 +30,13 @@ the bug pipeline directly when the issue is a skip-list.
   patch-proposal mode regardless of `pr_repo`. The orchestrator still
   passes `pr_repo` so future work can lift this restriction if
   needed.
+- `pytorch_base` — commit/ref the pytorch checkout is reset to between
+  sub-bugs (`origin/main`, or the CI commit sha if `fix/reproduce` fell
+  back to it).
+- `xpu_ops_base` — commit/ref the `third_party/torch-xpu-ops` override
+  checkout is reset to between sub-bugs (that repo's own `origin/main`
+  unless the caller pinned it). Separate from `pytorch_base` because a
+  pytorch sha does not exist in torch-xpu-ops.
 
 ## Pipeline
 
@@ -136,7 +143,13 @@ Pipeline for each sub-bug:
    Store `sub_patch` in this sub-bug's `sub_bugs[]` entry immediately.
 8. **Reset BOTH checkouts before the next sub-bug:**
    ```bash
-   git -C <pytorch_dir> reset --hard <pytorch_base>
+   # `checkout --force`, not `reset --hard`: this skill does not create
+   # its own branches, so HEAD may still be on a branch another run
+   # owns (e.g. agent/issue-<M> holding that issue's audit commit).
+   # `reset --hard` would move that branch pointer and destroy it;
+   # `checkout --force` detaches HEAD and leaves every branch intact
+   # while still discarding staged/unstaged changes.
+   git -C <pytorch_dir> checkout --force <pytorch_base>
    git -C <pytorch_dir> clean -fdx
    # git clean -fdx does NOT descend into nested git repositories
    # (third_party/torch-xpu-ops is preserved by git's default
@@ -147,7 +160,7 @@ Pipeline for each sub-bug:
    git -C <pytorch_dir> checkout -- third_party/xpu.txt
 
    if [ -d "<pytorch_dir>/third_party/torch-xpu-ops/.git" ]; then
-       git -C <pytorch_dir>/third_party/torch-xpu-ops reset --hard <xpu_ops_base>
+       git -C <pytorch_dir>/third_party/torch-xpu-ops checkout --force <xpu_ops_base>
        git -C <pytorch_dir>/third_party/torch-xpu-ops clean -fdx
    fi
    ```

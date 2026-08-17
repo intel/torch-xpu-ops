@@ -166,20 +166,25 @@ in the `target_repo` checkout, so runs do not stomp each other.
 
 Sequence:
 
-- **Before Stage 4**, branch off the base `fix/reproduce` used. That
-  is `origin/main` in the normal case; if reproduce reported
-  `base=<ci_commit_sha>` (fallback path used because trunk failed to
-  build), branch off that sha instead — the whole pipeline stays on it
-  through Stage 5 so verify's rebuild also succeeds.
+- **Before Stage 4**, branch off the base **of `target_repo`'s own
+  checkout**. The two repos have distinct commit graphs — a pytorch sha
+  does not exist in torch-xpu-ops — so `<base>` is chosen by
+  `target_repo`, not by which base `fix/reproduce` reported:
+
+  | `target_repo` | `<base>` |
+  |---|---|
+  | `pytorch` | `origin/main`, or `<ci_commit_sha>` when `fix/reproduce` reported `base=<ci_commit_sha>` (fallback path used because trunk failed to build). The whole pipeline stays on it through Stage 5 so verify's rebuild also succeeds. |
+  | `torch-xpu-ops` | `<xpu_ops_base>` — the base of the working branch cloned into `third_party/torch-xpu-ops` per AGENTS.md "Commit Pin & Development Override" (that repo's own `origin/main` unless the caller pinned it). Never a pytorch sha. |
 
   ```bash
   git -C <target_repo_dir> checkout -b agent/issue-<N> <base>
   ```
 
-  `fix/reproduce` Stage 2 leaves HEAD on that base at exit, so this is
-  just a `checkout -b` from where reproduce stopped — no history is
-  lost. `-b` (not `-B`) so a pre-existing `agent/issue-<N>` from a
-  prior run fails loudly instead of silently discarding its history.
+  For `target_repo=pytorch`, `fix/reproduce` Stage 2 leaves HEAD on that
+  base at exit, so this is just a `checkout -b` from where reproduce
+  stopped — no history is lost. `-b` (not `-B`) so a pre-existing
+  `agent/issue-<N>` from a prior run fails loudly instead of silently
+  discarding its history.
   If it exists, decide explicitly: reuse it
   (`git checkout agent/issue-<N>`) or delete it
   (`git branch -D agent/issue-<N>`) after logging what gets thrown
@@ -235,8 +240,14 @@ DISCOVERED -> UPSTREAM_VERIFYING -> WAITING_UPSTREAM -> TRIAGING ->
 TRIAGED -> IMPLEMENTING -> IN_REVIEW -> PUBLIC_PR -> CI_WATCH -> MERGED
 ```
 
-Terminal stages: `DONE`, `SKIPPED`, `NOT_REPRODUCED`, `NEEDS_HUMAN`,
+Terminal stages: `DONE`, `NOT_REPRODUCED`, `NEEDS_HUMAN`,
 `PATCH_PROPOSED`, `DONE_SKIP_TRIAGED`, `SKIP_TRIAGED_NEEDS_HUMAN`.
+
+There is no `SKIPPED` terminal stage: this orchestrator always runs
+`fix/implement` with `allow_skip=false`, so it can never end a run by
+adding a skip decorator. A stage that cannot decide (`CANNOT_VERIFY`
+from `fix/reproduce` or `fix/verify`) terminates as `NEEDS_HUMAN` with
+the blocker as the reason — see Stage 6.
 
 Stage → label mapping:
 
@@ -245,8 +256,12 @@ Stage → label mapping:
 | DISCOVERED, UPSTREAM_VERIFYING, TRIAGING, IMPLEMENTING, IN_REVIEW, PUBLIC_PR, CI_WATCH, MERGED | `agent:active` |
 | WAITING_UPSTREAM | `agent:waiting-upstream` |
 | TRIAGED, PATCH_PROPOSED | `agent:triaged` |
-| DONE, SKIPPED, NOT_REPRODUCED, DONE_SKIP_TRIAGED | `agent:done` |
+| DONE, NOT_REPRODUCED, DONE_SKIP_TRIAGED | `agent:done` |
 | NEEDS_HUMAN, SKIP_TRIAGED_NEEDS_HUMAN | `agent:needs-human` |
+
+`agent:active` is applied by Stage 1 on entry (pipeline mode only),
+with the retry-then-warn rule below; every terminal stage replaces it
+via `apply_terminal_label`.
 
 **Label operation error handling.** Every `gh issue edit --add-label`
 or `--remove-label` call MUST check its exit code. Failure modes:
@@ -274,10 +289,11 @@ This applies especially when `fix/root-cause` downgrades an
 `agent:active` before adding `agent:needs-human`.
 
 **Concrete `apply_terminal_label` subroutine** — every stage that
-lands on a terminal outcome (Stage 3 NEEDS_HUMAN, Stage 5.5 BLOCK,
-Stage 6 for DONE / PATCH_PROPOSED / NEEDS_HUMAN / DONE_SKIP_TRIAGED /
-SKIP_TRIAGED_NEEDS_HUMAN) MUST call this exact sequence rather than
-issuing raw `--add-label` calls:
+lands on a terminal outcome (Stage 2 NOT_REPRODUCED / CANNOT_VERIFY,
+Stage 3 NEEDS_HUMAN, Stage 5 CANNOT_VERIFY or attempts exhausted,
+Stage 5.5 BLOCK, Stage 6 for DONE / PATCH_PROPOSED / NEEDS_HUMAN /
+DONE_SKIP_TRIAGED / SKIP_TRIAGED_NEEDS_HUMAN) MUST call this exact
+sequence rather than issuing raw `--add-label` calls:
 
 ```bash
 apply_terminal_label() {
@@ -337,19 +353,28 @@ _gh_edit_label_with_retry() {
 
 Where the following stages call it:
 
+- Stage 2 → `apply_terminal_label ... agent:done` on `NOT_REPRODUCED`,
+  `... agent:needs-human` on `CANNOT_VERIFY`, before stopping.
 - Stage 3 → `apply_terminal_label ... agent:needs-human` when
   `fix/root-cause` returns `NEEDS_HUMAN` (before "Report reason to
   user; stop").
+- Stage 5 → `apply_terminal_label ... agent:needs-human` on
+  `CANNOT_VERIFY` and when the 3 fix attempts are exhausted.
 - Stage 5.5 → `apply_terminal_label ... agent:needs-human` on `BLOCK`.
 - Stage 6 → dispatch by outcome:
   - `IMPLEMENTING` (ready for PR): keep `agent:active` (mid-flight);
     do NOT call `apply_terminal_label` — it will be applied when the
     PR opens or lands.
   - `PATCH_PROPOSED` → `apply_terminal_label ... agent:triaged`.
-  - `DONE`, `SKIPPED`, `NOT_REPRODUCED`, `DONE_SKIP_TRIAGED` →
+  - `DONE`, `NOT_REPRODUCED`, `DONE_SKIP_TRIAGED` →
     `apply_terminal_label ... agent:done`.
   - `NEEDS_HUMAN`, `SKIP_TRIAGED_NEEDS_HUMAN` →
     `apply_terminal_label ... agent:needs-human`.
+
+Every stop path is a terminal outcome and therefore labels the issue.
+An early stop (Stage 2 / Stage 3 / Stage 5) that leaves `agent:active`
+applied is a pipeline bug — batch tooling would keep treating the issue
+as in-flight forever.
 
 Mid-flight label sets (`agent:active`, `agent:waiting-upstream`) are
 applied by their originating stage with the retry-then-warn rule from
@@ -460,12 +485,18 @@ issue-triage → reproduce → root-cause → implement → verify → review �
 Run `issue-triage` to classify the issue and extract shallow metadata
 (`issue_type`, `runtime_dependencies`, `scope`, preliminary `verdict`).
 
+In pipeline mode, apply `agent:active` before running it (state
+`DISCOVERED`), using the retry-then-warn rule for mid-flight labels.
+Every exit path below replaces it via `apply_terminal_label`.
+
 Route on `verdict` and `issue_type` together. `issue_type=skip-list`
 takes precedence over any `verdict` value — per-entry fixability is
 what matters for skip-lists, decided by `fix/skip-list`:
 
 - `issue_type == "skip-list"` (any `verdict`) → invoke `fix/skip-list`
-  with `issue_body`, `pytorch_dir`, and `pr_repo`. That skill owns the
+  with `issue_body`, `pytorch_dir`, `pr_repo`, and the two base
+  commits it resets to between sub-bugs (`pytorch_base`,
+  `xpu_ops_base` — see that skill's Inputs). That skill owns the
   full skip-list pipeline (per-entry reproduce, classification,
   per-sub-bug fix pipeline in patch-proposal mode, verdict table +
   per-sub-bug patch-proposal outputs). When it returns:
@@ -480,14 +511,15 @@ what matters for skip-lists, decided by `fix/skip-list`:
      `patch_diff` — post them as NEEDS_HUMAN comments naming the
      reason and a concrete fix location instead.
   3. Set the state comment `Outcome` from `outcome`
-     (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
-     `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
+     (`DONE_SKIP_TRIAGED` → `apply_terminal_label ... agent:done`;
+     `SKIP_TRIAGED_NEEDS_HUMAN` → `apply_terminal_label ...
+     agent:needs-human`).
   4. **Never modify the issue body** regardless of outcome.
 - `verdict == "NEEDS_HUMAN"` and `issue_type != "skip-list"` → record
-  classification and `reason`, report to user, **stop**. This covers
-  non-bugs, umbrella tasks, and bugs with insufficient signal (no
-  traceback, no reproducer, hardware-only, non-public deps). No
-  Stage 2+ work.
+  classification and `reason`, report to user, `apply_terminal_label
+  ... agent:needs-human`, **stop**. This covers non-bugs, umbrella
+  tasks, and bugs with insufficient signal (no traceback, no
+  reproducer, hardware-only, non-public deps). No Stage 2+ work.
 - `verdict == "agent-fixable"`:
   - `issue_type == "nonbug"` — should not happen (nonbug forces
     `NEEDS_HUMAN` in `issue-triage`); if it does, treat as
@@ -510,10 +542,10 @@ Interpret the output:
 
 | Output | Action |
 |--------|--------|
-| `REPRODUCED` | Continue to Stage 3 with `refined_command` |
-| `NOT_REPRODUCED` | Triage to collect why; report to user; stop |
+| `REPRODUCED` | Continue to Stage 3 with `refined_command`. Record `stage` — a `stage=nightly` reproduction means the environment is a **wheel install**, and `fix/verify` requires a source build (see Stage 5) |
+| `NOT_REPRODUCED` | Report to user with the reason `fix/reproduce` gave (which stage passed and what was checked); outcome `NOT_REPRODUCED`, `apply_terminal_label ... agent:done`; stop |
 | `NO_REPRODUCER` | Continue to Stage 3 (static triage only). Stages 4-5 need a runnable command: if triage cannot name one, stop after Stage 3 with `NEEDS_HUMAN` (root cause + fix location reported, nothing implemented) |
-| `CANNOT_VERIFY` | Report blocker to user; stop |
+| `CANNOT_VERIFY` | Report blocker to user; outcome `NEEDS_HUMAN` (reason: the reported `blocker`), `apply_terminal_label ... agent:needs-human`; stop |
 
 ### Stage 3 — fix/root-cause
 
@@ -595,8 +627,10 @@ and `<base>` selection).
 ```bash
 git -C <target_repo_dir> fetch origin
 git -C <target_repo_dir> checkout -b agent/issue-<N> <base>
-# <base> is origin/main normally, or <ci_commit_sha> if reproduce fell
-# back to it. Use `-b` (not `-B`) so a stale branch fails loudly.
+# <base> belongs to target_repo_dir's own history (see the base table in
+# "Pipeline mode: per-issue branch isolation"): origin/main or
+# <ci_commit_sha> for pytorch, <xpu_ops_base> for torch-xpu-ops.
+# Use `-b` (not `-B`) so a stale branch fails loudly.
 ```
 
 **Loop-back re-entry (from Stage 5 FAILED or Stage 5.5 REQUEST_CHANGES):**
@@ -637,6 +671,14 @@ the diff and the implementer bailed with `NEEDS_HUMAN`), do NOT call
 `fix/verify`. Skip directly to reporting `NEEDS_HUMAN` in Stage 6 with
 the reviewer's citations.
 
+**Source-build precondition.** `fix/verify` Step 1 refuses to run
+against a wheel install, and a locally staged fix has no effect on an
+installed wheel anyway. If Stage 2 reproduced at `stage=nightly` (no
+source build was ever made), build before calling verify: load
+`xpu-build-pytorch` and build `pytorch_dir` at `<base>` with the fix
+staged. If that build fails, outcome is `NEEDS_HUMAN` (reason: the
+build error), `apply_terminal_label ... agent:needs-human`; stop.
+
 Otherwise call `fix/verify` with:
 - `refined_command` from Stage 2
 - `pytorch_dir`
@@ -654,9 +696,10 @@ before calling verify.
 |--------|--------|
 | `PASSED` | Continue to Stage 5.5 |
 | `FAILED` | Loop back to Stage 4 with failure output (max 3 attempts) |
-| `CANNOT_VERIFY` | Report to user; stop |
+| `CANNOT_VERIFY` | Report the `blocker` to user; outcome `NEEDS_HUMAN`, `apply_terminal_label ... agent:needs-human`; stop |
 
-If 3 attempts exhausted without `PASSED`, report `NEEDS_HUMAN`.
+If 3 attempts exhausted without `PASSED`, report `NEEDS_HUMAN` and
+`apply_terminal_label ... agent:needs-human`.
 
 ### Stage 5.5 — Review subagent
 
@@ -730,8 +773,7 @@ Always include:
 - Reviewer verdict: APPROVE / REQUEST_CHANGES / BLOCK / not-attempted
   (+ round count if looped)
 - Outcome: `IMPLEMENTING` / `PATCH_PROPOSED` / `DONE_SKIP_TRIAGED` /
-  `SKIP_TRIAGED_NEEDS_HUMAN` / `NEEDS_HUMAN` / `SKIPPED` /
-  `NOT_REPRODUCED`
+  `SKIP_TRIAGED_NEEDS_HUMAN` / `NEEDS_HUMAN` / `NOT_REPRODUCED`
 
 Routing by `target_repo` vs `pr_repo` (see Stage 3):
 
