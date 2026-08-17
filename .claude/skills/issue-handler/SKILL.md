@@ -11,10 +11,11 @@ description: >
 
 Sequences `issue-format`, `fix/reproduce`, `fix/triage`, `fix/implement`,
 `fix/verify`, and a fresh-context **review subagent** into a single pipeline
-for one GitHub issue, then reports the outcome. Leaf-skill logic lives in
-those files; this skill owns the scheduling, mode handling, review-loop
-orchestration, and reporting. See the "Pipeline" section below for the full
-stage list.
+for one GitHub issue, then reports the outcome. For skip-list issues, Stage 1
+dispatches to `fix/skip-triage` instead of the bug pipeline. Leaf-skill logic
+lives in those files; this skill owns the scheduling, mode handling,
+review-loop orchestration, and reporting. See the "Pipeline" section below
+for the full stage list.
 
 ## Prerequisites
 
@@ -259,59 +260,26 @@ issue-format → reproduce → triage → implement → verify → review → re
 Classify as `bug`, `skip-list`, or `nonbug` and extract metadata.
 
 - `nonbug` → record classification, report to user, **stop**.
-- `skip-list` (Bug Skip template — a list of already-skipped tests asking
-  "should these still be skipped?") → route to the **skip-triage branch**:
-  1. Parse the test entries from the body. Struck-through entries
-     (`~~...~~`) are already-resolved; skip them.
-  2. For each remaining entry, call `fix/reproduce` with just that test as
-     the reproducer.
-  3. Classify each result:
-     - `REPRODUCED` (FAILED) → `STILL_FAILING`. Which repo owns the root
-       cause is **not** known yet — `fix/reproduce` only reports whether
-       the test fails. The per-entry `fix/triage` run in step 5 decides
-       it, and the verdict table records the entry as
-       `STILL_FAILING_UPSTREAM_BUG` (root cause in pytorch) or
-       `STILL_FAILING_XPU_BUG` (root cause in torch-xpu-ops) once triage
-       has returned `target_repo`.
-     - `NOT_REPRODUCED` (PASSED on nightly / source build) → `ALREADY_FIXED`
-     - `NO_REPRODUCER` (test does not exist / `collected 0 items`) or
-       `CANNOT_VERIFY` due to test-name drift → `ENVIRONMENT`
-     - Intermittent (pass on retry) → `FLAKY`
-  4. **For every `STILL_FAILING` entry**, treat that single test as a
-     sub-bug and run the full bug-branch pipeline (Stages 2–5.5) for it,
-     then post one patch-proposal comment per sub-bug on the same
-     skip-list issue.
-     Each sub-bug patch-proposal comment MUST contain:
-     - The test's node id (unique identifier within the skip-list issue)
-     - Root cause (one paragraph, cites the specific line / symbol)
-     - Verified patch diff (or `NEEDS_HUMAN` if no root-cause fix is
-       possible; the STRICT patch-acceptance rules below apply here
-       exactly the same as in the bug branch — no skip/xfail/seed/
-       tolerance workarounds)
-     - Reproducer command
-     - Verify output (before / after)
-     - `git apply` instructions
-     If a sub-bug lands `NEEDS_HUMAN`, its patch-proposal comment states
-     the reason plus a concrete fix location. Do NOT try to bundle all
-     sub-bug fixes into a single mega-diff — one comment per test keeps
-     the audit trail clean.
-     `ALREADY_FIXED`, `ENVIRONMENT`, and `FLAKY` entries need no
-     patch-proposal (the verdict table already tells the maintainer to
-     remove or ignore the skip).
-  5. Post the per-test verdict table as an issue comment, now that each
-     `STILL_FAILING` entry's owning repo is known from its triage run.
-     This is a mandatory deliverable of the skip-triage branch, not the
-     only one.
-  6. Outcome selection:
-     - Every sub-bug produced a verified `PATCH_PROPOSED` (or is
-       `ALREADY_FIXED` / `ENVIRONMENT` / `FLAKY`) → outcome
-       `DONE_SKIP_TRIAGED`; apply `agent:done` label.
-     - One or more sub-bugs landed `NEEDS_HUMAN` → outcome
-       `SKIP_TRIAGED_NEEDS_HUMAN`; apply `agent:needs-human` (the
-       maintainer sees both the verdict table and per-sub-bug
-       patch-proposal comments, so they know exactly which sub-bugs
-       remain).
-     - Do NOT modify the issue body regardless of outcome.
+- `skip-list` → invoke `fix/skip-triage` with `issue_body`,
+  `pytorch_dir`, and `pr_repo`. That skill owns the full skip-list
+  pipeline (per-entry reproduce, classification, per-sub-bug fix
+  pipeline in patch-proposal mode, verdict table + per-sub-bug
+  patch-proposal outputs). When it returns:
+  1. Post its `verdict_table` as a GitHub comment on the issue
+     (mandatory deliverable — required even if every entry is
+     `ALREADY_FIXED`).
+  2. Post one patch-proposal comment per entry in its `sub_bugs`,
+     using the fields `test`, `root_cause`, `patch_diff`,
+     `reproducer_command`, `verify_before`, `verify_after`, and a
+     `git apply` instruction line built from `patch_diff`. Skip
+     `sub_bugs` entries whose status is `NEEDS_HUMAN` without a
+     `patch_diff` — post them as NEEDS_HUMAN comments naming the
+     reason and a concrete fix location instead.
+  3. Set the state comment `Outcome` from `outcome`
+     (`DONE_SKIP_TRIAGED` → apply `agent:done` label;
+     `SKIP_TRIAGED_NEEDS_HUMAN` → apply `agent:needs-human`).
+  4. **Never modify the issue body** regardless of outcome.
+- `bug` → continue to Stage 2.
 - `bug` → continue to Stage 2.
 
 ### Stage 2 — fix/reproduce
