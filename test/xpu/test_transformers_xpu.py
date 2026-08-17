@@ -2110,7 +2110,7 @@ class TestSDPAFailureModes(NNTestCase):
         attn_mask = (
             None
             if kernel == SDPBackend.FLASH_ATTENTION
-            else torch.randn(3, 3, device=device, dtype=dtype)
+            else torch.tril(torch.ones(3, 3, device=device, dtype=torch.bool))
         )
 
         with sdpa_kernel(backends=[kernel]):
