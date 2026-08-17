@@ -104,6 +104,15 @@ committed. Never skip to Step 7.
 
 ## Step 0: Preflight — gh auth + PyTorch checkout
 
+**Shell helpers.** The recipes below use `abort` and `log_warn`
+helpers. Define them once at the top of your shell (or source a
+shared file):
+
+```bash
+abort()    { echo "ABORT: $*" >&2; exit 1; }
+log_warn() { echo "WARN: $*"  >&2; }
+```
+
 **gh auth preflight** — this skill will `gh issue create` in
 `fix/skip-management` (via `fix/implement` with `allow_skip=true`),
 so a write-capable token is mandatory. Fail early if not authenticated,
@@ -270,7 +279,20 @@ attempt N (starting at 1 after the first fix/verify returns FAILED):
      - fix/verify failure_output from this attempt
      - fix/verify suggestion from this attempt
      - prior fix strategy (so triage knows what was already tried)
-  2. Call fix/implement with the new triage_result.
+     - prior target_repo (so triage can flip decisions consciously)
+  1a. If the new target_repo differs from the previous attempt's,
+      the previous attempt's fix branch is orphaned in the wrong
+      checkout. Do NOT continue the loop with mixed state — the
+      pipeline cannot silently migrate a staged diff from
+      third_party/torch-xpu-ops to pytorch (or vice versa) and
+      preserve reviewability. Exit the loop, mark in summary:
+      "needs human (triage flipped target_repo between attempts:
+      <prev> -> <new>; both diffs preserved on their branches for
+      manual inspection)". Do NOT reset either branch — leave both
+      staged diffs on disk for human review.
+  2. Otherwise, call fix/implement with the new triage_result and
+     the SAME target_repo_dir as attempt N-1. fix/implement's Step 0
+     loop-back rule handles the staged-from-previous-attempt state.
   3. Call fix/verify again.
       - PASSED → commit, exit loop.
       - FAILED and attempt < 3 → increment attempt, repeat from step 1.
@@ -330,6 +352,39 @@ If the fix was a skip (`fix/implement` output has `skip_added: true`):
 - The tracking issue already contains the root cause and fix strategy from triage.
 
 Each fix is one commit. Do not batch multiple fixes into one commit.
+
+### Reset between failures
+
+After Step 6 completes (or after a NEEDS_HUMAN / CANNOT_VERIFY exit),
+reset shared state before starting the next failure. Otherwise the
+next failure inherits this failure's xpu.txt override, stale build
+artifacts, and per-failure fix branch — the "before" run of its
+verify loop then mixes the two fixes.
+
+```bash
+# Reset the pytorch checkout to <base>. This drops the per-failure
+# fix branch pointer from HEAD (the branch itself remains for audit).
+git -C agent_space_xpu/pytorch checkout <base>
+# Restore third_party/xpu.txt to its pinned commit so the next
+# rebuild starts from a clean pin.
+git -C agent_space_xpu/pytorch checkout -- third_party/xpu.txt
+# Drop stale build outputs; nested submodules preserved automatically.
+git -C agent_space_xpu/pytorch clean -fdx
+
+# Reset the torch-xpu-ops override checkout to its own base, if this
+# failure targeted torch-xpu-ops.
+if [ "$target_repo" = "torch-xpu-ops" ] && \
+   [ -d agent_space_xpu/pytorch/third_party/torch-xpu-ops/.git ]; then
+    git -C agent_space_xpu/pytorch/third_party/torch-xpu-ops \
+        checkout <xpu_ops_base>
+    git -C agent_space_xpu/pytorch/third_party/torch-xpu-ops clean -fdx
+fi
+```
+
+Where `<base>` is the pytorch base commit (`origin/main` normally, or
+the CI commit sha if reproduce fell back) and `<xpu_ops_base>` is the
+torch-xpu-ops working branch's base. Both were established at the
+start of this run and remain constant across all failures.
 
 ## Step 7: Generate summary report
 

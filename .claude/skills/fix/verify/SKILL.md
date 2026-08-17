@@ -67,9 +67,12 @@ even with sources removed — producing a false-negative "before" that
 already passes. Instead, defer the rebuild into Step 3's before/after
 loop where it is done at each phase.
 
-Otherwise (python-only OR `run_before_after_diff=false`), load
-`xpu-build-pytorch` now and run its build command. Python-only
-changes need no rebuild.
+Otherwise (i.e. `run_before_after_diff=false`, or all changes are
+python-only regardless of the flag):
+
+- If any changed file is C++/SYCL: load `xpu-build-pytorch` and
+  rebuild now.
+- If all changed files are python-only: no rebuild needed.
 
 ## Step 3: Before/after comparison (if run_before_after_diff=true)
 

@@ -96,11 +96,17 @@ between sub-bugs, not just the last one used:
 - `<pytorch_dir>/third_party/torch-xpu-ops` — used when
   `target_repo=torch-xpu-ops`.
 
-**Base commit for reset.** Same `<base>` the top-level orchestrator
-would have branched from: `origin/main` in the normal case, or the
-CI commit sha if `fix/reproduce` fell back to it. For the torch-xpu-ops
-override checkout, `<base>` is the branch's origin/main equivalent
-(the working branch you cloned into `third_party/torch-xpu-ops`).
+**Base commits for reset.** Two separate values because the two repos
+have distinct commit graphs — a pytorch sha does NOT exist in
+torch-xpu-ops:
+
+- `pytorch_base` — same `<base>` the top-level orchestrator would
+  have branched from: `origin/main` in the normal case, or the CI
+  commit sha if `fix/reproduce` fell back to it.
+- `xpu_ops_base` — the base commit of the working branch cloned into
+  `third_party/torch-xpu-ops` per AGENTS.md dev-override. Typically
+  the `torch-xpu-ops` branch's `origin/main` (or its own `<base>`
+  if pinned).
 
 Pipeline for each sub-bug:
 
@@ -130,14 +136,18 @@ Pipeline for each sub-bug:
    Store `sub_patch` in this sub-bug's `sub_bugs[]` entry immediately.
 8. **Reset BOTH checkouts before the next sub-bug:**
    ```bash
-   git -C <pytorch_dir> reset --hard <base>
+   git -C <pytorch_dir> reset --hard <pytorch_base>
    git -C <pytorch_dir> clean -fdx
+   # git clean -fdx does NOT descend into nested git repositories
+   # (third_party/torch-xpu-ops is preserved by git's default
+   # nested-repo protection).
+   #
    # Restore third_party/xpu.txt to its origin/main state so the
    # next sub-bug's rebuild starts from a clean pin.
    git -C <pytorch_dir> checkout -- third_party/xpu.txt
 
    if [ -d "<pytorch_dir>/third_party/torch-xpu-ops/.git" ]; then
-       git -C <pytorch_dir>/third_party/torch-xpu-ops reset --hard <base>
+       git -C <pytorch_dir>/third_party/torch-xpu-ops reset --hard <xpu_ops_base>
        git -C <pytorch_dir>/third_party/torch-xpu-ops clean -fdx
    fi
    ```

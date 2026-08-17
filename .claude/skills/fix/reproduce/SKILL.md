@@ -211,7 +211,9 @@ even runs.
 # Restore xpu.txt to origin's pinned commit (in case Stage 2 rewrote it).
 git -C "$pytorch_dir" checkout -- third_party/xpu.txt
 # Discard stage-2 build outputs so the container sees a clean tree.
-git -C "$pytorch_dir" clean -fdx -e agent_space_xpu
+# Nested submodules (third_party/torch-xpu-ops) are preserved by git's
+# default nested-repo protection — no -e needed.
+git -C "$pytorch_dir" clean -fdx
 ```
 
 Alternatively, run the container reproducer from `cd /workspace`

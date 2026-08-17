@@ -19,6 +19,24 @@ for the full stage list.
 
 ## Prerequisites
 
+### Shell helpers used throughout this skill
+
+Every bash recipe in this file assumes two helper functions are in
+scope. They are not shell builtins; define them once at the top of
+the orchestrator's shell (or source a shared helpers file):
+
+```bash
+abort()    { echo "ABORT: $*" >&2; exit 1; }
+log_warn() { echo "WARN: $*"  >&2; }
+```
+
+`abort` exits non-zero with a diagnostic; `log_warn` writes a warning
+and returns success. Recipes below use them without redefining. The
+same two helpers are assumed by `fix/verify`, `fix/skip-management`,
+and `xpu-nightly-ci-fix`.
+
+### GitHub CLI
+
 This skill shells out to the `gh` CLI at every stage (fetch issue, post
 comments, apply labels, edit the state comment). Authenticate `gh` **before**
 invoking the skill — it does not prompt for credentials.
@@ -270,24 +288,48 @@ apply_terminal_label() {
       agent:done|agent:needs-human|agent:triaged) ;;
       *) abort "apply_terminal_label: '$new_label' is not a terminal label" ;;
     esac
-    # Remove any prior non-terminal or conflicting terminal labels
-    # before adding the new one. Ignore "label not found" (416 / 404)
-    # — the label may not have been applied on this issue.
-    for stale in agent:active agent:waiting-upstream agent:triaged \
-                 agent:done agent:needs-human; do
-        [ "$stale" = "$new_label" ] && continue
-        for attempt in 1 2; do
-            gh issue edit "$n" --repo "$repo" --remove-label "$stale" \
-              2>/dev/null && break
-            [ "$attempt" = 2 ] && log_warn "remove-label $stale failed twice; continuing"
-            sleep 5
-        done
+
+    # Short-circuit: if the label is already applied, we're done. Avoids
+    # a churn of remove + failed re-add on pipeline retries.
+    if gh issue view "$n" --repo "$repo" --json labels \
+         --jq '.labels[].name' 2>/dev/null | grep -qx "$new_label"; then
+        return 0
+    fi
+
+    # Remove only NON-terminal `agent:*` labels. Do NOT strip other
+    # terminal labels — a concurrent orchestrator run may have just
+    # applied one legitimately, and the caller is responsible for
+    # explicit terminal-to-terminal transitions.
+    for stale in agent:active agent:waiting-upstream; do
+        _gh_edit_label_with_retry "$repo" "$n" --remove-label "$stale" \
+            "remove-label $stale"
     done
     # Add the new terminal label with the same retry policy.
+    _gh_edit_label_with_retry "$repo" "$n" --add-label "$new_label" \
+        "add-label $new_label" \
+        || abort "apply_terminal_label: failed to add '$new_label'"
+}
+
+# Helper: retry a single `gh issue edit` label mutation, distinguishing
+# transient failures (which retry once) from non-retryable ones
+# ("already has label", "label not found", "not found in list") which
+# are treated as success.
+_gh_edit_label_with_retry() {
+    local repo="$1" n="$2" op_flag="$3" label="$4" description="$5"
+    local out rc
     for attempt in 1 2; do
-        gh issue edit "$n" --repo "$repo" --add-label "$new_label" && return 0
-        [ "$attempt" = 2 ] && \
-          abort "apply_terminal_label: failed to add '$new_label' after 2 attempts"
+        out=$(gh issue edit "$n" --repo "$repo" "$op_flag" "$label" 2>&1)
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            return 0
+        fi
+        # Non-retryable, no-op-equivalent errors: treat as success.
+        case "$out" in
+            *"already has label"*|*"already exists"*|*"not found in list"*|*"label not found"*)
+                return 0
+                ;;
+        esac
+        [ "$attempt" = 2 ] && { log_warn "$description failed: $out"; return $rc; }
         sleep 5
     done
 }

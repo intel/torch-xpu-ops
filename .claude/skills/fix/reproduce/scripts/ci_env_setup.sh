@@ -150,6 +150,10 @@ echo "  ci-docker-hash: $DOCKER_HASH"
 # Actions run page on GitHub for the updated URL.
 S3_BASE="https://gha-artifacts.s3.amazonaws.com/pytorch/pytorch/${RUN_ID}"
 WHEELS_DIR="${OUTDIR}/wheels"
+# Start from a clean wheels dir so a re-run does not trip the
+# "after_count <= before_count" assertion below when unzip overwrites
+# the same filenames from a previous invocation.
+rm -rf "$WHEELS_DIR"
 mkdir -p "$WHEELS_DIR"
 
 echo "[3/4] Downloading wheel artifacts from run $RUN_ID..."
