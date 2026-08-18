@@ -29,8 +29,15 @@ this skill).
 ## Inputs
 
 - A GitHub issue: URL, number, or raw title+body+labels. If given a
-  number or URL, fetch with `gh issue view --json title,body,labels`.
-- Read-only. This skill never runs tests or edits files.
+  number or URL, fetch it:
+
+  ```bash
+  gh issue view "$N" --repo "$OWNER/$REPO" --json title,body,labels
+  ```
+
+- Read-only with respect to the repository: this skill never reads
+  source, runs tests, or edits files. Its only writes are the issue
+  comment and the labels in Step 6.
 
 ## Shell helpers
 
@@ -89,9 +96,8 @@ Report `yes` when the issue lacks all of:
 
 Report `no` when at least one of the above is present.
 
-Skip-list issues are exempt — they list already-skipped test node ids
-in their body, which counts as "test node id reference" per the second
-bullet.
+Skip-list issues list already-skipped test node ids in their body, so
+they satisfy the second bullet and report `no`.
 
 ## Step 3: Estimate `scope`
 
@@ -160,11 +166,15 @@ human-readable output:
 ```markdown
 | Field | Value |
 |-------|-------|
-| Reproduction missing | <yes | no> |
-| Scope | <pytorch | torch-xpu-ops | both | unclear> |
-| Dependencies | <comma-separated list, or "(none)"> |
-| Handling | <agent-fixable | needs-human> |
+| Reproduction missing | yes / no |
+| Scope | pytorch / torch-xpu-ops / both / unclear |
+| Dependencies | comma-separated list, or (none) |
+| Handling | agent-fixable / needs-human |
 ```
+
+Each `Value` cell above lists the allowed choices; emit exactly one of
+them. Never leave a literal `|` inside a cell — it splits the cell and
+breaks the rendered table.
 
 When `Handling == needs-human`, append a `**Reason:** <one-line>` line
 below the table.
@@ -195,39 +205,34 @@ OWNER=<owner> REPO=<repo> N=<issue_number>
 triage_body_file=$(mktemp)
 # Write the marker + heading + table + reason to $triage_body_file.
 
-# Find the oldest existing triage comment (if any).
-comment_id=$(gh issue view "$N" --repo "$OWNER/$REPO" \
-  --json comments \
-  --jq '.comments
-        | map(select(.body | startswith("<!-- agent:triage -->")))
-        | sort_by(.createdAt)
-        | .[0].id')
+# List existing triage comments, oldest first. Use the REST endpoint: it
+# returns numeric comment ids, which the PATCH/DELETE comment endpoints
+# require. `gh issue view --json comments` returns GraphQL node ids
+# instead, and those endpoints reject them.
+mapfile -t triage_ids < <(gh api "/repos/$OWNER/$REPO/issues/$N/comments" \
+    --paginate \
+    --jq '.[] | select(.body | startswith("<!-- agent:triage -->")) | .id')
 
-if [ -z "$comment_id" ] || [ "$comment_id" = "null" ]; then
+if [ "${#triage_ids[@]}" -eq 0 ]; then
     gh issue comment "$N" --repo "$OWNER/$REPO" \
         --body-file "$triage_body_file" \
         || abort "gh issue comment failed"
 else
     # `--field body="$(cat file)"` — do NOT use `-f body=@file`; gh
     # does not expand @path for POST/PATCH fields the way curl does.
-    gh api "/repos/$OWNER/$REPO/issues/comments/$comment_id" \
+    gh api "/repos/$OWNER/$REPO/issues/comments/${triage_ids[0]}" \
         --method PATCH \
         --field body="$(cat "$triage_body_file")" \
         || abort "gh api PATCH failed"
-fi
 
-# Best-effort dedup: if more than one triage comment exists, delete
-# the newer duplicates. Failure here is a warning, not a hard abort.
-gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
-  --jq '.comments
-        | map(select(.body | startswith("<!-- agent:triage -->")))
-        | sort_by(.createdAt)
-        | .[1:][] | .id' \
-  | while read dup_id; do
-      gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
-        --method DELETE \
-        || log_warn "could not delete duplicate triage comment $dup_id"
+    # Best-effort dedup: delete the newer duplicates. Failure here is a
+    # warning, not a hard abort.
+    for dup_id in "${triage_ids[@]:1}"; do
+        gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
+            --method DELETE \
+            || log_warn "could not delete duplicate triage comment $dup_id"
     done
+fi
 ```
 
 ### 6c. Apply GitHub labels
@@ -275,6 +280,8 @@ no explanation:
 
 Field notes:
 
+- `reproduction_missing` is a JSON boolean: `true` for the `yes` shown
+  in the table, `false` for `no`.
 - `runtime_dependencies` is an array from the closed set in Step 4;
   empty `[]` when none named.
 - `reason` is required non-empty when `handling == needs-human`, empty
@@ -292,5 +299,9 @@ Field notes:
 - **`gh api ... -f body=@file` is wrong** for editing comments. `gh`
   does not expand `@path` for POST/PATCH fields the way curl does.
   Use `--field body="$(cat file)"`.
+- **Comment ids must come from the REST list endpoint.** PATCH/DELETE
+  on `/repos/.../issues/comments/<id>` need the numeric id returned by
+  `gh api /repos/.../issues/<n>/comments`, not the GraphQL node id
+  returned by `gh issue view --json comments`.
 - **Labels are advisory** — repeated `add-label` calls for a label
   already on the issue are no-ops, not failures.
