@@ -12,15 +12,29 @@ fetch_static() {
 
 fetch_open() {
   local category="${1:-}"
-  # GitHub issue search OR's labels via a comma-separated list, not the word OR.
-  local labels="skipped,skipped_bmg"
+  local runner="${2:-}"
+  local label_scope="${3:-all}"
+  local labels=()
+
+  # extra-only skips the base 'skipped' label so callers can snapshot runner/category
+  # specific labels separately from the shared list.
+  if [[ "${label_scope}" != "extra-only" ]]; then
+    labels+=("skipped")
+  fi
+  # skipped_bmg is a BMG-only known failure; honor it only on BMG runners.
+  if [[ "${runner}" == *"bmg"* ]]; then
+    labels+=("skipped_bmg")
+  fi
   if [[ "${category}" == "dpclang" ]]; then
-    labels="${labels},skipped_dpclang"
+    labels+=("skipped_dpclang")
   fi
 
-  gh api --method GET --paginate search/issues \
-    -f q="repo:${GITHUB_REPOSITORY} is:issue state:open label:${labels}" \
-    --jq '.items[] | "Issue #\(.number): \(.title)\n\(.body)\n"'
+  # Use the REST list endpoint (strongly consistent) instead of search/issues so
+  # issues opened after build start are picked up by the live fetch.
+  for label in "${labels[@]}"; do
+    gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=${label}" \
+      --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"'
+  done
 }
 
 if [[ "$1" == "static" ]]; then
@@ -32,4 +46,4 @@ else
   exit 1
 fi
 
-"$fetch_function" "${2:-}"
+"$fetch_function" "${2:-}" "${3:-}" "${4:-}"

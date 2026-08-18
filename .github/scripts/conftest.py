@@ -18,8 +18,6 @@ patterns = [
     'illegal memory',
     re.compile(r'failed on setup with.*crashed while running'),
     re.compile(r'out.*of.*memory'),
-    # pytest-timeout failure, e.g. "Failed: Timeout >60.0s"
-    re.compile(r'timeout\s*>\s*[\d.]+\s*s'),
 ]
 
 @pytest.hookimpl(tryfirst=True)

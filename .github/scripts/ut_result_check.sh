@@ -21,6 +21,27 @@ esac
 readonly TEST_PLATFORM="$_final_platform"
 unset _test_platform_normalized _final_platform
 
+# Human-readable platform label used in issue comments. Derived from the runner
+# so shared invocations (Windows nightly, distributed) don't mislabel results.
+readonly TEST_RUNNER="${TEST_RUNNER:-}"
+_test_runner_normalized="${TEST_RUNNER,,}"
+case "$TEST_PLATFORM" in
+  windows)
+    _issue_platform="Windows"
+    ;;
+  *)
+    if [[ "$_test_runner_normalized" == *"bmg"* ]]; then
+      _issue_platform="BMG"
+    elif [[ "$_test_runner_normalized" == *"distributed"* ]]; then
+      _issue_platform="distributed"
+    else
+      _issue_platform="Linux"
+    fi
+    ;;
+esac
+readonly ISSUE_PLATFORM="$_issue_platform"
+unset _test_runner_normalized _issue_platform
+
 # Expected test case counts for op_ut between linux and windows(Focus scope)
 declare -A OP_UT_EXPECTED=(
     ["linux"]=178548
@@ -364,9 +385,9 @@ mark_passed_issue() {
         gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
         # Add comment
         if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on BMG"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on ${ISSUE_PLATFORM}"
         else
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing on BMG"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing on ${ISSUE_PLATFORM}"
         fi
         # Clean up temporary file
         rm -f "issue-body-${issue_id}.txt"
