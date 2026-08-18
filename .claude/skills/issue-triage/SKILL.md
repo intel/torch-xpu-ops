@@ -1,25 +1,26 @@
 ---
 name: issue-triage
 description: >
-  Shallow (text-only) triage of a GitHub issue on pytorch or torch-xpu-ops.
-  Classify as bug/skip-list/nonbug, detect whether a reproducer is present,
-  estimate scope (pytorch/torch-xpu-ops/both/unclear), identify runtime
-  dependencies (triton/onednn/onemkl/driver/sycl/xccl), and emit a handling
-  decision (agent-fixable / needs-human) based on those signals. Posts the
-  result to the issue as a comment, applies matching GitHub labels, and
-  returns a JSON summary. Use as a standalone triage entry point, or as
-  the shallow first stage of a larger fix pipeline.
+  Shallow, text-only triage of a GitHub issue on pytorch or torch-xpu-ops.
+  Classifies the issue and returns a report (markdown table + JSON) for
+  the caller to act on. Read-only; the skill itself does not comment on
+  or label the issue.
 ---
 
 # Issue Triage — Shallow Classification & Handling Decision
 
 Text-only triage. Reads the issue title, body, and labels. Does NOT read
-source code, does NOT run tests, does NOT open PRs. Produces three
-outputs:
+source code, does NOT run tests, does NOT open PRs, does NOT modify the
+issue in any way (no comments, no labels, no body edits).
 
-1. A markdown table posted as a comment on the issue.
-2. GitHub labels applied to the issue.
-3. A JSON summary returned to the caller.
+Produces a single **report** returned to the caller, containing:
+
+1. A markdown table with the classification fields.
+2. A JSON summary with the same fields as structured data.
+
+The caller (a bot job, an orchestrator skill, or a human) decides what to
+do with the report: post it as a comment, apply labels, feed it into a
+larger pipeline, or just read it.
 
 `Handling` (agent-fixable vs needs-human) is derived from the other
 signals — see "Step 5" below. Deep root-cause analysis and any override
@@ -35,33 +36,28 @@ this skill).
   gh issue view "$N" --repo "$OWNER/$REPO" --json title,body,labels
   ```
 
-- Read-only with respect to the repository: this skill never reads
-  source, runs tests, or edits files. Its only writes are the issue
-  comment and the labels in Step 6.
+- Read-only. This skill never writes to the repository — no comments,
+  no labels, no file edits. The only side effects are the `gh issue
+  view` read above and printing the report to stdout.
 
 ## Shell helpers
 
-Recipes below assume two helpers are in scope. Define them once at the
-top of your shell (or source a shared file):
+Recipes below assume one helper is in scope:
 
 ```bash
-abort()    { echo "ABORT: $*" >&2; exit 1; }
-log_warn() { echo "WARN: $*"  >&2; }
+abort() { echo "ABORT: $*" >&2; exit 1; }
 ```
 
 ## Preflight
 
-`gh` must be authenticated with `repo` or `write:issues` scope (this
-skill writes a comment and applies labels):
+`gh` must be authenticated with read access to the target repo:
 
 ```bash
 gh auth status 2>&1 | grep -q "Logged in to github.com" \
   || abort "gh not authenticated; run: gh auth login"
-
-scopes=$(gh auth status -t 2>&1 | grep -oE "'[a-z:_-]+'" | tr -d "'")
-echo "$scopes" | grep -qE '^(repo|write:issues)$' \
-  || abort "issue-triage requires 'repo' or 'write:issues' scope; got: $scopes"
 ```
+
+No write scope is required — this skill only reads.
 
 ## Step 1: Classify issue_type
 
@@ -156,116 +152,48 @@ Evaluate in order; first match wins:
 `scope=both` and `scope=unclear` do NOT force needs-human — a
 downstream deep-triage skill decides the final target repo.
 
-## Step 6: Output
+## Step 6: Return the report
 
-### 6a. Markdown table
+Emit both a markdown block and a JSON block to stdout, in that order,
+separated by a blank line. The caller reads one, both, or neither.
 
-Assemble this table (values from Steps 1–5). This is the primary
-human-readable output:
+### 6a. Markdown block
+
+Assemble this exact structure (values from Steps 1–5). This is what a
+caller would paste as a comment:
 
 ```markdown
+<!-- agent:triage -->
+
+## Issue Triage
+
 | Field | Value |
 |-------|-------|
 | Reproduction missing | yes / no |
 | Scope | pytorch / torch-xpu-ops / both / unclear |
 | Dependencies | comma-separated list, or (none) |
 | Handling | agent-fixable / needs-human |
+
+**Reason:** <one-line, only when handling=needs-human>
+
+*Automated by issue-triage.*
 ```
 
 Each `Value` cell above lists the allowed choices; emit exactly one of
 them. Never leave a literal `|` inside a cell — it splits the cell and
 breaks the rendered table.
 
-When `Handling == needs-human`, append a `**Reason:** <one-line>` line
-below the table.
+Include the `<!-- agent:triage -->` marker on the first line so a
+downstream caller can locate its own previous comment (if any) and
+update it in place. The marker is part of the report; the skill does
+not consume it.
 
-### 6b. Post / update the issue comment
+Omit the `**Reason:**` line entirely when `handling == agent-fixable`.
 
-Post the table as a GitHub comment on the issue, wrapped with a marker
-so re-runs can find and update it in place:
+### 6b. JSON block
 
-```
-<!-- agent:triage -->
-
-## Issue Triage
-
-<table from 6a>
-
-<optional reason line>
-
-*Automated by issue-triage.*
-```
-
-Look up the existing triage comment (if any) by the marker and edit
-it in place; otherwise post new. Concrete recipe:
-
-```bash
-OWNER=<owner> REPO=<repo> N=<issue_number>
-
-triage_body_file=$(mktemp)
-# Write the marker + heading + table + reason to $triage_body_file.
-
-# List existing triage comments, oldest first. Use the REST endpoint: it
-# returns numeric comment ids, which the PATCH/DELETE comment endpoints
-# require. `gh issue view --json comments` returns GraphQL node ids
-# instead, and those endpoints reject them.
-mapfile -t triage_ids < <(gh api "/repos/$OWNER/$REPO/issues/$N/comments" \
-    --paginate \
-    --jq '.[] | select(.body | startswith("<!-- agent:triage -->")) | .id')
-
-if [ "${#triage_ids[@]}" -eq 0 ]; then
-    gh issue comment "$N" --repo "$OWNER/$REPO" \
-        --body-file "$triage_body_file" \
-        || abort "gh issue comment failed"
-else
-    # `--field body="$(cat file)"` — do NOT use `-f body=@file`; gh
-    # does not expand @path for POST/PATCH fields the way curl does.
-    gh api "/repos/$OWNER/$REPO/issues/comments/${triage_ids[0]}" \
-        --method PATCH \
-        --field body="$(cat "$triage_body_file")" \
-        || abort "gh api PATCH failed"
-
-    # Best-effort dedup: delete the newer duplicates. Failure here is a
-    # warning, not a hard abort.
-    for dup_id in "${triage_ids[@]:1}"; do
-        gh api "/repos/$OWNER/$REPO/issues/comments/$dup_id" \
-            --method DELETE \
-            || log_warn "could not delete duplicate triage comment $dup_id"
-    done
-fi
-```
-
-### 6c. Apply GitHub labels
-
-Only apply "needs human attention"-class labels; scope and dependency
-values live in the JSON output, not as labels:
-
-- If `reproduction_missing == yes` → add `agent:reproduction-needed`.
-- If `Handling == needs-human` → add `agent:needs-human`.
-
-```bash
-if [ "$reproduction_missing" = "yes" ]; then
-    gh issue edit "$N" --repo "$OWNER/$REPO" \
-        --add-label "agent:reproduction-needed" \
-        || log_warn "add-label agent:reproduction-needed failed"
-fi
-
-if [ "$handling" = "needs-human" ]; then
-    gh issue edit "$N" --repo "$OWNER/$REPO" \
-        --add-label "agent:needs-human" \
-        || log_warn "add-label agent:needs-human failed"
-fi
-```
-
-`gh` returns non-zero if a label is already applied. That is a no-op,
-not a failure. `log_warn` here is intentional: label state on the
-issue is still correct even when the API call reports the label was
-already there.
-
-### 6d. Return JSON to the caller
-
-Return this JSON as the LAST thing in your response, no markdown fences,
-no explanation:
+Immediately after the markdown block (with one blank line between),
+emit:
 
 ```json
 {
@@ -274,7 +202,8 @@ no explanation:
   "scope": "pytorch | torch-xpu-ops | both | unclear",
   "runtime_dependencies": [],
   "handling": "agent-fixable | needs-human",
-  "reason": ""
+  "reason": "",
+  "suggested_labels": []
 }
 ```
 
@@ -286,22 +215,29 @@ Field notes:
   empty `[]` when none named.
 - `reason` is required non-empty when `handling == needs-human`, empty
   string when `handling == agent-fixable`.
+- `suggested_labels` lists the labels a caller might apply to the
+  issue. Advisory only — the skill does not apply them. Populate per
+  the rules below.
 - Do NOT invent values not derived from the issue text.
+
+### 6c. Suggested labels
+
+`suggested_labels` is populated as follows:
+
+- If `reproduction_missing == true` → include `agent:reproduction-needed`.
+- If `handling == "needs-human"` → include `agent:needs-human`.
+- Empty array when neither applies (i.e. agent-fixable with a
+  reproducer).
+
+Scope and dependency values live in the JSON structure, not as labels.
 
 ## HARD RULES
 
-- **Never modify the issue body.** The body is user-owned. All
-  agent-side state on the issue lives in comments (single
-  `<!-- agent:triage -->` comment) and labels.
+- **Never modify the issue.** No comments, no labels, no body edits.
+  The caller applies changes based on the report.
 - **Never read source or run tests.** This skill's contract is
   text-only shallow triage. Deep source-reading analysis belongs to a
   separate downstream skill.
-- **`gh api ... -f body=@file` is wrong** for editing comments. `gh`
-  does not expand `@path` for POST/PATCH fields the way curl does.
-  Use `--field body="$(cat file)"`.
-- **Comment ids must come from the REST list endpoint.** PATCH/DELETE
-  on `/repos/.../issues/comments/<id>` need the numeric id returned by
-  `gh api /repos/.../issues/<n>/comments`, not the GraphQL node id
-  returned by `gh issue view --json comments`.
-- **Labels are advisory** — repeated `add-label` calls for a label
-  already on the issue are no-ops, not failures.
+- **Emit exactly one markdown block and one JSON block to stdout,** in
+  that order. Nothing else. No prose intro, no closing summary. The
+  caller parses stdout; extra text corrupts the parse.

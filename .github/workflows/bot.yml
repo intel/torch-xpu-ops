@@ -1286,12 +1286,107 @@ jobs:
           prompt: |
             Use the /issue-triage skill to triage issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
-            The skill posts its result as a `<!-- agent:triage -->` comment on
-            the issue and applies matching labels; do not post any additional
-            comment yourself.
+            The skill returns a report (a markdown block plus a JSON
+            block) to stdout. Do NOT post any comment yourself, do NOT
+            apply labels, do NOT modify the issue in any way — the
+            workflow that invoked you will consume your stdout and
+            handle those side effects.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post triage report
+        if: steps.ai-triage.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const resultEvent = data.filter(e => e.type === 'result').pop();
+            if (!resultEvent || resultEvent.is_error || !resultEvent.result) {
+              core.setFailed('AI triage produced no usable result');
+              return;
+            }
+            const output = resultEvent.result;
+
+            // The skill emits a markdown block, a blank line, then a
+            // JSON block fenced by ```json ... ```. Extract each.
+            const jsonMatch = output.match(/```json\s*\n([\s\S]*?)\n```/);
+            if (!jsonMatch) {
+              core.setFailed('AI triage output did not include a JSON block');
+              return;
+            }
+            let summary;
+            try {
+              summary = JSON.parse(jsonMatch[1]);
+            } catch (e) {
+              core.setFailed(`AI triage JSON parse failed: ${e.message}`);
+              return;
+            }
+
+            // Markdown block is everything up to the ```json fence,
+            // trimmed of trailing whitespace and any stray fence.
+            const markdown = output.slice(0, jsonMatch.index)
+              .replace(/```(markdown)?\s*\n?/g, '')
+              .replace(/\n```\s*$/g, '')
+              .trim();
+            if (!markdown.startsWith('<!-- agent:triage -->')) {
+              core.setFailed('AI triage markdown did not start with the <!-- agent:triage --> marker');
+              return;
+            }
+
+            const N = Number(process.env.ISSUE_NUMBER);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Locate the previous triage comment via the REST list
+            // endpoint — its ids are numeric and accepted by the
+            // PATCH/DELETE endpoints below.
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: N, per_page: 100 }
+            );
+            const triageIds = comments
+              .filter(c => c.body && c.body.startsWith('<!-- agent:triage -->'))
+              .map(c => c.id);
+
+            if (triageIds.length === 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: N, body: markdown
+              });
+            } else {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: triageIds[0], body: markdown
+              });
+              // Best-effort dedup of any older duplicates.
+              for (const dup of triageIds.slice(1)) {
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner, repo, comment_id: dup
+                  });
+                } catch (e) {
+                  console.log(`Could not delete duplicate ${dup}: ${e.message}`);
+                }
+              }
+            }
+
+            // Apply suggested labels. Repeated add-label calls for an
+            // already-applied label are no-ops.
+            const labels = Array.isArray(summary.suggested_labels) ? summary.suggested_labels : [];
+            if (labels.length > 0) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: N, labels
+                });
+              } catch (e) {
+                console.log(`addLabels warning: ${e.message}`);
+              }
+            }
 
       - name: "Verify: AI triage succeeded"
         if: always()
