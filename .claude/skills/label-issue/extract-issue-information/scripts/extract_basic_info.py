@@ -19,7 +19,15 @@ from classifiers import (
     generate_summary,
     get_dependency_from_body,
 )
-from github import fetch_issue, fetch_project_and_type, parse_issue_ref, rest_to_core
+from github import (
+    PullRequestReference,
+    fetch_issue,
+    fetch_project_and_type,
+    parse_issue_ref,
+    resolve_ref_kind,
+    rest_to_core,
+)
+from patterns import DEPENDENCY_LABELS, MODULE_LABELS
 from testcases import (
     dedup_test_cases,
     is_unittest_issue,
@@ -27,7 +35,7 @@ from testcases import (
     parse_test_cases_from_body,
     test_case_source,
 )
-from text import extract_pr_link, extract_reproduce_steps, extract_traceback
+from text import extract_pr_candidate, extract_pr_link, extract_reproduce_steps, extract_traceback
 from text import _PR_CONTEXT_SIGNALS_RE
 
 
@@ -52,6 +60,9 @@ def main(argv=None):
 
     try:
         owner, repo, number = parse_issue_ref(args.issue, default_owner, default_repo)
+    except PullRequestReference as err:
+        print(err, file=sys.stderr)
+        sys.exit(1)
     except ValueError as err:
         print(err, file=sys.stderr)
         sys.exit(2)
@@ -102,6 +113,18 @@ def main(argv=None):
     platform = extract_platform(body, title, labels)
     platform_specific = check_platform_specific(platform)
     pr_link = extract_pr_link(body, title)
+    # No explicit /pull/ URL: an owner/repo#N shorthand may still be a PR, so
+    # resolve it once against the API rather than guessing either way.
+    pr_ref_unresolved = False
+    if not pr_link:
+        candidate = extract_pr_candidate(body, title)
+        if candidate:
+            cand_owner, cand_repo, cand_number = candidate
+            kind = resolve_ref_kind(cand_owner, cand_repo, cand_number)
+            if kind == "pr":
+                pr_link = f"https://github.com/{cand_owner}/{cand_repo}/pull/{cand_number}"
+            elif kind is None:
+                pr_ref_unresolved = True
 
     # Primary unit-test case: first UT-shape case (dict without a "benchmark"
     # key). Top-level test_file/test_class/test_case mirror it for convenience;
@@ -133,8 +156,10 @@ def main(argv=None):
         "issue_type": issue_type,
         "github_type": pt["github_type"],
         "module": module,
+        "module_label": MODULE_LABELS.get(module, MODULE_LABELS['others']),
         "test_module": test_module,
         "dependency": dependency,
+        "dependency_label": DEPENDENCY_LABELS.get(dependency, ""),
         "priority": pt["priority"],
         "pytorchxpu_status": pt["project_status"],
         "pytorchxpu_estimate": pt["project_estimate"],
@@ -160,8 +185,11 @@ def main(argv=None):
     # test_cases: flag when none parsed but the issue looks test-related.
     if not test_cases and test_module in ("ut", "e2e"):
         low_confidence.append("test_cases")
-    # pr_link: flag when regex found no PR but the body has PR/branch signals.
-    if not pr_link and _PR_CONTEXT_SIGNALS_RE.search(body or ""):
+    # pr_link: flag when regex found no PR but the body has PR/branch signals,
+    # or when an owner/repo#N ref could not be resolved to issue-vs-PR.
+    if not pr_link and (
+        pr_ref_unresolved or _PR_CONTEXT_SIGNALS_RE.search(body or "")
+    ):
         low_confidence.append("pr_link")
     result["low_confidence"] = low_confidence
 

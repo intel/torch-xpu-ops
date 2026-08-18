@@ -1,19 +1,57 @@
 # Priority Rules
 
-## Priority labels
+Priority is the PyTorchXPU project's `Priority` field, not a GitHub label. The
+tiers below are the canonical names emitted in `labels.md`; the parenthesised
+value is the current option name in the project field.
 
-- `P0`: Critical
-- `P1`: High
-- `P2`: Medium
-- `P3`: Low
+## Priority tiers
 
-## P0 - Critical
+- `Urgent` (project field `P0`)
+- `High` (project field `P1`)
+- `Medium` (project field `P2`)
+- `Low` (project field `P3`)
 
-Assign `P0` when either condition holds:
+## Decision Priority Order
+
+When `extract.json` already carries a non-empty `priority` from the PyTorchXPU
+project field, preserve it verbatim and skip this section entirely — a human
+already set it. The order below derives a priority only when that field is `""`.
+
+An issue often matches rows in more than one tier. Evaluate the tiers in
+severity order and stop at the first tier with a matching row:
+
+1. `Urgent`
+2. `High`
+3. `Medium`
+4. `Low`
+
+Within a tier, any single matching row is enough; the rows inside a tier are
+alternatives, not requirements. Emit exactly one tier.
+
+Two specificity exceptions override that order, because a quantified rule beats
+the generic `Regression` row it would otherwise be swallowed by:
+
+- A **performance** regression is scored only by its measured percentage:
+  `Urgent` when >7%, `Medium` when <=7%. Do not score it as High `Regression`.
+- A **benchmark accuracy** regression is High `Benchmark accuracy regression`,
+  not Medium `Functional error without a crash`.
+
+Everything else follows the plain severity order. So a feature gap that also
+regressed between versions is High (`Regression`) rather than Medium
+(`Feature gap blocking tests`), and an enhancement request that also reports a
+current functional error is Medium (`Functional error without a crash`) rather
+than Low (`Enhancement or feature request`).
+
+When no row in any tier matches, emit `Medium`.
+
+## Urgent
+
+Assign `Urgent` when any of these hold:
 
 1. A measured, quantified performance regression between releases is greater
    than 7%.
 2. A crash or segfault occurs on a Core API listed below.
+3. A legacy Torch build failure prevents a build.
 
 ### Core API list
 
@@ -35,7 +73,7 @@ Assign `P0` when either condition holds:
 | Crash on a Core API | Stack trace shows SIGSEGV or an access violation on a Core API, or a segfault during module import, tensor creation, `.backward()`, device transfer, matmul, `nn.Linear` or `nn.Conv2d` forward, serialization, or indexing. | SIGSEGV in `torch.tensor()`: yes. Crash in a custom op: no. |
 | Legacy Torch build failure | CI log shows compilation or linker errors that prevent a build. | Compilation failures, linker errors. |
 
-## P1 - High
+## High
 
 | Condition | Evidence | Examples |
 |---|---|---|
@@ -44,7 +82,7 @@ Assign `P0` when either condition holds:
 | Hang or timeout | The process remains alive but is stuck, such as after a 300-second timeout, infinite wait, or deadlock. | Distributed test hangs. |
 | Benchmark accuracy regression | Benchmark accuracy passed in a prior release and now fails without a crash. | `fail_accuracy` on an E2E model. |
 
-## P2 - Medium
+## Medium
 
 | Condition | Evidence | Examples |
 |---|---|---|
@@ -53,11 +91,11 @@ Assign `P0` when either condition holds:
 | Functional error without a crash | RuntimeError, AssertionError, or an incorrect result while the process continues. | Wrong output, type errors. |
 | Feature gap blocking tests | Tests fail because an API is not implemented, without a crash. | Not implemented errors. |
 
-## P3 - Low
+## Low
 
 | Condition | Evidence | Examples |
 |---|---|---|
-| Enhancement or feature request | The title contains `implement`, `enable`, `support`, `RFC`, `consider`, or `investigate`, or the body describes desired new functionality. | Feature requests. |
+| Enhancement or feature request | The title asks for new functionality — `implement`, `enable`, `support`, `RFC`, `consider`, `investigate` — or the body describes desired new functionality. A failure reporting `not implemented` / `NotImplementedError` is NOT this row; it is Medium `Feature gap blocking tests`. | Feature requests. |
 | Validation or error-message difference | XPU raises a different error from CPU or CUDA, or does not raise when it should, without incorrect computation. | Error-message mismatch. |
 | Minor, cosmetic, or warning issue | Warning mismatch, deprecated API usage, or documentation gap. | Warning mismatches. |
 | CUDA alignment without a functional break | XPU behavior differs from CUDA but is not incorrect. | Dtype support alignment. |

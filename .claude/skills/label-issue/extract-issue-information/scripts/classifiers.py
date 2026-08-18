@@ -1,7 +1,6 @@
 # Copyright 2020-2025 Intel Corporation
 # Licensed under the Apache License, Version 2.0
 
-import os
 import re
 import subprocess
 
@@ -11,9 +10,18 @@ from patterns import (
     _E2E,
     _ISSUE_TYPE,
     _MODULE,
+    _OS_KEYWORDS,
     _PLATFORM_KEYWORDS,
     _TEST_MODULE,
 )
+
+
+def label_names(labels):
+    """Lowercased label names. Accepts REST dicts or plain strings."""
+    return [
+        (label.get('name', '') if isinstance(label, dict) else str(label)).lower()
+        for label in (labels or [])
+    ]
 
 
 def generate_summary(body, title):
@@ -57,8 +65,7 @@ def classify_issue_type_canonical(github_type, classifier_type, labels):
 def classify_issue_type(body, title, labels):
     text = f"{title} {body}".lower()
     
-    for label in labels:
-        ln = label.get('name', '').lower()
+    for ln in label_names(labels):
         if 'task' == ln or 'internal task' in ln:
             return 'internal task'
     
@@ -70,8 +77,13 @@ def classify_issue_type(body, title, labels):
     # that would otherwise shadow every accuracy issue.
     has_accuracy_keyword = any(k in text for k in _ISSUE_TYPE['accuracy_keywords'])
     has_feature_keyword = any(k in text for k in _ISSUE_TYPE['feature_keywords'])
-    
-    if has_feature_keyword:
+    # 'implement' is a substring of the bug signals 'not implemented' and
+    # 'notimplementederror', so those must win over a feature request.
+    has_unimplemented_bug = any(
+        k in text for k in _ISSUE_TYPE['bug_keywords'] if 'implement' in k
+    )
+
+    if has_feature_keyword and not has_unimplemented_bug:
         return 'feature request'
     
     if has_performance_keyword:
@@ -89,29 +101,21 @@ def classify_issue_type(body, title, labels):
 def is_e2e_issue(body, title, labels):
     """Check if issue is related to E2E benchmark"""
     text = f"{title} {body}".lower()
-    
+
     # Check labels first - only exact 'e2e' label
-    for label in labels:
-        ln = label.get('name', '').lower()
+    for ln in label_names(labels):
         if ln == 'e2e':
             return True
-    
+
     for pattern in _E2E['patterns']:
         if re.search(pattern, text):
             return True
-    
-    # Check for model names from benchmark model lists with explicit benchmark framework mention
-    # Only for specific benchmark prefixes
-    has_model = False
-    has_benchmark_context = False
-    
-    for prefix in _E2E['model_prefixes']:
-        if prefix in text:
-            has_model = True
-            break
 
-    if not has_model and mentions_benchmark_model(text):
-        has_model = True
+    # Model names come only from the authoritative .ci/benchmarks lists. A bare
+    # hf_/timm_ prefix is not accepted: that would be a hardcoded fallback that
+    # silently mis-detects e2e when the lists are missing.
+    has_model = mentions_benchmark_model(text)
+    has_benchmark_context = False
 
     # Must have explicit benchmark framework mention (as test framework)
     if has_model:
@@ -119,11 +123,8 @@ def is_e2e_issue(body, title, labels):
             if kw in text:
                 has_benchmark_context = True
                 break
-    
-    if has_model and has_benchmark_context:
-        return True
-    
-    return False
+
+    return has_model and has_benchmark_context
 
 
 def classify_test_module(body, title, labels):
@@ -144,8 +145,7 @@ def classify_test_module(body, title, labels):
     
     has_infra = any(re.search(p, text) for p in _TEST_MODULE['infra_patterns'])
     
-    for label in labels:
-        ln = label.get('name', '').lower()
+    for ln in label_names(labels):
         if 'infrastructure' in ln and ('ci' in ln or 'workflow' in ln or 'action' in ln):
             has_infra = True
             break
@@ -164,91 +164,143 @@ def classify_test_module(body, title, labels):
     return 'ut'
 
 
+_ENV_SECTION_RE = re.compile(
+    r'(?im)^(?:#+\s*versions\b|collecting environment|pytorch version:)'
+)
+
+
+def strip_env_section(text):
+    """Drop the collect_env/Versions dump from an issue body.
+
+    That dump lists every installed package (onemkl-sycl-sparse, torchao, ...),
+    so keyword matching against it misclassifies almost every issue.
+    """
+    m = _ENV_SECTION_RE.search(text)
+    return text[:m.start()] if m else text
+
+
+_MODULE_LABEL_BUCKETS = [
+    ('module: distributed', 'distributed'),
+    ('module: sdpa', 'sdpa'),
+    ('module: sparse', 'sparse'),
+    ('module: profiler', 'profiler'),
+    ('module: inductor', 'inductor'),
+    ('module:inductor', 'inductor'),
+    ('module: dynamo', 'dynamo'),
+    ('module: ao', 'torchAO'),
+    ('module: quant', 'torchAO'),
+    ('module: torch-ops-gemm', 'torch-ops-gemm'),
+    ('module: torch-ops-eltwise', 'torch-ops-eltwise'),
+    ('module: torch-ops-reduction', 'torch-ops-reduction'),
+    ('module: torch-ops-others', 'torch-ops-others'),
+    ('module: op impl', 'torch-ops-others'),
+    ('module: core', 'torch-runtime'),
+    ('module: others', 'others'),
+]
+
+
+_OP_FAMILY_BUCKETS = [
+    ('torch_ops_sdpa', 'sdpa'),
+    ('torch_ops_gemm', 'torch-ops-gemm'),
+    ('torch_ops_reduction', 'torch-ops-reduction'),
+    ('torch_ops_eltwise', 'torch-ops-eltwise'),
+    ('torch_ops_others', 'torch-ops-others'),
+]
+
+
 def classify_module(body, title, labels):
-    text = f"{title} {body}".lower()
-    
-    # Check labels first
-    for label in labels:
-        ln = label.get('name', '').lower()
-        if 'module: distributed' in ln:
-            return 'distributed'
-        if 'module: inductor' in ln:
-            return 'inductor'
-        if 'module: ao' in ln:
-            return 'AO'
-        if 'module: ut' in ln:
-            return 'aten_ops'
-        if 'module: quant' in ln:
-            return 'low_precision'
-        if 'module: profiler' in ln:
-            return 'profiling'
-        if 'module: dynamo' in ln:
-            return 'dynamo'
-        if 'module: op impl' in ln:
-            return 'aten_ops'
-    
-    # Special case - "Torch not compiled with CUDA enabled" means test configuration issue, not inductor
+    """Return one of the 13 canonical category buckets.
+
+    `module: ut` is deliberately absent from the label map: it is a test-module
+    signal carried by the test_module axis, not a category.
+    """
+    text = f"{title} {strip_env_section(body)}".lower()
+
+    names = label_names(labels)
+    # Bucket priority must win over the order GitHub happens to return labels in,
+    # so iterate buckets outermost: an issue labelled both `module: inductor` and
+    # `module: dynamo` always resolves to inductor.
+    for needle, bucket in _MODULE_LABEL_BUCKETS:
+        if any(needle in ln for ln in names):
+            return bucket
+
     if 'torch not compiled with cuda enabled' in text:
-        return 'unknown'
-    
-    # Random failures are not module-specific
+        return 'others'
     if 'random failure' in text or 'random failures' in text:
-        return 'unknown'
-    
-    # Torch operations (from PyTorch docs)
-    for op in _MODULE['torch_ops']:
-        if re.search(rf'\b{re.escape(op)}\b', text):
-            return 'aten_ops'
-    
-    for m, kw in _MODULE['keywords']:
+        return 'others'
+
+    # Keywords precede op names: op names like `view`, `backward` and `call` are
+    # generic enough to appear in almost any issue, so matching them first would
+    # shadow the specific buckets.
+    for bucket, kw in _MODULE['keywords']:
         if any(k in text for k in kw):
-            return m
-    
-    return 'unknown'
+            return bucket
+
+    for key, bucket in _OP_FAMILY_BUCKETS:
+        for op in _MODULE[key]:
+            if re.search(rf'\b{re.escape(op)}\b', text):
+                return bucket
+
+    return 'others'
+
+
+_DEPENDENCY_LABEL_VALUES = [
+    ('dependency component: onednn', 'oneDNN'),
+    ('dependency component: mkl-dnn', 'oneDNN'),
+    ('dependency component: dnnl', 'oneDNN'),
+    ('dependency component: onemkl', 'oneMKL'),
+    ('dependency component: oneccl', 'oneCCL'),
+    ('dependency component: xccl', 'oneCCL'),
+    ('dependency component: ccl', 'oneCCL'),
+    ('dependency component: level_zero', 'Level_Zero'),
+    ('dependency component: level zero', 'Level_Zero'),
+    ('dependency component: igc', 'IGC'),
+    ('dependency component: msvc', 'MSVC'),
+    ('dependency component: triton', 'Triton'),
+    ('dependency component: community', 'community'),
+    ('dependency: third_party packages', 'third_party_packages'),
+    ('dependency component: transformers', 'third_party_packages'),
+    ('dependency component: huggingface', 'third_party_packages'),
+    ('dependency component: oneapi', 'oneAPI'),
+    ('dependency component: sycl', 'oneAPI'),
+    ('dependency component: driver', 'driver'),
+    ('dependency component: mkl', 'oneMKL'),
+]
 
 
 def get_dependency_from_body(body, labels=None):
+    """Return one canonical dependency value, or '' when nothing is evidenced.
+
+    `AO` is deliberately not a value: torchao is a PyTorch-ecosystem component
+    owned by the module axis (`module: ao`), not an external dependency. A
+    transformers/huggingface failure maps to `third_party_packages`.
+    """
     if labels is None:
         labels = []
-    
-    labels_str = ', '.join([l.get('name', '') for l in labels]).lower()
-    
-    # Check labels first for 'dependency component:'
-    if 'dependency component: onednn' in labels_str or 'dependency component: mkl-dnn' in labels_str or 'dependency component: dnnl' in labels_str:
-        return 'oneDNN'
-    if 'dependency component: onemkl' in labels_str or 'dependency component: mkl' in labels_str:
-        return 'oneMKL'
-    if 'dependency component: triton' in labels_str:
-        return 'Triton'
-    if 'dependency component: torchao' in labels_str:
-        return 'AO'
-    if 'dependency component: transformers' in labels_str or 'dependency component: huggingface' in labels_str:
-        return 'transformers'
-    if 'dependency component: oneapi' in labels_str or 'dependency component: sycl' in labels_str:
-        return 'oneAPI'
-    if 'dependency component: driver' in labels_str:
-        return 'driver'
-    if 'dependency component: oneccl' in labels_str or 'dependency component: ccl' in labels_str or 'dependency component: xccl' in labels_str:
-        return 'oneCCL'
-    
-    # Filter out version/environment sections
+
+    names = label_names(labels)
+    # Value priority must beat GitHub's label order, and the longer needles must
+    # be tried first: 'dependency component: mkl' is a substring of the oneMKL
+    # and mkl-dnn labels, so it is checked last.
+    for needle, value in _DEPENDENCY_LABEL_VALUES:
+        if any(needle in ln for ln in names):
+            return value
+
     if not body:
         return ''
-    
-    text = body.lower()
-    
-    # Remove version/environment sections
+
+    text = strip_env_section(body).lower()
+
     for header in _DEPENDENCY['version_headers']:
         match = re.search(header, text, re.IGNORECASE)
         if match:
             text = text[:match.start()]
             break
-    
-    # Check for actual dependency in body (require context like "caused by", "issue", "depend on")
-    for d, kw in _DEPENDENCY['keywords']:
+
+    for value, kw in _DEPENDENCY['keywords']:
         if any(k in text for k in kw):
-            return d
-    
+            return value
+
     return ''
 
 
@@ -262,11 +314,9 @@ def extract_os(body):
 
     def classify(text):
         t = text.lower()
-        if any(k in t for k in ('windows', ' win ', '[win]', 'win32', 'msvc')):
-            return "Windows"
-        if any(k in t for k in
-               ('linux', 'ubuntu', 'wsl', 'debian', 'centos', 'rhel', 'fedora')):
-            return "Linux"
+        for name, keywords in _OS_KEYWORDS:
+            if any(k in t for k in keywords):
+                return name
         return ""
 
     os_line = re.search(r'OS:\s*(.+)', body)
@@ -297,17 +347,19 @@ def extract_platform(body, title="", labels=None):
                     if candidate == code:
                         return code
 
-    # 2. Check title + body text
-    text = f"{title}\n{body}" if title else (body or "")
-    if not text:
-        return ""
-    for code, keywords in _PLATFORM_KEYWORDS:
-        for kw in keywords:
-            if kw.startswith(r'\b') or kw.endswith(r'\b'):
-                if re.search(kw, text, re.IGNORECASE):
+    # 2. Title, then 3. body - as separate passes. Merging them would let a body
+    # match for an earlier table entry beat a title match for a later one.
+    for source in (title, body):
+        if not source:
+            continue
+        lowered = source.lower()
+        for code, keywords in _PLATFORM_KEYWORDS:
+            for kw in keywords:
+                if kw.startswith(r'\b') or kw.endswith(r'\b'):
+                    if re.search(kw, source, re.IGNORECASE):
+                        return code
+                elif kw in lowered:
                     return code
-            elif kw in text.lower():
-                return code
     return ""
 
 

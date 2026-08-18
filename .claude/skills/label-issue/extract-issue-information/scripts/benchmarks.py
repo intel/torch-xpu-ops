@@ -39,16 +39,30 @@ def _parse_model_list_file(path):
 def _load_benchmark_models(pytorch_folder=None):
     result = {}
     for bench, filename in _BENCHMARK_LIST_FILES.items():
+        models = []
+        seen = set()
         for bench_dir in _benchmark_dir_candidates(pytorch_folder):
-            path = os.path.join(bench_dir, filename)
-            if os.path.isfile(path):
+            # The top-level list holds the default set; p0/p1/p2 hold the
+            # priority tiers, and names such as hf_Bert appear ONLY in a tier
+            # file. Read every tier so detection covers the full model set.
+            found_here = False
+            for sub in ('', 'p0', 'p1', 'p2'):
+                path = os.path.join(bench_dir, sub, filename) if sub else os.path.join(bench_dir, filename)
+                if not os.path.isfile(path):
+                    continue
                 try:
-                    models = _parse_model_list_file(path)
+                    names = _parse_model_list_file(path)
                 except OSError:
-                    models = []
-                if models:
-                    result[bench] = models
-                    break
+                    continue
+                for name in names:
+                    if name not in seen:
+                        seen.add(name)
+                        models.append(name)
+                found_here = True
+            if found_here and models:
+                break
+        if models:
+            result[bench] = models
     return result
 
 

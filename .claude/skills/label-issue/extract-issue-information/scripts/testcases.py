@@ -340,43 +340,45 @@ def parse_test_cases_from_body(body):
                 'test_case': test_method, 'module_level': module_level,
             })
 
-    # Extract from pytest code blocks (format: pytest -v test/test_ops.py -k test_name)
+    # Node-id / path reproducers. Scanned over the WHOLE body, not just fenced
+    # blocks: issues routinely paste the command as prose. Flags between `pytest`
+    # and the path are optional and arbitrary (-v, -sv, --tb=short, -p no:xdist).
+    _PYTEST_PATH_RE = (
+        r'(?:python\s+-m\s+)?pytest'
+        r'(?:\s+-{1,2}[^\s]+(?:[= ][^\s-][^\s]*)?)*'
+        r'\s+(test[/a-zA-Z0-9_/.]+\.py(?:::[a-zA-Z0-9_]+)*)'
+    )
+    for match in re.findall(_PYTEST_PATH_RE, body):
+        test_path = match.strip()
+        if '::' in test_path:
+            parts = test_path.split('::')
+            file_path = parts[0]
+            test_class = parts[1] if len(parts) > 1 else ""
+            # Only emit test_case when an explicit ::method segment is present.
+            # With just file::Class, the -k handler below produces the real
+            # method row; emitting test_method=class here yields a degenerate
+            # row where test_class == test_case.
+            test_method = parts[2] if len(parts) > 2 else ""
+            if test_method:
+                cases.append({
+                    'test_type': 'ut',
+                    'test_file': file_path,
+                    'origin_test_file': file_path,
+                    'test_class': test_class,
+                    'test_case': test_method
+                })
+        else:
+            cases.append({
+                'test_type': 'ut',
+                'test_file': test_path,
+                'origin_test_file': test_path,
+                'test_class': '',
+                'test_case': ''
+            })
+
     if '```' in body:
         code_blocks = body.split('```')
         for block in code_blocks:
-            # Look for pytest patterns with test path and test method
-            # Handles formats: test/test_ops.py or test/distributed/test_c10d_xccl.py::ClassName::method
-            pytest_pattern = r'pytest\s+-v\s+(test[/a-zA-Z0-9_/.]+\.py(?:::[a-zA-Z0-9_]+)*)'
-            matches = re.findall(pytest_pattern, block)
-            for match in matches:
-                test_path = match.strip()
-                if '::' in test_path:
-                    parts = test_path.split('::')
-                    file_path = parts[0]
-                    test_class = parts[1] if len(parts) > 1 else ""
-                    # Only emit test_case when an explicit ::method segment is present.
-                    # With just file::Class, the -k handler below produces the real
-                    # method row; emitting test_method=class here yields a degenerate
-                    # row where test_class == test_case.
-                    test_method = parts[2] if len(parts) > 2 else ""
-                    if test_method:
-                        cases.append({
-                            'test_type': 'ut',
-                            'test_file': file_path,
-                            'origin_test_file': file_path,
-                            'test_class': test_class,
-                            'test_case': test_method
-                        })
-                else:
-                    # No class/method, just file
-                    cases.append({
-                        'test_type': 'ut',
-                        'test_file': test_path,
-                        'origin_test_file': test_path,
-                        'test_class': '',
-                        'test_case': ''
-                    })
-
             # Also look for test_xpu,...,... format in code blocks
             test_xpu_pattern = r'(test_xpu),([a-zA-Z0-9_\.]+),([a-zA-Z0-9_]+)'
             matches = re.findall(test_xpu_pattern, block)
@@ -438,15 +440,18 @@ def parse_test_cases_from_body(body):
                 'test_case': match.strip()
             })
 
+    # Match -k independently of the `pytest` prefix: any intervening flag
+    # (-v, --tb=) defeats a pytest-anchored pattern. Capture the selector only.
     if 'pytest' in body:
-        k_match = re.search(r'pytest[^-]*(-k\s+[^\s]+)?', body)
-        if k_match and k_match.group(1):
+        file_match = re.search(r'pytest[^\n]*?\s(test[/a-zA-Z0-9_]+\.py)', body)
+        file_path = file_match.group(1) if file_match else ''
+        for test_name in re.findall(r'-k\s+([a-zA-Z0-9_]+)', body):
             cases.append({
                 'test_type': 'ut',
-                'test_file': '',
-                'origin_test_file': '',
+                'test_file': file_path,
+                'origin_test_file': file_path,
                 'test_class': '',
-                'test_case': k_match.group(1).strip()
+                'test_case': test_name
             })
 
     return cases
@@ -466,6 +471,8 @@ def dedup_test_cases(cases):
     result = []
     for c in cases:
         if "benchmark" in c:
+            # reproducer is deliberately excluded: it is raw command text, so
+            # flag-order or whitespace variants of one run would survive as dupes.
             key = (
                 c.get("benchmark", ""),
                 c.get("model", ""),
@@ -473,6 +480,8 @@ def dedup_test_cases(cases):
                 c.get("dtype", ""),
                 c.get("backend", ""),
                 c.get("test_type", ""),
+                c.get("amp", False),
+                c.get("disable_cudagraphs", ""),
             )
         else:
             test_file = c.get("test_file", "")

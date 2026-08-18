@@ -11,6 +11,47 @@
 - For oneMKL or oneDNN classification, read `xpu_operator_dependency_list.md`
   in this same reference directory.
 
+This axis is decided BEFORE ownership, and its result drives it: a taxonomy
+value becomes the `target_component` verbatim and forces `need_action:
+NEED_FIX_3RDPARTY` in [target_component.md](target_component.md). So
+`dependency: oneDNN` pairs with `target_component: oneDNN`, not with a generic
+`third-party`. `none` and `null` force nothing. Because a taxonomy value both
+overrides the traced fix location and names the owner, return one only on direct
+evidence that the failure originates in that component — never on a library
+merely appearing in the call path.
+
+`extract.json` carries the value in `dependency` and its label in
+`dependency_label`, both from `get_dependency_from_body()`. Emit the label.
+
+## Value to label mapping
+
+Emit the **label** column in `labels.md`, never the bare value. Note that
+`third_party_packages` uses a different prefix and a space, so the
+`dependency component: <value>` pattern does NOT hold for it.
+
+| Value | GitHub label | Label exists today |
+|---|---|---|
+| `driver` | `dependency component: driver` | yes |
+| `oneDNN` | `dependency component: oneDNN` | yes |
+| `oneMKL` | `dependency component: oneMKL` | yes |
+| `oneAPI` | `dependency component: oneAPI` | yes |
+| `Triton` | `dependency component: Triton` | yes |
+| `MSVC` | `dependency component: MSVC` | yes |
+| `community` | `dependency component: community` | yes |
+| `third_party_packages` | `dependency: third_party packages` | yes |
+| `oneCCL` | `dependency component: oneCCL` | **no - must be created** |
+| `IGC` | `dependency component: IGC` | **no - must be created** |
+| `Level_Zero` | `dependency component: Level_Zero` | **no - must be created** |
+
+The last three do not exist in `intel/torch-xpu-ops` yet. `labels.md` is a
+proposal, so emit them anyway and note in the reason that the human must create
+the label before applying it.
+
+`AO` is NOT a dependency value. torchao is a PyTorch-ecosystem component owned by
+the module axis (`module: ao`), not an external dependency. A transformers or
+huggingface failure is `third_party_packages`; `module: transformers` may carry
+the domain signal separately.
+
 ## Taxonomy and evidence mapping
 
 - `driver`: version gate, submit/launch SYCL exception, or explicit driver.
@@ -29,7 +70,9 @@
 - `Triton`: XPU triton or libtriton, or an Inductor Triton crash, but not an
   eager failure.
 - `community`: a confirmed relevant OPEN `pytorch/pytorch` issue.
-- `third_party_packages`: an originating `site-packages/<pkg>/` frame.
+- `third_party_packages`: an originating non-torch `site-packages/<pkg>/` frame,
+  such as `site-packages/transformers/`. A `site-packages/torch/` frame is
+  PyTorch itself and is NOT this value.
 
 ## Edge cases
 
@@ -42,3 +85,6 @@
   failure must originate in that library, and any Condition in section 1.1 and
   the flip conditions in section 2 must be confirmed from evidence. Unconfirmed
   returns `null`.
+- Ignore the `## Versions` / `Collecting environment` dump when keyword matching.
+  It lists `onemkl`, `oneccl` and `intel-sycl-rt` for every issue;
+  `get_dependency_from_body()` strips it for this reason.

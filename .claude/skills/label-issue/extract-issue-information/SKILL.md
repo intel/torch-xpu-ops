@@ -49,21 +49,26 @@ Examples:
 
 ## Script layout
 
-`scripts/` holds one entry point, five logic modules, and one data file. All
-pattern and keyword tables live in `patterns.json`, not in code.
+`scripts/` holds one entry point, six logic modules, and one data file. Every
+regex, keyword, and mapping table used for classification lives in
+`patterns.json`, not in code.
 
 | File | Role |
 |---|---|
 | `extract_basic_info.py` | CLI entry point: argparse, orchestration, JSON assembly. |
 | `patterns.py` | Loads `patterns.json` and exposes the tables as constants. |
-| `patterns.json` | All regex/keyword tables. **List order is semantic** for `module.keywords`, `dependency.keywords`, `platform_keywords`, and `e2e_dtype_patterns` (first match wins) - do not sort or dedupe. In `platform_keywords`, an entry starting or ending with `\b` is matched as a regex; every other entry as a lowercase substring. |
+| `patterns.json` | All regex/keyword tables. **List order is semantic** for `module.keywords`, `dependency.keywords`, `platform_keywords`, `os_keywords`, and `e2e_dtype_patterns` (first match wins) - do not sort or dedupe. `module.keywords` is matched BEFORE the `module.torch_ops_*` family lists, because op names like `view` or `backward` are generic enough to shadow a specific bucket. In `dependency.keywords`, oneCCL/oneDNN/oneMKL precede oneAPI, and IGC/Level_Zero precede driver, for the same shadowing reason. `module_labels` and `dependency_labels` map each value to its GitHub label. In `platform_keywords`, an entry starting or ending with `\b` is matched as a regex; every other entry as a lowercase substring. `reproduce_steps.prose_function_words` is order-free: it is a whole-token set used to reject prose lines that merely start with a command name. |
 | `classifiers.py` | `type`, `issue_type`, `module`, `test_module`, `dependency`, `os`, `platform`. |
 | `testcases.py` | Test-case and E2E parsing, file resolution, de-duplication. |
 | `benchmarks.py` | Benchmark model lists and model-name detection. |
 | `github.py` | `gh` REST/GraphQL fetches and issue-reference parsing. |
 | `text.py` | Traceback, reproduce steps, and PR link extraction. |
 
-To change a keyword or pattern, edit `patterns.json` only. Two constraints:
+To change a keyword or pattern, edit `patterns.json` only. The one exception is
+the GitHub-label alias tables `_MODULE_LABEL_BUCKETS` and
+`_DEPENDENCY_LABEL_VALUES` in `classifiers.py`: they map an existing repo label
+back to a bucket (e.g. `module: quant` -> `torchAO`) and are matched
+longest-needle-first, so they live beside that logic. Two further constraints:
 `patterns.json` must sit beside `patterns.py` (a missing or malformed file is a
 fatal error), and modules that read a mutable global must import the module
 (`import benchmarks`) rather than the value (`from benchmarks import X`), so a
@@ -86,20 +91,22 @@ A single JSON object.
 | created_time / updated_time | gh REST | ISO 8601 timestamps. |
 | milestone | gh REST | Milestone title, or "". |
 | summary | classifier | Title truncated to 150 chars. |
-| type | classifier | `feature request` \| `performance issue` \| `accuracy issue` \| `functionality bug` \| `internal task` \| `unknown`. |
+| type | classifier | `feature request` \| `performance issue` \| `accuracy issue` \| `functionality bug` \| `internal task` \| `unknown`. An unimplemented-op failure (`not implemented`, `NotImplementedError`) is a `functionality bug`, not a `feature request`, even though it contains the word "implement". |
 | issue_type | classifier | Canonical `Bug` \| `Task` \| `Feature` \| `Epic`. Precedence: `github_type` > labels > `type` heuristic. |
 | github_type | gh GraphQL | Native GitHub issue type name, or "". |
-| module | classifier | `distributed` \| `inductor` \| `dynamo` \| `aten_ops` \| `AO` \| `low_precision` \| `profiling` \| `optimizer` \| `fx` \| `export` \| `autograd` \| `unknown`. |
+| module | classifier | One of the 13 canonical buckets: `distributed` \| `sdpa` \| `inductor` \| `dynamo` \| `torchAO` \| `sparse` \| `profiler` \| `torch-ops-gemm` \| `torch-ops-eltwise` \| `torch-ops-reduction` \| `torch-ops-others` \| `torch-runtime` \| `others`. Never empty; `others` is the catch-all. |
+| module_label | classifier | The GitHub label for `module`, e.g. `module: ao` for `torchAO` and `module: core` for `torch-runtime`. Emit this, not the bucket name. |
 | test_module | classifier | `ut` \| `e2e` \| `build` \| `infrastructure`. |
-| dependency | classifier | `oneDNN` \| `oneMKL` \| `Triton` \| `AO` \| `transformers` \| `oneAPI` \| `driver` \| `oneCCL` \| "". |
-| priority | gh GraphQL | Normalized to P0-P3, or "". |
+| dependency | classifier | `driver` \| `IGC` \| `Level_Zero` \| `oneMKL` \| `oneDNN` \| `oneCCL` \| `oneAPI` \| `MSVC` \| `Triton` \| `community` \| `third_party_packages` \| "". `AO` is not a value: torchao belongs to the module axis. |
+| dependency_label | classifier | The GitHub label for `dependency`, e.g. `dependency component: oneDNN`. Note `third_party_packages` maps to `dependency: third_party packages` (different prefix). "" when `dependency` is "". |
+| priority | gh GraphQL | PyTorchXPU project `Priority` field, normalized to `Urgent` \| `High` \| `Medium` \| `Low`, or "". The field's current options are `P0`-`P3`, mapped `P0`->`Urgent` .. `P3`->`Low`; the names `Urgent`/`Critical`/`High`/`Medium`/`Low` are also recognized and normalized. Any other value becomes "". |
 | pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | PyTorchXPU project fields, or "". |
 | os | classifier | `Linux` \| `Windows` \| "". From body keywords and a collect_env `OS:` line. |
 | platform | classifier | Intel GPU code (PVC, BMG, ARC, ARL, LNL, MTL, CRI), or "". See Platform below. |
 | platform_specific | runtime | `true` when the issue platform differs from the local GPU family. Empty platform -> `false`; local detection failure -> `true` (conservative). |
-| traceback | classifier | Full Python traceback (frames + error message), else "". |
-| reproduce_steps | classifier | Shell command lines from the body, newline-joined; "" if none. |
-| test_file / test_class / test_case | classifier | Mirror of the first parsed unit-test case; "" if none. |
+| traceback | classifier | Full Python traceback (frames + error message), else "". A chained traceback (`The above exception ...` / `During handling ...`) is returned whole, including every linked segment. |
+| reproduce_steps | classifier | Shell command lines from the body, newline-joined; "" if none. A line that starts with a command name but reads as prose (a standalone English function word such as `and`/`the` after the first token) is excluded. |
+| test_file / test_class / test_case | classifier | Mirror of the first unit-test-shaped entry in `test_cases` (the first entry with no `benchmark` key), which is not necessarily `test_cases[0]`; all three are "" on an E2E issue. |
 | test_cases | classifier | All parsed test cases. See Test cases below. |
 | pr_link | classifier | PR URL the issue is tied to; "" when none. See PR link below. |
 | low_confidence | classifier | Field names needing LLM resolution. See Inline LLM fallback. |
@@ -130,16 +137,28 @@ a real case exists for the same file.
 `model`, `phase`, `dtype`, `amp`, `test_type`, `backend`,
 `disable_cudagraphs` - and no `source` field.
 
+E2E de-duplication keys on the full run configuration: `benchmark`, `model`,
+`phase`, `dtype`, `backend`, `test_type`, `amp`, and `disable_cudagraphs`. Two
+entries that differ in any of those - including AMP or cudagraph mode alone -
+are kept as distinct cases. `reproducer` is excluded from the key, so
+flag-order or whitespace variants of the same run still collapse to one entry.
+
 E2E classification triggers on an `e2e` label, a
 `benchmarks/{dynamo,timm,huggingface,torchbench}/` or `run_benchmark.py` path,
 or an authoritative-list model name (torchbench names like `alexnet` /
 `BERT_pytorch`, huggingface class names - not just `hf_`/`timm_` prefixes)
-mentioned with explicit benchmark-framework context.
+mentioned with explicit benchmark-framework context. A bare `hf_`/`timm_`
+prefix is never sufficient on its own: the name must appear in a loaded list,
+so a fabricated `hf_made_up` is not an e2e signal even next to `benchmark.py`.
 
 The `benchmark` field (huggingface | timm | torchbench) and model detection use
 `.ci/benchmarks/{huggingface,timm,torchbench}_models_list.txt`. The script
 searches `third_party/torch-xpu-ops/.ci/benchmarks` then `.ci/benchmarks` under,
-in order: `--pytorch-folder`, `$PYTORCH_FOLDER`, the current directory.
+in order: `--pytorch-folder`, `$PYTORCH_FOLDER`, the current directory. Within a
+located directory it reads the top-level list plus the `p0/`, `p1/`, and `p2/`
+priority tiers and unions them, de-duplicated: wrapped torchbench names such as
+`hf_Bert` and `timm_vovnet` exist ONLY in a tier file, so reading just the
+top-level list would miss them.
 
 There is **no hardcoded fallback list**. If a list cannot be found, that bucket
 stays empty, a warning names it on stderr, and model-name-based e2e detection is
@@ -156,10 +175,19 @@ rather than on main/nightly), or `""`.
 "pr_link": "https://github.com/pytorch/pytorch/pull/12345"
 ```
 
-Regex pass, first match wins over the title and body:
+Regex pass over the title and body, then one API resolution when needed:
 
-- PR URLs `https://github.com/<owner>/<repo>/pull/<number>`
-- Cross-repo shorthand `owner/repo#<number>`, normalized to a PR URL
+- PR URLs `https://github.com/<owner>/<repo>/pull/<number>` are trusted directly.
+- Cross-repo shorthand `owner/repo#<number>` is **ambiguous** - GitHub uses it for
+  both issues and PRs - so it is never assumed to be a PR. When no explicit
+  `/pull/` URL was found, the first shorthand is resolved with one
+  `gh api repos/<owner>/<repo>/issues/<number>` call: a `pull_request` key in the
+  response means PR (emit the URL), its absence means issue (emit `""`).
+
+That resolution costs at most one extra API call per run, and only when no
+`/pull/` URL is present. When it cannot be resolved - no `gh`, timeout, 404,
+private repo - `pr_link` stays `""` and `pr_link` is added to `low_confidence`
+rather than guessed at. The run still exits 0.
 
 A bare `#<number>` is NOT matched - without an `owner/repo` prefix it is a
 same-repo issue reference. A branch-only reference yields `""`, since it has no
@@ -168,8 +196,11 @@ PR URL.
 ## Platform
 
 `platform` is inferred in priority order: a `hw: <CODE>` label (e.g. `hw: BMG`),
-then device names/aliases in the title, then in the body. Most-specific match
-wins; `""` if none.
+then device names/aliases in the title, then in the body. Title and body are
+matched as separate passes, so a title match always beats a body match. Within a
+pass, the platform table is scanned in order (PVC, BMG, ARC, ARL, LNL, MTL, CRI)
+and the first matching keyword wins; the table lists longer, more specific
+aliases before bare codes. `""` if none.
 
 Mappings: Data Center GPU Max / Ponte Vecchio -> PVC; Battlemage / B580 -> BMG;
 Alchemist / A770 -> ARC; Arrow Lake -> ARL; Lunar Lake -> LNL;
@@ -189,7 +220,7 @@ parsed class name starts with `Test`; a parsed case name starts with `test_`.
 |---|---|
 | `reproduce_steps` | No shell command found AND the issue is not a unit test (a unit test's id is its own reproducer). |
 | `test_cases` | No test case parsed but `test_module` is `ut` or `e2e`. |
-| `pr_link` | Regex found no PR, but the body signals a non-main context ("this PR", "my branch", "cherry-pick", "backport", a CI run URL). |
+| `pr_link` | Regex found no PR, but the body signals a non-main context ("this PR", "my branch", "cherry-pick", "backport", a CI run URL), or an `owner/repo#N` ref could not be resolved to issue-vs-PR. |
 
 `dependency`, `traceback`, `os`, and `platform` are output fields that are NEVER
 flagged.
@@ -205,7 +236,7 @@ batch processing.
 | Code | Meaning |
 |---|---|
 | 0 | Success; JSON on stdout. A failed project/issueType fetch still exits 0 with those fields "". |
-| 1 | Fetch failure (404, network), or the reference is a pull request. PRs are rejected. |
-| 2 | Malformed reference (not a number, not a recognizable issue URL), or `--repo` without a `/`. |
+| 1 | Fetch failure (404, network), or the reference is a pull request. PRs are rejected, whether given as a bare number or as a `/pull/<n>` URL. |
+| 2 | Malformed reference (not a number, not a recognizable issue or PR URL), or `--repo` without a `/`. |
 
 Closed issues are allowed; `status` will be `closed`.
