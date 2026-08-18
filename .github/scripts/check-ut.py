@@ -42,6 +42,58 @@ error_types = [
     "NotImplementedError",
 ]
 
+# Crash-reason data written by conftest.py during the run (same job/container).
+_CRASH_DIR = (
+    os.environ.get("UT_CRASH_DIR")
+    or (
+        os.path.join(os.environ["GITHUB_WORKSPACE"], "ut_log", "crash_reasons")
+        if os.environ.get("GITHUB_WORKSPACE")
+        else "/tmp/ut_crash"
+    )
+)
+_CRASH_WHILE_RUNNING_RE = re.compile(r"crashed while running '([^']+)'")
+
+
+def _load_crash_data():
+    reasons, inflight = {}, set()
+    try:
+        with open(os.path.join(_CRASH_DIR, "reasons.tsv"), encoding='utf-8') as f:
+            for line in f:
+                parts = line.rstrip('\n').split('\t')
+                if len(parts) >= 2 and parts[0]:
+                    reasons[parts[0]] = parts[1]
+    except OSError:
+        pass
+    try:
+        for fn in os.listdir(_CRASH_DIR):
+            if fn.startswith('current_') and fn.endswith('.txt'):
+                try:
+                    with open(os.path.join(_CRASH_DIR, fn), encoding='utf-8') as f:
+                        nid = f.read().strip()
+                    if nid:
+                        inflight.add(nid)
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return reasons, inflight
+
+
+_CRASH_REASONS, _CRASH_INFLIGHT = _load_crash_data()
+
+
+def _augment_crash_reason(message):
+    """Replace xdist's generic worker-crash message with the captured reason."""
+    if not message or 'crashed while running' not in message.lower():
+        return message
+    m = _CRASH_WHILE_RUNNING_RE.search(message)
+    nodeid = m.group(1) if m else None
+    reason = _CRASH_REASONS.get(nodeid) if nodeid else None
+    if reason is None:
+        reason = 'hang/timeout' if (nodeid and nodeid in _CRASH_INFLIGHT) else 'worker crash (no reason captured)'
+    return f"[{reason}] {message}"
+
+
 def _normalize_text(value):
     if not value:
         return ''
@@ -81,7 +133,7 @@ def get_result(case):
 
 def get_message(case):
     if isinstance(case, dict):
-        return case.get('error', '')
+        return _augment_crash_reason(case.get('error', ''))
 
     if not case.result:
         return ""
@@ -117,7 +169,7 @@ def get_message(case):
 
     message = getattr(case.result[0], 'message', '') or ''
     if message:
-        return message.splitlines()[0]
+        return _augment_crash_reason(message.splitlines()[0])
     return ""
 
 def print_md_row(row, print_header=False, failure_list=None):
