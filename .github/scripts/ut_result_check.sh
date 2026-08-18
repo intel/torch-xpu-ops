@@ -305,7 +305,7 @@ run_distributed_tests() {
 mark_passed_issue() {
     local PASSED_FILE="$1"
     local ISSUE_FILE="$2"
-    random_issues="$(gh issue list --repo ${REPO} --label 'skipped,random' --json number --jq '.[].number')"
+    random_issues="$(gh issue list --repo ${REPO} --state 'open' --label 'random' --json number --jq '.[].number')"
     # Cehck before start
     [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
     [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
@@ -364,9 +364,9 @@ mark_passed_issue() {
         gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
         # Add comment
         if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on BMG"
         else
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing"
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing on BMG"
         fi
         # Clean up temporary file
         rm -f "issue-body-${issue_id}.txt"
