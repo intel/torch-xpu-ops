@@ -12,8 +12,6 @@ env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
-  # Pinged when a bot job fails in a way that needs a human.
-  BOT_ESCALATION_USER: chuanqi129
 
 permissions:
   contents: read
@@ -843,6 +841,8 @@ jobs:
 
       - name: "Verify: AI review succeeded"
         uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -860,7 +860,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
+                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI review failed.');
             }
@@ -966,6 +966,8 @@ jobs:
       - name: "Verify: AI analysis succeeded"
         if: steps.collect.outputs.has_data == 'true'
         uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -983,7 +985,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot ut-check\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
+                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot ut-check\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI analysis failed.');
             }
@@ -1154,6 +1156,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           AI_FIX_OUTCOME: ${{ steps.ai-fix.outcome }}
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1196,7 +1199,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
             });
             if (outcome !== 'cancelled') {
               core.setFailed(`AI fix failed: ${reason}`);
@@ -1323,6 +1326,8 @@ jobs:
 
       - name: "Verify: Bedrock test actually succeeded"
         uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1340,7 +1345,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
-                body: `@${{ env.BOT_ESCALATION_USER }} Bedrock connectivity test failed. Please check AWS token validity.`
+                body: `${process.env.BOT_ESCALATION_USERS} Bedrock connectivity test failed. Please check AWS token validity.`
               });
               core.setFailed('Bedrock test failed.');
             } else {
