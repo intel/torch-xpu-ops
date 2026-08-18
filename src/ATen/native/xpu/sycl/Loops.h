@@ -573,21 +573,48 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
+  bool use_fp_cast = (iter.dtype(0) == at::ScalarType::Float);
+  if (use_fp_cast) {
+    for (int i = 1; i < ntensors; i++) {
+      auto dt = iter.dtype(i);
+      if (dt != at::ScalarType::Float && dt != at::ScalarType::Half &&
+          dt != at::ScalarType::BFloat16) {
+        use_fp_cast = false;
+        break;
+      }
+    }
+  }
+
   bool contiguous = iter.is_contiguous();
 
   if (contiguous) {
-    auto loader = memory::LoadWithCast<traits::arity>(iter);
-    auto storer = memory::StoreWithCast<1>(iter);
-    auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
-    auto output_offset_calculator = TrivialOffsetCalculator<1>();
-    launch_unrolled_kernel(
-        numel,
-        f,
-        data,
-        input_offset_calculator,
-        output_offset_calculator,
-        loader,
-        storer);
+    if (use_fp_cast) {
+      auto loader = memory::LoadWithCastFP<traits::arity>(iter);
+      auto storer = memory::StoreWithCastFP<1>();
+      auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
+      auto output_offset_calculator = TrivialOffsetCalculator<1>();
+      launch_unrolled_kernel(
+          numel,
+          f,
+          data,
+          input_offset_calculator,
+          output_offset_calculator,
+          loader,
+          storer);
+    } else {
+      auto loader = memory::LoadWithCast<traits::arity>(iter);
+      auto storer = memory::StoreWithCast<1>(iter);
+      auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
+      auto output_offset_calculator = TrivialOffsetCalculator<1>();
+      launch_unrolled_kernel(
+          numel,
+          f,
+          data,
+          input_offset_calculator,
+          output_offset_calculator,
+          loader,
+          storer);
+    }
   } else {
     at::detail::Array<ScalarType, ntensors> dtypes;
     for (int i = 0; i < ntensors; i++) {
