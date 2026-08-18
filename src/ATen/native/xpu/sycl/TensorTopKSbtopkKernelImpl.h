@@ -91,9 +91,11 @@ struct SubgroupTopKFunctor {
       // instead of filling lower positions.
       bool stop;
       if constexpr (Largest) {
-        stop = (i == 0) || (i <= count && !(val > top_vals[i - 1]) && top_idx[i - 1] != -1);
+        stop = (i == 0) ||
+            (i <= count && !(val > top_vals[i - 1]) && top_idx[i - 1] != -1);
       } else {
-        stop = (i == 0) || (i <= count && !(val < top_vals[i - 1]) && top_idx[i - 1] != -1);
+        stop = (i == 0) ||
+            (i <= count && !(val < top_vals[i - 1]) && top_idx[i - 1] != -1);
       }
       if (!inserted && stop) {
         top_vals[i] = val;

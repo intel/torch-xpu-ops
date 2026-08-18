@@ -84,7 +84,8 @@ class TestNNMethod(TestCase):
                 for r in range(num_rows):
                     row_ids = xpu_ids[r].cpu().tolist()
                     self.assertEqual(
-                        len(set(row_ids)), k,
+                        len(set(row_ids)),
+                        k,
                         f"Duplicate indices for dtype={dtype}, N={num_rows}, row={r}",
                     )
 
