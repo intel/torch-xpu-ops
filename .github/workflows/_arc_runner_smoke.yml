@@ -1,0 +1,108 @@
+name: ARC Runner Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/_arc_runner_smoke.yml
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.name }})
+    runs-on: xpu-ubuntu-24.04
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: runner-context
+            run: |
+              echo "runner_name=${RUNNER_NAME}"
+              echo "runner_os=${RUNNER_OS}"
+              echo "runner_arch=${RUNNER_ARCH}"
+              cat /etc/os-release
+              uname -a
+              id
+          - name: git-and-gh-tools
+            run: |
+              git --version
+              gh --version | head -n 1
+          - name: clang-tools
+            run: |
+              clang --version | head -n 1
+              clang-tidy --version | head -n 1
+          - name: system-access-and-cache
+            run: |
+              sudo -n true
+              test -d "${HOME}/.cache"
+              test -d "${ACTIONS_RUNNER_TOOL_CACHE}"
+              stat -c '%u:%g %n' "${HOME}/.cache" "${ACTIONS_RUNNER_TOOL_CACHE}"
+    steps:
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.run }}
+
+  notify-failure:
+    name: notify-failure
+    runs-on: xpu-ubuntu-24.04
+    timeout-minutes: 3
+    needs: smoke
+    if: ${{ !cancelled() && needs.smoke.result == 'failure' }}
+    steps:
+      - name: Email offline list
+        env:
+          ARC_OFFLINE_EMAIL_LIST: ${{ secrets.ARC_OFFLINE_EMAIL_LIST }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${ARC_OFFLINE_EMAIL_LIST}" ]; then
+            echo "ARC_OFFLINE_EMAIL_LIST secret not set; skipping notification."
+            exit 0
+          fi
+          subject="[ARC Runner Smoke] Failure on ${GITHUB_REPOSITORY}"
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<EOF
+          ARC runner smoke workflow detected a failure.
+
+          Repository: ${GITHUB_REPOSITORY}
+          Workflow:   ${GITHUB_WORKFLOW}
+          Run URL:    ${RUN_URL}
+          Ref:        ${GITHUB_REF}
+          SHA:        ${GITHUB_SHA}
+          Trigger:    ${GITHUB_EVENT_NAME}
+          EOF
+
+          # Install a mail transport only when the runner has none.
+          if ! command -v mail >/dev/null 2>&1 \
+            && ! command -v mailx >/dev/null 2>&1 \
+            && ! command -v sendmail >/dev/null 2>&1; then
+            sudo -n apt-get update
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y mailutils
+          fi
+
+          if command -v mail >/dev/null 2>&1; then
+            mail -s "${subject}" "${ARC_OFFLINE_EMAIL_LIST}" < "${body_file}"
+          elif command -v mailx >/dev/null 2>&1; then
+            mailx -s "${subject}" "${ARC_OFFLINE_EMAIL_LIST}" < "${body_file}"
+          elif command -v sendmail >/dev/null 2>&1; then
+            {
+              printf 'Subject: %s\n' "${subject}"
+              printf 'To: %s\n' "${ARC_OFFLINE_EMAIL_LIST}"
+              printf 'Content-Type: text/plain; charset=UTF-8\n\n'
+              cat "${body_file}"
+            } | sendmail -t
+          else
+            echo "No local mail command found on runner" >&2
+            exit 1
+          fi

@@ -25,7 +25,7 @@ if(BUILD_SEPARATE_OPS)
   target_link_libraries(torch_xpu_ops PUBLIC torch_cpu c10)
   set(_sycl_libs_for_rsp)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    get_filename_component(name ${sycl_src} NAME_WLE)
+    cmake_path(GET sycl_src STEM LAST_ONLY name)
     set(sycl_lib torch-xpu-ops-sycl-${name})
     # Keep split SYCL targets static on Windows so torch_xpu remains the only
     # shared-library link that resolves cross-target XPU helper symbols.

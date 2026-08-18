@@ -59,6 +59,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TEST_XPU,
 )
+from torch.testing._internal.common_xpu import PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU
 
 if TEST_FAIRSEQ:
     import fairseq.models.transformer as fairseq_transformer
@@ -2100,24 +2101,30 @@ class TestSDPAFailureModes(NNTestCase):
         "kernel",
         PLATFORM_SPECIFIC_SDPA,
     )
-    def test_invalid_fused_inputs_dim_3(self, device, kernel: SDPBackend):
+    def test_fused_inputs_dim_3(self, device, kernel: SDPBackend):
+        size = (2, 3, 8)
+        dtype = torch.float16
+        q = torch.randn(size, device=device, dtype=dtype)
+        k = torch.randn(size, device=device, dtype=dtype)
+        v = torch.randn(size, device=device, dtype=dtype)
+        attn_mask = (
+            None
+            if kernel == SDPBackend.FLASH_ATTENTION
+            else torch.tril(torch.ones(3, 3, device=device, dtype=torch.bool))
+        )
+
         with sdpa_kernel(backends=[kernel]):
-            # Dim is not 4
-            size = (2, 3, 8)
-            dtype = torch.float16
-            q = torch.randn(size, device=device, dtype=dtype)
-            k = torch.randn(size, device=device, dtype=dtype)
-            v = torch.randn(size, device=device, dtype=dtype)
-            with self.assertWarnsRegex(
-                UserWarning,
-                "All fused kernels requires query, key and value to be 4 dimensional",
-            ):
-                self.assertRaises(
-                    RuntimeError,
-                    lambda: torch.nn.functional.scaled_dot_product_attention(
-                        q, k, v, None, 0.0, False
-                    ),
-                )
+            # XPU does not implement the mem-efficient backend and falls back to
+            # math, so _fused_sdp_choice is not asserted here; verify instead that
+            # 3D inputs are handled the same as explicitly unsqueezed 4D inputs.
+            expected = torch.nn.functional.scaled_dot_product_attention(
+                q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attn_mask
+            ).squeeze(0)
+            actual = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, attn_mask
+            )
+
+        self.assertEqual(actual, expected)
 
     @onlyAccelerator
     @unittest.skipIf(
@@ -5739,8 +5746,8 @@ class TestSDPACudaOnly(NNTestCase):
         )
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_FLASH_ATTENTION,
-        "Does not support SDPA or pre-SM80 hardware",
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
+        "XPU flash attention not available",
     )
     @parametrize("batch_size", [1, 8])
     @parametrize("seq_len_q", [256, 1024])
@@ -6418,10 +6425,6 @@ class TestSDPAXpuOnly(NNTestCase):
     Mostly migrate from TestSDPACudaOnly in test/test_transformers.py
     """
 
-    PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION = (
-        torch.xpu.is_available() and torch._C._is_flash_attention_available()
-    )
-
     @parametrize("type", ["dense"])
     @parametrize("dropout", [0.0, 0.7])
     @parametrize("dtype", [torch.float64, torch.float32, torch.bfloat16, torch.half])
@@ -6842,7 +6845,7 @@ class TestSDPAXpuOnly(NNTestCase):
         self.assertEqual(actual.float(), math_ref, atol=tol.atol, rtol=tol.rtol)
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION,
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
         "XPU Flash Attention is not supported",
     )
     @parametrize("dtype", [torch.float32, torch.float64])
@@ -6865,7 +6868,7 @@ class TestSDPAXpuOnly(NNTestCase):
                 F.scaled_dot_product_attention(q, k, v)
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION,
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
         "XPU Flash Attention is not supported",
     )
     def test_flash_attention_unsupport_dropout(self, device):
@@ -6888,7 +6891,7 @@ class TestSDPAXpuOnly(NNTestCase):
                 F.scaled_dot_product_attention(q, k, v, dropout_p=0.1)
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION,
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
         "XPU Flash Attention is not supported",
     )
     def test_flash_attention_headdim_size(self, device):
@@ -6917,7 +6920,7 @@ class TestSDPAXpuOnly(NNTestCase):
                 F.scaled_dot_product_attention(q, k, v)
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION,
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
         "XPU Flash Attention is not supported",
     )
     def test_flash_attention_fail_with_non_square_causal_attention(self, device):
@@ -6938,7 +6941,7 @@ class TestSDPAXpuOnly(NNTestCase):
                 )
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION,
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU,
         "XPU Flash Attention is not supported",
     )
     @parametrize("fused_kernel", [SDPBackend.FLASH_ATTENTION])

@@ -102,6 +102,7 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     IS_FBCODE,
     parametrize,
+    recover_orig_fp32_precision,
     scoped_load_inline,
     set_default_dtype,
     skipIfHpu,
@@ -2437,7 +2438,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
     def test_structseq2(self):
         def fn(x, y):
-            return tuple(torch.return_types.qr((2 * x, y - 1)))
+            return tuple(torch.return_types.linalg_qr((2 * x, y - 1)))
 
         x = torch.randn(3, 2)
         y = torch.randn(2, 4)
@@ -9092,7 +9093,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
 
         @torch.compile(backend=counter)
         def fn(x):
-            return x * x
+            return torch.ones(2) * x
 
         fn(0)
         fn(1)
@@ -9242,6 +9243,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
         torch.compile(my_dyn_fn, backend=counter)(x012)
         self.assertEqual(counter.frame_count, 3)
 
+    @recover_orig_fp32_precision
     def test_recompile_on_global_state_change(self):
         last_state = []
         cnt = 0
@@ -12722,13 +12724,13 @@ fn
         from torch._dynamo.variables.user_defined import InspectVariable
 
         redirected_attrs = []
-        original_var_getattr = InspectVariable.var_getattr
+        original_getattro_impl = InspectVariable.getattro_impl
 
-        def tracking_var_getattr(self, tx, name):
+        def tracking_getattro_impl(self, tx, name):
             redirects = self._PROPERTY_REDIRECTS.get(type(self.value), {})
             if name in redirects:
                 redirected_attrs.append(name)
-            return original_var_getattr(self, tx, name)
+            return original_getattro_impl(self, tx, name)
 
         def fn(x, gn):
             sig = inspect.signature(gn)
@@ -12740,7 +12742,7 @@ fn
             return a + b
 
         x = torch.randn(2, 3)
-        with patch.object(InspectVariable, "var_getattr", tracking_var_getattr):
+        with patch.object(InspectVariable, "getattro_impl", tracking_getattro_impl):
             opt_fn = torch.compile(fn, backend="eager", fullgraph=True)
             result = opt_fn(x, gn)
 
@@ -13124,7 +13126,7 @@ fn
         self.assertEqual(cnts.frame_count, 1)
 
     def test_getattrvariable_as_python_constant(self):
-        from torch._dynamo.variables.misc import GetAttrVariable
+        from torch._dynamo.variables.misc import CallMethodVariable as CMV
 
         @torch.compile(backend="eager")
         def fn(x, rand1):
@@ -13140,7 +13142,7 @@ fn
         x = torch.randn(3, 3)
         expected = fn.__wrapped__(x, get_rng())
 
-        with patch.object(GetAttrVariable, "as_python_constant", autospec=True) as po:
+        with patch.object(CMV, "as_python_constant", autospec=True) as po:
             actual = fn(x, get_rng())
 
         self.assertEqual(expected, actual)
@@ -14003,7 +14005,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14031,7 +14033,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14082,7 +14084,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                 ),
                 "d": collections.OrderedDict(
                     {
-                        "e": torch.return_types.qr((2 * x, None)),
+                        "e": torch.return_types.linalg_qr((2 * x, None)),
                         "f": MyTuple(x, x + 1, torch.zeros(4, 3)),
                     },
                 ),
@@ -14096,7 +14098,7 @@ class MiscTestsPyTree(torch._inductor.test_case.TestCase):
                         "d",
                         {
                             "f": MyTuple(torch.ones(4, 3), -y, y + 1),
-                            "e": torch.return_types.qr((2 * y, None)),
+                            "e": torch.return_types.linalg_qr((2 * y, None)),
                         },
                     ),
                 ],
