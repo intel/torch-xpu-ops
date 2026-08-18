@@ -1015,7 +1015,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
         import torch._inductor.config as inductor_config
 
         nested_config = get_invoke_subgraph_compile_options(
-            inductor_config_patches={
+            fw_inductor_config_patches={
                 "max_autotune": True,
                 "triton.cudagraphs": False,
             }
@@ -1080,7 +1080,7 @@ def forward(self, primals_0, primals_1, primals_2, primals_3, primals_4, primals
             "Invalid inductor config key 'invalid_config_key'",
         ):
             get_invoke_subgraph_compile_options(
-                inductor_config_patches={
+                fw_inductor_config_patches={
                     "invalid_config_key": True,
                 }
             )
