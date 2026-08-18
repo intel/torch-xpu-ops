@@ -15033,13 +15033,8 @@ class TestNNDeviceType(NNTestCase):
 
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.half, torch.float)
+    @dtypesIfXPU(torch.float)
     def test_softmax(self, device, dtype):
-        if self.device_type == "xpu" and dtype == torch.half:
-            self.skipTest(
-                "XPU fused half->float softmax is not bitwise-equal to the "
-                "float path (implementation detail); numerical correctness is "
-                "covered by test_softmax_results"
-            )
         input = torch.rand(32, 100, device=device, dtype=dtype, requires_grad=True)
         inputf = input.to(torch.float).detach().requires_grad_(True)
         out = F.softmax(input, dim=-1, dtype=torch.float)
