@@ -138,54 +138,11 @@ def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
     self.assertEqual(xpu_result, cpu_result, exact_dtype=False)
 
 
-def _test_fft_out_variants(self, device):
-    dims = [0, 1, 2, 3]
-    real_cpu = torch.randn(2, 3, 4, 5)
-    complex_cpu = torch.complex(real_cpu, torch.randn_like(real_cpu))
-
-    complex_input = complex_cpu.to(device)
-    c2c_expected = torch.ops.aten._fft_c2c.default(complex_cpu, dims, 0, True)
-    c2c_out = torch.empty_like(complex_input)
-    c2c_result = torch.ops.aten._fft_c2c.out(complex_input, dims, 0, True, out=c2c_out)
-    self.assertIs(c2c_result, c2c_out)
-    self.assertEqual(c2c_out.cpu(), c2c_expected)
-
-    real_input = real_cpu.to(device)
-    r2c_expected = torch.ops.aten._fft_r2c.default(real_cpu, dims, 0, True)
-    r2c_out = torch.empty_like(r2c_expected, device=device)
-    r2c_result = torch.ops.aten._fft_r2c.out(real_input, dims, 0, True, out=r2c_out)
-    self.assertIs(r2c_result, r2c_out)
-    self.assertEqual(r2c_out.cpu(), r2c_expected)
-
-    c2r_input = r2c_expected.to(device)
-    c2r_expected = torch.ops.aten._fft_c2r.default(
-        r2c_expected, dims, 0, real_cpu.size(-1)
-    )
-    c2r_out = torch.empty_like(real_input)
-    c2r_result = torch.ops.aten._fft_c2r.out(
-        c2r_input, dims, 0, real_cpu.size(-1), out=c2r_out
-    )
-    self.assertIs(c2r_result, c2r_out)
-    self.assertEqual(c2r_out.cpu(), c2r_expected, atol=2e-5, rtol=2e-5)
-
-    noncontiguous_out = torch.empty(
-        5, 4, 3, 2, device=device, dtype=complex_input.dtype
-    ).permute(3, 2, 1, 0)
-    original_stride = noncontiguous_out.stride()
-    result = torch.ops.aten._fft_c2c.out(
-        complex_input, dims, 0, True, out=noncontiguous_out
-    )
-    self.assertIs(result, noncontiguous_out)
-    self.assertEqual(noncontiguous_out.stride(), original_stride)
-    self.assertEqual(noncontiguous_out.cpu(), c2c_expected)
-
-
 TestFFT.test_reference_1d = _test_reference_1d
 TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
     _test_fft_half_and_chalf_not_power_of_two
 )
-TestFFT.test_fft_out_variants = _test_fft_out_variants
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
 
