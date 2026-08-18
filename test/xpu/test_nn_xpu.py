@@ -15035,16 +15035,25 @@ class TestNNDeviceType(NNTestCase):
     @dtypes(torch.half, torch.float)
     def test_softmax(self, device, dtype):
         input = torch.rand(32, 100, device=device, dtype=dtype, requires_grad=True)
-        inputf = input.to(dtype).detach().requires_grad_(True)
-        out = F.softmax(input, dim=-1, dtype=dtype)
+        inputf = input.to(torch.float).detach().requires_grad_(True)
+        out = F.softmax(input, dim=-1, dtype=torch.float)
         outf = F.softmax(inputf, dim=-1)
-        # should be bitwise equal
-        self.assertEqual(out, outf, atol=0, rtol=0)
+        # On XPU, the half_to_float fused softmax kernel vectorizes loads based on the
+        # input dtype's byte width, so it uses a different reduction order than the
+        # plain float32 kernel used for `outf`. This yields ULP-level differences
+        # instead of a bitwise-identical result, so a small tolerance is required.
+        if "xpu" in device:
+            self.assertEqual(out, outf, atol=1e-8, rtol=1e-6)
+        else:
+            self.assertEqual(out, outf, atol=0, rtol=0)
         gO = torch.empty_like(outf).uniform_()
         out.backward(gO)
         outf.backward(gO)
-        # should be bitwise equal
-        self.assertEqual(input.grad, inputf.grad.to(dtype), atol=0, rtol=0)
+        if "xpu" in device:
+            self.assertEqual(input.grad, inputf.grad.to(dtype), atol=1e-8, rtol=1e-6)
+        else:
+            # should be bitwise equal
+            self.assertEqual(input.grad, inputf.grad.to(dtype), atol=0, rtol=0)
 
     def _test_batchnorm_grad(self, device, dtype=torch.double):
         bs, n_feat, size_feat = 4, 5, 6
