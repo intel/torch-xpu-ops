@@ -59,11 +59,11 @@ macro(set_build_flags)
   # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND SYCL_HOST_FLAGS /MDd)
-    else()
-      list(APPEND SYCL_HOST_FLAGS /MD)
-    endif()
+    # The CRT flavor must follow the configuration: an unconditional /MD would be
+    # appended after CMAKE_CXX_FLAGS_DEBUG's /MDd (TORCH_XPU_OPS_FLAGS is used in
+    # target_compile_options) and win, mixing release CRT objects into a Debug
+    # build. Spelled as a genex so multi-config generators resolve it per config.
+    list(APPEND SYCL_HOST_FLAGS $<IF:$<CONFIG:Debug>,/MDd,/MD>)
     list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
