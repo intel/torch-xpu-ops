@@ -341,6 +341,8 @@ static void _fft_c2c_mkl_out_impl(
         impl::_exec_fft_preserves_layout(self, sorted_dims)));
   Tensor fft_out = can_write_out ? out : at::empty(out_sizes, self.options());
 
+  // The final pass always lands in fft_out, so a single-pass transform never
+  // selects scratch and can leave it undefined.
   Tensor scratch;
   if (pass_count > 1) {
     scratch = at::empty(out_sizes, self.options());
@@ -466,9 +468,8 @@ static void _fft_c2r_mkl_out_impl(
         /*forward=*/false);
   }
 
-  // HermitSymm mutates in-place; avoid mutating user-visible input when
-  // aliased.
-  if (input.is_same(self)) {
+  // HermitSymm mutates in-place; a promoted input is already a private copy.
+  if (input.is_same(orig_self)) {
     auto input_copy =
         at::empty_strided(input.sizes(), input.strides(), input.options());
     input_copy.copy_(input);
@@ -598,6 +599,8 @@ static void _fft_r2c_mkl_out_impl(
       ? out
       : at::empty(out_sizes, self.options().dtype(fft_dtype));
 
+  // The final pass always lands in fft_out, so a single-pass transform never
+  // selects scratch and can leave it undefined.
   Tensor scratch;
   if (pass_count > 1) {
     scratch = at::empty(out_sizes, self.options().dtype(fft_dtype));

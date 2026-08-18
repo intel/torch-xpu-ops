@@ -202,6 +202,65 @@ class TestFftOut(TestCase):
             torch.ops.aten._fft_c2c.out(x, [1], normalization, True, out=out)
             self.assertEqual(out, got, msg=f"normalization={normalization}")
 
+    def test_fft_r2c_out_twosided(self, device):
+        # onesided=False mirrors the second half in place, the one path that
+        # replaces the destination after the transform has already run.
+        for ndim, dims in ((1, [0]), (2, [1]), (2, [0, 1]), (3, [2]), (3, [0, 1, 2])):
+            shape = (2, 3, 4)[-ndim:]
+            x = torch.randn(*shape, dtype=torch.float64, device=device)
+            expected = torch.fft.fftn(x.to(torch.complex128), dim=dims)
+            msg = f"ndim={ndim} dims={dims}"
+
+            functional = torch.ops.aten._fft_r2c.default(x, dims, 0, False)
+            self.assertEqual(functional, expected, msg=msg)
+
+            out = torch.empty(functional.shape, dtype=functional.dtype, device=device)
+            stride = out.stride()
+            result = torch.ops.aten._fft_r2c.out(x, dims, 0, False, out=out)
+            self.assertIs(result, out)
+            self.assertEqual(out.stride(), stride, f"stride {msg}")
+            self.assertEqual(out, expected, msg=msg)
+
+    def test_fft_c2r_does_not_mutate_input(self, device):
+        # HermitSymm writes in place, so the caller's tensor has to be copied
+        # first while a promoted input is already private.
+        for dtype in (torch.complex64, torch.complex32):
+            x = torch.randn(4, 5, dtype=torch.complex64, device=device).to(dtype)
+            before = x.clone()
+            expected = torch.ops.aten._fft_c2r.default(x, [1], 0, 8)
+            self.assertEqual(x, before, msg=f"functional {dtype}")
+
+            out = torch.empty(expected.shape, dtype=expected.dtype, device=device)
+            torch.ops.aten._fft_c2r.out(x, [1], 0, 8, out=out)
+            self.assertEqual(x, before, msg=f"out {dtype}")
+            self.assertEqual(out, expected, msg=str(dtype))
+
+    def test_fft_out_resizes_output(self, device):
+        complex_xpu = torch.randn(4, 8, dtype=torch.complex128, device=device)
+        expected = torch.ops.aten._fft_c2c.default(complex_xpu, [1], 0, True)
+        out = torch.empty(0, dtype=torch.complex128, device=device)
+        torch.ops.aten._fft_c2c.out(complex_xpu, [1], 0, True, out=out)
+        self.assertEqual(out.shape, expected.shape)
+        self.assertTrue(out.is_contiguous())
+        self.assertEqual(out, expected)
+
+        real_xpu = torch.randn(4, 8, dtype=torch.float64, device=device)
+        expected = torch.ops.aten._fft_r2c.default(real_xpu, [1], 0, True)
+        out = torch.empty(0, dtype=torch.complex128, device=device)
+        torch.ops.aten._fft_r2c.out(real_xpu, [1], 0, True, out=out)
+        self.assertEqual(out.shape, expected.shape)
+        self.assertTrue(out.is_contiguous())
+        self.assertEqual(out, expected)
+
+        expected = torch.ops.aten._fft_c2r.default(expected, [1], 0, 8)
+        out = torch.empty(0, dtype=torch.float64, device=device)
+        torch.ops.aten._fft_c2r.out(
+            torch.ops.aten._fft_r2c.default(real_xpu, [1], 0, True), [1], 0, 8, out=out
+        )
+        self.assertEqual(out.shape, expected.shape)
+        self.assertTrue(out.is_contiguous())
+        self.assertEqual(out, expected)
+
 
 instantiate_device_type_tests(TestFftOut, globals(), only_for="xpu", allow_xpu=True)
 
