@@ -79,7 +79,7 @@ AllocationRef::~AllocationRef() {
   sycl::free(ptr, queue);
 }
 
-XPUSymmetricMemory::XPUSymmetricMemory(
+XPUPeerAllocInfo::XPUPeerAllocInfo(
     std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs,
     std::vector<void*> buffers,
     std::vector<void*> signal_pads,
@@ -88,7 +88,8 @@ XPUSymmetricMemory::XPUSymmetricMemory(
     size_t buffer_size,
     int local_device_idx,
     int rank,
-    int world_size)
+    int world_size,
+    std::string group_name)
     : alloc_refs_(std::move(alloc_refs)),
       buffers_(std::move(buffers)),
       signal_pads_(std::move(signal_pads)),
@@ -97,7 +98,8 @@ XPUSymmetricMemory::XPUSymmetricMemory(
       buffer_size_(buffer_size),
       local_device_idx_(local_device_idx),
       rank_(rank),
-      world_size_(world_size) {
+      world_size_(world_size),
+      group_name_(std::move(group_name)) {
   const size_t arr_size = sizeof(void*) * world_size_;
   buffers_dev_ = reinterpret_cast<void**>(
       c10::xpu::XPUCachingAllocator::raw_alloc(arr_size));
@@ -113,28 +115,43 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   queue.wait();
 }
 
+// This is mostly a shallow copy that shares the pointer to `XPUPeerAllocInfo`
+// which corresponds to the base Block. The XPUSymmetricMemory handle is
+// specified by the offset to the base ptr.
+XPUSymmetricMemory::XPUSymmetricMemory(
+    const c10::intrusive_ptr<XPUPeerAllocInfo>& pai,
+    size_t offset)
+    : local_device_idx_(pai->local_device_idx_),
+      rank_(pai->rank_),
+      world_size_(pai->world_size_),
+      pai_(pai),
+      offset_(offset) {
+  // offset is specific per symm_mem handle
+  TORCH_INTERNAL_ASSERT(offset_ < pai_->buffer_size_, "offset out of range");
+}
+
 std::vector<void*> XPUSymmetricMemory::get_buffer_ptrs() {
-  return buffers_;
+  return pai_->buffers_;
 }
 
 std::vector<void*> XPUSymmetricMemory::get_signal_pad_ptrs() {
-  return signal_pads_;
+  return pai_->signal_pads_;
 }
 
 void** XPUSymmetricMemory::get_buffer_ptrs_dev() {
-  return buffers_dev_;
+  return pai_->buffers_dev_;
 }
 
 void** XPUSymmetricMemory::get_signal_pad_ptrs_dev() {
-  return signal_pads_dev_;
+  return pai_->signal_pads_dev_;
 }
 
 size_t XPUSymmetricMemory::get_buffer_size() {
-  return buffer_size_;
+  return pai_->buffer_size_;
 }
 
 size_t XPUSymmetricMemory::get_offset() {
-  return 0;
+  return offset_;
 }
 
 bool XPUSymmetricMemory::has_multicast_support() {
@@ -171,7 +188,7 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   auto stream = at::xpu::getCurrentXPUStream();
   barrier_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      reinterpret_cast<uint32_t**>(pai_->signal_pads_dev_),
       channel,
       rank_,
       world_size_,
@@ -191,7 +208,7 @@ void XPUSymmetricMemory::put_signal(
   auto stream = at::xpu::getCurrentXPUStream();
 
   put_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      reinterpret_cast<uint32_t**>(pai_->signal_pads_dev_),
       dst_rank,
       channel,
       rank_,
@@ -211,7 +228,7 @@ void XPUSymmetricMemory::wait_signal(
   auto stream = at::xpu::getCurrentXPUStream();
 
   wait_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      reinterpret_cast<uint32_t**>(pai_->signal_pads_dev_),
       src_rank,
       channel,
       rank_,
@@ -324,8 +341,15 @@ void validate_rendezvous_requests(
 c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* ptr,
     const std::optional<std::string>& group_name) {
-  auto block = find_block(ptr);
+  // In case of MemPool, the `ptr` passed in (i.e. tensor storage ptr) may not
+  // be the same as the allocation base pointer, so we need to find the block
+  // that covers the `ptr`
+  size_t offset = 0;
+  auto block = find_block_covering(ptr, offset);
   if (block == nullptr) {
+    TORCH_WARN(
+        "Pointer not within any SymmetricMemory allocation, "
+        "is the tensor allocated from SymmetricMemory?");
     return nullptr;
   }
 
@@ -346,9 +370,11 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     group_name_ = *block->default_group_name;
   }
 
+  // If found, this block has been rendezvous'd by the given group
   auto it = block->symm_mems.find(group_name_);
   if (it != block->symm_mems.end()) {
-    return it->second;
+    // Create symm mem handle for this tensor, specified by its offset
+    return c10::make_intrusive<XPUSymmetricMemory>(it->second, offset);
   }
 
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
@@ -391,14 +417,16 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   validate_rendezvous_requests(reqs, world_size);
 
   // Step 1: Get SYCL experimental IPC handle from the allocation base.
-  // `ptr` is always a base pointer here: alloc() stores ptr_to_block_[ptr]
-  // keyed by the malloc_device return value, and find_block() does an exact
-  // lookup, so by the time rendezvous() is called we already have the base.
+  // `ptr` may point into the middle of the block (MemPool case), so the handle
+  // and all peer pointers are derived from the block's base address; the
+  // per-tensor offset is carried by the XPUSymmetricMemory handle instead.
+  void* base_ptr = block->alloc_ref->ptr;
   sycl::context ctx = current_queue.get_context();
   sycl::device dev = current_queue.get_device();
 
   namespace syclexp = sycl::ext::oneapi::experimental;
-  syclexp::ipc_memory::handle local_handle = syclexp::ipc_memory::get(ptr, ctx);
+  syclexp::ipc_memory::handle local_handle =
+      syclexp::ipc_memory::get(base_ptr, ctx);
   syclexp::ipc_memory::handle_data_t local_handle_bytes = local_handle.data();
   std::vector<uint8_t> local_payload(
       reinterpret_cast<const uint8_t*>(local_handle_bytes.data()),
@@ -416,9 +444,10 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {
-      handles[r] = ptr;
-      buffers[r] = ptr;
-      signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
+      handles[r] = base_ptr;
+      buffers[r] = base_ptr;
+      signal_pads[r] =
+          (void*)((uintptr_t)base_ptr + block->signal_pad_offset);
       continue;
     }
 
@@ -447,7 +476,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
         buffers[r], handles[r], block->block_size, block->device_idx, false));
   }
 
-  auto symm_mem = c10::make_intrusive<XPUSymmetricMemory>(
+  auto pai = c10::make_intrusive<XPUPeerAllocInfo>(
       std::move(alloc_refs),
       std::move(buffers),
       std::move(signal_pads),
@@ -456,10 +485,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       block->buffer_size,
       block->device_idx,
       rank,
-      world_size);
-  symm_mem->set_group_name(group_name_);
-  block->symm_mems[group_name_] = symm_mem;
-  return symm_mem;
+      world_size,
+      group_name_);
+  // Cache it with the group name
+  block->symm_mems[group_name_] = pai;
+  // Create symm mem handle for this tensor, specified by its offset
+  return c10::make_intrusive<XPUSymmetricMemory>(pai, offset);
 }
 
 bool XPUSymmetricMemoryAllocator::has_multicast_support(int device_idx) {
@@ -474,6 +505,11 @@ std::string XPUSymmetricMemoryAllocator::name() {
   return "XPU";
 }
 
+bool XPUSymmetricMemoryAllocator::has_allocation(void* ptr) {
+  size_t offset = 0;
+  return find_block_covering(ptr, offset) != nullptr;
+}
+
 c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
   std::shared_lock lock(mutex_);
   auto it = ptr_to_block_.find(ptr);
@@ -481,6 +517,32 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
     return nullptr;
   }
   return it->second;
+}
+
+/* Search for a block that covers the given ptr, and write back the offset to
+ * the base ptr; return nullptr if not found */
+c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block_covering(
+    void* ptr,
+    size_t& offset) {
+  std::shared_lock lock(mutex_);
+  // In case of MemPool, tensor.storage().data_ptr() may not match exactly an
+  // allocation's base address. Thus we perform the search by testing if the
+  // former is within an allocation's range.
+  auto ptr_int = reinterpret_cast<uintptr_t>(ptr);
+  for (const auto& pair : ptr_to_block_) {
+    // pair.first is the allocation base, which on XPU is also the start of the
+    // user buffer (the signal pad sits at the end of the block).
+    auto base_int = reinterpret_cast<uintptr_t>(pair.first);
+    if (ptr_int < base_int) {
+      continue;
+    }
+    auto candidate = ptr_int - base_int;
+    if (candidate < pair.second->buffer_size) {
+      offset = candidate;
+      return pair.second;
+    }
+  }
+  return nullptr;
 }
 
 #else // !XPU_SYMM_MEM_AVAILABLE
@@ -539,8 +601,18 @@ std::string XPUSymmetricMemoryAllocator::name() {
   return "XPU";
 }
 
+bool XPUSymmetricMemoryAllocator::has_allocation(void* /*ptr*/) {
+  return false;
+}
+
 c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(
     void* /*ptr*/) {
+  return nullptr;
+}
+
+c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block_covering(
+    void* /*ptr*/,
+    size_t& /*offset*/) {
   return nullptr;
 }
 

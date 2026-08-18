@@ -31,18 +31,17 @@ struct AllocationRef : public c10::intrusive_ptr_target {
   ~AllocationRef();
 };
 
+// Forward declaration of XPUPeerAllocInfo
+class XPUPeerAllocInfo;
+
 class XPUSymmetricMemory : public SymmetricMemory {
  public:
+  // This is mostly a shallow copy that shares the pointer to
+  // `XPUPeerAllocInfo` which corresponds to the base Block. The
+  // XPUSymmetricMemory handle is specified by the offset to the base ptr.
   XPUSymmetricMemory(
-      std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs,
-      std::vector<void*> buffers,
-      std::vector<void*> signal_pads,
-      HandleType mc_handle,
-      void* mc_addr,
-      size_t buffer_size,
-      int local_device_idx,
-      int rank,
-      int world_size);
+      const c10::intrusive_ptr<XPUPeerAllocInfo>& pai,
+      size_t offset);
 
   ~XPUSymmetricMemory() override{};
 
@@ -65,9 +64,32 @@ class XPUSymmetricMemory : public SymmetricMemory {
   int get_world_size() override;
   c10::Device get_device() override;
 
-  void set_group_name(const std::string& group_name) {
-    group_name_ = group_name;
-  }
+ private:
+  int local_device_idx_;
+  int rank_;
+  int world_size_;
+  c10::intrusive_ptr<XPUPeerAllocInfo> pai_;
+  size_t offset_{0}; // in byte
+};
+
+// A class to hold the base pointers and signal pad pointers for a group of
+// peers. One `XPUPeerAllocInfo` object can be shared by multiple
+// `XPUSymmetricMemory` objects when the latter reside on the same allocation
+// and rendezvous over the same group. (The `XPUSymmetricMemory` objects may
+// have different offsets compared to the base address.)
+class XPUPeerAllocInfo : public c10::intrusive_ptr_target {
+ public:
+  XPUPeerAllocInfo(
+      std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs,
+      std::vector<void*> buffers,
+      std::vector<void*> signal_pads,
+      HandleType mc_handle,
+      void* mc_addr,
+      size_t buffer_size,
+      int local_device_idx,
+      int rank,
+      int world_size,
+      std::string group_name);
 
  private:
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs_;
@@ -82,6 +104,8 @@ class XPUSymmetricMemory : public SymmetricMemory {
   void** buffers_dev_;
   void** signal_pads_dev_;
   std::string group_name_;
+
+  friend class XPUSymmetricMemory;
 };
 
 struct Block : public c10::intrusive_ptr_target {
@@ -89,9 +113,11 @@ struct Block : public c10::intrusive_ptr_target {
   int device_idx;
   size_t block_size;
   size_t buffer_size;
+  // Byte offset from the allocation base (alloc_ref->ptr) to the start of the
+  // signal pad; the user buffer occupies [0, signal_pad_offset).
   size_t signal_pad_offset;
   std::optional<std::string> default_group_name;
-  std::map<std::string, c10::intrusive_ptr<XPUSymmetricMemory>> symm_mems;
+  std::map<std::string, c10::intrusive_ptr<XPUPeerAllocInfo>> symm_mems;
 
   Block(
       c10::intrusive_ptr<AllocationRef> alloc_ref,
@@ -117,9 +143,11 @@ class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
   bool has_multicast_support(int device_idx) override;
   c10::DeviceType supported_device_type() override;
   std::string name() override;
+  bool has_allocation(void* ptr) override;
 
  private:
   c10::intrusive_ptr<Block> find_block(void* ptr);
+  c10::intrusive_ptr<Block> find_block_covering(void* ptr, size_t& offset);
 
   std::shared_mutex mutex_;
   std::unordered_map<void*, c10::intrusive_ptr<Block>> ptr_to_block_;
