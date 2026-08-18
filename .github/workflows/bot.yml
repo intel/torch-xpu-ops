@@ -12,6 +12,8 @@ env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
+  # Pinged when a bot job fails in a way that needs a human.
+  BOT_ESCALATION_USER: chuanqi129
 
 permissions:
   contents: read
@@ -121,6 +123,10 @@ jobs:
 
             if (command === 'help') {
               authorized = true; // anyone
+            } else if (command === 'fix') {
+              // fix drives an autonomous agent with write access, so it is
+              // gated like `merge -f` rather than like the read-only commands.
+              authorized = maintainerOnly.includes(assoc);
             } else if (!privileged.includes(assoc)) {
               authorized = false;
             }
@@ -207,6 +213,8 @@ jobs:
             msg += 'This command requires OWNER, MEMBER, or COLLABORATOR association.';
             if (cmd === 'merge' && force === 'true') {
               msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
+            } else if (cmd === 'fix') {
+              msg = 'Only OWNER or MEMBER can use `@torchxpubot fix`.';
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -248,8 +256,18 @@ jobs:
 
             | Command | Description |
             |---------|-------------|
-            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host, implement a fix, and open a PR |
+            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
             | \`@torchxpubot help\` | Show this help message |
+
+            \`fix\` reproduces the issue on a runner that has a prebuilt nightly
+            PyTorch-XPU wheel and no build tree. Python-level fixes (tests, skip
+            lists, Python operator code) are verified and pushed to an
+            \`agent/<slug>\` branch for a human to turn into a PR. A change to C++
+            or SYCL sources cannot be compiled there, so those are reported as a
+            root cause plus a suggested patch, not as a verified fix.
+
+            \`fix\` also updates this issue's body with agent status markers and
+            applies stage labels while it runs.
 
             All other commands (merge, revert, rebase, lint, rerun, review, ut-check)
             are only available on pull request comments.`;
@@ -842,7 +860,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: '@chuanqi129 `@torchxpubot review` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+                body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI review failed.');
             }
@@ -965,7 +983,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: '@chuanqi129 `@torchxpubot ut-check` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+                body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot ut-check\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI analysis failed.');
             }
@@ -1081,9 +1099,25 @@ jobs:
           prompt: |
             Use the /issue-handler skill in pipeline mode to fix issue
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
-            Reproduce and verify the failure locally on this XPU host, implement the
-            fix, re-verify, then hand off to the /xpu-ops-pr-creation skill to open a
-            pull request. The repository checkout is at ${{ github.workspace }}.
+            The repository checkout is at ${{ github.workspace }}.
+
+            This runner has a prebuilt nightly PyTorch-XPU wheel installed and no
+            PyTorch source or build tree, so there is no way to recompile
+            libtorch_xpu.so here. That constrains what you may claim:
+
+            - Python-level changes (test files, skip lists, xpu_test_utils, Python
+              operator code) take effect immediately. Reproduce, fix, and re-verify
+              them normally.
+            - A change to C++ or SYCL sources under src/ CANNOT be verified on this
+              runner, because the installed wheel still contains the old kernels.
+              Do not run a repro after such an edit and report it as verified. Stop
+              instead, and report the root cause plus the suggested patch for a human
+              to build and verify.
+
+            When you have a verified Python-level fix, commit it to an agent/<slug>
+            branch and push it. Do not open a pull request: per the
+            /xpu-ops-pr-creation skill, a human opens the PR after reviewing your
+            summary. End by reporting the branch name and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -1118,26 +1152,54 @@ jobs:
       - name: "Verify: AI fix succeeded"
         if: always()
         uses: actions/github-script@v9
+        env:
+          AI_FIX_OUTCOME: ${{ steps.ai-fix.outcome }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
+            const outcome = process.env.AI_FIX_OUTCOME || 'skipped';
             const file = '${{ steps.ai-fix.outputs.execution_file }}';
-            let ok = false;
+
+            let result = null;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              const result = data.filter(e => e.type === 'result').pop();
+              result = data.filter(e => e.type === 'result').pop();
               console.log('Result:', JSON.stringify(result, null, 2));
-              ok = result && !result.is_error && result.total_cost_usd > 0;
             }
-            if (!ok) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: Number(process.env.ISSUE_NUMBER),
-                body: '@chuanqi129 `@torchxpubot fix` failed: Bedrock returned an error or no output. Please check AWS token validity and the workflow run.'
-              });
-              core.setFailed('AI fix failed.');
+            if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
+              return;
+            }
+
+            // Distinguish "the agent never ran" from "the agent failed", so the
+            // comment does not blame Bedrock for a setup or cancellation failure.
+            let reason;
+            if (outcome === 'cancelled') {
+              reason = 'the run was cancelled.';
+            } else if (outcome === 'skipped') {
+              reason = 'the environment setup failed before the agent started -- checkout, Python setup, or the nightly PyTorch-XPU install.';
+            } else if (result && result.is_error) {
+              reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
+            } else if (!result) {
+              reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
+            } else {
+              reason = 'the agent exited without a usable result.';
+            }
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: `@${{ env.BOT_ESCALATION_USER }} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+            });
+            if (outcome !== 'cancelled') {
+              core.setFailed(`AI fix failed: ${reason}`);
             }
 
       - name: Report usage cost
@@ -1172,6 +1234,11 @@ jobs:
               issue_number: ${{ env.COST_TRACKING_ISSUE }},
               body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
+
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 /__w /github ./ -R
 
   token-permission-test:
     runs-on: ubuntu-latest
@@ -1273,7 +1340,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
-                body: '@chuanqi129 Bedrock connectivity test failed. Please check AWS token validity.'
+                body: `@${{ env.BOT_ESCALATION_USER }} Bedrock connectivity test failed. Please check AWS token validity.`
               });
               core.setFailed('Bedrock test failed.');
             } else {
