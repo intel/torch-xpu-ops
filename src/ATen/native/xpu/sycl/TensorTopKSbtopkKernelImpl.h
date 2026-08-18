@@ -60,10 +60,34 @@ template <
     bool Largest,
     typename IndexT = int>
 struct SubgroupTopKFunctor {
-  // Insert val into a K-sorted buffer. For Largest=true the buffer is sorted
-  // descending (top_vals[0] is max); for Largest=false it is sorted ascending
-  // (top_vals[0] is min).
-  //
+  // Returns true if a is "better" than b — i.e. a should rank higher.
+  // NaN is treated as better than any non-NaN (matching CPU/CUDA behavior).
+  // A sentinel (idx == -1) is always worse than a real entry.
+  static inline bool better(
+      scalar_t a,
+      IndexT a_idx,
+      scalar_t b,
+      IndexT b_idx) {
+    // Sentinel is always worse
+    if (a_idx == -1)
+      return false;
+    if (b_idx == -1)
+      return true;
+    // NaN beats non-NaN
+    bool a_nan = at::_isnan(a);
+    bool b_nan = at::_isnan(b);
+    if (a_nan != b_nan)
+      return a_nan;
+    if (a_nan)
+      return a_idx < b_idx; // both NaN: smaller index ranks higher
+    if constexpr (Largest) {
+      return a > b;
+    } else {
+      return a < b;
+    }
+  }
+
+  // Insert val into a K-sorted buffer.
   // Fully unrolled, no early break — SIMD-friendly.
   inline void insert(
       scalar_t* top_vals,
@@ -71,32 +95,13 @@ struct SubgroupTopKFunctor {
       int count,
       scalar_t val,
       IndexT idx) const {
-    // Threshold is at the bottom of the buffer (top_vals[K-1]).
-    if constexpr (Largest) {
-      if (count >= K && !(val > top_vals[K - 1]) && top_idx[K - 1] != -1)
-        return;
-    } else {
-      if (count >= K && !(val < top_vals[K - 1]) && top_idx[K - 1] != -1)
-        return;
-    }
+    if (count >= K && !better(val, idx, top_vals[K - 1], top_idx[K - 1]))
+      return;
     bool inserted = false;
 #pragma unroll
     for (int i = K - 1; i >= 0; --i) {
-      // When count < K the buffer is partially filled: positions [0, count)
-      // hold real values while [count, K) still contain sentinels.
-      // Guard "i <= count" ensures we only stop at position i when
-      // top_vals[i-1] is a real entry.  Without this guard, an input
-      // value equal to the sentinel (e.g. all -inf for largest=true)
-      // would always stop at position K-1, overwriting it repeatedly
-      // instead of filling lower positions.
-      bool stop;
-      if constexpr (Largest) {
-        stop = (i == 0) ||
-            (i <= count && !(val > top_vals[i - 1]) && top_idx[i - 1] != -1);
-      } else {
-        stop = (i == 0) ||
-            (i <= count && !(val < top_vals[i - 1]) && top_idx[i - 1] != -1);
-      }
+      bool stop = (i == 0) ||
+          (i <= count && !better(val, idx, top_vals[i - 1], top_idx[i - 1]));
       if (!inserted && stop) {
         top_vals[i] = val;
         top_idx[i] = idx;
@@ -109,8 +114,6 @@ struct SubgroupTopKFunctor {
   }
 
   // Bitonic merge: A[K] and B[K] are both sorted in the same direction.
-  // Step 1: A[i] = max/min(A[i], B[K-1-i]) — produces bitonic sequence.
-  // Step 2: bitonic sort restores sorted order on A.
   // When A[i] holds a sentinel (A_idx[i]==-1), any real entry replaces it.
   inline void bitonic_merge(
       scalar_t* A,
@@ -122,13 +125,7 @@ struct SubgroupTopKFunctor {
     for (int i = 0; i < K; ++i) {
       scalar_t bv = B[K - 1 - i];
       IndexT bi = B_idx[K - 1 - i];
-      bool take;
-      if constexpr (Largest) {
-        take = bv > A[i] || A_idx[i] == -1;
-      } else {
-        take = bv < A[i] || A_idx[i] == -1;
-      }
-      if (take && bi != -1) {
+      if (better(bv, bi, A[i], A_idx[i])) {
         A[i] = bv;
         A_idx[i] = bi;
       }
@@ -159,12 +156,7 @@ struct SubgroupTopKFunctor {
 #pragma unroll
       for (int i = 0; i < K; ++i) {
         int j = i ^ stride;
-        bool swap;
-        if constexpr (Largest) {
-          swap = (j > i) && (A[j] > A[i] || A_idx[i] == -1) && A_idx[j] != -1;
-        } else {
-          swap = (j > i) && (A[j] < A[i] || A_idx[i] == -1) && A_idx[j] != -1;
-        }
+        bool swap = (j > i) && better(A[j], A_idx[j], A[i], A_idx[i]);
         if (swap) {
           scalar_t tv = A[i];
           A[i] = A[j];

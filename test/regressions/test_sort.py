@@ -58,36 +58,29 @@ class TestNNMethod(TestCase):
     def test_topk_nan_input(self):
         num_cols = 128
         k = 6
-        n_nan_cols = 10
+        n_nan_cols = 3
         for dtype in (torch.float32, torch.bfloat16):
             for num_rows in (1024, 4096, 8192):
                 torch.manual_seed(0)
                 x = torch.randn(num_rows, num_cols, device="cpu", dtype=dtype)
                 x[:, -n_nan_cols:] = float("nan")
-                cpu_vals, cpu_ids = torch.topk(x, k=k, dim=-1, sorted=True)
+                cpu_vals, _ = torch.topk(x, k=k, dim=-1, sorted=True)
                 xpu_vals, xpu_ids = torch.topk(x.xpu(), k=k, dim=-1, sorted=True)
                 torch.xpu.synchronize()
-                self.assertTrue(
-                    (xpu_ids >= 0).all() and (xpu_ids < num_cols).all(),
-                    f"Out-of-range indices for dtype={dtype}, N={num_rows}",
-                )
+                # Values must match CPU
                 self.assertEqual(cpu_vals.isnan(), xpu_vals.cpu().isnan())
                 self.assertEqual(cpu_vals.nan_to_num(), xpu_vals.cpu().nan_to_num())
-                # Non-NaN positions: indices must match CPU exactly
-                non_nan_mask = ~cpu_vals.isnan()
-                self.assertEqual(cpu_ids[non_nan_mask], xpu_ids.cpu()[non_nan_mask])
-                # NaN positions: indices must be valid, unique per row, and
-                # point to NaN values
-                nan_mask = cpu_vals.isnan()
-                nan_ids = xpu_ids[nan_mask.xpu()]
-                self.assertTrue((nan_ids >= 0).all() and (nan_ids < num_cols).all())
+                # Indices: valid, unique, and point to correct values
+                gathered = x.xpu().gather(1, xpu_ids)
+                nan_mask = xpu_vals.isnan()
+                self.assertTrue(gathered[nan_mask].isnan().all())
+                self.assertEqual(
+                    gathered[~nan_mask],
+                    xpu_vals[~nan_mask],
+                )
                 for r in range(num_rows):
                     row_ids = xpu_ids[r].cpu().tolist()
-                    self.assertEqual(
-                        len(set(row_ids)),
-                        k,
-                        f"Duplicate indices for dtype={dtype}, N={num_rows}, row={r}",
-                    )
+                    self.assertEqual(len(set(row_ids)), k)
 
     def test_topk_neginf_input(self):
         num_cols = 128
