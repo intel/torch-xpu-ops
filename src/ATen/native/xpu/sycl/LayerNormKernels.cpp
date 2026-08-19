@@ -424,15 +424,18 @@ WelfordDataLN compute_stats(
     wd = WelfordCombine<rms_norm>(wd, wdB);
   }
 
+  const int sg_range = item_id.get_local_range(0);
+  const int sg_gid = item_id.get_local_id(0);
+  const int sg_lid = item_id.get_local_id(1);
   // threadIdx.x == 0 has correct values for each warp
   // inter-warp reductions
-  if (item_id.get_local_range(0) > 1) {
-    auto addr_offset = item_id.get_local_range(0);
-    for (int offset = item_id.get_local_range(0) / 2; offset > 0; offset /= 2) {
+  if (sg_range > SIMD) {
+    // Tree reduce via SLM when sub-group count exceeds SIMD width
+    auto addr_offset = sg_range;
+    for (int offset = addr_offset / 2; offset > 0; offset /= 2) {
       // upper half of warps write to shared
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) >= offset &&
-          item_id.get_local_id(0) < 2 * offset) {
-        const int wrt_y = item_id.get_local_id(0) - offset;
+      if (sg_lid == 0 && sg_gid >= offset && sg_gid < 2 * offset) {
+        const int wrt_y = sg_gid - offset;
         buf[2 * wrt_y] = wd.mean;
         buf[2 * wrt_y + 1] = wd.sigma2;
         buf[wrt_y + addr_offset] = wd.count;
@@ -440,8 +443,8 @@ WelfordDataLN compute_stats(
       sycl::group_barrier(item_id.get_group());
 
       // lower half merges
-      if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
-        const int rd_y = item_id.get_local_id(0);
+      if (sg_lid == 0 && sg_gid < offset) {
+        const int rd_y = sg_gid;
         WelfordDataLN wdB{
             static_cast<float>(buf[2 * rd_y]),
             static_cast<float>(buf[2 * rd_y + 1]),
@@ -451,7 +454,45 @@ WelfordDataLN compute_stats(
       sycl::group_barrier(item_id.get_group());
     }
 
-    if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
+    if (sg_lid == 0 && sg_gid == 0) {
+      buf[0] = wd.mean;
+      buf[1] = wd.sigma2 / float(N);
+    }
+    sycl::group_barrier(item_id.get_group());
+    return WelfordDataLN{
+        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
+  } else if (sg_range > 1) {
+    // sg_range <= SIMD: sub-group 0 reduces all partials via shuffles
+
+    if (sg_lid == 0) {
+      buf[sg_gid] = wd.mean;
+      buf[sg_gid + sg_range] = wd.sigma2;
+      buf[sg_gid + 2 * sg_range] = wd.count;
+    }
+    sycl::group_barrier(item_id.get_group());
+
+    // Lanes >= sg_range feed identity {0,0,0} (no-op under WelfordCombine)
+    if (sg_gid == 0) {
+      WelfordDataLN w;
+      if ((int)sg_lid < sg_range) {
+        w = {
+            static_cast<float>(buf[sg_lid]),
+            static_cast<float>(buf[sg_lid + sg_range]),
+            static_cast<float>(buf[sg_lid + 2 * sg_range])};
+      } else {
+        w = {0.f, 0.f, 0.f};
+      }
+      for (int offset = (SIMD >> 1); offset > 0; offset >>= 1) {
+        WelfordDataLN other{
+            sycl::shift_group_left(sg, w.mean, offset),
+            sycl::shift_group_left(sg, w.sigma2, offset),
+            sycl::shift_group_left(sg, w.count, offset)};
+        w = WelfordCombine<rms_norm>(w, other);
+      }
+      wd = w;
+    }
+
+    if (sg_gid == 0 && sg_lid == 0) {
       buf[0] = wd.mean;
       buf[1] = wd.sigma2 / float(N);
     }
@@ -549,7 +590,7 @@ struct VectorizedLayerNormKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 2, cgh);
+    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 3, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
