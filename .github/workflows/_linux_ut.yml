@@ -26,7 +26,7 @@ on:
       category:
         type: string
         default: ''
-        description: 'Optional tag (e.g. target/baseline) appended to artifact names'
+        description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
       skip_summary:
         type: boolean
         default: false
@@ -50,7 +50,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ contains(inputs.runner, 'bmg') && 'intelgpu/ubuntu-26.04-rolling:26.18' || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -141,7 +141,7 @@ jobs:
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*${{ inputs.category != '' && format('-{0}', inputs.category) || '' }}
           path: ${{ github.workspace }}/ut_log
-      - name: Download skipped issues snapshot
+      - name: Download known-failure issues snapshot
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -172,14 +172,22 @@ jobs:
           echo "Restoring snapshotted skipped issues if available."
           cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp || true
           cp "${snapshot_dir}/issues_snapshot.log" issues.log || true
-          echo "Fetching current skipped-issues data from GitHub."
+          if [[ "${{ inputs.runner }}" == *"bmg"* ]]; then
+            cat "${snapshot_dir}/issues_snapshot_bmg.log" >> issues.log || true
+          fi
+          if [[ "${{ inputs.category }}" == "dpclang" ]]; then
+            cat "${snapshot_dir}/issues_snapshot_dpclang.log" >> issues.log || true
+          fi
+          echo "Fetching current known-failure issues from GitHub."
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
-          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open >> issues.log
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" "${{ inputs.runner }}" >> issues.log
           if [ "${{ inputs.ut }}" == "basic" ];then
             ut_list="op_regression op_extended op_regression_dev1"
           else
             ut_list="${{ inputs.ut }}"
           fi
+          # Check every ut in the list; do not stop at the first failure.
+          check_ret=0
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
@@ -189,8 +197,9 @@ jobs:
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
             sed -i 's/[[:space:]]*$//g' Known_issue.log
-            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
+            TEST_PLATFORM=linux TEST_RUNNER="${{ inputs.runner }}" bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}" || check_ret=1
           done
+          exit $check_ret
       - name: Collect new failures with error messages
         if: ${{ ! cancelled() && steps.ut-check.outcome == 'failure' }}
         id: new-failures
