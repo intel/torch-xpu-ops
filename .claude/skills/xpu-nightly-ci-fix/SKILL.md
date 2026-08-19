@@ -72,7 +72,7 @@ flags differ:
 
 | Leaf | Flag in this orchestrator | Flag in issue-handler |
 |---|---|---|
-| `fix-reproduce` | `stage=nightly` for sweep, `stage=auto` for deep | same |
+| `fix-reproduce` | `stage=nightly` (Phase 1 sweep only; Phase 2 does not call it) | `stage=auto` (single-bug path), `stage=nightly` (skip-list sweep) |
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 | `fix-verify` | `run_before_after_diff=true`, `run_lint=true` | both false |
 
