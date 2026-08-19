@@ -179,6 +179,14 @@ Tensor& _exec_fft(
     IntArrayRef dim,
     bool onesided,
     bool forward) {
+  // oneMKL DFT rejects zero-element batches (NUMBER_OF_TRANSFORMS = 0). An
+  // empty batch has nothing to transform, so skip planning and execution and
+  // return the output in its expected (empty) shape. Matches CPU MKL and CUDA
+  // (pytorch/pytorch#190483).
+  if (out.numel() == 0) {
+    out.resize_(out_sizes, MemoryFormat::Contiguous);
+    return out;
+  }
   const auto ndim = self.dim();
   const int64_t signal_ndim = dim.size();
   const auto batch_dims = ndim - signal_ndim;
