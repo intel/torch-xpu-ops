@@ -11,6 +11,10 @@ Python, no scripts.
 
 This is the only extraction path for the parent `label-issue` skill.
 
+This skill is **analysis-only**. It fetches issue data read-only and never
+writes to GitHub — no label edits, comments, or issue creation. Its single
+artifact is the extraction JSON.
+
 Do NOT use this for batch/multi-issue runs or Excel output; it handles exactly
 one issue per invocation.
 

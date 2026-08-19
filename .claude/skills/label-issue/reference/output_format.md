@@ -24,6 +24,8 @@ Duplicate search: failed (<one-line reason, e.g. all queries returned non-JSON>)
 | `test_module: <ut\|e2e\|build\|infrastructure>` | <deciding signal from extract.json, 1 line> |
 | `module: <value>` | <bucket-deciding signal, 1 line> |
 | `priority: <Urgent\|High\|Medium\|Low>` | <matched rule + evidence, 1 line> |
+| `os: <Linux\|Windows>` | <`os` from extract.json, 1 line; omit row when `os` is blank> |
+| `hw: <PVC\|BMG\|ARC\|ARL\|LNL\|MTL\|CRI>` | <`platform` from extract.json, 1 line; omit row when `platform` is blank> |
 | `dependency component: <value>` | <direct evidence, 1 line; omit row when none/null> |
 | `duplicated` | Duplicate of <url> (<relevance>, <recommended_action>); omit row when no duplicate |
 | `not_target` | <own_labels or duplicate:<repo>#<n>>; omit row when false |
@@ -86,6 +88,11 @@ Rules for the tables:
   from their label — `torchAO` -> `module: ao` and `torch-runtime` -> `module:
   core` — so emitting the bucket would produce a label that does not exist in the
   repo.
+- The `os` and `hw` rows come straight from `extract.json`'s `os` and
+  `platform` fields (Step 1) — no reference pack re-derives them here. Emit
+  `os: <value>` and `hw: <value>` verbatim. Omit either row when its source
+  field is blank; a blank field is not evidence the issue is
+  platform-agnostic, it just means no row.
 - `type` and `test_module` come straight from `extract.json` (Step 1); no
   `label-issue/reference/` pack governs them, and no step re-derives them here.
   (`test_module` was itself decided in Step 1 per
@@ -102,11 +109,11 @@ Rules for the tables:
   canonical tier name (`Urgent`/`High`/`Medium`/`Low`) as produced by
   `extract.json`'s `priority`; see [priority.md](priority.md) for the mapping to
   the field's current `P0`-`P3` options.
-- Emit a row only when the axis produced a value. Omit the dependency,
-  `duplicated`, `not_target`, `need_split`, and `pr_link` rows entirely when they
-  do not apply, but Step 3 must still have been run against
-  `reference/dependency.md` to reach that `null`/`none` conclusion — an omitted
-  row is not a skipped step.
+- Emit a row only when the axis produced a value. Omit the `os`, `hw`,
+  dependency, `duplicated`, `not_target`, `need_split`, and `pr_link` rows
+  entirely when they do not apply, but Step 3 must still have been run
+  against `reference/dependency.md` to reach that `null`/`none` conclusion —
+  an omitted row is not a skipped step.
 - The `pr_link` row carries the bare URL from `extract.json` as its reason, with
   no prose. Omit the row when `pr_link` is `""`.
 - **Every reason is ONE line: one sentence or clause, no more than ~140
@@ -198,6 +205,7 @@ Analyzed case: test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (
 | `test_module: ut` | Reproduce steps run `pytest test/xpu/test_matmul_xpu.py`. |
 | `module: torch-ops-gemm` | Fails in the oneDNN matmul path, the addmm/gemm family. |
 | `priority: Medium` | 4 UT cases, RuntimeError without crash. |
+| `hw: BMG` | Reproduce log's `collect_env` reports a Battlemage B580 GPU. |
 | `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
 
 Report only — not GitHub labels, read by the calling workflow:

@@ -15,8 +15,8 @@ group (distinct normalized error signature), `labels.md` also carries
 `need_split` as a recommendation. The issue is never split into sub-issues.
 
 This skill is **analysis-only**. It never adds labels, closes issues, posts
-comments, or creates issues. Its single artifact is `labels.md`, for a workflow or 
-human to apply.
+comments, or creates issues. Its single artifact is `labels.md`, for a workflow
+or human to apply.
 
 
 ## Inputs
