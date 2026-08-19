@@ -615,6 +615,13 @@ resolve against pins that require the full history to be reachable;
 a shallow fetch surfaces later as "cannot find <sha>" in `submodule
 update`.
 
+`TORCH_COMMIT_ID` (the wheel's build commit) is a **temporary
+alignment only** — it makes `pytorch/test/` support modules match the
+installed wheel's binary so the test can run. It is **not** the fix
+base and is never returned as `base`. Downstream fixes always branch
+off `origin/main` (see Stage 2), so this stage still reports
+`base=origin/main`; `TORCH_COMMIT_ID` stays internal to Stage 3.
+
 For torch-xpu-ops test paths, ensure the working torch-xpu-ops tree is
 at `$pytorch_dir/third_party/torch-xpu-ops` (Prepare already handled
 this if `needs_tree=yes`; if it didn't, do it now via the
@@ -647,7 +654,7 @@ section.
 | Result | Action |
 |--------|--------|
 | `CANNOT_VERIFY` | Report to orchestrator, stop |
-| `REPRODUCED` | Return `REPRODUCED(stage=ci_env, refined_command=...)` |
+| `REPRODUCED` | Return `REPRODUCED(stage=ci_env, base=origin/main, refined_command=...)` — base is `origin/main`, not the wheel's `TORCH_COMMIT_ID` the tree is currently detached at |
 | `PASSED` | Return `NOT_REPRODUCED(checked_stages=[nightly, source_build, ci_env])` — issue no longer exists; orchestrator reports to user or triage collects reason |
 
 ## Output
@@ -657,7 +664,7 @@ Return one of these to the orchestrator:
 ```
 REPRODUCED
   stage: nightly | source_build | ci_env
-  base: origin/main | <ci_commit_sha>    # base for downstream build (default origin/main; ci_commit_sha only when source_build fell back)
+  base: origin/main | <ci_commit_sha>    # base for downstream build. Default origin/main (also for stage=ci_env). ci_commit_sha only when stage=source_build fell back to ci_commit. Stage 3's TORCH_COMMIT_ID wheel-alignment checkout is never returned as base.
   refined_command: <single shell-executable string>
 ```
 
