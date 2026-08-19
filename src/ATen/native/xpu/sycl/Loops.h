@@ -579,8 +579,7 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     auto dt = iter.dtype(i);
     if (dt == at::ScalarType::Float) {
       has_float = true;
-    } else if (
-        dt != at::ScalarType::Half && dt != at::ScalarType::BFloat16) {
+    } else if (dt != at::ScalarType::Half && dt != at::ScalarType::BFloat16) {
       use_fp_cast = false;
       break;
     }

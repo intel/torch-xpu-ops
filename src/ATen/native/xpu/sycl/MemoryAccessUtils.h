@@ -189,8 +189,7 @@ struct StoreWithCastFP {
       char* base_ptr,
       uint32_t offset,
       int arg = 0) {
-    *(reinterpret_cast<float*>(base_ptr) + offset) =
-        c10::convert<float>(value);
+    *(reinterpret_cast<float*>(base_ptr) + offset) = c10::convert<float>(value);
   }
 };
 
