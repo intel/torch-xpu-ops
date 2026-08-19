@@ -327,8 +327,6 @@ def _int4_mm(self, device, m, k, n):
 
         if self.device_type == "cpu":
             b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
-        elif self.device_type == "xpu":
-            b_int4pack = b_tmp.view(torch.int32)
         else:
             b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
 
@@ -342,9 +340,7 @@ def _int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
         elif self.device_type == "xpu":
-            self.assertTrue(
-                b_int4pack.dtype is torch.int32
-            )  # or b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dtype is torch.int32)
             self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
         else:
@@ -357,9 +353,7 @@ def _int4_mm(self, device, m, k, n):
 
     torch.manual_seed(1)
     a_bf16 = torch.rand((m, k), dtype=torch.bfloat16, device=device)
-    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device) * torch.rand(
-        (k, 1), dtype=torch.bfloat16, device=device
-    )
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
     for dtype in [torch.bfloat16] + (
@@ -374,6 +368,7 @@ def _int4_mm(self, device, m, k, n):
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
         ref = torch.mm(a, b)
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
+
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
 
