@@ -2970,9 +2970,9 @@ class TestOperators(TestCase):
         sample_inputs = op.sample_inputs(device, dtype)
 
         for sample_input in sample_inputs:
-            # Check that the op raises NotImplementedError or appropriate failure
+            # Ordering ops reject complex via TORCH_CHECK_TYPE, surfacing as TypeError
             self.assertRaises(
-                RuntimeError,
+                (RuntimeError, TypeError),
                 op,
                 sample_input.input,
                 *sample_input.args,
