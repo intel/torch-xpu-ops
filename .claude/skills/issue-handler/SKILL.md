@@ -304,10 +304,9 @@ Branch on the verdict:
 ## Stage 5 — Verify (`fix-verify`)
 
 Call `fix-verify` with `refined_command` (from Stage 2),
-`target_repo_dir`, `changed_files` (from Stage 4),
-`run_before_after_diff=false`, `run_lint=false` (issue-handler does
-not need the before/after table or lint auto-fix; those are for
-xpu-nightly-ci-fix).
+`target_repo_dir`, and `changed_files` (from Stage 4). `fix-verify`
+unconditionally produces the FAIL->PASS before/after table and runs
+`spin fixlint` on a passing result — no flags to pass.
 
 Branch on the verdict:
 

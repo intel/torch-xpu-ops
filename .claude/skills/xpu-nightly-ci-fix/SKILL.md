@@ -28,10 +28,6 @@ as `issue-handler`; the differences are:
    a tracking issue so CI unblocks now and the deep fix is followed
    up async. `issue-handler` runs with `allow_skip=false` and never
    skips.
-4. Runs `fix-verify` with `run_before_after_diff=true` and
-   `run_lint=true` — the nightly summary benefits from a
-   before/after table per test, and lint is auto-fixed and
-   re-staged so the commit is landable as-is.
 
 Every agent-produced diff is a **proposal**. This orchestrator and
 its leaves never commit, push, tag, or open a PR — the invoking
@@ -62,7 +58,7 @@ parse report → install nightly wheel once → for entry in failures:
                                               reset checkouts →
                                               fix-root-cause →
                                               fix-implement(allow_skip=true) →
-                                              fix-verify(run_before_after_diff=true, run_lint=true)
+                                              fix-verify
                                                              │
                                                 → final summary
 ```
@@ -74,7 +70,9 @@ flags differ:
 |---|---|---|
 | `fix-reproduce` | `stage=nightly` (Phase 1 sweep only; Phase 2 does not call it) | `stage=auto` (single-bug path), `stage=nightly` (skip-list sweep) |
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
-| `fix-verify` | `run_before_after_diff=true`, `run_lint=true` | both false |
+
+`fix-verify` takes no flags — it always runs the before/after table
+and lint — so it is identical for both orchestrators.
 
 ## Inputs
 
@@ -212,8 +210,8 @@ For each STILL_FAILING entry:
 2. Call `fix-root-cause` on the entry's failure signature. If it
    returns `NEEDS_HUMAN`, log the entry outcome and move on.
 3. On `IMPLEMENTING`, call `fix-implement` with `allow_skip=true`.
-   If it returns `READY`, call `fix-verify` with
-   `run_before_after_diff=true` and `run_lint=true`.
+   If it returns `READY`, call `fix-verify` (no flags — it always
+   runs the before/after table and lint).
 4. Each leaf posts its own per-entry
    `<!-- agent:root-cause -->` / `<!-- agent:implement -->` /
    `<!-- agent:verify -->` comment. Track each entry's outcome for
