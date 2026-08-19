@@ -53,7 +53,10 @@ search hit that already returned `state` and `labels`.
 - Never report the source issue as its own duplicate. Drop any match whose
   repository and issue number equal the source issue's.
 - The search must actually succeed. If every query fails or returns nothing
-  parseable, report low confidence rather than `has_duplicate: false`.
+  parseable, omit the `duplicated` row and emit the one-line
+  `Duplicate search: failed (<reason>)` note per
+  [output_format.md](output_format.md) — never silently treat a failed search
+  the same as a clean `has_duplicate: false` result.
 
 ## Relevance and evidence
 
@@ -86,9 +89,10 @@ issue in one repository merely because a counterpart exists in the other.
 | A `HIGH` or `MEDIUM` relevance duplicate's labels | The flag is `true`; the source is `duplicate:<repo>#<number>`. |
 | Neither, or only a `LOW` relevance duplicate | Both flags are `false`. |
 
-An inherited flag suppresses the product `NEED_FIX` action exactly as an own
-label would, per [target_component.md](target_component.md). It never changes
-`target_component`, which stays governed by
+An inherited flag overrides `need_action` to `NEED_SKIP_CASE` exactly as an own
+label would, per the `not_target` row in
+[target_component.md](target_component.md)'s canonical verdicts table. It never
+changes `target_component`, which stays governed by
 [target_component.md](target_component.md). Cite the duplicate's URL whenever a
 flag is inherited.
 

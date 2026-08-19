@@ -32,9 +32,11 @@ returns `NEED_FIX_3RDPARTY`; decide ownership from the fix-location table
 alone. A `null` means the dependency axis was inconclusive, never that a third
 party was confirmed.
 
-The single exception to the override is a Windows `os`, which stays
-`NEED_HUMAN`. Its `target_component` still names the component when the
-dependency axis confirmed one (typically `MSVC`).
+Two exceptions to the override outrank it: a Windows `os` stays `NEED_HUMAN`,
+and `not_target` being `true` stays `NEED_SKIP_CASE` (see the canonical
+verdicts table below — both rows lead the dependency row). Either way,
+`target_component` still names the component when the dependency axis
+confirmed one (typically `MSVC` on Windows).
 
 ## Fix location
 
@@ -68,10 +70,13 @@ failure remains relevant and cannot support an already-fixed conclusion.
 
 ## Canonical verdicts
 
-Apply in order; the first matching row wins.
+Apply in order; the first matching row wins. `not_target` is decided later, in
+Step 5 — revisit this table then and apply its row on top of whatever verdict
+Step 4 produced.
 
 | Ownership or condition | `need_action` |
 |---|---|
+| `not_target` is `true` (own labels, or inherited from a `HIGH`/`MEDIUM` duplicate per [duplicates.md](duplicates.md)) | `NEED_SKIP_CASE` |
 | `os` is Windows | `NEED_HUMAN` |
 | The dependency axis returned a taxonomy value | `NEED_FIX_3RDPARTY` |
 | Test file itself | `NEED_FIX_CASE` |
@@ -84,6 +89,9 @@ The last two rows both cover a `target_component` of `N/A`, and the order
 disambiguates them: reach the final row only when the trace was conclusive.
 Insufficient evidence is `NEED_FIX`; a conclusive "nothing here to fix" is
 `NEED_HUMAN`.
+
+`not_target` never changes `target_component` — the traced or inherited
+component is still named, if one was found — it only overrides `need_action`.
 
 An existing upstream fix, when found, belongs in the Step 2 root-cause line; do
 not call a skip or xfail an upstream fix.

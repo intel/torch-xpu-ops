@@ -44,6 +44,12 @@ than Low (`Enhancement or feature request`).
 
 When no row in any tier matches, emit `Medium`.
 
+Case-count rows (`>6 failed UT cases`, `1-6 failed UT cases`) are the one
+exception to Step 1.5's per-case scoping: count every `test_cases[]` entry in
+the whole issue, not just the analyzed case. Severity is a property of the
+issue as a whole, so a 4-case issue is Medium even though only case 1 was
+root-caused.
+
 ## Urgent
 
 Assign `Urgent` when any of these hold:
@@ -77,7 +83,7 @@ Assign `Urgent` when any of these hold:
 
 | Condition | Evidence | Examples |
 |---|---|---|
-| More than 6 failed UT cases | Count distinct test-case names in the issue body or title. Meta-tracking issues may list many cases. | Large test-class failures. |
+| More than 6 failed UT cases | Count distinct test-case names across the whole issue (`extract.json`'s `test_cases[]`), not just the Step 1.5 analyzed case. Meta-tracking issues may list many cases. | Large test-class failures. |
 | Regression | The issue cites a version where it passed and a current version where it fails. | Passed on 2.10, fails on 2.11. |
 | Hang or timeout | The process remains alive but is stuck, such as after a 300-second timeout, infinite wait, or deadlock. | Distributed test hangs. |
 | Benchmark accuracy regression | Benchmark accuracy passed in a prior release and now fails without a crash. | `fail_accuracy` on an E2E model. |
@@ -87,7 +93,7 @@ Assign `Urgent` when any of these hold:
 | Condition | Evidence | Examples |
 |---|---|---|
 | Benchmark performance regression <=7% | A measured performance drop is cited and is no greater than 7%. | Minor throughput decrease. |
-| 1-6 failed UT cases | A small number of related test failures. | A few operator tests failing. |
+| 1-6 failed UT cases | A small number of related test failures, counted across the whole issue, not just the analyzed case. | A few operator tests failing. |
 | Functional error without a crash | RuntimeError, AssertionError, or an incorrect result while the process continues. | Wrong output, type errors. |
 | Feature gap blocking tests | Tests fail because an API is not implemented, without a crash. | Not implemented errors. |
 

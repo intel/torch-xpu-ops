@@ -231,7 +231,9 @@ whatever the scan reached first.
 ## Top-level mirror fields
 
 `test_file`, `test_class`, and `test_case` mirror the first **unit-test-shaped**
-entry - the first entry with no `benchmark` key - NOT necessarily
+entry - the first entry with no `benchmark` key. Since `test_module` is decided
+first and an `e2e` issue never reaches unit-test parsing, every entry in
+`test_cases` on a `ut` issue is unit-test-shaped, so this is always
 `test_cases[0]`. On an E2E issue no unit row exists, so all three are `""`.
 
 ## Benchmark model lists

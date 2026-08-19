@@ -1,6 +1,6 @@
 ---
 name: extract-issue
-description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, type/issue_type, test_module, test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Reads module and dependency off existing labels only. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
+description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test_module, test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Reads module and dependency off existing labels only. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
 ---
 
 # Extract Issue Info
@@ -82,7 +82,7 @@ name: `Status`, `Estimate`, `Depending`, and `Short Comments` to the matching
 `pytorchxpu_*` fields, and `Priority` to `priority`.
 
 This fetch is **best-effort**. On any failure, or for a repo outside the project,
-set `github_type`, `priority`, and every `pytorchxpu_*` field to `""` and
+set `issue_type`, `priority`, and every `pytorchxpu_*` field to `""` and
 continue. That is not a hard-stop.
 
 ### Step 3 - Classify
@@ -118,9 +118,7 @@ always yields `""`.
 | created_time / updated_time | gh REST | ISO 8601 timestamps. |
 | milestone | gh REST | Milestone title, or "". |
 | summary | gh REST | The `title`, verbatim. |
-| type | gh GraphQL | Lowercase of `issue_type` (`Bug` -> `bug`). |
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
-| github_type | gh GraphQL | The same raw Type field as `issue_type`. |
 | module | issue labels | Bucket for the `module: <x>` label, per [../reference/module.md](../reference/module.md). See **Label-derived axes**. |
 | test_module | you | `ut` \| `e2e` \| `build` \| `infrastructure`, per [reference/testcase_rules.md](reference/testcase_rules.md). |
 | dependency | issue labels | Taxonomy value for the dependency label, per [../reference/dependency.md](../reference/dependency.md). `AO` is never a value. See **Label-derived axes**. |
@@ -169,7 +167,7 @@ field beats a guess.
 | Field | Source |
 |---|---|
 | `summary` | The full title, verbatim. |
-| `issue_type` / `type` | The GitHub Type field only, so `""` when unset. |
+| `issue_type` | The GitHub Type field only, so `""` when unset. |
 | `module` / `dependency` | Existing labels only, so possibly `""`. |
 | `platform_specific` | Judged from the issue text, never from local hardware. |
 | `pr_link` | A `/pull/` URL, or a resolved `owner/repo#N` or bare `#N`. |

@@ -1,6 +1,6 @@
 ---
 name: label-issue
-description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive target_component/need_action, dependency, duplicate, module, and priority. When the issue reports several failing cases, only the first is analyzed and labels.md names it; when the failures form more than one group it also emits need_split. Emits a markdown label+reason table under agent_space/label_issue/ for a human to review and apply; it never writes to GitHub. Use when you want labels for an issue without running the full issue-triage pipeline (no local reproduce, no per-axis subagent fan-out)."
+description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive target_component/need_action, dependency, duplicate, module, and priority. When the issue reports several failing cases, only the first is analyzed and labels.md names it; when the failures form more than one group it also emits need_split. Emits a markdown labels table and a report-only table under agent_space/label_issue/; it never writes to GitHub. Use when you want labels for an issue without a local reproduce or per-axis subagent fan-out."
 ---
 
 # Label Issue
@@ -15,8 +15,8 @@ group (distinct normalized error signature), `labels.md` also carries
 `need_split` as a recommendation. The issue is never split into sub-issues.
 
 This skill is **analysis-only**. It never adds labels, closes issues, posts
-comments, or creates issues. Its single artifact is `labels.md`, for a human to
-review and apply.
+comments, or creates issues. Its single artifact is `labels.md`, for a workflow or 
+human to apply.
 
 
 ## Inputs
@@ -126,8 +126,10 @@ issue always agree.
   `benchmark`/`model`/`phase`/`dtype`, since E2E entries carry no test-file
   fields) and `case_count`. Scope Steps 2-8 to that case ONLY: root-cause it,
   and ignore the other entries' tracebacks and error messages when deciding
-  every axis. Step 8 then names the analyzed case and the number left
-  unanalyzed.
+  every axis **except priority** — priority's case-count rows (Step 7) are a
+  property of the whole issue, not the analyzed case, so they count every
+  `test_cases[]` entry regardless of scoping. Step 8 then names the analyzed
+  case and the number left unanalyzed.
 
 Never split the issue, never file a sub-issue, and never edit the issue. The
 unanalyzed cases are simply out of scope for this run and are reported as such.
@@ -189,7 +191,7 @@ neither names an external owner in Step 4.
 Read `reference/target_component.md`. Map the traced fix location to
 `target_component` (`test-case` | `pytorch` | `torch-xpu-ops` | a dependency
 taxonomy value | `N/A`) and to `need_action` (`NEED_FIX` | `NEED_FIX_CASE` |
-`NEED_FIX_3RDPARTY` | `NEED_HUMAN`).
+`NEED_FIX_3RDPARTY` | `NEED_HUMAN` | `NEED_SKIP_CASE`).
 
 Pass Step 3's dependency value in. When it is a taxonomy value, that component
 owns the fix: `target_component` is **the dependency value itself** — `oneDNN`,
@@ -201,7 +203,7 @@ ownership from the traced fix location alone.
 A skip or xfail decorator is never a fix. An inconclusive trace — including
 every evidence-only run that could not establish a root cause — is `N/A` +
 `NEED_FIX`, except on a Windows `os`, which is `N/A` + `NEED_HUMAN` per the
-Windows row that leads the verdict table in `reference/target_component.md`.
+Windows row in `reference/target_component.md`'s canonical verdicts table.
 
 ### Step 5 — duplicates
 
@@ -211,7 +213,10 @@ Step 1.5 analyzed case, always requesting `state,labels,body` and appending
 `is:issue`. Apply self-exclusion, the two-of-three signal rule (and its
 single-signal body-match exception), and the
 `relevance` / `recommended_action` tables. Also record inherited `not_target` /
-`wontfix` from a HIGH or MEDIUM duplicate.
+`wontfix` from a HIGH or MEDIUM duplicate. When `not_target` is `true` (own
+labels or inherited), override Step 4's `need_action` to `NEED_SKIP_CASE` per the
+`not_target` row in `reference/target_component.md`'s canonical verdicts;
+`target_component` is unchanged.
 
 This step needs no checkout and runs identically in both trace modes.
 
@@ -233,7 +238,10 @@ emit `""` for this axis. Take the label from the mapping table in
 ### Step 7 — priority
 
 Read `reference/priority.md`. Apply the Urgent/High/Medium/Low decision tree
-against the failure mode from Steps 2 and 4. If `extract.json` already carries a
+against the failure mode from Steps 2 and 4. Count failed UT cases (the
+`>6` / `1-6` rows) across the **whole issue** — every `test_cases[]` entry,
+not just the Step 1.5 analyzed case — since severity is a property of the
+issue, not of any single case. If `extract.json` already carries a
 non-empty `priority` from the PyTorchXPU project field, preserve it verbatim and
 note that in the reason. Priority derives from the observable failure mode (crash
 vs assertion, case count, cited regression percentage), so it stays decidable in
@@ -244,7 +252,7 @@ evidence-only mode.
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format, field rules, and brevity/evidence-only
 examples in `reference/output_format.md`. Read that file before producing
-`labels.md`. Also print the same table to stdout.
+`labels.md`. Also print both tables to stdout.
 
 When Step 1.5 found 2 or more cases, emit the `Analyzed case:` note defined in
 `reference/output_format.md` so the reader knows which case the labels describe.

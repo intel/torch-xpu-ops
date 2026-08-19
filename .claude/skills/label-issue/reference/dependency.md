@@ -53,8 +53,7 @@ the label before applying it.
 
 `AO` is NOT a dependency value. torchao is a PyTorch-ecosystem component owned by
 the module axis (`module: ao`), not an external dependency. A transformers or
-huggingface failure is `third_party_packages`; `module: transformers` may carry
-the domain signal separately.
+huggingface failure is `third_party_packages`.
 
 ## Taxonomy and evidence mapping
 
