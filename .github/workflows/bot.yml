@@ -87,7 +87,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'fix', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'fix', 'triage', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -99,14 +99,15 @@ jobs:
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
 
-            // Context check: fix is issue-only, help works on both, the rest are PR-only
-            if (normalizedCommand === 'fix') {
+            // Context check: fix and triage are issue-only, help works on
+            // both, the rest are PR-only.
+            if (normalizedCommand === 'fix' || normalizedCommand === 'triage') {
               if (isPR) {
-                reject('`@torchxpubot fix` can only be used on issue comments, not on pull requests.');
+                reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
                 return;
               }
               if (context.payload.issue.state !== 'open') {
-                reject('`@torchxpubot fix` can only be used on open issues.');
+                reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on open issues.`);
                 return;
               }
             } else if (normalizedCommand !== 'help' && !isPR) {
@@ -255,6 +256,7 @@ jobs:
             | Command | Description |
             |---------|-------------|
             | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
+            | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
             | \`@torchxpubot help\` | Show this help message |
 
             \`fix\` reproduces the issue on a runner that has a prebuilt nightly
@@ -1261,6 +1263,217 @@ jobs:
         if: ${{ always() }}
         run: |
           chown 1000:1000 /__w /github ./ -R
+
+  triage:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      needs.parse-command.outputs.command == 'triage'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run AI triage
+        id: ai-triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            Use the /issue-triage skill to triage issue
+            #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
+            The skill returns a report (a markdown block plus a JSON
+            block) to stdout. Do NOT post any comment yourself, do NOT
+            apply labels, do NOT modify the issue in any way — the
+            workflow that invoked you will consume your stdout and
+            handle those side effects.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post triage report
+        if: steps.ai-triage.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const resultEvent = data.filter(e => e.type === 'result').pop();
+            if (!resultEvent || resultEvent.is_error || !resultEvent.result) {
+              core.setFailed('AI triage produced no usable result');
+              return;
+            }
+            const output = resultEvent.result;
+
+            // The skill emits a markdown block, a blank line, then a
+            // JSON block fenced by ```json ... ```. Extract each.
+            const jsonMatch = output.match(/```json\s*\n([\s\S]*?)\n```/);
+            if (!jsonMatch) {
+              core.setFailed('AI triage output did not include a JSON block');
+              return;
+            }
+            let summary;
+            try {
+              summary = JSON.parse(jsonMatch[1]);
+            } catch (e) {
+              core.setFailed(`AI triage JSON parse failed: ${e.message}`);
+              return;
+            }
+
+            // Markdown block is everything up to the ```json fence,
+            // trimmed of trailing whitespace and any stray fence.
+            const markdown = output.slice(0, jsonMatch.index)
+              .replace(/```(markdown)?\s*\n?/g, '')
+              .replace(/\n```\s*$/g, '')
+              .trim();
+            if (!markdown.startsWith('<!-- agent:triage -->')) {
+              core.setFailed('AI triage markdown did not start with the <!-- agent:triage --> marker');
+              return;
+            }
+
+            const N = Number(process.env.ISSUE_NUMBER);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Locate the previous triage comment via the REST list
+            // endpoint — its ids are numeric and accepted by the
+            // PATCH/DELETE endpoints below.
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: N, per_page: 100 }
+            );
+            const triageIds = comments
+              .filter(c => c.body && c.body.startsWith('<!-- agent:triage -->'))
+              .map(c => c.id);
+
+            if (triageIds.length === 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: N, body: markdown
+              });
+            } else {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: triageIds[0], body: markdown
+              });
+              // Best-effort dedup of any older duplicates.
+              for (const dup of triageIds.slice(1)) {
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner, repo, comment_id: dup
+                  });
+                } catch (e) {
+                  console.log(`Could not delete duplicate ${dup}: ${e.message}`);
+                }
+              }
+            }
+
+            // Apply suggested labels. Repeated add-label calls for an
+            // already-applied label are no-ops.
+            const labels = Array.isArray(summary.suggested_labels) ? summary.suggested_labels : [];
+            if (labels.length > 0) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: N, labels
+                });
+              } catch (e) {
+                console.log(`addLabels warning: ${e.message}`);
+              }
+            }
+
+      - name: "Verify: AI triage succeeded"
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          AI_TRIAGE_OUTCOME: ${{ steps.ai-triage.outcome }}
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const outcome = process.env.AI_TRIAGE_OUTCOME || 'skipped';
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+
+            let result = null;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+            }
+            if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
+              return;
+            }
+
+            // Distinguish "the agent never ran" from "the agent failed", so
+            // the comment does not blame Bedrock for a setup or cancellation.
+            let reason;
+            if (outcome === 'cancelled') {
+              reason = 'the run was cancelled.';
+            } else if (outcome === 'skipped') {
+              reason = 'the environment setup failed before the agent started -- checkout or claude-code-action itself.';
+            } else if (result && result.is_error) {
+              reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
+            } else if (!result) {
+              reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
+            } else {
+              reason = 'the agent exited without a usable result.';
+            }
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'triage');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot triage\` failed: ${reason}\n\nSee the [\`triage\` job](${jobUrl}) for details.`
+            });
+            if (outcome !== 'cancelled') {
+              core.setFailed(`AI triage failed: ${reason}`);
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'triage');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
 
   token-permission-test:
     runs-on: ubuntu-latest
