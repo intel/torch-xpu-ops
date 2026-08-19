@@ -261,6 +261,38 @@ class TestFftOut(TestCase):
         self.assertTrue(out.is_contiguous())
         self.assertEqual(out, expected)
 
+    def test_fft_out_empty_batch(self, device):
+        # An empty batch short-circuits inside _exec_fft, which resizes the
+        # destination it was handed. On the direct-write path that destination
+        # is the caller's out, so its shape and layout still have to survive.
+        for shape, dims in (((0, 1, 1), [1, 2]), ((0, 4), [1]), ((2, 0, 4), [2])):
+            msg = f"shape={shape} dims={dims}"
+            xc = torch.randn(*shape, dtype=torch.complex128, device=device)
+            xr = torch.randn(*shape, dtype=torch.float64, device=device)
+
+            expected = torch.ops.aten._fft_c2c.default(xc, dims, 0, True)
+            out = torch.empty(expected.shape, dtype=expected.dtype, device=device)
+            stride = out.stride()
+            result = torch.ops.aten._fft_c2c.out(xc, dims, 0, True, out=out)
+            self.assertIs(result, out)
+            self.assertEqual(out.shape, expected.shape, msg=f"c2c {msg}")
+            self.assertEqual(out.stride(), stride, f"c2c stride {msg}")
+
+            expected = torch.ops.aten._fft_r2c.default(xr, dims, 0, True)
+            out = torch.empty(expected.shape, dtype=expected.dtype, device=device)
+            stride = out.stride()
+            torch.ops.aten._fft_r2c.out(xr, dims, 0, True, out=out)
+            self.assertEqual(out.shape, expected.shape, msg=f"r2c {msg}")
+            self.assertEqual(out.stride(), stride, f"r2c stride {msg}")
+
+            last_dim_size = shape[dims[-1]]
+            expected = torch.ops.aten._fft_c2r.default(xc, dims, 0, last_dim_size)
+            out = torch.empty(expected.shape, dtype=expected.dtype, device=device)
+            stride = out.stride()
+            torch.ops.aten._fft_c2r.out(xc, dims, 0, last_dim_size, out=out)
+            self.assertEqual(out.shape, expected.shape, msg=f"c2r {msg}")
+            self.assertEqual(out.stride(), stride, f"c2r stride {msg}")
+
 
 instantiate_device_type_tests(TestFftOut, globals(), only_for="xpu", allow_xpu=True)
 
