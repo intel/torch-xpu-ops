@@ -146,8 +146,6 @@ struct LoadWithCastFP {
           return c10::convert<scalar_t>(c10::load<c10::Half>(ptr));
         case at::ScalarType::BFloat16:
           return c10::convert<scalar_t>(c10::load<c10::BFloat16>(ptr));
-        default:
-          return c10::fetch_and_cast<scalar_t>(dtypes[arg], ptr);
       }
     } else {
       return c10::fetch_and_cast<scalar_t>(dtypes[arg], ptr);
