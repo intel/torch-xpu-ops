@@ -125,50 +125,32 @@ Search `title + "\n" + body` for
 `https://github.com/<owner>/<repo>/pull/<number>`. Normalize the first match to
 that canonical form and return it. Only `/pull/` URLs are trusted directly.
 
-### 2. Ambiguous shorthand
+### 2. Ambiguous references
 
-If no `/pull/` URL exists, look for the first `owner/repo#<number>`, NOT
-preceded by `/` or a word character.
+GitHub uses both remaining forms for issues AND PRs, so never assume either is a
+PR. Look for the first match, in this order, and resolve it:
 
-GitHub uses this form for both issues and PRs, so never assume it is a PR.
-Resolve it with exactly ONE call:
+| Form | Matches when | Resolves against |
+|---|---|---|
+| `owner/repo#<number>` | Not preceded by `/` or a word character. | That `owner/repo`. |
+| `#<number>` | Not preceded by `/` or a word character, so `foo/bar#12` and `abc#12` do not qualify. | The **current repo** - `intel/torch-xpu-ops` unless the input named another. |
+
+Search `title + "\n" + body`. The two forms are alternatives: use a bare `#N`
+only when no `owner/repo#N` was found, so the total cost stays at most ONE
+resolution call per run, and only when step 1 found no `/pull/` URL.
+
+Resolve with exactly one call against the repo the form points at:
 
 ```bash
 gh api repos/<owner>/<repo>/issues/<number>
 ```
 
-- Response contains a `pull_request` key -> it is a PR; emit
-  `https://github.com/<owner>/<repo>/pull/<number>`.
-- No `pull_request` key -> it is an issue; `pr_link` stays `""`.
-- Any failure (no `gh`, timeout, 404, private repo, invalid JSON) -> `""`, and
-  add `pr_link` to `low_confidence`.
+| Response | Result |
+|---|---|
+| Contains a `pull_request` key | It is a PR; emit `https://github.com/<owner>/<repo>/pull/<number>`. |
+| No `pull_request` key | It is an issue; `pr_link` stays `""`. |
+| Any failure - no `gh`, timeout, 404, private repo, invalid JSON | `""`, and add `pr_link` to `low_confidence`. |
 
-That costs at most one extra call, and only when no `/pull/` URL was present. If
-no `owner/repo#N` shorthand exists either, fall through to step 3.
-
-### 3. Bare `#123`
-
-A bare `#<number>` has no `owner/repo` prefix, so it refers to the **current
-repo** - `intel/torch-xpu-ops` unless the input named another. Like the
-shorthand, it may be either an issue or a PR, so resolve it the same way:
-
-```bash
-gh api repos/<repo>/issues/<number>
-```
-
-- `pull_request` key present -> it is a PR; emit
-  `https://github.com/<repo>/pull/<number>`.
-- Absent -> it is an issue; `pr_link` stays `""`.
-- Any failure -> `""`, and add `pr_link` to `low_confidence`.
-
-Use the first bare `#<number>` in `title + "\n" + body`, and only when neither a
-`/pull/` URL (step 1) nor an `owner/repo#N` shorthand (step 2) was found. Ignore
-a `#` immediately preceded by `/` or a word character, so `foo/bar#12` and
-`abc#12` are not treated as bare references.
-
-Total cost stays at most ONE resolution call per run: steps 2 and 3 are
-alternatives, never both.
-
-### 4. Not matched
+### 3. Not matched
 
 A branch-only reference yields `""`, having no PR URL. Never guess a PR number.

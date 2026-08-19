@@ -95,18 +95,27 @@ Keep the path literally; do not reconstruct it or derive a different
 and appending `.py`. If the dotted path contains `.test_`, the component after
 `.test_` becomes `test_class`.
 
-#### 5. `-k <name>` selectors
+#### 5. `-k <name>` selectors, in two passes
 
-Inside a fenced block, associate `-k <name>` with a `pytest -v <test path>.py`
-in the SAME block. Outside blocks, match `pytest -v <path>.py -k <name>`.
-Finally, if the body mentions `pytest` at all, emit every `-k <name>` paired
-with the first `pytest ... <test path>.py` found in the body. `test_type` is
-`ut`.
+`test_type` is `ut` for both.
+
+1. Inside a fenced block, associate `-k <name>` with a `pytest -v <test
+   path>.py` in the SAME block.
+2. Outside blocks, match `pytest -v <path>.py -k <name>`.
 
 #### 6. `python benchmarks/dynamo/...` commands
 
 Only when the body contains `benchmarks/dynamo/`. The script path is
 `test_file`, the whole command is `test_case`, `test_type` is `e2e`.
+
+#### 7. Body-wide `-k` fallback
+
+Last. If the body mentions `pytest` at all, emit every `-k <name>` paired with
+the first `pytest ... <test path>.py` found in the body. `test_type` is `ut`.
+
+This runs after source 6, not alongside source 5, because it is the broadest
+match: it pairs a selector with a `pytest` invocation anywhere in the body, so
+running it earlier would shadow the block-scoped pairings above.
 
 ### Forms that yield NO case
 
@@ -209,11 +218,9 @@ mode alone - stay distinct. First occurrence wins.
 The parent takes `test_cases[0]` as the analyzed case and requires that choice
 to be identical across runs.
 
-**Unit-test issues.** Emit in the source order listed above: `Cases:` rows,
-then `test_cases:` rows, then pytest node ids, then code-block `test_xpu` rows,
-then code-block `-k` rows, then out-of-block `pytest -v ... -k ...` rows, then
-`benchmarks/dynamo/` commands, then body-wide `-k` selectors. Within each
-source, top of the body to bottom. De-duplicate by keeping the FIRST occurrence.
+**Unit-test issues.** Emit in the numbered source order of **Sources to scan**
+above (1 `Cases:` through 7 body-wide `-k`), and within each source from the top
+of the body to the bottom. De-duplicate by keeping the FIRST occurrence.
 
 **E2E issues.** Emit in loaded-model-list order: huggingface names, then timm,
 then torchbench.

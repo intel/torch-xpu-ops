@@ -77,8 +77,13 @@ Apply in order; the first matching row wins.
 | Test file itself | `NEED_FIX_CASE` |
 | `pytorch` product code | `NEED_FIX` |
 | `torch-xpu-ops` product code | `NEED_FIX` |
-| Inconclusive trace | `NEED_FIX` |
-| No resolvable path, or human planning required for another reason | `NEED_HUMAN` |
+| Inconclusive trace — evidence was insufficient to identify an owner | `NEED_FIX` |
+| Evidence is sufficient but establishes that no product path owns the fix, or that human planning is required for another reason | `NEED_HUMAN` |
 
-An existing upstream fix may be reported in `evidence.upstream_fix`, but do
+The last two rows both cover a `target_component` of `N/A`, and the order
+disambiguates them: reach the final row only when the trace was conclusive.
+Insufficient evidence is `NEED_FIX`; a conclusive "nothing here to fix" is
+`NEED_HUMAN`.
+
+An existing upstream fix, when found, belongs in the Step 2 root-cause line; do
 not call a skip or xfail an upstream fix.

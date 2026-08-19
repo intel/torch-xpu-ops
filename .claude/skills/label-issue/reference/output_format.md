@@ -5,7 +5,7 @@ Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`:
 ```markdown
 label-issue: <repo>#<id>
 
-Root cause: <=2 lines, specific, with file:line>
+Root cause: <=2 lines, specific, with file:line when a trace read one>
 
 <When the issue reports 2+ cases, add exactly one line naming the analyzed case:
 Analyzed case: <test_file>::<test_class>::<test_case> (case 1 of <N>; the other
@@ -16,7 +16,7 @@ Trace mode: evidence-only (no pytorch_folder provided).>
 
 | label | reason |
 |---|---|
-| `type: <Bug\|Task\|Feature\|Epic>` | <source: github_type, label, or heuristic, 1 line> |
+| `type: <Bug\|Task\|Feature\|Epic>` | <`issue_type` from extract.json, or the failure evidence when it is blank, 1 line> |
 | `test_module: <ut\|e2e\|build\|infrastructure\|...>` | <deciding signal from extract.json, 1 line> |
 | `<module_label>` | <bucket-deciding signal, 1 line> |
 | `priority: <Urgent\|High\|Medium\|Low>` | <matched rule + evidence, 1 line> |
@@ -36,7 +36,7 @@ Rules for the table:
   function as a tie-breaker only. It is a recommendation for a human — the skill
   never splits the issue. Its reason names the group count and gives a one-line
   signature per group, e.g.
-  `2 groups: RuntimeError missing LSTM primitive in test_lstm; AssertionError tolerance in test_matmul`.
+  `2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64`.
   Judge groups by error signature, never by the number of cases or test
   functions: 29 cases across 11 functions sharing one error are ONE group and get
   no row. Do not write "1 group".
@@ -48,25 +48,32 @@ Rules for the table:
   `file::class::case`. A single-case issue omits the line; do not write
   "case 1 of 1" and do not add a paragraph explaining the omission.
 - The dependency row carries `extract.json`'s **`dependency_label`** field
-  verbatim, never `dependency component: ` plus the raw value. Most values follow
-  that prefix, but `third_party_packages` maps to
-  `dependency: third_party packages` — different prefix, and a space. Three
-  labels (`oneCCL`, `IGC`, `Level_Zero`) do not exist in the repo yet; emit them
-  anyway and note in the reason that the label must be created. See
-  [dependency.md](dependency.md) for the full mapping.
+  verbatim when Step 3 retained the extracted value; when Step 3 derived or
+  overrode it, take the label from the mapping table in
+  [dependency.md](dependency.md) instead. Either way emit a label, never
+  `dependency component: ` plus the raw value. Most values follow that prefix,
+  but `third_party_packages` maps to `dependency: third_party packages` —
+  different prefix, and a space. Three labels (`oneCCL`, `IGC`, `Level_Zero`) do
+  not exist in the repo yet; emit them anyway and note in the reason that the
+  label must be created.
 - The `target_component` row names the owner. When the dependency axis (Step 3)
   returned a taxonomy value, that value IS the `target_component` — emit
   `target_component: oneDNN`, never `target_component: third-party` — and the
   reason cites the dependency evidence rather than a product `file:line`. The
   dependency row and the `target_component` row therefore agree on the component
   in that case. See [target_component.md](target_component.md).
-- The module row carries `extract.json`'s **`module_label`** field verbatim (e.g.
-  `module: ao`, `module: core`), never the raw bucket name. Two buckets differ
-  from their label — `torchAO` -> `module: ao` and `torch-runtime` ->
-  `module: core` — so emitting the bucket would produce a label that does not
-  exist in the repo. See [module.md](module.md) for the full mapping.
+- The module row carries `extract.json`'s **`module_label`** field verbatim when
+  Step 6 retained the extracted bucket; when Step 6 derived it (the field was
+  `""`) or overrode it, take the label from the mapping table in
+  [module.md](module.md) instead. Either way emit the label (e.g. `module: ao`,
+  `module: core`), never the raw bucket name. Two buckets differ from their
+  label — `torchAO` -> `module: ao` and `torch-runtime` -> `module: core` — so
+  emitting the bucket would produce a label that does not exist in the repo.
 - `type` and `test_module` come straight from `extract.json` (Step 1); no
-  reference file governs them. Always emit both rows — they are never omitted.
+  `label-issue/reference/` pack governs them, and no step re-derives them here.
+  (`test_module` was itself decided in Step 1 per
+  `extract-issue/reference/testcase_rules.md`.) Always emit both rows — they are
+  never omitted.
   The `type` row carries `extract.json`'s **`issue_type`** field (the canonical
   `Bug`/`Task`/`Feature`/`Epic` value), NOT its lowercase `type` heuristic
   field. It mirrors GitHub's native issue **Type**, so it is applied as the
@@ -91,8 +98,11 @@ Rules for the table:
   alternatives that were ruled out, no explaining what was not chosen.
 - Every reason must cite concrete evidence: a `file:line`, an issue URL, a
   traceback frame, or a measured percentage. No bare restatements of the rule.
-- `null` (insufficient evidence) is a valid outcome — emit the row with reason
-  `insufficient evidence: <what was missing>` rather than guessing.
+- `null` (insufficient evidence) is a valid outcome. For an always-emitted axis —
+  `target_component` and `need_action` — emit the row with reason
+  `insufficient evidence: <what was missing>` rather than guessing. For the
+  omittable axes listed above, `null` means the row is omitted instead; the two
+  rules do not conflict.
 - Omitted rows need no explanation. Do not append a paragraph describing which
   rows were omitted or why.
 - In evidence-only mode, emit the one-line `Trace mode:` note and cite
@@ -164,30 +174,32 @@ labels still describe only the analyzed case:
 ```markdown
 label-issue: intel/torch-xpu-ops#4200
 
-Root cause: oneDNN has no LSTM forward primitive for bf16 on this platform
-(`aten/src/ATen/native/mkldnn/xpu/RNN.cpp:112`).
+Root cause: oneDNN has no bf16 `addmm` matmul primitive on this platform
+(`aten/src/ATen/native/mkldnn/xpu/Blas.cpp:214`).
 
-Analyzed case: test/xpu/test_rnn_xpu.py::TestRNNXPU::test_lstm_bfloat16 (case 1 of 4; the other 3 not analyzed).
+Analyzed case: test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (case 1 of 4; the other 3 not analyzed).
 
 | label | reason |
 |---|---|
 | `type: Bug` | `github_type` is `Bug`. |
-| `test_module: ut` | Reproduce steps run `pytest test/xpu/test_rnn_xpu.py`. |
-| `module: torch-ops-others` | Fails in the oneDNN RNN path, not gemm/eltwise/reduction. |
+| `test_module: ut` | Reproduce steps run `pytest test/xpu/test_matmul_xpu.py`. |
+| `module: torch-ops-gemm` | Fails in the oneDNN matmul path, the addmm/gemm family. |
 | `priority: Medium` | 4 UT cases, RuntimeError without crash. |
-| `dependency component: oneDNN` | `RuntimeError` names the LSTM primitive descriptor from oneDNN. |
-| `need_split` | 2 groups: RuntimeError missing LSTM primitive in test_lstm_bfloat16; AssertionError tolerance in test_matmul_float64. |
-| `target_component: oneDNN` | Confirmed oneDNN dependency owns the fix; `RNN.cpp:112` is the caller. |
+| `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
+| `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
+| `target_component: oneDNN` | Confirmed oneDNN dependency owns the fix; `Blas.cpp:214` is the caller. |
 | `need_action: NEED_FIX_3RDPARTY` | `oneDNN` target_component. |
 ```
 
 Note how the dependency row and the `target_component` row name the SAME
-component. The traced `RNN.cpp:112` frame is the caller, so it belongs in the
+component. The traced `Blas.cpp:214` frame is the caller, so it belongs in the
 `target_component` reason, never as the `target_component` value.
 
 ### Evidence-only example
 
-No `pytorch_folder`, and the issue evidence does not pin an owner:
+No `pytorch_folder`, and the issue evidence does not pin an owner. This example
+assumes a non-Windows issue; on Windows the last row would be `NEED_HUMAN` per
+the verdict table in [target_component.md](target_component.md):
 
 ```markdown
 Root cause: insufficient information for root causing: no pytorch_folder provided

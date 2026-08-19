@@ -7,9 +7,12 @@ permitted:
 `torch-ops-gemm`, `torch-ops-eltwise`, `torch-ops-reduction`,
 `torch-ops-others`, `torch-runtime`, `others`
 
-`extract.json`'s `module` field carries exactly one of these, and its
+`extract.json`'s `module` field carries exactly one of these, or `""`, and its
 `module_label` field carries the corresponding GitHub label from the table
-below. Both come from `classify_module()`, so no manual translation is needed.
+below. Both are read off the issue's EXISTING `module:` label, so treat them as
+a **prior, not an answer**: keep the bucket unless the traced root cause
+contradicts it, and derive the bucket yourself from the trace when the field is
+`""`. When you override the bucket, take its label from the table below.
 
 ## Bucket to label mapping
 
@@ -69,4 +72,4 @@ is no backend-codegen signal.
 When judging an issue by keyword, ignore the `## Versions` / `Collecting
 environment` dump at the end of the body. It lists every installed package
 (`onemkl-sycl-sparse`, `torchao`, ...) and matching against it misclassifies
-nearly every issue; `classify_module()` strips it for this reason.
+nearly every issue, so exclude that section from consideration.

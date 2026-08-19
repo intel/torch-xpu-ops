@@ -21,7 +21,11 @@ evidence that the failure originates in that component — never on a library
 merely appearing in the call path.
 
 `extract.json` carries the value in `dependency` and its label in
-`dependency_label`, both from `get_dependency_from_body()`. Emit the label.
+`dependency_label`, both read off the issue's EXISTING dependency label. Treat
+them as a prior, not an answer: still decide this axis from the rules above, and
+when you override the value take its label from the mapping table below. Both
+fields are `""` when the issue carries no dependency label — that is not
+evidence of `none`. Emit the label, never the bare value.
 
 ## Value to label mapping
 
@@ -86,5 +90,5 @@ the domain signal separately.
   the flip conditions in section 2 must be confirmed from evidence. Unconfirmed
   returns `null`.
 - Ignore the `## Versions` / `Collecting environment` dump when keyword matching.
-  It lists `onemkl`, `oneccl` and `intel-sycl-rt` for every issue;
-  `get_dependency_from_body()` strips it for this reason.
+  It lists `onemkl`, `oneccl` and `intel-sycl-rt` for every issue, so exclude
+  that section from consideration.

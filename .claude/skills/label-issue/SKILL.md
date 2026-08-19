@@ -34,9 +34,6 @@ stop; it degrades the trace, not the run.
 
 - Authenticated `gh` CLI on PATH (`read:project` scope for project fields).
 - `python3` is NOT required: Step 1 uses the script-free `extract-issue` skill.
-  It is needed only if you opt into the `extract-issue-information` script
-  alternative; if missing there, activate a `.venv` in the repo root or a parent
-  directory and retry. Do NOT install tooling.
 - `pytorch_folder`, when given, exists and is a git checkout. When it is absent
   or not a checkout, continue in evidence-only mode instead of stopping.
 
@@ -82,12 +79,9 @@ failure, PR reference, malformed input) is a **hard-stop** here too. If
 `body`/`title` per that skill's Inline LLM fallback, then overwrite them in
 `extract.json`.
 
-**Script alternative.** `label-issue/extract-issue-information` produces the
-identical JSON schema by running `extract_basic_info.py`. Prefer it when
-`python3` is available and byte-for-byte deterministic extraction matters
-(regression runs, comparing two runs of one issue); its classification is fixed
-in code rather than re-derived each run. Use `extract-issue` when `python3` or
-the scripts are unavailable. Everything downstream is unchanged either way.
+`extract-issue` is the only extraction path for this skill. Do not substitute a
+Python extraction script for it, and do not switch away from it because `python3`
+happens to be available.
 
 ### Step 1.5 — Group the failures, then select the case to analyze
 
@@ -124,7 +118,7 @@ functions. One `NotImplementedError` for an unimplemented dtype reported across
 normalized error signature, never the number of `test_cases[]` entries.
 
 **Select the analyzed case.** Take `extract.json`'s `test_cases[0]` — the first
-entry, in the order the script emitted it — as the **analyzed case**. Do not
+entry, in the order `extract-issue` emitted it — as the **analyzed case**. Do not
 reorder, re-rank, or pick by severity; index 0 is the rule, so two runs on one
 issue always agree.
 
@@ -172,7 +166,7 @@ Never guess an owner or infer a `file:line` you did not read.
 and `root_cause` in **at most 2 lines** — the defect plus its `file:line` (drop
 `file:line` in Mode B when nothing was read). Keep the call path, ruled-out
 alternatives, and mechanism narrative out of the report. An inconclusive trace
-is allowed; it drives `NEED_HUMAN` in Step 4.
+is allowed; Step 4 turns it into `NEED_FIX` (or `NEED_HUMAN` on Windows).
 
 ### Step 3 — dependency
 
@@ -207,9 +201,10 @@ owns the fix: `target_component` is **the dependency value itself** — `oneDNN`
 bucket; name the component. When Step 3 returned `none` or `null`, decide
 ownership from the traced fix location alone.
 
-A skip or xfail decorator is never a fix. An inconclusive trace is
-`N/A` + `NEED_FIX` — including every evidence-only run that could not
-establish a root cause.
+A skip or xfail decorator is never a fix. An inconclusive trace — including
+every evidence-only run that could not establish a root cause — is `N/A` +
+`NEED_FIX`, except on a Windows `os`, which is `N/A` + `NEED_HUMAN` per the
+Windows row that leads the verdict table in `reference/target_component.md`.
 
 ### Step 5 — duplicates
 
@@ -296,8 +291,7 @@ the table to GitHub.
 - Missing `issue_ref`.
 - `gh` CLI missing or unauthenticated.
 - Step 1 extraction hard-stops (404, network failure, PR reference, malformed
-  input), whether from `extract-issue` or the `extract_basic_info.py`
-  alternative.
+  input) from `extract-issue`.
 
 Not hard stops (normal degraded outcomes): a missing or nonexistent
 `pytorch_folder`, an inconclusive trace, `insufficient information for root
