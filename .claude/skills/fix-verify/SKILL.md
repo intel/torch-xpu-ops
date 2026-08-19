@@ -21,9 +21,9 @@ see.
 - [Shell helpers](#shell-helpers)
 - Step 1: [Confirm source build environment](#step-1-confirm-source-build-environment)
 - Step 2: [Rebuild if needed](#step-2-rebuild-if-needed)
-- Step 3: [Before/after comparison](#step-3-beforeafter-comparison-if-run_before_after_difftrue)
+- Step 3: [Before/after comparison](#step-3-beforeafter-comparison)
 - Step 4: [Run test](#step-4-run-test)
-- Step 5: [Lint](#step-5-lint-if-run_linttrue)
+- Step 5: [Lint](#step-5-lint)
 - [Output](#output)
 
 ## Inputs
@@ -41,11 +41,9 @@ see.
 - `changed_files` — list of changed files from `fix-implement`'s
   output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`), a rebuild
   is required before running.
-- `run_before_after_diff` (bool, default `false`) — if `true`, runs the
-  test before and after the fix to produce a comparison table. Set to
-  `true` by `xpu-nightly-ci-fix`.
-- `run_lint` (bool, default `false`) — if `true`, runs `spin fixlint`
-  after a passing result. Set to `true` by `xpu-nightly-ci-fix`.
+
+This skill always runs the before/after comparison (Step 3) and lints
+a passing result (Step 5); there are no flags to toggle either off.
 
 ## Shell helpers
 
@@ -100,26 +98,22 @@ Override" procedure from AGENTS.md **before** loading `xpu-build-pytorch`:
 git -C $target_repo_dir rev-parse HEAD > $pytorch_dir/third_party/xpu.txt
 ```
 
-**When `run_before_after_diff=true` and the changed files include
-C++/SYCL sources**, DO NOT rebuild first. A rebuild with the fix
-staged compiles the fix into `torch/lib/*.so`, and the later "before"
-run (Step 3, after `git stash -u`) would still load the fix's `.so`
-even with sources removed — producing a false-negative "before" that
-already passes. Instead, defer the rebuild into Step 3's before/after
-loop where it is done at each phase.
+**When the changed files include C++/SYCL sources**, DO NOT rebuild
+first. A rebuild with the fix staged compiles the fix into
+`torch/lib/*.so`, and the later "before" run (Step 3, after
+`git stash -u`) would still load the fix's `.so` even with sources
+removed — producing a false-negative "before" that already passes.
+Instead, defer the rebuild into Step 3's before/after loop where it is
+done at each phase.
 
-Otherwise (i.e. `run_before_after_diff=false`, or all changes are
-python-only regardless of the flag):
+If all changed files are python-only, no rebuild is needed here (the
+before/after loop in Step 3 re-imports without a build step).
 
-- If any changed file is C++/SYCL: load `xpu-build-pytorch` and rebuild
-  now.
-- If all changed files are python-only: no rebuild needed.
-
-## Step 3: Before/after comparison (if `run_before_after_diff=true`)
+## Step 3: Before/after comparison
 
 **Contract:** this step requires that `fix-implement` left changes
 staged but uncommitted. `git stash -u` temporarily removes them to
-obtain a before-state. If `run_before_after_diff=true` and the stash
+obtain a before-state. If the stash
 finds nothing (orchestrator committed the changes early), the contract
 is violated — return
 `CANNOT_VERIFY(reason=no_staged_changes)` (see below), do NOT silently
@@ -209,9 +203,9 @@ Result interpretation:
 - `FAILED` → `FAILED` with `reason=test_still_failing`.
 - `PASSED` → `PASSED` with `reason=ok`.
 
-## Step 5: Lint (if `run_lint=true`)
+## Step 5: Lint
 
-Only run after a passing test result. Run it in `target_repo_dir` —
+Always run after a passing test result. Run it in `target_repo_dir` —
 the repo that owns the changed files — not in `pytorch_dir`:
 
 ```bash
@@ -253,9 +247,8 @@ update is the **caller's** responsibility.
 - **Target repo:** <pytorch | torch-xpu-ops>
 - **Refined command:** <refined_command>
 - **Verdict:** <PASSED | FAILED | CANNOT_VERIFY> — <one-line reason>
-- **Lint:** <clean | not run | errors: <summary>>
+- **Lint:** <clean | errors: <summary>>
 
-<if run_before_after_diff=true, include:>
 ### Before / after
 
 | Test case | Before | After |
@@ -270,8 +263,6 @@ update is the **caller's** responsibility.
   "target_repo": "pytorch or torch-xpu-ops",
   "refined_command": "<echo of input>",
   "changed_files": ["path/to/file1.py"],
-  "run_before_after_diff": false,
-  "run_lint": false,
   "verdict": "PASSED or FAILED or CANNOT_VERIFY",
   "reason": "<enumerated reason code, see below>",
   "reason_detail": "one-line human-readable detail",
@@ -286,11 +277,9 @@ update is the **caller's** responsibility.
 - `refined_command` — echo the exact command that was run.
 - `changed_files` — echo from `fix-implement`; downstream orchestrator
   uses this to build the commit's file list.
-- `run_before_after_diff` / `run_lint` — echo the input flags verbatim,
-  so a reviewer can tell from the JSON alone which paths this run
-  exercised.
-- `before_after_table` — non-null only when `run_before_after_diff=true`
-  and the phases ran successfully; otherwise `null`.
+- `before_after_table` — the markdown table from Step 3 when both
+  phases ran successfully; `null` only when Step 3 could not produce it
+  (e.g. a `CANNOT_VERIFY` before reaching the after phase).
 - `failure_output` — non-null on `FAILED`; excerpt of the test or lint
   output (bounded — do not dump multi-MB logs, ~40 lines is enough for
   a human to see the failure).
@@ -299,7 +288,7 @@ update is the **caller's** responsibility.
 
 On `verdict=PASSED`:
 
-- `ok` — test passed with the fix applied; lint clean (or `run_lint=false`).
+- `ok` — test passed with the fix applied; lint clean.
 
 On `verdict=FAILED`:
 
