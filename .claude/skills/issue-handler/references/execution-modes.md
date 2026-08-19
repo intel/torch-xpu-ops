@@ -126,3 +126,41 @@ Objective, Current Status`.
   `agent:status` to the terminal value; final Action Items check;
   in skip-list runs, the `<!-- agent:skip-list-sweep -->` Phase-1
   summary comment.
+
+## Reset-between-entries recipe (batched Phase 2)
+
+Both orchestrators run a Phase-2 deep-fix loop over independent
+entries (`issue-handler`'s skip-list path, `xpu-nightly-ci-fix`'s
+nightly batch). Each entry is a separate sub-bug and can triage to a
+different `target_repo`, so a prior entry's staged diff must not
+bleed into the next. Both orchestrators use this identical recipe;
+it lives here so the two copies cannot drift.
+
+Capture the two independent base SHAs **once**, before entering the
+loop:
+
+```bash
+pytorch_base=$(git -C $pytorch_dir rev-parse HEAD)
+xpu_ops_base=$(git -C $pytorch_dir/third_party/torch-xpu-ops rev-parse HEAD)
+```
+
+Track them as two separate variables — a torch-xpu-ops fix bases off
+`xpu_ops_base` while `pytorch_base` stays pinned for the pytorch tree,
+and a pytorch fix does the reverse. Do not conflate them.
+
+Reset **both** checkouts before each entry:
+
+```bash
+git -C $pytorch_dir reset --hard $pytorch_base
+git -C $pytorch_dir clean -fdx
+if [ -d "$pytorch_dir/third_party/torch-xpu-ops/.git" ]; then
+    git -C $pytorch_dir/third_party/torch-xpu-ops reset --hard $xpu_ops_base
+    git -C $pytorch_dir/third_party/torch-xpu-ops clean -fdx
+fi
+```
+
+Loop bound inside a single entry (Stage 4 <-> Stage 5 retry):
+**maximum 3 fix attempts**, matching the legacy pipeline's
+`max_agent_attempts`. On attempts exhausted, record
+`NEEDS_HUMAN(reason=attempts_exhausted)` for that entry and continue;
+do not abort the whole loop on any single entry's failure.

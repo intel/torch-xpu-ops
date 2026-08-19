@@ -149,21 +149,22 @@ attempts to fix the ones that still fail (Phase 2).
 
 ### Preflight: install nightly wheel once
 
-Skip-list issues can list dozens of entries. Each `fix-reproduce`
-Stage 1 would re-run `pip install --pre --upgrade` on the nightly
-wheel — an expensive no-op after the first. Install once here,
-before the loop:
+Skip-list issues can list dozens of entries. `fix-reproduce`
+Stage 1 always runs `pip install --pre --upgrade` (it deliberately
+refuses to reuse a stale wheel). Running the upgrade once here, before
+the loop, does the real work — it pulls and installs the newest
+nightly and settles the index metadata. Every per-entry
+`fix-reproduce(stage=nightly)` call afterwards issues the same
+`--upgrade` command, but pip finds the environment already current
+and returns quickly without reinstalling. There is no
+`skip_wheel_install` flag to pass; the preflight is purely to front-
+load the one real install:
 
 ```bash
 pip3 install --pre --upgrade torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/nightly/xpu
 python -c "import torch; print('nightly:', torch.__version__)"
 ```
-
-Pass `skip_wheel_install=true` (or the equivalent flag; see
-`fix-reproduce` Inputs if that skill grows one — for now, the leaf
-detects an already-current nightly and no-ops on reinstall) so
-Phase 1's per-entry `fix-reproduce` calls reuse the same install.
 
 ### Extract the skip-list entries
 
@@ -235,49 +236,30 @@ orchestrator so a re-run can locate and update the same comment in
 place instead of duplicating it.
 
 **Stop here** if the caller asked for reproduce-only, or if
-STILL_FAILING is empty (nothing to fix — the STALE_SKIP entries can
-be cleared by a single follow-up `fix-implement` batch or by a
-human).
+STILL_FAILING is empty (nothing to deep-fix). STALE_SKIP entries are
+**not** cleared by this orchestrator — Phase 2 only iterates
+STILL_FAILING. Clearing stale skip decorators is left to a human (or
+a separately invoked `fix-implement` run); the sweep comment surfaces
+them as candidates, nothing more.
 
 ### Phase 2: deep-fix each STILL_FAILING entry
 
 For each STILL_FAILING entry, run the full pipeline. Each entry is
 an independent sub-bug — the diffs must not bleed across entries.
-
-Before entering the loop, capture the two independent base SHAs
-you will reset to between entries:
-
-```bash
-pytorch_base=$(git -C $pytorch_dir rev-parse HEAD)
-xpu_ops_base=$(git -C $pytorch_dir/third_party/torch-xpu-ops rev-parse HEAD)
-```
-
-Track them as two separate variables. A torch-xpu-ops fix uses
-`xpu_ops_base` as its `target_repo_dir`'s base while `pytorch_base`
-stays pinned for the pytorch tree; a pytorch fix does the reverse.
-Do not conflate them.
+Capture the two base SHAs and reset both checkouts between entries
+per the shared
+[reset-between-entries recipe](references/execution-modes.md#reset-between-entries-recipe-batched-phase-2).
 
 Before each entry:
 
-1. **Reset both candidate checkouts.** Different entries can triage
-   to different `target_repo`; a prior entry's staged diff must not
-   pollute the next. Reset both bases so the next entry starts
-   clean:
-
-   ```bash
-   git -C $pytorch_dir reset --hard $pytorch_base
-   git -C $pytorch_dir clean -fdx
-   if [ -d "$pytorch_dir/third_party/torch-xpu-ops/.git" ]; then
-       git -C $pytorch_dir/third_party/torch-xpu-ops reset --hard $xpu_ops_base
-       git -C $pytorch_dir/third_party/torch-xpu-ops clean -fdx
-   fi
-   ```
-
-2. Call `fix-root-cause` on the entry's failure signature.
-3. If `IMPLEMENTING`: call `fix-implement`. If `READY`: call
-   `fix-verify`. If any of those return `NEEDS_HUMAN` /
-   `CANNOT_VERIFY` / `FAILED`, log and move on to the next entry —
-   do **not** stop the loop.
+1. Reset both candidate checkouts (see the shared recipe above) so a
+   prior entry's staged diff does not pollute the next.
+2. Call `fix-root-cause` on the entry's failure signature. If it
+   returns `NEEDS_HUMAN`, log and move on to the next entry.
+3. On `IMPLEMENTING`, call `fix-implement`. If it returns `READY`,
+   call `fix-verify`. If any of `fix-implement` / `fix-verify` returns
+   `NEEDS_HUMAN` / `CANNOT_VERIFY` / `FAILED`, log and move on to the
+   next entry — do **not** stop the loop.
 4. Each leaf posts its own `<!-- agent:root-cause -->` /
    `<!-- agent:implement -->` / `<!-- agent:verify -->` comment per
    entry (leaves handle their own comment location; nothing to do

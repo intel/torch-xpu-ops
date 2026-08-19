@@ -122,9 +122,13 @@ never enter the pipeline.
 
 ## Step 2: Preflight — install nightly wheel once
 
-Same rationale as `issue-handler`'s skip-list preflight — nightly
-failure batches contain many entries, and re-running
-`pip install --pre --upgrade` per entry is wasted work:
+Same rationale as `issue-handler`'s skip-list preflight.
+`fix-reproduce` Stage 1 always issues `pip install --pre --upgrade`
+(it refuses to reuse a stale wheel), so running the upgrade once here
+front-loads the one real install; each per-entry
+`fix-reproduce(stage=nightly)` afterwards issues the same `--upgrade`
+command and pip returns quickly against the already-current
+environment. There is no flag to pass:
 
 ```bash
 pip3 install --pre --upgrade torch torchvision torchaudio \
@@ -196,46 +200,29 @@ is empty.
 
 ## Step 5: Phase 2 — deep-fix each STILL_FAILING
 
-Capture the two bases used to reset between entries:
-
-```bash
-pytorch_base=$(git -C $pytorch_dir rev-parse HEAD)
-xpu_ops_base=$(git -C $pytorch_dir/third_party/torch-xpu-ops rev-parse HEAD)
-```
-
-Track them separately; different entries can triage to different
-`target_repo` and each needs its own base pinned.
+Capture the two base SHAs and reset both checkouts between entries per
+the shared
+[reset-between-entries recipe](../issue-handler/references/execution-modes.md#reset-between-entries-recipe-batched-phase-2)
+(identical to `issue-handler`'s Phase 2, including the 3-attempt cap).
 
 For each STILL_FAILING entry:
 
-1. **Reset both checkouts** so the prior entry's staged diff does
-   not bleed into this one:
-
-   ```bash
-   git -C $pytorch_dir reset --hard $pytorch_base
-   git -C $pytorch_dir clean -fdx
-   if [ -d "$pytorch_dir/third_party/torch-xpu-ops/.git" ]; then
-       git -C $pytorch_dir/third_party/torch-xpu-ops reset --hard $xpu_ops_base
-       git -C $pytorch_dir/third_party/torch-xpu-ops clean -fdx
-   fi
-   ```
-
-2. Call `fix-root-cause` on the entry's failure signature.
-3. If `IMPLEMENTING`: call `fix-implement` with
-   `allow_skip=true`. If that returns `READY`: call `fix-verify`
-   with `run_before_after_diff=true` and `run_lint=true`.
+1. Reset both checkouts (see the shared recipe above) so the prior
+   entry's staged diff does not bleed into this one.
+2. Call `fix-root-cause` on the entry's failure signature. If it
+   returns `NEEDS_HUMAN`, log the entry outcome and move on.
+3. On `IMPLEMENTING`, call `fix-implement` with `allow_skip=true`.
+   If it returns `READY`, call `fix-verify` with
+   `run_before_after_diff=true` and `run_lint=true`.
 4. Each leaf posts its own per-entry
    `<!-- agent:root-cause -->` / `<!-- agent:implement -->` /
    `<!-- agent:verify -->` comment. Track each entry's outcome for
    the final summary.
 5. On any leaf returning `NEEDS_HUMAN` / `CANNOT_VERIFY` /
    `FAILED`, log the entry outcome and **move on** to the next
-   entry — do NOT abort the loop.
-
-Loop bounds inside a single entry (Stage 4 ↔ Stage 5 retry): the
-same 3-attempt cap as `issue-handler`. On attempts exhausted,
-record `NEEDS_HUMAN(attempts_exhausted)` for that entry and
-continue.
+   entry — do NOT abort the loop. On attempts exhausted (3-attempt
+   cap from the shared recipe), record
+   `NEEDS_HUMAN(attempts_exhausted)` for that entry and continue.
 
 ### Skip-with-tracking-issue path
 
