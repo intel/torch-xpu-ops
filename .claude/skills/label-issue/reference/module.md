@@ -7,12 +7,11 @@ permitted:
 `torch-ops-gemm`, `torch-ops-eltwise`, `torch-ops-reduction`,
 `torch-ops-others`, `torch-runtime`, `others`
 
-`extract.json`'s `module` field carries exactly one of these, or `""`, and its
-`module_label` field carries the corresponding GitHub label from the table
-below. Both are read off the issue's EXISTING `module:` label, so treat them as
-a **prior, not an answer**: keep the bucket unless the traced root cause
-contradicts it, and derive the bucket yourself from the trace when the field is
-`""`. When you override the bucket, take its label from the table below.
+`extract.json`'s `module` field carries exactly one of these, or `""`, read off
+the issue's EXISTING `module:` label. When it is non-blank, preserve it: return
+that bucket directly and take its label from the table below — the issue is
+already labeled, so do not re-decide this axis. When it is `""`, derive the
+bucket yourself from the traced root cause. Take its label from the table below.
 
 ## Bucket to label mapping
 

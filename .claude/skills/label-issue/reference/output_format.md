@@ -18,9 +18,9 @@ Trace mode: evidence-only (no pytorch_folder provided).>
 |---|---|
 | `type: <Bug\|Task\|Feature\|Epic>` | <`issue_type` from extract.json, or the failure evidence when it is blank, 1 line> |
 | `test_module: <ut\|e2e\|build\|infrastructure\|...>` | <deciding signal from extract.json, 1 line> |
-| `<module_label>` | <bucket-deciding signal, 1 line> |
+| `module: <label>` | <bucket-deciding signal, 1 line> |
 | `priority: <Urgent\|High\|Medium\|Low>` | <matched rule + evidence, 1 line> |
-| `<dependency_label>` | <direct evidence, 1 line; omit row when none/null> |
+| `dependency: <label>` | <direct evidence, 1 line; omit row when none/null> |
 | `duplicated` | Duplicate of <url> (<relevance>, <recommended_action>); omit row when no duplicate |
 | `not_target` | <own_labels or duplicate:<repo>#<n>>; omit row when false |
 | `need_split` | <N> distinct failure groups: <one-line signature each>; omit row when only one group |
@@ -47,28 +47,25 @@ Rules for the table:
   identify the case by `benchmark`/`model`/`phase`/`dtype` instead of
   `file::class::case`. A single-case issue omits the line; do not write
   "case 1 of 1" and do not add a paragraph explaining the omission.
-- The dependency row carries `extract.json`'s **`dependency_label`** field
-  verbatim when Step 3 retained the extracted value; when Step 3 derived or
-  overrode it, take the label from the mapping table in
-  [dependency.md](dependency.md) instead. Either way emit a label, never
-  `dependency component: ` plus the raw value. Most values follow that prefix,
-  but `third_party_packages` maps to `dependency: third_party packages` —
-  different prefix, and a space. Three labels (`oneCCL`, `IGC`, `Level_Zero`) do
-  not exist in the repo yet; emit them anyway and note in the reason that the
-  label must be created.
+- The dependency row's label comes from the mapping table in
+  [dependency.md](dependency.md), keyed on Step 3's `dependency` value. Emit a
+  label, never `dependency component: ` plus the raw value. Most values follow
+  that prefix, but `third_party_packages` maps to `dependency: third_party
+  packages` — different prefix, and a space. Three labels (`oneCCL`, `IGC`,
+  `Level_Zero`) do not exist in the repo yet; emit them anyway and note in the
+  reason that the label must be created.
 - The `target_component` row names the owner. When the dependency axis (Step 3)
   returned a taxonomy value, that value IS the `target_component` — emit
   `target_component: oneDNN`, never `target_component: third-party` — and the
   reason cites the dependency evidence rather than a product `file:line`. The
   dependency row and the `target_component` row therefore agree on the component
   in that case. See [target_component.md](target_component.md).
-- The module row carries `extract.json`'s **`module_label`** field verbatim when
-  Step 6 retained the extracted bucket; when Step 6 derived it (the field was
-  `""`) or overrode it, take the label from the mapping table in
-  [module.md](module.md) instead. Either way emit the label (e.g. `module: ao`,
-  `module: core`), never the raw bucket name. Two buckets differ from their
-  label — `torchAO` -> `module: ao` and `torch-runtime` -> `module: core` — so
-  emitting the bucket would produce a label that does not exist in the repo.
+- The module row's label comes from the mapping table in
+  [module.md](module.md), keyed on Step 6's `module` bucket. Emit the label (e.g.
+  `module: ao`, `module: core`), never the raw bucket name. Two buckets differ
+  from their label — `torchAO` -> `module: ao` and `torch-runtime` -> `module:
+  core` — so emitting the bucket would produce a label that does not exist in the
+  repo.
 - `type` and `test_module` come straight from `extract.json` (Step 1); no
   `label-issue/reference/` pack governs them, and no step re-derives them here.
   (`test_module` was itself decided in Step 1 per

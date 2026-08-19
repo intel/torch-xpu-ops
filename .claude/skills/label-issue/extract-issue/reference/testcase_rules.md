@@ -126,7 +126,7 @@ Do not invent cases from:
 - a bare test name with no `-k` and no node id
 
 These are deliberately unsupported. If the only evidence is one of these, leave
-`test_cases` empty and let `low_confidence` flag it.
+`test_cases` empty.
 
 ### Reconstructing `test_file` from a dotted path
 
@@ -269,17 +269,3 @@ If a list cannot be found, that bucket stays empty and model-name E2E detection
 is disabled for it; label- and path-based signals still work. A stale built-in
 list would silently mis-classify issues, so an empty bucket is preferred over a
 wrong answer.
-
-## Unit-test issue test (for `low_confidence`)
-
-Separate from `test_module`. An issue is a unit-test issue when ANY holds:
-
-- a label contains `module: ut`
-- a parsed non-E2E `test_file` starts with `test/`, starts with `test/xpu/`,
-  contains `/test/`, starts with `test_`, or has a basename starting with
-  `test_`
-- a parsed `test_class` starts with `Test`
-- a parsed `test_case` starts with `test_`
-
-This suppresses the `reproduce_steps` low-confidence flag: a unit test's id is
-its own reproducer.

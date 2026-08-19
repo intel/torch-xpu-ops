@@ -100,10 +100,6 @@ and skips unit-test parsing entirely.
 Emit one JSON object with exactly the fields in **Output schema**, in that order.
 Print it, and write it to `output` when that was given.
 
-Then resolve `low_confidence` inline: for each field named there, re-read
-`title`/`body`, fill the field in, and remove its name from the list. Leave a
-field listed only when the evidence genuinely is not in the issue.
-
 ## Output schema
 
 One JSON object. Emit exactly these fields, in this order. A blank source
@@ -126,10 +122,8 @@ always yields `""`.
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
 | github_type | gh GraphQL | The same raw Type field as `issue_type`. |
 | module | issue labels | Bucket for the `module: <x>` label, per [../reference/module.md](../reference/module.md). See **Label-derived axes**. |
-| module_label | issue labels | That `module: <x>` label verbatim. Emit this, not the bucket. |
 | test_module | you | `ut` \| `e2e` \| `build` \| `infrastructure`, per [reference/testcase_rules.md](reference/testcase_rules.md). |
 | dependency | issue labels | Taxonomy value for the dependency label, per [../reference/dependency.md](../reference/dependency.md). `AO` is never a value. See **Label-derived axes**. |
-| dependency_label | issue labels | That dependency label verbatim. |
 | priority | gh GraphQL | The PyTorchXPU **Priority** field, normalized `P0`->`Urgent`, `P1`->`High`, `P2`->`Medium`, `P3`->`Low`. The names `Urgent`/`High`/`Medium`/`Low` pass through; anything else -> `""`. |
 | pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | Project fields, or "". |
 | os | you | `Linux` \| `Windows` \| "", per [reference/platform_rules.md](reference/platform_rules.md). |
@@ -140,7 +134,6 @@ always yields `""`.
 | test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per that pack's **Top-level mirror fields**. All "" on an E2E issue. |
 | test_cases | you | Every parsed case, in the scan order fixed by that pack's **Ordering** contract - which the parent relies on for a stable `test_cases[0]`. |
 | pr_link | you | PR URL the issue is tied to, per [reference/text_rules.md](reference/text_rules.md). |
-| low_confidence | you | Field names needing a second pass. See **Inline LLM fallback**. |
 
 Fields sourced from `gh REST` or `gh GraphQL` are copied from that one response.
 Do not re-derive them from the title text, the body, or the labels: a blank Type
@@ -151,11 +144,10 @@ that.
 ## Label-derived axes
 
 `module` and `dependency` come off the issue's EXISTING labels only - never
-inferred from the title, body, or traceback. Map the label through
-[../reference/module.md](../reference/module.md) and
-[../reference/dependency.md](../reference/dependency.md) rather than stripping
-its prefix, because a few label names break the common pattern. An unlabeled
-issue yields `""` for both the value and the label.
+inferred from the title, body, or traceback. Map the existing label to its bucket
+or taxonomy value via [../reference/module.md](../reference/module.md) and
+[../reference/dependency.md](../reference/dependency.md), because a few label names
+break the common pattern. An unlabeled issue yields `""`.
 
 `module: ut` is not a module value; it is a `test_module` signal, so ignore it
 here. When several `module:` labels are present, take the first one GitHub
@@ -167,18 +159,6 @@ appears here when the trace disagrees. Keyword-guessing would only add a second,
 weaker opinion for the parent to discard, so `""` is the honest and more useful
 answer. Consequence: `module` here can be `""` - do not report `others` as if a
 bucket had been determined.
-
-## Inline LLM fallback
-
-`low_confidence` lists ONLY these fields, only under these conditions:
-
-| Field | Listed when |
-|---|---|
-| `reproduce_steps` | No shell command found AND the issue is not a unit test (a unit test's id is its own reproducer). |
-| `test_cases` | No case parsed but `test_module` is `ut` or `e2e`. |
-| `pr_link` | No PR found, but the body signals a non-main context ("this PR", "my branch", "cherry-pick", "backport", a CI run URL), or a `#N` ref could not be resolved. |
-
-`dependency`, `traceback`, `os`, and `platform` are NEVER flagged.
 
 ## Authoritative-source fields
 
@@ -203,7 +183,7 @@ field beats a guess.
    is not a reason to use it.
 3. Do not modify `pytorch_folder`. Read the model lists only.
 4. Never invent a `file:line`, a test case, or a model name. Absent evidence
-   yields `""` or an entry in `low_confidence`.
+   yields `""`.
 
 ## Hard stops
 

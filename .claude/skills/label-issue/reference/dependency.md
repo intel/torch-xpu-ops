@@ -20,12 +20,12 @@ overrides the traced fix location and names the owner, return one only on direct
 evidence that the failure originates in that component — never on a library
 merely appearing in the call path.
 
-`extract.json` carries the value in `dependency` and its label in
-`dependency_label`, both read off the issue's EXISTING dependency label. Treat
-them as a prior, not an answer: still decide this axis from the rules above, and
-when you override the value take its label from the mapping table below. Both
-fields are `""` when the issue carries no dependency label — that is not
-evidence of `none`. Emit the label, never the bare value.
+`extract.json` carries the value in `dependency`, read off the issue's EXISTING
+dependency label. When it is non-blank, preserve it: return that value directly
+and take its label from the mapping table below — the issue is already labeled,
+so do not re-decide this axis. The field is `""` when the issue carries no
+dependency label — that is not evidence of `none`; decide this axis from the
+rules above. Emit the label, never the bare value.
 
 ## Value to label mapping
 

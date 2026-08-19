@@ -86,18 +86,11 @@ de-duplicated. No cap. `""` when none. The title is not scanned.
 
 ### Prose rejection
 
-Reject an otherwise-matching line when any token AFTER the first is a standalone
-English function word. Split on whitespace and strip `.,;:()[]`"'` from each
-token before comparing, case-insensitively:
-
-```
-a an the is are was were be been being and or but so then than
-this that these those there here for with without from into onto of
-at by on in to as should shall would could can cannot will wont does
-doesn't did didn't has have had because when while after before if it
-its we you your i my our they them also still just only instead
-manually above below not
-```
+Reject an otherwise-matching line when, after the first token, it reads as an
+English sentence rather than a shell command — i.e. some later token is a
+standalone English function word (`and`, `the`, `is`, `for`, `with`, `to`, `if`,
+`when`, `manually`, and the like). Compare tokens case-insensitively after
+stripping `.,;:()[]"'`.
 
 A real shell command joins with operators - `&&`, `|`, `;` - never with the word
 `and`. So a standalone function word means the line is prose that happens to
@@ -149,7 +142,7 @@ gh api repos/<owner>/<repo>/issues/<number>
 |---|---|
 | Contains a `pull_request` key | It is a PR; emit `https://github.com/<owner>/<repo>/pull/<number>`. |
 | No `pull_request` key | It is an issue; `pr_link` stays `""`. |
-| Any failure - no `gh`, timeout, 404, private repo, invalid JSON | `""`, and add `pr_link` to `low_confidence`. |
+| Any failure - no `gh`, timeout, 404, private repo, invalid JSON | `""`. |
 
 ### 3. Not matched
 

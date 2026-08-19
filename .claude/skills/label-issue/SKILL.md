@@ -74,10 +74,7 @@ Invoke `extract-issue` with `<issue_ref>`, the optional `repo`, the optional
 skill still returns full `title`/`body`/`traceback` without it.
 
 A hard stop inside that skill (missing/unauthenticated `gh`, 404, network
-failure, PR reference, malformed input) is a **hard-stop** here too. If
-`low_confidence` is non-empty, resolve those fields inline from the returned
-`body`/`title` per that skill's Inline LLM fallback, then overwrite them in
-`extract.json`.
+failure, PR reference, malformed input) is a **hard-stop** here too.
 
 `extract-issue` is the only extraction path for this skill. Do not substitute a
 Python extraction script for it, and do not switch away from it because `python3`
@@ -149,7 +146,7 @@ only**. Mode depends on `pytorch_folder`:
 
 **Mode A.** Delegate the trace to a read-only deep analysis subagent. Have it establish:
 the call path to the failure with `file:line`; whether the owner is the test file,
-`pytorch/{aten,torch,c10}`, `third_party/torch-xpu-ops/`, or a third party. 
+`pytorch/{aten,torch,c10}`, `third_party/torch-xpu-ops/`, or a third party.
 If it runs in the background, await it rather than repeating the search yourself.
 
 **Mode B.** Conclude a cause ONLY when the evidence is self-sufficient (e.g. the
@@ -175,13 +172,13 @@ Read `reference/dependency.md`. Return exactly one taxonomy value, `none`, or
 `reference/xpu_operator_dependency_list.md`. Ambiguous or missing
 evidence -> `null`; do not guess from issue prose.
 
-`extract.json` carries the value in `dependency` and its label in
-`dependency_label`, taken from the issue's existing dependency label when it has
-one. Both are `""` when it has none — that is not evidence of `none`, so still
-decide this axis from `reference/dependency.md`. Emit the label, not the value:
-the prefix is not uniform (`third_party_packages` maps to `dependency:
-third_party packages`). When you override the value, take the new label from the
-mapping table in `reference/dependency.md`.
+`extract.json` carries the value in `dependency`, taken from the issue's existing
+dependency label when it has one. When it is non-blank, preserve it and return
+that value directly — do not re-decide. It is `""` when the issue has no
+dependency label — that is not evidence of `none`, so decide this axis from
+`reference/dependency.md`. Emit the label, not the value: the prefix is not
+uniform (`third_party_packages` maps to `dependency: third_party packages`). Take
+the label from the mapping table in `reference/dependency.md`.
 
 This step runs BEFORE ownership because a confirmed dependency decides it. Only
 a taxonomy value counts as "has a dependency"; `none` and `null` do not, and
@@ -225,13 +222,13 @@ Decision Priority Order (first match wins). Base it on the traced root cause,
 not on keyword matching in the title. In evidence-only mode, base it on the
 traceback's owning frames; if even the bucket is unclear, use `others`.
 
-`extract.json` may already carry a bucket in `module` and its label in
-`module_label`, taken from the issue's existing `module:` label. Treat that as a
-prior, not an answer: keep it unless the traced root cause contradicts it. When
-it is `""` — the issue carries no `module:` label — derive the bucket yourself
-from the traced root cause; never emit `""` for this axis. When you override the
-bucket, take the new label from the mapping table in `reference/module.md`. Emit
-the label (`module: ao`), never the bucket (`torchAO`).
+`extract.json` may already carry a bucket in `module`, taken from the issue's
+existing `module:` label. When it is non-blank, preserve it and return that
+bucket directly — do not re-decide. When it is `""` — the issue carries no
+`module:` label — derive the bucket yourself from the traced root cause; never
+emit `""` for this axis. Take the label from the mapping table in
+`reference/module.md`. Emit the label (`module: ao`), never the bucket
+(`torchAO`).
 
 ### Step 7 — priority
 
