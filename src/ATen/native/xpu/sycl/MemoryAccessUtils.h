@@ -137,7 +137,6 @@ struct LoadWithCastFP {
     void* ptr = base_ptr + element_sizes[arg] * offset;
     if constexpr (
         std::is_same_v<scalar_t, float> ||
-        std::is_same_v<scalar_t, double> ||
         std::is_same_v<scalar_t, c10::Half> ||
         std::is_same_v<scalar_t, c10::BFloat16>) {
       switch (dtypes[arg]) {
@@ -201,7 +200,6 @@ struct StoreWithCastFP {
       int arg = 0) {
     if constexpr (
         std::is_same_v<scalar_t, float> ||
-        std::is_same_v<scalar_t, double> ||
         std::is_same_v<scalar_t, c10::Half> ||
         std::is_same_v<scalar_t, c10::BFloat16>) {
       *(reinterpret_cast<float*>(base_ptr) + offset) =
