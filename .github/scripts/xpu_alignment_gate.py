@@ -29,6 +29,10 @@ ALLOWED_VERDICTS = frozenset(
 )
 ACTIONABLE_VERDICT = "needs-xpu-fix"
 
+# A row that survives filtering has either run or not; any other value would
+# fall through both the pending and the mandatory set and vanish from the day.
+ALLOWED_LOCAL_STATUSES = frozenset({"done", "pending"})
+
 LEDGER_GLOB = "**/artifacts/candidate_ledger.jsonl"
 MANIFEST_GLOB = "**/reports/reviewer_manifest.json"
 
@@ -167,6 +171,11 @@ def build_decision(
         for unit, row in ledger.items()
         if survives_filtering(row) and row["local_status"] == "done"
     )
+    invalid_statuses = sorted(
+        unit
+        for unit, row in ledger.items()
+        if survives_filtering(row) and row["local_status"] not in ALLOWED_LOCAL_STATUSES
+    )
 
     # A verdict the ledger never mentions means the reviewer invented a unit;
     # a mandatory row with no verdict means the review stopped early.
@@ -189,17 +198,22 @@ def build_decision(
     blockers = (
         ledger_errors
         + review_errors
-        + payload_errors
+        + [f"ledger-invalid-status:{unit}" for unit in invalid_statuses]
         + [f"coverage-gap:{unit}" for unit in coverage_gaps]
         + [f"unknown-unit:{unit}" for unit in unknown_units]
     )
+    # One unusable payload must not discard the units that are fine, so it only
+    # blocks the day when nothing is left to publish. It always closes the
+    # unattended path, which assumes every reviewed unit reached the gate.
+    if actionable and not payloads:
+        blockers = blockers + payload_errors
 
     complete = not pending
     if blockers:
         decision = "blocked"
     elif not actionable:
         decision = "none"
-    elif complete and auto_file and len(actionable) == 1:
+    elif complete and auto_file and not payload_errors and len(payloads) == 1:
         decision = "file-one"
     else:
         decision = "triage"
@@ -208,12 +222,13 @@ def build_decision(
         "run_id": run_id,
         "scan_date": scan_date,
         "decision": decision,
-        # `blocked` and an unfinished scan are the only conditions that should
-        # turn the run red; a busy day is normal.
-        "needs_attention": bool(blockers) or not complete,
+        # `blocked`, an unfinished scan and a unit that cannot be published are
+        # the only conditions that should turn the run red; a busy day is normal.
+        "needs_attention": bool(blockers) or not complete or bool(payload_errors),
         "scan_complete": complete,
         "pending_units": pending,
         "mandatory_units": mandatory,
+        "unpublishable_units": payload_errors,
         "unit_verdicts": dict(sorted(verdicts.items())),
         "actionable_units": actionable,
         "auto_file_requested": auto_file,

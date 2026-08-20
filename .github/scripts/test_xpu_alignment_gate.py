@@ -179,10 +179,43 @@ class AlignmentGateTests(unittest.TestCase):
                     "local_status": "pending",
                 },
             ]
-            decision = self.decide(root) if write_run(root, ledger=ledger) else None
-            assert decision is not None
+            write_run(root, ledger=ledger)
+            decision = self.decide(root)
             self.assertEqual(decision["decision"], "file-one")
             self.assertEqual(decision["pending_units"], [])
+
+    def test_unknown_local_status_blocks_instead_of_vanishing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = [
+                done("candidate-1"),
+                {
+                    "id": "candidate-7",
+                    "title_status": "pass",
+                    "deep_status": "pass",
+                    "local_status": "error",
+                },
+            ]
+            write_run(root, ledger=ledger)
+            decision = self.decide(root)
+            # Without the allowlist this row would join neither the pending nor
+            # the mandatory set, and the day would report itself as finished.
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertIn("ledger-invalid-status:candidate-7", decision["blockers"])
+
+    def test_conflicting_ledger_rows_across_runs_block(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_run(root)
+            write_run(
+                root,
+                scope="restored-copy",
+                ledger=[pending("candidate-1")],
+                payloads=[],
+            )
+            decision = self.decide(root)
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertIn("ledger-conflicting-row:candidate-1", decision["blockers"])
 
     def test_missing_ledger_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -302,6 +335,45 @@ class AlignmentGateTests(unittest.TestCase):
             decision = self.decide(root)
             self.assertEqual(decision["decision"], "blocked")
             self.assertIn("payload-not-unique:candidate-1:0", decision["blockers"])
+
+    def test_one_unusable_payload_still_publishes_the_others(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_run(
+                root,
+                ledger=[done("candidate-a"), done("candidate-b")],
+                units=[
+                    {"id": "candidate-a", "verdict": "needs-xpu-fix"},
+                    {"id": "candidate-b", "verdict": "needs-xpu-fix"},
+                ],
+                payloads=["candidate-a"],
+            )
+            decision = self.decide(root)
+            # The GPU time already spent on candidate-a still reaches a human.
+            self.assertEqual(decision["decision"], "triage")
+            self.assertEqual(
+                [payload["unit_id"] for payload in decision["payloads"]], ["candidate-a"]
+            )
+            self.assertEqual(decision["blockers"], [])
+            self.assertIn("payload-not-unique:candidate-b:0", decision["unpublishable_units"])
+            self.assertTrue(decision["needs_attention"])
+
+    def test_an_unusable_payload_closes_the_automatic_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_run(
+                root,
+                ledger=[done("candidate-a"), done("candidate-b")],
+                units=[
+                    {"id": "candidate-a", "verdict": "needs-xpu-fix"},
+                    {"id": "candidate-b", "verdict": "non-issue"},
+                ],
+                payloads=[],
+            )
+            write_payload(root / SCAN / "reports", "candidate-a", body="   ")
+            decision = self.decide(root)
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertIn("payload-empty-body:candidate-a", decision["blockers"])
 
     def test_payload_with_a_foreign_title_prefix_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

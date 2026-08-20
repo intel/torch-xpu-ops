@@ -19,7 +19,9 @@ import sys
 import tempfile
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
-RUN_MARKER = "<!-- alignment-run: {run_id} {scan_date} -->"
+# Provenance is visible text, not an HTML comment: a triager reading a draft
+# needs the run that produced it in order to re-read the underlying evidence.
+PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
 TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
@@ -61,7 +63,7 @@ def list_comments(repo: str, issue: int) -> list[dict]:
 def render_draft(unit_id: str, title: str, body: str, run_id: str, scan_date: str) -> str:
     return (
         f"{UNIT_MARKER.format(unit_id=unit_id)}\n"
-        f"{RUN_MARKER.format(run_id=run_id, scan_date=scan_date)}\n"
+        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date)}\n"
         f"### {title}\n\n{body}\n"
     )
 
@@ -71,8 +73,8 @@ def render_filed_note(unit_id: str, issue_url: str, run_id: str, scan_date: str)
     return (
         f"{UNIT_MARKER.format(unit_id=unit_id)}\n"
         f"{FILED_MARKER.format(number=issue_number(issue_url))}\n"
-        f"{RUN_MARKER.format(run_id=run_id, scan_date=scan_date)}\n"
-        f"`{scan_date}` automatically filed `{unit_id}` as {issue_url}\n"
+        f"`{scan_date}` automatically filed `{unit_id}` as {issue_url} "
+        f"in run `{run_id}`\n"
     )
 
 
