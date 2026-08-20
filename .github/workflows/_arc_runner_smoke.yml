@@ -34,7 +34,8 @@ env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   # UT node ids from PR #5004 test plan. They live in two upstream pytorch test
   # files. Format: "<file>::<test_name_-k_filter>", one per line. The opinfo
-  # tests are inductor tests and need pytorch-triton-xpu (pulled with the wheel).
+  # tests are inductor tests and need triton-xpu, which the nightly torch+xpu
+  # wheel already pulls as a Requires-Dist (no separate install needed).
   # Fail-on-nightly set (before) + verify-after set:
   FFT_FAIL_TESTS: >-
     test/test_ops_fwd_gradients.py::test_fn_fwgrad_bwgrad_fft_fft2_xpu_float64
@@ -131,8 +132,9 @@ jobs:
             git -C "$PYTORCH_DIR" checkout -q "$PT_SHA" || \
               echo "::warning::checkout $PT_SHA failed; using default branch (UT files may drift)"
           fi
-          # Test deps for the opinfo (inductor) tests. pytorch-triton-xpu is
-          # pulled with the nightly torch wheel; install pytest requirements.
+          # Test deps for the opinfo (inductor) tests. triton-xpu is already a
+          # dependency of the torch+xpu wheel (Requires-Dist), so only the pytest
+          # helpers are missing.
           pip install pytest expecttest hypothesis || true
           cd "$PYTORCH_DIR"
           python -c "import torch, triton; print('triton', triton.__version__)" || \
