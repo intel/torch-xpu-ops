@@ -10,7 +10,7 @@ on:
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
-  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill
+  CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
 
 permissions:
@@ -25,7 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'issue_comment'
-      && github.event.issue.pull_request
       && startsWith(github.event.comment.body, '@torchxpubot')
     permissions:
       pull-requests: read
@@ -36,12 +35,18 @@ jobs:
       rerun_mode: ${{ steps.parse.outputs.rerun_mode }}
       pytorch_ref: ${{ steps.parse.outputs.pytorch_ref }}
       revert_reason: ${{ steps.parse.outputs.revert_reason }}
+      onto_branch: ${{ steps.parse.outputs.onto_branch }}
+      classification: ${{ steps.parse.outputs.classification }}
+      fixes: ${{ steps.parse.outputs.fixes }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
+      issue_number: ${{ steps.parse.outputs.issue_number }}
+      is_pr: ${{ steps.parse.outputs.is_pr }}
+      invalid_reason: ${{ steps.parse.outputs.invalid_reason }}
       actor: ${{ steps.parse.outputs.actor }}
       authorized: ${{ steps.parse.outputs.authorized }}
     steps:
       - name: Acknowledge Command
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -54,13 +59,26 @@ jobs:
 
       - name: Parse Command
         id: parse
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const body = context.payload.comment.body;
             const actor = context.payload.comment.user.login;
             const assoc = context.payload.comment.author_association;
-            const prNumber = context.payload.issue.number;
+            const issueNumber = context.payload.issue.number;
+            const isPR = !!context.payload.issue.pull_request;
+            const prNumber = isPR ? issueNumber : '';
+
+            core.setOutput('issue_number', String(issueNumber));
+            core.setOutput('pr_number', prNumber === '' ? '' : String(prNumber));
+            core.setOutput('is_pr', String(isPR));
+            core.setOutput('actor', actor);
+
+            const reject = (reason) => {
+              core.setOutput('command', 'invalid');
+              core.setOutput('invalid_reason', reason);
+              core.setOutput('authorized', 'false');
+            };
 
             // Extract the @torchxpubot command line
             const match = body.match(/^@torchxpubot\s+(\S+)(.*)/i);
@@ -72,13 +90,10 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'help'];
 
             if (!validCommands.includes(command)) {
-              core.setOutput('command', 'invalid');
-              core.setOutput('pr_number', prNumber);
-              core.setOutput('actor', actor);
-              core.setOutput('authorized', 'false');
+              reject('Unknown command. Use `@torchxpubot help` to see available commands.');
               return;
             }
 
@@ -87,6 +102,22 @@ jobs:
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
 
+            // Context check: fix and triage are issue-only, help works on
+            // both, the rest are PR-only.
+            if (normalizedCommand === 'fix' || normalizedCommand === 'triage') {
+              if (isPR) {
+                reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
+                return;
+              }
+              if (context.payload.issue.state !== 'open') {
+                reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on open issues.`);
+                return;
+              }
+            } else if (normalizedCommand !== 'help' && !isPR) {
+              reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on pull request comments.`);
+              return;
+            }
+
             // Permission check
             const privileged = ['OWNER', 'MEMBER', 'COLLABORATOR'];
             const maintainerOnly = ['OWNER', 'MEMBER'];
@@ -94,6 +125,10 @@ jobs:
 
             if (command === 'help') {
               authorized = true; // anyone
+            } else if (command === 'fix') {
+              // fix drives an autonomous agent with write access, so it is
+              // gated like `merge -f` rather than like the read-only commands.
+              authorized = maintainerOnly.includes(assoc);
             } else if (!privileged.includes(assoc)) {
               authorized = false;
             }
@@ -103,6 +138,9 @@ jobs:
             let rerunMode = 'all';
             let pytorchRef = '';
             let revertReason = '';
+            let ontoBranch = '';
+            let classification = '';
+            let fixes = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -129,6 +167,28 @@ jobs:
               if (branchMatch) {
                 pytorchRef = branchMatch[1];
               }
+            } else if (command === 'cherry-pick') {
+              const ontoMatch = args.match(/--onto\s+(\S+)/);
+              if (!ontoMatch) {
+                reject('`cherry-pick` needs a target branch. Usage: `@torchxpubot cherry-pick --onto release/2.14 -c critical`');
+                return;
+              }
+              ontoBranch = ontoMatch[1];
+              if (!/^release\/\d+\.\d+$/.test(ontoBranch)) {
+                reject(`\`${ontoBranch}\` is not a release branch. cherry-pick only targets branches named \`release/x.xx\`.`);
+                return;
+              }
+              const classMatch = args.match(/-c\s+(\S+)/);
+              const valid = ['regression', 'critical', 'fixnewfeature', 'docs', 'release'];
+              if (!classMatch || !valid.includes(classMatch[1])) {
+                reject('`cherry-pick` needs a classification: `-c ' + valid.join('|') + '`.');
+                return;
+              }
+              classification = classMatch[1];
+              const fixesMatch = args.match(/--fixes\s+(#?\d+|https:\/\/\S+)/);
+              if (fixesMatch) {
+                fixes = fixesMatch[1];
+              }
             }
 
             core.setOutput('command', normalizedCommand);
@@ -136,8 +196,9 @@ jobs:
             core.setOutput('rerun_mode', rerunMode);
             core.setOutput('pytorch_ref', pytorchRef);
             core.setOutput('revert_reason', revertReason);
-            core.setOutput('pr_number', prNumber);
-            core.setOutput('actor', actor);
+            core.setOutput('onto_branch', ontoBranch);
+            core.setOutput('classification', classification);
+            core.setOutput('fixes', fixes);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -146,15 +207,20 @@ jobs:
     if: needs.parse-command.outputs.command == 'invalid'
     steps:
       - name: Post invalid command message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          INVALID_REASON: ${{ needs.parse-command.outputs.invalid_reason }}
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
+            const reason = process.env.INVALID_REASON
+              || 'Unknown command. Use `@torchxpubot help` to see available commands.';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: 'Unknown command. Use `@torchxpubot help` to see available commands.'
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: reason
             });
 
   permission-denied:
@@ -167,7 +233,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'false'
     steps:
       - name: Post permission denied message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -177,11 +243,13 @@ jobs:
             msg += 'This command requires OWNER, MEMBER, or COLLABORATOR association.';
             if (cmd === 'merge' && force === 'true') {
               msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
+            } else if (cmd === 'fix') {
+              msg = 'Only OWNER or MEMBER can use `@torchxpubot fix`.';
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
               body: msg
             });
 
@@ -191,11 +259,12 @@ jobs:
     if: needs.parse-command.outputs.command == 'help'
     steps:
       - name: Post help message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const helpText = `## @torchxpubot Commands
+            const isPR = '${{ needs.parse-command.outputs.is_pr }}' === 'true';
+            const prCommands = `## @torchxpubot Commands (pull request)
 
             | Command | Description |
             |---------|-------------|
@@ -209,11 +278,37 @@ jobs:
             | \`@torchxpubot rerun -b <branch_or_commit>\` | Rerun CI against a pytorch ref |
             | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review |
             | \`@torchxpubot ut-check\` (or \`check-ut\`, \`ut\`) | Analyze UT results: new failures, relevance, coverage |
-            | \`@torchxpubot help\` | Show this help message |`;
+            | \`@torchxpubot cherry-pick --onto release/x.xx -c <class>\` | Cherry-pick this merged PR onto a release branch |
+            | \`@torchxpubot help\` | Show this help message |
+
+            \`@torchxpubot fix\` is only available on issue comments.`;
+
+            const issueCommands = `## @torchxpubot Commands (issue)
+
+            | Command | Description |
+            |---------|-------------|
+            | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
+            | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
+            | \`@torchxpubot help\` | Show this help message |
+
+            \`fix\` reproduces the issue on a runner that has a prebuilt nightly
+            PyTorch-XPU wheel and no build tree. Python-level fixes (tests, skip
+            lists, Python operator code) are verified and pushed to an
+            \`agent/<slug>\` branch for a human to turn into a PR. A change to C++
+            or SYCL sources cannot be compiled there, so those are reported as a
+            root cause plus a suggested patch, not as a verified fix.
+
+            \`fix\` also updates this issue's body with agent status markers and
+            applies stage labels while it runs.
+
+            All other commands (merge, revert, rebase, lint, rerun, review, ut-check)
+            are only available on pull request comments.`;
+
+            const helpText = isPR ? prCommands : issueCommands;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ needs.parse-command.outputs.pr_number }},
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
               body: helpText.replace(/^ +/gm, '')
             });
 
@@ -230,7 +325,7 @@ jobs:
       statuses: read
     steps:
       - name: Get PR Info
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: prinfo
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -244,7 +339,7 @@ jobs:
             core.setOutput('mergeable', String(pr.data.mergeable));
 
       - name: Check Reviews
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -269,7 +364,7 @@ jobs:
 
       - name: Check CI Status
         if: needs.parse-command.outputs.force != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -318,7 +413,7 @@ jobs:
             }
 
       - name: Check Merge Conflicts
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -341,7 +436,7 @@ jobs:
 
       - name: Merge PR
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -374,7 +469,7 @@ jobs:
     steps:
       - name: Validate revert reason
         if: needs.parse-command.outputs.revert_reason == ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -387,7 +482,7 @@ jobs:
 
       - name: Checkout repository
         if: needs.parse-command.outputs.revert_reason != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -411,7 +506,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status and rebase
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -445,7 +540,7 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -477,7 +572,7 @@ jobs:
 
       - name: Post success
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -489,7 +584,7 @@ jobs:
 
       - name: Post failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -507,7 +602,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Check fork status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -540,7 +635,7 @@ jobs:
             core.exportVariable('PR_IS_FORK', String(isFork));
 
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
@@ -583,7 +678,7 @@ jobs:
           fi
 
       - name: Post result
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -605,7 +700,7 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Rerun CI
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -728,13 +823,13 @@ jobs:
   review:
     needs: parse-command
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     if: >-
       needs.parse-command.outputs.command == 'review'
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run AI review
         id: ai-review
@@ -743,7 +838,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 30 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /pr-review skill to review PR #${{ needs.parse-command.outputs.pr_number }}
             in the ${{ github.repository }} repository.
@@ -753,7 +848,7 @@ jobs:
 
       - name: Post review comment
         if: steps.ai-review.outputs.execution_file
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -763,17 +858,25 @@ jobs:
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
             if (!result || result.is_error || !result.result) return;
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'review');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            const footer = `\n\n---\n_Generated by [\`review\` job](${jobUrl})._`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + result.result
+              body: header + result.result + footer
             });
 
       - name: "Verify: AI review succeeded"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -791,14 +894,14 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: '@chuanqi129 `@torchxpubot review` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot review\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI review failed.');
             }
 
       - name: Report usage cost
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -832,13 +935,13 @@ jobs:
   ut-check:
     needs: parse-command
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     if: >-
       needs.parse-command.outputs.command == 'ut-check'
       && needs.parse-command.outputs.authorized == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Collect UT data
         id: collect
@@ -858,7 +961,7 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 15 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 40 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }}"
           prompt: |
             Use the /ut-check skill to analyze UT results for
             PR #${{ needs.parse-command.outputs.pr_number }} on ${{ github.repository }}.
@@ -869,7 +972,7 @@ jobs:
 
       - name: Post analysis comment
         if: steps.collect.outputs.has_data == 'true' && steps.ai-analysis.outputs.execution_file
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -879,18 +982,26 @@ jobs:
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const result = data.filter(e => e.type === 'result').pop();
             if (!result || result.is_error || !result.result) return;
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'ut-check');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            const footer = `\n\n---\n_Generated by [\`ut-check\` job](${jobUrl})._`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ needs.parse-command.outputs.pr_number }},
-              body: header + result.result
+              body: header + result.result + footer
             });
 
       - name: "Verify: AI analysis succeeded"
         if: steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -908,14 +1019,14 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ${{ needs.parse-command.outputs.pr_number }},
-                body: '@chuanqi129 `@torchxpubot ut-check` failed: Bedrock returned an error or no output. Please check AWS token validity.'
+                body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot ut-check\` failed: Bedrock returned an error or no output. Please check AWS token validity.`
               });
               core.setFailed('AI analysis failed.');
             }
 
       - name: Report usage cost
         if: always() && steps.collect.outputs.has_data == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -956,15 +1067,487 @@ jobs:
             --repo ${{ github.repository }} \
             --deterministic
 
+  cherry-pick:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      needs.parse-command.outputs.command == 'cherry-pick'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Cherry-pick onto the release branch
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          ONTO_BRANCH: ${{ needs.parse-command.outputs.onto_branch }}
+          CLASSIFICATION: ${{ needs.parse-command.outputs.classification }}
+          FIXES: ${{ needs.parse-command.outputs.fixes }}
+          ACTOR: ${{ needs.parse-command.outputs.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          python .github/scripts/bot_cherry_pick.py \
+            --pr-number "$PR_NUMBER" \
+            --onto "$ONTO_BRANCH" \
+            --classification "$CLASSIFICATION" \
+            --fixes "$FIXES" \
+            --actor "$ACTOR" \
+            --repo "$REPO"
+
+  fix:
+    needs: parse-command
+    runs-on: xpu-agent
+    timeout-minutes: 180
+    if: >-
+      needs.parse-command.outputs.command == 'fix'
+      && needs.parse-command.outputs.authorized == 'true'
+    container:
+      image: intelgpu/ubuntu-26.04-rolling:26.18
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri
+              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN
+              --shm-size=8g --privileged -e ZE_AFFINITY_MASK
+    env:
+      ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+      GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+    steps:
+      - name: Post starting message
+        id: start-comment
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const comment = await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: `Starting automated fix on this issue. Follow progress in the [workflow run](${runUrl}).`
+            });
+            // Reused by "Post result comment" so the happy path leaves one comment.
+            core.setOutput('comment_id', String(comment.data.id));
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config --global --add safe.directory "${{ github.workspace }}"
+          git config --global user.name "torchxpubot"
+          git config --global user.email "torchxpubot@intel.com"
+
+      - name: Setup Python
+        uses: ./.github/actions/setup-python
+        with:
+          python: '3.10'
+
+      - name: Install latest nightly PyTorch-XPU
+        run: |
+          # Reproduce/verify environment: latest nightly XPU build.
+          uv pip install --prerelease=allow torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/nightly/xpu
+          python -c "import torch; print('torch', torch.__version__); print('xpu available:', torch.xpu.is_available())"
+
+      - name: Run AI fix
+        id: ai-fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 200 --allowedTools ${{ env.CLAUDE_ALLOWED_TOOLS }},Write,Edit"
+          prompt: |
+            Use the /issue-handler skill in pipeline mode to fix issue
+            #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
+            The repository checkout is at ${{ github.workspace }}.
+
+            This runner has a prebuilt nightly PyTorch-XPU wheel installed and no
+            PyTorch source or build tree, so there is no way to recompile
+            libtorch_xpu.so here. That constrains what you may claim:
+
+            - Python-level changes (test files, skip lists, xpu_test_utils, Python
+              operator code) take effect immediately. Reproduce, fix, and re-verify
+              them normally.
+            - A change to C++ or SYCL sources under src/ CANNOT be verified on this
+              runner, because the installed wheel still contains the old kernels.
+              Do not run a repro after such an edit and report it as verified. Stop
+              instead, and report the root cause plus the suggested patch for a human
+              to build and verify.
+
+            When you have a verified Python-level fix, commit it to an agent/<slug>
+            branch and push it. Do not open a pull request: per the
+            /xpu-ops-pr-creation skill, a human opens the PR after reviewing your
+            summary. End by reporting the branch name and your summary.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post result comment
+        if: always() && steps.ai-fix.outputs.execution_file
+        uses: actions/github-script@v9
+        env:
+          START_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trigger = context.payload.comment;
+            const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
+            const body = header + result.result + footer;
+
+            // Overwrite the "starting" comment instead of adding a second one.
+            // Failures deliberately post a new comment so the mention notifies.
+            const startId = Number(process.env.START_COMMENT_ID);
+            if (startId) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: startId,
+                body
+              });
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body
+            });
+
+      - name: "Verify: AI fix succeeded"
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          AI_FIX_OUTCOME: ${{ steps.ai-fix.outcome }}
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const outcome = process.env.AI_FIX_OUTCOME || 'skipped';
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+
+            let result = null;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+            }
+            if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
+              return;
+            }
+
+            // Distinguish "the agent never ran" from "the agent failed", so the
+            // comment does not blame Bedrock for a setup or cancellation failure.
+            let reason;
+            if (outcome === 'cancelled') {
+              reason = 'the run was cancelled.';
+            } else if (outcome === 'skipped') {
+              reason = 'the environment setup failed before the agent started -- checkout, Python setup, or the nightly PyTorch-XPU install.';
+            } else if (result && result.is_error) {
+              reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
+            } else if (!result) {
+              reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
+            } else {
+              reason = 'the agent exited without a usable result.';
+            }
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot fix\` failed: ${reason}\n\nSee the [\`fix\` job](${jobUrl}) for details.`
+            });
+            if (outcome !== 'cancelled') {
+              core.setFailed(`AI fix failed: ${reason}`);
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'fix');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
+
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chown 1000:1000 /__w /github ./ -R
+
+  triage:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      needs.parse-command.outputs.command == 'triage'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run AI triage
+        id: ai-triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 20 --allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            Use the /issue-triage skill to triage issue
+            #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
+            The skill returns a report (a markdown block plus a JSON
+            block) to stdout. Do NOT post any comment yourself, do NOT
+            apply labels, do NOT modify the issue in any way — the
+            workflow that invoked you will consume your stdout and
+            handle those side effects.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Post triage report
+        if: steps.ai-triage.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const resultEvent = data.filter(e => e.type === 'result').pop();
+            if (!resultEvent || resultEvent.is_error || !resultEvent.result) {
+              core.setFailed('AI triage produced no usable result');
+              return;
+            }
+            const output = resultEvent.result;
+
+            // The skill emits a markdown block, a blank line, then a
+            // JSON block fenced by ```json ... ```. Extract each.
+            const jsonMatch = output.match(/```json\s*\n([\s\S]*?)\n```/);
+            if (!jsonMatch) {
+              core.setFailed('AI triage output did not include a JSON block');
+              return;
+            }
+            let summary;
+            try {
+              summary = JSON.parse(jsonMatch[1]);
+            } catch (e) {
+              core.setFailed(`AI triage JSON parse failed: ${e.message}`);
+              return;
+            }
+
+            // Markdown block is everything up to the ```json fence,
+            // trimmed of trailing whitespace and any stray fence.
+            const markdown = output.slice(0, jsonMatch.index)
+              .replace(/```(markdown)?\s*\n?/g, '')
+              .replace(/\n```\s*$/g, '')
+              .trim();
+            if (!markdown.startsWith('<!-- agent:triage -->')) {
+              core.setFailed('AI triage markdown did not start with the <!-- agent:triage --> marker');
+              return;
+            }
+
+            const N = Number(process.env.ISSUE_NUMBER);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Locate the previous triage comment via the REST list
+            // endpoint — its ids are numeric and accepted by the
+            // PATCH/DELETE endpoints below.
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: N, per_page: 100 }
+            );
+            const triageIds = comments
+              .filter(c => c.body && c.body.startsWith('<!-- agent:triage -->'))
+              .map(c => c.id);
+
+            if (triageIds.length === 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: N, body: markdown
+              });
+            } else {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: triageIds[0], body: markdown
+              });
+              // Best-effort dedup of any older duplicates.
+              for (const dup of triageIds.slice(1)) {
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner, repo, comment_id: dup
+                  });
+                } catch (e) {
+                  console.log(`Could not delete duplicate ${dup}: ${e.message}`);
+                }
+              }
+            }
+
+            // Apply suggested labels. Repeated add-label calls for an
+            // already-applied label are no-ops.
+            const labels = Array.isArray(summary.suggested_labels) ? summary.suggested_labels : [];
+            if (labels.length > 0) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: N, labels
+                });
+              } catch (e) {
+                console.log(`addLabels warning: ${e.message}`);
+              }
+            }
+
+      - name: "Verify: AI triage succeeded"
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          AI_TRIAGE_OUTCOME: ${{ steps.ai-triage.outcome }}
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const outcome = process.env.AI_TRIAGE_OUTCOME || 'skipped';
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+
+            let result = null;
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              result = data.filter(e => e.type === 'result').pop();
+              console.log('Result:', JSON.stringify(result, null, 2));
+            }
+            if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
+              return;
+            }
+
+            // Distinguish "the agent never ran" from "the agent failed", so
+            // the comment does not blame Bedrock for a setup or cancellation.
+            let reason;
+            if (outcome === 'cancelled') {
+              reason = 'the run was cancelled.';
+            } else if (outcome === 'skipped') {
+              reason = 'the environment setup failed before the agent started -- checkout or claude-code-action itself.';
+            } else if (result && result.is_error) {
+              reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
+            } else if (!result) {
+              reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
+            } else {
+              reason = 'the agent exited without a usable result.';
+            }
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'triage');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              body: `${process.env.BOT_ESCALATION_USERS} \`@torchxpubot triage\` failed: ${reason}\n\nSee the [\`triage\` job](${jobUrl}) for details.`
+            });
+            if (outcome !== 'cancelled') {
+              core.setFailed(`AI triage failed: ${reason}`);
+            }
+
+      - name: Report usage cost
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.ai-triage.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId
+            });
+            const job = jobs.data.jobs.find(j => j.name === 'triage');
+            const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const date = new Date().toISOString().split('T')[0];
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`triage\`](${jobUrl}) on #${{ needs.parse-command.outputs.issue_number }} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
+
   token-permission-test:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "Test: MERGE_TOKEN has PR read/write access"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1038,7 +1621,9 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       - name: "Verify: Bedrock test actually succeeded"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          BOT_ESCALATION_USERS: ${{ secrets.BOT_ESCALATION_USERS }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1056,7 +1641,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
-                body: '@chuanqi129 Bedrock connectivity test failed. Please check AWS token validity.'
+                body: `${process.env.BOT_ESCALATION_USERS} Bedrock connectivity test failed. Please check AWS token validity.`
               });
               core.setFailed('Bedrock test failed.');
             } else {
