@@ -268,10 +268,9 @@ jobs:
             The runner exposes the host Intel GPU (/dev/dri) but does NOT have the
             Intel Deep Learning Essentials (DLE) build toolchain installed yet.
 
-            Your job: set up the build environment and build PyTorch from source.
-            Do NOT edit any source and do NOT write the fix — it is already
-            applied. Verification runs in a separate step after you finish, so you
-            do not need to run the UTs.
+            Your job: set up the build environment, build PyTorch from source, and
+            verify the fix. Do NOT edit any source and do NOT write the fix — it is
+            already applied.
 
             1. Read the PyTorch XPU prerequisite guide to learn how to install the
                build toolchain. Start from the in-tree doc:
@@ -293,14 +292,21 @@ jobs:
                ${{ inputs.oneapi_installer }}
             2. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that exports
                USE_XPU=1, USE_CUDA=0, and sources the DLE/oneAPI environment from
-               wherever your install placed it. The verify gate will source this
+               wherever your install placed it. A later step also sources this
                file, so it must fully set up the runtime.
             3. Build from ${{ env.PYTORCH_DIR }} using the /xpu-build-pytorch skill
                (source build_pytorch.env first). The only build command is
                `pip install -e . -v --no-build-isolation`.
             4. Confirm `python -c "import torch; print(torch.xpu.is_available())"`
-               prints True on the source build. Report cold build time and xpu
-               availability.
+               prints True on the source build.
+            5. Verify the fix: run each of these UTs from ${{ env.PYTORCH_DIR }}
+               and confirm they now PASS on the source build (they FAILED on the
+               nightly wheel before the fix):
+               ${{ env.FFT_FAIL_TESTS }}
+               Also confirm these non-empty regression UTs still PASS:
+               ${{ env.FFT_REGRESSION_TESTS }}
+               Report cold build time, xpu availability, and the pass/fail count
+               with a short before/after summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -325,10 +331,11 @@ jobs:
             if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
             core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
 
-      # Objective gate: claude-code-action exits 0 regardless of what the agent
-      # concludes, so the agent's self-report cannot decide job success. Re-run
-      # the verify assertions in shell against the build the agent produced.
-      - name: Verify gate (agent driver)
+      # Objective re-check of the agent's own verify. The agent runs the UTs and
+      # reports pass/fail (step 5 of its prompt), but claude-code-action exits 0
+      # regardless of what the agent concludes, so its self-report cannot decide
+      # job success. Re-run the same assertions here as an independent gate.
+      - name: Verify gate — recheck agent's verify (agent driver)
         if: inputs.driver == 'agent'
         run: |
           set -uxo pipefail
