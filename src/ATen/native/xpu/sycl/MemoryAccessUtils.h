@@ -135,20 +135,17 @@ struct LoadWithCastFP {
   template <typename scalar_t>
   C10_DEVICE scalar_t load(char* base_ptr, uint32_t offset, int arg) {
     void* ptr = base_ptr + element_sizes[arg] * offset;
-    if constexpr (
-        std::is_same_v<scalar_t, float> ||
-        std::is_same_v<scalar_t, c10::Half> ||
-        std::is_same_v<scalar_t, c10::BFloat16>) {
+    if constexpr (std::is_same_v<scalar_t, float>) {
       switch (dtypes[arg]) {
         case at::ScalarType::Float:
-          return c10::convert<scalar_t>(c10::load<float>(ptr));
+          return c10::load<float>(ptr);
         case at::ScalarType::Half:
-          return c10::convert<scalar_t>(c10::load<c10::Half>(ptr));
+          return c10::convert<float>(c10::load<c10::Half>(ptr));
         case at::ScalarType::BFloat16:
-          return c10::convert<scalar_t>(c10::load<c10::BFloat16>(ptr));
+          return c10::convert<float>(c10::load<c10::BFloat16>(ptr));
       }
     }
-    // Satisfy compiler for non-fp scalar_t instantiations that never run.
+    // Satisfy compiler for non-float scalar_t instantiations that never run.
     return scalar_t{};
   }
 };
@@ -196,12 +193,8 @@ struct StoreWithCastFP {
       char* base_ptr,
       uint32_t offset,
       int arg = 0) {
-    if constexpr (
-        std::is_same_v<scalar_t, float> ||
-        std::is_same_v<scalar_t, c10::Half> ||
-        std::is_same_v<scalar_t, c10::BFloat16>) {
-      *(reinterpret_cast<float*>(base_ptr) + offset) =
-          c10::convert<float>(value);
+    if constexpr (std::is_same_v<scalar_t, float>) {
+      *(reinterpret_cast<float*>(base_ptr) + offset) = value;
     }
   }
 };

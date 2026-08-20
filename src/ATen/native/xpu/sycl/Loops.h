@@ -573,7 +573,8 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
-  bool use_fp_cast = (iter.dtype(0) == at::ScalarType::Float);
+  constexpr bool fp_result = std::is_same_v<arg0_t, float>;
+  bool use_fp_cast = fp_result && (iter.dtype(0) == at::ScalarType::Float);
   if (use_fp_cast) {
     for (int i = 1; i < ntensors; i++) {
       auto dt = iter.dtype(i);
