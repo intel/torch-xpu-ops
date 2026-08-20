@@ -36,6 +36,10 @@ ALLOWED_LOCAL_STATUSES = frozenset({"done", "pending"})
 LEDGER_GLOB = "**/artifacts/candidate_ledger.jsonl"
 MANIFEST_GLOB = "**/reports/reviewer_manifest.json"
 
+# The official review reference writes this line when it cannot reach a verdict,
+# and says blocked outputs never unlock filing.
+BLOCKED_REVIEW_RE = re.compile(r"review\s+status\s*\**\s*:\s*\**\s*blocked", re.IGNORECASE)
+
 
 def _text(value: object) -> str:
     return str(value or "").strip().lower()
@@ -99,8 +103,14 @@ def load_verdicts(root: Path) -> tuple[dict[str, str], list[str], list[str]]:
             continue
         # The official skill owns the human-auditable Markdown; a JSON-only
         # reviewer must not be able to unlock filing without it.
-        if not (path.parent / "review_conclusions.md").is_file():
+        conclusions = path.parent / "review_conclusions.md"
+        try:
+            verdict_prose = conclusions.read_text(encoding="utf-8")
+        except OSError:
             errors.append(f"manifest-missing-conclusions:{path}")
+            continue
+        if BLOCKED_REVIEW_RE.search(verdict_prose):
+            errors.append(f"review-blocked:{conclusions}")
             continue
         units = manifest.get("units")
         if not isinstance(units, list) or not units:
