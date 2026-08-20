@@ -50,10 +50,6 @@ env:
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'
 
-defaults:
-  run:
-    shell: bash {0}
-
 jobs:
   scan-and-validate:
     name: Scan and validate on XPU
@@ -244,7 +240,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      issues: read
     timeout-minutes: 20
     steps:
       - name: Checkout torch-xpu-ops
@@ -313,10 +308,11 @@ jobs:
           retention-days: 30
 
       # Runs last so a blocked or unfinished day still publishes what it can.
-      # A busy day is not a fault and stays green; only these two conditions are.
+      # A busy day is not a fault and stays green; only a blocked run, an
+      # unfinished day and a unit that could not be published are.
       - name: Report a blocked or unfinished run
         if: steps.decision.outputs.needs_attention == 'true'
         run: |
           set -euo pipefail
-          echo "::error::The alignment run was blocked or did not finish the day; see filing_decision.json in the gate artifact."
+          echo "::error::The alignment run was blocked, did not finish the day, or held back a unit it could not publish; see filing_decision.json in the gate artifact."
           exit 1

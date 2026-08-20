@@ -14,7 +14,7 @@ env:
   COST_TRACKING_ISSUE: 4251
   # The standing issue that carries the daily XPU alignment drafts. `file`
   # refuses to run anywhere else, so this number is the command's whole scope.
-  ALIGNMENT_TRIAGE_ISSUE: 5018
+  ALIGNMENT_TRIAGE_ISSUE: '5018'
 
 permissions:
   contents: read
@@ -1385,11 +1385,14 @@ jobs:
       - name: Report the outcome
         if: ${{ always() }}
         uses: actions/github-script@v9
+        env:
+          UNIT_ID: ${{ needs.parse-command.outputs.unit_id }}
+          ISSUE_URL: ${{ steps.file.outputs.issue_url }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
-            const unit = '${{ needs.parse-command.outputs.unit_id }}';
-            const url = '${{ steps.file.outputs.issue_url }}';
+            const unit = process.env.UNIT_ID;
+            const url = process.env.ISSUE_URL;
             const body = url
               ? `Filed \`${unit}\` as ${url}.`
               : `Could not file \`${unit}\`. See the [job log](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}) for the reason.`;
