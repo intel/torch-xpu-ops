@@ -5,8 +5,16 @@ name: XPU Alignment
 # here still never file: the scan stops before Step 4 and the reviewer only writes
 # reports. Filing is done by this workflow, and only when every one of these holds:
 # an independent review covered every finished ledger row, the scan finished the
-# day, and exactly one candidate came back `needs-xpu-fix`. Anything else goes to
-# the standing triage issue for a human to approve one unit at a time.
+# day, both agent jobs ended clean, and exactly one candidate came back
+# `needs-xpu-fix`. Anything else goes to the standing triage issue for a human to
+# approve one unit at a time.
+#
+# Second deliberate deviation, from references/xpu-alignment-review.md, which keeps
+# the authoritative verdict and the permission to file in the review Markdown and
+# forbids a JSON cache from holding either. A workflow gate cannot read prose, so
+# the reviewer also writes `reviewer_manifest.json`. The Markdown stays the record
+# a human audits, and the gate reads its `Review status: blocked` line, so a review
+# that blocked itself cannot unlock filing through the JSON.
 
 on:
   schedule:
@@ -98,6 +106,30 @@ jobs:
           PY
           xpu-smi discovery -y --json --dump -1 || true
 
+      - name: Verify GitHub read access
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The skill reaches GitHub through the MCP server or `gh`. Only the
+          # fallback exists here, and an absent or unauthenticated CLI would
+          # shrink the day's candidate set instead of failing, so prove it first.
+          if ! command -v gh >/dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq curl ca-certificates
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+            chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list
+            apt-get update -qq
+            apt-get install -y -qq gh
+          fi
+          gh auth status
+          remaining="$(gh api rate_limit --jq '.resources.core.remaining')"
+          echo "GitHub core quota remaining: $remaining"
+          (( remaining >= 1000 )) || { echo 'Too little GitHub quota to scan a full day' >&2; exit 1; }
+
       - name: Run xpu-alignment scan agent
         id: scan-agent
         uses: anthropics/claude-code-action@v1
@@ -129,6 +161,7 @@ jobs:
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload scan artifacts
         if: always()
@@ -175,6 +208,29 @@ jobs:
           (( ledgers > 0 )) || { echo 'No candidate ledger was restored' >&2; exit 1; }
           echo "Restored $ledgers candidate ledger(s) under $ALIGNMENT_RUN_ROOT"
 
+      - name: Verify GitHub read access
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The reviewer refreshes live upstream state, so it needs the same
+          # proven `gh` channel the scan used.
+          if ! command -v gh >/dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq curl ca-certificates
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+            chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list
+            apt-get update -qq
+            apt-get install -y -qq gh
+          fi
+          gh auth status
+          remaining="$(gh api rate_limit --jq '.resources.core.remaining')"
+          echo "GitHub core quota remaining: $remaining"
+          (( remaining >= 200 )) || { echo 'Too little GitHub quota to refresh live state' >&2; exit 1; }
+
       - name: Run independent reviewer
         id: reviewer
         uses: anthropics/claude-code-action@v1
@@ -195,6 +251,15 @@ jobs:
             blocks the whole run if any such row has no verdict, and blocks it again if you
             emit a verdict for an id the ledger does not contain, so review exactly that
             set. Rows still pending were never executed; leave them alone.
+
+            That mandatory set is derived from the scan's own ledger, so on its own it can
+            never expose a candidate the scan wrongly rejected. Also sample the negatives as
+            the official reference requires: normalize the title and deep rejects into its
+            categories, then audit the first three ids, sorted lexically, from each
+            normalized category, and all of them where a category holds fewer than three.
+            Record that sample in review_conclusions.md. A sampled reject that turns out to
+            be a real XPU divergence may carry a verdict too; the gate accepts a verdict for
+            any id present in the ledger.
 
             Refresh GitHub live state with read-only queries and write the required
             review_conclusions.md, review_dashboard.md, and review_comment_drafts.md.
@@ -221,6 +286,7 @@ jobs:
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload review artifacts
         if: always()
@@ -262,7 +328,13 @@ jobs:
         env:
           # A scheduled run has no inputs context, so the dispatch default would
           # otherwise evaluate to empty and never file.
-          AUTO_FILE: ${{ github.event_name == 'schedule' || inputs.auto_file }}
+          # A crashed scan can leave candidates out of the ledger entirely, which
+          # reads downstream as a finished day, so only a clean run may file
+          # unattended; a failed one still routes its finished units to humans.
+          AUTO_FILE: >-
+            ${{ (github.event_name == 'schedule' || inputs.auto_file)
+            && needs.scan-and-validate.result == 'success'
+            && needs.independent-review.result == 'success' }}
           SCAN_DATE: ${{ needs.scan-and-validate.outputs.scan_date }}
         run: |
           set -euo pipefail

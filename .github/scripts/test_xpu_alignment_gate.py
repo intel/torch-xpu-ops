@@ -284,6 +284,18 @@ class AlignmentGateTests(unittest.TestCase):
                 any(b.startswith("manifest-missing-conclusions") for b in decision["blockers"])
             )
 
+    def test_a_blocked_review_cannot_unlock_filing_through_the_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = write_run(root)
+            (run / "reports" / "review_conclusions.md").write_text(
+                "# conclusions\n\n**Review status:** blocked\n\nNo higher-tier reviewer.\n",
+                encoding="utf-8",
+            )
+            decision = self.decide(root)
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertTrue(any(b.startswith("review-blocked") for b in decision["blockers"]))
+
     def test_unknown_verdict_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
