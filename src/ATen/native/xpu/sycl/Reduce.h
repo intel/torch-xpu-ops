@@ -606,7 +606,7 @@ struct ReduceOp {
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
 
-    auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
     };
 
@@ -1032,7 +1032,7 @@ struct ReduceOp {
         }
       }
 
-      auto combine = [=, this](arg1_t value, arg2_t other) -> arg1_t {
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
         return ops.combine(value, other);
       };
 
