@@ -2972,7 +2972,7 @@ class TestOperators(TestCase):
         for sample_input in sample_inputs:
             # Ordering ops reject complex via TORCH_CHECK_TYPE, surfacing as TypeError
             self.assertRaises(
-                (RuntimeError, TypeError),
+                (TypeError, NotImplementedError),
                 op,
                 sample_input.input,
                 *sample_input.args,
