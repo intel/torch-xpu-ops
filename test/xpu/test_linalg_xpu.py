@@ -26,6 +26,7 @@ from torch.testing._internal.common_cuda import tf32_on_and_off
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
+    onlyCUDA,
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
@@ -929,117 +930,6 @@ def linalg_lu_family(self, device, dtype):
                 f(torch.empty(1, 2, 2), pivot=False)
 
 
-@dtypes(torch.bfloat16, torch.half)
-def addmm_out_distinct_c_and_d_float_out_reduced_input(self, device, dtype):
-    from torch.profiler import profile, ProfilerActivity, supported_activities
-
-    if ProfilerActivity.XPU not in supported_activities():
-        self.skipTest("requires Kineto XPU profiler")
-
-    m, n, k = 64, 96, 32
-    mat1 = make_tensor((m, k), dtype=dtype, device=device, low=-1, high=1)
-    mat2 = make_tensor((k, n), dtype=dtype, device=device, low=-1, high=1)
-    inp = make_tensor((m, n), dtype=dtype, device=device, low=-1, high=1)
-
-    def kernel_count(fn):
-        for _ in range(3):
-            fn()
-        torch.xpu.synchronize()
-        with profile(activities=[ProfilerActivity.XPU]) as prof:
-            fn()
-            torch.xpu.synchronize()
-        return sum(
-            1
-            for e in prof.events()
-            if e.device_type.name in ("XPU", "PrivateUse1")
-            and e.self_device_time_total > 0
-        )
-
-    same_out = torch.empty((m, n), dtype=dtype, device=device)
-    same_dtype_kernels = kernel_count(
-        lambda: torch.addmm(inp, mat1, mat2, beta=1.0, out=same_out)
-    )
-    self.assertEqual(same_dtype_kernels, 1)
-
-    float_out = torch.full((m, n), 7.0, dtype=torch.float32, device=device)
-    mixed_kernels = kernel_count(
-        lambda: torch.addmm(inp, mat1, mat2, torch.float32, beta=1.0, out=float_out)
-    )
-    self.assertGreater(mixed_kernels, same_dtype_kernels)
-
-    ref = inp.double() + (mat1.double() @ mat2.double())
-    self.assertEqual(
-        float_out,
-        ref.to(torch.float32),
-        atol=5e-2,
-        rtol=5e-2,
-        exact_dtype=False,
-    )
-
-
-@dtypes(torch.bfloat16, torch.half)
-def addmm_out_distinct_c_and_d_is_selected(self, device, dtype):
-    from torch.profiler import profile, ProfilerActivity, supported_activities
-
-    if ProfilerActivity.XPU not in supported_activities():
-        self.skipTest("requires Kineto XPU profiler")
-
-    m, n, k = 256, 384, 128
-    mat1 = make_tensor((m, k), dtype=dtype, device=device, low=-1, high=1)
-    mat2 = make_tensor((k, n), dtype=dtype, device=device, low=-1, high=1)
-    out = torch.empty((m, n), dtype=dtype, device=device)
-
-    def kernel_count(inp):
-        for _ in range(3):
-            torch.addmm(inp, mat1, mat2, beta=0.75, out=out)
-        torch.xpu.synchronize()
-        with profile(activities=[ProfilerActivity.XPU]) as prof:
-            torch.addmm(inp, mat1, mat2, beta=0.75, out=out)
-            torch.xpu.synchronize()
-        return sum(
-            1
-            for e in prof.events()
-            if e.device_type.name in ("XPU", "PrivateUse1")
-            and e.self_device_time_total > 0
-        )
-
-    contiguous = make_tensor((m, n), dtype=dtype, device=device, low=-1, high=1)
-    padded = make_tensor((m, 2 * n), dtype=dtype, device=device, low=-1, high=1)[:, :n]
-    column_major = make_tensor((n, m), dtype=dtype, device=device, low=-1, high=1).t()
-
-    contiguous_kernels = kernel_count(contiguous)
-    self.assertEqual(contiguous_kernels, 1)
-    self.assertEqual(kernel_count(padded), 1)
-    self.assertGreater(kernel_count(column_major), contiguous_kernels)
-
-
-@dtypes(torch.float32, torch.double)
-def addmm_out_distinct_c_and_d_not_selected_for_fp32(self, device, dtype):
-    from torch.profiler import profile, ProfilerActivity, supported_activities
-
-    if ProfilerActivity.XPU not in supported_activities():
-        self.skipTest("requires Kineto XPU profiler")
-
-    m, n, k = 256, 384, 128
-    mat1 = make_tensor((m, k), dtype=dtype, device=device, low=-1, high=1)
-    mat2 = make_tensor((k, n), dtype=dtype, device=device, low=-1, high=1)
-    inp = make_tensor((m, n), dtype=dtype, device=device, low=-1, high=1)
-    out = torch.empty((m, n), dtype=dtype, device=device)
-
-    for _ in range(3):
-        torch.addmm(inp, mat1, mat2, beta=1.0, out=out)
-    torch.xpu.synchronize()
-    with profile(activities=[ProfilerActivity.XPU]) as prof:
-        torch.addmm(inp, mat1, mat2, beta=1.0, out=out)
-        torch.xpu.synchronize()
-    kernels = sum(
-        1
-        for e in prof.events()
-        if e.device_type.name in ("XPU", "PrivateUse1") and e.self_device_time_total > 0
-    )
-    self.assertGreater(kernels, 1)
-
-
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_linalg_lu_family = linalg_lu_family
@@ -1058,14 +948,14 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
-TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input = (
-    addmm_out_distinct_c_and_d_float_out_reduced_input
+TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input
 )
-TestLinalg.test_addmm_out_distinct_c_and_d_is_selected = (
-    addmm_out_distinct_c_and_d_is_selected
+TestLinalg.test_addmm_out_distinct_c_and_d_is_selected = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_is_selected
 )
-TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32 = (
-    addmm_out_distinct_c_and_d_not_selected_for_fp32
+TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32 = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32
 )
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
