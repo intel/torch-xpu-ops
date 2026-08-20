@@ -72,24 +72,20 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
-        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
+        name: manywheel-py3_10-xpu
+        github-token: ${{ github.token }}
+        repository: pytorch/pytorch
+        run-id: 32004027528
+        path: ${{ github.workspace }}/wheels
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
         # install pytorch
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
-        fi
+        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
+        pip install triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        pip list |grep -E 'intel|torch|triton'
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
@@ -129,6 +125,30 @@ runs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
         fi
         git status && git diff && git show -s
+    - name: Build torchvision and torchaudio from source
+      shell: bash -xe {0}
+      run: |
+        cd pytorch
+        VISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+        AUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
+        cd ..
+        pip uninstall -y torchvision torchaudio
+        # torchvision from pytorch-pinned commit
+        rm -rf vision
+        git clone https://github.com/pytorch/vision.git vision
+        cd vision
+        git checkout ${VISION_COMMIT_ID}
+        python setup.py bdist_wheel
+        pip install dist/*.whl
+        cd ..
+        # torchaudio from pytorch-pinned commit
+        rm -rf audio
+        git clone https://github.com/pytorch/audio.git audio
+        cd audio
+        git checkout ${AUDIO_COMMIT_ID}
+        python setup.py bdist_wheel
+        pip install dist/*.whl
+        cd ..
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
