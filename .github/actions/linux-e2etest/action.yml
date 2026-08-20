@@ -41,6 +41,9 @@ runs:
         if [ -n "${MODEL_ONLY_NAME:-}" ]; then
           model_list_args=(--model-only "${MODEL_ONLY_NAME}")
         fi
+        if [ "${{ github.event_name }}" != "pull_request" ]; then
+          rsync -avz ${GITHUB_WORKSPACE}/.ci/benchmark/ ./benchmarks/dynamo/
+        fi
 
         rm -rf inductor_log torch && mkdir -p inductor_log
         python -m run_e2e \
