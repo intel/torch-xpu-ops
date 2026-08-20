@@ -100,8 +100,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   int sg_gid = sg.get_group_linear_id();
   int sg_range = sg.get_group_range()[0];
   // group reduce requests workgroup size is multiple of subgroup size
-  SYCL_KERNEL_ASSERT(
-      wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
+  SYCL_KERNEL_ASSERT(wg_size % sg_size == 0);
 
   // tree reduce in subgroup
   subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
