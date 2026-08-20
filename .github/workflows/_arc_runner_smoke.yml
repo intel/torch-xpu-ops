@@ -246,6 +246,7 @@ jobs:
 
       # --- Step 4b: agent driver — claude installs DLE + builds -----------
       - name: Install DLE + build (agent driver)
+        id: agent-build
         if: inputs.driver == 'agent'
         uses: anthropics/claude-code-action@v1
         with:
@@ -289,6 +290,26 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      # Confirm the agent actually ran (setup can fail before Bedrock is hit,
+      # in which case the action still exits 0). Separates "agent never ran"
+      # from "agent ran but build failed" for clean attribution.
+      - name: Check agent executed (agent driver)
+        if: inputs.driver == 'agent'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.agent-build.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) {
+              core.setFailed('agent produced no execution_file — it never ran (setup/auth failure)');
+              return;
+            }
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) { core.setFailed('agent execution_file has no result entry'); return; }
+            if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
+            core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
+
       # Objective gate: claude-code-action exits 0 regardless of what the agent
       # concludes, so the agent's self-report cannot decide job success. Re-run
       # the verify assertions in shell against the build the agent produced.
@@ -319,6 +340,40 @@ jobs:
           echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
           [ "$pass" -eq "$total" ] || { echo "::error::verify gate: $pass/$total passed"; exit 1; }
 
+      # Bedrock spend for this run — key data for the "is build-in-the-loop
+      # worth it" question. Written to the job summary.
+      - name: Report agent cost (agent driver)
+        if: inputs.driver == 'agent' && always()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.agent-build.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const r = data.filter(e => e.type === 'result').pop();
+            if (!r) return;
+            const usage = Object.values(r.modelUsage || {})[0] || {};
+            const inTok = (usage.inputTokens||0)+(usage.cacheReadInputTokens||0)+(usage.cacheCreationInputTokens||0);
+            const line = `### agent cost\n- **$${(r.total_cost_usd||0).toFixed(4)}** ` +
+              `(${inTok.toLocaleString()} in / ${(usage.outputTokens||0).toLocaleString()} out), ` +
+              `turns=${r.num_turns||'?'}`;
+            await core.summary.addRaw(line + '\n').write();
+
+      # Persist the agent's full transcript (thinking, every tool call, and
+      # results) so it can be reviewed after the run. claude-code-action writes
+      # this JSON to a temp path that is otherwise discarded with the runner.
+      - name: Stage agent transcript (agent driver)
+        if: inputs.driver == 'agent' && always()
+        run: |
+          f='${{ steps.agent-build.outputs.execution_file }}'
+          if [ -n "$f" ] && [ -f "$f" ]; then
+            cp "$f" /tmp/agent_transcript.json
+            echo "staged agent transcript ($(wc -c < /tmp/agent_transcript.json) bytes)"
+          else
+            echo "no execution_file to stage"
+          fi
+
       - name: Upload build/test logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -329,4 +384,12 @@ jobs:
             /tmp/build.log
             /tmp/after.log
             /tmp/fix.patch
+            /tmp/agent_transcript.json
           if-no-files-found: ignore
+
+      # Files created inside the privileged container are root-owned; hand them
+      # back to the runner user so the next checkout on this self-hosted runner
+      # does not fail on permission errors.
+      - name: Cleanup workspace
+        if: always()
+        run: chown 1000:1000 /__w /github ./ -R || true
