@@ -33,7 +33,7 @@ on:
       suite:
         type: string
         default: ''
-        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench,pt2e'. Delimiter is comma
+        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench'. Delimiter is comma
       dt:
         type: string
         default: ''
@@ -97,7 +97,7 @@ jobs:
               exit 1
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
-            suite='["huggingface","timm_models","torchbench","pt2e"]'
+            suite='["huggingface","timm_models","torchbench"]'
             scenario='["accuracy","performance"]'
             triton=''
             python='3.10'

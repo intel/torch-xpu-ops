@@ -127,16 +127,40 @@ class InductorSuite(BenchmarkSuite):
 
     def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         header, row = self._read_last_matching_row(tmp_csv, device)
-        if not row:
-            final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
-        else:
+        if task.scenario == "performance":
+            final_header, final_row = self._performance_row(header, row, device, task, elapsed)
+        elif row:
             # Benchmark CSV row: dev, name, batch_size, <result_cols...>
             # Reorder to the common prefix plus the result columns.
             final_header = CSV_PREFIX + header[3:]
             final_row = _prefix_row(device, task, row[2], elapsed) + row[3:]
+        else:
+            final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
         _append_row(log_csv, final_header, final_row)
         # Success is judged from the run log's final line, independent of the CSV.
         return self._check_status(log_file)
+
+    @staticmethod
+    def _performance_row(header, row, device, task, elapsed):
+        """Performance result columns: speedup, abs_latency (inductor latency),
+        eager_latency (= abs_latency * speedup)."""
+        perf_header = CSV_PREFIX + ["speedup", "abs_latency", "eager_latency"]
+        if not row:
+            return perf_header, _prefix_row(device, task, elapsed=elapsed) + ["0", "0", "0"]
+
+        def _col(name):
+            try:
+                return row[header.index(name)]
+            except (ValueError, IndexError):
+                return "0"
+
+        speedup, abs_latency = _col("speedup"), _col("abs_latency")
+        try:
+            eager = float(abs_latency) * float(speedup)
+        except ValueError:
+            eager = 0.0
+        return perf_header, _prefix_row(device, task, row[2], elapsed) + [speedup, abs_latency, f"{eager:.6f}"]
+
 
     @staticmethod
     def _read_last_matching_row(tmp_csv, device):
@@ -156,21 +180,12 @@ class InductorSuite(BenchmarkSuite):
 
     @staticmethod
     def _fallback_row(device, task, kill_reason, elapsed=0.0):
-        """Build a placeholder row when the benchmark produced no CSV output."""
+        """Build a placeholder accuracy row when the benchmark produced no CSV output."""
         fail_status = kill_reason or "core_dump"
-        fallbacks = {
-            "accuracy": (
-                CSV_PREFIX + ["accuracy"],
-                _prefix_row(device, task, elapsed=elapsed) + [fail_status],
-            ),
-            "performance": (
-                CSV_PREFIX + ["speedup", "inductor_latency", "eager_latency"],
-                _prefix_row(device, task, elapsed=elapsed) + ["0", "0", "0"],
-            ),
-        }
-        if task.scenario not in fallbacks:
-            raise ValueError(f"Unknown task.scenario: {task.scenario}")
-        return fallbacks[task.scenario]
+        return (
+            CSV_PREFIX + ["accuracy"],
+            _prefix_row(device, task, elapsed=elapsed) + [fail_status],
+        )
 
 
 class PT2ESuite(BenchmarkSuite):

@@ -92,7 +92,7 @@ def load_tasks_from_file(path: str) -> list[TestTask]:
 
     Supports two formats:
     1. Legacy: suite, dtype, mode, model, result (5 cols)
-    2. Output CSV: dev, elapsed, suite, dtype, mode, name, scenario, batch_size, result[, extra] (8+ cols)
+    2. Output CSV: dev, backend, suite, dtype, mode, name, scenario, batch_size, elapsed, result[, extra] (9+ cols)
 
     Format is auto-detected from the header row or column count.
     """

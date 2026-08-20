@@ -5,7 +5,6 @@ Compares test results against reference data and calculates pass rates.
 Reference last updated: https://github.com/intel/torch-xpu-ops/pull/1223
 """
 
-import re
 import json
 import argparse
 import pandas as pd
@@ -42,28 +41,6 @@ def get_test_result(data, suite, dtype, mode, model):
             if len(row) >= 6 and row[:4] == [suite, dtype, mode, model]:
                 return row[4]
     return "N/A"
-
-
-def parse_file_name(filename):
-    """
-    Parse benchmark file name to extract suite, dtype, and mode.
-
-    Supports both the legacy underscore layout and the run_benchmarks
-    dash-separated layout ``inductor-<suite>-<dtype>-<mode>-<device>-<scenario>.csv``.
-
-    Args:
-        filename: Input filename to parse
-
-    Returns:
-        tuple: (suite, dtype, mode) or ("N/A", "N/A", "N/A") if pattern not found
-    """
-    pattern = (
-        r"[_-](huggingface|timm_models|torchbench)[_-]"
-        r"(float32|bfloat16|float16|amp_bf16|amp_fp16)[_-]"
-        r"(inference|training)[_-]"
-    )
-    match = re.search(pattern, filename)
-    return match.groups() if match else ("N/A", "N/A", "N/A")
 
 
 def load_known_data(issue_file):
