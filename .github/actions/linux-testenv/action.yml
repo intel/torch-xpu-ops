@@ -83,7 +83,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # install pytorch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
+        pip install ${{ github.workspace }}/wheels/torch-*.whl
         pip install triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         pip list |grep -E 'intel|torch|triton'
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
