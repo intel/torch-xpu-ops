@@ -1,0 +1,322 @@
+name: XPU Alignment
+
+# Deliberate deviation from `.claude/skills/xpu-alignment/SKILL.md` rule 2, which
+# tells a human operator to ask before filing a review-approved draft. The agents
+# here still never file: the scan stops before Step 4 and the reviewer only writes
+# reports. Filing is done by this workflow, and only when every one of these holds:
+# an independent review covered every finished ledger row, the scan finished the
+# day, and exactly one candidate came back `needs-xpu-fix`. Anything else goes to
+# the standing triage issue for a human to approve one unit at a time.
+
+on:
+  schedule:
+    # Run at 02:00 UTC and inspect the preceding UTC calendar day.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      scan_date:
+        description: 'UTC date to scan (YYYY-MM-DD); defaults to yesterday.'
+        required: false
+        type: string
+      runner:
+        description: 'XPU runner label.'
+        required: false
+        type: string
+        default: pvc
+      auto_file:
+        description: 'Allow filing one reviewed needs-xpu-fix issue without approval.'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # A scheduled run cannot know its date before a step runs, so serialise the
+  # whole workflow instead: two runs must never publish for the same day at once.
+  group: xpu-alignment
+  cancel-in-progress: false
+
+env:
+  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  CLAUDE_ALIGNMENT_TOOLS: Bash,Read,Write,Edit,Glob,Grep,WebFetch,Skill
+  # The official skill writes everything below this root, so artifacts are
+  # restored here too and a skill-compliant reviewer lands inside the upload.
+  ALIGNMENT_RUN_ROOT: agent_space_xpu/runs
+  # One artifact name per attempt, so a re-run does not collide with the
+  # artifacts of the previous attempt.
+  ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
+  ALIGNMENT_TRIAGE_ISSUE: '5018'
+
+defaults:
+  run:
+    shell: bash {0}
+
+jobs:
+  scan-and-validate:
+    name: Scan and validate on XPU
+    runs-on: ${{ inputs.runner || 'pvc' }}
+    # Wall-clock budget advertised to the scan agent.
+    timeout-minutes: 240
+    outputs:
+      scan_date: ${{ steps.context.outputs.scan_date }}
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: >-
+        --device=/dev/mem --device=/dev/dri
+        --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+        -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTORCH_DEBUG_XPU_FALLBACK: '1'
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+
+      - name: Resolve scan date
+        id: context
+        env:
+          INPUT_SCAN_DATE: ${{ inputs.scan_date }}
+        run: |
+          set -euo pipefail
+          scan_date="${INPUT_SCAN_DATE:-$(date -u -d 'yesterday' +%F)}"
+          [[ "$scan_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'scan_date must be YYYY-MM-DD' >&2; exit 1; }
+          echo "scan_date=$scan_date" >> "$GITHUB_OUTPUT"
+
+      - name: Install nightly XPU runtime
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip wheel setuptools
+          python3 -m pip install --pre torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/nightly/xpu
+          python3 - <<'PY'
+          import torch
+          print(torch.__version__)
+          if not torch.xpu.is_available():
+              raise SystemExit("XPU is not available on the runner")
+          print(torch.xpu.device_count())
+          PY
+          xpu-smi discovery -y --json --dump -1 || true
+
+      - name: Run xpu-alignment scan agent
+        id: scan-agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ github.token }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools ${{ env.CLAUDE_ALIGNMENT_TOOLS }}"
+          prompt: |
+            Run the official .claude/skills/xpu-alignment/SKILL.md against pytorch/pytorch
+            for the single UTC day ${{ steps.context.outputs.scan_date }}.
+
+            Follow the official skill through candidate collection, deep filtering,
+            reproducer construction, independent repro precheck, XPU execution, and the
+            Step 3 audit. Write provisional drafts and stop before Step 4; the separate
+            independent-review job owns every review artifact. Do not file issues, post
+            comments, or modify GitHub objects in this job.
+
+            Keep every output under ${{ env.ALIGNMENT_RUN_ROOT }}/${{ steps.context.outputs.scan_date }}/
+            exactly as the skill requires. `artifacts/candidate_ledger.jsonl` is the record
+            the downstream gate reads: it decides from that file whether the day finished,
+            so keep it accurate row by row. Never mark a row done that was not executed and
+            never invent a reject to empty the queue. If the budget expires with rows still
+            pending, leave them pending and write the progress checkpoint; the gate reports
+            an unfinished day and routes the finished units to humans.
+
+            Every ledger `id` must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$, because ids are
+            used downstream as file names and comment markers.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}
+          path: ${{ env.ALIGNMENT_RUN_ROOT }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  independent-review:
+    name: Independent alignment review
+    needs: scan-and-validate
+    # Review whatever evidence the scan uploaded, even if the scan job failed.
+    # always() would also survive a cancelled run, which must stop the chain.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner || 'pvc' }}
+    timeout-minutes: 240
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: >-
+        --device=/dev/mem --device=/dev/dri
+        --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+        -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTORCH_DEBUG_XPU_FALLBACK: '1'
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+
+      - name: Restore the scan into the official run layout
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}
+          path: ${{ env.ALIGNMENT_RUN_ROOT }}
+
+      - name: Check restored scan evidence
+        run: |
+          set -euo pipefail
+          ledgers="$(find "$ALIGNMENT_RUN_ROOT" -type f -name candidate_ledger.jsonl | wc -l)"
+          (( ledgers > 0 )) || { echo 'No candidate ledger was restored' >&2; exit 1; }
+          echo "Restored $ledgers candidate ledger(s) under $ALIGNMENT_RUN_ROOT"
+
+      - name: Run independent reviewer
+        id: reviewer
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ github.token }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALIGNMENT_TOOLS }}"
+          prompt: |
+            Act as the independent reviewer required by the official
+            .claude/skills/xpu-alignment/references/xpu-alignment-review.md.
+            You did not produce the scan. It is restored in the official layout under
+            `${{ env.ALIGNMENT_RUN_ROOT }}/`; review every scope beneath it and write your
+            outputs into the same run directory, next to the scan's own reports.
+
+            Your review scope is every row of `artifacts/candidate_ledger.jsonl` with
+            title_status pass, deep_status not reject, and local_status done. The gate
+            blocks the whole run if any such row has no verdict, and blocks it again if you
+            emit a verdict for an id the ledger does not contain, so review exactly that
+            set. Rows still pending were never executed; leave them alone.
+
+            Refresh GitHub live state with read-only queries and write the required
+            review_conclusions.md, review_dashboard.md, and review_comment_drafts.md.
+            Do not file issues, post comments, or modify GitHub objects.
+
+            Also write two machine-readable files the gate consumes.
+
+            1. `reports/reviewer_manifest.json`:
+                 {"units": [{"id": "<ledger id>", "verdict": "<allowed verdict>"}]}
+               One entry per reviewed unit, using the verdict vocabulary of the official
+               reference. If the evidence cannot support a verdict, stop and leave the unit
+               out: an incomplete manifest blocks filing, which is the safe outcome.
+
+            2. For every unit you judge `needs-xpu-fix`, one payload named
+               `reports/final_issue_<id>.json`:
+                 {"unit_id": "<id>", "title": "[xpu-alignment] ...", "body": "<markdown>",
+                  "labels": ["ai_generated"]}
+               The title must start with `[xpu-alignment]` and labels must be exactly
+               ["ai_generated"]. Write the body as the issue a maintainer should read:
+               upstream source, local XPU result, your verdict and its evidence, the
+               reproducer path, and the tracking repository intel/torch-xpu-ops. These
+               bytes are published verbatim, either automatically or after a human
+               approves them, so nothing downstream will rewrite or improve them.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}-review
+          path: ${{ env.ALIGNMENT_RUN_ROOT }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  gate-and-publish:
+    name: Gate and publish
+    needs: [scan-and-validate, independent-review]
+    # A cancelled run must never reach the publishing step.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+
+      - name: Restore the reviewed run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}-review
+          path: ${{ env.ALIGNMENT_RUN_ROOT }}
+
+      - name: Validate gate and triage protocol
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_xpu_alignment_gate.py
+          python3 .github/scripts/test_alignment_triage.py
+
+      - name: Build publishing decision
+        id: decision
+        env:
+          # A scheduled run has no inputs context, so the dispatch default would
+          # otherwise evaluate to empty and never file.
+          AUTO_FILE: ${{ github.event_name == 'schedule' || inputs.auto_file }}
+          SCAN_DATE: ${{ needs.scan-and-validate.outputs.scan_date }}
+        run: |
+          set -euo pipefail
+          args=(--root "$ALIGNMENT_RUN_ROOT" --run-id "$GITHUB_RUN_ID" --scan-date "$SCAN_DATE")
+          if [[ "$AUTO_FILE" == true ]]; then
+            args+=(--auto-file)
+          fi
+          python3 .github/scripts/xpu_alignment_gate.py "${args[@]}"
+
+      - name: Publish to the triage issue
+        if: steps.decision.outputs.decision == 'file-one' || steps.decision.outputs.decision == 'triage'
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo 'MERGE_TOKEN is required to publish' >&2; exit 1; }
+          python3 .github/scripts/xpu_alignment_publish.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
+            --decision "$ALIGNMENT_RUN_ROOT/filing_decision.json"
+
+      - name: Write workflow summary
+        if: always()
+        run: |
+          set -euo pipefail
+          decision_file="$ALIGNMENT_RUN_ROOT/filing_decision.json"
+          echo '## XPU alignment gate' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f "$decision_file" ]]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            jq 'del(.payloads[].body)' "$decision_file" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No publishing decision was produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}-gate
+          path: ${{ env.ALIGNMENT_RUN_ROOT }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Runs last so a blocked or unfinished day still publishes what it can.
+      # A busy day is not a fault and stays green; only these two conditions are.
+      - name: Report a blocked or unfinished run
+        if: steps.decision.outputs.needs_attention == 'true'
+        run: |
+          set -euo pipefail
+          echo "::error::The alignment run was blocked or did not finish the day; see filing_decision.json in the gate artifact."
+          exit 1
