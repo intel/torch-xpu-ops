@@ -29,6 +29,9 @@ on:
         type: choice
         options: [agent, shell]
         default: agent
+      oneapi_installer:
+        description: "Intel DLE offline installer URL (shell driver only; agent follows the prereq doc)"
+        default: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
@@ -198,25 +201,25 @@ jobs:
         run: |
           set -uxo pipefail
           # Scripted fallback path. The agent driver (4b) instead follows the
-          # PyTorch XPU prerequisite doc to install Intel Deep Learning
-          # Essentials itself. Here we do it by hand so the smoke can run
-          # without an agent. Package set mirrors the prerequisite doc; adjust
-          # if the doc changes.
+          # PyTorch XPU prerequisite doc to install DLE itself. Here we install
+          # Intel Deep Learning Essentials from the official offline installer
+          # (same approach as bisect_search.yml) — the container has no Intel apt
+          # repo, so apt install would fail.
           t0=$(date +%s)
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            intel-deep-learning-essentials gcc-13 g++-13 || \
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            intel-basekit gcc-13 g++-13
+          rm -rf "${HOME}/intel"
+          wget -q -O /tmp/oneapi.sh "${{ inputs.oneapi_installer }}"
+          bash /tmp/oneapi.sh -a -s --eula accept --action install \
+            --install-dir "${HOME}/intel/oneapi"
+          DEBIAN_FRONTEND=noninteractive apt-get update && \
+            apt-get install -y gcc-13 g++-13 || true
           t1=$(date +%s)
           echo "### DLE install (shell)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- apt install time: \`$((t1-t0))s\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- install time: \`$((t1-t0))s\`" >> "$GITHUB_STEP_SUMMARY"
           # Write the build env the build + gate steps source.
-          cat > "$PYTORCH_DIR/build_pytorch.env" <<'EOF'
+          cat > "$PYTORCH_DIR/build_pytorch.env" <<EOF
           export USE_XPU=1
           export USE_CUDA=0
-          source /opt/intel/oneapi/setvars.sh 2>/dev/null \
-            || source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          source ${HOME}/intel/oneapi/setvars.sh
           EOF
           cd "$PYTORCH_DIR"
           # shellcheck disable=SC1091
@@ -278,6 +281,16 @@ jobs:
                the linked Intel page. Install the Intel Deep Learning Essentials
                and any compiler (gcc-13/g++-13) it requires. Report the exact
                install commands you ran and how long they took.
+               NOTE: this container has no Intel apt repo configured, so
+               `apt install intel-deep-learning-essentials` will NOT work. Use the
+               official OFFLINE installer instead (a
+               `intel-deep-learning-essentials-*_offline.sh` from
+               registrationcenter-download.intel.com), e.g.:
+                 wget -qO oneapi.sh <offline-installer-url>
+                 bash oneapi.sh -a -s --eula accept --action install \
+                   --install-dir $HOME/intel/oneapi
+               then source $HOME/intel/oneapi/setvars.sh. A known-good URL:
+               ${{ inputs.oneapi_installer }}
             2. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that exports
                USE_XPU=1, USE_CUDA=0, and sources the DLE/oneAPI environment from
                wherever your install placed it. The verify gate will source this
