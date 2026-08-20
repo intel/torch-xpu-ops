@@ -380,7 +380,7 @@ Tensor reduce_sparse_csr_xpu_template(
         ((dims[0] == 0 && dims[1] == 1) || (dims[0] == 1 && dims[1] == 0)));
     return reduce_sparse_csr_dim01_xpu_template<scalar_t>(sparse, rop);
   }
-  TORCH_INTERNAL_ASSERT(dims.size() == 0);
+  TORCH_INTERNAL_ASSERT(dims.empty());
   return sparse.clone();
 }
 
@@ -400,7 +400,7 @@ Tensor reduce_sparse_csr_xpu_template(
   TORCH_INTERNAL_ASSERT(input_dim == 2);
   auto dims = dims_to_sum.vec();
   maybe_wrap_dims(dims, input_dim);
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     dims.emplace_back(0);
     dims.emplace_back(1);
   }
