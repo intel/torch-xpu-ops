@@ -22,71 +22,60 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
 
 namespace at::native::xpu {
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleLinear1dKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int index =
-        item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void upsample_linear1d_kernel(
+    const int n,
+    const accscalar_t rwidth,
+    const bool align_corners,
+    const PackedTensorAccessor64<const scalar_t, 3> idata,
+    PackedTensorAccessor64<scalar_t, 3> odata) {
+  sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
+  int index =
+      item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
 
-    const int batchsize = idata_.size(0);
-    const int channels = idata_.size(1);
-    const int width1 = idata_.size(2);
-    const int width2 = odata_.size(2);
-    PackedTensorAccessor64<scalar_t, 3> odata_res = odata_;
+  const int batchsize = idata.size(0);
+  const int channels = idata.size(1);
+  const int width1 = idata.size(2);
+  const int width2 = odata.size(2);
+  PackedTensorAccessor64<scalar_t, 3> odata_res = odata;
 
-    if (index < n_) {
-      const int w2 = index % width2;
-      // special case: just copy
-      if (width1 == width2) {
-        const int w1 = w2;
-        for (int n = 0; n < batchsize; n++) {
-          for (int c = 0; c < channels; ++c) {
-            const scalar_t val = idata_[n][c][w1];
-            odata_res[n][c][w2] = val;
-          }
-        }
-        return;
-      }
-
-      const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-          rwidth_, w2, align_corners_, /*cubic=*/false);
-      const int w1 = w1r;
-      const int w1p = (w1 < width1 - 1) ? 1 : 0;
-      const accscalar_t w1lambda = w1r - w1;
-      const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
-
-      for (int n = 0; n < batchsize; n++) {
+  if (index < n) {
+    const int w2 = index % width2;
+    // special case: just copy
+    if (width1 == width2) {
+      const int w1 = w2;
+      for (int nc = 0; nc < batchsize; nc++) {
         for (int c = 0; c < channels; ++c) {
-          const accscalar_t val =
-              w0lambda * idata_[n][c][w1] + w1lambda * idata_[n][c][w1 + w1p];
-          odata_res[n][c][w2] = static_cast<scalar_t>(val);
+          const scalar_t val = idata[nc][c][w1];
+          odata_res[nc][c][w2] = val;
         }
+      }
+      return;
+    }
+
+    const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
+        rwidth, w2, align_corners, /*cubic=*/false);
+    const int w1 = w1r;
+    const int w1p = (w1 < width1 - 1) ? 1 : 0;
+    const accscalar_t w1lambda = w1r - w1;
+    const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
+
+    for (int nc = 0; nc < batchsize; nc++) {
+      for (int c = 0; c < channels; ++c) {
+        const accscalar_t val =
+            w0lambda * idata[nc][c][w1] + w1lambda * idata[nc][c][w1 + w1p];
+        odata[nc][c][w2] = static_cast<scalar_t>(val);
       }
     }
   }
-  UpsampleLinear1dKernelFunctor(
-      const int n,
-      const accscalar_t rwidth,
-      const bool align_corners,
-      const PackedTensorAccessor64<const scalar_t, 3> idata,
-      PackedTensorAccessor64<scalar_t, 3> odata)
-      : n_(n),
-        rwidth_(rwidth),
-        align_corners_(align_corners),
-        idata_(idata),
-        odata_(odata) {}
-
- private:
-  const int n_;
-  const accscalar_t rwidth_;
-  const bool align_corners_;
-  const PackedTensorAccessor64<const scalar_t, 3> idata_;
-  PackedTensorAccessor64<scalar_t, 3> odata_;
-};
+}
 
 void upsample_linear1d_kernel(
     const Tensor& input,
@@ -111,78 +100,74 @@ void upsample_linear1d_kernel(
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
         const int num_kernels = output_width;
-        UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t> kfn(
-            num_kernels, rwidth, align_corners, idata, odata);
-        const auto local_range = syclMaxWorkGroupSize(kfn);
+        constexpr auto kfn = upsample_linear1d_kernel<scalar_t, accscalar_t>;
+        const auto local_range = syclMaxWorkGroupSize<kfn>();
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
+        sycl_kernel_submit<kfn>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
+            num_kernels,
+            rwidth,
+            align_corners,
+            idata,
+            odata);
       });
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleLinear1dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int index =
-        item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void upsample_linear1d_backward_kernel(
+    const int n,
+    const accscalar_t rwidth,
+    const bool align_corners,
+    PackedTensorAccessor64<scalar_t, 3> idata,
+    const PackedTensorAccessor64<const scalar_t, 3> odata) {
+  sycl::nd_item<1> item = sycl::ext::oneapi::this_work_item::get_nd_item<1>();
+  int index =
+      item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
 
-    const int batchsize = idata_.size(0);
-    const int channels = idata_.size(1);
-    const int width1 = idata_.size(2);
-    const int width2 = odata_.size(2);
-    PackedTensorAccessor64<scalar_t, 3> idata_res = idata_;
-    if (index < n_) {
-      const int w2 = index % width2;
-      if (width1 == width2) {
-        const int w1 = w2;
-        for (int n = 0; n < batchsize; n++) {
-          for (int c = 0; c < channels; ++c) {
-            const scalar_t val = odata_[n][c][w1];
-            idata_res[n][c][w2] = val;
-          }
-        }
-        return;
-      }
-      const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
-          rwidth_, w2, align_corners_, /*cubic=*/false);
-      const int w1 = w1r;
-      const int w1p = (w1 < width1 - 1) ? 1 : 0;
-      const accscalar_t w1lambda = w1r - w1;
-      const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
+  const int batchsize = idata.size(0);
+  const int channels = idata.size(1);
+  const int width1 = idata.size(2);
+  const int width2 = odata.size(2);
+  PackedTensorAccessor64<scalar_t, 3> idata_res = idata;
 
-      for (int n = 0; n < batchsize; n++) {
+  if (index < n) {
+    const int w2 = index % width2;
+    if (width1 == width2) {
+      const int w1 = w2;
+      for (int nc = 0; nc < batchsize; nc++) {
         for (int c = 0; c < channels; ++c) {
-          const scalar_t d2val = odata_[n][c][w2];
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(&idata_res[n][c][w1]),
-              static_cast<scalar_t>(w0lambda * d2val));
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)(&idata_res[n][c][w1 + w1p]),
-              static_cast<scalar_t>(w1lambda * d2val));
+          const scalar_t val = odata[nc][c][w1];
+          idata_res[nc][c][w2] = val;
         }
+      }
+      return;
+    }
+    const accscalar_t w1r = area_pixel_compute_source_index<accscalar_t>(
+        rwidth, w2, align_corners, /*cubic=*/false);
+    const int w1 = w1r;
+    const int w1p = (w1 < width1 - 1) ? 1 : 0;
+    const accscalar_t w1lambda = w1r - w1;
+    const accscalar_t w0lambda = static_cast<accscalar_t>(1) - w1lambda;
+
+    for (int nc = 0; nc < batchsize; nc++) {
+      for (int c = 0; c < channels; ++c) {
+        const scalar_t d2val = odata[nc][c][w2];
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(&idata_res[nc][c][w1]),
+            static_cast<scalar_t>(w0lambda * d2val));
+        atomicAdd(
+            (sycl_global_ptr<scalar_t>)(&idata_res[nc][c][w1 + w1p]),
+            static_cast<scalar_t>(w1lambda * d2val));
       }
     }
   }
-  UpsampleLinear1dBackwardKernelFunctor(
-      const int n,
-      const accscalar_t rwidth,
-      const bool align_corners,
-      PackedTensorAccessor64<scalar_t, 3> idata,
-      const PackedTensorAccessor64<const scalar_t, 3> odata)
-      : n_(n),
-        rwidth_(rwidth),
-        align_corners_(align_corners),
-        idata_(idata),
-        odata_(odata) {}
-
- private:
-  const int n_;
-  const accscalar_t rwidth_;
-  const bool align_corners_;
-  PackedTensorAccessor64<scalar_t, 3> idata_;
-  const PackedTensorAccessor64<const scalar_t, 3> odata_;
-};
+}
 
 void upsample_linear1d_backward_kernel(
     const Tensor& grad_output_,
@@ -210,13 +195,21 @@ void upsample_linear1d_backward_kernel(
         auto odata = grad_output.packed_accessor64<const scalar_t, 3>();
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
-        UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
-            num_kernels, rwidth, align_corners, idata, odata);
-        const auto local_range = syclMaxWorkGroupSize(kfn);
+        constexpr auto kfn =
+            upsample_linear1d_backward_kernel<scalar_t, accscalar_t>;
+        const auto local_range = syclMaxWorkGroupSize<kfn>();
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
-        sycl_kernel_submit(
-            global_range, local_range, getCurrentSYCLQueue(), kfn);
+        sycl_kernel_submit<kfn>(
+            global_range,
+            local_range,
+            getCurrentSYCLQueue(),
+            0,
+            num_kernels,
+            rwidth,
+            align_corners,
+            idata,
+            odata);
       });
 }
 } // namespace at::native::xpu
