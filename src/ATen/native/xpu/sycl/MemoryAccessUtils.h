@@ -116,6 +116,41 @@ struct LoadWithoutCast {
 };
 
 template <int N>
+struct LoadWithCastFP {
+  using array_t = at::detail::Array<at::ScalarType, std::max<int>(N, 1)>;
+  using size_array_t = at::detail::Array<uint32_t, std::max<int>(N, 1)>;
+
+  array_t dtypes;
+  size_array_t element_sizes;
+
+  LoadWithCastFP(const TensorIteratorBase& iter) {
+    assert(iter.ninputs() == N);
+#pragma unroll
+    for (auto i = 0; i < N; ++i) {
+      this->dtypes[i] = iter.dtype(i + iter.noutputs());
+      element_sizes[i] = c10::elementSize(iter.dtype(i + iter.noutputs()));
+    }
+  }
+
+  template <typename scalar_t>
+  C10_DEVICE scalar_t load(char* base_ptr, uint32_t offset, int arg) {
+    void* ptr = base_ptr + element_sizes[arg] * offset;
+    if constexpr (std::is_same_v<scalar_t, float>) {
+      switch (dtypes[arg]) {
+        case at::ScalarType::Float:
+          return c10::load<float>(ptr);
+        case at::ScalarType::Half:
+          return c10::convert<float>(c10::load<c10::Half>(ptr));
+        case at::ScalarType::BFloat16:
+          return c10::convert<float>(c10::load<c10::BFloat16>(ptr));
+      }
+    }
+    // Satisfy compiler for non-float scalar_t instantiations that never run.
+    return scalar_t{};
+  }
+};
+
+template <int N>
 struct LoadWithCast {
   using array_t = at::detail::Array<at::ScalarType, std::max<int>(N, 1)>;
   using size_array_t = at::detail::Array<uint32_t, std::max<int>(N, 1)>;
@@ -147,6 +182,20 @@ struct StoreWithoutCast {
       uint32_t offset,
       int arg = 0) {
     *(reinterpret_cast<scalar_t*>(base_ptr) + offset) = value;
+  }
+};
+
+template <int N = 1>
+struct StoreWithCastFP {
+  template <typename scalar_t>
+  C10_DEVICE void store(
+      scalar_t value,
+      char* base_ptr,
+      uint32_t offset,
+      int arg = 0) {
+    if constexpr (std::is_same_v<scalar_t, float>) {
+      *(reinterpret_cast<float*>(base_ptr) + offset) = value;
+    }
   }
 };
 
