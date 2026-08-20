@@ -1,8 +1,10 @@
 name: fix build smoke
 
-# One-shot smoke test: prove the agent-fix build-in-the-loop chain works
-# end to end on the xpu-agent runner, and collect real environment data
-# (oneAPI install time, cold build time, whether sycl-ls sees the GPU).
+# One-shot smoke test: prove the AGENT can drive the whole fix-in-the-loop chain
+# on the xpu-agent runner — install the nightly wheel, reproduce the failure,
+# apply the fix, install the Intel build toolchain, source-build PyTorch, and
+# verify — solving problems itself as it goes. Collects real data (install time,
+# cold build time, GPU visibility) via the agent transcript + cost.
 #
 # Sample (ground truth): issue #4980 / PR #5004 — FFT empty-batch oneMKL fix.
 # A single-file C++ change (src/ATen/native/xpu/mkl/SpectralOps.cpp, +8/-0)
@@ -12,53 +14,45 @@ name: fix build smoke
 # workflow_dispatch only lists workflows whose file path exists on the default
 # branch; this path already does. Trigger with an explicit ref pointing at the
 # smoke branch so the runner checks out THIS content, without merging to main:
-#   gh workflow run _arc_runner_smoke.yml --ref agent-fix-build-smoke/zzq -f driver=agent
+#   gh workflow run _arc_runner_smoke.yml --ref agent-fix-build-smoke/zzq
 # main's real arc-runner-smoke is untouched; drop this branch when done.
 
 on:
   workflow_dispatch:
     inputs:
       nightly_version:
-        description: "Nightly torch version to reproduce against (locks the ground-truth env)"
+        description: "Nightly torch version to reproduce against. Must PREDATE the fix so the bug still reproduces (latest nightly already contains it and will NOT reproduce)."
         default: "2.15.0.dev20260817+xpu"
       fix_pr:
-        description: "PR number to pull the fix diff from"
+        description: "torch-xpu-ops PR number to pull the fix diff from"
         default: "5004"
-      driver:
-        description: "build+verify driver: agent (claude via /xpu-build-pytorch, matches real bot usage) or shell (scripted fallback)"
-        type: choice
-        options: [agent, shell]
-        default: agent
       oneapi_installer:
-        description: "Intel DLE offline installer URL (shell driver only; agent follows the prereq doc). 2026.1 matches PyTorch 2.14+ per Intel's compatibility table."
+        description: "Known-good Intel DLE offline installer URL (agent may also find its own from the prereq doc). 2026.1 matches PyTorch 2.14+."
         default: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
-  # UT node ids from PR #5004 test plan. They live in two upstream pytorch test
-  # files. Format: "<file>::<test_name_-k_filter>", one per line. The opinfo
-  # tests are inductor tests and need triton-xpu, which the nightly torch+xpu
-  # wheel already pulls as a Requires-Dist (no separate install needed).
-  # Fail-on-nightly set (before) + verify-after set:
+  # UT node ids from PR #5004 test plan. Node ids are relative to <pytorch>/test
+  # (pytest MUST run from test/, not the pytorch root — the root torch/ source
+  # dir shadows the installed wheel: "No module named torch.version").
   FFT_FAIL_TESTS: >-
-    test/test_ops_fwd_gradients.py::test_fn_fwgrad_bwgrad_fft_fft2_xpu_float64
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_int32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_bool
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_hfft_xpu_float64
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float64
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float16
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float16
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float64
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_bool
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_bool
-  # Non-empty regression set (after only): must still pass.
+    test_ops_fwd_gradients.py::test_fn_fwgrad_bwgrad_fft_fft2_xpu_float64
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_int32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_bool
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_hfft_xpu_float64
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float64
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float16
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float16
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float64
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_bool
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_bool
   FFT_REGRESSION_TESTS: >-
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_float32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_float32
-    test/inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_rfft_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_float32
+    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_rfft_xpu_float32
 
 permissions:
   contents: read
@@ -80,7 +74,7 @@ jobs:
       FIX_PR: ${{ inputs.fix_pr }}
       PYTORCH_DIR: ${{ github.workspace }}/pytorch
     steps:
-      - name: Checkout torch-xpu-ops (for the fix diff + skills)
+      - name: Checkout torch-xpu-ops (for AGENTS.md + skills)
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
@@ -97,230 +91,95 @@ jobs:
         with:
           python: '3.10'
 
-      # --- Step 1: nightly wheel + freeze the pytorch commit ---------------
-      - name: Install nightly PyTorch-XPU wheel
-        run: |
-          set -euxo pipefail
-          # Lock to the exact nightly whose torch-xpu-ops pin predates PR #5004,
-          # so the wheel still has the bug (FFT UTs fail). Only torch is needed;
-          # vision/audio would drag in version conflicts and the FFT UTs need neither.
-          uv pip install --prerelease=allow \
-            "torch==${NIGHTLY_VERSION}" \
-            --index-url https://download.pytorch.org/whl/nightly/xpu
-          python -c "import torch; print('torch', torch.__version__); \
-            print('xpu available:', torch.xpu.is_available())"
-          # Freeze the pytorch commit this nightly was built from.
-          PT_SHA=$(python -c "import torch; print(torch.version.git_version)")
-          echo "PT_SHA=$PT_SHA" | tee -a "$GITHUB_ENV"
-          echo "### nightly install" >> "$GITHUB_STEP_SUMMARY"
-          echo "- torch: \`$(python -c 'import torch;print(torch.__version__)')\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- xpu available (wheel): \`$(python -c 'import torch;print(torch.xpu.is_available())')\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- frozen pytorch sha: \`$PT_SHA\`" >> "$GITHUB_STEP_SUMMARY"
-
-      # --- Step 2: repro baseline (before) — must FAIL ---------------------
-      - name: Reproduce FFT failures on nightly (expect FAILED)
-        run: |
-          set -uxo pipefail
-          # Need the pytorch source tree for the UT files even on the wheel path.
-          # Fetch just the frozen commit the nightly wheel was built from.
-          mkdir -p "$PYTORCH_DIR"
-          git -C "$PYTORCH_DIR" init -q
-          git -C "$PYTORCH_DIR" remote add origin https://github.com/pytorch/pytorch.git 2>/dev/null || true
-          if git -C "$PYTORCH_DIR" fetch --depth 1 origin "$PT_SHA"; then
-            git -C "$PYTORCH_DIR" checkout -q FETCH_HEAD
-          else
-            echo "::warning::shallow fetch of $PT_SHA failed; falling back to full clone + checkout"
-            rm -rf "$PYTORCH_DIR"
-            git clone https://github.com/pytorch/pytorch.git "$PYTORCH_DIR"
-            git -C "$PYTORCH_DIR" checkout -q "$PT_SHA" || \
-              echo "::warning::checkout $PT_SHA failed; using default branch (UT files may drift)"
-          fi
-          # Test deps for the opinfo (inductor) tests. triton-xpu is already a
-          # dependency of the torch+xpu wheel (Requires-Dist), so only the pytest
-          # helpers are missing.
-          pip install pytest expecttest hypothesis || true
-          cd "$PYTORCH_DIR"
-          python -c "import torch, triton; print('triton', triton.__version__)" || \
-            echo "::warning::triton not importable; opinfo tests may error-collect"
-          # A single UT reproduces the bug: FAILED (rc!=0) is expected here.
-          # rc==0 (unexpected PASS) or a collection error both mean the baseline
-          # is not what we think, so require at least one genuine test FAILURE.
-          fail=0; err=0; total=0
-          for nid in $FFT_FAIL_TESTS; do
-            total=$((total+1))
-            out=$(python -m pytest "$nid" -v --no-header -p no:cacheprovider 2>&1) && rc=0 || rc=$?
-            echo "$out" | tee -a /tmp/before.log >/dev/null
-            if echo "$out" | grep -qE "no tests ran|errors during collection|ERROR "; then
-              err=$((err+1)); echo "COLLECT-ERROR (before): $nid"
-            elif [ "$rc" -ne 0 ]; then
-              fail=$((fail+1))
-            else
-              echo "UNEXPECTED PASS (before): $nid"
-            fi
-          done
-          echo "before: $fail failed / $err collect-error / $total total" | tee -a "$GITHUB_STEP_SUMMARY"
-          # Baseline is only trustworthy if a real test FAILED (not just errored).
-          [ "$fail" -gt 0 ] || { echo "::error::no genuine FFT test failure on nightly; version mismatch or test-collection problem"; exit 1; }
-
-      # --- Step 3: populate torch-xpu-ops + apply the fix ------------------
-      - name: Populate torch-xpu-ops submodule + apply PR fix
-        run: |
-          set -euxo pipefail
-          # AGENTS.md "Commit Pin & Development Override": clone into the path
-          # CMake expects, then pin xpu.txt to HEAD so CMake's checkout is a no-op.
-          rm -rf "$PYTORCH_DIR/third_party/torch-xpu-ops"
-          # Clone a clean torch-xpu-ops main (not the smoke checkout, which carries
-          # this workflow file).
-          git clone https://github.com/intel/torch-xpu-ops.git \
-            "$PYTORCH_DIR/third_party/torch-xpu-ops"
-          cd "$PYTORCH_DIR/third_party/torch-xpu-ops"
-          # PR #5004 is already merged into main, so main already contains the fix.
-          # To genuinely exercise "apply a patch to a clean tree" (what the real
-          # workflow does with an agent-produced patch), rewind to the fix commit's
-          # PARENT (the pre-fix state), then apply the fix diff on top.
-          # gh pr diff without --patch emits a plain unified diff (no header).
-          FIX_SHA=$(gh pr view "$FIX_PR" --repo intel/torch-xpu-ops \
-            --json commits -q '.commits[-1].oid')
-          gh pr diff "$FIX_PR" --repo intel/torch-xpu-ops > /tmp/fix.patch
-          # Shallow clone lacks the fix commit's parent; fetch it explicitly
-          # (depth 2 = the fix commit plus its parent).
-          git fetch -q --depth 2 origin "$FIX_SHA"
-          git checkout -q "${FIX_SHA}~1" \
-            || echo "::warning::could not rewind to fix parent; applying on current HEAD"
-          git apply -p1 /tmp/fix.patch \
-            || { echo "::error::fix diff did not apply to torch-xpu-ops"; exit 1; }
-          git rev-parse HEAD > "$PYTORCH_DIR/third_party/xpu.txt"
-          echo "### fix applied" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          git diff --stat >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-      # --- Step 4a: shell driver — scripted DLE install + build + verify ---
-      - name: Install DLE + build + verify (shell driver)
-        if: inputs.driver == 'shell'
-        run: |
-          set -uxo pipefail
-          # Scripted fallback path. The agent driver (4b) instead follows the
-          # PyTorch XPU prerequisite doc to install DLE itself. Here we install
-          # Intel Deep Learning Essentials from the official offline installer
-          # (same approach as bisect_search.yml) — the container has no Intel apt
-          # repo, so apt install would fail.
-          t0=$(date +%s)
-          rm -rf "${HOME}/intel"
-          wget -q -O /tmp/oneapi.sh "${{ inputs.oneapi_installer }}"
-          bash /tmp/oneapi.sh -a -s --eula accept --action install \
-            --install-dir "${HOME}/intel/oneapi"
-          DEBIAN_FRONTEND=noninteractive apt-get update && \
-            apt-get install -y gcc-13 g++-13 || true
-          t1=$(date +%s)
-          echo "### DLE install (shell)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- install time: \`$((t1-t0))s\`" >> "$GITHUB_STEP_SUMMARY"
-          # Write the build env the build + gate steps source.
-          cat > "$PYTORCH_DIR/build_pytorch.env" <<EOF
-          export USE_XPU=1
-          export USE_CUDA=0
-          source ${HOME}/intel/oneapi/setvars.sh
-          EOF
-          cd "$PYTORCH_DIR"
-          # shellcheck disable=SC1091
-          source build_pytorch.env
-          sycl-ls 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || echo "sycl-ls failed" >> "$GITHUB_STEP_SUMMARY"
-          pip install -r requirements.txt || true
-          t0=$(date +%s)
-          pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/build.log
-          rc=${PIPESTATUS[0]}
-          t1=$(date +%s)
-          echo "- cold build time: \`$((t1-t0))s\`, rc=$rc" >> "$GITHUB_STEP_SUMMARY"
-          [ "$rc" -eq 0 ] || { echo "::error::build failed"; exit 1; }
-
-          echo "- xpu available (source): \`$(python -c 'import torch;print(torch.xpu.is_available())')\`" >> "$GITHUB_STEP_SUMMARY"
-
-          echo "### verify (after)" >> "$GITHUB_STEP_SUMMARY"
-          pass=0; total=0
-          for nid in $FFT_FAIL_TESTS $FFT_REGRESSION_TESTS; do
-            total=$((total+1))
-            if python -m pytest "$nid" -v --no-header -p no:cacheprovider \
-                 2>&1 | tee -a /tmp/after.log >/dev/null; then
-              pass=$((pass+1))
-            else
-              echo "STILL FAILING (after): $nid" | tee -a "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-          echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
-          [ "$pass" -eq "$total" ] || { echo "::error::verify: $pass/$total passed"; exit 1; }
-
-      # --- Step 4b: agent driver — claude installs DLE + builds -----------
-      - name: Install DLE + build (agent driver)
-        id: agent-build
-        if: inputs.driver == 'agent'
+      # The agent drives the ENTIRE chain and solves problems itself. The
+      # workflow only provisions runner + container + GPU + Python. Nothing is
+      # pre-installed or pre-built.
+      - name: Agent — reproduce, fix, build, verify
+        id: agent
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 200 --allowedTools Bash,Read,Glob,Grep,WebFetch,Skill,Task,Write,Edit"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 400 --allowedTools Bash,Read,Glob,Grep,WebFetch,Skill,Task,Write,Edit"
           prompt: |
-            A PyTorch source tree is checked out at ${{ env.PYTORCH_DIR }}. Under
-            third_party/torch-xpu-ops the fix from PR #${{ inputs.fix_pr }} is
-            already applied, and third_party/xpu.txt already pins the development
-            override. A nightly PyTorch-XPU wheel is currently installed.
+            You are running on an Intel XPU (GPU) CI runner inside a container
+            that exposes the host GPU via /dev/dri. The torch-xpu-ops repo is
+            checked out at ${{ github.workspace }} (read its AGENTS.md; the
+            /xpu-build-pytorch skill is available). Nothing else is installed or
+            built yet. `gh` is authenticated (GH_TOKEN in env).
 
-            The runner exposes the host Intel GPU (/dev/dri) but does NOT have the
-            Intel Deep Learning Essentials (DLE) build toolchain installed yet.
+            GOAL: prove end to end that the fix in torch-xpu-ops PR #${{ inputs.fix_pr }}
+            resolves issue #4980 (empty-batch FFT oneMKL failure) by reproducing
+            the bug on a nightly wheel, then source-building PyTorch with the fix
+            and showing the tests pass. Work the problem yourself: if a step
+            fails, diagnose and retry. Do NOT write or invent the fix — take it
+            from PR #${{ inputs.fix_pr }}.
 
-            Your job: set up the build environment, build PyTorch from source, and
-            verify the fix. Do NOT edit any source and do NOT write the fix — it is
-            already applied.
+            Environment facts you must respect:
+            - Run pytest from ${{ env.PYTORCH_DIR }}/test, NEVER from the pytorch
+              root: the root torch/ source dir shadows the installed torch and
+              yields "No module named torch.version".
+            - triton-xpu ships as a dependency of the torch+xpu wheel; no separate
+              install. You still need pip: pytest expecttest hypothesis.
+            - This container has NO Intel apt repo, so
+              `apt install intel-deep-learning-essentials` will FAIL. Install the
+              Intel Deep Learning Essentials from the OFFLINE installer instead.
+              A known-good URL: ${{ inputs.oneapi_installer }}
+              (or find the current one via the prereq doc:
+              ${{ env.PYTORCH_DIR }}/docs/source/notes/get_start_xpu.md and its
+              linked Intel page — use WebFetch).
 
-            1. Read the PyTorch XPU prerequisite guide to learn how to install the
-               build toolchain. Start from the in-tree doc:
-               ${{ env.PYTORCH_DIR }}/docs/source/notes/get_start_xpu.md
-               and follow its "From Source" / prerequisite links (the Intel
-               "PyTorch Prerequisites for Intel GPU" page) — use WebFetch to read
-               the linked Intel page. Install the Intel Deep Learning Essentials
-               and any compiler (gcc-13/g++-13) it requires. Report the exact
-               install commands you ran and how long they took.
-               NOTE: this container has no Intel apt repo configured, so
-               `apt install intel-deep-learning-essentials` will NOT work. Use the
-               official OFFLINE installer instead (a
-               `intel-deep-learning-essentials-*_offline.sh` from
-               registrationcenter-download.intel.com), e.g.:
-                 wget -qO oneapi.sh <offline-installer-url>
-                 bash oneapi.sh -a -s --eula accept --action install \
-                   --install-dir $HOME/intel/oneapi
-               then source $HOME/intel/oneapi/setvars.sh. A known-good URL:
-               ${{ inputs.oneapi_installer }}
-            2. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that exports
-               USE_XPU=1, USE_CUDA=0, and sources the DLE/oneAPI environment from
-               wherever your install placed it. A later step also sources this
-               file, so it must fully set up the runtime.
-            3. Build from ${{ env.PYTORCH_DIR }} using the /xpu-build-pytorch skill
-               (source build_pytorch.env first). The only build command is
-               `pip install -e . -v --no-build-isolation`.
-            4. Confirm `python -c "import torch; print(torch.xpu.is_available())"`
-               prints True on the source build.
-            5. Verify the fix: run each of these UTs from ${{ env.PYTORCH_DIR }}
-               and confirm they now PASS on the source build (they FAILED on the
-               nightly wheel before the fix):
-               ${{ env.FFT_FAIL_TESTS }}
-               Also confirm these non-empty regression UTs still PASS:
-               ${{ env.FFT_REGRESSION_TESTS }}
-               Report cold build time, xpu availability, and the pass/fail count
-               with a short before/after summary.
+            STEPS:
+            1. Install the nightly XPU wheel (torch ONLY, no vision/audio),
+               pinned to the version that still has the bug:
+                 pip install --pre "torch==${{ inputs.nightly_version }}" \
+                   --index-url https://download.pytorch.org/whl/nightly/xpu
+               Record torch.__version__, torch.xpu.is_available(), and
+               torch.version.git_version (freeze this pytorch commit).
+            2. Clone pytorch at that frozen commit into ${{ env.PYTORCH_DIR }}.
+               From ${{ env.PYTORCH_DIR }}/test, run these UTs and CONFIRM they
+               FAIL on the nightly wheel (this is the "before" reproduction):
+                 ${{ env.FFT_FAIL_TESTS }}
+               If they do not genuinely FAIL (e.g. only collection errors, or they
+               pass), STOP and report — the nightly version is wrong.
+            3. Populate the submodule with the fix: clone intel/torch-xpu-ops into
+               ${{ env.PYTORCH_DIR }}/third_party/torch-xpu-ops, apply the PR
+               #${{ inputs.fix_pr }} diff (`gh pr diff` — a plain unified diff),
+               and set the development pin override per AGENTS.md
+               (git rev-parse HEAD > ${{ env.PYTORCH_DIR }}/third_party/xpu.txt).
+            4. Install the Intel Deep Learning Essentials (offline installer, see
+               above) and any compiler it needs. Source its setvars.sh.
+            5. Source-build PyTorch via the /xpu-build-pytorch skill:
+               USE_XPU=1 USE_CUDA=0, then
+               `pip install -e . -v --no-build-isolation` from
+               ${{ env.PYTORCH_DIR }}. Confirm torch.xpu.is_available() is True on
+               the source build (check from the test/ dir).
+            6. Verify the fix: from ${{ env.PYTORCH_DIR }}/test, run the same UTs
+               from step 2 and confirm they now PASS, plus these regressions still
+               pass:
+                 ${{ env.FFT_REGRESSION_TESTS }}
+            7. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that a later step can
+               source to reproduce your runtime (exports USE_XPU=1, USE_CUDA=0,
+               sources your DLE setvars.sh). Also write a JSON summary to
+               /tmp/agent_result.json with keys: reproduced_before (bool),
+               build_ok (bool), xpu_available (bool), verified_after (bool),
+               fail_before_count, pass_after_count, dle_install_seconds,
+               cold_build_seconds, notes.
+
+            Report a concise before/after summary at the end.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
-      # Confirm the agent actually ran (setup can fail before Bedrock is hit,
-      # in which case the action still exits 0). Separates "agent never ran"
-      # from "agent ran but build failed" for clean attribution.
-      - name: Check agent executed (agent driver)
-        if: inputs.driver == 'agent'
+      # Confirm the agent actually ran (setup can fail before Bedrock is hit; the
+      # action still exits 0). Separates "never ran" from "ran but failed".
+      - name: Check agent executed
         uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
-            const file = '${{ steps.agent-build.outputs.execution_file }}';
+            const file = '${{ steps.agent.outputs.execution_file }}';
             if (!file || !fs.existsSync(file)) {
               core.setFailed('agent produced no execution_file — it never ran (setup/auth failure)');
               return;
@@ -331,24 +190,23 @@ jobs:
             if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
             core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
 
-      # Objective re-check of the agent's own verify. The agent runs the UTs and
-      # reports pass/fail (step 5 of its prompt), but claude-code-action exits 0
-      # regardless of what the agent concludes, so its self-report cannot decide
-      # job success. Re-run the same assertions here as an independent gate.
-      - name: Verify gate — recheck agent's verify (agent driver)
-        if: inputs.driver == 'agent'
+      # Objective gate: claude-code-action exits 0 regardless of the agent's own
+      # conclusion, so re-run the verify assertions independently against the
+      # build the agent produced. This — not the agent's self-report — decides
+      # job success.
+      - name: Verify gate — independent recheck
         run: |
           set -uxo pipefail
           cd "$PYTORCH_DIR"
-          # The agent was asked to write this env file after installing DLE.
-          # Its absence means the agent's setup step did not complete.
-          [ -f build_pytorch.env ] || { echo "::error::agent did not write build_pytorch.env; DLE setup/build incomplete"; exit 1; }
+          [ -f build_pytorch.env ] || { echo "::error::agent did not write build_pytorch.env; chain incomplete"; exit 1; }
           # shellcheck disable=SC1091
           source build_pytorch.env
+          # Run from test/ to avoid the root torch/ source-dir shadow.
+          cd "$PYTORCH_DIR/test"
           avail=$(python -c "import torch; print(torch.xpu.is_available())")
-          echo "### verify gate (after agent build)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### verify gate (independent recheck)" >> "$GITHUB_STEP_SUMMARY"
           echo "- xpu available (source): \`$avail\`" >> "$GITHUB_STEP_SUMMARY"
-          [ "$avail" = "True" ] || { echo "::error::agent build has no XPU"; exit 1; }
+          [ "$avail" = "True" ] || { echo "::error::source build has no XPU"; exit 1; }
           pass=0; total=0
           for nid in $FFT_FAIL_TESTS $FFT_REGRESSION_TESTS; do
             total=$((total+1))
@@ -362,15 +220,13 @@ jobs:
           echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
           [ "$pass" -eq "$total" ] || { echo "::error::verify gate: $pass/$total passed"; exit 1; }
 
-      # Bedrock spend for this run — key data for the "is build-in-the-loop
-      # worth it" question. Written to the job summary.
-      - name: Report agent cost (agent driver)
-        if: inputs.driver == 'agent' && always()
+      - name: Report agent cost
+        if: always()
         uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
-            const file = '${{ steps.agent-build.outputs.execution_file }}';
+            const file = '${{ steps.agent.outputs.execution_file }}';
             if (!file || !fs.existsSync(file)) return;
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             const r = data.filter(e => e.type === 'result').pop();
@@ -382,36 +238,30 @@ jobs:
               `turns=${r.num_turns||'?'}`;
             await core.summary.addRaw(line + '\n').write();
 
-      # Persist the agent's full transcript (thinking, every tool call, and
-      # results) so it can be reviewed after the run. claude-code-action writes
-      # this JSON to a temp path that is otherwise discarded with the runner.
-      - name: Stage agent transcript (agent driver)
-        if: inputs.driver == 'agent' && always()
+      # Persist the agent transcript (thinking + every tool call/result) so the
+      # run can be reviewed. Otherwise discarded with the runner.
+      - name: Stage agent transcript
+        if: always()
         run: |
-          f='${{ steps.agent-build.outputs.execution_file }}'
+          f='${{ steps.agent.outputs.execution_file }}'
           if [ -n "$f" ] && [ -f "$f" ]; then
             cp "$f" /tmp/agent_transcript.json
             echo "staged agent transcript ($(wc -c < /tmp/agent_transcript.json) bytes)"
-          else
-            echo "no execution_file to stage"
           fi
 
-      - name: Upload build/test logs
+      - name: Upload logs + transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs
           path: |
-            /tmp/before.log
-            /tmp/build.log
             /tmp/after.log
-            /tmp/fix.patch
+            /tmp/agent_result.json
             /tmp/agent_transcript.json
           if-no-files-found: ignore
 
       # Files created inside the privileged container are root-owned; hand them
-      # back to the runner user so the next checkout on this self-hosted runner
-      # does not fail on permission errors.
+      # back so the next checkout on this self-hosted runner does not fail.
       - name: Cleanup workspace
         if: always()
         run: chown 1000:1000 /__w /github ./ -R || true
