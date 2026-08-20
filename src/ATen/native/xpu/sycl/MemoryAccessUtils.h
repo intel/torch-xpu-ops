@@ -143,10 +143,11 @@ struct LoadWithCastFP {
           return c10::convert<float>(c10::load<c10::Half>(ptr));
         case at::ScalarType::BFloat16:
           return c10::convert<float>(c10::load<c10::BFloat16>(ptr));
+        default:
+          TORCH_INTERNAL_ASSERT(false, "Unexpected dtype in LoadWithCastFP");
       }
     }
-    // Satisfy compiler for non-float scalar_t instantiations that never run.
-    return scalar_t{};
+    TORCH_INTERNAL_ASSERT(false, "LoadWithCastFP called with non-float scalar_t");
   }
 };
 
