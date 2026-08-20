@@ -71,19 +71,11 @@ runs:
         echo "LD_LIBRARY_PATH=$(pwd)/install-dpclang/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
-    - name: Download Pytorch wheel
-      uses: actions/download-artifact@v4
-      with:
-        name: manywheel-py3_10-xpu
-        github-token: ${{ github.token }}
-        repository: pytorch/pytorch
-        run-id: 32004027528
-        path: ${{ github.workspace }}/wheels
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
         # install pytorch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        pip install torch==2.15.0.dev20260816+xpu triton-xpu==3.8.0+git1e2d42a0 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         pip list |grep -E 'intel|torch|triton'
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
