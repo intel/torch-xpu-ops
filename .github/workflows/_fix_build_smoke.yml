@@ -21,10 +21,10 @@ on:
         description: "PR number to pull the fix diff from"
         default: "5004"
       driver:
-        description: "build+verify driver: shell (scripted) or agent (claude via /xpu-build-pytorch)"
+        description: "build+verify driver: agent (claude via /xpu-build-pytorch, matches real bot usage) or shell (scripted fallback)"
         type: choice
-        options: [shell, agent]
-        default: shell
+        options: [agent, shell]
+        default: agent
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
@@ -239,6 +239,33 @@ jobs:
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      # Objective gate: claude-code-action exits 0 regardless of what the agent
+      # concludes, so the agent's self-report cannot decide job success. Re-run
+      # the verify assertions in shell against the build the agent produced.
+      - name: Verify gate (agent driver)
+        if: inputs.driver == 'agent'
+        run: |
+          set -uxo pipefail
+          cd "$PYTORCH_DIR"
+          # shellcheck disable=SC1091
+          source build_pytorch.env
+          avail=$(python -c "import torch; print(torch.xpu.is_available())")
+          echo "### verify gate (after agent build)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- xpu available (source): \`$avail\`" >> "$GITHUB_STEP_SUMMARY"
+          [ "$avail" = "True" ] || { echo "::error::agent build has no XPU"; exit 1; }
+          pass=0; total=0
+          for t in $FFT_FAIL_TESTS $FFT_REGRESSION_TESTS; do
+            total=$((total+1))
+            if python "$TEST_FILE" -v -k "$t" 2>&1 | tee -a /tmp/after.log \
+                 | grep -qE "PASSED|OK"; then
+              pass=$((pass+1))
+            else
+              echo "STILL FAILING (after): $t" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
+          [ "$pass" -eq "$total" ] || { echo "::error::verify gate: $pass/$total passed"; exit 1; }
 
       - name: Upload build/test logs
         if: always()
