@@ -127,7 +127,6 @@ class InductorSuite(BenchmarkSuite):
 
     def collect_results(self, log_csv, log_file, tmp_csv, device, task, kill_reason, elapsed):
         header, row = self._read_last_matching_row(tmp_csv, device)
-        self._preserve_origin(tmp_csv, log_csv, device, task)
         if not row:
             final_header, final_row = self._fallback_row(device, task, kill_reason, elapsed)
         else:
@@ -154,36 +153,6 @@ class InductorSuite(BenchmarkSuite):
         except Exception as e:
             log(f"Error reading temp CSV {tmp_csv}: {e}", level="WARN")
             return [], []
-
-    @staticmethod
-    def _preserve_origin(tmp_csv, log_csv, device, task):
-        """Retain the unprocessed dynamo CSV output next to the aggregated CSV.
-
-        The file keeps the original ``inductor_<suite>_<dt>_<mode>_<device>_<scenario>.csv``
-        name so downstream workflow steps that expect that pattern keep working.
-        Rows from every per-model run are appended so results are not lost when
-        the temp CSV is deleted.
-        """
-        if not tmp_csv or not os.path.isfile(tmp_csv):
-            return
-        try:
-            with open(tmp_csv, newline="", encoding="utf-8") as f:
-                rows = [r for r in csv.reader(f) if r]
-        except Exception as e:
-            log(f"Error reading temp CSV {tmp_csv} for origin: {e}", level="WARN")
-            return
-        if not rows:
-            return
-        origin = log_csv.with_name(
-            f"inductor_{task.suite}_{task.dt}_{task.mode}_{device}_{task.scenario}.csv"
-        )
-        with csv_lock:
-            write_header = not origin.exists()
-            with open(origin, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                if write_header:
-                    writer.writerow(rows[0])
-                writer.writerows(rows[1:])
 
     @staticmethod
     def _fallback_row(device, task, kill_reason, elapsed=0.0):

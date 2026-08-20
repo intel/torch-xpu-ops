@@ -48,6 +48,9 @@ def parse_file_name(filename):
     """
     Parse benchmark file name to extract suite, dtype, and mode.
 
+    Supports both the legacy underscore layout and the run_benchmarks
+    dash-separated layout ``inductor-<suite>-<dtype>-<mode>-<device>-<scenario>.csv``.
+
     Args:
         filename: Input filename to parse
 
@@ -55,9 +58,9 @@ def parse_file_name(filename):
         tuple: (suite, dtype, mode) or ("N/A", "N/A", "N/A") if pattern not found
     """
     pattern = (
-        r"_(huggingface|timm_models|torchbench)_"
-        r"(float32|bfloat16|float16|amp_bf16|amp_fp16)_"
-        r"(inference|training)_"
+        r"[_-](huggingface|timm_models|torchbench)[_-]"
+        r"(float32|bfloat16|float16|amp_bf16|amp_fp16)[_-]"
+        r"(inference|training)[_-]"
     )
     match = re.search(pattern, filename)
     return match.groups() if match else ("N/A", "N/A", "N/A")
@@ -167,7 +170,7 @@ def main():
     # Load data files
     test_data = load_data(args.csv_file)
     test_known_data = load_known_data(args.issue_file)
-    suite, dtype, mode = parse_file_name(args.csv_file)
+    suite, dtype, mode = args.suite, args.dtype, args.mode
 
     # Load reference data
     current_path = Path(__file__).parent.resolve()
