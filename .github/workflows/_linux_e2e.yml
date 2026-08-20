@@ -64,7 +64,8 @@ jobs:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - /opt:/opt
+        - ${{ runner.tool_cache }}/_cache:/github/home/.cache/:rw
+        - ${{ runner.tool_cache }}/_dataset:/opt/_dataset/:rw
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
               -e ZE_AFFINITY_MASK
