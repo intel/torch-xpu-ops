@@ -899,9 +899,9 @@ std::tuple<Tensor, Tensor> weight_norm_backward_kernel(
   auto grad_v = at::empty_like(saved_v, c10::get_contiguous_memory_format());
   auto grad_g = at::empty_like(saved_g, c10::get_contiguous_memory_format());
 
-  // Empty saved_v: grad_v is empty, grad_g = 0/0 = NaN (matches CPU/CUDA).
+  // Empty saved_v: grad_v is empty, grad_g = 0 (matches CPU/CUDA).
   if (saved_v.numel() == 0) {
-    grad_g.fill_(std::numeric_limits<double>::quiet_NaN());
+    grad_g.zero_();
     return {grad_v, grad_g};
   }
 
