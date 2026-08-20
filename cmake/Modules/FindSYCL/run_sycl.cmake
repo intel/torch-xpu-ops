@@ -81,6 +81,10 @@ else()
   list(APPEND SYCL_compile_flags "-no-intel-lib=libirc")
 endif()
 
+if(verbose)
+  message(STATUS "SYCL_compile_flags=${SYCL_compile_flags}")
+endif()
+
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #
 #   status  - Status message to print if verbose is true

@@ -108,11 +108,6 @@ macro(set_build_flags)
   # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
   # 4. Linkage:
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
-  # Keep device optimization explicit. PyTorch's -O2 is part of the host
-  # flags and is forwarded with -Xarch_host, so it must not be relied on for
-  # device compilation. XPU_DEVICE_DEBUG appends -O0 below and intentionally
-  # overrides this default for full device debugging.
-  list(APPEND SYCL_KERNEL_OPTIONS -O2)
   list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-unnamed-lambda)
   list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-id-queries-fit-in-int)
   list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
