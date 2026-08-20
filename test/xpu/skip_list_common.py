@@ -105,7 +105,11 @@ skip_dict = {
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
     ),
-    "test_indexing_xpu.py": None,
+    "test_indexing_xpu.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_index_add_fast_path_xpu_float64",
+    ),
     "test_linalg_xpu.py": (
         # skipped due to #2309, unsupported ops: aten::_dyn_quant_pack_4bit_weight, aten::narrow_copy, aten::_histogramdd_bin_edges
         "test__dyn_quant_matmul_4bit_m_1_k_128_n_11008_xpu",
@@ -134,6 +138,12 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_lobpcg_ortho_xpu_float64",
+        "test_pca_lowrank_xpu",
+        "test_svd_lowrank_xpu_complex128",
+        "test_svd_lowrank_xpu_float64",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
@@ -153,8 +163,18 @@ skip_dict = {
         # cuDNN CTC test uses CUDA-only backend/device assumptions.
         "test_ctc_loss_cudnn_tensor_cuda_xpu",
     ),
-    "test_ops_fwd_gradients_xpu.py": None,
-    "test_ops_gradients_xpu.py": None,
+    "test_ops_fwd_gradients_xpu.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_fn_fwgrad_bwgrad_stft_xpu_complex128",
+        # https://github.com/intel/torch-xpu-ops/issues/4996
+        "test_fn_fwgrad_bwgrad_stft_xpu_float64",
+    ),
+    "test_ops_gradients_xpu.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_fn_gradgrad_stft_xpu_complex128",
+    ),
     "test_ops_xpu.py": (
         "_jiterator_",
         # crash
@@ -184,7 +204,21 @@ skip_dict = {
     ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
-    "test_sparse_xpu.py": None,
+    "test_sparse_xpu.py": (
+        # BMG hang (>10 min) taking down the xdist worker
+        # https://github.com/intel/torch-xpu-ops/issues/4947
+        "test_index_select_empty_and_non_contiguous_index_xpu_float64",
+        "test_index_select_exhaustive_index_large_xpu_float64",
+        "test_to_sparse_xpu_complex128",
+        "test_to_sparse_xpu_float64",
+        "test_binary_operation_mul_SparseBSC_xpu_complex128",
+        "test_binary_operation_mul_SparseBSC_xpu_float64",
+        "test_binary_operation_mul_SparseBSR_xpu_complex128",
+        "test_binary_operation_mul_SparseCSC_xpu_complex128",
+        "test_binary_operation_mul_SparseCSC_xpu_float64",
+        "test_binary_operation_mul_SparseCSR_xpu_complex128",
+        "test_binary_operation_mul_SparseCSR_xpu_float64",
+    ),
     "test_spectral_ops_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/2531
         # cuFFT plan cache is CUDA-specific and has no XPU equivalent.
@@ -259,6 +293,9 @@ skip_dict = {
         "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_True_xpu",
         "test_fused_backwards_throws_determinism_warning_fused_kernel0_warn_only_False_xpu",
         "test_fused_kernels_seq_len_1_inputs_fused_kernel0_xpu",
+        # Sporadic worker crash on BMG
+        # https://github.com/intel/torch-xpu-ops/issues/3326
+        "test_mem_eff_attention_large_seq_len_uniform_attention_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
@@ -312,7 +349,6 @@ skip_dict = {
     "export/test_cpp_serdes_xpu.py": None,
     "export/test_draft_export_xpu.py": None,
     "export/test_experimental_xpu.py": None,
-    "export/test_export_xpu.py": None,
     "export/test_passes_xpu.py": None,
     "export/test_retraceability_xpu.py": None,
     "export/test_serdes_xpu.py": None,
@@ -359,4 +395,23 @@ skip_dict = {
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
     "test_fx_experimental_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_callback.py": None,
+    "dynamo/test_cudagraphs_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
+        # Worker crash on BMG; no dedicated tracking issue yet
+        "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
+    ),
+    "dynamo/test_export_xpu.py": None,
+    "dynamo/test_logging_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_modes.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
+    "dynamo/test_recompiles_xpu.py": None,
+    "functorch/test_ac_xpu.py": None,
+    "test_cuda_multigpu_xpu.py": None,
+    "test_cuda_nvml_based_avail_xpu.py": None,
+    "test_cuda_primary_ctx_xpu.py": None,
+    "test_cuda_sanitizer_xpu.py": None,
+    "test_cuda_trace_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
+    "test_mkldnn_fusion_xpu.py": None,
 }

@@ -26,7 +26,7 @@ runs:
       shell: bash -xe {0}
       run: |
         which python && python -V
-        which pip && pip list
+        uv pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |

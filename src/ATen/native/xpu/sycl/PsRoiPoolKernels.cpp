@@ -150,9 +150,8 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       at::zeros(output.sizes(), input.options().dtype(at::kInt));
 
   auto output_size = output.numel();
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(output_size), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(output_size), 512);
   int64_t local_range = 512;
 
   if (output_size == 0) {
@@ -165,14 +164,14 @@ std::tuple<Tensor, Tensor> ps_roi_pool_kernel(
       input.scalar_type(), "ps_roi_pool_forward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolForwardKernel<scalar_t>(
             output_size,
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
             width,
             pooled_height,
             pooled_width,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             channels_out,
             output.data_ptr<scalar_t>(),
             channel_mapping.data_ptr<int>());
@@ -296,9 +295,8 @@ Tensor ps_roi_pool_backward_kernel(
     int64_t width) {
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
-  int64_t global_range = std::min(
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512)),
-      static_cast<int64_t>(4096));
+  int64_t global_range =
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients
@@ -314,8 +312,8 @@ Tensor ps_roi_pool_backward_kernel(
       grad.scalar_type(), "ps_roi_pool_backward_kernel_xpu", [&] {
         auto kfn = PsRoiPoolBackwardKernel<scalar_t>(
             grad.numel(),
-            grad_.data_ptr<scalar_t>(),
-            channel_mapping.data_ptr<int>(),
+            grad_.const_data_ptr<scalar_t>(),
+            channel_mapping.const_data_ptr<int>(),
             spatial_scale,
             channels,
             height,
@@ -324,7 +322,7 @@ Tensor ps_roi_pool_backward_kernel(
             pooled_width,
             channels_out,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>());
+            rois_.const_data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
             local_range,

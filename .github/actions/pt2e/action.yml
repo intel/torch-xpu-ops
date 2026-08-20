@@ -22,7 +22,7 @@ runs:
       shell: bash -xe {0}
       run: |
         which python && python -V
-        which pip && pip list
+        uv pip list
     - name: Prepare dataset
       if: contains(inputs.scenario, 'accuracy')
       shell: bash -xe {0}

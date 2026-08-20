@@ -100,8 +100,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   int sg_gid = sg.get_group_linear_id();
   int sg_range = sg.get_group_range()[0];
   // group reduce requests workgroup size is multiple of subgroup size
-  SYCL_KERNEL_ASSERT(
-      wg_size % sg_size == 0 && "unsupported workgroup size for group reduce");
+  SYCL_KERNEL_ASSERT(wg_size % sg_size == 0);
 
   // tree reduce in subgroup
   subgroup_tree_reduce<arg_t, CombineFunc, NativeOp, out_vec_sz>(
@@ -1123,8 +1122,8 @@ class AccumulationBuffer {
       size_t acc_t_size,
       size_t out_t_size,
       char* out_ptr,
-      int64_t size) {
-    out_ptr_ = out_ptr;
+      int64_t size)
+      : out_ptr_(out_ptr) {
     if (out_t_size >= acc_t_size) {
       // reusing output buffer for accumulation.
       acc_ptr_ = out_ptr;
