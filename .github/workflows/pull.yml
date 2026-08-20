@@ -271,7 +271,7 @@ jobs:
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [linux-build, reproducer-test, preci-lint-check]
+    needs: [preci-lint-check]
     if: ${{ needs.preci-lint-check.outputs.skip_all != 'true' && needs.preci-lint-check.outputs.skip_distributed != 'true' }}
     secrets: inherit
     permissions:
@@ -285,7 +285,9 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: nightly
+      pytorch: artifact_wheel
+      pytorch_artifact_run_id: '32004027528'
+      pytorch_artifact_name: manywheel-py3_10-xpu
       torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
