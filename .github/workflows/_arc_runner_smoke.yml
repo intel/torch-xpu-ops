@@ -12,7 +12,7 @@ name: fix build smoke
 # workflow_dispatch only lists workflows whose file path exists on the default
 # branch; this path already does. Trigger with an explicit ref pointing at the
 # smoke branch so the runner checks out THIS content, without merging to main:
-#   gh workflow run _arc_runner_smoke.yml --ref agent-fix-build-smoke/main -f driver=agent
+#   gh workflow run _arc_runner_smoke.yml --ref agent-fix-build-smoke/zzq -f driver=agent
 # main's real arc-runner-smoke is untouched; drop this branch when done.
 
 on:
