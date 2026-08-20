@@ -30,8 +30,8 @@ on:
         options: [agent, shell]
         default: agent
       oneapi_installer:
-        description: "Intel DLE offline installer URL (shell driver only; agent follows the prereq doc)"
-        default: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
+        description: "Intel DLE offline installer URL (shell driver only; agent follows the prereq doc). 2026.1 matches PyTorch 2.14+ per Intel's compatibility table."
+        default: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
