@@ -12,6 +12,9 @@ env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
+  # The standing issue that carries the daily XPU alignment drafts. `file`
+  # refuses to run anywhere else, so this number is the command's whole scope.
+  ALIGNMENT_TRIAGE_ISSUE: 5018
 
 permissions:
   contents: read
@@ -38,6 +41,7 @@ jobs:
       onto_branch: ${{ steps.parse.outputs.onto_branch }}
       classification: ${{ steps.parse.outputs.classification }}
       fixes: ${{ steps.parse.outputs.fixes }}
+      unit_id: ${{ steps.parse.outputs.unit_id }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
       is_pr: ${{ steps.parse.outputs.is_pr }}
@@ -90,7 +94,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'file', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -102,9 +106,9 @@ jobs:
               : (command === 'check-ut' || command === 'ut') ? 'ut-check'
               : command;
 
-            // Context check: fix and triage are issue-only, help works on
-            // both, the rest are PR-only.
-            if (normalizedCommand === 'fix' || normalizedCommand === 'triage') {
+            // Context check: fix, triage and file are issue-only, help works
+            // on both, the rest are PR-only.
+            if (normalizedCommand === 'fix' || normalizedCommand === 'triage' || normalizedCommand === 'file') {
               if (isPR) {
                 reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
                 return;
@@ -125,9 +129,10 @@ jobs:
 
             if (command === 'help') {
               authorized = true; // anyone
-            } else if (command === 'fix') {
-              // fix drives an autonomous agent with write access, so it is
-              // gated like `merge -f` rather than like the read-only commands.
+            } else if (command === 'fix' || command === 'file') {
+              // fix drives an autonomous agent with write access, and file
+              // publishes a public issue, so both are gated like `merge -f`
+              // rather than like the read-only commands.
               authorized = maintainerOnly.includes(assoc);
             } else if (!privileged.includes(assoc)) {
               authorized = false;
@@ -141,6 +146,7 @@ jobs:
             let ontoBranch = '';
             let classification = '';
             let fixes = '';
+            let unitId = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -189,6 +195,15 @@ jobs:
               if (fixesMatch) {
                 fixes = fixesMatch[1];
               }
+            } else if (command === 'file') {
+              // The unit id reaches a shell argument and a comment marker, so
+              // it is validated here rather than downstream.
+              const unitMatch = args.match(/^([A-Za-z0-9][A-Za-z0-9._-]{0,63})$/);
+              if (!unitMatch) {
+                reject('`file` needs exactly one unit id, as in `@torchxpubot file candidate-1`.');
+                return;
+              }
+              unitId = unitMatch[1];
             }
 
             core.setOutput('command', normalizedCommand);
@@ -199,6 +214,7 @@ jobs:
             core.setOutput('onto_branch', ontoBranch);
             core.setOutput('classification', classification);
             core.setOutput('fixes', fixes);
+            core.setOutput('unit_id', unitId);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -245,6 +261,8 @@ jobs:
               msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
             } else if (cmd === 'fix') {
               msg = 'Only OWNER or MEMBER can use `@torchxpubot fix`.';
+            } else if (cmd === 'file') {
+              msg = 'Only OWNER or MEMBER can use `@torchxpubot file`, because it opens a public issue.';
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -289,6 +307,7 @@ jobs:
             |---------|-------------|
             | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
             | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
+            | \`@torchxpubot file <unit-id>\` | On the alignment triage issue, file one reviewed draft as its own issue (OWNER/MEMBER only) |
             | \`@torchxpubot help\` | Show this help message |
 
             \`fix\` reproduces the issue on a runner that has a prebuilt nightly
@@ -300,6 +319,13 @@ jobs:
 
             \`fix\` also updates this issue's body with agent status markers and
             applies stage labels while it runs.
+
+            \`file\` only works on the standing XPU alignment triage issue. The
+            daily alignment workflow posts one draft comment per reviewed
+            candidate there; \`file <unit-id>\` copies that comment's text into a
+            new issue verbatim. No agent runs in between, so what you read in the
+            draft is exactly what gets published. You can only file a unit the
+            review already produced, and each unit can be filed once.
 
             All other commands (merge, revert, rebase, lint, rerun, review, ut-check)
             are only available on pull request comments.`;
@@ -1327,6 +1353,52 @@ jobs:
         if: ${{ always() }}
         run: |
           chown 1000:1000 /__w /github ./ -R
+
+  file:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      needs.parse-command.outputs.command == 'file'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # No agent runs here. The draft comment was written by the reviewed daily
+      # alignment run and is copied into the new issue byte for byte, so the
+      # maintainer who approves it has already read exactly what gets published.
+      - name: File the approved alignment draft
+        id: file
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          UNIT_ID: ${{ needs.parse-command.outputs.unit_id }}
+          REQUESTED_ON: ${{ needs.parse-command.outputs.issue_number }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/bot_alignment_file.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
+            --requested-on "$REQUESTED_ON" \
+            --unit-id "$UNIT_ID"
+
+      - name: Report the outcome
+        if: ${{ always() }}
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const unit = '${{ needs.parse-command.outputs.unit_id }}';
+            const url = '${{ steps.file.outputs.issue_url }}';
+            const body = url
+              ? `Filed \`${unit}\` as ${url}.`
+              : `Could not file \`${unit}\`. See the [job log](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}) for the reason.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.parse-command.outputs.issue_number }},
+              body
+            });
 
   triage:
     needs: parse-command
