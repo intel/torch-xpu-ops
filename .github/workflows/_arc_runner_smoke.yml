@@ -197,10 +197,11 @@ jobs:
       - name: Verify gate — independent recheck
         run: |
           set -uxo pipefail
-          cd "$PYTORCH_DIR"
-          [ -f build_pytorch.env ] || { echo "::error::agent did not write build_pytorch.env; chain incomplete"; exit 1; }
+          [ -f "$PYTORCH_DIR/build_pytorch.env" ] || { echo "::error::agent did not write build_pytorch.env; chain incomplete"; exit 1; }
+          # Source with an explicit path: `source <bare-name>` searches PATH, not
+          # the cwd, so a relative name fails even when the file is right here.
           # shellcheck disable=SC1091
-          source build_pytorch.env
+          source "$PYTORCH_DIR/build_pytorch.env"
           # Run from test/ to avoid the root torch/ source-dir shadow.
           cd "$PYTORCH_DIR/test"
           avail=$(python -c "import torch; print(torch.xpu.is_available())")
