@@ -127,6 +127,7 @@ only the diff and commit log need to be fetched via git.
 8. **Assume competence** — The author knows PyTorch; explain only non-obvious context.
 9. **No repetition** — Each observation appears in exactly one section of the review output.
 10. **Verify CPU/CUDA parity from source** — Do not infer behavior from memory. Inspect the actual upstream implementation from `pytorch/pytorch`.
+11. **Never make code changes** - The review must only suggest the code change, but NEVER make the actual code change. Especially, when you are reviewing the PR, NEVER change the code and do the commits. You should only give out the suggestions and comments to the PR submitter, and let them do the code change and commits.
 
 ### Using sub-agents
 
