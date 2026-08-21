@@ -57,6 +57,10 @@ env:
   # artifacts of the previous attempt.
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'
+  # Who gets pinged when a run needs a human. A busy day and a blocked day are
+  # both easy to miss otherwise: comments only reach watchers of the triage
+  # issue, and a failed scheduled run only emails whoever last touched this file.
+  ALIGNMENT_TRIAGE_NOTIFY: '@laifenxiawucha @ZhaoqiongZ'
 
 jobs:
   scan-and-validate:
@@ -345,7 +349,10 @@ jobs:
           python3 .github/scripts/xpu_alignment_gate.py "${args[@]}"
 
       - name: Publish to the triage issue
-        if: steps.decision.outputs.decision == 'file-one' || steps.decision.outputs.decision == 'triage'
+        if: >-
+          steps.decision.outputs.decision == 'file-one'
+          || steps.decision.outputs.decision == 'triage'
+          || steps.decision.outputs.needs_attention == 'true'
         env:
           GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
@@ -354,6 +361,7 @@ jobs:
           python3 .github/scripts/xpu_alignment_publish.py \
             --repo "$GITHUB_REPOSITORY" \
             --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
+            --notify "$ALIGNMENT_TRIAGE_NOTIFY" \
             --decision "$ALIGNMENT_RUN_ROOT/filing_decision.json"
 
       - name: Write workflow summary

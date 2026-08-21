@@ -24,6 +24,8 @@ UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
+# One notification per run, so a re-run does not ping anyone twice.
+RUN_NOTE_MARKER = "<!-- alignment-run-note: {run_id} -->"
 TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
@@ -81,6 +83,28 @@ def render_filed_note(unit_id: str, issue_url: str, run_id: str, scan_date: str)
 def has_unit(comments: list[dict], unit_id: str) -> bool:
     marker = UNIT_MARKER.format(unit_id=unit_id)
     return any(marker in (comment.get("body") or "") for comment in comments)
+
+
+def has_run_note(comments: list[dict], run_id: str) -> bool:
+    marker = RUN_NOTE_MARKER.format(run_id=run_id)
+    return any(marker in (comment.get("body") or "") for comment in comments)
+
+
+def render_run_note(
+    run_id: str, scan_date: str, headline: str, lines: list[str], notify: str
+) -> str:
+    """The one comment that actively pings a human, rather than waiting to be found."""
+    parts = [
+        RUN_NOTE_MARKER.format(run_id=run_id),
+        f"**{headline}**",
+        "",
+        *lines,
+        "",
+        f"<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>",
+    ]
+    if notify:
+        parts += ["", notify]
+    return "\n".join(parts) + "\n"
 
 
 def find_draft(comments: list[dict], unit_id: str) -> dict:

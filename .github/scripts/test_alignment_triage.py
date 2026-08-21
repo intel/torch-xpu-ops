@@ -5,11 +5,14 @@ from alignment_triage import (
     UNIT_MARKER,
     filed_body,
     find_draft,
+    has_run_note,
     has_unit,
     parse_draft,
     render_draft,
     render_filed_note,
+    render_run_note,
 )
+from xpu_alignment_publish import run_note
 
 TITLE = "[xpu-alignment] Fix GELU erf-tail catastrophic cancellation"
 
@@ -102,6 +105,47 @@ class FiledMarkerTests(unittest.TestCase):
         body = draft("candidate-1") + draft("candidate-1")
         updated = filed_body(body, "candidate-1", "https://github.com/x/y/issues/9")
         self.assertEqual(updated.count("<!-- alignment-unit-filed: #9 -->"), 1)
+
+
+class RunNoteTests(unittest.TestCase):
+    def test_mentions_the_maintainers_and_is_not_mistaken_for_a_draft(self) -> None:
+        body = render_run_note("12345", "2026-08-18", "Needs a human", ["- x"], "@a @b")
+        self.assertIn("@a @b", body)
+        with self.assertRaises(SystemExit):
+            find_draft([{"id": 1, "body": body}], "candidate-1")
+
+    def test_a_rerun_does_not_ping_twice(self) -> None:
+        body = render_run_note("12345", "2026-08-18", "Needs a human", ["- x"], "@a")
+        self.assertTrue(has_run_note([{"id": 1, "body": body}], "12345"))
+        self.assertFalse(has_run_note([{"id": 1, "body": body}], "12346"))
+
+    def test_a_quiet_day_pings_nobody(self) -> None:
+        self.assertIsNone(run_note({"decision": "none", "needs_attention": False}, []))
+
+    def test_one_clean_filing_pings_nobody(self) -> None:
+        decision = {"decision": "file-one", "needs_attention": False}
+        self.assertIsNone(run_note(decision, [{"unit_id": "c1", "title": TITLE}]))
+
+    def test_two_candidates_are_all_listed(self) -> None:
+        decision = {"decision": "triage", "needs_attention": False}
+        payloads = [
+            {"unit_id": "c1", "title": TITLE},
+            {"unit_id": "c2", "title": "[xpu-alignment] Other"},
+        ]
+        headline, lines = run_note(decision, payloads)
+        self.assertIn("2 XPU alignment candidates", headline)
+        self.assertTrue(any("`c1`" in line for line in lines))
+        self.assertTrue(any("`c2`" in line for line in lines))
+
+    def test_a_blocked_run_still_reaches_a_human(self) -> None:
+        decision = {
+            "decision": "blocked",
+            "needs_attention": True,
+            "blockers": ["review-blocked:reports/reviewer_manifest.json"],
+        }
+        headline, lines = run_note(decision, [])
+        self.assertIn("needs attention", headline)
+        self.assertTrue(any("review-blocked" in line for line in lines))
 
 
 if __name__ == "__main__":
