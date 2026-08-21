@@ -9,11 +9,11 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'main'
+        default: 'nightly'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'daisyden/distributed_2.13'
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
@@ -31,6 +31,18 @@ on:
         type: boolean
         default: false
         description: 'Skip the UT summary/issue-update job (e.g. when caller handles its own comparison)'
+      pytorch_artifact_repo:
+        type: string
+        default: 'pytorch/pytorch'
+        description: 'Repo to fetch a PyTorch CI-built wheel artifact from, used when pytorch == artifact_wheel'
+      pytorch_artifact_run_id:
+        type: string
+        default: ''
+        description: 'Workflow run id to fetch a PyTorch CI-built wheel artifact from, used when pytorch == artifact_wheel'
+      pytorch_artifact_name:
+        type: string
+        default: ''
+        description: 'Artifact name (e.g. manywheel-py3_10-xpu) to download, used when pytorch == artifact_wheel'
 
 permissions:
   contents: read
@@ -66,6 +78,9 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -90,11 +105,11 @@ jobs:
           chown 1000:1000 /__w /github ./ -R
 
   test-in-baremetal:
-    timeout-minutes: 600
+    timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ inputs.runner }}
     env:
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      PYTEST_ADDOPTS: -v
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7
@@ -105,6 +120,9 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
+          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -232,11 +250,19 @@ jobs:
             : > "$new_failure_csv"
             # Match rows by class_name AND test_name to avoid substring false positives
             # filtered log format: category,class_name,test_name
-            while IFS=',' read -r category class_name test_name; do
+            while IFS=',' read -r category class_name test_name || [ -n "$category$class_name$test_name" ]; do
+              class_prefix="| "
+              if [ "${{ inputs.ut }}" == "xpu_distributed" ]; then
+                node_id="${category##* }"
+                test_name="${node_id##*::}"
+                class_name="${node_id%::*}"
+                class_name="${class_name##*::}"
+                class_prefix="."
+              fi
               [ -z "$test_name" ] && continue
               # Use both class_name and test_name for precise matching in pipe-delimited CSV
-              grep -F "| $class_name | $test_name |" "$ut_failure_csv" >> "$new_failure_csv" || true
-            done < "$new_failure_list"
+              grep -F "$class_prefix$class_name | $test_name |" "$ut_failure_csv" \
+                >> "$new_failure_csv" || true
             # Verify count matches filtered log
             expected_count=$(grep -c . "$new_failure_list")
             actual_count=$(grep -c . "$new_failure_csv")

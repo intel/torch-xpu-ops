@@ -151,7 +151,16 @@ runs:
           exit 1
         fi
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_distributed.py \
+        export TEMP_DIR=/tmp
+        export BACKEND="xccl"
+        export WORLD_SIZE=4
+        export USE_CCL_V2=1
+        sed -i '44i\    max_affinity = "0,1,2,3"' run_distributed_local.py
+        sed -i '51d' run_distributed_local.py
+        pip install transformers pulp
+        sudo rm -rf /tmp/torchinductor_jenkins/
+        python -c "import inspect,shutil,torch.testing._internal.distributed.distributed_test as m; shutil.copyfile('distributed/distributed_test.py', inspect.getsourcefile(m) or m.__file__)"
+        python run_distributed_local.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
