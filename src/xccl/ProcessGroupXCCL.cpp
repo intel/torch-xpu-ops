@@ -1985,7 +1985,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::all_to_all_single(
     const AllToAllOptions& opts) {
   checkSingleTensor(outputTensor);
   checkSingleTensor(inputTensor);
-  if (outputSplitSizes.size() == 0 && inputSplitSizes.size() == 0) {
+  if (outputSplitSizes.empty() && inputSplitSizes.empty()) {
     RECORD_PARAM_COMMS_DATA_WITH_LOG(
         static_cast<int>(
             this->getSequenceNumberForGroup() +
