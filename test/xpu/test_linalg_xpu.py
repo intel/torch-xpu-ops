@@ -931,6 +931,7 @@ def linalg_lu_family(self, device, dtype):
             ):
                 f(torch.empty(1, 2, 2), pivot=False)
 
+
 @skipIfTorchDynamo("Runtime error with torch._C._linalg.linalg_lu_factor")
 @dtypes(torch.float)
 def linalg_lu_factor_no_pivot_regression(self, device, dtype):
@@ -987,8 +988,12 @@ def linalg_lu_factor_no_pivot_nan_parity(self, device, dtype):
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_linalg_lu_family = linalg_lu_family
-TestLinalg.test_linalg_lu_factor_no_pivot_regression = linalg_lu_factor_no_pivot_regression
-TestLinalg.test_linalg_lu_factor_no_pivot_nan_parity = linalg_lu_factor_no_pivot_nan_parity
+TestLinalg.test_linalg_lu_factor_no_pivot_regression = (
+    linalg_lu_factor_no_pivot_regression
+)
+TestLinalg.test_linalg_lu_factor_no_pivot_nan_parity = (
+    linalg_lu_factor_no_pivot_nan_parity
+)
 TestLinalg.test_preferred_blas_library = preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
