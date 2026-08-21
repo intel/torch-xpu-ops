@@ -39,7 +39,8 @@ set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 
 list(REMOVE_DUPLICATES SYCL_include_dirs)
 
-# icpx performs host and device compilation from the same SYCL command. Keep
+# The Intel SYCL driver (icx/icpx) performs host and device compilation from
+# the same SYCL command. Keep
 # host-only options separate from the common/device options instead of using
 # the legacy -fsycl-host-compiler-options path. Each argument is appended as a
 # separate -Xarch_host pair so flags containing spaces remain one argument.

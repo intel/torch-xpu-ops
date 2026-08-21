@@ -99,15 +99,11 @@ macro(set_build_flags)
   # to be replaced with an approximately equivalent set of instructions or
   # alternative math function calls, which have great errors.
   #
-  # PSEUDO of pure icpx compilation (no separate host compiler).
-  # 1. Kernel source compilation (icpx handles both host and device code):
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
-  # 2. Device code linkage:
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
-  # 3. Host only source compilation:
-  # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
-  # 4. Linkage:
-  # gcc -shared host.o kernel.o device-code.o -o libxxx.so
+  # Pure Intel SYCL-driver compilation (icx/icpx; no separate host compiler):
+  # one compile command handles both host and device code. Device/common
+  # options are passed directly, while each host-only option is passed as
+  # `-Xarch_host <option>` by run_sycl.cmake. Device code is linked in a
+  # separate driver invocation using SYCL_DEVICE_LINK_FLAGS.
   list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-unnamed-lambda)
   list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-id-queries-fit-in-int)
   list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
@@ -178,7 +174,8 @@ macro(set_build_flags)
   # consumers already get PyTorch's per-config host flags via
   # CMAKE_CXX_FLAGS_<CONFIG> (which carries -fno-omit-frame-pointer/-O0 in
   # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). SYCL_WRAP_SRCS
-  # forwards CMAKE_HOST_FLAGS to the host compilation phase with -Xarch_host.
+  # forwards each CMAKE_HOST_FLAGS entry to the host compilation phase as
+  # -Xarch_host <flag>.
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
   list(APPEND SYCL_HOST_FLAGS ${SYCL_HOST_PER_CONFIG_FLAGS})
 
