@@ -32,7 +32,7 @@ on:
       category:
         type: string
         default: ''
-        description: 'Optional tag (e.g. target/baseline) appended to the wheel artifact name'
+        description: 'Optional artifact tag; also selects known-failure label scope (dpclang enables skipped_dpclang)'
 
 permissions: read-all
 
@@ -83,9 +83,13 @@ jobs:
           path: torch-xpu-ops
       - name: Snapshot open skipped issues at build start
         run: |
-          touch known_issue_static.log issues_snapshot.log
+          touch known_issue_static.log issues_snapshot.log issues_snapshot_bmg.log issues_snapshot_dpclang.log
           bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "${{ inputs.category }}" > issues_snapshot.log
+          # Runner/category specific labels snapshotted separately so the summary job
+          # only applies them on the matching runner (avoids masking failures elsewhere).
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "" "bmg-test" "extra-only" > issues_snapshot_bmg.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open "dpclang" "" "extra-only" > issues_snapshot_dpclang.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
@@ -94,6 +98,8 @@ jobs:
           path: |
             known_issue_static.log
             issues_snapshot.log
+            issues_snapshot_bmg.log
+            issues_snapshot_dpclang.log
       - name: Download dpclang
         if: ${{ inputs.category == 'dpclang' }}
         uses: actions/download-artifact@v8
@@ -140,9 +146,9 @@ jobs:
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
-          # only build pvc for CI
+          # PR CI needs pvc (e2e/perf jobs) and bmg (UT jobs) AOT targets.
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc'
+            export TORCH_XPU_ARCH_LIST='pvc,bmg'
           fi
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
