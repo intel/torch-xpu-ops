@@ -234,6 +234,7 @@ get_model_result() {
     fi
 
     local value
+    # shellcheck disable=SC2016  # $6 and $NF are awk fields, not shell variables
     value=$(find "$results_dir" -name "*-${suite}-${dtype}-${mode}-*-accuracy.csv" -type f | \
         head -1 | xargs awk -F, -v m="${model}" '$6==m{print $NF; exit}' 2>/dev/null | head -1)
 
