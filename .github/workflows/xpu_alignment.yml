@@ -310,6 +310,10 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # Everything this job publishes is an issue or a comment on one. The
+      # default token is scoped to this repository and dies with the run, so
+      # it is preferred over a long-lived token that can also push code.
+      issues: write
     timeout-minutes: 20
     steps:
       - name: Checkout torch-xpu-ops
@@ -369,10 +373,9 @@ jobs:
           || steps.decision.outputs.decision == 'triage'
           || steps.decision.outputs.needs_attention == 'true'
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -n "$GH_TOKEN" || { echo 'MERGE_TOKEN is required to publish' >&2; exit 1; }
           python3 .github/scripts/xpu_alignment_publish.py \
             --repo "$GITHUB_REPOSITORY" \
             --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \

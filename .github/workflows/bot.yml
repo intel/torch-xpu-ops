@@ -1358,6 +1358,11 @@ jobs:
     needs: parse-command
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # The command only ever opens an issue and edits the draft comment it
+      # came from, so it does not need the token that can also merge code.
+      issues: write
     if: >-
       needs.parse-command.outputs.command == 'file'
       && needs.parse-command.outputs.authorized == 'true'
@@ -1371,7 +1376,7 @@ jobs:
       - name: File the approved alignment draft
         id: file
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           UNIT_ID: ${{ needs.parse-command.outputs.unit_id }}
           REQUESTED_ON: ${{ needs.parse-command.outputs.issue_number }}
         run: |
@@ -1389,7 +1394,6 @@ jobs:
           UNIT_ID: ${{ needs.parse-command.outputs.unit_id }}
           ISSUE_URL: ${{ steps.file.outputs.issue_url }}
         with:
-          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const unit = process.env.UNIT_ID;
             const url = process.env.ISSUE_URL;
