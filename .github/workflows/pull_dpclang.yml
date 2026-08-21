@@ -32,11 +32,10 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
         PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
     steps:
       - name: Checkout intel-llvm
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: intel/llvm
           ref: v7.0.0
@@ -47,6 +46,11 @@ jobs:
           /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
           pip install cmake ninja
           dnf install -y libtool libzstd-devel
+      - name: Patch sources
+        run: |
+          # WA for https://github.com/intel/llvm/issues/22893
+          sed -i '2224,2225d' sycl/source/detail/scheduler/commands.cpp
+        working-directory: ./intel-llvm
       - name: Build intel-llvm
         run: |
           source /opt/rh/gcc-toolset-13/enable
@@ -120,7 +124,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: pvc
+      runner: bmg-test
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
