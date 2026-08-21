@@ -24,7 +24,7 @@ jobs:
       && (startsWith(github.event.comment.body, '/merge -f') || startsWith(github.event.comment.body, '/merge'))
     steps:
       - name: Acknowledge Command
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -36,7 +36,7 @@ jobs:
             });
 
       - name: Post Deprecation Notice
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -48,7 +48,7 @@ jobs:
             });
 
       - name: Get PR Info
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: prinfo
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -64,7 +64,7 @@ jobs:
             core.setOutput('mergeable_state', pr.data.mergeable_state);
 
       - name: Check Reviews
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: reviews
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -105,7 +105,7 @@ jobs:
 
       - name: Check CI Status
         if: ${{ !startsWith(github.event.comment.body, '/merge -f') }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: status
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -174,7 +174,7 @@ jobs:
             }
 
       - name: Check Merge Conflicts
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: conflict
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -211,7 +211,7 @@ jobs:
             }
 
       - name: Merge PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: merge
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
@@ -266,7 +266,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: "Test: Read PR info (pulls.get)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -278,7 +278,7 @@ jobs:
             console.log(`✅ pulls.get OK — PR #${pr.data.number}, mergeable: ${pr.data.mergeable}`);
 
       - name: "Test: List reviews (pulls.listReviews)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -290,7 +290,7 @@ jobs:
             console.log(`✅ pulls.listReviews OK — ${reviews.data.length} reviews found`);
 
       - name: "Test: List check runs (checks.listForRef)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -302,7 +302,7 @@ jobs:
             console.log(`✅ checks.listForRef OK — ${checks.data.total_count} check runs`);
 
       - name: "Test: Get combined status (repos.getCombinedStatusForRef)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -314,7 +314,7 @@ jobs:
             console.log(`✅ repos.getCombinedStatusForRef OK — state: ${statuses.data.state}`);
 
       - name: "Test: Create comment, react, and delete (issues + reactions)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -345,7 +345,7 @@ jobs:
             console.log('✅ issues.deleteComment OK');
 
       - name: "Test: Merge permission (pulls.merge dry-run)"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |

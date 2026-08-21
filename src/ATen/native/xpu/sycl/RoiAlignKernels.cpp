@@ -489,7 +489,7 @@ Tensor roi_align_kernel(
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
         auto kfn = RoiAlignForwardKernel<scalar_t>(
-            input_.data_ptr<scalar_t>(),
+            input_.const_data_ptr<scalar_t>(),
             spatial_scale,
             items_per_roi,
             wgs_per_roi,
@@ -500,7 +500,7 @@ Tensor roi_align_kernel(
             pooled_width,
             sampling_ratio,
             aligned,
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>());
         sycl_kernel_submit(
             global_range * local_range,
@@ -526,7 +526,7 @@ Tensor roi_align_backward_kernel(
   at::Tensor grad_input =
       at::zeros({batch_size, channels, height, width}, grad.options());
   int64_t global_range =
-      ceil_div(static_cast<int64_t>(grad.numel()), static_cast<int64_t>(512));
+      xpuKernelLoopGroupRange(static_cast<int64_t>(grad.numel()), 512);
   int64_t local_range = 512;
 
   // handle possibly empty gradients
@@ -550,7 +550,7 @@ Tensor roi_align_backward_kernel(
       [&] {
         auto kfn = RoiAlignBackwardKernel<scalar_t>(
             grad.numel(),
-            grad.data_ptr<scalar_t>(),
+            grad.const_data_ptr<scalar_t>(),
             spatial_scale,
             channels,
             height,
@@ -560,7 +560,7 @@ Tensor roi_align_backward_kernel(
             sampling_ratio,
             aligned,
             grad_input.data_ptr<scalar_t>(),
-            rois_.data_ptr<scalar_t>(),
+            rois_.const_data_ptr<scalar_t>(),
             n_stride,
             c_stride,
             h_stride,
