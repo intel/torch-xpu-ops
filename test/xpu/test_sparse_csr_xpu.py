@@ -3220,8 +3220,8 @@ class TestSparseCSR(TestCase):
             for scalar_dtype in all_types_and_complex_and(
                 torch.bool, torch.bfloat16, torch.half
             ):
-                # ComplexHalf is experimental
-                if dtype is torch.half and scalar_dtype.is_complex:
+                # ComplexHalf/BComplex32 is experimental
+                if dtype in (torch.half, torch.bfloat16) and scalar_dtype.is_complex:
                     continue
 
                 scalar_t = torch.tensor(2, dtype=scalar_dtype)
