@@ -987,7 +987,20 @@ struct IndexFuncSmallIndexFunctor {
   T alpha_;
 };
 
-#define SMEM_SIZE 4096
+constexpr size_t kMaxIndexSmemEntries = 4096;
+
+template <typename T, typename IndexType>
+size_t indexSmemEntries() {
+  const size_t local_mem_size = syclLocalMemSize();
+  const size_t budget = local_mem_size * 3 / 4;
+  size_t entries =
+      std::min(kMaxIndexSmemEntries, budget / (sizeof(T) + sizeof(IndexType)));
+  size_t power_of_two_entries = 1;
+  while (power_of_two_entries * 2 <= entries) {
+    power_of_two_entries *= 2;
+  }
+  return power_of_two_entries;
+}
 
 template <
     typename T,
@@ -1003,7 +1016,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto local_range = item.get_local_range(0);
     T identity = (T)0;
 
-    for (int i = item.get_local_id(0); i < SMEM_SIZE; i += local_range) {
+    for (size_t i = item.get_local_id(0); i < smem_size_; i += local_range) {
       smem_offsets[i] = (IndexType)-1;
       smem_values[i] = identity;
     }
@@ -1044,7 +1057,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       } else {
         val = src_.data[srcOffset] * alpha_;
       }
-      const int smem_idx = dstOffset & (SMEM_SIZE - 1);
+      const IndexType smem_idx = dstOffset & (smem_size_ - 1);
       IndexType current_offset = smem_offsets[smem_idx];
 
       if (current_offset == dstOffset) {
@@ -1067,7 +1080,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     sycl::group_barrier(item.get_group());
 
-    for (int i = item.get_local_id(0); i < SMEM_SIZE;
+    for (size_t i = item.get_local_id(0); i < smem_size_;
          i += item.get_local_range(0)) {
       IndexType final_dstOffset = smem_offsets[i];
 
@@ -1080,8 +1093,8 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_offsets = sycl_local_acc_t<IndexType>(SMEM_SIZE, cgh);
-    smem_values = sycl_local_acc_t<T>(SMEM_SIZE, cgh);
+    smem_offsets = sycl_local_acc_t<IndexType>(smem_size_, cgh);
+    smem_values = sycl_local_acc_t<T>(smem_size_, cgh);
   }
 
   IndexFuncLargeIndexFunctor(
@@ -1095,7 +1108,8 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int64_t dstAddDimSize,
       int64_t dstNumel,
       func_t op,
-      T alpha)
+      T alpha,
+      size_t smem_size)
       : dst_(dst),
         src_(src),
         indices_(indices),
@@ -1106,7 +1120,8 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         dstAddDimSize_(dstAddDimSize),
         dstNumel_(dstNumel),
         op_(op),
-        alpha_(alpha) {}
+        alpha_(alpha),
+        smem_size_(smem_size) {}
 
  private:
   TensorInfo<T, IndexType> dst_;
@@ -1120,6 +1135,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   int64_t dstNumel_;
   func_t op_;
   T alpha_;
+  size_t smem_size_;
   sycl_local_acc_t<IndexType> smem_offsets;
   sycl_local_acc_t<T> smem_values;
 };
@@ -1322,7 +1338,8 @@ void index_reduce_add_xpu_template(
       selfAddDimSize,                        \
       selfNumel,                             \
       func,                                  \
-      alpha_value);
+      alpha_value,                           \
+      indexSmemEntries<TENSOR_TYPE, TYPE>());
 
   if (canUse32BitIndexMath(result) && canUse32BitIndexMath(source) &&
       canUse32BitIndexMath(index)) {
@@ -1606,7 +1623,8 @@ void index_reduce_func_xpu_template(
       selfReduceDimSize,                     \
       selfNumel,                             \
       reduce_func,                           \
-      alpha_value);
+      alpha_value,                           \
+      indexSmemEntries<TENSOR_TYPE, TYPE>());
 
   int ssc = syclMaxDSSNum();
 
