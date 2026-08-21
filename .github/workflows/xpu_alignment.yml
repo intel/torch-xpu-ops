@@ -315,7 +315,11 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
 
+      # Both restores tolerate a missing artifact: an empty tree reads as
+      # `ledger-missing` or `reviewer-manifest-missing`, which blocks and pings
+      # a human. Failing here would turn the job red with nobody notified.
       - name: Restore the reviewed run
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
@@ -324,8 +328,6 @@ jobs:
       # The reviewer repacks the whole run directory, scan ledger included, and
       # holds Write and Edit. Completeness must therefore be read from what the
       # scan itself uploaded, or the audited party could edit the audit record.
-      # A scan that uploaded nothing leaves this empty, which the gate reports
-      # as `ledger-missing` rather than as a finished day.
       - name: Restore the scan ledger as the scan wrote it
         continue-on-error: true
         uses: actions/download-artifact@v4

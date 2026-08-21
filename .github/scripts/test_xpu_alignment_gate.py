@@ -473,6 +473,17 @@ class LedgerProvenanceTests(unittest.TestCase):
             self.assertEqual(decision["decision"], "blocked")
             self.assertIn("ledger-missing", decision["blockers"])
 
+    def test_a_payload_the_scan_already_wrote_is_not_a_reviewed_conclusion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            scan_root = Path(directory) / "scan"
+            review_root = Path(directory) / "review"
+            write_run(scan_root)
+            write_run(review_root)
+            write_payload(scan_root / SCAN / "reports", "candidate-1")
+            decision = self.decide(review_root, ledger_root=scan_root)
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertIn("payload-authored-before-review:candidate-1", decision["blockers"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

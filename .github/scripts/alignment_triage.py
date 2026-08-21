@@ -70,14 +70,14 @@ def render_draft(unit_id: str, title: str, body: str, run_id: str, scan_date: st
     )
 
 
-def render_filed_note(unit_id: str, issue_url: str, run_id: str, scan_date: str) -> str:
-    """The audit line for a unit the workflow filed without human approval."""
-    return (
-        f"{UNIT_MARKER.format(unit_id=unit_id)}\n"
-        f"{FILED_MARKER.format(number=issue_number(issue_url))}\n"
-        f"`{scan_date}` automatically filed `{unit_id}` as {issue_url} "
-        f"in run `{run_id}`\n"
+def post_comment(repo: str, issue: int, body: str) -> int:
+    created = json.loads(
+        gh(
+            ["api", "-X", "POST", f"repos/{repo}/issues/{issue}/comments", "--input", "-"],
+            stdin=json.dumps({"body": body}),
+        )
     )
+    return int(created["id"])
 
 
 def has_unit(comments: list[dict], unit_id: str) -> bool:
@@ -160,13 +160,6 @@ def create_issue(repo: str, title: str, body: str) -> str:
         return gh(command).strip().splitlines()[-1].strip()
     finally:
         os.unlink(body_file)
-
-
-def post_comment(repo: str, issue: int, body: str) -> None:
-    gh(
-        ["api", "-X", "POST", f"repos/{repo}/issues/{issue}/comments", "--input", "-"],
-        stdin=json.dumps({"body": body}),
-    )
 
 
 def update_comment(repo: str, comment_id: int, body: str) -> None:

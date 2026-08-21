@@ -132,11 +132,18 @@ def load_verdicts(root: Path) -> tuple[dict[str, str], list[str], list[str]]:
     return verdicts, errors, [str(path) for path in paths]
 
 
-def load_payload(root: Path, unit_id: str) -> tuple[dict[str, object] | None, str | None]:
-    """Read the issue payload the scan/review phase pre-generated for one unit."""
+def load_payload(
+    root: Path, unit_id: str, scan_root: Path | None = None
+) -> tuple[dict[str, object] | None, str | None]:
+    """Read the issue payload the reviewer pre-generated for one unit."""
     paths = sorted(root.glob(f"**/reports/final_issue_{unit_id}.json"))
     if len(paths) != 1:
         return None, f"payload-not-unique:{unit_id}:{len(paths)}"
+    # Both agents write into one run directory, so authorship is only visible by
+    # elimination: anything already in the scan's upload did not come from the
+    # review, and must not be published as a reviewed conclusion.
+    if scan_root is not None and sorted(scan_root.glob(f"**/reports/final_issue_{unit_id}.json")):
+        return None, f"payload-authored-before-review:{unit_id}"
     try:
         payload = json.loads(paths[0].read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -202,7 +209,7 @@ def build_decision(
     payloads: list[dict[str, object]] = []
     payload_errors: list[str] = []
     for unit in actionable:
-        payload, error = load_payload(root, unit)
+        payload, error = load_payload(root, unit, ledger_root)
         if error:
             payload_errors.append(error)
         else:
