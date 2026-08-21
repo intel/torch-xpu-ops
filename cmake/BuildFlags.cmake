@@ -177,9 +177,8 @@ macro(set_build_flags)
   # TORCH_XPU_OPS_FLAGS stays config-agnostic: its target_compile_options
   # consumers already get PyTorch's per-config host flags via
   # CMAKE_CXX_FLAGS_<CONFIG> (which carries -fno-omit-frame-pointer/-O0 in
-  # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). The
-  # SYCL_WRAP_SRCS macro in FindSYCL.cmake collects these flags into
-  # CMAKE_HOST_FLAGS for the generated SYCL compile command.
+  # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). These flags are
+  # passed to the host compilation phase through CMAKE_HOST_FLAGS.
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
   list(APPEND SYCL_HOST_FLAGS ${SYCL_HOST_PER_CONFIG_FLAGS})
 

@@ -40,8 +40,7 @@ set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 list(REMOVE_DUPLICATES SYCL_include_dirs)
 
 # The Intel SYCL driver (icx/icpx) performs host and device compilation from
-# the same SYCL command. CMAKE_HOST_FLAGS is populated by the
-# SYCL_WRAP_SRCS macro in FindSYCL.cmake. Pass each host flag as a separate
+# the same SYCL command. Pass each CMAKE_HOST_FLAGS entry as a separate
 # -Xarch_host pair so flags containing spaces remain one argument, while
 # SYCL_compile_flags contains the common/device options.
 set(SYCL_host_arch_flags)
