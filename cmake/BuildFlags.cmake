@@ -177,8 +177,8 @@ macro(set_build_flags)
   # TORCH_XPU_OPS_FLAGS stays config-agnostic: its target_compile_options
   # consumers already get PyTorch's per-config host flags via
   # CMAKE_CXX_FLAGS_<CONFIG> (which carries -fno-omit-frame-pointer/-O0 in
-  # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). These flags are
-  # passed to the host compilation phase through CMAKE_HOST_FLAGS.
+  # Debug, and /Z7 in place of /Zi through MSVC_Z7_OVERRIDE). The genexes below
+  # feed only SYCL_host_arch_flags.
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
   list(APPEND SYCL_HOST_FLAGS ${SYCL_HOST_PER_CONFIG_FLAGS})
 
@@ -238,9 +238,6 @@ macro(set_build_flags)
     message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
   endif()
 
-  # Keep host flags out of the common SYCL command-line flags. They are
-  # forwarded to the host compilation phase by run_sycl.cmake via
-  # -Xarch_host. This preserves the host/device distinction in pure icpx mode.
   list(APPEND SYCL_COMPILE_FLAGS ${SYCL_KERNEL_OPTIONS})
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
