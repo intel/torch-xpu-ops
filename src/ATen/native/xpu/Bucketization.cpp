@@ -41,7 +41,7 @@ Tensor& searchsorted_out_xpu(
 
   // we have two inputs to set right, pre_check checks that they aren't set to
   // opposites
-  bool is_right = (side_opt && *side_opt == "right") || right;
+  bool is_right = (side_opt == "right") || right;
   xpu::searchsorted_kernel(
       result, self, sorted_sequence, out_int32, is_right, sorter);
   return result;
