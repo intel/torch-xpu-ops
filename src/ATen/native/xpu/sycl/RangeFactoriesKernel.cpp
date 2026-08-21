@@ -13,6 +13,7 @@
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
+#include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
@@ -239,16 +240,16 @@ Tensor& linspace_kernel(
   return result;
 }
 
-template <typename scalar_t, typename step_type>
+template <typename scalar_t, typename calc_t>
 struct LogspaceFunctor {
   scalar_t operator()(int64_t ind) const {
-    if constexpr (c10::is_complex<step_type>::value) {
+    if constexpr (c10::is_complex<calc_t>::value) {
       if (ind < halfway_) {
         return std::pow(scalar_base_, scalar_start_ + step_ * ind);
       }
       return std::pow(scalar_base_, scalar_end_ - step_ * (steps_ - ind - 1));
     } else {
-      using opmath_t = at::opmath_type<step_type>;
+      using opmath_t = at::opmath_type<calc_t>;
       if (ind < halfway_) {
         return static_cast<scalar_t>(sycl::pow(
             static_cast<opmath_t>(scalar_base_),
@@ -260,11 +261,11 @@ struct LogspaceFunctor {
     }
   }
   LogspaceFunctor(
-      scalar_t scalar_start,
-      scalar_t scalar_end,
-      step_type scalar_base,
+      calc_t scalar_start,
+      calc_t scalar_end,
+      calc_t scalar_base,
       int64_t steps,
-      step_type step,
+      calc_t step,
       int64_t halfway)
       : scalar_start_(scalar_start),
         scalar_end_(scalar_end),
@@ -274,11 +275,11 @@ struct LogspaceFunctor {
         halfway_(halfway) {}
 
  private:
-  scalar_t scalar_start_;
-  scalar_t scalar_end_;
-  step_type scalar_base_;
+  calc_t scalar_start_;
+  calc_t scalar_end_;
+  calc_t scalar_base_;
   int64_t steps_;
-  step_type step_;
+  calc_t step_;
   int64_t halfway_;
 };
 
@@ -289,6 +290,7 @@ Tensor& logspace_kernel(
     double base,
     Tensor& result) {
   TORCH_CHECK(steps >= 0, "number of steps must be non-negative");
+  const bool has_fp64 = at::xpu::getCurrentDeviceProperties()->has_fp64;
 
   if (result.numel() != steps) {
     result.resize_({steps});
@@ -308,30 +310,60 @@ Tensor& logspace_kernel(
     }
   } else if (isIntegralType(r.scalar_type(), false)) {
     AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "logspace_xpu", [&]() {
-      float scalar_base =
-          static_cast<float>(base); // Use float to avoid promotion to double
-      scalar_t scalar_start = start.to<scalar_t>();
-      scalar_t scalar_end = end.to<scalar_t>();
-      float step = static_cast<float>(scalar_end - scalar_start) / (steps - 1);
       const int64_t halfway = steps / 2;
-      auto f = LogspaceFunctor<scalar_t, float>(
-          scalar_start, scalar_end, scalar_base, steps, step, halfway);
-
-      gpu_kernel_with_index(r, f);
+      auto integers = [&]<typename calc_t>() {
+        calc_t scalar_base = static_cast<calc_t>(base);
+        calc_t scalar_start = start.to<calc_t>();
+        calc_t scalar_end = end.to<calc_t>();
+        calc_t step =
+            (scalar_end - scalar_start) / static_cast<calc_t>(steps - 1);
+        auto f = LogspaceFunctor<scalar_t, calc_t>(
+            scalar_start, scalar_end, scalar_base, steps, step, halfway);
+        gpu_kernel_with_index(r, f);
+      };
+      if (has_fp64) {
+        integers.template operator()<double>();
+      } else {
+        integers.template operator()<float>();
+      }
     });
   } else {
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
         kHalf, kBFloat16, r.scalar_type(), "logspace_xpu", [&]() {
-          scalar_t scalar_base = static_cast<scalar_t>(base);
-          scalar_t scalar_start = start.to<scalar_t>();
-          scalar_t scalar_end = end.to<scalar_t>();
-          scalar_t step =
-              (scalar_end - scalar_start) / static_cast<scalar_t>(steps - 1);
           const int64_t halfway = steps / 2;
-          auto f = LogspaceFunctor<scalar_t, scalar_t>(
-              scalar_start, scalar_end, scalar_base, steps, step, halfway);
-
-          gpu_kernel_with_index(r, f);
+          if constexpr (c10::is_complex<scalar_t>::value) {
+            auto complex = [&]<typename calc_t>() {
+              calc_t scalar_base = static_cast<calc_t>(base);
+              calc_t scalar_start = start.to<calc_t>();
+              calc_t scalar_end = end.to<calc_t>();
+              calc_t step =
+                  (scalar_end - scalar_start) / static_cast<calc_t>(steps - 1);
+              auto f = LogspaceFunctor<scalar_t, calc_t>(
+                  scalar_start, scalar_end, scalar_base, steps, step, halfway);
+              gpu_kernel_with_index(r, f);
+            };
+            if (has_fp64) {
+              complex.template operator()<double>();
+            } else {
+              complex.template operator()<float>();
+            }
+          } else {
+            auto floating = [&]<typename calc_t>() {
+              calc_t scalar_base = static_cast<calc_t>(base);
+              calc_t scalar_start = start.to<calc_t>();
+              calc_t scalar_end = end.to<calc_t>();
+              calc_t step =
+                  (scalar_end - scalar_start) / static_cast<calc_t>(steps - 1);
+              auto f = LogspaceFunctor<scalar_t, calc_t>(
+                  scalar_start, scalar_end, scalar_base, steps, step, halfway);
+              gpu_kernel_with_index(r, f);
+            };
+            if (has_fp64) {
+              floating.template operator()<double>();
+            } else {
+              floating.template operator()<float>();
+            }
+          }
         });
   }
 
