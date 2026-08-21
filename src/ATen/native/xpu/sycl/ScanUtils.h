@@ -10,13 +10,12 @@
 
 #pragma once
 
-#include <bit>
-
 #include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
 
@@ -40,125 +39,6 @@ void binary_op_update(
     rhs = lhs;
     rhs_idx = lhs_idx;
   }
-}
-
-// group x scan by using up down sweep algorithm(call uds for short)
-template <
-    class LSConfig,
-    class T,
-    class BinaryFunction,
-    bool TrivialOffCal = false>
-T inline group_x_scan_by_uds_for_loop_scan(
-    sycl::nd_item<2> item,
-    const T pre_max_carr,
-    size_t base_off_batch,
-    size_t base_off_problem,
-    sycl::local_ptr<T> slm,
-    LSConfig cfg) {
-  using InputInfo = typename LSConfig::InputInfoType;
-  using OutputInfo = typename LSConfig::OutputInfoType;
-
-  size_t glb_ldr_off_0, glb_ldr_off_1, glb_str_off_0, glb_str_off_1,
-      glb_ldr_logical_off_0, glb_ldr_logical_off_1, glb_str_logical_off_0,
-      glb_str_logical_off_1;
-
-  const auto sub_group = item.get_sub_group();
-  const auto sub_group_size = sub_group.get_local_range()[0];
-
-  const auto lix = item.get_local_id(1);
-  const auto liy = item.get_local_id(0);
-  const auto rx = item.get_local_range(1);
-
-  size_t ix0 = base_off_problem + lix;
-  size_t ix1 = base_off_problem + rx + lix;
-  size_t glb0 = base_off_batch * cfg.problem_ + ix0;
-  size_t glb1 = base_off_batch * cfg.problem_ + ix1;
-  if constexpr (TrivialOffCal) {
-    glb_ldr_off_0 = glb0;
-    glb_ldr_off_1 = glb1;
-    glb_str_off_0 = glb0;
-    glb_str_off_1 = glb1;
-  } else {
-    glb_ldr_logical_off_0 = glb0;
-    glb_ldr_off_0 =
-        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
-            glb_ldr_logical_off_0, cfg.input_);
-
-    glb_ldr_logical_off_1 = glb1;
-    glb_ldr_off_1 =
-        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
-            glb_ldr_logical_off_1, cfg.input_);
-
-    glb_str_logical_off_0 = glb0;
-    glb_str_off_0 =
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_str_logical_off_0, cfg.output_);
-
-    glb_str_logical_off_1 = glb1;
-    glb_str_off_1 =
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
-            glb_str_logical_off_1, cfg.output_);
-  }
-  // TODO: opti for bank conflict elemination
-  // Read data from global memory to shared local memory
-  // Each work item load 2 elements from global device memory to shared local
-  // memory
-  if (base_off_batch < cfg.batch_) {
-    if (ix0 < cfg.problem_) {
-      slm[liy * rx * 2 + lix] = cfg.input_.data[glb_ldr_off_0];
-    } else {
-      slm[liy * rx * 2 + lix] = cfg.init_;
-    }
-
-    if (ix1 < cfg.problem_) {
-      slm[liy * rx * 2 + rx + lix] = cfg.input_.data[glb_ldr_off_1];
-    } else {
-      slm[liy * rx * 2 + rx + lix] = cfg.init_;
-    }
-
-    // Add the total value of all previous work groups to the first value of
-    // this work group.
-    if (0 == lix) {
-      slm[liy * rx * 2 + lix] =
-          cfg.func_(slm[liy * rx * 2 + lix], pre_max_carr);
-    }
-  }
-  sycl::group_barrier(item.get_group());
-
-  // Parallel reduction (Up-sweep)
-  for (uint32_t s = rx, d = 1; s >= 1; s >>= 1, d <<= 1) {
-    if (base_off_batch < cfg.batch_ && lix < s) {
-      uint32_t offset = liy * rx * 2 + (2 * lix + 1) * d - 1;
-      slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
-    }
-    if (sub_group_size != cfg.wg_range_x_) {
-      sycl::group_barrier(item.get_group());
-    }
-  }
-
-  // Down-sweep
-  for (uint32_t s = 2, d = rx / 2; d >= 1; s <<= 1, d >>= 1) {
-    if (base_off_batch < cfg.batch_ && lix < s - 1) {
-      uint32_t offset = liy * rx * 2 + 2 * (lix + 1) * d - 1;
-      slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
-    }
-    if (sub_group_size != cfg.wg_range_x_) {
-      sycl::group_barrier(item.get_group());
-    }
-  }
-
-  // Write back from shared local memory to global memory
-  if (base_off_batch < cfg.batch_) {
-    if (ix0 < cfg.problem_) {
-      cfg.output_.data[glb_str_off_0] = slm[liy * rx * 2 + lix];
-    }
-    if (ix1 < cfg.problem_) {
-      cfg.output_.data[glb_str_off_1] = slm[liy * rx * 2 + rx + lix];
-    }
-  }
-
-  // each work item would return current max carr
-  return slm[liy * rx * 2 + 2 * rx - 1];
 }
 
 // group x scan by using up down sweep algorithm(call uds for short)
@@ -344,23 +224,18 @@ class LoopScanConfig {
         func_(func),
         glb_range_x_(0),
         glb_range_y_(0),
-        wg_range_x_(std::min<size_t>(32, std::bit_ceil(problem))),
+        wg_range_x_(0),
         wg_range_y_(0) {
-    size_t wg_size = syclMaxWorkItemsPerSubSlice();
-    wg_range_y_ = wg_size / wg_range_x_;
-    const auto target_global_size = syclMaxWorkItemsPerTile();
-    ;
-    const size_t max_work_group_num = target_global_size / wg_size;
-    const size_t wg_number =
-        std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
+    // One work-group contains exactly one sub-group (32 lanes). Each
+    // sub-group handles one batch independently, scanning the problem
+    // dimension with shfl. This maximizes the number of blocks.
+    wg_range_x_ = 32;
+    wg_range_y_ = 1;
     glb_range_x_ = wg_range_x_;
-    glb_range_y_ = wg_range_y_ * wg_number;
+    glb_range_y_ = batch_;
 
-    // For up down sweep algorithm, each work-item handle two elements.
-    // This means that one work group would handle 2 times of work group size
-    // elements.
-    loops_batch = at::ceil_div(batch_, glb_range_y_);
-    loops_problem = at::ceil_div(problem_, wg_range_x_ * 2);
+    loops_batch = 1;
+    loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
   }
 
   static LoopScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
@@ -434,44 +309,57 @@ class LoopScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using BinaryFunction = typename LSConfig::func_t;
 
  public:
-  LoopScanKernel(const LSConfig& cfg) : cfg_(cfg), slm_(), max_carr_() {}
+  LoopScanKernel(const LSConfig& cfg) : cfg_(cfg) {}
 
-  void operator()(sycl::nd_item<2> item) const {
-    const int loops_batch = cfg_.loops_batch;
-    const int loops_problem = cfg_.loops_problem;
-    const auto group_size_x = cfg_.wg_range_x_;
-    const auto liy = item.get_local_id(0);
+  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<2> item) const {
+    static_assert(TrivialOffCal);
+
+    const auto sg = item.get_sub_group();
+    const auto sub_group_size = sg.get_local_range()[0];
+    const auto lix = item.get_local_id(1);
+    const auto rx = cfg_.wg_range_x_;
 
     for (int k = 0,
              base_off_batch_group = item.get_group(0) * item.get_local_range(0);
-         k < loops_batch && base_off_batch_group < cfg_.batch_;
+         k < cfg_.loops_batch && base_off_batch_group < cfg_.batch_;
          k++, base_off_batch_group += cfg_.glb_range_y_) {
-      max_carr_[liy] = cfg_.init_;
       int64_t base_off_batch = k * cfg_.glb_range_y_ + item.get_global_id(0);
-      for (int i = 0; i < loops_problem; ++i) {
-        // calculate base addr offset for each loop
-        int64_t base_off_problem = i * group_size_x * 2;
-        max_carr_[liy] = group_x_scan_by_uds_for_loop_scan<
-            LSConfig,
-            T,
-            BinaryFunction,
-            TrivialOffCal>(
-            item, max_carr_[liy], base_off_batch, base_off_problem, slm_, cfg_);
+      bool valid = base_off_batch < cfg_.batch_;
+      T carry = cfg_.init_;
+
+      // Each lane scans one element per iteration, i.e. rx elements per
+      // iteration. cfg_.loops_problem is in units of 2 * rx and is only used
+      // by LoopScanWithIndicesKernel.
+      for (int64_t base_off_problem = 0;
+           base_off_problem < (int64_t)cfg_.problem_;
+           base_off_problem += rx) {
+        int64_t ix = base_off_problem + lix;
+        T val = cfg_.init_;
+        if (valid && ix < (int64_t)cfg_.problem_) {
+          val = cfg_.input_.data[base_off_batch * cfg_.problem_ + ix];
+        }
+
+        for (uint32_t offset = 1; offset < sub_group_size; offset <<= 1) {
+          T tmp = sycl::shift_group_right(sg, val, offset);
+          if (lix >= offset) {
+            val = cfg_.func_(tmp, val);
+          }
+        }
+        val = cfg_.func_(carry, val);
+
+        if (valid && ix < (int64_t)cfg_.problem_) {
+          cfg_.output_.data[base_off_batch * cfg_.problem_ + ix] = val;
+        }
+
+        carry = sycl::group_broadcast(sg, val, rx - 1);
       }
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    int slm_size = cfg_.wg_range_x_ * cfg_.wg_range_y_ * 2;
-    int carr_size = cfg_.wg_range_y_;
-    slm_ = sycl::local_accessor<typename LSConfig::arg_t>(slm_size, cgh);
-    max_carr_ = sycl::local_accessor<typename LSConfig::arg_t>(carr_size, cgh);
-  }
+  void sycl_ker_config_convention(sycl::handler& cgh) {}
 
  private:
   LSConfig cfg_;
-  sycl::local_accessor<T> slm_;
-  sycl::local_accessor<T> max_carr_;
 };
 
 template <typename LSConfig_, bool TrivialOffCal = false>
