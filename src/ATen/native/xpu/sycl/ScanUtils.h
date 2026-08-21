@@ -14,6 +14,7 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
@@ -226,15 +227,21 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
-    // One work-group contains exactly one sub-group (32 lanes). Each
-    // sub-group handles one batch independently, scanning the problem
-    // dimension with shfl. This maximizes the number of blocks.
+    // The geometry below serves LoopScanWithIndicesKernel (2D nd_range):
+    // one work-group contains exactly one sub-group (32 lanes) and handles
+    // one batch per iteration. LoopScanKernel computes its own 1D launch
+    // geometry; see launch_loop_scan.
+    // The number of work-groups is capped at what the device can host
+    // simultaneously; when batch_ exceeds the cap, each work-group loops
+    // over loops_batch batches with a grid stride of glb_range_y_.
     wg_range_x_ = 32;
     wg_range_y_ = 1;
     glb_range_x_ = wg_range_x_;
-    glb_range_y_ = batch_;
+    const size_t max_work_group_num =
+        syclMaxWorkItemsPerTile() / (wg_range_x_ * wg_range_y_);
+    glb_range_y_ = std::min(max_work_group_num, batch_);
 
-    loops_batch = 1;
+    loops_batch = (batch_ + glb_range_y_ - 1) / glb_range_y_;
     loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
   }
 
@@ -303,7 +310,7 @@ class LoopScanConfig {
 };
 
 template <typename LSConfig_, bool TrivialOffCal = false>
-class LoopScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
+class LoopScanKernel {
   using LSConfig = LSConfig_;
   using T = typename LSConfig::arg_t;
   using BinaryFunction = typename LSConfig::func_t;
@@ -311,52 +318,39 @@ class LoopScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
  public:
   LoopScanKernel(const LSConfig& cfg) : cfg_(cfg) {}
 
-  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<1> item) const {
     static_assert(TrivialOffCal);
 
     const auto sg = item.get_sub_group();
-    const auto sub_group_size = sg.get_local_range()[0];
-    const auto lix = item.get_local_id(1);
-    const auto rx = cfg_.wg_range_x_;
+    const auto lane = sg.get_local_id()[0];
+    constexpr int64_t sg_size = 32;
 
-    for (int k = 0,
-             base_off_batch_group = item.get_group(0) * item.get_local_range(0);
-         k < cfg_.loops_batch && base_off_batch_group < cfg_.batch_;
-         k++, base_off_batch_group += cfg_.glb_range_y_) {
-      int64_t base_off_batch = k * cfg_.glb_range_y_ + item.get_global_id(0);
-      bool valid = base_off_batch < cfg_.batch_;
+    XPU_KERNEL_LOOP_TYPE(item, i, int64_t(cfg_.batch_) * sg_size, int64_t) {
+      const int64_t batch = i / sg_size;
       T carry = cfg_.init_;
-
-      // Each lane scans one element per iteration, i.e. rx elements per
-      // iteration. cfg_.loops_problem is in units of 2 * rx and is only used
-      // by LoopScanWithIndicesKernel.
-      for (int64_t base_off_problem = 0;
-           base_off_problem < (int64_t)cfg_.problem_;
-           base_off_problem += rx) {
-        int64_t ix = base_off_problem + lix;
+      for (int64_t base = 0; base < cfg_.problem_; base += sg_size) {
+        const int64_t ix = base + lane;
         T val = cfg_.init_;
-        if (valid && ix < (int64_t)cfg_.problem_) {
-          val = cfg_.input_.data[base_off_batch * cfg_.problem_ + ix];
+        if (ix < cfg_.problem_) {
+          val = cfg_.input_.data[batch * cfg_.problem_ + ix];
         }
 
-        for (uint32_t offset = 1; offset < sub_group_size; offset <<= 1) {
+        for (uint32_t offset = 1; offset < sg_size; offset <<= 1) {
           T tmp = sycl::shift_group_right(sg, val, offset);
-          if (lix >= offset) {
+          if (lane >= offset) {
             val = cfg_.func_(tmp, val);
           }
         }
         val = cfg_.func_(carry, val);
 
-        if (valid && ix < (int64_t)cfg_.problem_) {
-          cfg_.output_.data[base_off_batch * cfg_.problem_ + ix] = val;
+        if (ix < cfg_.problem_) {
+          cfg_.output_.data[batch * cfg_.problem_ + ix] = val;
         }
 
-        carry = sycl::group_broadcast(sg, val, rx - 1);
+        carry = sycl::group_broadcast(sg, val, sg_size - 1);
       }
     }
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {}
 
  private:
   LSConfig cfg_;
@@ -423,7 +417,14 @@ static inline void launch_loop_scan(const LSConfig& cfg) {
 
   LoopScanKernel<LSConfig, TrivialOffCal> kfn(cfg);
 
-  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
+  // One batch row per 32-lane sub-group, i.e. 8 rows per 256-item work-group.
+  // The grid is capped at the number of resident work items; the kernel
+  // grid-strides over any remaining batches (XPU_KERNEL_LOOP).
+  constexpr int64_t sg_size = 32;
+  constexpr int64_t wg_size = 256;
+  const int64_t group_num =
+      xpuKernelLoopGroupRange(int64_t(cfg.batch_) * sg_size, wg_size);
+  sycl_kernel_submit(group_num * wg_size, wg_size, queue, kfn);
 }
 
 template <typename LSConfig, bool TrivialOffCal = false>
