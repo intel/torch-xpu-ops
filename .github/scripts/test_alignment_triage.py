@@ -143,6 +143,17 @@ class RunNoteTests(unittest.TestCase):
         self.assertIn("needs attention", headline)
         self.assertTrue(any("review-blocked" in line for line in lines))
 
+    def test_an_unresolved_validation_names_the_scan_state(self) -> None:
+        decision = {
+            "decision": "triage",
+            "needs_attention": True,
+            "attention_reasons": ["unresolved-validation"],
+        }
+        payloads = [{"unit_id": "c1", "title": TITLE}]
+        headline, lines = run_note(decision, payloads, [])
+        self.assertIn("needs attention", headline)
+        self.assertTrue(any("unresolved-validation" in line for line in lines))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

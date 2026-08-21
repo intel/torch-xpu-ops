@@ -53,12 +53,12 @@ def run_note(
 
     if decision.get("needs_attention"):
         reasons: list[str] = []
+        attention = decision.get("attention_reasons") or []
+        if attention:
+            reasons.append("scan state: " + ", ".join(f"`{item}`" for item in attention))
         pending = decision.get("pending_units") or []
         if pending:
             reasons.append(f"{len(pending)} candidate(s) never ran, so the day is unfinished")
-        unpublishable = decision.get("unpublishable_units") or []
-        if unpublishable:
-            reasons.append(f"{len(unpublishable)} reviewed candidate(s) have no usable payload")
         blockers = decision.get("blockers") or []
         if blockers:
             shown = ", ".join(f"`{blocker}`" for blocker in blockers[:5])
@@ -92,7 +92,11 @@ def main() -> int:
     args = parser.parse_args()
 
     decision = json.loads(args.decision.read_text(encoding="utf-8"))
+    if not isinstance(decision, dict) or decision.get("schema_version") != 1:
+        fail("The publishing decision is not an XPU alignment v1 artifact.")
     verdict = decision["decision"]
+    if verdict not in {"none", "file-one", "triage", "blocked"}:
+        fail(f"Unknown publishing decision: {verdict}")
     run_id = str(decision.get("run_id", ""))
     scan_date = str(decision.get("scan_date", ""))
     # A blocked gate carries no payloads, so this loop is what keeps its
