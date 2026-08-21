@@ -3,7 +3,9 @@
 
 Completeness is computed from ``artifacts/candidate_ledger.jsonl`` rather than
 taken from a self-reported status field, so a truncated scan or a truncated
-review cannot present itself as a finished day.
+review cannot present itself as a finished day. The ledger is read from the
+scan's own upload, not from the copy the reviewer repacked, because a reviewer
+that can edit the record it is auditing is not an independent reviewer.
 """
 
 from __future__ import annotations
@@ -164,8 +166,9 @@ def build_decision(
     auto_file: bool,
     run_id: str = "",
     scan_date: str = "",
+    ledger_root: Path | None = None,
 ) -> dict[str, object]:
-    ledger, ledger_errors = load_ledger(root)
+    ledger, ledger_errors = load_ledger(ledger_root or root)
     verdicts, review_errors, manifest_paths = load_verdicts(root)
 
     def survives_filtering(row: dict[str, str]) -> bool:
@@ -251,6 +254,8 @@ def build_decision(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    # Defaults to --root only so the tests can point both at one tree.
+    parser.add_argument("--ledger-root", type=Path, default=None)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--scan-date", default="")
     parser.add_argument("--auto-file", action="store_true")
@@ -261,6 +266,7 @@ def main() -> int:
         auto_file=args.auto_file,
         run_id=args.run_id,
         scan_date=args.scan_date,
+        ledger_root=args.ledger_root,
     )
     output = args.root / "filing_decision.json"
     output.parent.mkdir(parents=True, exist_ok=True)

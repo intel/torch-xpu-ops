@@ -446,5 +446,33 @@ class AlignmentGateTests(unittest.TestCase):
             self.assertTrue(decision["needs_attention"])
 
 
+class LedgerProvenanceTests(unittest.TestCase):
+    """The reviewer repacks the run directory, so its ledger copy must not count."""
+
+    decide = AlignmentGateTests.decide
+
+    def test_the_reviewers_copy_of_the_ledger_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            scan_root = Path(directory) / "scan"
+            review_root = Path(directory) / "review"
+            # The scan left one row unexecuted; the reviewer's copy says done.
+            write_run(scan_root, ledger=[done("candidate-1"), pending("candidate-2")])
+            write_run(review_root, ledger=[done("candidate-1"), done("candidate-2")])
+            decision = self.decide(review_root, ledger_root=scan_root)
+            self.assertEqual(decision["pending_units"], ["candidate-2"])
+            self.assertFalse(decision["scan_complete"])
+            self.assertNotEqual(decision["decision"], "file-one")
+
+    def test_a_scan_that_uploaded_no_ledger_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            scan_root = Path(directory) / "scan"
+            review_root = Path(directory) / "review"
+            scan_root.mkdir()
+            write_run(review_root)
+            decision = self.decide(review_root, ledger_root=scan_root)
+            self.assertEqual(decision["decision"], "blocked")
+            self.assertIn("ledger-missing", decision["blockers"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

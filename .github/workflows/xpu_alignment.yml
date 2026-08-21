@@ -321,6 +321,18 @@ jobs:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
           path: ${{ env.ALIGNMENT_RUN_ROOT }}
 
+      # The reviewer repacks the whole run directory, scan ledger included, and
+      # holds Write and Edit. Completeness must therefore be read from what the
+      # scan itself uploaded, or the audited party could edit the audit record.
+      # A scan that uploaded nothing leaves this empty, which the gate reports
+      # as `ledger-missing` rather than as a finished day.
+      - name: Restore the scan ledger as the scan wrote it
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ALIGNMENT_ARTIFACT }}
+          path: scan_ledger
+
       - name: Validate gate and triage protocol
         run: |
           set -euo pipefail
@@ -342,7 +354,8 @@ jobs:
           SCAN_DATE: ${{ needs.scan-and-validate.outputs.scan_date }}
         run: |
           set -euo pipefail
-          args=(--root "$ALIGNMENT_RUN_ROOT" --run-id "$GITHUB_RUN_ID" --scan-date "$SCAN_DATE")
+          args=(--root "$ALIGNMENT_RUN_ROOT" --ledger-root scan_ledger
+                --run-id "$GITHUB_RUN_ID" --scan-date "$SCAN_DATE")
           if [[ "$AUTO_FILE" == true ]]; then
             args+=(--auto-file)
           fi
