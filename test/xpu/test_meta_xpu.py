@@ -246,6 +246,96 @@ TestMeta.test_dispatch_symbolic_meta_outplace_all_strides = (
 )
 
 
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
+        # meta does not support mixed-dtype bmm.
+        skip(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+@onlyOn(["cuda", "xpu"])
+def _test_dispatch_symbolic_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=True, inplace=False)
+
+
+_test_dispatch_symbolic_meta_outplace.__name__ = "test_dispatch_symbolic_meta_outplace"
+TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_outplace
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
+        # meta does not support mixed-dtype bmm.
+        skip(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+def _test_dispatch_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=False, inplace=False)
+
+
+_test_dispatch_meta_outplace.__name__ = "test_dispatch_meta_outplace"
+TestMeta.test_dispatch_meta_outplace = _test_dispatch_meta_outplace
+
+_orig_test_meta_outplace = TestMeta.test_meta_outplace
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
+        # meta does not support mixed-dtype bmm.
+        xfail(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+def _test_meta_outplace(self, device, dtype, op):
+    _orig_test_meta_outplace(self, device, dtype, op)
+
+
+_test_meta_outplace.__name__ = "test_meta_outplace"
+TestMeta.test_meta_outplace = _test_meta_outplace
+
+
 # Removed @onlyCUDA; replaced with @onlyOn(["cuda", "xpu"]).
 @skipIfCrossRef
 @suppress_warnings
