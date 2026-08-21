@@ -131,7 +131,12 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<opmath_t> shared_;
 };
 
-template <typename out_t, NormType norm_type, typename opmath_t, int SIMD>
+template <
+    typename out_t,
+    NormType norm_type,
+    typename opmath_t,
+    int SIMD,
+    bool apply_root = true>
 struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<1> item_id) const {
@@ -157,10 +162,12 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
     }
     if (lid == 0) {
-      if constexpr (norm_type == NormType::L1 || norm_type == NormType::LInf) {
-        *(ret_per_tensor_[group_id]) = sum_val;
-      } else {
+      // L2 norm applies the final sqrt; powsum (apply_root == false) keeps the
+      // raw sum of squares. L1 and LInf never apply a root.
+      if constexpr (norm_type == NormType::L2 && apply_root) {
         *(ret_per_tensor_[group_id]) = sycl::sqrt((opmath_t)sum_val);
+      } else {
+        *(ret_per_tensor_[group_id]) = sum_val;
       }
     }
   }
@@ -186,15 +193,25 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<opmath_t> shared_;
 };
 
-template <typename out_t, NormType norm_type, typename out_opmath_t, int SIMD>
+template <
+    typename out_t,
+    NormType norm_type,
+    typename out_opmath_t,
+    int SIMD,
+    bool apply_root = true>
 void launch_lpnorm_chunk_reduce_kernel(
     const out_opmath_t* output_per_tensor,
     out_t** ret_per_tensor,
     int wg_size,
     int max_chunks_per_tensor,
     int n_tensor) {
-  lpnormChunkReduceKernelFunctor<out_t, norm_type, out_opmath_t, SIMD> kfn(
-      output_per_tensor, ret_per_tensor, max_chunks_per_tensor, wg_size);
+  lpnormChunkReduceKernelFunctor<
+      out_t,
+      norm_type,
+      out_opmath_t,
+      SIMD,
+      apply_root>
+      kfn(output_per_tensor, ret_per_tensor, max_chunks_per_tensor, wg_size);
 
   sycl_kernel_submit(
       sycl::range<1>(n_tensor * wg_size),
@@ -242,7 +259,11 @@ void foreach_norn_kernel_config(
       output_per_tensor_option);
 }
 
-std::vector<Tensor> foreach_norm_kernel(
+// apply_root controls the final reduction: when true (foreach_norm) the L2
+// case applies sqrt; when false (foreach_powsum) it keeps the raw sum of
+// squares. L1 and LInf are unaffected.
+template <bool apply_root>
+std::vector<Tensor> foreach_norm_kernel_impl(
     TensorList tensors,
     const Scalar& ord,
     double p,
@@ -331,7 +352,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L1,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -342,7 +364,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L1,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -400,7 +423,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L2,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -411,7 +435,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::L2,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -469,7 +494,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::LInf,
                       out_opmath_t,
-                      SIMD32>(
+                      SIMD32,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -480,7 +506,8 @@ std::vector<Tensor> foreach_norm_kernel(
                       out_t,
                       NormType::LInf,
                       out_opmath_t,
-                      SIMD16>(
+                      SIMD16,
+                      apply_root>(
                       output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                       (out_t**)(metaAddress),
                       wg_size,
@@ -499,6 +526,24 @@ std::vector<Tensor> foreach_norm_kernel(
     result.emplace_back(ret_per_tensor[i]);
   }
   return result;
+}
+
+std::vector<Tensor> foreach_norm_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    std::optional<ScalarType> dtype) {
+  return foreach_norm_kernel_impl</*apply_root=*/true>(tensors, ord, p, dtype);
+}
+
+// _foreach_powsum: like foreach_norm but returns sum(|x|^p) without the final
+// root. Fast path only supports p == 1 and p == 2.
+std::vector<Tensor> foreach_powsum_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    std::optional<ScalarType> dtype) {
+  return foreach_norm_kernel_impl</*apply_root=*/false>(tensors, ord, p, dtype);
 }
 
 template <typename T, int SIMD>
