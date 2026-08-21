@@ -25,7 +25,11 @@ with XPUPatchForImport(False):
     from test_scaled_matmul_cuda import (
         e4m3_type,
         e5m2_type,
+        f8_msg,
+        IS_WINDOWS,
         mm_float8_emulated,
+        PLATFORM_SUPPORTS_FP8,
+        random_matrix_with_scaled_reduction_dim,
         scaled_mm_wrap,
         tensor_to_scale,
         tensor_to_scale_block,
@@ -85,6 +89,45 @@ def _xpu_test_float8_rowwise_scaling_sanity(self, device, use_fast_accum: bool) 
 TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
     "use_fast_accum", [True, False]
 )(_xpu_test_float8_rowwise_scaling_sanity)
+
+
+# Override upstream expectation for XPU: row-wise fp32 output with bias is supported.
+@unittest.skipIf(not PLATFORM_SUPPORTS_FP8 or IS_WINDOWS, f8_msg)
+@parametrize("wrap_v2", [True, False])
+def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias_errors(self, wrap_v2, device):
+    if torch.version.hip:
+        raise unittest.SkipTest("hipblaslt rowwise _scaled_mm only supports BFloat16")
+
+    M, K, N = 16, 32, 48
+    input_dtype = e4m3_type
+    x = random_matrix_with_scaled_reduction_dim(
+        M, K, dtype=torch.float32, device=device, reduction_dim=-1
+    )
+    y = random_matrix_with_scaled_reduction_dim(
+        N, K, dtype=torch.float32, device=device, reduction_dim=-1
+    ).t()
+    x_scales = tensor_to_scale(x, input_dtype, dim=1).float()
+    y_scales = tensor_to_scale(y, input_dtype, dim=0).float()
+    x_fp8 = to_fp8_saturated(x * x_scales, e4m3_type)
+    y_fp8 = to_fp8_saturated(y * y_scales, e4m3_type)
+    bias = torch.randn((N,), device=device, dtype=torch.bfloat16)
+
+    out = scaled_mm_wrap(
+        x_fp8,
+        y_fp8,
+        scale_a=x_scales.reciprocal(),
+        scale_b=y_scales.reciprocal(),
+        out_dtype=torch.float32,
+        bias=bias,
+        wrap_v2=wrap_v2,
+    )
+    self.assertEqual(out.dtype, torch.float32)
+    self.assertEqual(out.shape, (M, N))
+
+
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = (
+    _xpu_test_scaled_mm_row_wise_fp32_out_with_bias_errors
+)
 
 
 # Override test_scaled_mm_deepseek_error_messages: upstream gates with @onlyCUDA and a
