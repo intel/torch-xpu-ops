@@ -1,9 +1,7 @@
 name: XPU Alignment
 
-# The official skill's automation mode defines the scan/review artifacts. Agents
-# never publish. A credential-free step executes approved reproducers, an
-# independent job reviews the immutable scan upload, and this workflow applies
-# the repository's publishing policy after validating both v1 contracts.
+# The skill owns scan/review judgment. This workflow owns scheduling, artifact
+# isolation, deterministic gating, and the only GitHub write permission.
 
 on:
   schedule:
@@ -20,7 +18,7 @@ on:
         type: string
         default: pvc
       auto_file:
-        description: 'Allow filing one reviewed needs-xpu-fix issue without approval.'
+        description: 'Allow one reviewed issue to be filed without approval.'
         required: false
         type: boolean
         default: true
@@ -30,8 +28,6 @@ permissions:
   actions: read
 
 concurrency:
-  # The date is resolved inside a step, so serialize all runs rather than risk
-  # two attempts publishing the same UTC day concurrently.
   group: xpu-alignment
   cancel-in-progress: false
 
@@ -113,111 +109,40 @@ jobs:
           gh auth status
           remaining="$(gh api rate_limit --jq '.resources.core.remaining')"
           echo "GitHub core quota remaining: $remaining"
-          (( remaining >= 1000 )) || { echo 'Too little GitHub quota for complete enumeration' >&2; exit 1; }
+          (( remaining >= 1000 )) || { echo 'Too little GitHub quota for the daily scan' >&2; exit 1; }
 
-      - name: Prepare the alignment scan
-        id: scan_prepare
+      - name: Scan and validate upstream candidates
+        id: scan
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools ${{ env.CLAUDE_ALIGNMENT_TOOLS }}"
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 100 --allowedTools ${{ env.CLAUDE_ALIGNMENT_TOOLS }}"
           prompt: |
-            Use the official .claude/skills/xpu-alignment/SKILL.md in automation
-            mode with role `scan-prepare`. The run directory is
+            Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
+            role `scan`. The run directory is
             `${{ env.ALIGNMENT_RUN_ROOT }}/${{ steps.context.outputs.scan_date }}`.
-            Scan the half-open UTC interval beginning
-            `${{ steps.context.outputs.scan_date }}T00:00:00Z` and ending at the
-            next UTC midnight.
+            Scan the half-open UTC interval from
+            `${{ steps.context.outputs.scan_date }}T00:00:00Z` through the next
+            UTC midnight.
 
-            Follow the v1 automation contract exactly. Completely enumerate
-            issues created, PRs created or merged, and commits entering the
-            pytorch/pytorch default branch in that interval. Record pagination and
-            truncation evidence, create every ledger row before filtering, then use
-            source context and diffs for flexible evidence-led triage. Link clear
-            issue/PR/commit duplicate chains rather than repeating their repros.
+            Follow the v1 contract and use source evidence rather than keyword
+            routing. Enumerate the required pytorch/pytorch issues, PRs, and
+            default-branch commits; retain collection errors rather than claiming
+            false completeness. Build and directly run bounded faithful XPU
+            reproducers for plausible candidates. Run each reproducer in a fresh
+            child process with `env -i`, passing only the minimum PATH, Python,
+            locale, HOME, and XPU runtime variables it needs; never pass GH_TOKEN,
+            GITHUB_TOKEN, AWS credentials, or model-provider credentials. Keep the
+            exact script and raw log.
 
-            Prepare and semantically precheck faithful XPU reproducers, including
-            their SHA-256 and target-path proof, and write execution_plan.json.
-            Do not execute any reproducer. Do not write GitHub objects. Leave
-            incomplete work explicit and never reject a row to empty the queue.
+            Write canonical scan.json plus optional scan_report.md. Do not create
+            review artifacts or modify GitHub. Leave incomplete work explicit.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           GH_TOKEN: ${{ github.token }}
-
-      - name: Execute approved reproducers without agent credentials
-        id: execute_repros
-        if: ${{ !cancelled() && steps.scan_prepare.outcome == 'success' }}
-        continue-on-error: true
-        env:
-          RUN_DIR: ${{ env.ALIGNMENT_RUN_ROOT }}/${{ steps.context.outputs.scan_date }}
-        run: |
-          set -euo pipefail
-          for name in GH_TOKEN GITHUB_TOKEN AWS_BEARER_TOKEN_BEDROCK AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-            [[ -z "${!name:-}" ]] || { echo "$name must not reach the repro runner" >&2; exit 1; }
-          done
-          if git config --local --get-regexp '^http\..*\.extraheader$'; then
-            echo 'Checkout credentials must not persist into repro execution' >&2
-            exit 1
-          fi
-          if ! id -u xpu-repro >/dev/null 2>&1; then
-            useradd --system --create-home --shell /usr/sbin/nologin xpu-repro
-          fi
-          declare -A device_groups=()
-          for group in render video; do
-            if getent group "$group" >/dev/null; then
-              device_groups["$group"]=1
-            fi
-          done
-          for device in /dev/dri/renderD* /dev/dri/card*; do
-            [[ -e "$device" ]] || continue
-            gid="$(stat --format '%g' "$device")"
-            group="$(getent group "$gid" 2>/dev/null | cut --delimiter : --fields 1 || true)"
-            if [[ -z "$group" ]]; then
-              group="xpu-device-$gid"
-              groupadd --gid "$gid" "$group"
-            fi
-            device_groups["$group"]=1
-          done
-          if (( ${#device_groups[@]} )); then
-            groups="$(IFS=,; echo "${!device_groups[*]}")"
-            usermod --append --groups "$groups" xpu-repro
-          fi
-          chmod -R a-w,a+rX "$RUN_DIR"
-          python3 .github/scripts/xpu_alignment_runner.py \
-            --root "$RUN_DIR" \
-            --plan artifacts/execution_plan.json \
-            --results artifacts/execution_results.json \
-            --python "$(command -v python3)" \
-            --user xpu-repro
-
-      - name: Finalize the scan from runner evidence
-        id: scan_finalize
-        if: ${{ !cancelled() && steps.scan_prepare.outcome == 'success' }}
-        uses: anthropics/claude-code-action@v1
-        with:
-          use_bedrock: "true"
-          github_token: ${{ github.token }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 35 --allowedTools Read,Write,Edit,Glob,Grep,Skill"
-          prompt: |
-            Use the official .claude/skills/xpu-alignment/SKILL.md in automation
-            mode with role `scan-finalize`. The prepared run is
-            `${{ env.ALIGNMENT_RUN_ROOT }}/${{ steps.context.outputs.scan_date }}`.
-
-            The credential-free runner outcome was
-            `${{ steps.execute_repros.outcome }}`. Reconcile the approved plan,
-            immutable script digests, execution_results.json, raw logs, planned
-            oracle and target-path XPU proof. Update the ledger only from that
-            evidence, write reports/scan_report.md, and finish scan_manifest.json
-            according to the v1 contract. A missing/failed runner or unresolved row
-            remains incomplete or blocked. Do not execute a reproducer, query or
-            modify GitHub, create review outputs, or invent terminal results.
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       - name: Upload immutable scan artifacts
         if: always()
@@ -227,12 +152,6 @@ jobs:
           path: ${{ env.ALIGNMENT_RUN_ROOT }}/
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Report a failed repro runner
-        if: ${{ always() && steps.execute_repros.outcome == 'failure' }}
-        run: |
-          echo '::error::The credential-free repro runner rejected the plan or failed; the finalizer preserved an incomplete scan.'
-          exit 1
 
   independent-review:
     name: Independent alignment review
@@ -255,8 +174,8 @@ jobs:
       - name: Check restored scan contract
         run: |
           set -euo pipefail
-          manifests="$(find "$ALIGNMENT_RUN_ROOT" -type f -name scan_manifest.json | wc -l)"
-          (( manifests == 1 )) || { echo "Expected one scan manifest, found $manifests" >&2; exit 1; }
+          manifests="$(find "$ALIGNMENT_RUN_ROOT" -type f -name scan.json | wc -l)"
+          (( manifests == 1 )) || { echo "Expected one scan.json, found $manifests" >&2; exit 1; }
 
       - name: Verify GitHub read access
         env:
@@ -266,9 +185,9 @@ jobs:
           gh auth status
           remaining="$(gh api rate_limit --jq '.resources.core.remaining')"
           echo "GitHub core quota remaining: $remaining"
-          (( remaining >= 200 )) || { echo 'Too little GitHub quota to refresh live state' >&2; exit 1; }
+          (( remaining >= 200 )) || { echo 'Too little GitHub quota for review' >&2; exit 1; }
 
-      - name: Review actionable results and negative samples
+      - name: Independently review every actionable result
         id: reviewer
         uses: anthropics/claude-code-action@v1
         with:
@@ -277,21 +196,17 @@ jobs:
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 60 --allowedTools ${{ env.CLAUDE_ALIGNMENT_TOOLS }}"
           prompt: |
-            Use the official .claude/skills/xpu-alignment/SKILL.md in automation
-            mode with role `review`. You did not produce the scan. Its immutable
-            artifact is restored under `${{ env.ALIGNMENT_RUN_ROOT }}/`.
+            Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
+            role `review`. You did not produce the immutable scan restored under
+            `${{ env.ALIGNMENT_RUN_ROOT }}/`.
 
-            Derive the mandatory set from every terminal `confirmed` or
-            `related-failure` ledger row. Review all of it and the deterministic
-            negative sample required by the v1 contract. Refresh source, tracker,
-            duplicate and fix state with read-only GitHub queries. Promote a
-            sampled false-negative concern only as the contract permits.
-
-            Write only review/review_manifest.json, review/review_report.md and
-            eligible review/final_issue_<id>.json payloads. Do not rewrite any
-            scan-owned file, execute reproducers, post comments, file issues, or
-            modify GitHub. A blocked or incomplete review emits no publishable
-            payload.
+            Independently cover every scan candidate whose local result is
+            `confirmed` or `related-failure`. Re-read its source, reproducer, raw
+            log, XPU target-path evidence, current upstream fix state, and existing
+            intel/torch-xpu-ops trackers. Write only review/review.json and an
+            optional review/review_report.md. Include an issue payload only for a
+            reviewed `needs-xpu-fix` unit without a reusable canonical tracker.
+            Do not rewrite scan-owned files, execute code, or modify GitHub.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -327,36 +242,33 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
-          path: ${{ env.ALIGNMENT_RUN_ROOT }}
+          path: review_snapshot
 
-      - name: Restore the scan as originally uploaded
+      - name: Restore the original scan
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}
           path: scan_snapshot
 
-      - name: Validate gate, runner and triage protocol
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/test_xpu_alignment_runner.py
-          python3 .github/scripts/test_xpu_alignment_gate.py
-          python3 .github/scripts/test_alignment_triage.py
-
       - name: Build publishing decision
         id: decision
         env:
-          AUTO_FILE: >-
-            ${{ (github.event_name == 'schedule' || inputs.auto_file)
-            && needs.scan-and-validate.result == 'success'
+          AUTO_FILE: ${{ github.event_name == 'schedule' || inputs.auto_file }}
+          PRODUCERS_CLEAN: >-
+            ${{ needs.scan-and-validate.result == 'success'
             && needs.independent-review.result == 'success' }}
           SCAN_DATE: ${{ needs.scan-and-validate.outputs.scan_date }}
         run: |
           set -euo pipefail
-          args=(--root "$ALIGNMENT_RUN_ROOT" --scan-root scan_snapshot
-                --run-id "$GITHUB_RUN_ID" --scan-date "$SCAN_DATE")
+          args=(--scan-root scan_snapshot --review-root review_snapshot
+                --output gate/filing_decision.json --run-id "$GITHUB_RUN_ID"
+                --scan-date "$SCAN_DATE")
           if [[ "$AUTO_FILE" == true ]]; then
             args+=(--auto-file)
+          fi
+          if [[ "$PRODUCERS_CLEAN" == true ]]; then
+            args+=(--producers-clean)
           fi
           python3 .github/scripts/xpu_alignment_gate.py "${args[@]}"
 
@@ -373,18 +285,15 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
             --notify "$ALIGNMENT_TRIAGE_NOTIFY" \
-            --decision "$ALIGNMENT_RUN_ROOT/filing_decision.json"
+            --decision gate/filing_decision.json
 
       - name: Write workflow summary
         if: always()
         run: |
           set -euo pipefail
-          decision_file="$ALIGNMENT_RUN_ROOT/filing_decision.json"
           echo '## XPU alignment gate' >> "$GITHUB_STEP_SUMMARY"
-          if [[ -f "$decision_file" ]]; then
-            echo '```json' >> "$GITHUB_STEP_SUMMARY"
-            jq 'del(.payloads[].body)' "$decision_file" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f gate/filing_decision.json ]]; then
+            jq '(.payloads[]? |= del(.body))' gate/filing_decision.json >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'No publishing decision was produced.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -394,12 +303,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-gate
-          path: ${{ env.ALIGNMENT_RUN_ROOT }}/
+          path: gate/
           if-no-files-found: warn
           retention-days: 30
 
       - name: Report a blocked or incomplete run
         if: steps.decision.outputs.needs_attention == 'true'
         run: |
-          echo '::error::The alignment run needs attention; see filing_decision.json in the gate artifact.'
+          echo '::error::The alignment run needs attention; see the gate artifact.'
           exit 1
