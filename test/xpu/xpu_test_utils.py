@@ -356,6 +356,7 @@ _cuda_xfail_xpu_pass = [
     ("nn.LazyConv2d", "test_memory_format"),
     ("nn.Conv2d", "test_memory_format"),
     ("nn.ConvTranspose2d", "test_memory_format"),
+    ("nn.ConvTranspose1d", "test_cpu_gpu_parity"),
     ("nn.LazyConvTranspose2d", "test_memory_format"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
@@ -473,6 +474,17 @@ _xpu_tolerance_override = {
     "nn.ConvTranspose3d": {
         ("TestModule", "test_non_contiguous_tensors"): {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
+        }
+    },
+    "nn.ConvTranspose1d": {
+        # https://github.com/intel/torch-xpu-ops/issues/4889
+        # chalf has an 11-bit mantissa, so CPU-vs-XPU accumulation order alone
+        # exceeds the default 1e-05 atol. The XPU output is closer to a complex64
+        # reference than the CPU output is, so this is a dtype precision limit,
+        # not an XPU accuracy defect. Bounds are ~2x the worst error measured
+        # over 40 seeds (abs 1.75e-2, rel 5.1e-3).
+        ("TestModule", "test_cpu_gpu_parity"): {
+            torch.chalf: tol(atol=3e-2, rtol=1.5e-2),
         }
     },
     "test_modules_xpu.py": {
