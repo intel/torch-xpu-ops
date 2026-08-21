@@ -370,10 +370,6 @@ struct CatArrayBatchedCopy_vectorized {
 
     // Exact: the host guarantees whole vectors per slice.
     const IndexType nVectors = inputs.nElements[group] / kILP;
-    // Empty inputs are valid and require no work. Return early to avoid
-    // dividing by inputSliceVectors, which is zero in this case.
-    if (nVectors == 0)
-      return;
 
     IndexType vectorIndex =
         item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
@@ -547,6 +543,8 @@ void parallel_cat(
     while (batchEnd < nInputs &&
            (batchEnd - i) < static_cast<unsigned>(batch_size)) {
       const int64_t n = nElements[order[batchEnd]];
+      if (n == 0)
+        break;
       // Limit batching when the padding overhead becomes too large. Smaller
       // tensors leave idle elements up to batchMax; stop once idle work exceeds
       // useful work.

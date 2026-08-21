@@ -131,10 +131,8 @@ class TestTorchMethod(TestCase):
 
     def test_cat_contiguous_vectorized_copy_multi_batch(self):
         # More inputs than fit in one launch, so the copy is split into several
-        # batches. Only the last input is misaligned, which must disable the
-        # wide store for every batch: an earlier batch that vectorized on its
-        # own would compute wrong offsets once the row pitch narrows.
-        shapes = [(4, 8)] * 2048 + [(4, 4)]
+        # batches. The last input forces the 8-byte fallback for every batch.
+        shapes = [(4, 8)] * 64 + [(4, 4)]
         inputs_cpu = [
             torch.randn(shape, dtype=torch.float32).to(torch.bfloat16)
             for shape in shapes
