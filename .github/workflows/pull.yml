@@ -285,9 +285,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: artifact_wheel
-      pytorch_artifact_run_id: '32004027528'
-      pytorch_artifact_name: manywheel-py3_10-xpu
+      pytorch: nightly_wheel
       torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 
