@@ -1,72 +1,53 @@
 # OS and Platform Rules
 
+All codes and keywords live in `categories.os` and `categories.hw` of
+`../../reference/proposed_labels.json`. Always read them from there - never
+hard-code OS or hardware names here.
+
 ## `os`
 
-`Linux`, `Windows`, or `""`.
+An OS `code` from `categories.os`, or `""`.
 
 1. Empty body -> `""`.
-2. If the body has an `OS:` line (the `collect_env` form,
-   `OS: Ubuntu 22.04 LTS`), classify the text after `OS:`.
-3. Otherwise classify the whole body.
+2. If the body has an `OS:` line (`collect_env` form, e.g.
+   `OS: Ubuntu 22.04 LTS`), classify the text after `OS:`; else classify the
+   whole body.
+3. Match each entry's `keywords` in `categories.os` file order; first hit wins.
 
-Check Windows first, then Linux. First hit wins.
-
-- **Windows**: `windows`, ` win `, `[win]`, `win32`, `msvc`
-- **Linux**: `linux`, `ubuntu`, `wsl`, `debian`, `centos`, `rhel`, `fedora`
-
-Windows goes first because a Windows log often also mentions Linux paths, but
-not the reverse.
+Entries are ordered so the more specific OS is checked first (a log for one OS
+often mentions another's paths, not the reverse), so file order is authoritative.
 
 ## `platform`
 
-One of `PVC`, `BMG`, `ARC`, `ARL`, `LNL`, `MTL`, `CRI`, or `""`.
+A hardware `code` from `categories.hw`, or `""`. Stop at the first hit:
 
-Look in this order and stop at the first hit:
-
-1. A `hw: <CODE>` label, e.g. `hw: BMG` -> `BMG`.
+1. A `hw: <CODE>` label (e.g. `hw: BMG` -> `BMG`).
 2. The title.
 3. The body.
 
-Within the title or body, check the codes in table order and take the first
-keyword that matches:
+In title/body, check `categories.hw` entries in file order and take the first
+matching keyword; record that entry's `code`.
 
-| Code | Keywords |
-|---|---|
-| PVC | `ponte vecchio`, `data center gpu max`, `gpu max 1550`, `gpu max 1100`, `max 1550`, `max 1100`, `pvc`, `1550`, `1100`, `0x0bd5`, `0x0bd6`, `0x0bd9`, `0x0bda`, `0x0bdb` |
-| BMG | `battlemage`, `b580`, `b570`, `bmg`, `0xe20b`, `0xe20c`, `0xe223` |
-| ARC | `alchemist`, `a770`, `a750`, `a380`, `arc`, `arc a`, `arc graphics` |
-| ARL | `arrow lake`, `arl` |
-| LNL | `lunar lake`, `lnl` |
-| MTL | `meteor lake`, `mtl` |
-| CRI | `crescent island`, `cri` |
-
-Short codes and bare numbers (`pvc`, `arc`, `bmg`, `1100`, `b580`, ...) must
-match as **whole words**. `arc` must not match inside `architecture` or
-`search`; `1100` must not match inside `11000`. Multi-word phrases like
-`arc graphics` can match anywhere.
+Short codes and bare numbers (illustrative: `pvc`, `arc`, `1100`, ...) match as
+**whole words** only - a code must not match inside a larger word (`arc` not
+inside `architecture`, `1100` not inside `11000`). Multi-word keyword phrases may
+match anywhere.
 
 ## `platform_specific`
 
-`true` when the issue is reported as affecting specific hardware. Judge this
-from the issue text alone - do not probe the local machine.
+`true` when the issue is reported as affecting specific hardware, judged from the
+text alone. A "platform" is any `categories.hw` `code`. Set `true` if ANY holds
+(examples below use placeholder codes for illustration only):
 
-Set `true` when ANY of these holds:
-
-1. **The title carries a platform tag in brackets** - `[BMG]`, `[PVC]`,
-   `[ARL]`.
-2. **A `hw:` label is present** - `hw: BMG`, `hw: PVC`.
-3. **The description names one platform as the only affected one** -
-   `only on BMG`, `only on PVC`, `BMG only`, `happens only on ARL`.
-4. **The description contrasts two platforms** - `passed on PVC, failed on
-   BMG`, `works on ARC but fails on LNL`, `PVC passes, BMG fails`.
+1. Title has a bracketed platform tag - e.g. `[<CODE>]`.
+2. A `hw:` label is present.
+3. One platform named as the only affected - e.g. `only on <CODE>`, `<CODE>
+   only`.
+4. Two platforms contrasted - e.g. `passed on <A>, failed on <B>`, `<A> passes,
+   <B> fails`.
 
 Otherwise `false`.
 
-Case 4 is the strongest signal: an explicit pass/fail split between two
-platforms proves the failure is hardware-dependent. Record the FAILING platform
-in `platform` when the two disagree.
-
-`false` is the right answer for an issue that never mentions hardware. A
-platform code appearing incidentally - in a log path, a machine hostname, or a
-`collect_env` dump - is not a claim that the issue is platform-specific, so it
-does not set this field.
+Case 4 is the strongest signal; when two platforms disagree, record the FAILING
+one in `platform`. A code appearing incidentally (log path, hostname,
+`collect_env` dump) does NOT set `platform_specific`.

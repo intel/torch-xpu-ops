@@ -166,17 +166,23 @@
       "labels": [
         {
           "name": "os: Windows",
+          "code": "Windows",
           "meaning": "Windows platform",
+          "keywords": ["windows", " win ", "[win]", "win32", "msvc"],
           "origin": "existing; reused unchanged"
         },
         {
           "name": "os: Linux",
+          "code": "Linux",
           "meaning": "Linux platform",
+          "keywords": ["linux", "ubuntu", "wsl", "debian", "centos", "rhel", "fedora"],
           "origin": "renamed from 'os: Ubuntu'"
         },
         {
           "name": "os: WSL",
+          "code": "WSL",
           "meaning": "Windows Subsystem for Linux",
+          "keywords": ["wsl"],
           "origin": "existing; reused unchanged"
         }
       ]
@@ -186,42 +192,58 @@
       "labels": [
         {
           "name": "hw: PVC",
+          "code": "PVC",
           "meaning": "Ponte Vecchio / Data Center GPU Max",
+          "keywords": ["ponte vecchio", "data center gpu max", "gpu max 1550", "gpu max 1100", "max 1550", "max 1100", "pvc", "1550", "1100", "0x0bd5", "0x0bd6", "0x0bd9", "0x0bda", "0x0bdb"],
           "origin": "existing; reused unchanged"
         },
         {
           "name": "hw: BMG",
+          "code": "BMG",
           "meaning": "Battlemage",
+          "keywords": ["battlemage", "b580", "b570", "bmg", "0xe20b", "0xe20c", "0xe223"],
           "origin": "existing; reused unchanged"
         },
         {
           "name": "hw: ARC",
+          "code": "ARC",
           "meaning": "Alchemist / Arc",
+          "keywords": ["alchemist", "a770", "a750", "a380", "arc", "arc a", "arc graphics"],
           "origin": "renamed from 'hw: Arc' (casing)"
         },
         {
           "name": "hw: ARL",
+          "code": "ARL",
           "meaning": "Arrow Lake",
+          "keywords": ["arrow lake", "arl"],
           "origin": "new"
         },
         {
           "name": "hw: LNL",
+          "code": "LNL",
           "meaning": "Lunar Lake",
+          "keywords": ["lunar lake", "lnl"],
           "origin": "renamed from 'hw : LNL' (stray space)"
         },
         {
           "name": "hw: MTL",
+          "code": "MTL",
           "meaning": "Meteor Lake",
+          "keywords": ["meteor lake", "mtl"],
           "origin": "renamed from 'hw : MTL' (stray space)"
         },
         {
           "name": "hw: CRI",
+          "code": "CRI",
           "meaning": "Crescent Island",
+          "keywords": ["crescent island", "cri"],
           "origin": "new"
         },
         {
           "name": "hw: PTL",
+          "code": "PTL",
           "meaning": "Panther Lake",
+          "keywords": ["panther lake", "ptl"],
           "origin": "existing; reused unchanged"
         }
       ]
