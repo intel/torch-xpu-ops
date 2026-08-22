@@ -227,13 +227,6 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
-    // The geometry below serves LoopScanWithIndicesKernel (2D nd_range):
-    // one work-group contains exactly one sub-group (32 lanes) and handles
-    // one batch per iteration. LoopScanKernel computes its own 1D launch
-    // geometry; see launch_loop_scan.
-    // The number of work-groups is capped at what the device can host
-    // simultaneously; when batch_ exceeds the cap, each work-group loops
-    // over loops_batch batches with a grid stride of glb_range_y_.
     wg_range_x_ = 32;
     wg_range_y_ = 1;
     glb_range_x_ = wg_range_x_;
