@@ -417,9 +417,6 @@ static inline void launch_loop_scan(const LSConfig& cfg) {
 
   LoopScanKernel<LSConfig, TrivialOffCal> kfn(cfg);
 
-  // One batch row per 32-lane sub-group, i.e. 8 rows per 256-item work-group.
-  // The grid is capped at the number of resident work items; the kernel
-  // grid-strides over any remaining batches (XPU_KERNEL_LOOP).
   constexpr int64_t sg_size = 32;
   constexpr int64_t wg_size = 256;
   const int64_t group_num =
