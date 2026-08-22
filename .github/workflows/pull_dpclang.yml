@@ -118,9 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 'op_ut' tests take suspiciously too long and sometimes
-        # get cancelled. For now limit the scope to 'basic' tests.
-        ut_name: [basic]
+        ut_name: [basic, op_ut]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
