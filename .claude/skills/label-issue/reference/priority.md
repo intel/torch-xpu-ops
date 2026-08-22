@@ -1,15 +1,17 @@
 # Priority Rules
 
-Priority is the PyTorchXPU project's `Priority` field, not a GitHub label. The
-tiers below are the canonical names emitted in `labels.md`; the parenthesised
-value is the current option name in the project field.
+Priority is the PyTorchXPU project's `Priority` field (Fields -> Priority), not a
+GitHub label. The four options and their canonical tier names live in the
+top-level `priority_field` section of `proposed_labels.json`; read the tier ->
+option mapping and the per-tier `keywords` from there rather than hard-coding
+them here. The keywords are only a fallback hint — the decision tree below is
+primary.
 
 ## Priority tiers
 
-- `Urgent` (project field `P0`)
-- `High` (project field `P1`)
-- `Medium` (project field `P2`)
-- `Low` (project field `P3`)
+Tier names (and their project field option, from `priority_field` in
+`proposed_labels.json`): `Urgent` (`P0`), `High` (`P1`), `Medium` (`P2`),
+`Low` (`P3`).
 
 ## Decision Priority Order
 

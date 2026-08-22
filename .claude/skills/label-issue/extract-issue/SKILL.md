@@ -1,6 +1,6 @@
 ---
 name: extract-issue
-description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test_module, test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Reads module and dependency off existing labels only. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
+description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test (surface), test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
 ---
 
 # Extract Issue Info
@@ -96,7 +96,7 @@ named in a field's Rule cell before deciding that field. Do not classify from
 memory.
 
 Each axis is independent, with one exception the pack itself states: decide
-`test_module` before `test_cases`, because an `e2e` issue uses the E2E case shape
+`test` before `test_cases`, because an `e2e` issue uses the E2E case shape
 and skips unit-test parsing entirely.
 
 ### Step 4 - Emit
@@ -123,18 +123,15 @@ always yields `""`.
 | milestone | gh REST | Milestone title, or "". |
 | summary | gh REST | The `title`, verbatim. |
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
-| module | issue labels | Bucket for the `module: <x>` label, per [../reference/module.md](../reference/module.md). See **Label-derived axes**. |
-| test_module | you | `ut` \| `e2e` \| `build` \| `infrastructure`, per [reference/testcase_rules.md](reference/testcase_rules.md). |
-| dependency | issue labels | Taxonomy value for the dependency label, per [../reference/dependency.md](../reference/dependency.md). `AO` is never a value. See **Label-derived axes**. |
-| priority | gh GraphQL | The PyTorchXPU **Priority** field, normalized `P0`->`Urgent`, `P1`->`High`, `P2`->`Medium`, `P3`->`Low`. The names `Urgent`/`High`/`Medium`/`Low` pass through; anything else -> `""`. |
 | pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | Project fields, or "". |
-| os | you | `Linux` \| `Windows` \| "", per [reference/platform_rules.md](reference/platform_rules.md). |
-| platform | you | PVC, BMG, ARC, ARL, LNL, MTL, CRI, or "", per [reference/platform_rules.md](reference/platform_rules.md). |
+| os | you | An `os` code from `categories.os` of `../../reference/proposed_labels.json` (e.g. `Linux`, `Windows`, `WSL`), or "", per [reference/platform_rules.md](reference/platform_rules.md). |
+| platform | you | A `hw` code from `categories.hw` of `../../reference/proposed_labels.json` (e.g. `PVC`, `BMG`, `ARC`, `ARL`, `LNL`, `MTL`, `CRI`, `PTL`), or "", per [reference/platform_rules.md](reference/platform_rules.md). |
 | platform_specific | you | `true` when the issue text reports the failure as hardware-specific, per [reference/platform_rules.md](reference/platform_rules.md). Judged from the text; never probe local hardware. |
+| test | you | `ut` \| `e2e` \| `oob`, per [reference/testcase_rules.md](reference/testcase_rules.md) (keywords in `categories.test` of `../../reference/proposed_labels.json`). |
 | traceback | you | Full Python traceback, chained segments included, per [reference/text_rules.md](reference/text_rules.md). |
 | reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [reference/text_rules.md](reference/text_rules.md). |
-| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per that pack's **Top-level mirror fields**. All "" on an E2E issue. |
-| test_cases | you | Every parsed case, in the scan order fixed by that pack's **Ordering** contract - which the parent relies on for a stable `test_cases[0]`. |
+| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [reference/testcase_rules.md](reference/testcase_rules.md). All "" on an E2E issue. |
+| test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [reference/testcase_rules.md](reference/testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |
 | pr_link | you | PR URL the issue is tied to, per [reference/text_rules.md](reference/text_rules.md). |
 
 Fields sourced from `gh REST` or `gh GraphQL` are copied from that one response.
@@ -142,25 +139,6 @@ Do not re-derive them from the title text, the body, or the labels: a blank Type
 or Priority field means `""`, and the parent decides `priority` itself from
 `reference/priority.md` when it is empty, so an invented value would suppress
 that.
-
-## Label-derived axes
-
-`module` and `dependency` come off the issue's EXISTING labels only - never
-inferred from the title, body, or traceback. Map the existing label to its bucket
-or taxonomy value via [../reference/module.md](../reference/module.md) and
-[../reference/dependency.md](../reference/dependency.md), because a few label names
-break the common pattern. An unlabeled issue yields `""`.
-
-`module: ut` is not a module value; it is a `test_module` signal, so ignore it
-here. When several `module:` labels are present, take the first one GitHub
-returned and emit only that. Same for `dependency`.
-
-**Why label-only.** The parent re-derives both axes from the same two reference
-files against the traced root cause (its Steps 3 and 6) and overrides whatever
-appears here when the trace disagrees. Keyword-guessing would only add a second,
-weaker opinion for the parent to discard, so `""` is the honest and more useful
-answer. Consequence: `module` here can be `""` - do not report `others` as if a
-bucket had been determined.
 
 ## Authoritative-source fields
 
@@ -172,7 +150,6 @@ field beats a guess.
 |---|---|
 | `summary` | The full title, verbatim. |
 | `issue_type` | The GitHub Type field only, so `""` when unset. |
-| `module` / `dependency` | Existing labels only, so possibly `""`. |
 | `platform_specific` | Judged from the issue text, never from local hardware. |
 | `pr_link` | A `/pull/` URL, or a resolved `owner/repo#N` or bare `#N`. |
 

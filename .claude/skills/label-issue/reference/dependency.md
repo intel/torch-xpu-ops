@@ -11,14 +11,8 @@
 - For oneMKL or oneDNN classification, read `xpu_operator_dependency_list.md`
   in this same reference directory.
 
-This axis is decided BEFORE ownership, and its result drives it: a taxonomy
-value becomes the `target_component` verbatim and forces `need_action:
-NEED_FIX_3RDPARTY` in [target_component.md](target_component.md). So
-`dependency: oneDNN` pairs with `target_component: oneDNN`, not with a generic
-`third-party`. `none` and `null` force nothing. Because a taxonomy value both
-overrides the traced fix location and names the owner, return one only on direct
-evidence that the failure originates in that component — never on a library
-merely appearing in the call path.
+Return a taxonomy value only on direct evidence that the failure originates in
+that component — never on a library merely appearing in the call path.
 
 `extract.json` carries the value in `dependency`, read off the issue's EXISTING
 dependency label. When it is non-blank, preserve it: return that value directly
@@ -29,8 +23,12 @@ rules above. Emit the label, never the bare value.
 
 ## Value to label mapping
 
-Emit the **label** column in `labels.md`, never the bare value. Note that
-`third_party_packages` uses a different prefix and a space, so the
+Emit the **label** column in `labels.md`, never the bare value. The authoritative
+label list lives in `categories.dependency` of `proposed_labels.json`, where each
+label carries an `evidence` field (the criterion that must hold) and no
+`keywords` — this axis is evidence-only by design. A taxonomy value requires
+direct evidence that the failure originates in that component; a keyword hit alone
+never qualifies. Note that `third_party` uses a different prefix, so the
 `dependency component: <value>` pattern does NOT hold for it.
 
 | Value | GitHub label | Label exists today |
@@ -42,7 +40,7 @@ Emit the **label** column in `labels.md`, never the bare value. Note that
 | `Triton` | `dependency component: Triton` | yes |
 | `MSVC` | `dependency component: MSVC` | yes |
 | `community` | `dependency component: community` | yes |
-| `third_party_packages` | `dependency: third_party packages` | yes |
+| `third_party_packages` | `dependency: third_party` | yes (renamed from `dependency: third_party packages`) |
 | `oneCCL` | `dependency component: oneCCL` | **no - must be created** |
 | `IGC` | `dependency component: IGC` | **no - must be created** |
 | `Level_Zero` | `dependency component: Level_Zero` | **no - must be created** |

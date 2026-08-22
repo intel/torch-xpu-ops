@@ -1,20 +1,26 @@
-# Test Module and Test Case Rules
+# Test Surface and Test Case Rules
 
-Decide `test_module` FIRST. An `e2e` issue uses the E2E case shape and skips
+Decide `test` FIRST. An `e2e` issue uses the E2E case shape and skips
 unit-test parsing entirely.
 
-## `test_module`
+## `test`
 
-One of `ut`, `e2e`, `build`, `infrastructure`. Match against
+One of `ut`, `e2e`, `oob`. The keyword lists for each value are authoritative in
+`categories.test` of `../../reference/proposed_labels.json`; read them from there
+and never hard-code the spellings here. Match them against
 `lowercase(title + " " + body)`.
+
+Build and infrastructure failures are NOT values of this axis. The parent's
+module axis captures them as `module: build` / `module: infra`; this field only
+records the ut/e2e/oob test surface.
 
 ### 1. E2E check runs first
 
 Return `e2e` on the first hit:
 
 1. A label exactly equal to `e2e`.
-2. Any of these paths: `benchmarks/dynamo/`, `benchmarks/timm/`,
-   `benchmarks/huggingface/`, `benchmarks/torchbench/`, `run_benchmark.py`.
+2. Any `categories.test["test: e2e"].keywords` path hit (e.g.
+   `benchmarks/dynamo/`, `run_benchmark.py`).
 3. An authoritative-list model name (see **Benchmark model lists** below) AND
    at least one benchmark-context substring: `benchmarks/dynamo`,
    `run_benchmark`, `torchbenchmark`, `benchmark.py`.
@@ -23,26 +29,21 @@ A model name alone is NOT enough, and a bare `hf_`/`timm_` prefix is never
 enough. The name must appear in a loaded list, so a fabricated `hf_made_up` is
 not an E2E signal even next to `benchmark.py`.
 
-### 2. Then these signals
+### 2. Then OOB
 
-- **build**: `[win][build]`, `build from source`, `compile from source`,
-  `source build`, `build script`, `BUILD_SEPARATE`, `BUILD_SHARED`,
-  `cmake build`, `cmake error`, `cmake fail`, `setup.py install`,
-  `pip install -e .`, `python setup.py develop`
-- **infrastructure**: `workflow error/fail/issue/problem`,
-  `github action error/fail/issue`, `azure pipeline error/fail`,
-  `ci runner/config/setup error/fail`, `runner error/fail/timeout in ci`,
-  `checkout error/fail in workflow/ci`, `githubaction`. Also when a label
-  contains `infrastructure` AND one of `ci`, `workflow`, `action`.
-- **test pattern**: `pytest <something>test[/._]`,
-  `python <something>test[/._]`, `test/test_`, `test/xpu/test_`
+Return `oob` when any `categories.test["test: oob"].keywords` hit is present
+(e.g. `oob`, `out-of-box`) and the E2E check above did not already fire.
 
-### 3. Precedence
+### 3. Then UT
 
-1. build -> `build`
-2. infrastructure -> `infrastructure`
-3. test pattern -> `e2e` if the text also contains `benchmarks/dynamo/` or
-   `benchmark`, else `ut`
+Return `ut` on any `categories.test["test: ut"].keywords` hit (e.g. a `pytest`
+invocation, `test/test_`, `test/xpu/test_`, an `op_ut` CSV row, a `-k` selector).
+
+### 4. Precedence and default
+
+1. e2e signal -> `e2e`
+2. oob signal -> `oob`
+3. ut signal -> `ut`
 4. otherwise -> `ut`
 
 The default is `ut`.
@@ -231,7 +232,7 @@ whatever the scan reached first.
 ## Top-level mirror fields
 
 `test_file`, `test_class`, and `test_case` mirror the first **unit-test-shaped**
-entry - the first entry with no `benchmark` key. Since `test_module` is decided
+entry - the first entry with no `benchmark` key. Since `test` is decided
 first and an `e2e` issue never reaches unit-test parsing, every entry in
 `test_cases` on a `ut` issue is unit-test-shaped, so this is always
 `test_cases[0]`. On an E2E issue no unit row exists, so all three are `""`.

@@ -1,6 +1,6 @@
 ---
 name: label-issue
-description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive target_component/need_action, dependency, duplicate, module, and priority. When the issue reports several failing cases, only the first is analyzed and labels.md names it; when the failures form more than one group it also emits need_split. Emits a markdown labels table and a report-only table under agent_space/label_issue/; it never writes to GitHub. Use when you want labels for an issue without a local reproduce or per-axis subagent fan-out."
+description: "Label proposal for a single GitHub issue (intel/torch-xpu-ops by default). Takes an issue id or URL and an optional pytorch_folder, extracts issue metadata, root-causes the failure against the local checkout when one is given (or from issue evidence alone when it is not), then applies the reference rule packs to derive dependency, duplicate, module, dtype, symptom, and priority. All label names and their keyword lists come from reference/proposed_labels.json; the skill never hard-codes a keyword the JSON already carries. When the issue reports several failing cases, only the first is analyzed and labels.md names it; when the failures form more than one group it also emits need_split. Emits a markdown labels table under agent_space/label_issue/; it never writes to GitHub. Use when you want labels for an issue without a local reproduce or per-axis subagent fan-out."
 ---
 
 # Label Issue
@@ -42,17 +42,23 @@ stop; it degrades the trace, not the run.
 All rules live in `.claude/skills/label-issue/reference/`. Read the
 file for an axis before deciding it; do not decide from memory.
 
+Every label name and its keyword list is defined once in
+`reference/proposed_labels.json` (each label carries a `keywords` array where an
+axis is keyword-driven). Read keywords from that JSON — never hard-code a keyword
+in a rule pack or in this skill when the JSON already carries it. The axis rule
+packs supplement the JSON keywords with the reasoning (decision-priority order,
+traceback-origin evidence); they do not restate the keyword lists.
+
 | Axis | File |
 |---|---|
 | `dependency` | `dependency.md` (plus `xpu_operator_dependency_list.md` for oneMKL/oneDNN) |
-| `target_component`, `need_action` | `target_component.md` |
 | `duplicates` | `duplicates.md` |
 | `module` (13-bucket category enum) | `module.md` |
+| `dtype` | `dtype.md` |
+| `symptom` | `symptom.md` |
 | `priority` | `priority.md` |
 | `labels.md` output format | `output_format.md` |
-
-`dependency` is listed first because `target_component` consumes its result;
-see Step 3 and Step 4.
+| all label names + keyword lists | `proposed_labels.json` |
 
 ## Workflow
 
@@ -106,7 +112,7 @@ primitive plus an `AssertionError` on a numeric tolerance.
 
 - **One group** -> nothing further; do not emit `need_split`.
 - **Two or more groups** -> record `group_count` and a one-line signature per
-  group. Step 8 emits `need_split`. This skill never acts on it: it does not
+  group. Step 9 emits `need_split`. This skill never acts on it: it does not
   split the issue, file sub-issues, or edit anything.
 
 Case count alone is NOT the signal, and neither is the number of distinct test
@@ -119,16 +125,16 @@ entry, in the order `extract-issue` emitted it — as the **analyzed case**. Do 
 reorder, re-rank, or pick by severity; index 0 is the rule, so two runs on one
 issue always agree.
 
-- `test_cases` has 0 or 1 entries: nothing to select. Run Steps 2-8 against the
-  issue as a whole and emit no case note in Step 8.
+- `test_cases` has 0 or 1 entries: nothing to select. Run Steps 2-9 against the
+  issue as a whole and emit no case note in Step 9.
 - `test_cases` has 2 or more entries: record `analyzed_case` (its
   `test_file`/`test_class`/`test_case`, or for an E2E entry its
   `benchmark`/`model`/`phase`/`dtype`, since E2E entries carry no test-file
-  fields) and `case_count`. Scope Steps 2-8 to that case ONLY: root-cause it,
+  fields) and `case_count`. Scope Steps 2-9 to that case ONLY: root-cause it,
   and ignore the other entries' tracebacks and error messages when deciding
-  every axis **except priority** — priority's case-count rows (Step 7) are a
+  every axis **except priority** — priority's case-count rows (Step 8) are a
   property of the whole issue, not the analyzed case, so they count every
-  `test_cases[]` entry regardless of scoping. Step 8 then names the analyzed
+  `test_cases[]` entry regardless of scoping. Step 9 then names the analyzed
   case and the number left unanalyzed.
 
 Never split the issue, never file a sub-issue, and never edit the issue. The
@@ -165,7 +171,7 @@ Never guess an owner or infer a `file:line` you did not read.
 and `root_cause` in **at most 2 lines** — the defect plus its `file:line` (drop
 `file:line` in Mode B when nothing was read). Keep the call path, ruled-out
 alternatives, and mechanism narrative out of the report. An inconclusive trace
-is allowed; Step 4 turns it into `NEED_FIX` (or `NEED_HUMAN` on Windows).
+is allowed.
 
 ### Step 3 — dependency
 
@@ -179,48 +185,24 @@ dependency label when it has one. When it is non-blank, preserve it and return
 that value directly — do not re-decide. It is `""` when the issue has no
 dependency label — that is not evidence of `none`, so decide this axis from
 `reference/dependency.md`. Emit the label, not the value: the prefix is not
-uniform (`third_party_packages` maps to `dependency: third_party packages`). Take
+uniform (`third_party_packages` maps to `dependency: third_party`). Take
 the label from the mapping table in `reference/dependency.md`.
 
-This step runs BEFORE ownership because a confirmed dependency decides it. Only
-a taxonomy value counts as "has a dependency"; `none` and `null` do not, and
-neither names an external owner in Step 4.
-
-### Step 4 — target_component and need_action
-
-Read `reference/target_component.md`. Map the traced fix location to
-`target_component` (`test-case` | `pytorch` | `torch-xpu-ops` | a dependency
-taxonomy value | `N/A`) and to `need_action` (`NEED_FIX` | `NEED_FIX_CASE` |
-`NEED_FIX_3RDPARTY` | `NEED_HUMAN` | `NEED_SKIP_CASE`).
-
-Pass Step 3's dependency value in. When it is a taxonomy value, that component
-owns the fix: `target_component` is **the dependency value itself** — `oneDNN`,
-`driver`, `Triton`, and so on, spelled exactly as the taxonomy spells it — and
-`need_action` is `NEED_FIX_3RDPARTY`. Never emit a generic `third-party`
-bucket; name the component. When Step 3 returned `none` or `null`, decide
-ownership from the traced fix location alone.
-
-A skip or xfail decorator is never a fix. An inconclusive trace — including
-every evidence-only run that could not establish a root cause — is `N/A` +
-`NEED_FIX`, except on a Windows `os`, which is `N/A` + `NEED_HUMAN` per the
-Windows row in `reference/target_component.md`'s canonical verdicts table.
-
-### Step 5 — duplicates
+### Step 4 — duplicates
 
 Read `reference/duplicates.md`. Run the enriched `gh search issues` set
 concurrently across BOTH `intel/torch-xpu-ops` and `pytorch/pytorch` for the
 Step 1.5 analyzed case, always requesting `state,labels,body` and appending
 `is:issue`. Apply self-exclusion, the two-of-three signal rule (and its
 single-signal body-match exception), and the
-`relevance` / `recommended_action` tables. Also record inherited `not_target` /
-`wontfix` from a HIGH or MEDIUM duplicate. When `not_target` is `true` (own
-labels or inherited), override Step 4's `need_action` to `NEED_SKIP_CASE` per the
-`not_target` row in `reference/target_component.md`'s canonical verdicts;
-`target_component` is unchanged.
+`relevance` / `recommended_action` tables. Also record inherited `wontfix`
+from a HIGH or MEDIUM duplicate (a legacy `not_target` label counts as
+`wontfix`). When `wontfix` is `true` (own labels or inherited), emit the
+`wontfix` label per `reference/duplicates.md`.
 
 This step needs no checkout and runs identically in both trace modes.
 
-### Step 6 — module
+### Step 5 — module
 
 Read `reference/module.md`. Pick ONE value from the 13-bucket enum using the
 Decision Priority Order (first match wins). Base it on the traced root cause,
@@ -235,10 +217,31 @@ emit `""` for this axis. Take the label from the mapping table in
 `reference/module.md`. Emit the label (`module: ao`), never the bucket
 (`torchAO`).
 
-### Step 7 — priority
+### Step 6 — dtype
+
+Read `reference/dtype.md`. This is a multi-label axis: emit one `dtype: <value>`
+row per dtype the analyzed case implicates, or none when the failure is
+dtype-agnostic. Match on the dtype parametrization suffix, error message,
+traceback, and reproduce command for the Step 1.5 analyzed case, using the
+`keywords` in `categories.dtype` of `reference/proposed_labels.json` — do not
+hard-code dtype spellings here. For an E2E entry, prefer `extract.json`'s E2E
+`dtype`. Emit the label column (e.g. `dtype: bfloat16`), never the bare `code`.
+An empty dtype axis is a valid, common outcome.
+
+### Step 7 — symptom
+
+Read `reference/symptom.md`. This is a multi-label axis: emit one row per matched
+symptom (`Accuracy`, `performance`, `regression`, `random`, `inference`,
+`training`), or none. Match against the analyzed case's title/body/traceback
+using the `keywords` in `categories.symptom` of `reference/proposed_labels.json`
+— do not hard-code symptom keywords here. Require direct evidence, not an
+incidental keyword in the environment dump. Emit each name verbatim
+(case-sensitive) from the JSON. An empty symptom axis is a valid, common outcome.
+
+### Step 8 — priority
 
 Read `reference/priority.md`. Apply the Urgent/High/Medium/Low decision tree
-against the failure mode from Steps 2 and 4. Count failed UT cases (the
+against the failure mode from Step 2. Count failed UT cases (the
 `>6` / `1-6` rows) across the **whole issue** — every `test_cases[]` entry,
 not just the Step 1.5 analyzed case — since severity is a property of the
 issue, not of any single case. If `extract.json` already carries a
@@ -247,20 +250,20 @@ note that in the reason. Priority derives from the observable failure mode (cras
 vs assertion, case count, cited regression percentage), so it stays decidable in
 evidence-only mode.
 
-### Step 8 — Output
+### Step 9 — Output
 
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format, field rules, and brevity/evidence-only
 examples in `reference/output_format.md`. Read that file before producing
-`labels.md`. Also print both tables to stdout.
+`labels.md`. Also print the table to stdout.
 
 When Step 1.5 found 2 or more cases, emit the `Analyzed case:` note defined in
 `reference/output_format.md` so the reader knows which case the labels describe.
 Omit that note entirely for a single-case issue.
 
-When Step 1.5 found 2 or more failure groups, emit the `need_split` row. Omit it
-for a single group. `need_split` is a recommendation only; this skill never
-splits the issue.
+When Step 1.5 found 2 or more failure groups, emit the `need_split` label row.
+Omit it for a single group. `need_split` recommends splitting; this skill never
+splits the issue itself.
 
 This is the final step. Report the `labels.md` path to the user; do not apply
 the table to GitHub.
@@ -276,20 +279,16 @@ the table to GitHub.
    multi-case issue into sub-issues.
 4. Read the reference file for an axis before deciding it. This applies even
    when the issue already carries a prior triage comment or any other existing
-   label/analysis: re-derive every axis (Steps 3-7) from the reference files
+   label/analysis: re-derive every axis (Steps 3-8) from the reference files
    and current evidence this run. An existing comment may be read as one input
    to Step 2's root-cause trace, but it can never substitute for reading
-   `reference/target_component.md`, `dependency.md`, `module.md`, or
+   `reference/dependency.md`, `module.md`, `dtype.md`, `symptom.md`, or
    `priority.md`, and it can never be copied into `labels.md` without
    independently re-running the corresponding step.
 5. Never report the source issue as its own duplicate.
 6. Do not edit `pytorch_folder` or any product code.
 7. Never clone or fetch a checkout to substitute for a missing `pytorch_folder`.
    Absent means evidence-only, not "go find one".
-8. Decide `dependency` (Step 3) before `target_component` (Step 4), never the
-   reverse. A taxonomy value from Step 3 becomes the `target_component` verbatim
-   and forces `NEED_FIX_3RDPARTY`; `none` and `null` force nothing. Never emit a
-   generic `third-party` as `target_component` — name the component.
 
 ## Hard Stops
 

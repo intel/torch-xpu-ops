@@ -33,8 +33,9 @@ search hit that already returned `state` and `labels`.
 
 - Search both repositories. A downstream `intel/torch-xpu-ops` issue and an
   upstream `pytorch/pytorch` issue for one failure legitimately coexist.
-- Prefer open issues. Include a closed issue only when it carries `not_target`
-  or `wontfix`, or when it explains the failure as already resolved.
+- Prefer open issues. Include a closed issue only when it carries `wontfix`
+  (which absorbs the old `not_target`), or when it explains the failure as
+  already resolved.
 - Match on the test case first, then on the error message or the traced root
   cause. Two of the three signals must agree before claiming a duplicate, with
   one exception: a literal body match on the full test name stands alone (see
@@ -53,7 +54,7 @@ search hit that already returned `state` and `labels`.
 - Never report the source issue as its own duplicate. Drop any match whose
   repository and issue number equal the source issue's.
 - The search must actually succeed. If every query fails or returns nothing
-  parseable, omit the `duplicated` row and emit the one-line
+  parseable, omit the `duplicate` row and emit the one-line
   `Duplicate search: failed (<reason>)` note per
   [output_format.md](output_format.md) — never silently treat a failed search
   the same as a clean `has_duplicate: false` result.
@@ -83,18 +84,15 @@ issue in one repository merely because a counterpart exists in the other.
 
 ## Inherited exclusion labels
 
-| Source of `not_target` or `wontfix` | Effect |
+| Source of `wontfix` | Effect |
 |---|---|
 | The source issue's own labels | The flag is `true`; the source is `own_labels`. |
 | A `HIGH` or `MEDIUM` relevance duplicate's labels | The flag is `true`; the source is `duplicate:<repo>#<number>`. |
-| Neither, or only a `LOW` relevance duplicate | Both flags are `false`. |
+| Neither, or only a `LOW` relevance duplicate | The flag is `false`. |
 
-An inherited flag overrides `need_action` to `NEED_SKIP_CASE` exactly as an own
-label would, per the `not_target` row in
-[target_component.md](target_component.md)'s canonical verdicts table. It never
-changes `target_component`, which stays governed by
-[target_component.md](target_component.md). Cite the duplicate's URL whenever a
-flag is inherited.
+`wontfix` absorbs the old `not_target`; treat a legacy `not_target` label on a
+matched issue as `wontfix`. An inherited flag emits the `wontfix` label exactly as
+an own label would. Cite the duplicate's URL whenever a flag is inherited.
 
 ## Minimum decision checks
 
@@ -105,5 +103,5 @@ flag is inherited.
 3. Confirm that self-exclusion was applied.
 4. Confirm that each reported duplicate cites a URL and the agreeing signals.
 5. Confirm that a cross-repository match was not marked `close_as_duplicate`.
-6. Confirm that an inherited `not_target` or `wontfix` came from a `HIGH` or
+6. Confirm that an inherited `wontfix` came from a `HIGH` or
    `MEDIUM` relevance duplicate.
