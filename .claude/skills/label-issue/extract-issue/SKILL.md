@@ -1,6 +1,6 @@
 ---
 name: extract-issue
-description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test (surface), test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
+description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
 ---
 
 # Extract Issue Info
@@ -91,7 +91,8 @@ continue. That is not a hard-stop.
 
 ### Step 3 - Classify
 
-Fill in every field per the **Output schema** table below, reading the rule pack
+Based on the issue title, labels, fields, body,
+fill in every field per the **Output schema** table below, reading the rule pack
 named in a field's Rule cell before deciding that field. Do not classify from
 memory.
 
@@ -124,21 +125,21 @@ always yields `""`.
 | summary | gh REST | The `title`, verbatim. |
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
 | pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | Project fields, or "". |
-| os | you | An `os` code from `categories.os` of `../../reference/proposed_labels.json` (e.g. `Linux`, `Windows`, `WSL`), or "", per [reference/platform_rules.md](reference/platform_rules.md). |
-| platform | you | A `hw` code from `categories.hw` of `../../reference/proposed_labels.json` (e.g. `PVC`, `BMG`, `ARC`, `ARL`, `LNL`, `MTL`, `CRI`, `PTL`), or "", per [reference/platform_rules.md](reference/platform_rules.md). |
-| platform_specific | you | `true` when the issue text reports the failure as hardware-specific, per [reference/platform_rules.md](reference/platform_rules.md). Judged from the text; never probe local hardware. |
-| test | you | `ut` \| `e2e` \| `oob`, per [reference/testcase_rules.md](reference/testcase_rules.md) (keywords in `categories.test` of `../../reference/proposed_labels.json`). |
-| traceback | you | Full Python traceback, chained segments included, per [reference/text_rules.md](reference/text_rules.md). |
-| reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [reference/text_rules.md](reference/text_rules.md). |
-| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [reference/testcase_rules.md](reference/testcase_rules.md). All "" on an E2E issue. |
-| test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [reference/testcase_rules.md](reference/testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |
-| pr_link | you | PR URL the issue is tied to, per [reference/text_rules.md](reference/text_rules.md). |
+| os | you | An `os` code from `categories.os` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
+| platform | you | A `hw` code from `categories.hw` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
+| platform_specific | you | `true`/`false`, derived per [../reference/platform_specific.md](../reference/platform_specific.md). Judged from the text; never probe local hardware. |
+| test | you | `ut` \| `e2e` \| `oob`, per [../reference/testcase_rules.md](../reference/testcase_rules.md) (keywords in `categories.test` of `../../reference/proposed_labels.json`). |
+| traceback | you | Full Python traceback, chained segments included, per [../reference/text_rules.md](reference/text_rules.md). |
+| reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [../reference/text_rules.md](reference/text_rules.md). |
+| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [../reference/testcase_rules.md](reference/testcase_rules.md). All "" on an E2E issue. |
+| test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [reference/testcase_rules.md](../reference/testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |
+| pr_link | you | PR URL the issue is tied to, per [reference/text_rules.md](../reference/text_rules.md). |
 
 Fields sourced from `gh REST` or `gh GraphQL` are copied from that one response.
 Do not re-derive them from the title text, the body, or the labels: a blank Type
-or Priority field means `""`, and the parent decides `priority` itself from
-`reference/priority.md` when it is empty, so an invented value would suppress
-that.
+or Priority field means `""`, and the parent decides `priority` itself in
+Step 8 of the label-issue skill when it is empty, so an invented value would
+suppress that.
 
 ## Authoritative-source fields
 

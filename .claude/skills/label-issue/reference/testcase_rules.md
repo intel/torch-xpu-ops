@@ -5,48 +5,20 @@ unit-test parsing entirely.
 
 ## `test`
 
-One of `ut`, `e2e`, `oob`. The keyword lists for each value are authoritative in
-`categories.test` of `../../reference/proposed_labels.json`; read them from there
-and never hard-code the spellings here. Match them against
-`lowercase(title + " " + body)`.
-
-Build and infrastructure failures are NOT values of this axis. The parent's
-module axis captures them as `module: build` / `module: infra`; this field only
-records the ut/e2e/oob test surface.
-
-### 1. E2E check runs first
-
-Return `e2e` on the first hit:
-
-1. A label exactly equal to `e2e`.
-2. Any `categories.test["test: e2e"].keywords` path hit (e.g.
-   `benchmarks/dynamo/`, `run_benchmark.py`).
-3. An authoritative-list model name (see **Benchmark model lists** below) AND
-   at least one benchmark-context substring: `benchmarks/dynamo`,
-   `run_benchmark`, `torchbenchmark`, `benchmark.py`.
-
-A model name alone is NOT enough, and a bare `hf_`/`timm_` prefix is never
-enough. The name must appear in a loaded list, so a fabricated `hf_made_up` is
-not an E2E signal even next to `benchmark.py`.
-
-### 2. Then OOB
-
-Return `oob` when any `categories.test["test: oob"].keywords` hit is present
-(e.g. `oob`, `out-of-box`) and the E2E check above did not already fire.
-
-### 3. Then UT
-
-Return `ut` on any `categories.test["test: ut"].keywords` hit (e.g. a `pytest`
-invocation, `test/test_`, `test/xpu/test_`, an `op_ut` CSV row, a `-k` selector).
+One of the `code` values in `categories.test` of
+`../../reference/proposed_labels.json`, process in the order of 
+the defitions in the json file, determine with the evidence and keywords of the code 
+against `lowercase(label + " " + title + " " + body)`.
 
 ### 4. Precedence and default
 
-1. e2e signal -> `e2e`
-2. oob signal -> `oob`
-3. ut signal -> `ut`
-4. otherwise -> `ut`
+1. e2e signal -> end-to-end code
+2. oob signal -> out-of-box code
+3. ut signal -> unit-test code
+4. otherwise -> unit-test code
 
-The default is `ut`.
+The default is the unit-test code (the surface `categories.test` marks as the
+fallback when no e2e/oob signal fires).
 
 ## Unit-test entries
 
