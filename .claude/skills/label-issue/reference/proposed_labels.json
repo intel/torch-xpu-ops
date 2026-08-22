@@ -1,0 +1,610 @@
+{
+  "description": "Final proposed label set for intel/torch-xpu-ops (label-issue skill), organized by category. Includes proposed labels plus existing repo labels unchanged by this proposal. 'origin' records where each label comes from; when an old label maps/renames/merges into a label, the source is named in that label's origin.",
+  "issue_type_field": {
+    "description": "GitHub native issue 'Type' field values enabled in the intel org (distinct from labels). These are set on the issue Type field, not applied as labels.",
+    "values": [
+      {
+        "name": "Bug",
+        "meaning": "An unexpected problem or behavior",
+        "origin": "existing; native Type value (intel org)"
+      },
+      {
+        "name": "Feature",
+        "meaning": "A request, idea, or new functionality",
+        "origin": "existing; native Type value (intel org)"
+      },
+      {
+        "name": "Task",
+        "meaning": "A specific piece of work",
+        "origin": "existing; native Type value (intel org)"
+      },
+      {
+        "name": "Epic",
+        "meaning": "Group of related tasks",
+        "origin": "existing; native Type value (intel org); target of old 'long term' label"
+      }
+    ]
+  },
+  "categories": {
+    "type": {
+      "description": "Issue type signal (labels). Native GitHub Type field values Bug/Feature/Task/Epic are NOT labels and are excluded.",
+      "labels": [
+        {
+          "name": "bug",
+          "meaning": "A reported defect/failure (type signal; mirrors native Type 'Bug')",
+          "origin": "github-default; reused unchanged"
+        },
+        {
+          "name": "enhancement",
+          "meaning": "Request for new functionality (type signal; mirrors native Type 'Feature')",
+          "origin": "github-default; reused unchanged"
+        },
+        {
+          "name": "question",
+          "meaning": "Further information requested",
+          "origin": "github-default; reused unchanged"
+        },
+        {
+          "name": "documentation",
+          "meaning": "Docs improvement",
+          "origin": "github-default; reused unchanged"
+        }
+      ]
+    },
+    "test": {
+      "description": "Which test surface failed.",
+      "labels": [
+        {
+          "name": "test: ut",
+          "meaning": "Unit-test failure surface",
+          "origin": "new; replaces 'module: ut'"
+        },
+        {
+          "name": "test: e2e",
+          "meaning": "End-to-end / benchmark failure surface",
+          "origin": "new; replaces 'E2E', 'module: torchbench', and 'benchmark'"
+        },
+        {
+          "name": "test: oob",
+          "meaning": "Out-of-box model test surface",
+          "origin": "new; replaces 'OOB'"
+        }
+      ]
+    },
+    "module": {
+      "description": "Code-category bucket.",
+      "labels": [
+        {
+          "name": "module: distributed",
+          "meaning": "XCCL / ProcessGroup / DDP / FSDP / DTensor / symm_mem / collective ops",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: sdpa",
+          "meaning": "SDPA / flash / efficient attention kernels",
+          "origin": "existing; reused unchanged; absorbs old 'module: transformers'"
+        },
+        {
+          "name": "module: inductor",
+          "meaning": "torch.compile backend: Triton codegen, lowering, codecache, AOTAutograd",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: dynamo",
+          "meaning": "torch.compile frontend: graph breaks, guards, symbolic_convert, tracing",
+          "origin": "new"
+        },
+        {
+          "name": "module: ao",
+          "meaning": "Quantization: int4/int8/fp8/PT2E/torchao",
+          "origin": "existing; reused unchanged; absorbs old 'module: quant'"
+        },
+        {
+          "name": "module: sparse",
+          "meaning": "Sparse tensor formats/ops, nested tensors",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: profiler",
+          "meaning": "torch.profiler, Kineto, record_function, ITT, chrome traces",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: gemm",
+          "meaning": "Matrix-multiplication family (matmul/addmm/bmm/gemm)",
+          "origin": "new; renamed concept from 'module: torch-ops-gemm'"
+        },
+        {
+          "name": "module: eltwise",
+          "meaning": "Elementwise / pointwise ops",
+          "origin": "new; renamed concept from 'module: torch-ops-eltwise'"
+        },
+        {
+          "name": "module: reduction",
+          "meaning": "Reduction ops",
+          "origin": "new; renamed concept from 'module: torch-ops-reduction'"
+        },
+        {
+          "name": "module: ops",
+          "meaning": "Other ATen/native ops: autograd, optimizer, torch.fx, torch.export resolving to an op",
+          "origin": "new; renamed concept from 'module: torch-ops-others'; absorbs old 'module: op impl' and 'module: fx'; target of 'kernel_optimization'"
+        },
+        {
+          "name": "module: core",
+          "meaning": "torch.xpu.* runtime, memory/OOM, RNG, streams, IPC, device management",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: build",
+          "meaning": "Build / compile failure",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: infra",
+          "meaning": "CI/CD infra failure",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: rfc",
+          "meaning": "RFC / design proposal",
+          "origin": "existing; reused unchanged (carries the RFC type signal)"
+        },
+        {
+          "name": "module: dpclang",
+          "meaning": "DPC++ compiler (dpclang) support",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: utils",
+          "meaning": "Torch utils",
+          "origin": "new"
+        }
+      ]
+    },
+    "os": {
+      "description": "Operating system.",
+      "labels": [
+        {
+          "name": "os: Windows",
+          "meaning": "Windows platform",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "os: Linux",
+          "meaning": "Linux platform",
+          "origin": "renamed from 'os: Ubuntu'"
+        },
+        {
+          "name": "os: WSL",
+          "meaning": "Windows Subsystem for Linux",
+          "origin": "existing; reused unchanged"
+        }
+      ]
+    },
+    "hw": {
+      "description": "Hardware platform.",
+      "labels": [
+        {
+          "name": "hw: PVC",
+          "meaning": "Ponte Vecchio / Data Center GPU Max",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "hw: BMG",
+          "meaning": "Battlemage",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "hw: ARC",
+          "meaning": "Alchemist / Arc",
+          "origin": "renamed from 'hw: Arc' (casing)"
+        },
+        {
+          "name": "hw: ARL",
+          "meaning": "Arrow Lake",
+          "origin": "new"
+        },
+        {
+          "name": "hw: LNL",
+          "meaning": "Lunar Lake",
+          "origin": "renamed from 'hw : LNL' (stray space)"
+        },
+        {
+          "name": "hw: MTL",
+          "meaning": "Meteor Lake",
+          "origin": "renamed from 'hw : MTL' (stray space)"
+        },
+        {
+          "name": "hw: CRI",
+          "meaning": "Crescent Island",
+          "origin": "new"
+        },
+        {
+          "name": "hw: PTL",
+          "meaning": "Panther Lake",
+          "origin": "existing; reused unchanged"
+        }
+      ]
+    },
+    "dependency": {
+      "description": "External dependency owner.",
+      "labels": [
+        {
+          "name": "dependency component: driver",
+          "meaning": "GPU driver (version gate, submit/launch exception)",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency component: oneDNN",
+          "meaning": "oneDNN primitive (matmul/conv/linear/quant)",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency component: oneMKL",
+          "meaning": "oneMKL (complex matmul, LU/solve, FFT)",
+          "origin": "existing; reused unchanged; supersedes CPU-only 'mkl'"
+        },
+        {
+          "name": "dependency component: oneAPI",
+          "meaning": "Host DPC++ / icpx build",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency component: Triton",
+          "meaning": "XPU Triton / Inductor Triton crash",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency component: MSVC",
+          "meaning": "Windows C-runtime, cl.exe, LINK.exe",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency component: community",
+          "meaning": "Confirmed open pytorch/pytorch issue",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dependency: third_party",
+          "meaning": "Non-torch site-package frame (e.g. transformers)",
+          "origin": "renamed from 'dependency: third_party packages'"
+        },
+        {
+          "name": "dependency component: oneCCL",
+          "meaning": "ProcessGroupXCCL / c10d / collective",
+          "origin": "new"
+        },
+        {
+          "name": "dependency component: IGC",
+          "meaning": "JIT / IGC / ocloc / illegal instruction",
+          "origin": "new"
+        },
+        {
+          "name": "dependency component: Level_Zero",
+          "meaning": "zeXxx / Level Zero / enumeration",
+          "origin": "new"
+        }
+      ]
+    },
+    "dtype": {
+      "description": "Data type involved in the failure.",
+      "labels": [
+        {
+          "name": "dtype: float32",
+          "meaning": "fp32",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: float64",
+          "meaning": "fp64 / double",
+          "origin": "new"
+        },
+        {
+          "name": "dtype: float16",
+          "meaning": "fp16",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: bfloat16",
+          "meaning": "bf16",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: float8",
+          "meaning": "fp8 (e4m3/e5m2)",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: float4",
+          "meaning": "fp4",
+          "origin": "new"
+        },
+        {
+          "name": "dtype: complex",
+          "meaning": "complex dtypes (complex64/complex128)",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: int64",
+          "meaning": "int64 / long",
+          "origin": "new"
+        },
+        {
+          "name": "dtype: int32",
+          "meaning": "int32 / int",
+          "origin": "new"
+        },
+        {
+          "name": "dtype: int16",
+          "meaning": "int16 / short",
+          "origin": "new"
+        },
+        {
+          "name": "dtype: int8",
+          "meaning": "int8",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: int4",
+          "meaning": "int4",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: amp_bf16",
+          "meaning": "Autocast/AMP bf16",
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "dtype: amp_fp16",
+          "meaning": "Autocast/AMP fp16",
+          "origin": "existing; reused unchanged"
+        }
+      ]
+    },
+    "triage": {
+      "description": "Duplicate / exclusion / split triage signals.",
+      "labels": [
+        {
+          "name": "duplicate",
+          "meaning": "Issue duplicates an existing issue",
+          "origin": "github-default; reused unchanged"
+        },
+        {
+          "name": "wontfix",
+          "meaning": "Failure is out of scope; skip the case",
+          "origin": "github-default; reused unchanged; absorbs old 'not_target'"
+        },
+        {
+          "name": "need_split",
+          "meaning": "Issue reports 2+ distinct failure groups and should be split into separate issues",
+          "origin": "new (promoted from report-only field)"
+        }
+      ]
+    },
+    "symptom": {
+      "description": "Failure-characteristic signals describing the nature of the failure (unchanged existing labels).",
+      "labels": [
+        {
+          "name": "Accuracy",
+          "meaning": "Accuracy-related failure",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "performance",
+          "meaning": "Performance-related failure",
+          "origin": "existing; unchanged; also target of old 'kernel_optimization'"
+        },
+        {
+          "name": "regression",
+          "meaning": "A regression",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "random",
+          "meaning": "Flaky / nondeterministic failure",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "inference",
+          "meaning": "Inference workload phase",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "training",
+          "meaning": "Training workload phase",
+          "origin": "existing; unchanged"
+        }
+      ]
+    },
+    "workflow": {
+      "description": "Existing status / triage / workflow labels unchanged by this proposal (not emitted by the label-issue skill).",
+      "labels": [
+        {
+          "name": "good first issue",
+          "meaning": "Good for newcomers",
+          "origin": "github-default; unchanged"
+        },
+        {
+          "name": "help wanted",
+          "meaning": "Extra attention needed",
+          "origin": "github-default; unchanged"
+        },
+        {
+          "name": "triaged",
+          "meaning": "Issue has been triaged",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "Ready for merge",
+          "meaning": "PR ready to merge",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "client",
+          "meaning": "Client-reported",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "roadmap",
+          "meaning": "Planning / roadmap",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "wait_upstream",
+          "meaning": "Needs upstream tests adjustment",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "ut_upstream",
+          "meaning": "Upstream unit-test dependency",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "skipped",
+          "meaning": "Temporarily skipped test tracking",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "skipped_windows",
+          "meaning": "Temporarily skipped on Windows",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "skipped_bmg",
+          "meaning": "Temporarily skipped on BMG",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "skipped_dpclang",
+          "meaning": "Temporarily skipped on dpclang",
+          "origin": "existing; unchanged"
+        }
+      ]
+    },
+    "ci_control": {
+      "description": "CI-control / Windows toggle labels unchanged by this proposal.",
+      "labels": [
+        {
+          "name": "disable_all",
+          "meaning": "Disable all CI test jobs for the PR, keep basic lint",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_ut",
+          "meaning": "Disable all non-distributed UT test jobs for the PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_e2e",
+          "meaning": "Disable all e2e test jobs for the PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_distributed",
+          "meaning": "Disable distributed UT test jobs for the PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_win",
+          "meaning": "Disable Windows CI test jobs for the PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_windows_ut",
+          "meaning": "Disable Windows UT test jobs for the PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_accelerate",
+          "meaning": "Disable accelerate test job in PR CI testing",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_transformers",
+          "meaning": "Disable transformers UT test in PR CI",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_build",
+          "meaning": "Disable source-code build for CI test, use nightly wheel",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "disable_auto",
+          "meaning": "Disable auto-label workflow for PR",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "windows_ci",
+          "meaning": "Windows CI trigger",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "windows_ut",
+          "meaning": "Windows UT trigger",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "pytorch-ci-failure",
+          "meaning": "Auto-added on PyTorch CI failure issues",
+          "origin": "existing; unchanged"
+        }
+      ]
+    },
+    "agent": {
+      "description": "Agent lifecycle labels unchanged by this proposal.",
+      "labels": [
+        {
+          "name": "agent:active",
+          "meaning": "Agent lifecycle: active",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:needs-human",
+          "meaning": "Agent lifecycle: needs human",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:blocked",
+          "meaning": "Agent lifecycle: blocked",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:skipped",
+          "meaning": "Agent lifecycle: skipped",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:close",
+          "meaning": "Agent lifecycle: close",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:merged",
+          "meaning": "PR auto-generated by copilot agent and merged after review",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "agent:reproduction-needed",
+          "meaning": "Issue needs a reproducer before agent can proceed",
+          "origin": "existing; unchanged"
+        },
+        {
+          "name": "ai_generated",
+          "meaning": "Content generated by an AI assistant",
+          "origin": "existing; unchanged"
+        }
+      ]
+    },
+    "misc": {
+      "description": "Other existing labels unchanged by this proposal, outside every proposed axis.",
+      "labels": [
+        {
+          "name": "lib: helion",
+          "meaning": "Helion library",
+          "origin": "existing; unchanged (no proposed axis)"
+        }
+      ]
+    }
+  }
+}
