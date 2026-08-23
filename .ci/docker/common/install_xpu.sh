@@ -217,11 +217,10 @@ function install_ubuntu() {
 function install_ubuntu_client() {
     . /etc/os-release
 
-    local -r supported_lts_versions=("plucky")
-    local -r supported_rolling_versions=("noble" "plucky")
+    local -r supported_rolling_versions=("noble" "questing" "resolute" )
 
     if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
-        log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
+        log_error "${XPU_DRIVER_TYPE} not supported for client GPU"
         exit 1
     else
         if [[ ! " ${supported_rolling_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
@@ -249,12 +248,12 @@ function install_ubuntu_client() {
     # Install runtime packages based on driver type
     local -r base_packages=(
         libze-intel-gpu1 libze1 intel-metrics-discovery intel-opencl-icd clinfo intel-gsc
-        intel-media-va-driver-non-free libmfx-gen1 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo
+        intel-media-va-driver-non-free libmfx-gen1.2 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo
     )
     install_packages "ubuntu" "${base_packages[@]}"
 
     # Development packages
-    install_packages "ubuntu" libze-dev intel-ocloc xpu-smi libgomp1 pciutils
+    install_packages "ubuntu" libze-dev intel-ocloc xpu-smi pciutils
 
     log_info "Ubuntu installation completed successfully"
 }
