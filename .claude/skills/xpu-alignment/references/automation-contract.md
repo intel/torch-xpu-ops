@@ -38,6 +38,8 @@ Use read-only GitHub access to exhaust the requested half-open UTC window. Write
     "end": "2026-08-21T00:00:00Z"
   },
   "collection": {
+    "observed_count": 31,
+    "unique_count": 29,
     "queries": [{
       "source": "issues-created",
       "request": "gh api ...",
@@ -71,8 +73,10 @@ Use read-only GitHub access to exhaust the requested half-open UTC window. Write
 The required query sources are `issues-created`, `prs-created`, `prs-merged`,
 and `default-branch-commits`. There may be multiple queries per source. Every
 query records its exact request, page count, result count, truncation flag, and
-errors. `status: complete` requires every required source, no query error or
-truncation, and query counts that add up to the pre-deduplication observations.
+errors. `observed_count` is the sum of the query counts before deduplication;
+`unique_count` is the number of inventory entries after deduplication.
+`status: complete` requires every required source, no query error or truncation,
+and both counts to match their evidence.
 
 The inventory contains every distinct object returned by the queries. Every item
 has exactly one `triage` value: `reject` or `validate`, plus a concrete reason.
