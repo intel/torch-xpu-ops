@@ -102,7 +102,8 @@ and executes validated entries serially. Each child receives only the allowliste
 runtime variables needed for Python, locale, HOME, and XPU. It never receives
 GitHub, model-provider, cloud, or publishing credentials and has no outbound
 network access. It runs each reproducer in a separate process group and removes
-the entire group on completion or timeout so descendants cannot escape the bound.
+the entire group on completion or timeout. The runner acts as a child subreaper
+and also terminates detached descendants so they cannot escape the bound.
 
 The runner continues after a timeout, nonzero exit, signal, or launch error and
 writes one result for every execution-plan entry:
