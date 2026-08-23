@@ -9,7 +9,7 @@ on:
       - '.github/scripts/bot_*.py'
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1
+  BEDROCK_MODEL: us.anthropic.claude-opus-4-6-20250617-v1:0
   CLAUDE_ALLOWED_TOOLS: Bash,Read,Glob,Grep,WebFetch,Skill,Task
   COST_TRACKING_ISSUE: 4251
   # The standing issue that carries the daily XPU alignment drafts. `file`
