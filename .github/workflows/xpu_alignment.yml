@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
+  BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1
   ALIGNMENT_RUN_ROOT: agent_space_xpu/runs
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'

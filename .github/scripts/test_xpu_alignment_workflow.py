@@ -26,6 +26,13 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertEqual(self.text.count("runs-on: xpu-agent"), 2)
         self.assertNotIn("runs-on: ${{ inputs.runner", self.text)
 
+    def test_alignment_uses_the_bedrock_model_allowed_by_bot_policy(self) -> None:
+        allowed = "BEDROCK_MODEL: global.anthropic.claude-opus-4-6-v1"
+        self.assertIn(allowed, self.text)
+        self.assertIn(allowed, self.bot_text)
+        self.assertNotIn("global.anthropic.claude-opus-5", self.text)
+        self.assertNotIn("global.anthropic.claude-opus-5", self.bot_text)
+
     def test_agent_roles_surround_the_deterministic_runner(self) -> None:
         positions = [
             self.text.index("role `scan-prepare`"),
