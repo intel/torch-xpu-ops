@@ -3,6 +3,15 @@
 Decides the `dependency` axis for operator-level failures: `oneMKL`, `oneDNN`,
 `none` (native SYCL / CPU fallback), or `null` (insufficient evidence).
 
+This file is **operator-resolution detail only** — the domain knowledge the JSON
+cannot hold. It carries the operator tables, flip conditions, and verification
+commands that the `oneMKL` / `oneDNN` `evidence` strings in
+`categories.dependency` of `proposed_labels.json` point back to. It deliberately
+does NOT restate any GitHub label spelling: this file resolves to a bare
+taxonomy value (`oneMKL`, `oneDNN`, `none`, `null`); the emitted label name is
+read from `categories.dependency` (see the mapping in `dependency.md`). Never
+hard-code a `dependency component: <x>` spelling here.
+
 ## Path conventions
 
 All paths below are relative to one of two repository roots:

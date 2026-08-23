@@ -34,8 +34,8 @@ search hit that already returned `state` and `labels`.
 - Search both repositories. A downstream `intel/torch-xpu-ops` issue and an
   upstream `pytorch/pytorch` issue for one failure legitimately coexist.
 - Prefer open issues. Include a closed issue only when it carries `wontfix`
-  (which absorbs the old `not_target`), or when it explains the failure as
-  already resolved.
+  or `not_target`, `not_target` is absorbed by the `wontfix` in new label
+  definitions.
 - Match on the test case first, then on the error message or the traced root
   cause. Two of the three signals must agree before claiming a duplicate, with
   one exception: a literal body match on the full test name stands alone (see
@@ -49,7 +49,7 @@ search hit that already returned `state` and `labels`.
   coincidental text overlap. It does not require a matching error or root cause.
   The exception is deliberately narrow — it needs the *full* test name, so a
   bare test-class or operator substring never qualifies.
-- Run one search set for the analyzed case selected in Step 1.5. When the issue
+- Run one search set for the representative case selected in Step 3. When the issue
   reports several cases, the other entries are out of scope for this run.
 - Never report the source issue as its own duplicate. Drop any match whose
   repository and issue number equal the source issue's.

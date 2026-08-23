@@ -30,7 +30,7 @@
     ]
   },
   "priority_field": {
-    "description": "intel/torch-xpu-ops PyTorchXPU project 'Priority' field (Fields -> Priority) options. These are set on the project item's Priority field, NOT applied as labels. 'tier' is the canonical name emitted in labels.md; 'option' is the current project field option. 'keywords' are heuristic hints used only when the project Priority field is unset; a human-set Priority is always preserved verbatim. See priority.md for the full decision tree.",
+    "description": "intel/torch-xpu-ops PyTorchXPU project 'Priority' field (Fields -> Priority) options. These are set on the project item's Priority field, NOT applied as labels. 'tier' is the canonical name emitted in labels.md; 'option' is the current project field option. 'keywords' are heuristic hints used only when the project Priority field is unset; a human-set Priority is always preserved verbatim. See Step 3.4 (priority) of the label-issue skill for the full decision tree.",
     "project": "PyTorchXPU",
     "field": "Priority",
     "values": [
@@ -117,7 +117,7 @@
       ]
     },
     "module": {
-      "description": "Code-category bucket. 'keywords' supplement the module.md Decision Priority Order; the traced root cause remains primary, keywords are hints only.",
+      "description": "Code-category axis: exactly one label per issue. The label list below is ordered by decision priority -- when an issue matches several labels, walk this array top-to-bottom and take the FIRST whose evidence is met. The traced root cause is primary; 'keywords' are hints only. 'module: inductor' precedes 'module: dynamo' deliberately: every torch.compile failure walks through torch/_dynamo frames, so a Dynamo frame alone proves nothing -- choose 'module: dynamo' only when the defect is in tracing/guards with no backend-codegen signal. There is no generic 'module: others'; a failure that would fall through resolves to 'module: build', 'module: dpclang', 'module: rfc', 'module: utils', or 'module: infra' (the catch-all, last). 'module: ut' is NOT a member of this axis -- it is a test-surface signal on the 'test' axis. When judging by keyword, ignore the '## Versions' / 'Collecting environment' dump.",
       "labels": [
         {
           "name": "module: distributed",
@@ -127,27 +127,9 @@
         },
         {
           "name": "module: sdpa",
-          "evidence": "SDPA / flash / efficient attention kernels",
+          "evidence": "SDPA / flash / efficient attention kernels (unless already claimed by distributed)",
           "keywords": ["sdpa", "scaled_dot_product", "scaled dot product", "flash attention", "flash_attention", "efficient attention", "attention kernel", "transformer"],
           "origin": "existing; reused unchanged; absorbs old 'module: transformers'"
-        },
-        {
-          "name": "module: inductor",
-          "evidence": "torch.compile backend: Triton codegen, lowering, codecache, AOTAutograd",
-          "keywords": ["inductor", "triton codegen", "lowering", "codecache", "fxgraphcache", "aotautograd", "output_code", "torch.compile backend"],
-          "origin": "existing; reused unchanged"
-        },
-        {
-          "name": "module: dynamo",
-          "evidence": "torch.compile frontend: graph breaks, guards, symbolic_convert, tracing",
-          "keywords": ["dynamo", "graph break", "graph_break", "guards", "symbolic_convert", "fullgraph", "tracing error"],
-          "origin": "new"
-        },
-        {
-          "name": "module: ao",
-          "evidence": "Quantization: int4/int8/fp8/PT2E/torchao",
-          "keywords": ["quant", "quantization", "int4", "int8", "fp8", "pt2e", "torchao", "quantize"],
-          "origin": "existing; reused unchanged; absorbs old 'module: quant'"
         },
         {
           "name": "module: sparse",
@@ -160,6 +142,24 @@
           "evidence": "torch.profiler, Kineto, record_function, ITT, chrome traces",
           "keywords": ["profiler", "kineto", "record_function", "itt", "chrome trace"],
           "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: inductor",
+          "evidence": "torch.compile backend: Triton codegen, lowering, codecache, AOTAutograd",
+          "keywords": ["inductor", "triton codegen", "lowering", "codecache", "fxgraphcache", "aotautograd", "output_code", "torch.compile backend"],
+          "origin": "existing; reused unchanged"
+        },
+        {
+          "name": "module: dynamo",
+          "evidence": "torch.compile frontend: graph breaks, guards, symbolic_convert, tracing (no backend-codegen signal)",
+          "keywords": ["dynamo", "graph break", "graph_break", "guards", "symbolic_convert", "fullgraph", "tracing error"],
+          "origin": "new"
+        },
+        {
+          "name": "module: ao",
+          "evidence": "Quantization: int4/int8/fp8/PT2E/torchao",
+          "keywords": ["quant", "quantization", "int4", "int8", "fp8", "pt2e", "torchao", "quantize"],
+          "origin": "existing; reused unchanged; absorbs old 'module: quant'"
         },
         {
           "name": "module: gemm",
@@ -198,28 +198,28 @@
           "origin": "existing; reused unchanged"
         },
         {
-          "name": "module: infra",
-          "evidence": "CI/CD infra failure",
-          "keywords": ["ci", "workflow", "github action", "githubaction", "runner", "pipeline", "infrastructure"],
-          "origin": "existing; reused unchanged"
-        },
-        {
-          "name": "module: rfc",
-          "evidence": "RFC / design proposal",
-          "keywords": ["rfc", "design proposal", "design doc"],
-          "origin": "existing; reused unchanged (carries the RFC type signal)"
-        },
-        {
           "name": "module: dpclang",
-          "evidence": "DPC++ compiler (dpclang) support",
+          "evidence": "DPC++ compiler (dpclang) support surfacing during compile",
           "keywords": ["dpclang", "dpc++ compiler", "dpcpp"],
           "origin": "existing; reused unchanged"
         },
         {
+          "name": "module: rfc",
+          "evidence": "RFC / design proposal / tracking-only feature request",
+          "keywords": ["rfc", "design proposal", "design doc"],
+          "origin": "existing; reused unchanged (carries the RFC type signal)"
+        },
+        {
           "name": "module: utils",
-          "evidence": "Torch utils",
+          "evidence": "Torch utils not resolving to any op or runtime surface",
           "keywords": ["torch.utils", "torch utils", "dataloader", "checkpoint util"],
           "origin": "new"
+        },
+        {
+          "name": "module: infra",
+          "evidence": "CI/CD, tracking, meta, test-harness -- the catch-all when no other module matches",
+          "keywords": ["ci", "workflow", "github action", "githubaction", "runner", "pipeline", "infrastructure"],
+          "origin": "existing; reused unchanged"
         }
       ]
     },
@@ -311,60 +311,74 @@
       ]
     },
     "dependency": {
-      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and xpu_operator_dependency_list.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only.",
+      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and dependency_info.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only. 'code' is the bare taxonomy value the analysis resolves to; the emitted GitHub label is 'name'. 'exists_in_repo' defaults to true; when false the label must be created before applying and the reason must say so.",
       "labels": [
         {
           "name": "dependency component: driver",
+          "code": "driver",
           "evidence": "Failure originates in the GPU driver: a driver version gate, a submit/launch SYCL exception, or an explicit driver error. Not a library merely in the call path.",
           "origin": "existing; reused unchanged"
         },
         {
           "name": "dependency component: oneDNN",
-          "evidence": "Failure originates in a oneDNN primitive for an operator listed in xpu_operator_dependency_list.md section 1.2: real-dtype matmul (Blas.cpp), convolution (Conv.cpp), fused linear (Linear.cpp), or quantized (qconv.cpp/qlinear.cpp). Listing alone is insufficient; the failure must originate in oneDNN.",
+          "code": "oneDNN",
+          "evidence": "Failure originates in a oneDNN primitive for an operator listed in dependency_info.md section 1.2: real-dtype matmul (Blas.cpp), convolution (Conv.cpp), fused linear (Linear.cpp), or quantized (qconv.cpp/qlinear.cpp). Listing alone is insufficient; the failure must originate in oneDNN.",
           "origin": "existing; reused unchanged"
         },
         {
           "name": "dependency component: oneMKL",
-          "evidence": "Failure originates in oneMKL for an operator listed in xpu_operator_dependency_list.md section 1.1 with its stated Condition confirmed: complex-dtype matmul (BlasImpl.cpp), LU/triangular solve (BatchLinearAlgebra.cpp), or FFT (SpectralOps.cpp). Listing alone is insufficient.",
+          "code": "oneMKL",
+          "evidence": "Failure originates in oneMKL for an operator listed in dependency_info.md section 1.1 with its stated Condition confirmed: complex-dtype matmul (BlasImpl.cpp), LU/triangular solve (BatchLinearAlgebra.cpp), or FFT (SpectralOps.cpp). Listing alone is insufficient.",
           "origin": "existing; reused unchanged; supersedes CPU-only 'mkl'"
         },
         {
           "name": "dependency component: oneAPI",
+          "code": "oneAPI",
           "evidence": "Host DPC++ / icpx build failure only (a build-time dependency, not a runtime one).",
           "origin": "existing; reused unchanged"
         },
         {
           "name": "dependency component: Triton",
+          "code": "Triton",
           "evidence": "XPU triton or libtriton, or an Inductor Triton crash. An eager (non-compiled) failure is NOT this value.",
           "origin": "existing; reused unchanged"
         },
         {
           "name": "dependency component: MSVC",
+          "code": "MSVC",
           "evidence": "Windows C-runtime error (C#### code), cl.exe, or LINK.exe failure.",
           "origin": "existing; reused unchanged"
         },
         {
           "name": "dependency component: community",
+          "code": "community",
           "evidence": "A confirmed, relevant, OPEN pytorch/pytorch issue for the same failure.",
           "origin": "existing; reused unchanged"
         },
         {
-          "name": "dependency: third_party",
+          "name": "dependency component: third_party",
+          "code": "third_party_packages",
           "evidence": "An originating non-torch site-packages/<pkg>/ frame (e.g. site-packages/transformers/). A site-packages/torch/ frame is PyTorch itself and is NOT this value.",
-          "origin": "renamed from 'dependency: third_party packages'"
+          "origin": "renamed from 'dependency: third_party packages' (prefix aligned to 'dependency component: ')"
         },
         {
           "name": "dependency component: oneCCL",
+          "code": "oneCCL",
+          "exists_in_repo": false,
           "evidence": "Failure originates in oneCCL: ProcessGroupXCCL, c10d, or a collective-op frame.",
           "origin": "new"
         },
         {
           "name": "dependency component: IGC",
+          "code": "IGC",
+          "exists_in_repo": false,
           "evidence": "JIT/IGC compilation, ocloc, shader dump, or an illegal-instruction failure originating in IGC.",
           "origin": "new"
         },
         {
           "name": "dependency component: Level_Zero",
+          "code": "Level_Zero",
+          "exists_in_repo": false,
           "evidence": "A zeXxx call, Level Zero runtime, or device-enumeration failure.",
           "origin": "new"
         }
@@ -474,7 +488,7 @@
       ]
     },
     "triage": {
-      "description": "Duplicate / exclusion / split triage signals. 'keywords' supplement the duplicates.md and Step 1.5 grouping rules; they are hints, not a substitute for the two-of-three duplicate signal rule or the normalized-error-group analysis.",
+      "description": "Duplicate / exclusion / split triage signals. 'keywords' supplement the duplicates.md and Step 2 grouping rules; they are hints, not a substitute for the two-of-three duplicate signal rule or the normalized-error-group analysis.",
       "labels": [
         {
           "name": "duplicate",
@@ -497,7 +511,7 @@
       ]
     },
     "symptom": {
-      "description": "Failure-characteristic signals describing the nature of the failure. 'keywords' are the authoritative signal source for the symptom axis; read them from here rather than hard-coding them in symptom.md.",
+      "description": "Failure-characteristic signals describing the nature of the failure. Multi-label: evaluate every label independently and emit one for EACH whose evidence/keywords are met -- a single issue routinely carries several (e.g. regression + inference, or Accuracy + training); never stop at the first match. An empty axis is valid. 'keywords' are the authoritative signal source for the symptom axis; read them from here rather than hard-coding them in the skill.",
       "labels": [
         {
           "name": "Accuracy",

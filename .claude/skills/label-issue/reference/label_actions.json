@@ -34,13 +34,13 @@
         { "from": "hw : LNL", "label": "hw: LNL", "section": "6a", "note": "Strip stray space; format 'hw: <CODE>'." },
         { "from": "hw : MTL", "label": "hw: MTL", "section": "6a", "note": "Strip stray space; format 'hw: <CODE>'." },
         { "from": "os: Ubuntu", "label": "os: Linux", "section": "5a/5b", "note": "Rename to generic enum; alternative to creating 'os: Linux'." },
-        { "from": "dependency: third_party packages", "label": "dependency: third_party", "section": "7a", "note": "Drop trailing 'packages'." }
+        { "from": "dependency: third_party packages", "label": "dependency component: third_party", "section": "7a", "note": "Drop trailing 'packages' and align prefix to 'dependency component: '." }
       ]
     },
     "remove": {
       "description": "Delete labels no longer needed.",
       "items": [
-        { "label": "module: cpp extension", "section": "3b", "note": "No need this label; folds into 'module: others'." },
+        { "label": "module: cpp extension", "section": "3b", "note": "No need this label; folds into 'module: ops'." },
         { "label": "mkl", "section": "7b", "note": "Drop it; 'oneMKL' is the XPU one." },
         { "label": "feature_stage1_PT2.9", "section": "outside-axis" },
         { "label": "port_from_skiplist", "section": "outside-axis" },
