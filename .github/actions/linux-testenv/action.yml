@@ -21,18 +21,6 @@ inputs:
     type: string
     default: ''
     description: 'Optional tag (e.g. target/baseline) used to select the matching wheel artifact'
-  pytorch_artifact_repo:
-    type: string
-    default: 'pytorch/pytorch'
-    description: 'Repo to fetch a PyTorch CI-built wheel artifact from, used when pytorch == artifact_wheel'
-  pytorch_artifact_run_id:
-    type: string
-    default: ''
-    description: 'Workflow run id to fetch a PyTorch CI-built wheel artifact from, used when pytorch == artifact_wheel'
-  pytorch_artifact_name:
-    type: string
-    default: ''
-    description: 'Artifact name (e.g. manywheel-py3_10-xpu) to download, used when pytorch == artifact_wheel'
 
 runs:
   using: composite
@@ -79,28 +67,6 @@ runs:
       uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
-    - name: Ensure gh CLI is available
-      if: ${{ inputs.pytorch == 'artifact_wheel' }}
-      shell: bash -xe {0}
-      run: |
-        if ! command -v gh >/dev/null 2>&1; then
-          GH_VERSION=2.63.2
-          curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o /tmp/gh.tar.gz
-          rm -rf /tmp/gh-cli && mkdir -p /tmp/gh-cli
-          tar -xzf /tmp/gh.tar.gz -C /tmp/gh-cli --strip-components=1
-          echo "/tmp/gh-cli/bin" >> "$GITHUB_PATH"
-        fi
-    - name: Download Pytorch wheel from PyTorch CI artifact
-      if: ${{ inputs.pytorch == 'artifact_wheel' }}
-      shell: bash -xe {0}
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        rm -rf pytorch-artifact-wheel && mkdir pytorch-artifact-wheel
-        gh run download ${{ inputs.pytorch_artifact_run_id }} \
-          --repo ${{ inputs.pytorch_artifact_repo }} \
-          --name ${{ inputs.pytorch_artifact_name }} \
-          --dir pytorch-artifact-wheel
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -111,13 +77,6 @@ runs:
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "artifact_wheel" -c) -ne 0 ];then
-          # --no-deps: the manywheel build pins an exact triton-xpu git commit that
-          # isn't published to any index, so let the resolver skip it and install
-          # torch's other runtime deps plus a compatible triton-xpu/torchvision/torchaudio separately.
-          uv pip install --force-reinstall --no-deps $(find pytorch-artifact-wheel -name "*.whl")
-          uv pip install filelock typing-extensions sympy networkx jinja2 fsspec
-          uv pip install torchvision torchaudio triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
