@@ -322,10 +322,10 @@ jobs:
 
             \`file\` only works on the standing XPU alignment triage issue. The
             daily alignment workflow posts one draft comment per reviewed
-            candidate there; \`file <unit-id>\` copies that comment's text into a
-            new issue verbatim. No agent runs in between, so what you read in the
-            draft is exactly what gets published. You can only file a unit the
-            review already produced, and each unit can be filed once.
+            candidate there; \`file <unit-id>\` copies its reviewed title and visible
+            body into a new issue. No agent runs in between; the publisher adds
+            only a hidden stable-unit marker for retry safety. You can only file a
+            unit the review already produced, and each unit can be filed once.
 
             All other commands (merge, revert, rebase, lint, rerun, review, ut-check)
             are only available on pull request comments.`;
@@ -1370,9 +1370,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # No agent runs here. The draft comment was written by the reviewed daily
-      # alignment run and is copied into the new issue byte for byte, so the
-      # maintainer who approves it has already read exactly what gets published.
+      # No agent runs here. The reviewed title and visible body are preserved;
+      # only a hidden stable-unit marker is added for idempotent retries.
       - name: File the approved alignment draft
         id: file
         env:

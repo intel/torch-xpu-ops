@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import unittest
+from unittest import mock
+
+import alignment_triage
 
 from alignment_triage import (
+    DRY_RUN_UNIT_MARKER,
     UNIT_MARKER,
     filed_body,
     find_draft,
@@ -51,6 +55,14 @@ class DraftLookupTests(unittest.TestCase):
         )
         self.assertTrue(has_unit([{"id": 3, "body": note}], "candidate-1"))
 
+    def test_dry_run_draft_cannot_be_filed(self) -> None:
+        body = render_draft(
+            "candidate-1", TITLE, "Details.", "12345", "2026-08-18", dry_run=True
+        )
+        self.assertIn(DRY_RUN_UNIT_MARKER.format(run_id="12345", unit_id="candidate-1"), body)
+        with self.assertRaises(SystemExit):
+            find_draft([{"id": 1, "body": body}], "candidate-1")
+
 
 class DraftParsingTests(unittest.TestCase):
     def test_splits_title_and_body(self) -> None:
@@ -99,6 +111,21 @@ class FiledMarkerTests(unittest.TestCase):
         self.assertEqual(updated.count("<!-- alignment-unit-filed: #9 -->"), 1)
 
 
+class IssueCreationTests(unittest.TestCase):
+    def test_existing_published_unit_is_reused(self) -> None:
+        url = "https://github.com/intel/torch-xpu-ops/issues/42"
+        with (
+            mock.patch.object(alignment_triage, "find_published_issue", return_value=url),
+            mock.patch.object(alignment_triage, "gh") as gh_mock,
+        ):
+            result = alignment_triage.create_issue(
+                "intel/torch-xpu-ops", TITLE, "Details.", "candidate-1"
+            )
+
+        self.assertEqual(result, url)
+        gh_mock.assert_not_called()
+
+
 class RunNoteTests(unittest.TestCase):
     def test_mentions_the_maintainers_and_is_not_mistaken_for_a_draft(self) -> None:
         body = render_run_note("12345", "2026-08-18", "Needs a human", ["- x"], "@a @b")
@@ -112,15 +139,21 @@ class RunNoteTests(unittest.TestCase):
         self.assertFalse(has_run_note([{"id": 1, "body": body}], "12346"))
 
     def test_a_quiet_day_pings_nobody(self) -> None:
-        self.assertIsNone(run_note({"decision": "none", "needs_attention": False}, [], []))
+        headline, lines, should_notify = run_note(
+            {"decision": "none", "needs_attention": False}, [], []
+        )
+        self.assertIn("complete", headline)
+        self.assertTrue(any("0" in line for line in lines))
+        self.assertFalse(should_notify)
 
     def test_an_unattended_filing_is_announced(self) -> None:
         decision = {"decision": "file-one", "needs_attention": False}
         payloads = [{"unit_id": "c1", "title": TITLE}]
         url = "https://github.com/intel/torch-xpu-ops/issues/42"
-        headline, lines = run_note(decision, payloads, [("c1", url)])
+        headline, lines, should_notify = run_note(decision, payloads, [("c1", url)])
         self.assertIn("filed automatically", headline)
         self.assertTrue(any(url in line for line in lines))
+        self.assertTrue(should_notify)
 
     def test_two_candidates_are_all_listed(self) -> None:
         decision = {"decision": "triage", "needs_attention": False}
@@ -128,10 +161,26 @@ class RunNoteTests(unittest.TestCase):
             {"unit_id": "c1", "title": TITLE},
             {"unit_id": "c2", "title": "[xpu-alignment] Other"},
         ]
-        headline, lines = run_note(decision, payloads, [])
+        headline, lines, should_notify = run_note(decision, payloads, [])
         self.assertIn("2 XPU alignment candidates", headline)
         self.assertTrue(any("`c1`" in line for line in lines))
         self.assertTrue(any("`c2`" in line for line in lines))
+        self.assertTrue(should_notify)
+
+    def test_dry_run_summary_never_notifies(self) -> None:
+        decision = {
+            "mode": "dry-run",
+            "decision": "dry-run",
+            "would_decision": "file-one",
+            "needs_attention": False,
+        }
+        payloads = [{"unit_id": "c1", "title": TITLE}]
+
+        headline, lines, should_notify = run_note(decision, payloads, [])
+
+        self.assertIn("[DRY RUN]", headline)
+        self.assertTrue(any("file-one" in line for line in lines))
+        self.assertFalse(should_notify)
 
     def test_a_blocked_run_still_reaches_a_human(self) -> None:
         decision = {
@@ -139,9 +188,10 @@ class RunNoteTests(unittest.TestCase):
             "needs_attention": True,
             "blockers": ["review-blocked:reports/reviewer_manifest.json"],
         }
-        headline, lines = run_note(decision, [], [])
+        headline, lines, should_notify = run_note(decision, [], [])
         self.assertIn("needs attention", headline)
         self.assertTrue(any("review-blocked" in line for line in lines))
+        self.assertTrue(should_notify)
 
     def test_an_unresolved_validation_names_the_scan_state(self) -> None:
         decision = {
@@ -150,9 +200,10 @@ class RunNoteTests(unittest.TestCase):
             "attention_reasons": ["unresolved-validation"],
         }
         payloads = [{"unit_id": "c1", "title": TITLE}]
-        headline, lines = run_note(decision, payloads, [])
+        headline, lines, should_notify = run_note(decision, payloads, [])
         self.assertIn("needs attention", headline)
         self.assertTrue(any("unresolved-validation" in line for line in lines))
+        self.assertTrue(should_notify)
 
 
 if __name__ == "__main__":

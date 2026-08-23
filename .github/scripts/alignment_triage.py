@@ -4,9 +4,9 @@
 
 """The comment protocol of the standing XPU alignment triage issue.
 
-Drafts live as bot comments carrying a unit marker. Publishing a draft copies
-its bytes verbatim into a new issue, so a human reads exactly what gets filed
-and no agent runs between approval and filing.
+Drafts live as bot comments carrying a unit marker. Publishing preserves the
+reviewed title and visible body and adds only a hidden stable-unit marker for
+idempotency. No agent runs between approval and filing.
 """
 
 from __future__ import annotations
@@ -19,11 +19,13 @@ import sys
 import tempfile
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
+DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
 # Provenance is visible text, not an HTML comment: a triager reading a draft
 # needs the run that produced it in order to re-read the underlying evidence.
 PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
+PUBLISHED_UNIT_MARKER = "<!-- alignment-published-unit: {unit_id} -->"
 # One notification per run, so a re-run does not ping anyone twice.
 RUN_NOTE_MARKER = "<!-- alignment-run-note: {run_id} -->"
 TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
@@ -62,11 +64,25 @@ def list_comments(repo: str, issue: int) -> list[dict]:
         page += 1
 
 
-def render_draft(unit_id: str, title: str, body: str, run_id: str, scan_date: str) -> str:
+def render_draft(
+    unit_id: str,
+    title: str,
+    body: str,
+    run_id: str,
+    scan_date: str,
+    *,
+    dry_run: bool = False,
+) -> str:
+    marker = (
+        DRY_RUN_UNIT_MARKER.format(run_id=run_id, unit_id=unit_id)
+        if dry_run
+        else UNIT_MARKER.format(unit_id=unit_id)
+    )
+    prefix = "[DRY RUN] " if dry_run else ""
     return (
-        f"{UNIT_MARKER.format(unit_id=unit_id)}\n"
+        f"{marker}\n"
         f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date)}\n"
-        f"### {title}\n\n{body}\n"
+        f"### {prefix}{title}\n\n{body}\n"
     )
 
 
@@ -147,11 +163,37 @@ def filed_body(body: str, unit_id: str, issue_url: str) -> str:
     )
 
 
-def create_issue(repo: str, title: str, body: str) -> str:
+def find_published_issue(repo: str, unit_id: str) -> str | None:
+    marker = PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)
+    page = 1
+    while True:
+        issues = json.loads(
+            gh(
+                [
+                    "api",
+                    f"repos/{repo}/issues?state=all&labels=ai_generated&per_page=100&page={page}",
+                ]
+            )
+        )
+        for issue in issues:
+            if marker in (issue.get("body") or ""):
+                return str(issue["html_url"])
+        if len(issues) < 100:
+            return None
+        page += 1
+
+
+def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
     if not title.startswith(ISSUE_TITLE_PREFIX):
         fail(f"Refusing to file `{title}`: the title must start with `{ISSUE_TITLE_PREFIX}`.")
+    if not UNIT_ID_RE.fullmatch(unit_id):
+        fail(f"Refusing to file an invalid unit id: `{unit_id}`.")
+    existing = find_published_issue(repo, unit_id)
+    if existing:
+        return existing
+    published_body = f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
-        handle.write(body.rstrip() + "\n")
+        handle.write(published_body)
         body_file = handle.name
     try:
         command = ["issue", "create", "--repo", repo, "--title", title, "--body-file", body_file]

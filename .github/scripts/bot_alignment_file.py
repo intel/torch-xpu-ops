@@ -43,7 +43,7 @@ def main() -> int:
 
     comment = find_draft(list_comments(args.repo, args.triage_issue), args.unit_id)
     title, body = parse_draft(comment["body"], args.unit_id)
-    issue_url = create_issue(args.repo, title, body)
+    issue_url = create_issue(args.repo, title, body, args.unit_id)
     update_comment(args.repo, comment["id"], filed_body(comment["body"], args.unit_id, issue_url))
 
     print(f"Filed {args.unit_id} as {issue_url}")
