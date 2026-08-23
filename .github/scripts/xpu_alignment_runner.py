@@ -7,14 +7,17 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
 import pwd
 import re
+import signal
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 
@@ -22,6 +25,18 @@ from pathlib import Path
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 600
+EXPECTED_SOURCES = {
+    "issues-created",
+    "prs-created",
+    "prs-merged",
+    "default-branch-commits",
+}
+EVENT_TYPES = {
+    "issue": {"created"},
+    "pr": {"created", "merged"},
+    "commit": {"committed"},
+}
+PR_SET_CHILD_SUBREAPER = 36
 
 
 class PlanError(ValueError):
@@ -54,12 +69,62 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         raise PlanError(f"cannot read prepare artifact: {error}") from error
     if not isinstance(prepare, dict) or prepare.get("schema_version") != 1:
         raise PlanError("prepare artifact must be a v1 JSON object")
+    if prepare.get("status") != "complete":
+        raise PlanError("prepare artifact must be complete before execution")
+    blockers = prepare.get("blockers")
+    if not isinstance(blockers, list) or blockers:
+        raise PlanError("prepare artifact must have an empty blocker list")
+    collection = prepare.get("collection")
+    queries = collection.get("queries") if isinstance(collection, dict) else None
+    if not isinstance(queries, list):
+        raise PlanError("prepare collection queries must be a list")
+    sources: set[str] = set()
+    observed_count = 0
+    for index, query in enumerate(queries):
+        if not isinstance(query, dict):
+            raise PlanError(f"prepare collection query {index} is not an object")
+        source = query.get("source")
+        if source not in EXPECTED_SOURCES:
+            raise PlanError(f"prepare collection query {index} has an invalid source")
+        sources.add(str(source))
+        pages, count = query.get("pages"), query.get("count")
+        if not str(query.get("request", "")).strip():
+            raise PlanError(f"prepare collection query {index} has no request evidence")
+        if not isinstance(pages, int) or isinstance(pages, bool) or pages < 1:
+            raise PlanError(f"prepare collection query {index} has an invalid page count")
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise PlanError(f"prepare collection query {index} has an invalid result count")
+        if query.get("truncated") is not False or query.get("errors") != []:
+            raise PlanError(f"prepare collection query {index} is incomplete")
+        observed_count += count
+    if sources != EXPECTED_SOURCES:
+        raise PlanError("prepare collection does not cover every required source")
+    if collection.get("observed_count") != observed_count:
+        raise PlanError("prepare collection observed count does not match query evidence")
+    window = prepare.get("scan_window")
+    if not isinstance(window, dict):
+        raise PlanError("prepare scan window must be an object")
+    try:
+        window_start = datetime.strptime(str(window.get("start")), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+        window_end = datetime.strptime(str(window.get("end")), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError as error:
+        raise PlanError("prepare scan window must contain UTC timestamps") from error
+    if window_start.time().isoformat() != "00:00:00" or window_end - window_start != timedelta(
+        days=1
+    ):
+        raise PlanError("prepare scan window must be one complete UTC day")
     executions = prepare.get("executions")
     if not isinstance(executions, list):
         raise PlanError("prepare executions must be a list")
     inventory = prepare.get("inventory")
     if not isinstance(inventory, list):
         raise PlanError("prepare inventory must be a list")
+    if collection.get("unique_count") != len(inventory):
+        raise PlanError("prepare collection unique count does not match inventory")
 
     validated: set[str] = set()
     inventory_ids: set[str] = set()
@@ -78,6 +143,27 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
             raise PlanError(f"{unit_id}: invalid triage")
         if not str(item.get("reason", "")).strip():
             raise PlanError(f"{unit_id}: missing triage reason")
+        kind = item.get("kind")
+        if kind not in EVENT_TYPES:
+            raise PlanError(f"{unit_id}: invalid inventory kind")
+        if not str(item.get("url", "")).startswith("https://github.com/pytorch/pytorch/"):
+            raise PlanError(f"{unit_id}: invalid inventory URL")
+        events = item.get("events")
+        if not isinstance(events, list) or not events:
+            raise PlanError(f"{unit_id}: missing inventory events")
+        event_in_window = False
+        for event in events:
+            if not isinstance(event, dict) or event.get("type") not in EVENT_TYPES[kind]:
+                raise PlanError(f"{unit_id}: invalid inventory event")
+            try:
+                event_time = datetime.strptime(
+                    str(event.get("at")), "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=timezone.utc)
+            except ValueError as error:
+                raise PlanError(f"{unit_id}: invalid inventory event time") from error
+            event_in_window = event_in_window or window_start <= event_time < window_end
+        if not event_in_window:
+            raise PlanError(f"{unit_id}: no inventory event is inside the scan window")
         inventory_ids.add(unit_id)
         if triage == "validate":
             validated.add(unit_id)
@@ -160,6 +246,47 @@ def _drop_privileges(uid: int, gid: int, groups: list[int]) -> None:
     os.umask(0o077)
 
 
+def _become_child_subreaper() -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise PlanError(f"cannot establish reproducer process boundary: {os.strerror(error)}")
+
+
+def _direct_children() -> list[int]:
+    children = Path(f"/proc/{os.getpid()}/task/{os.getpid()}/children")
+    try:
+        return [int(value) for value in children.read_text(encoding="ascii").split()]
+    except OSError as error:
+        raise PlanError(f"cannot inspect reproducer descendants: {error}") from error
+
+
+def _reap_children() -> None:
+    while True:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid == 0:
+            return
+
+
+def _terminate_descendants() -> None:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        children = _direct_children()
+        for pid in children:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        _reap_children()
+        if not _direct_children():
+            return
+        time.sleep(0.01)
+    raise PlanError("reproducer descendants survived cleanup")
+
+
 def run_plan(
     root: Path,
     python: Path,
@@ -169,6 +296,7 @@ def run_plan(
 ) -> dict[str, object]:
     if not python.is_file():
         raise PlanError(f"python executable does not exist: {python}")
+    _become_child_subreaper()
     logs = root / "runner/logs"
     logs.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
@@ -195,23 +323,31 @@ def run_plan(
             if sha256(script) != entry["script_sha256"]:
                 error = "script bytes changed after prepare validation"
             else:
+                process: subprocess.Popen[bytes] | None = None
                 try:
-                    completed = subprocess.run(
+                    process = subprocess.Popen(
                         [str(python), "-I", str(script)],
                         cwd=root,
                         env=environment,
                         stdin=subprocess.DEVNULL,
                         stdout=output,
                         stderr=subprocess.STDOUT,
-                        timeout=int(entry["timeout_seconds"]),
-                        check=False,
                         preexec_fn=preexec_fn,
+                        start_new_session=True,
                     )
-                    returncode = completed.returncode
+                    returncode = process.wait(timeout=int(entry["timeout_seconds"]))
                 except subprocess.TimeoutExpired:
                     timed_out = True
                 except (OSError, subprocess.SubprocessError) as exc:
                     error = str(exc)
+                finally:
+                    if process is not None:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        process.wait()
+                    _terminate_descendants()
         results.append(
             {
                 "id": unit_id,

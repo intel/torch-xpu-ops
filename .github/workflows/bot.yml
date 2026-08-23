@@ -1358,6 +1358,9 @@ jobs:
     needs: parse-command
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: xpu-alignment-filing
+      cancel-in-progress: false
     permissions:
       contents: read
       # The command only ever opens an issue and edits the draft comment it

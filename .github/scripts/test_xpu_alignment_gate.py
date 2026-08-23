@@ -221,6 +221,19 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "blocked")
         self.assertIn("collection-unique-count-mismatch", decision["blockers"])
 
+    def test_inventory_event_outside_scan_window_blocks_publishing(self) -> None:
+        paths = self.artifacts.write()
+        prepare = json.loads(paths["prepare"].read_text())
+        prepare["inventory"][0]["events"] = [
+            {"type": "created", "at": "2026-08-19T23:59:59Z"}
+        ]
+        paths["prepare"].write_text(json.dumps(prepare) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertIn("inventory-event-outside-window:issue-123", decision["blockers"])
+
     def test_tampered_runner_log_blocks_publishing(self) -> None:
         self.artifacts.write()
         (self.artifacts.runner_root / "runner/logs/issue-123.log").write_text("tampered\n")

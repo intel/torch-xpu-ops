@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -47,6 +47,11 @@ VERDICTS = {
     "verification-gap",
 }
 IMPLEMENTATION_REPOSITORIES = {"intel/torch-xpu-ops", "pytorch/pytorch"}
+EVENT_TYPES = {
+    "issue": {"created"},
+    "pr": {"created", "merged"},
+    "commit": {"committed"},
+}
 
 
 def _sha256(path: Path) -> str:
@@ -123,6 +128,10 @@ def _validate_prepare(
     expected = _expected_window(scan_date, errors)
     if expected is not None and prepare.get("scan_window") != expected:
         errors.append("prepare-window-mismatch")
+    window_start = window_end = None
+    if expected is not None:
+        window_start = datetime.fromisoformat(expected["start"].replace("Z", "+00:00"))
+        window_end = datetime.fromisoformat(expected["end"].replace("Z", "+00:00"))
 
     collection = prepare.get("collection")
     queries = collection.get("queries") if isinstance(collection, dict) else None
@@ -176,12 +185,36 @@ def _validate_prepare(
             ):
                 errors.append(f"inventory-invalid-id:{unit_id}")
                 continue
-            if item.get("kind") not in {"issue", "pr", "commit"}:
+            kind = item.get("kind")
+            if kind not in EVENT_TYPES:
                 errors.append(f"inventory-invalid-kind:{unit_id}")
             if not str(item.get("url", "")).startswith("https://github.com/pytorch/pytorch/"):
                 errors.append(f"inventory-invalid-url:{unit_id}")
-            if not isinstance(item.get("events"), list) or not item["events"]:
+            events = item.get("events")
+            if not isinstance(events, list) or not events:
                 errors.append(f"inventory-missing-events:{unit_id}")
+            elif kind in EVENT_TYPES:
+                event_in_window = False
+                for event_index, event in enumerate(events):
+                    if not isinstance(event, dict) or event.get("type") not in EVENT_TYPES[kind]:
+                        errors.append(f"inventory-invalid-event:{unit_id}:{event_index}")
+                        continue
+                    at = event.get("at")
+                    try:
+                        event_time = datetime.strptime(str(at), "%Y-%m-%dT%H:%M:%SZ").replace(
+                            tzinfo=timezone.utc
+                        )
+                    except ValueError:
+                        errors.append(f"inventory-invalid-event-time:{unit_id}:{event_index}")
+                        continue
+                    if (
+                        window_start is not None
+                        and window_end is not None
+                        and window_start <= event_time < window_end
+                    ):
+                        event_in_window = True
+                if not event_in_window:
+                    errors.append(f"inventory-event-outside-window:{unit_id}")
             if item.get("triage") not in {"reject", "validate"}:
                 errors.append(f"inventory-invalid-triage:{unit_id}")
             if not str(item.get("reason", "")).strip():

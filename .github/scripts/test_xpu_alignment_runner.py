@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -45,6 +46,22 @@ def write_prepare(root: Path, scripts: list[tuple[str, str]]) -> Path:
             }
         )
     prepare = root / "prepare.json"
+    queries = [
+        {
+            "source": source,
+            "request": f"query {source}",
+            "pages": 1,
+            "count": len(inventory) if source == "issues-created" else 0,
+            "truncated": False,
+            "errors": [],
+        }
+        for source in (
+            "issues-created",
+            "prs-created",
+            "prs-merged",
+            "default-branch-commits",
+        )
+    ]
     prepare.write_text(
         json.dumps(
             {
@@ -54,7 +71,11 @@ def write_prepare(root: Path, scripts: list[tuple[str, str]]) -> Path:
                     "start": "2026-08-20T00:00:00Z",
                     "end": "2026-08-21T00:00:00Z",
                 },
-                "collection": {"queries": []},
+                "collection": {
+                    "queries": queries,
+                    "observed_count": len(inventory),
+                    "unique_count": len(inventory),
+                },
                 "inventory": inventory,
                 "executions": executions,
                 "blockers": [],
@@ -157,6 +178,29 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(result["results"][1]["returncode"], 0)
             self.assertIn("second ran", (root / result["results"][1]["log"]).read_text())
 
+    def test_reproducer_cannot_leave_a_background_process_running(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            marker = root / "escaped-child"
+            ready = root / "escaped-child-ready"
+            child = (
+                f"import os,pathlib,time; os.setsid(); pathlib.Path({str(ready)!r}).touch(); "
+                "time.sleep(0.5); "
+                f"pathlib.Path({str(marker)!r}).write_text('escaped')"
+            )
+            source = (
+                "import pathlib,subprocess,sys,time\n"
+                f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
+                f"ready = pathlib.Path({str(ready)!r})\n"
+                "while not ready.exists(): time.sleep(0.01)\n"
+            )
+            prepare = write_prepare(root, [("issue-123", source)])
+
+            run_plan(root, Path(sys.executable), prepare, load_prepare(root, prepare))
+            time.sleep(0.8)
+
+            self.assertFalse(marker.exists())
+
     def test_rejects_missing_execution_for_validated_inventory_item(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -166,6 +210,40 @@ class RunnerTests(unittest.TestCase):
             prepare.write_text(json.dumps(payload) + "\n")
 
             with self.assertRaisesRegex(PlanError, "coverage"):
+                load_prepare(root, prepare)
+
+    def test_rejects_incomplete_preparation_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            prepare = write_prepare(root, [("issue-123", "print('must not run')\n")])
+            payload = json.loads(prepare.read_text())
+            payload["status"] = "incomplete"
+            payload["blockers"] = ["collection failed"]
+            prepare.write_text(json.dumps(payload) + "\n")
+
+            with self.assertRaisesRegex(PlanError, "complete"):
+                load_prepare(root, prepare)
+
+    def test_rejects_truncated_collection_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            prepare = write_prepare(root, [("issue-123", "print('must not run')\n")])
+            payload = json.loads(prepare.read_text())
+            payload["collection"]["queries"][0]["truncated"] = True
+            prepare.write_text(json.dumps(payload) + "\n")
+
+            with self.assertRaisesRegex(PlanError, "collection"):
+                load_prepare(root, prepare)
+
+    def test_rejects_inventory_outside_scan_window_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            prepare = write_prepare(root, [("issue-123", "print('must not run')\n")])
+            payload = json.loads(prepare.read_text())
+            payload["inventory"][0]["events"][0]["at"] = "2026-08-19T23:59:59Z"
+            prepare.write_text(json.dumps(payload) + "\n")
+
+            with self.assertRaisesRegex(PlanError, "scan window"):
                 load_prepare(root, prepare)
 
 

@@ -127,7 +127,7 @@ jobs:
   run-reproducers:
     name: Run immutable reproducers without agent credentials
     needs: scan-prepare
-    if: ${{ !cancelled() }}
+    if: ${{ needs.scan-prepare.result == 'success' }}
     runs-on: xpu-agent
     timeout-minutes: 120
     container:
@@ -136,7 +136,8 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: >-
         --device=/dev/mem --device=/dev/dri
-        --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+        --security-opt seccomp=unconfined --cap-add=SYS_PTRACE
+        --cap-add=NET_ADMIN --shm-size=8g
         -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout deterministic runner
@@ -153,6 +154,8 @@ jobs:
       - name: Provision nightly XPU runtime
         run: |
           set -euo pipefail
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iptables
           python3 -m pip install --upgrade pip wheel setuptools
           python3 -m pip install --pre torch torchvision torchaudio \
             --index-url https://download.pytorch.org/whl/nightly/xpu
@@ -197,6 +200,15 @@ jobs:
           if (( ${#device_groups[@]} )); then
             groups="$(IFS=,; echo "${!device_groups[*]}")"
             usermod --append --groups "$groups" xpu-repro
+          fi
+          repro_uid="$(id -u xpu-repro)"
+          iptables --wait --append OUTPUT --match owner --uid-owner "$repro_uid" --jump REJECT
+          ip6tables --wait --append OUTPUT --match owner --uid-owner "$repro_uid" --jump REJECT
+          if runuser --user xpu-repro -- python3 -c \
+            'import socket; socket.create_connection(("1.1.1.1", 443), timeout=2).close()' \
+            2>/dev/null; then
+            echo 'Outbound network remains available to xpu-repro' >&2
+            exit 1
           fi
           chmod -R a-w,a+rX alignment-run
           python3 .github/scripts/xpu_alignment_runner.py \
@@ -360,6 +372,9 @@ jobs:
     needs: [scan-prepare, run-reproducers, scan-finalize, independent-review]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: xpu-alignment-filing
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read

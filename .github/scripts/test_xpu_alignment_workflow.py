@@ -6,12 +6,14 @@ from pathlib import Path
 
 
 WORKFLOW = Path(__file__).parents[1] / "workflows/xpu_alignment.yml"
+BOT_WORKFLOW = Path(__file__).parents[1] / "workflows/bot.yml"
 
 
 class AlignmentWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = WORKFLOW.read_text(encoding="utf-8")
+        cls.bot_text = BOT_WORKFLOW.read_text(encoding="utf-8")
 
     def test_manual_dispatch_only_exposes_scan_date(self) -> None:
         dispatch = self.text.split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0]
@@ -34,6 +36,16 @@ class AlignmentWorkflowTests(unittest.TestCase):
         ]
         self.assertEqual(positions, sorted(positions))
 
+    def test_untrusted_reproducer_user_has_no_outbound_network(self) -> None:
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        self.assertIn("--cap-add=NET_ADMIN", runner)
+        self.assertIn("iptables --wait --append OUTPUT", runner)
+        self.assertIn("ip6tables --wait --append OUTPUT", runner)
+        self.assertIn('--uid-owner "$repro_uid"', runner)
+        self.assertIn("Outbound network remains available to xpu-repro", runner)
+
     def test_only_gate_job_requests_issue_write_permission(self) -> None:
         self.assertEqual(self.text.count("issues: write"), 1)
         gate = self.text.split("  gate-and-publish:", 1)[1]
@@ -43,6 +55,13 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("group: xpu-alignment", self.text)
         self.assertIn("cancel-in-progress: false", self.text)
         self.assertIn("cron: '0 2 * * *'", self.text)
+
+    def test_automatic_and_manual_filing_share_one_lock(self) -> None:
+        gate = self.text.split("  gate-and-publish:", 1)[1]
+        file_job = self.bot_text.split("  file:", 1)[1].split("  triage:", 1)[0]
+        for job in (gate, file_job):
+            self.assertIn("group: xpu-alignment-filing", job)
+            self.assertIn("cancel-in-progress: false", job)
 
 
 if __name__ == "__main__":
