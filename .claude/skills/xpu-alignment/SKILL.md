@@ -28,11 +28,15 @@ running a reproducer, classifying evidence, or reviewing a result.
 
 ## Inputs
 
-Resolve the scan window as the half-open UTC interval `[start, end)`. Use the
-caller-provided run directory, XPU-enabled Python environment, and read-only
-GitHub access. Verify those capabilities before relying on them. Do not install
-or upgrade packages implicitly; ask in interactive mode or record an automation
-blocker.
+Resolve the scan window as the half-open UTC interval `[start, end)` and use the
+caller-provided run directory. Verify only the capabilities required by the
+selected mode or role: interactive validation needs an XPU-enabled Python
+environment and read-only GitHub access; automation `scan-prepare` needs
+read-only GitHub access, `scan-finalize` needs the immutable prepare and runner
+artifacts, and `review` needs those artifacts plus read-only GitHub access. Only
+the deterministic runner needs the XPU environment in automation. Do not install
+or upgrade packages implicitly; ask in interactive mode or record a blocker for
+the role whose required input is missing.
 
 ## Invariants
 

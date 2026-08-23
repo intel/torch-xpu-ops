@@ -28,6 +28,7 @@ inside the run directory.
 
 Use read-only GitHub access to exhaust the requested half-open UTC window. Write
 `prepare.json` and `scripts/` only; do not execute a reproducer or write results.
+This role does not require an XPU runtime.
 
 ```json
 {
@@ -158,6 +159,9 @@ Timeouts, launch errors, environment failures, or inconclusive evidence use a
 `blocked-*` result and make the scan incomplete. Rejected inventory items remain
 in `prepare.json` and are not copied into `scan.json`.
 
+This role interprets the runner's recorded XPU environment and does not require
+an XPU device or GitHub access of its own.
+
 ## `review` role
 
 The reviewer receives the immutable prepare, runner, and scan artifacts. It does
@@ -187,6 +191,9 @@ not execute code or sample rejected inventory. It covers every `confirmed` and
 `units` covers the provisional actionable set exactly once. Only
 `needs-xpu-fix` without a canonical tracker has a payload. `status: blocked`
 lists blockers and contains no payloads.
+
+This role requires read-only GitHub access to refresh source and tracker state,
+but it does not require an XPU runtime.
 
 ## Gate requirements
 
