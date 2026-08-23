@@ -18,7 +18,6 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
-from functools import partial
 from pathlib import Path
 
 
@@ -239,13 +238,6 @@ def _identity(user: str) -> tuple[int, int, list[int]]:
     return account.pw_uid, account.pw_gid, os.getgrouplist(user, account.pw_gid)
 
 
-def _drop_privileges(uid: int, gid: int, groups: list[int]) -> None:
-    os.setgroups(groups)
-    os.setgid(gid)
-    os.setuid(uid)
-    os.umask(0o077)
-
-
 def _become_child_subreaper() -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
@@ -312,14 +304,20 @@ def run_plan(
             prefix=f"xpu-alignment-{unit_id}-"
         ) as scratch:
             environment = _safe_environment()
-            preexec_fn = None
+            child_user: int | None = None
+            child_group: int | None = None
+            child_groups: list[int] | None = None
+            child_umask = -1
             if identity is not None:
                 uid, gid, groups = identity
                 os.chown(scratch, uid, gid)
                 environment.update(
                     {"HOME": scratch, "TMPDIR": scratch, "USER": str(uid), "LOGNAME": str(uid)}
                 )
-                preexec_fn = partial(_drop_privileges, uid, gid, groups)
+                child_user = uid
+                child_group = gid
+                child_groups = groups
+                child_umask = 0o077
             if sha256(script) != entry["script_sha256"]:
                 error = "script bytes changed after prepare validation"
             else:
@@ -332,8 +330,11 @@ def run_plan(
                         stdin=subprocess.DEVNULL,
                         stdout=output,
                         stderr=subprocess.STDOUT,
-                        preexec_fn=preexec_fn,
                         start_new_session=True,
+                        user=child_user,
+                        group=child_group,
+                        extra_groups=child_groups,
+                        umask=child_umask,
                     )
                     returncode = process.wait(timeout=int(entry["timeout_seconds"]))
                 except subprocess.TimeoutExpired:
