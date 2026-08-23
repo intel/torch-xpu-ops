@@ -81,6 +81,10 @@ and both counts to match their evidence.
 
 The inventory contains every distinct object returned by the queries. Every item
 has exactly one `triage` value: `reject` or `validate`, plus a concrete reason.
+Issue events use `created`, PR events use `created` or `merged`, and default-branch
+commit events use `committed`; at least one recorded event for each item must be
+inside the scan window. Events outside the window may be retained as context but
+do not make an object part of the inventory by themselves.
 Every validated item has exactly one execution entry; rejected items have none.
 An execution identifies immutable script bytes, uses the default 120-second
 timeout unless evidence justifies a smaller value, and states the upstream oracle
@@ -96,7 +100,9 @@ negative-sample review.
 The runner is not an agent. It validates `prepare.json`, re-hashes every script,
 and executes validated entries serially. Each child receives only the allowlisted
 runtime variables needed for Python, locale, HOME, and XPU. It never receives
-GitHub, model-provider, cloud, or publishing credentials.
+GitHub, model-provider, cloud, or publishing credentials and has no outbound
+network access. It runs each reproducer in a separate process group and removes
+the entire group on completion or timeout so descendants cannot escape the bound.
 
 The runner continues after a timeout, nonzero exit, signal, or launch error and
 writes one result for every execution-plan entry:
