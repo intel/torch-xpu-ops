@@ -476,54 +476,42 @@ template <
     typename weight_t,
     typename index_t,
     typename accscalar_t,
-    typename vec_t,
-    typename weight_vec_t,
     int vec_size,
     template <typename, typename, typename, bool>
     class Norm,
     bool rms_norm>
-struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
-  void operator()(sycl::nd_item<3> item_id) const {
-    accscalar_t sum1 = 0;
-    accscalar_t sum2 = 0;
-    norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
-        item_id, cfg, sum1, sum2);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void fused_norm_kernel(
+    Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
+    NormConfig cfg) {
+  using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
+  using weight_vec_t = at::native::memory::aligned_vector<weight_t, vec_size>;
+  auto item_id = syclext::this_work_item::get_nd_item<3>();
+  size_t offset = (size_t)cfg.sub_group_num;
+  accscalar_t* local_sum1 =
+      (accscalar_t*)syclexp::get_work_group_scratch_memory();
+  accscalar_t* local_sum2 = (accscalar_t*)(local_sum1 + offset);
+  accscalar_t sum1 = 0;
+  accscalar_t sum2 = 0;
+  norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
+      item_id, cfg, sum1, sum2);
 
-    if constexpr (rms_norm) {
-      sum2 = sycl::reduce_over_group(
-          item_id.get_group(), sum2, sycl::plus<accscalar_t>());
-    } else {
-      norm_group_reduce<accscalar_t>(
-          item_id,
-          cfg.sub_group_num,
-          sum1,
-          sum2,
-          local_sum1,
-          local_sum2,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
-    }
-    norm.template update<vec_size, index_t, vec_t, weight_vec_t>(
-        item_id, cfg, sum1, sum2);
+  if constexpr (rms_norm) {
+    sum2 = sycl::reduce_over_group(
+        item_id.get_group(), sum2, sycl::plus<accscalar_t>());
+  } else {
+    norm_group_reduce<accscalar_t>(
+        item_id,
+        cfg.sub_group_num,
+        sum1,
+        sum2,
+        local_sum1,
+        local_sum2,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
   }
-
-  void sycl_ker_config_convention(::sycl::handler& cgh) {
-    size_t slm_sz = (size_t)cfg.sub_group_num;
-    local_sum1 = sycl_local_acc_t<accscalar_t>(slm_sz, cgh);
-    local_sum2 = sycl_local_acc_t<accscalar_t>(slm_sz, cgh);
-  }
-
-  FusedNormKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
-      NormConfig cfg_)
-      : norm(norm_), cfg(cfg_), local_sum1(), local_sum2() {}
-
- private:
-  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
-  const NormConfig cfg;
-  sycl_local_acc_t<accscalar_t> local_sum1;
-  sycl_local_acc_t<accscalar_t> local_sum2;
-};
+  norm.template update<vec_size, index_t, vec_t, weight_vec_t>(
+      item_id, cfg, sum1, sum2);
+}
 
 template <
     typename scalar_t,
@@ -538,29 +526,23 @@ void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     const NormConfig& cfg) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using vec_t = aligned_vector<scalar_t, vec_size>;
-  using weight_vec_t = aligned_vector<weight_t, vec_size>;
   sycl::range<3> local_range{
       1, (size_t)cfg.workgroup_num_foreach, (size_t)cfg.workgroup_size};
   sycl::range<3> global_range{
       (size_t)cfg.workgroup_num,
       (size_t)cfg.workgroup_num_foreach,
       (size_t)cfg.workgroup_size};
-
-  FusedNormKernelFunctor<
+  int slm_sz = 2 * cfg.sub_group_num * sizeof(accscalar_t);
+  sycl_kernel_submit<fused_norm_kernel<
       scalar_t,
       mean_t,
       weight_t,
       index_t,
       accscalar_t,
-      vec_t,
-      weight_vec_t,
       vec_size,
       Norm,
-      rms_norm>
-      kfn(norm, cfg);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+      rms_norm>>(
+      global_range, local_range, getCurrentSYCLQueue(), slm_sz, norm, cfg);
 }
 
 template <
@@ -623,77 +605,64 @@ template <
     typename weight_t,
     typename index_t,
     typename accscalar_t,
-    typename vec_t,
-    typename weight_vec_t,
     int vec_size,
     template <typename, typename, typename, bool>
     class Norm,
     bool rms_norm>
-struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
-  void operator()(sycl::nd_item<3> item_id) const {
-    index_t local_id = item_id.get_local_id(2);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void row_wise_moments_kernel(
+    Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
+    NormConfig cfg) {
+  using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
+  using weight_vec_t = at::native::memory::aligned_vector<weight_t, vec_size>;
+  auto item_id = syclext::this_work_item::get_nd_item<3>();
+  index_t local_id = item_id.get_local_id(2);
+  size_t offset = (size_t)cfg.sub_group_num;
+  accscalar_t* local_sum1 =
+      (accscalar_t*)syclexp::get_work_group_scratch_memory();
+  accscalar_t* local_sum2 = (accscalar_t*)(local_sum1 + offset);
+  bool* last_workgroup = (bool*)(local_sum2 + offset);
 
-    accscalar_t sum1 = 0;
-    accscalar_t sum2 = 0;
-    norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
-        item_id, cfg, sum1, sum2);
-    if constexpr (rms_norm) {
-      sum2 = sycl::reduce_over_group(
-          item_id.get_group(), sum2, sycl::plus<accscalar_t>());
-    } else {
-      norm_group_reduce<accscalar_t>(
-          item_id,
-          cfg.sub_group_num,
-          sum1,
-          sum2,
-          local_sum1,
-          local_sum2,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
+  accscalar_t sum1 = 0;
+  accscalar_t sum2 = 0;
+  norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
+      item_id, cfg, sum1, sum2);
+  if constexpr (rms_norm) {
+    sum2 = sycl::reduce_over_group(
+        item_id.get_group(), sum2, sycl::plus<accscalar_t>());
+  } else {
+    norm_group_reduce<accscalar_t>(
+        item_id,
+        cfg.sub_group_num,
+        sum1,
+        sum2,
+        local_sum1,
+        local_sum2,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
+  }
+  if (cfg.workgroup_num_foreach > 1) {
+    norm_global_reduce<accscalar_t, index_t, rms_norm>(
+        item_id,
+        cfg.workgroup_num_foreach,
+        cfg.workgroup_size,
+        cfg.sub_group_num_global,
+        sum1,
+        sum2,
+        static_cast<accscalar_t*>(cfg.scratchpad_ptr),
+        cfg.semaphores_ptr,
+        local_sum1,
+        local_sum2,
+        last_workgroup,
+        [](accscalar_t a, accscalar_t b) { return a + b; });
+    if (last_workgroup[0] && local_id == 0) {
+      norm.reduce_project(item_id, sum1, sum2, cfg);
     }
-    if (cfg.workgroup_num_foreach > 1) {
-      norm_global_reduce<accscalar_t, index_t, rms_norm>(
-          item_id,
-          cfg.workgroup_num_foreach,
-          cfg.workgroup_size,
-          cfg.sub_group_num_global,
-          sum1,
-          sum2,
-          static_cast<accscalar_t*>(cfg.scratchpad_ptr),
-          cfg.semaphores_ptr,
-          local_sum1,
-          local_sum2,
-          last_workgroup,
-          [](accscalar_t a, accscalar_t b) { return a + b; });
-      if (last_workgroup[0] && local_id == 0) {
-        norm.reduce_project(item_id, sum1, sum2, cfg);
-      }
-    } else {
-      if (local_id == 0) {
-        norm.reduce_project(item_id, sum1, sum2, cfg);
-      }
+  } else {
+    if (local_id == 0) {
+      norm.reduce_project(item_id, sum1, sum2, cfg);
     }
   }
-
-  void sycl_ker_config_convention(::sycl::handler& cgh) {
-    size_t slm_sz = (size_t)cfg.sub_group_num;
-    local_sum1 = sycl_local_acc_t<accscalar_t>(slm_sz, cgh);
-    local_sum2 = sycl_local_acc_t<accscalar_t>(slm_sz, cgh);
-    last_workgroup = sycl_local_acc_t<bool>(1, cgh);
-  }
-
-  RowwiseMomentsKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
-      NormConfig cfg_)
-      : norm(norm_), cfg(cfg_), local_sum1(), local_sum2(), last_workgroup() {}
-
- private:
-  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
-  const NormConfig cfg;
-  sycl_local_acc_t<accscalar_t> local_sum1;
-  sycl_local_acc_t<accscalar_t> local_sum2;
-  sycl_local_acc_t<bool> last_workgroup;
-};
+}
 
 template <
     typename scalar_t,
@@ -708,29 +677,24 @@ void launch_rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
     NormConfig& cfg) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using vec_t = aligned_vector<scalar_t, vec_size>;
-  using weight_vec_t = aligned_vector<weight_t, vec_size>;
 
   sycl::range<3> local_range{1, 1, (size_t)cfg.workgroup_size};
   sycl::range<3> global_range{
       (size_t)cfg.workgroup_num,
       (size_t)cfg.workgroup_num_foreach,
       (size_t)cfg.workgroup_size};
+  int slm_sz = 2 * cfg.sub_group_num * sizeof(accscalar_t) + sizeof(bool);
 
-  RowwiseMomentsKernelFunctor<
+  sycl_kernel_submit<row_wise_moments_kernel<
       scalar_t,
       mean_t,
       weight_t,
       index_t,
       accscalar_t,
-      vec_t,
-      weight_vec_t,
       vec_size,
       Norm,
-      rms_norm>
-      kfn(norm, cfg);
-
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+      rms_norm>>(
+      global_range, local_range, getCurrentSYCLQueue(), slm_sz, norm, cfg);
 }
 
 template <
@@ -794,22 +758,16 @@ template <
     int vec_size,
     template <typename, typename, typename, bool>
     class Norm,
-    typename vec_t,
-    typename weight_vec_t,
     bool rms_norm>
-struct NormUpdateKernelFunctor {
-  void operator()(sycl::nd_item<3> item_id) const {
-    norm.template update<vec_size, index_t, vec_t, weight_vec_t>(item_id, cfg);
-  }
-  NormUpdateKernelFunctor(
-      Norm<scalar_t, mean_t, weight_t, rms_norm> norm_,
-      NormConfig cfg_)
-      : norm(norm_), cfg(cfg_) {}
-
- private:
-  Norm<scalar_t, mean_t, weight_t, rms_norm> norm;
-  NormConfig cfg;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void norm_update_kernel_func(
+    Norm<scalar_t, mean_t, weight_t, rms_norm> norm,
+    NormConfig cfg) {
+  using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
+  using weight_vec_t = at::native::memory::aligned_vector<weight_t, vec_size>;
+  auto item_id = syclext::this_work_item::get_nd_item<3>();
+  norm.template update<vec_size, index_t, vec_t, weight_vec_t>(item_id, cfg);
+}
 
 template <
     typename scalar_t,
@@ -826,8 +784,6 @@ void launch_norm_update_kernel(
   // input: [M][N]
   // gamma, beta: [M]
   // mean, var: [N]
-  using vec_t = aligned_vector<scalar_t, vec_size>;
-  using weight_vec_t = aligned_vector<weight_t, vec_size>;
 
   sycl::range<3> local_range{1, 1, (size_t)cfg.workgroup_size};
   sycl::range<3> global_range{
@@ -835,17 +791,15 @@ void launch_norm_update_kernel(
       (size_t)cfg.workgroup_num_foreach,
       (size_t)cfg.workgroup_size};
 
-  auto kfn = NormUpdateKernelFunctor<
+  sycl_kernel_submit<norm_update_kernel_func<
       scalar_t,
       mean_t,
       weight_t,
       index_t,
       vec_size,
       Norm,
-      vec_t,
-      weight_vec_t,
-      rms_norm>(norm, cfg);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+      rms_norm>>(
+      global_range, local_range, getCurrentSYCLQueue(), 0, norm, cfg);
 }
 
 template <
