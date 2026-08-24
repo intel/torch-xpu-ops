@@ -13,7 +13,10 @@ import unittest
 import torch
 from torch.nn.functional import ScalingType
 from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FP8
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_device_type import (
+    instantiate_device_type_tests,
+    onlyXPU,
+)
 from torch.testing._internal.common_utils import parametrize, run_tests, skipIfXpu
 
 try:
@@ -91,10 +94,16 @@ TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
 )(_xpu_test_float8_rowwise_scaling_sanity)
 
 
-# Override upstream expectation for XPU: row-wise fp32 output with bias is supported.
+# XPU supports row-wise fp32 output with bias, so skip the upstream error expectation.
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = skipIfXpu(
+    msg="XPU supports row-wise fp32 output with bias"
+)(TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors)
+
+
+@onlyXPU
 @unittest.skipIf(not PLATFORM_SUPPORTS_FP8 or IS_WINDOWS, f8_msg)
 @parametrize("wrap_v2", [True, False])
-def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias_errors(self, wrap_v2, device):
+def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias(self, wrap_v2, device):
     if torch.version.hip:
         raise unittest.SkipTest("hipblaslt rowwise _scaled_mm only supports BFloat16")
 
@@ -125,9 +134,7 @@ def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias_errors(self, wrap_v2, device
     self.assertEqual(out.shape, (M, N))
 
 
-TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = (
-    _xpu_test_scaled_mm_row_wise_fp32_out_with_bias_errors
-)
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias = _xpu_test_scaled_mm_row_wise_fp32_out_with_bias
 
 
 # Override test_scaled_mm_deepseek_error_messages: upstream gates with @onlyCUDA and a
