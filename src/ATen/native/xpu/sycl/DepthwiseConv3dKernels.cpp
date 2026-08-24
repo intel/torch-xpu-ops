@@ -563,7 +563,8 @@ void conv_depthwise_shape_check(
         (dilh),                                                                \
         (dilw)>;                                                               \
     int64_t local_range = 256;                                                 \
-    int64_t global_range = xpuKernelLoopGroupRange(num_outputs, local_range);  \
+    int64_t global_range =                                                     \
+        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536);         \
     auto kfn = KernelClass(                                                    \
         input_.packed_accessor32<const scalar_t, 5>(),                         \
         output_.packed_accessor32<scalar_t, 5>(),                              \
@@ -581,36 +582,37 @@ void conv_depthwise_shape_check(
     sycl_kernel_submit(                                                        \
         global_range* local_range, local_range, getCurrentSYCLQueue(), kfn);   \
   } else
-#define DWCONV3D_FORWARD_DISPATCH_OTHERS                                      \
-  {                                                                           \
-    using accscalar_t = acc_type<scalar_t, true>;                             \
-    using KernelClass = ConvDepthwise3dXpuFunctor<                            \
-        scalar_t,                                                             \
-        accscalar_t,                                                          \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1,                                                                   \
-        -1>;                                                                  \
-    int64_t local_range = 256;                                                \
-    int64_t global_range = xpuKernelLoopGroupRange(num_outputs, local_range); \
-    auto kfn = KernelClass(                                                   \
-        input_.packed_accessor32<const scalar_t, 5>(),                        \
-        output_.packed_accessor32<scalar_t, 5>(),                             \
-        weight_.packed_accessor32<const scalar_t, 5>(),                       \
-        bias_ptr,                                                             \
-        stride[0],                                                            \
-        stride[1],                                                            \
-        stride[2],                                                            \
-        padding[0],                                                           \
-        padding[1],                                                           \
-        padding[2],                                                           \
-        dilation[0],                                                          \
-        dilation[1],                                                          \
-        dilation[2]);                                                         \
-    sycl_kernel_submit(                                                       \
-        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn);  \
+#define DWCONV3D_FORWARD_DISPATCH_OTHERS                                     \
+  {                                                                          \
+    using accscalar_t = acc_type<scalar_t, true>;                            \
+    using KernelClass = ConvDepthwise3dXpuFunctor<                           \
+        scalar_t,                                                            \
+        accscalar_t,                                                         \
+        -1,                                                                  \
+        -1,                                                                  \
+        -1,                                                                  \
+        -1,                                                                  \
+        -1,                                                                  \
+        -1>;                                                                 \
+    int64_t local_range = 256;                                               \
+    int64_t global_range =                                                   \
+        std::min((num_outputs - 1) / local_range + 1, (int64_t)65536);       \
+    auto kfn = KernelClass(                                                  \
+        input_.packed_accessor32<const scalar_t, 5>(),                       \
+        output_.packed_accessor32<scalar_t, 5>(),                            \
+        weight_.packed_accessor32<const scalar_t, 5>(),                      \
+        bias_ptr,                                                            \
+        stride[0],                                                           \
+        stride[1],                                                           \
+        stride[2],                                                           \
+        padding[0],                                                          \
+        padding[1],                                                          \
+        padding[2],                                                          \
+        dilation[0],                                                         \
+        dilation[1],                                                         \
+        dilation[2]);                                                        \
+    sycl_kernel_submit(                                                      \
+        global_range* local_range, local_range, getCurrentSYCLQueue(), kfn); \
   }
 
 Tensor conv_depthwise3d_kernel(
@@ -859,7 +861,7 @@ std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
           int64_t num_inputs = grad_input_.numel();
           int64_t local_range = 256;
           int64_t global_range =
-              xpuKernelLoopGroupRange(num_inputs, local_range);
+              std::min((num_inputs - 1) / local_range + 1, (int64_t)65536);
 
           // Range check to avoid overflow in XPU kernels.
           TORCH_CHECK(
