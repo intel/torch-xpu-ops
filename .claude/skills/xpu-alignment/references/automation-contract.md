@@ -41,7 +41,10 @@ Search, to enumerate the requested half-open UTC window once:
 Every successful page is stored as immutable JSON before requesting the next
 page. The manifest records each page's path, SHA-256, input cursor, output cursor,
 item count, remaining quota, and reset time. A source stops only after reaching
-the lower time boundary or exhausting its connection.
+the lower time boundary or exhausting its connection. The collector refreshes a
+partial manifest after every page, including `in-progress` and `not-started`
+source progress, and uses an internal soft deadline before the workflow's
+thirty-minute hard timeout so interruption evidence is not held only in memory.
 
 ```json
 {
