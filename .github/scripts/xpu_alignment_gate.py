@@ -215,7 +215,7 @@ def _validate_prepare(
             elif script is not None and _sha256(script) != script_digest:
                 errors.append(f"execution-digest-mismatch:{unit_id}")
             timeout = entry.get("timeout_seconds")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= 600:
+            if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= 120:
                 errors.append(f"execution-invalid-timeout:{unit_id}")
             for field in ("oracle", "target_path"):
                 if not str(entry.get(field, "")).strip():

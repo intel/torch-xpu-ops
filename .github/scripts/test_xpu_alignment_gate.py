@@ -343,6 +343,17 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "blocked")
         self.assertIn("runner-log-digest-mismatch:issue-123", decision["blockers"])
 
+    def test_prepare_timeout_above_the_contract_limit_blocks_publishing(self) -> None:
+        paths = self.artifacts.write()
+        prepare = json.loads(paths["prepare"].read_text())
+        prepare["executions"][0]["timeout_seconds"] = 121
+        paths["prepare"].write_text(json.dumps(prepare) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertIn("execution-invalid-timeout:issue-123", decision["blockers"])
+
     def test_two_reviewed_candidates_require_human_triage(self) -> None:
         self.artifacts.write(["issue-123", "issue-456"])
 

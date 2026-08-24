@@ -76,6 +76,11 @@ jobs:
     needs: collect
     runs-on: xpu-agent
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
     outputs:
       scan_date: ${{ needs.collect.outputs.scan_date }}
     container:
@@ -359,6 +364,11 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

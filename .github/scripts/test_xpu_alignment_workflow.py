@@ -91,6 +91,17 @@ class AlignmentWorkflowTests(unittest.TestCase):
         gate = self.text.split("  gate-and-publish:", 1)[1]
         self.assertRegex(gate, re.compile(r"permissions:\n(?:.*\n){0,4}\s+issues: write"))
 
+    def test_github_reading_agents_have_explicit_read_permissions(self) -> None:
+        prepare = self.text.split("  scan-prepare:", 1)[1].split(
+            "  run-reproducers:", 1
+        )[0]
+        review = self.text.split("  independent-review:", 1)[1].split(
+            "  gate-and-publish:", 1
+        )[0]
+        for job in (prepare, review):
+            self.assertIn("issues: read", job)
+            self.assertIn("pull-requests: read", job)
+
     def test_schedule_and_dispatch_share_non_cancelling_concurrency(self) -> None:
         self.assertIn("group: xpu-alignment", self.text)
         self.assertIn("cancel-in-progress: false", self.text)

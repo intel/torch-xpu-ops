@@ -445,6 +445,7 @@ def collect(
     checkpoint()
     for source in SOURCES:
         cursor: str | None = None
+        seen_cursors: set[str] = set()
         pages: list[dict[str, object]] = []
         fetched = 0
         rate: dict[str, object] = {"remaining": None, "reset_at": None}
@@ -455,6 +456,8 @@ def collect(
         }
         checkpoint()
         while True:
+            if cursor is not None:
+                seen_cursors.add(cursor)
             try:
                 response = github.page(repository, source, cursor, snapshot, scan_window)
                 nodes = response["nodes"]
@@ -560,17 +563,14 @@ def collect(
                 }
             )
             checkpoint()
-            if reached_boundary or not page_info.get("has_next_page"):
-                state.update(
-                    {
-                        "status": "complete",
-                        "boundary_reached": True,
-                        "error": None,
-                    }
-                )
-                checkpoint()
-                break
-            if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
+            needs_next_cursor = not reached_boundary and page_info.get("has_next_page")
+            repeated_cursor = (
+                isinstance(next_cursor, str) and next_cursor in seen_cursors
+            )
+            if repeated_cursor or (
+                needs_next_cursor
+                and (not isinstance(next_cursor, str) or not next_cursor)
+            ):
                 state["error"] = {
                     "kind": "malformed",
                     "message": "cursor did not advance",
@@ -586,6 +586,16 @@ def collect(
                 malformed["status"] = "malformed"
                 _write_json(output / "collection/collection.json", malformed)
                 raise ValueError(f"{source}: invalid cursor")
+            if reached_boundary or not page_info.get("has_next_page"):
+                state.update(
+                    {
+                        "status": "complete",
+                        "boundary_reached": True,
+                        "error": None,
+                    }
+                )
+                checkpoint()
+                break
             cursor = next_cursor
     return checkpoint()
 
@@ -647,10 +657,17 @@ def validate_collection(
         if source_status == "complete" and not pages:
             raise CollectionError(f"{name}: complete source has no raw page")
         cursor: str | None = None
+        seen_cursors: set[str] = set()
         fetched = 0
         for index, page in enumerate(pages):
             if not isinstance(page, dict) or page.get("cursor") != cursor:
                 raise CollectionError(f"{name}: cursor chain is invalid at page {index + 1}")
+            if cursor is not None:
+                if cursor in seen_cursors:
+                    raise CollectionError(
+                        f"{name}: cursor chain repeats at page {index + 1}"
+                    )
+                seen_cursors.add(cursor)
             relative = Path(str(page.get("path", "")))
             if relative.is_absolute() or ".." in relative.parts:
                 raise CollectionError(f"{name}: page path is unsafe")
@@ -670,6 +687,10 @@ def validate_collection(
             next_cursor = page.get("next_cursor")
             if next_cursor is not None and not isinstance(next_cursor, str):
                 raise CollectionError(f"{name}: invalid next cursor")
+            if isinstance(next_cursor, str) and next_cursor in seen_cursors:
+                raise CollectionError(
+                    f"{name}: cursor chain repeats at page {index + 1}"
+                )
             cursor = next_cursor
         items_fetched = source.get("items_fetched")
         if (

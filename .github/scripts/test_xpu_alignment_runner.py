@@ -221,6 +221,17 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanError, "coverage"):
                 load_prepare(root, prepare)
 
+    def test_rejects_timeout_above_the_contract_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            prepare = write_prepare(root, [("issue-123", "print('ok')\n")])
+            payload = json.loads(prepare.read_text())
+            payload["executions"][0]["timeout_seconds"] = 121
+            prepare.write_text(json.dumps(payload) + "\n")
+
+            with self.assertRaisesRegex(PlanError, "invalid timeout"):
+                load_prepare(root, prepare)
+
     def test_rejects_incomplete_preparation_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

@@ -325,6 +325,67 @@ class CollectorTests(unittest.TestCase):
                     {"start": "2026-08-20T00:00:00Z", "end": "2026-08-21T00:00:00Z"},
                 )
 
+    def test_non_adjacent_repeated_cursor_marks_the_checkpoint_malformed(self) -> None:
+        github = FakeGitHub(
+            {
+                "issues-created": [
+                    page([], next_cursor="cursor-a"),
+                    page([], next_cursor="cursor-b"),
+                    page([], next_cursor="cursor-a"),
+                    page([]),
+                ],
+                "prs-created": [page([])],
+                "prs-merged": [page([])],
+                "default-branch-commits": [page([])],
+            }
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "invalid cursor"):
+                collect(
+                    "pytorch/pytorch",
+                    {
+                        "start": "2026-08-20T00:00:00Z",
+                        "end": "2026-08-21T00:00:00Z",
+                    },
+                    root,
+                    github,
+                )
+
+            manifest = root / "collection/collection.json"
+            self.assertEqual(json.loads(manifest.read_text())["status"], "malformed")
+
+    def test_validator_rejects_a_non_adjacent_cursor_cycle(self) -> None:
+        github = FakeGitHub(
+            {
+                "issues-created": [
+                    page([], next_cursor="cursor-a"),
+                    page([], next_cursor="cursor-b"),
+                    page([], next_cursor="cursor-c"),
+                    page([]),
+                ],
+                "prs-created": [page([])],
+                "prs-merged": [page([])],
+                "default-branch-commits": [page([])],
+            }
+        )
+        scan_window = {
+            "start": "2026-08-20T00:00:00Z",
+            "end": "2026-08-21T00:00:00Z",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            collect("pytorch/pytorch", scan_window, root, github)
+            manifest = root / "collection/collection.json"
+            payload = json.loads(manifest.read_text())
+            pages = payload["sources"][0]["pages"]
+            pages[2]["next_cursor"] = "cursor-a"
+            pages[3]["cursor"] = "cursor-a"
+            manifest.write_text(json.dumps(payload) + "\n")
+
+            with self.assertRaisesRegex(CollectionError, "cursor chain"):
+                validate_collection(root, scan_window)
+
     def test_collects_more_than_one_thousand_candidates_without_search(self) -> None:
         issue_pages = []
         for page_number in range(12):
