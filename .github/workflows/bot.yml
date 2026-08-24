@@ -1410,10 +1410,14 @@ jobs:
       # if it looks right, comment `@torchxpubot fix-pr-create` to open a draft
       # PR from that branch. Captured objectively here (from the branch the
       # agent pushed) rather than trusting the agent to paste its own diff.
+      # Posted regardless of the gate outcome, with the gate's verdict labeled
+      # inline (PASSED vs WARNING) so the reviewer knows whether the fix was
+      # independently confirmed before deciding to run fix-pr-create.
       - name: Post fix diff for human review
-        if: ${{ always() && steps.gate.outcome != 'failure' }}
+        if: always()
         env:
           FIX_BRANCH: agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
@@ -1436,8 +1440,30 @@ jobs:
             const clipped = diff.length > MAX
               ? diff.slice(0, MAX) + `\n... (truncated; full diff on branch \`${branch}\`)`
               : diff;
+            // Explain what the verify gate concluded so the reviewer does not
+            // have to dig into the job log. 'success' means a second,
+            // independent reviewer agent re-ran the fix and its PASSED verdict
+            // was execution-backed. Anything else means only that second layer
+            // is missing/inconclusive -- the fix agent still built and
+            // self-verified before pushing, so a warning is "not independently
+            // confirmed", NOT "the fix is wrong or absent".
+            const gateBlock = process.env.GATE_OUTCOME === 'success'
+              ? `> [!NOTE]\n> **Verify gate: PASSED.** A second, independent reviewer ` +
+                `agent re-ran the fix in a clean shell and its PASSED verdict was ` +
+                `backed by at least one command that collected and passed >=1 test. ` +
+                `The diff below is independently confirmed, but still review it ` +
+                `before running \`fix-pr-create\`.\n\n`
+              : `> [!WARNING]\n> **Verify gate: WARNING.** The fix agent built and ` +
+                `self-verified this fix before pushing, but the second, independent ` +
+                `reviewer did not confirm it (verdict was FAILED/INCONCLUSIVE, its ` +
+                `PASSED verdict lacked execution evidence, or the reviewer/gate ` +
+                `errored). This does **not** mean the fix is wrong or missing -- ` +
+                `only that the independent recheck is absent. Review the diff ` +
+                `yourself, and re-verify if in doubt, before running ` +
+                `\`fix-pr-create\`.\n\n`;
             const body =
               `### Proposed fix on \`${branch}\`\n\n` +
+              gateBlock +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
               '```diff\n' + clipped + '\n```';
