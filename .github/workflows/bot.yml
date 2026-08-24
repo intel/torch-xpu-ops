@@ -1123,6 +1123,11 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # AGENTS.md's gitignored scratch dir. Everything the agent produces for
+      # a build-in-the-loop fix (pytorch clone, fix_result.json, the staged
+      # transcript) lives here instead of /tmp, so it's all in one
+      # already-established, already-gitignored place.
+      AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
       # Default path (see the fix prompt below): WebFetch Intel's prereq page
       # to look up the DLE version matching whatever PyTorch was installed.
       # This constant is only the fallback for when that page is unreachable
@@ -1163,6 +1168,9 @@ jobs:
         with:
           python: '3.10'
 
+      - name: Prepare agent scratch dir
+        run: mkdir -p "$AGENT_SPACE"
+
       - name: Install latest nightly PyTorch-XPU
         run: |
           # Reproduce/verify environment: latest nightly XPU build.
@@ -1191,9 +1199,14 @@ jobs:
             If the fix touches C++ or SYCL sources under src/, the installed wheel
             still has the old kernels, so you must source-build to verify it
             yourself (do not stop and hand this off as "needs human build" — you
-            have GPU access via /dev/dri and root in this container):
-            1. Clone pytorch, apply your fix (pytorch-side diff and/or
-               torch-xpu-ops-side diff per AGENTS.md's `xpu.txt` override).
+            have GPU access via /dev/dri and root in this container). Do all of
+            this under `${{ env.AGENT_SPACE }}` (pytorch clone, torch-xpu-ops
+            working tree, build outputs, `fix_result.json`) — it's the
+            gitignored scratch dir from this repo's AGENTS.md, already the
+            convention other skills use, so nothing here needs `/tmp`:
+            1. Clone pytorch into `${{ env.AGENT_SPACE }}/pytorch`, apply your
+               fix (pytorch-side diff and/or torch-xpu-ops-side diff per
+               AGENTS.md's `xpu.txt` override).
             2. Install the Intel Deep Learning Essentials (DLE) via the OFFLINE
                installer (this container has no Intel apt repo, so
                `apt install intel-deep-learning-essentials` fails). **The DLE
@@ -1223,31 +1236,27 @@ jobs:
                `<pytorch_dir>/test` — never from the pytorch root, it shadows
                the installed torch with `No module named torch.version`.
             5. Write `<pytorch_dir>/build_pytorch.env` (exports USE_XPU=1,
-               USE_CUDA=0, sources your DLE setvars.sh) so an independent
-               recheck step can reproduce your runtime without rebuilding.
-               **The gate step runs in a brand-new shell in a brand-new job
-               step** — it has NONE of your session's exported vars, PATH
-               additions, or activated venvs; it only has the container's
-               baseline env plus whatever `build_pytorch.env` sources. Before
-               moving on, open a genuinely new bash process (not just another
-               command in your current shell) and confirm sourcing only
-               `build_pytorch.env` is enough to get `torch.xpu.is_available()
-               == True` and to run `refined_command` successfully from
-               `<pytorch_dir>/test`. If either only works from your existing
-               shell's accumulated state, `build_pytorch.env` is missing
-               something — fix it now, or the gate will fail even though your
-               patch is correct.
-            6. Write `/tmp/fix_result.json` with keys: `needs_build` (bool,
-               true here), `build_ok` (bool), `xpu_available` (bool),
-               `pytorch_dir` (absolute path), `refined_command` (single
-               shell-executable pytest invocation, run from
-               `<pytorch_dir>/test`, that must PASS on your build), `notes`.
-               Only write `build_ok: true` after the fresh-shell check above
-               passes — that check is exactly what the gate step replays.
+               USE_CUDA=0, sources your DLE setvars.sh). A separate gate step
+               re-runs your fix in a brand-new shell that has none of your
+               session's state — only this file. Validate that in a real new
+               bash process before trusting it: sourcing just
+               `build_pytorch.env` must be enough on its own to get
+               `torch.xpu.is_available() == True` and to pass
+               `refined_command` from `<pytorch_dir>/test`. If it only works
+               from your current shell's accumulated state, the file is
+               missing something.
+            6. Write `${{ env.AGENT_SPACE }}/fix_result.json` with keys:
+               `needs_build` (bool, true here), `build_ok` (bool),
+               `xpu_available` (bool), `pytorch_dir` (absolute path),
+               `refined_command` (single shell-executable pytest invocation,
+               run from `<pytorch_dir>/test`, that must PASS on your build),
+               `notes`. Only write `build_ok: true` after the fresh-shell
+               check from step 5 passes — that check is exactly what the
+               gate step replays.
 
-            For a Python-only fix, still write `/tmp/fix_result.json` with
-            `needs_build: false` (the gate step skips the build recheck in that
-            case).
+            For a Python-only fix, still write
+            `${{ env.AGENT_SPACE }}/fix_result.json` with `needs_build: false`
+            (the gate step skips the build recheck in that case).
 
             When you have a verified fix, commit it to an agent/<slug>
             branch and push it. Do not open a pull request: per the
@@ -1267,19 +1276,20 @@ jobs:
         if: always()
         run: |
           set -uxo pipefail
-          if [ ! -f /tmp/fix_result.json ]; then
-            echo "no /tmp/fix_result.json from the agent; nothing to gate (agent"
+          result_json="$AGENT_SPACE/fix_result.json"
+          if [ ! -f "$result_json" ]; then
+            echo "no $result_json from the agent; nothing to gate (agent"
             echo "likely stopped early or errored — the 'Verify: AI fix succeeded'"
             echo "step below handles that case)."
             exit 0
           fi
-          needs_build=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json')).get('needs_build', False))")
+          needs_build=$(python3 -c "import json; print(json.load(open('$result_json')).get('needs_build', False))")
           if [ "$needs_build" != "True" ]; then
             echo "needs_build=false (python-only fix); no build to independently recheck."
             exit 0
           fi
-          pytorch_dir=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json'))['pytorch_dir'])")
-          refined_command=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json'))['refined_command'])")
+          pytorch_dir=$(python3 -c "import json; print(json.load(open('$result_json'))['pytorch_dir'])")
+          refined_command=$(python3 -c "import json; print(json.load(open('$result_json'))['refined_command'])")
           [ -f "$pytorch_dir/build_pytorch.env" ] || { echo "::error::agent claimed needs_build=true but did not write build_pytorch.env; chain incomplete"; exit 1; }
           # Explicit path: `source <bare-name>` searches PATH, not cwd.
           # shellcheck disable=SC1091
@@ -1305,15 +1315,15 @@ jobs:
         run: |
           f='${{ steps.ai-fix.outputs.execution_file }}'
           if [ -n "$f" ] && [ -f "$f" ]; then
-            cp "$f" /tmp/agent_transcript.json
+            cp "$f" "$AGENT_SPACE/agent_transcript.json"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
           path: |
-            /tmp/agent_transcript.json
-            /tmp/fix_result.json
+            ${{ env.AGENT_SPACE }}/agent_transcript.json
+            ${{ env.AGENT_SPACE }}/fix_result.json
           if-no-files-found: ignore
 
       - name: Post result comment
