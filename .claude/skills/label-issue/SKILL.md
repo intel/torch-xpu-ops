@@ -58,6 +58,7 @@ source; do not decide from memory. Two kinds of source:
 
 | Axis | Reasoning pack | JSON-only source |
 |---|---|---|
+| grouping | `group_issue.md` | `categories.triage` (split label) |
 | `dependency` | `dependency.md` (+ `dependency_info.md` for oneMKL/oneDNN) | — |
 | duplicate / wontfix | `duplicates.md` | `categories.triage` |
 | `os` / `hw` | `platform_specific.md` | `categories.os` / `categories.hw` |
@@ -93,19 +94,11 @@ substitute a Python extraction script for `extract-issue`.
 
 ### Step 2 — Group the failures
 
-An issue may report several failing cases. Group `extract.json`'s failures by
-cause, using the **normalized error signature** as the primary key and the
-**test function** only as a tie-breaker.
-
-Normalize a signature by dropping run-specific noise: addresses, tensor shapes,
-tolerances and deltas, device ids, file paths, dtype/parametrization suffixes,
-model names. Two failures are the SAME group when their normalized signatures
-match, even across different test functions, files, or parametrizations. Split a
-generic signature (e.g. a bare `AssertionError`) only when the tracebacks show
-demonstrably different causes.
-
-Case count alone is NOT the signal, and neither is the number of test functions:
-one unimplemented-dtype error reported across many cases is ONE group.
+An issue may report several failing cases. Follow `reference/group_issue.md` to
+group `extract.json`'s failures by cause: it defines the ordered ladder of
+grouping keys (error message -> dtype -> op/kernel -> parameters -> tensor shape,
+first key that resolves the split wins), the signal-vs-noise rule, and the
+one-group / two-or-more-group outcome.
 
 - **One group** -> no split signal.
 - **Two or more groups** -> the issue mixes distinct causes. Emit the
@@ -154,10 +147,8 @@ Never guess an owner or infer a `file:line` you did not read. Record
 
 #### 3.2 — Duplicate
 
-Follow `reference/duplicates.md` for the representative case: it defines which
-repositories to search, the enriched `gh search issues` set, self-exclusion, the
-two-of-three signal rule (and its single-signal body-match exception), and the
-`relevance` / `recommended_action` tables. Emit the duplicate label from
+Follow `reference/duplicates.md` for the representative case: it defines the
+full duplicate-search and relevance procedure. Emit the duplicate label from
 `categories.triage` when its `evidence` is met (read the name from the JSON).
 Needs no checkout; identical in both trace modes.
 
@@ -172,12 +163,18 @@ labels can also set wontfix directly.
 When wontfix holds (own or inherited): emit the wontfix label, SKIP the remaining
 checks (3.4 and 3.5), and go straight to Step 4 output.
 
-#### 3.4 — Priority, module, symptom, dtype
+#### 3.4 — Type, priority, module, symptom, dtype
 
 Decide each from its JSON section. For every axis, if `extract.json` already
 carries a human-set value for that axis, preserve it verbatim and note the human
 origin; otherwise derive it:
 
+- **type** — `issue_type_field`: the native GitHub Type (`Bug` \| `Feature` \|
+  `Task` \| `Epic`). Preserve a non-empty `extract.json` `issue_type` verbatim.
+  Otherwise evaluate the `values` and take the FIRST whose `evidence`/`keywords`
+  match `lowercase(title + " " + body + " " + traceback)` (a reported failure ->
+  `Bug`, new functionality -> `Feature`); the `keywords` are hints only and never
+  override an explicitly set Type. An empty axis is valid.
 - **priority** — `priority_field`: the tiers, per-tier `evidence`, and fallback
   `keywords`. Preserve a non-empty `extract.json` `priority`. Otherwise evaluate
   tiers in severity order and stop at the first matching `evidence`, defaulting
@@ -186,9 +183,8 @@ origin; otherwise derive it:
 - **module** — `categories.module`: pick exactly ONE label. The `labels` array
   is ordered by decision priority, so walk it top-to-bottom and take the FIRST
   whose `evidence` is met, driven by the traced root cause (keywords are hints
-  only). The axis `description` carries the tie-break rules (inductor before
-  dynamo, no generic `others`, `module: ut` is not on this axis, ignore the
-  `## Versions` dump). Preserve a non-empty `extract.json` `module`.
+  only). The axis `description` carries the tie-break rules. Preserve a non-empty
+  `extract.json` `module`.
 - **symptom** — `categories.symptom`: multi-label; independently evaluate EVERY
   label and emit one row for EACH whose `evidence`/`keywords` are met by the
   representative case — a single issue routinely carries several symptom labels
@@ -208,13 +204,11 @@ platform-specific); carry `extract.json`'s `os` / `platform` straight through.
 
 #### 3.5 — Dependency
 
-Read `reference/dependency.md` and, for oneMKL/oneDNN, confirm the operator
-mapping against `reference/dependency_info.md`. Return exactly one
-value from `categories.dependency`, `none`, or `null`. A taxonomy value requires
-direct traceback/source/operator `evidence` that the failure originates in that
-component; ambiguous or missing evidence -> `null` (never guess from prose).
-Preserve a non-empty `extract.json` `dependency`. Match the decided value to a
-label by its `code` and emit that label's `name` from the JSON.
+Follow `reference/dependency.md` (which itself points to `dependency_info.md`
+for the oneMKL/oneDNN operator mapping) to decide the dependency for the
+representative case. It returns exactly one value from `categories.dependency`,
+`none`, or `null`, and defines how to emit the matching label. Preserve a
+non-empty `extract.json` `dependency`.
 
 ### Step 4 — Output
 
