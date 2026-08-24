@@ -422,6 +422,64 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   heartbeatMonitor_->start();
 }
 
+// Abort this backend.
+void ProcessGroupXCCL::abort() {
+  LOG(WARNING) << logPrefix()
+               << "Destroying the communicators without waiting for the "
+                  "in-flight collectives to finish.";
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (auto& it : devXCCLCommMap_) {
+    auto res = onecclCommDestroy(*it.second);
+    if (res != onecclSuccess) {
+      LOG(ERROR) << logPrefix() << "onecclCommDestroy for comm on device "
+                 << it.first << " failed with code " << static_cast<int>(res);
+    }
+  }
+  heartbeatMonitor_->stop();
+}
+
+// Difference between `abort()` and `shutdown()`:
+// 1. `abort()` destroys the communicators without waiting for the in-flight
+// collectives.
+// 2. `shutdown()` will wait for all XCCL kernels to finish before destroying
+// communicators.
+
+// Destroy (shutdown) this backend -- normal exit.
+void ProcessGroupXCCL::shutdown() {
+  LOG(INFO) << logPrefix()
+            << "Starting to destroy process group, flushing operations.";
+  // Flush all collectives
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& it : devXCCLCommMap_) {
+      auto res = onecclCommFinalize(*it.second);
+      if (res != onecclSuccess) {
+        LOG(ERROR) << logPrefix() << "onecclCommFinalize for comm on device "
+                   << it.first << " failed with code " << static_cast<int>(res);
+      }
+    }
+  }
+  // Wait for all operations to complete.
+  for (auto& it : xcclStreamsMap_) {
+    it.second.synchronize();
+  }
+  // Retire heartbeat monitoring thread now to avoid false alarm
+  heartbeatMonitor_->stop();
+  LOG(INFO) << logPrefix()
+            << "Operations flushed, destroying XCCL communicators.";
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& it : devXCCLCommMap_) {
+      auto res = onecclCommDestroy(*it.second);
+      if (res != onecclSuccess) {
+        LOG(ERROR) << logPrefix() << "onecclCommDestroy for comm on device "
+                   << it.first << " failed with code " << static_cast<int>(res);
+      }
+    }
+  }
+  LOG(INFO) << logPrefix() << "Destroy complete.";
+}
+
 ProcessGroupXCCL::~ProcessGroupXCCL() {
   heartbeatMonitor_->stop();
   // Wait for all threads to finish before returning
