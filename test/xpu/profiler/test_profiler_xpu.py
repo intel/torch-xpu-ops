@@ -2096,6 +2096,12 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
         for i in range(max_gpu_count):
             self.assertEqual(gpu_dict["GPU " + str(i)], 1)
 
+    def _is_secondary_profiler_event(self, traceEvent):
+        name = traceEvent.get("name", "")
+        return name.startswith(
+            ("__xpu_profiler__", "Iteration Start: __xpu_profiler__")
+        )
+
     # Do json sanity testing. Checks that all events are between profiler start and end
     # also checks to see that GPU values are present in trace if cuda is used
     def _validate_basic_json(self, traceEvents, device_type="cpu"):
@@ -2142,6 +2148,8 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
         for i, traceEvent in enumerate(traceEvents):
             if traceEvent is recordStart or traceEvent is recordEnd:
                 continue
+            if self._is_secondary_profiler_event(traceEvent):
+                continue
             # make sure all valid trace events are within the bounds of the profiler
             if "ts" in traceEvent:
                 self.assertGreaterEqual(
@@ -2151,12 +2159,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                 )
             # some python events seem to go a little past record end probably because
             # of some clock inaccuracies so just compare events ending to RECORD_END
-            tid = traceEvent.get("tid", "")
-            if (
-                "dur" in traceEvent
-                and isinstance(tid, str)
-                and "__xpu_profiler__" not in tid
-            ):
+            if "dur" in traceEvent:
                 is_async_xpu_event = device_type == "xpu" and (
                     traceEvent.get("cat", "") in {"kernel", "gpu_memcpy"}
                     or "runtime" in traceEvent.get("cat", "")
