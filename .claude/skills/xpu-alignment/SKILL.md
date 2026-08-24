@@ -21,7 +21,9 @@ leave a concise, auditable handoff.
 - **Automation** is selected explicitly by an orchestrator. Read
   [references/automation-contract.md](references/automation-contract.md) and
   perform only the requested `scan-prepare`, `scan-finalize`, or `review` role.
-  Agents never publish; deterministic workflow code owns execution and publishing.
+  A deterministic collector supplies the inventory before any agent runs. Agents
+  never publish; deterministic workflow code owns collection, execution, gating,
+  and publishing.
 
 Read [references/evidence.md](references/evidence.md) when collecting candidates,
 running a reproducer, classifying evidence, or reviewing a result.
@@ -31,19 +33,20 @@ running a reproducer, classifying evidence, or reviewing a result.
 Resolve the scan window as the half-open UTC interval `[start, end)` and use the
 caller-provided run directory. Verify only the capabilities required by the
 selected mode or role: interactive validation needs an XPU-enabled Python
-environment and read-only GitHub access; automation `scan-prepare` needs
-read-only GitHub access, `scan-finalize` needs the immutable prepare and runner
-artifacts, and `review` needs those artifacts plus read-only GitHub access. Only
-the deterministic runner needs the XPU environment in automation. Do not install
-or upgrade packages implicitly; ask in interactive mode or record a blocker for
-the role whose required input is missing.
+environment and read-only GitHub access; automation `scan-prepare` needs the
+immutable collection artifact plus read-only GitHub access for source details,
+`scan-finalize` needs the immutable collection, prepare, and runner artifacts,
+and `review` needs those artifacts plus read-only GitHub access. Only the
+deterministic runner needs the XPU environment in automation. Do not install or
+upgrade packages implicitly; ask in interactive mode or record a blocker for the
+role whose required input is missing.
 
 ## Invariants
 
-1. **Account for the requested event set.** A time-window scan covers issues
+1. **Account for the collected event set.** A time-window scan covers issues
    created, PRs created or merged, and default-branch commits in the interval.
-   Record collection errors or truncation; do not claim completeness when a
-   source could not be exhausted.
+   In automation, consume every object in the deterministic collector's
+   inventory. Never clear or weaken its partial status or progress errors.
 2. **Let evidence drive triage.** Titles and labels are cheap signals, not rules.
    Inspect enough source context, tests, and diffs to justify each rejection or
    validation. Link an obvious issue/PR/commit chain instead of reproducing the
@@ -66,16 +69,19 @@ the role whose required input is missing.
 
 ## Scan preparation
 
-Use a reliable read-only GitHub interface to enumerate the requested window.
-Record query-by-query pagination evidence and the complete raw inventory the
-queries returned. Deduplicate repeated results by stable identity while retaining
-useful issue/PR/commit links. Every inventory item receives exactly one `reject`
-or `validate` decision; do not silently omit an unusual or difficult item.
+Read the immutable collection artifact and verify its digest. Every observed
+inventory item receives exactly one `reject` or `validate` decision; do not
+silently omit an unusual or difficult item. Fetch the source details, diffs, and
+linked context needed for each decision with read-only GitHub access. A missing
+required detail is a preparation blocker, even when the collector supplied the
+object identity successfully.
 
 For each validated candidate, construct the smallest faithful XPU reproducer and
 an execution-plan entry. Record the upstream oracle, expected target path, exact
 script digest, and bounded timeout. In automation, stop after writing `prepare.json`
-and the reproducer scripts; do not execute them or write final scan results.
+and the reproducer scripts; do not execute them or write final scan results. A
+structurally valid partial collection may still be prepared for diagnostic
+analysis, but its partial scope remains attached to every downstream artifact.
 
 ## Scan finalization
 
@@ -100,9 +106,11 @@ contract. A blocked review produces no publishable payloads.
 
 ## Completion
 
-A preparation is complete only when every query is exhausted and every inventory
-item has exactly one triage decision. A scan is complete only when preparation is
-complete and every selected validation has a defensible terminal runner-backed
-result. A review is complete only when it covers the entire provisional actionable
-set exactly once and has no blocker. Preserve partial evidence and name missing
-work when any phase is incomplete.
+A collection is complete only when every required source reaches its time
+boundary or connection end. A preparation is complete relative to its collection
+only when every observed inventory item has exactly one triage decision. A scan
+is complete relative to that same scope only when every selected validation has a
+defensible terminal runner-backed result. A review is complete relative to that
+scope only when it covers the entire provisional actionable set exactly once and
+has no blocker. Collection scope remains independently `complete` or `partial`;
+preserve partial evidence and name missing work when any phase is incomplete.

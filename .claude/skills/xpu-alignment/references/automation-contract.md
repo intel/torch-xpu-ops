@@ -2,13 +2,15 @@
 
 The orchestrator supplies a run directory and exactly one agent role:
 `scan-prepare`, `scan-finalize`, or `review`. Agents write only their owned
-artifacts and never modify GitHub objects. A deterministic runner sits between
-the two scan roles.
+artifacts and never modify GitHub objects. A deterministic collector runs before
+the agents, and a deterministic runner sits between the two scan roles.
 
 ## Layout and ownership
 
 ```text
-prepare.json                 # scan-prepare-owned inventory and execution plan
+collection/collection.json   # collector-owned manifest and inventory
+collection/pages/<source>/   # collector-owned raw GraphQL responses
+prepare.json                 # scan-prepare-owned decisions and execution plan
 scripts/repro_<id>.py        # scan-prepare-owned exact reproducer bytes
 runner/results.json          # runner-owned execution metadata
 runner/logs/<id>.log         # runner-owned raw stdout/stderr
@@ -24,11 +26,92 @@ passed through a later agent workspace. Unit ids match
 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. Every artifact path is relative to and remains
 inside the run directory.
 
+## Deterministic collector
+
+The collector uses read-only GitHub credentials and no model, XPU, cloud, or
+publishing credentials. It resolves the repository's default branch and freezes
+its head SHA at collection start. It then uses cursor pagination, not GitHub
+Search, to enumerate the requested half-open UTC window once:
+
+- issues ordered by creation time;
+- pull requests ordered by creation time;
+- merged pull requests ordered by update time and filtered by merge time;
+- commits reachable from the frozen default-branch head.
+
+Every successful page is stored as immutable JSON before requesting the next
+page. The manifest records each page's path, SHA-256, input cursor, output cursor,
+item count, remaining quota, and reset time. A source stops only after reaching
+the lower time boundary or exhausting its connection.
+
+```json
+{
+  "schema_version": 1,
+  "status": "partial",
+  "repository": "pytorch/pytorch",
+  "scan_window": {
+    "start": "2026-08-20T00:00:00Z",
+    "end": "2026-08-21T00:00:00Z"
+  },
+  "snapshot": {
+    "collected_at": "2026-08-21T02:00:03Z",
+    "default_branch": "main",
+    "default_branch_head": "..."
+  },
+  "sources": [{
+    "source": "issues-created",
+    "status": "partial",
+    "pages_completed": 1,
+    "items_fetched": 25,
+    "last_cursor": "...",
+    "boundary_reached": false,
+    "rate_remaining": 0,
+    "rate_reset_at": "2026-08-21T03:00:00Z",
+    "error": {"kind": "rate-limit", "message": "wait budget exhausted"},
+    "pages": [{
+      "path": "collection/pages/issues-created/page_0001.json",
+      "sha256": "...",
+      "cursor": null,
+      "next_cursor": "...",
+      "count": 25
+    }]
+  }],
+  "observed_count": 25,
+  "unique_count": 25,
+  "inventory": [{
+    "id": "issue-123",
+    "kind": "issue",
+    "title": "...",
+    "url": "https://github.com/pytorch/pytorch/issues/123",
+    "events": [{"type": "created", "at": "2026-08-20T03:00:00Z"}]
+  }],
+  "blockers": ["issues-created:rate-limit"]
+}
+```
+
+The sample abbreviates the other three required source entries and the rest of
+the inventory; a real manifest always includes all four sources and exact counts.
+
+The required sources are `issues-created`, `prs-created`, `prs-merged`, and
+`default-branch-commits`. `observed_count` counts source events before object
+deduplication; `unique_count` counts inventory objects after stable-identity
+deduplication. A PR created and merged in the window is one inventory object
+with both events.
+
+`status: complete` requires every source to be complete, every page and cursor
+link to validate, exact count agreement, and no blocker. `status: partial`
+requires the same structural integrity for all pages that were returned, names
+the failed source and progress, and has at least one blocker. Network and server
+errors receive bounded retries. Rate-limit responses honor their advertised
+retry/reset time for at most ten minutes total; the collector job itself is
+bounded to thirty minutes. A malformed response, repeated cursor, missing raw
+page, or digest mismatch is not a valid partial collection.
+
 ## `scan-prepare` role
 
-Use read-only GitHub access to exhaust the requested half-open UTC window. Write
-`prepare.json` and `scripts/` only; do not execute a reproducer or write results.
-This role does not require an XPU runtime.
+Read the immutable collection artifact and use read-only GitHub access only for
+the source details needed to judge each observed object. Write `prepare.json`
+and `scripts/` only; do not execute a reproducer or write results. This role does
+not require an XPU runtime.
 
 ```json
 {
@@ -38,24 +121,10 @@ This role does not require an XPU runtime.
     "start": "2026-08-20T00:00:00Z",
     "end": "2026-08-21T00:00:00Z"
   },
-  "collection": {
-    "observed_count": 31,
-    "unique_count": 29,
-    "queries": [{
-      "source": "issues-created",
-      "request": "gh api ...",
-      "pages": 2,
-      "count": 31,
-      "truncated": false,
-      "errors": []
-    }]
-  },
-  "inventory": [{
+  "collection_sha256": "...",
+  "collection_status": "partial",
+  "decisions": [{
     "id": "issue-123",
-    "kind": "issue",
-    "title": "...",
-    "url": "https://github.com/pytorch/pytorch/issues/123",
-    "events": [{"type": "created", "at": "2026-08-20T03:00:00Z"}],
     "triage": "validate",
     "reason": "shared operator path"
   }],
@@ -71,34 +140,24 @@ This role does not require an XPU runtime.
 }
 ```
 
-The required query sources are `issues-created`, `prs-created`, `prs-merged`,
-and `default-branch-commits`. There may be multiple queries per source. Every
-query records its exact request, page count, result count, truncation flag, and
-errors. `observed_count` is the sum of the query counts before deduplication;
-`unique_count` is the number of inventory entries after deduplication.
-`status: complete` requires every required source, no query error or truncation,
-and both counts to match their evidence.
-
-The inventory contains every distinct object returned by the queries. Every item
-has exactly one `triage` value: `reject` or `validate`, plus a concrete reason.
-Issue events use `created`, PR events use `created` or `merged`, and default-branch
-commit events use `committed`; at least one recorded event for each item must be
-inside the scan window. Events outside the window may be retained as context but
-do not make an object part of the inventory by themselves.
-Every validated item has exactly one execution entry; rejected items have none.
+`collection_sha256` names the exact collector manifest bytes, and
+`collection_status` must match the original manifest. `decisions` covers every
+observed inventory id exactly once with `reject` or `validate` and a concrete
+reason. Every validated item has exactly one execution entry; rejected items
+have none.
 An execution identifies immutable script bytes, uses the default 120-second
 timeout unless evidence justifies a smaller value, and states the upstream oracle
-and expected XPU target path. Any missing coverage makes preparation incomplete.
-
-This evidence makes the agent's claimed enumeration auditable. It does not prove
-that the agent chose every possible query or made every semantic rejection
-correctly; automation deliberately uses neither an external collector nor
-negative-sample review.
+and expected XPU target path. Any missing detail or coverage makes preparation
+incomplete. A structurally valid partial collection may still have a complete
+preparation relative to its observed inventory; that does not make the collection
+complete. The deterministic inventory does not prove that each semantic rejection
+is correct, and automation deliberately uses no negative-sample review.
 
 ## Deterministic runner
 
-The runner is not an agent. It validates `prepare.json`, re-hashes every script,
-and executes validated entries serially. Each child receives only the allowlisted
+The runner is not an agent. It validates the original collection and
+`prepare.json`, re-hashes every script, and executes validated entries serially.
+Each child receives only the allowlisted
 runtime variables needed for Python, locale, HOME, and XPU. It never receives
 GitHub, model-provider, cloud, or publishing credentials and has no outbound
 network access. It runs each reproducer in a separate process group and removes
@@ -111,6 +170,7 @@ writes one result for every execution-plan entry:
 ```json
 {
   "schema_version": 1,
+  "collection_sha256": "...",
   "prepare_sha256": "...",
   "status": "complete",
   "results": [{
@@ -128,18 +188,22 @@ writes one result for every execution-plan entry:
 ```
 
 `status: complete` means the runner produced a structurally valid result for
-every planned execution, not that every reproducer succeeded. A digest mismatch
-or missing result blocks finalization.
+every planned execution, not that every reproducer succeeded. The collection
+digest must match the prepare artifact and original collector manifest. A digest
+mismatch or missing result blocks finalization. A valid partial collection does
+not prevent diagnostic execution.
 
 ## `scan-finalize` role
 
-Read immutable `prepare.json`, scripts, `runner/results.json`, and raw logs. Write
-only `scan.json` and optional `scan_report.md`:
+Read immutable collection, `prepare.json`, scripts, `runner/results.json`, and raw
+logs. Write only `scan.json` and optional `scan_report.md`:
 
 ```json
 {
   "schema_version": 1,
   "status": "complete",
+  "collection_sha256": "...",
+  "collection_status": "partial",
   "prepare_sha256": "...",
   "runner_sha256": "...",
   "environment": {
@@ -164,21 +228,25 @@ validated set exactly once and use a result from `evidence.md`. `confirmed`,
 matching script and log digests, target-path proof, and a defensible oracle.
 Timeouts, launch errors, environment failures, or inconclusive evidence use a
 `blocked-*` result and make the scan incomplete. Rejected inventory items remain
-in `prepare.json` and are not copied into `scan.json`.
+in the collection and prepare artifacts and are not copied into `scan.json`.
+`status: complete` is relative to the observed inventory; it does not clear a
+partial collection scope.
 
 This role interprets the runner's recorded XPU environment and does not require
 an XPU device or GitHub access of its own.
 
 ## `review` role
 
-The reviewer receives the immutable prepare, runner, and scan artifacts. It does
-not execute code or sample rejected inventory. It covers every `confirmed` and
-`related-failure` candidate and writes only `review/`:
+The reviewer receives the immutable collection, prepare, runner, and scan
+artifacts. It does not execute code or sample rejected inventory. It covers every
+`confirmed` and `related-failure` candidate and writes only `review/`:
 
 ```json
 {
   "schema_version": 1,
   "status": "complete",
+  "collection_sha256": "...",
+  "collection_status": "partial",
   "scan_sha256": "...",
   "units": [{
     "id": "issue-123",
@@ -205,10 +273,16 @@ but it does not require an XPU runtime.
 ## Gate requirements
 
 The external gate validates each owner's original artifact: schema version,
-scan window, query evidence, inventory/triage/execution coverage, paths and
-digests, runner coverage, terminal scan results, exact review coverage, verdict
-vocabulary, payload ownership, and payload shape.
+scan window, raw page digests and cursor evidence, collection progress, inventory
+metadata and counts, triage/execution coverage, paths and digests, runner
+coverage, terminal scan results, exact review coverage, verdict vocabulary,
+payload ownership, and payload shape.
 
 Unattended filing additionally requires clean producer jobs and exactly one
-review-approved payload. Two or more payloads go to human triage. A blocked or
-incomplete run publishes no candidate verdict and never files unattended.
+review-approved payload from a complete collection. Two or more payloads go to
+human triage. A structurally valid partial collection with clean downstream
+coverage produces diagnostic drafts on the standing triage issue: scheduled
+drafts are idempotent and notify maintainers, dry-run drafts may repeat and never
+notify. Diagnostic drafts use a separate marker, cannot be filed, and do not
+prevent a later complete run from publishing the same unit. A malformed
+collection or downstream failure publishes only a blocker summary.

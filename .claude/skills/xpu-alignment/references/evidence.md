@@ -10,9 +10,12 @@ reachable from the `pytorch/pytorch` default branch whose committer timestamp is
 in the interval. Ordinary comments, labels, and other updates to older objects do
 not create candidates. Fetch linked older objects when they provide context.
 
-Use pagination or split queries as needed. Collection is incomplete when an API
-cap, quota, authentication error, or ambiguous endpoint prevents exhausting a
-source. Record the error instead of silently narrowing the set.
+In automation, the deterministic collector owns pagination and the raw inventory.
+Treat every observed inventory object as in scope. Its collection is partial when
+an API quota, authentication error, timeout, or endpoint failure prevents a source
+from reaching the window boundary. Preserve its per-source page count, fetched
+count, last cursor, rate-limit state, and error instead of silently narrowing the
+set. Partial inventory may be analyzed, but it cannot authorize a formal issue.
 
 Titles and labels help prioritize reading but do not decide relevance. Inspect
 the body, changed code, tests, linked work, or diff whenever it could change the
