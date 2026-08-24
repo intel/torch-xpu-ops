@@ -1103,9 +1103,10 @@ jobs:
     needs: parse-command
     runs-on: xpu-agent
     # Bumped from 180: a C++/SYCL fix now source-builds in-loop (DLE install +
-    # cold build). Smoke data (handoff_0820_end.md): ~43min agent + ~31min
-    # build on this runner for a small diff. 300 leaves headroom for a
-    # bigger diff or an AOT-arch build.
+    # cold build). Smoke test data (`_arc_runner_smoke.yml` runs
+    # 32449648840 / 32681034792): ~43min agent + ~15-31min build on this
+    # runner for a small diff. 300 leaves headroom for a bigger diff or an
+    # AOT-arch build.
     timeout-minutes: 300
     if: >-
       needs.parse-command.outputs.command == 'fix'
@@ -1257,8 +1258,8 @@ jobs:
       # Objective gate: claude-code-action exits 0 regardless of the agent's own
       # conclusion. For a build-in-the-loop fix, re-run the agent's own
       # refined_command independently against the build it produced instead of
-      # trusting its self-report. See handoff_0820_end.md for the smoke
-      # workflow this is adapted from.
+      # trusting its self-report. Adapted from the same gate in
+      # `_arc_runner_smoke.yml`.
       - name: Verify gate — independent recheck (build-in-the-loop only)
         id: gate
         if: always()
@@ -1296,7 +1297,7 @@ jobs:
 
       # Persist the agent transcript (thinking + every tool call/result) so a
       # build-in-the-loop run can be reviewed offline. Otherwise discarded with
-      # the runner (handoff_0820_end.md ★★).
+      # the runner.
       - name: Stage + upload agent transcript
         if: always()
         run: |
@@ -1337,9 +1338,9 @@ jobs:
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
             // The agent's own summary below may claim the fix is verified even
             // when the independent gate step disagreed (it re-runs the
-            // agent's refined_command against the agent's own build — see
-            // handoff_0820_end.md). Flag that mismatch up front so a human
-            // does not take the agent's self-report at face value.
+            // agent's refined_command against the agent's own build). Flag
+            // that mismatch up front so a human does not take the agent's
+            // self-report at face value.
             const gateWarning = process.env.GATE_OUTCOME === 'failure'
               ? `> [!WARNING]\n> The independent verify gate **failed** to reproduce the pass below on the agent's own build. Treat the summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Verify gate" step.\n\n`
               : '';
