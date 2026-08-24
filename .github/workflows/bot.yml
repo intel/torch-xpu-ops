@@ -1123,11 +1123,11 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      # Last-resort fallback DLE offline installer (2026.1, matches PyTorch
-      # 2.14+), only used if the fix needs a source build AND the agent can't
-      # reach Intel's prereq page to look up the version that matches the
-      # PyTorch it actually installed (see the prompt below — WebFetch there
-      # is the default path, this is not).
+      # Default path (see the fix prompt below): WebFetch Intel's prereq page
+      # to look up the DLE version matching whatever PyTorch was installed.
+      # This constant is only the fallback for when that page is unreachable
+      # — a stale-by-design pin (2026.1, matches PyTorch 2.14+), not used
+      # unless the lookup itself fails.
       ONEAPI_INSTALLER: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
     steps:
       - name: Post starting message
