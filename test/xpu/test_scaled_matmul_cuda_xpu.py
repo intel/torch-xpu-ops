@@ -134,8 +134,9 @@ def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias(self, wrap_v2, device):
     self.assertEqual(out.shape, (M, N))
 
 
-TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias = _xpu_test_scaled_mm_row_wise_fp32_out_with_bias
-
+TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias = (
+    _xpu_test_scaled_mm_row_wise_fp32_out_with_bias
+)
 
 # Override test_scaled_mm_deepseek_error_messages: upstream gates with @onlyCUDA and a
 # CUDA-12.9 skip that trivially evaluates true on XPU (_get_torch_cuda_version() returns
