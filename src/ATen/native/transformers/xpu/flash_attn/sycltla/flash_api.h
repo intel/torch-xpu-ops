@@ -38,7 +38,7 @@ mha_fwd(
     int window_size_right,
     const float softcap,
     const bool return_softmax,
-    std::optional<at::Generator> gen_);
+    const std::optional<at::Generator>& gen_);
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     const at::Tensor& dout, // batch_size x seqlen_q x num_heads, x head_size_og

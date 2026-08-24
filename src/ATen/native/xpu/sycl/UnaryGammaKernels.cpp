@@ -53,7 +53,8 @@ void digamma_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct TrigammaFunctor {
   scalar_t operator()(scalar_t a) const {
-    return calc_trigamma(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return static_cast<scalar_t>(trigamma(static_cast<opmath_t>(a)));
   }
 };
 

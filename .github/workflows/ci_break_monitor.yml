@@ -42,10 +42,10 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || vars.CI_MONITOR_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-      - run: pip install requests
+          python: '3.12'
+      - run: uv pip install requests
 
       # ===== Step 1: Scan PyTorch XPU CI =====
       - name: "Step 1: Scan PyTorch XPU CI"

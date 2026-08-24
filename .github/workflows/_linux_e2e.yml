@@ -69,7 +69,6 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         MODEL_ONLY_NAME: ${{ inputs.model }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v7

@@ -54,10 +54,9 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
-              --security-opt seccomp=unconfined --cap-add=SYS_ADMIN --shm-size=8g --privileged
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
