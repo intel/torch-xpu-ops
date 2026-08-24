@@ -72,7 +72,10 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       NIGHTLY_VERSION: ${{ inputs.nightly_version }}
       FIX_PR: ${{ inputs.fix_pr }}
-      PYTORCH_DIR: ${{ github.workspace }}/pytorch
+      # AGENTS.md's gitignored scratch dir; all run artifacts live here (not
+      # /tmp), matching bot.yml's fix job.
+      AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
+      PYTORCH_DIR: ${{ github.workspace }}/agent_space_xpu/pytorch
     steps:
       - name: Checkout torch-xpu-ops (for AGENTS.md + skills)
         uses: actions/checkout@v7
@@ -90,6 +93,9 @@ jobs:
         uses: ./.github/actions/setup-python
         with:
           python: '3.10'
+
+      - name: Prepare agent scratch dir
+        run: mkdir -p "$AGENT_SPACE"
 
       # The agent drives the ENTIRE chain and solves problems itself. The
       # workflow only provisions runner + container + GPU + Python. Nothing is
@@ -161,8 +167,8 @@ jobs:
                  ${{ env.FFT_REGRESSION_TESTS }}
             7. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that a later step can
                source to reproduce your runtime (exports USE_XPU=1, USE_CUDA=0,
-               sources your DLE setvars.sh). Also write a JSON summary to
-               /tmp/agent_result.json with keys: reproduced_before (bool),
+                sources your DLE setvars.sh). Also write a JSON summary to
+                ${{ env.AGENT_SPACE }}/agent_result.json with keys: reproduced_before (bool),
                build_ok (bool), xpu_available (bool), verified_after (bool),
                fail_before_count, pass_after_count, dle_install_seconds,
                cold_build_seconds, notes.
@@ -190,6 +196,77 @@ jobs:
             if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
             core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
 
+      # Reviewer agent (semantic layer). Independent second agent re-verifies
+      # the fix from scratch and judges the result by meaning (an exit-0 with
+      # collected-0 / all-skipped is NOT a pass). This is the same two-layer
+      # design proposed for bot.yml's fix job; the smoke run exercises it end
+      # to end before it ships there.
+      - name: Reviewer agent — independent re-verification
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            You are an INDEPENDENT reviewer. Another agent just built PyTorch
+            from source with the fix from torch-xpu-ops PR #${{ inputs.fix_pr }}
+            and recorded what it did in ${{ env.AGENT_SPACE }}/agent_result.json. Decide, from
+            scratch and skeptically, whether the fix is really verified. Do NOT
+            trust the fix agent's self-report — re-run and judge yourself. Do
+            NOT modify code, commit, or push.
+
+            Read ${{ env.AGENT_SPACE }}/agent_result.json first. Then in a brand-new bash process
+            (none of the fix agent's shell state), source ONLY
+            ${{ env.PYTORCH_DIR }}/build_pytorch.env, confirm
+            torch.xpu.is_available() is True, then from ${{ env.PYTORCH_DIR }}/test
+            run every one of these node ids and see if they pass on the source
+            build:
+              ${{ env.FFT_FAIL_TESTS }}
+              ${{ env.FFT_REGRESSION_TESTS }}
+
+            Judge the OUTCOME semantically, not just by exit code — an exit 0
+            with `collected 0 items`, `no tests ran`, all-skipped, or
+            all-xfailed is NOT a pass; it means the test never really ran.
+            Note: the node ids above may be missing the pytest test-class
+            component; if pytest reports 'not found' / collection errors,
+            resolve the real ids via `pytest --collect-only` and use those (the
+            fix agent's build_pytorch.env may already re-export corrected
+            lists — prefer those if present).
+
+            Write your conclusion to ${{ env.AGENT_SPACE }}/review_result.json with keys:
+            - `verdict`: "PASSED" | "FAILED" | "INCONCLUSIVE"
+            - `commands`: array of {`cmd`, `exit_code`, `tests_collected`
+              (int, -1 if N/A), `tests_passed` (int, -1 if N/A)} for every
+              command you actually ran to verify
+            - `reason`: one sentence
+            Only write `verdict: "PASSED"` if at least one command you ran had
+            exit_code 0 AND tests_collected >= 1 AND tests_passed >= 1. This
+            file is machine-checked; a PASSED verdict whose `commands` don't
+            support it will be rejected.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      # Confirm the reviewer actually ran (same always-exit-0 caveat as the fix
+      # agent).
+      - name: Check reviewer executed
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const file = '${{ steps.review.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) {
+              core.setFailed('reviewer produced no execution_file — it never ran');
+              return;
+            }
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) { core.setFailed('reviewer execution_file has no result entry'); return; }
+            if (result.is_error) { core.setFailed('reviewer reported an error: ' + (result.subtype || 'unknown')); return; }
+            core.info('reviewer ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
+
       # Objective gate: claude-code-action exits 0 regardless of the agent's own
       # conclusion, so re-run the verify assertions independently against the
       # build the agent produced. This — not the agent's self-report — decides
@@ -212,7 +289,7 @@ jobs:
           for nid in $FFT_FAIL_TESTS $FFT_REGRESSION_TESTS; do
             total=$((total+1))
             if python -m pytest "$nid" -v --no-header -p no:cacheprovider \
-                 2>&1 | tee -a /tmp/after.log >/dev/null; then
+                 2>&1 | tee -a "$AGENT_SPACE/after.log" >/dev/null; then
               pass=$((pass+1))
             else
               echo "STILL FAILING (after): $nid" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -221,44 +298,85 @@ jobs:
           echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
           [ "$pass" -eq "$total" ] || { echo "::error::verify gate: $pass/$total passed"; exit 1; }
 
+      # Reviewer-verdict gate (client layer): the one thing a dumb script does
+      # better than an agent — refuse to let the always-exit-0 reviewer
+      # self-certify. Requires verdict==PASSED backed by real execution
+      # evidence (a command with exit 0 and >=1 test collected+passed), so a
+      # rubber-stamped collected-0 run is rejected. Same jq check as bot.yml.
+      - name: Reviewer gate — verdict must be execution-backed
+        run: |
+          set -uo pipefail
+          review_json="$AGENT_SPACE/review_result.json"
+          if [ ! -f "$review_json" ]; then
+            echo "::error::reviewer produced no review_result.json — cannot certify the fix"
+            exit 1
+          fi
+          verdict=$(jq -r '.verdict // "MISSING"' "$review_json")
+          reason=$(jq -r '.reason // "(no reason)"' "$review_json")
+          echo "### reviewer verdict: \`$verdict\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- $reason" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$verdict" != "PASSED" ]; then
+            echo "::error::reviewer verdict is $verdict, not PASSED"
+            exit 1
+          fi
+          backed=$(jq '[.commands[]? | select(.exit_code == 0 and (.tests_collected // -1) >= 1 and (.tests_passed // -1) >= 1)] | length' "$review_json")
+          if [ "${backed:-0}" -lt 1 ]; then
+            echo "::error::PASSED verdict not backed by execution evidence (need a command with exit 0 and >=1 test collected+passed)"
+            exit 1
+          fi
+          echo "reviewer verdict PASSED and execution-backed; reviewer gate satisfied"
+
       - name: Report agent cost
         if: always()
         uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
-            const file = '${{ steps.agent.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) return;
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const r = data.filter(e => e.type === 'result').pop();
-            if (!r) return;
-            const usage = Object.values(r.modelUsage || {})[0] || {};
-            const inTok = (usage.inputTokens||0)+(usage.cacheReadInputTokens||0)+(usage.cacheCreationInputTokens||0);
-            const line = `### agent cost\n- **$${(r.total_cost_usd||0).toFixed(4)}** ` +
-              `(${inTok.toLocaleString()} in / ${(usage.outputTokens||0).toLocaleString()} out), ` +
-              `turns=${r.num_turns||'?'}`;
-            await core.summary.addRaw(line + '\n').write();
+            const files = {
+              'fix agent': '${{ steps.agent.outputs.execution_file }}',
+              'reviewer': '${{ steps.review.outputs.execution_file }}',
+            };
+            for (const [label, file] of Object.entries(files)) {
+              if (!file || !fs.existsSync(file)) continue;
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const r = data.filter(e => e.type === 'result').pop();
+              if (!r) continue;
+              const usage = Object.values(r.modelUsage || {})[0] || {};
+              const inTok = (usage.inputTokens||0)+(usage.cacheReadInputTokens||0)+(usage.cacheCreationInputTokens||0);
+              const line = `### ${label} cost\n- **$${(r.total_cost_usd||0).toFixed(4)}** ` +
+                `(${inTok.toLocaleString()} in / ${(usage.outputTokens||0).toLocaleString()} out), ` +
+                `turns=${r.num_turns||'?'}`;
+              await core.summary.addRaw(line + '\n').write();
+            }
 
-      # Persist the agent transcript (thinking + every tool call/result) so the
-      # run can be reviewed. Otherwise discarded with the runner.
-      - name: Stage agent transcript
+
+      # Persist both agents' transcripts (thinking + every tool call/result)
+      # so the run can be reviewed. Otherwise discarded with the runner.
+      - name: Stage agent transcripts
         if: always()
         run: |
           f='${{ steps.agent.outputs.execution_file }}'
           if [ -n "$f" ] && [ -f "$f" ]; then
-            cp "$f" /tmp/agent_transcript.json
-            echo "staged agent transcript ($(wc -c < /tmp/agent_transcript.json) bytes)"
+            cp "$f" "$AGENT_SPACE/agent_transcript.json"
+            echo "staged fix-agent transcript ($(wc -c < "$AGENT_SPACE/agent_transcript.json") bytes)"
+          fi
+          rf='${{ steps.review.outputs.execution_file }}'
+          if [ -n "$rf" ] && [ -f "$rf" ]; then
+            cp "$rf" "$AGENT_SPACE/reviewer_transcript.json"
+            echo "staged reviewer transcript ($(wc -c < "$AGENT_SPACE/reviewer_transcript.json") bytes)"
           fi
 
-      - name: Upload logs + transcript
+      - name: Upload logs + transcripts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs
           path: |
-            /tmp/after.log
-            /tmp/agent_result.json
-            /tmp/agent_transcript.json
+            ${{ env.AGENT_SPACE }}/after.log
+            ${{ env.AGENT_SPACE }}/agent_result.json
+            ${{ env.AGENT_SPACE }}/review_result.json
+            ${{ env.AGENT_SPACE }}/agent_transcript.json
+            ${{ env.AGENT_SPACE }}/reviewer_transcript.json
           if-no-files-found: ignore
 
       # Files created inside the privileged container are root-owned; hand them
