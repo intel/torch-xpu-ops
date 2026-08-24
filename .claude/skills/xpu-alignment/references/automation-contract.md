@@ -147,7 +147,14 @@ not require an XPU runtime.
 `collection_status` must match the original manifest. `decisions` covers every
 observed inventory id exactly once with `reject` or `validate` and a concrete
 reason. Every validated item has exactly one execution entry; rejected items
-have none.
+have none. An object whose body, reproducer, tests, or diff shows independent XPU
+work already tracked or implemented upstream is rejected with
+`already-xpu-scoped` in its reason; a title, label, or XPU mention alone cannot
+establish that scope. Generic, shared, or multi-backend work originating in CPU,
+CUDA, ROCm, MPS, or another backend remains eligible when XPU parity is unknown.
+For an explicitly linked issue/PR/commit chain, validate one canonical object at
+most and reject the rest with `duplicate-chain` plus the canonical inventory id
+in each free-text reason.
 An execution identifies immutable script bytes, uses the default 120-second
 timeout unless evidence justifies a smaller value, and states the upstream oracle
 and expected XPU target path. Any missing detail or coverage makes preparation
@@ -268,7 +275,9 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 
 `units` covers the provisional actionable set exactly once. Only
 `needs-xpu-fix` without a canonical tracker has a payload. `status: blocked`
-lists blockers and contains no payloads.
+lists blockers and contains no payloads. When an existing
+`intel/torch-xpu-ops` issue covers the same work, record its URL as
+`canonical_tracker`; do not create a payload or comment on that tracker.
 
 This role requires read-only GitHub access to refresh source and tracker state,
 but it does not require an XPU runtime.

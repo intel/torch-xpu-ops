@@ -10,6 +10,21 @@ reachable from the `pytorch/pytorch` default branch whose committer timestamp is
 in the interval. Ordinary comments, labels, and other updates to older objects do
 not create candidates. Fetch linked older objects when they provide context.
 
+An observed inventory object is not yet an alignment validation candidate. If
+the upstream issue body or reproducer, PR tests or diff, or commit diff shows
+that its primary scope is independent XPU work already tracked or implemented
+upstream, reject it with `already-xpu-scoped` in the reason. Do not create a
+reproducer, review it, or open a parallel `torch-xpu-ops` issue. A title, label,
+or XPU mention by itself is only a prioritization signal and is not sufficient
+evidence for this rejection.
+
+Alignment validation instead targets generic behavior and work originating in
+CPU, CUDA, ROCm, MPS, or any other backend when XPU parity is not already
+addressed. Shared or multi-backend work remains eligible even when XPU is named
+as one affected backend. For an explicitly linked issue/PR/commit chain, validate
+one canonical object at most. Reject the other objects with `duplicate-chain` in
+the free-text reason and name the canonical inventory id.
+
 In automation, the deterministic collector owns pagination and the raw inventory.
 Treat every observed inventory object as in scope. Its collection is partial when
 an API quota, authentication error, timeout, or endpoint failure prevents a source
@@ -69,6 +84,8 @@ The reviewer did not produce the scan. For every `confirmed` or
 6. whether a claimed fix is present in the tested build and passes the same check.
 
 Search `intel/torch-xpu-ops` for a canonical tracker before allowing a new issue.
+When one already covers the work, record its URL as `canonical_tracker`; do not
+create a new payload or automatically comment on the existing tracker.
 Use exactly one verdict:
 
 - `needs-xpu-fix`
