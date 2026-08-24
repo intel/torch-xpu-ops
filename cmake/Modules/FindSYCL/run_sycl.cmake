@@ -36,6 +36,7 @@ set(SYCL_executable "@SYCL_EXECUTABLE@") # path
 set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
+set(SYCL_host_flags_excluded_from_sycl [==[@SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL@]==]) # list
 
 list(REMOVE_DUPLICATES SYCL_include_dirs)
 
@@ -65,14 +66,11 @@ endforeach()
 # Choose host flags in FindSYCL.cmake
 @SYCL_host_flags@
 
-# These GCC-only warning controls are inherited from PyTorch's global host
-# flags. They are not accepted by the Intel SYCL/Clang frontend, even when
-# forwarded with -Xarch_host, and produce one warning block for every kernel.
-list(FILTER CMAKE_HOST_FLAGS EXCLUDE REGEX "^-Wno-stringop-overflow$|^-Wno-dangling-reference$|^-Werror=dangling-reference$|^-Wno-error=dangling-reference$")
-
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
-  list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
+  if(NOT flag IN_LIST SYCL_host_flags_excluded_from_sycl)
+    list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
+  endif()
 endforeach()
 
 if(WIN32)

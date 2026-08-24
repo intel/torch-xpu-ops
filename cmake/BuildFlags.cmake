@@ -37,6 +37,7 @@ macro(set_build_flags)
     return()
   endif()
   set(SYCL_HOST_FLAGS)
+  set(SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
   set(SYCL_HOST_PER_CONFIG_FLAGS)
   set(SYCL_KERNEL_OPTIONS)
@@ -73,6 +74,13 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    # These GCC warning options remain available to regular host compilation,
+    # but are not supported by the Intel SYCL/Clang host frontend.
+    list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
+      -Wno-stringop-overflow
+      -Wno-dangling-reference
+      -Werror=dangling-reference
+      -Wno-error=dangling-reference)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)

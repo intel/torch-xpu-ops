@@ -24,6 +24,9 @@
 #  SYCL_HOST_FLAGS
 #  -- SYCL compiler's 3rd party host compiler (e.g. gcc) arguments .
 #
+#  SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
+#  -- Host arguments omitted when composing the SYCL compiler command line.
+#
 #  SYCL_DEVICE_LINK_FLAGS
 #  -- Arguments used when linking device object.
 #
