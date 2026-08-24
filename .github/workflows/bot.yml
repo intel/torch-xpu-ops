@@ -1236,10 +1236,10 @@ jobs:
                `<pytorch_dir>/test` — never from the pytorch root, it shadows
                the installed torch with `No module named torch.version`.
             5. Write `<pytorch_dir>/build_pytorch.env` (exports USE_XPU=1,
-               USE_CUDA=0, sources your DLE setvars.sh). A separate gate step
-               re-runs your fix in a brand-new shell that has none of your
-               session's state — only this file. Validate that in a real new
-               bash process before trusting it: sourcing just
+               USE_CUDA=0, sources your DLE setvars.sh). A separate reviewer
+               agent re-runs your fix in a brand-new shell that has none of
+               your session's state — only this file. Validate that in a real
+               new bash process before trusting it: sourcing just
                `build_pytorch.env` must be enough on its own to get
                `torch.xpu.is_available() == True` and to pass
                `refined_command` from `<pytorch_dir>/test`. If it only works
@@ -1251,12 +1251,12 @@ jobs:
                `refined_command` (single shell-executable pytest invocation,
                run from `<pytorch_dir>/test`, that must PASS on your build),
                `notes`. Only write `build_ok: true` after the fresh-shell
-               check from step 5 passes — that check is exactly what the
-               gate step replays.
+               check from step 5 passes — the reviewer agent replays exactly
+               that.
 
             For a Python-only fix, still write
             `${{ env.AGENT_SPACE }}/fix_result.json` with `needs_build: false`
-            (the gate step skips the build recheck in that case).
+            (the reviewer skips the build recheck in that case).
 
             When you have a verified fix, commit it to an agent/<slug>
             branch and push it. Do not open a pull request: per the
@@ -1266,56 +1266,120 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
-      # Objective gate: claude-code-action exits 0 regardless of the agent's own
-      # conclusion. For a build-in-the-loop fix, re-run the agent's own
-      # refined_command independently against the build it produced instead of
-      # trusting its self-report. Adapted from the same gate in
-      # `_arc_runner_smoke.yml`.
-      - name: Verify gate — independent recheck (build-in-the-loop only)
+      # Reviewer agent (semantic layer). The fix agent's own conclusion can't
+      # be trusted: claude-code-action always exits 0. A dumb re-run-the-command
+      # script can't be trusted either — it can't tell "collected 0 items but
+      # exit 0" from a real pass, or judge a multi-step / e2e reproducer. So a
+      # SECOND, independent agent re-verifies the fix from scratch and judges
+      # the result semantically, then the thin gate step below checks that this
+      # reviewer produced a self-consistent, execution-backed verdict (which a
+      # script CAN do, and which covers the reviewer's own always-exit-0 blind
+      # spot).
+      - name: Review AI fix — independent re-verification
+        id: review
+        if: ${{ always() && hashFiles('agent_space_xpu/fix_result.json') != '' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.MERGE_TOKEN }}
+          settings: '{"alwaysThinkingEnabled": true}'
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            You are an INDEPENDENT reviewer. Another agent just fixed issue
+            #${{ needs.parse-command.outputs.issue_number }} and recorded what
+            it did in `${{ env.AGENT_SPACE }}/fix_result.json`. Your job is to
+            decide, from scratch and skeptically, whether the fix is really
+            verified. Do NOT trust the fix agent's self-report — re-run and
+            judge yourself. Do NOT modify code, do NOT commit, do NOT push.
+
+            Read `fix_result.json` first. Then:
+
+            - If `needs_build` is false (Python-only fix): re-run its
+              `refined_command` against the installed nightly wheel yourself.
+            - If `needs_build` is true (source build): in a brand-new bash
+              process (none of the fix agent's shell state), source ONLY
+              `<pytorch_dir>/build_pytorch.env`, confirm
+              `torch.xpu.is_available()` is True, then run `refined_command`
+              from `<pytorch_dir>/test`.
+
+            Judge the OUTCOME semantically, not just by exit code — an exit 0
+            with `collected 0 items`, `no tests ran`, all-skipped, or
+            all-xfailed is NOT a pass; it means the test never really ran (or
+            still fails). If `refined_command` is a multi-step or non-pytest
+            reproducer, reason about whether it actually exercised the fixed
+            path and succeeded. If anything is ambiguous or you cannot
+            reproduce the agent's setup, say so rather than rubber-stamping.
+
+            Write your conclusion to
+            `${{ env.AGENT_SPACE }}/review_result.json` with keys:
+            - `verdict`: "PASSED" | "FAILED" | "INCONCLUSIVE"
+            - `commands`: array of {`cmd`, `exit_code`, `tests_collected`
+              (int, -1 if N/A), `tests_passed` (int, -1 if N/A)} for every
+              command you actually ran to verify
+            - `reason`: one sentence
+            Only write `verdict: "PASSED"` if at least one command you ran had
+            exit_code 0 AND tests_collected >= 1 AND tests_passed >= 1 (or, for
+            a non-pytest reproducer, an equivalent positive signal you explain
+            in `reason`). This file is machine-checked; a PASSED verdict whose
+            `commands` don't support it will be rejected.
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+      # Objective gate (client layer): a dumb script that does the one thing a
+      # script does better than an agent — refuse to let an always-exit-0
+      # reviewer self-certify. It checks the reviewer's review_result.json is
+      # present, verdict==PASSED, and that verdict is backed by real execution
+      # evidence (a command with exit 0 and >=1 test collected+passed). No
+      # judgement here; just consistency enforcement.
+      - name: Verify gate — check reviewer verdict is execution-backed
         id: gate
         if: always()
         run: |
-          set -uxo pipefail
+          set -uo pipefail
           result_json="$AGENT_SPACE/fix_result.json"
+          review_json="$AGENT_SPACE/review_result.json"
           if [ ! -f "$result_json" ]; then
-            echo "no $result_json from the agent; nothing to gate (agent"
-            echo "likely stopped early or errored — the 'Verify: AI fix succeeded'"
-            echo "step below handles that case)."
+            echo "no $result_json from the fix agent; nothing to gate (it likely"
+            echo "stopped early or errored — 'Verify: AI fix succeeded' handles that)."
             exit 0
           fi
-          needs_build=$(python3 -c "import json; print(json.load(open('$result_json')).get('needs_build', False))")
-          if [ "$needs_build" != "True" ]; then
-            echo "needs_build=false (python-only fix); no build to independently recheck."
-            exit 0
-          fi
-          pytorch_dir=$(python3 -c "import json; print(json.load(open('$result_json'))['pytorch_dir'])")
-          refined_command=$(python3 -c "import json; print(json.load(open('$result_json'))['refined_command'])")
-          [ -f "$pytorch_dir/build_pytorch.env" ] || { echo "::error::agent claimed needs_build=true but did not write build_pytorch.env; chain incomplete"; exit 1; }
-          # Explicit path: `source <bare-name>` searches PATH, not cwd.
-          # shellcheck disable=SC1091
-          source "$pytorch_dir/build_pytorch.env"
-          avail=$(python3 -c "import torch; print(torch.xpu.is_available())")
-          echo "### verify gate (independent recheck)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- xpu available (source build): \`$avail\`" >> "$GITHUB_STEP_SUMMARY"
-          [ "$avail" = "True" ] || { echo "::error::source build has no XPU"; exit 1; }
-          cd "$pytorch_dir/test"
-          if bash -c "$refined_command"; then
-            echo "- refined_command: \`PASSED\`" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- refined_command: \`FAILED\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::verify gate: refined_command failed on the agent's own build"
+          if [ ! -f "$review_json" ]; then
+            echo "::error::reviewer produced no review_result.json — cannot certify the fix"
             exit 1
           fi
+          verdict=$(jq -r '.verdict // "MISSING"' "$review_json")
+          reason=$(jq -r '.reason // "(no reason)"' "$review_json")
+          echo "### reviewer verdict: \`$verdict\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- $reason" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$verdict" != "PASSED" ]; then
+            echo "::error::reviewer verdict is $verdict, not PASSED"
+            exit 1
+          fi
+          # A PASSED verdict must be backed by at least one command the reviewer
+          # actually ran to green — this is what stops an always-exit-0 reviewer
+          # from rubber-stamping a collected-0 / all-skipped run.
+          backed=$(jq '[.commands[]? | select(.exit_code == 0 and (.tests_collected // -1) >= 1 and (.tests_passed // -1) >= 1)] | length' "$review_json")
+          if [ "${backed:-0}" -lt 1 ]; then
+            echo "::error::PASSED verdict not backed by execution evidence (need a command with exit 0 and >=1 test collected+passed)"
+            exit 1
+          fi
+          echo "reviewer verdict PASSED and execution-backed; gate satisfied"
 
-      # Persist the agent transcript (thinking + every tool call/result) so a
-      # build-in-the-loop run can be reviewed offline. Otherwise discarded with
-      # the runner.
-      - name: Stage + upload agent transcript
+
+      # Persist both agents' transcripts (thinking + every tool call/result)
+      # plus their result files so a build-in-the-loop run can be reviewed
+      # offline. Otherwise discarded with the runner.
+      - name: Stage + upload agent transcripts
         if: always()
         run: |
           f='${{ steps.ai-fix.outputs.execution_file }}'
           if [ -n "$f" ] && [ -f "$f" ]; then
             cp "$f" "$AGENT_SPACE/agent_transcript.json"
+          fi
+          rf='${{ steps.review.outputs.execution_file }}'
+          if [ -n "$rf" ] && [ -f "$rf" ]; then
+            cp "$rf" "$AGENT_SPACE/reviewer_transcript.json"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
@@ -1323,7 +1387,9 @@ jobs:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
           path: |
             ${{ env.AGENT_SPACE }}/agent_transcript.json
+            ${{ env.AGENT_SPACE }}/reviewer_transcript.json
             ${{ env.AGENT_SPACE }}/fix_result.json
+            ${{ env.AGENT_SPACE }}/review_result.json
           if-no-files-found: ignore
 
       - name: Post result comment
@@ -1348,13 +1414,13 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
-            // The agent's own summary below may claim the fix is verified even
-            // when the independent gate step disagreed (it re-runs the
-            // agent's refined_command against the agent's own build). Flag
-            // that mismatch up front so a human does not take the agent's
-            // self-report at face value.
+            // The fix agent's own summary below may claim the fix is verified
+            // even when the independent reviewer disagreed (or the gate found
+            // the reviewer's PASSED verdict wasn't backed by real execution).
+            // Flag that mismatch up front so a human does not take the fix
+            // agent's self-report at face value.
             const gateWarning = process.env.GATE_OUTCOME === 'failure'
-              ? `> [!WARNING]\n> The independent verify gate **failed** to reproduce the pass below on the agent's own build. Treat the summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Verify gate" step.\n\n`
+              ? `> [!WARNING]\n> Independent review did **not** confirm the pass claimed below. Treat this summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Review" and "Verify gate" steps.\n\n`
               : '';
             const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
             const body = header + gateWarning + result.result + footer;
