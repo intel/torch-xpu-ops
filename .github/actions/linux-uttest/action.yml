@@ -16,50 +16,171 @@ runs:
         which pip && pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
         mkdir -p ${log_dir}
-        cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
+        cd pytorch/test
+        export PYTORCH_TEST_WITH_SLOW=1
+        pytest -v dynamo/test_aot_autograd_cache.py \
+            dynamo/test_aot_compile.py \
+            dynamo/test_higher_order_ops.py \
+            dynamo/test_recompiles.py \
+            dynamo/test_structured_trace.py \
+            inductor/test_aot_inductor_package.py \
+            inductor/test_aot_inductor.py \
+            inductor/test_binary_folding.py \
+            inductor/test_codecache.py \
+            inductor/test_compiled_optimizers.py \
+            inductor/test_config.py \
+            inductor/test_control_flow.py \
+            inductor/test_cuda_repro.py \
+            inductor/test_deterministic.py \
+            inductor/test_efficient_conv_bn_eval.py \
+            inductor/test_flex_attention.py \
+            inductor/test_foreach.py \
+            inductor/test_fxir_backend.py \
+            inductor/test_gpu_cpp_wrapper.py \
+            inductor/test_group_batch_fusion.py \
+            inductor/test_inductor_freezing.py \
+            inductor/test_inductor_scheduler.py \
+            inductor/test_max_autotune.py \
+            inductor/test_memory_planning.py \
+            inductor/test_memory.py \
+            inductor/test_mkldnn_pattern_matcher.py \
+            inductor/test_mmdecomp.py \
+            inductor/test_native_matmul.py \
+            inductor/test_pad_mm.py \
+            inductor/test_pattern_matcher.py \
+           --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
           2> ${log_dir}/op_regression_test_error.log |tee ${log_dir}/op_regression_test.log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression.log
     - name: op_regression_dev1
-      shell: timeout 300 bash -xe {0}
+      shell: bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
         mkdir -p ${log_dir}
-        cd pytorch/third_party/torch-xpu-ops/test/regressions
-        timeout 180 pytest test_operation_on_device_1.py \
+        export PYTORCH_TEST_WITH_SLOW=1
+        cd pytorch/test
+        pytest -v inductor/test_quantization.py \
+          inductor/test_torchinductor_codegen_dynamic_shapes.py \
+          inductor/test_torchinductor_dynamic_shapes.py \
+          inductor/test_torchinductor_opinfo.py \
+          inductor/test_torchinductor.py \
+          inductor/test_triton_heuristics.py \
+          inductor/test_triton_launcher_integration.py \
+          inductor/test_triton_wrapper.py \
+          inductor/test_user_streams.py \
+          inductor/test_utils.py \
+          inductor/test_wrapper_codegen.py \
+          lazy/test_debug_util.py \
+          lazy/test_functionalization.py \
+          lazy/test_generator.py \
+          lazy/test_reuse_ir.py \
+          lazy/test_step_closures.py \
+          nn/attention/test_open_registry.py \
+          nn/test_convolution.py \
+          nn/test_embedding.py \
+          profiler/test_profiler_tree.py \
+          profiler/test_python_tracer.py \
+          profiler/test_record_function.py \
+          profiler/test_trace_validator.py \
+          profiler/test_xpu_profiler.py \
+          profiler/test_xpu_scope_profiler.py \
+          python_native/test_decomp.py \
+          python_native/test_dsl_registry.py \
+          python_native/test_instrumentation.py \
+          python_native/test_native_dsl_ops.py \
+          python_native/test_sum_inner_tree_plan.py \
+          python_native/test_torch_backends.py \
           --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
           2> ${log_dir}/op_regression_dev1_test_error.log |tee ${log_dir}/op_regression_dev1_test.log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
         mkdir -p ${log_dir}
-        cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
-        python run_test_with_skip.py \
+        cd pytorch/test
+        pytest -v test_accelerator.py \
+          test_appending_byte_serializer.py \
+          test_as_strided.py \
+          test_bundled_inputs.py \
+          test_content_store.py \
+          test_cpp_extensions_aot_ninja.py \
+          test_cpp_extensions_aot_no_ninja.py \
+          test_cpp_extensions_jit.py \
+          test_datapipe.py \
+          test_decomp.py \
+          test_fx.py \
+          test_legacy_vmap.py \
+          test_mkldnn_fusion.py \
+          test_mkldnn_verbose.py \
+          test_mkl_verbose.py \
+          test_modules.py \
+          test_module_tracker.py \
+          test_monitor.py \
+          test_multiprocessing.py \
+          test_nestedtensor.py \
+          test_nn.py \
+          test_ops_fwd_gradients.py \
+          test_ops_gradients.py \
+          test_pruning_op.py \
+          test_public_bindings.py \
+          test_python_dispatch.py \
+          test_pytree.py \
+          test_rename_privateuse1_to_existing_device.py \
           2> ${log_dir}/op_extended_test_error.log |tee ${log_dir}/op_extended_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/op_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        python run_test_with_skip.py \
+        pytest -v test_scaled_matmul_cuda.py \
+          test_stateless.py \
+          test_subclass.py \
+          test_sympy_utils.py \
+          test_tensorexpr.py \
+          test_transformers.py \
+          test_typing.py \
+          test_view_ops.py \
+          test_weak.py \
+          test_xpu_expandable_segments.py \
+          test_xpu.py \
+          torch_np/numpy_tests/core/test_getlimits.py \
+          torch_np/numpy_tests/core/test_indexing.py \
+          torch_np/numpy_tests/core/test_multiarray.py \
+          torch_np/numpy_tests/core/test_shape_base.py \
+          torch_np/numpy_tests/fft/test_helper.py \
+          torch_np/numpy_tests/fft/test_pocketfft.py \
+          torch_np/numpy_tests/lib/test_arraysetops.py \
+          torch_np/numpy_tests/lib/test_histograms.py \
+          torch_np/numpy_tests/lib/test_index_tricks.py \
+          torch_np/numpy_tests/lib/test_twodim_base.py \
+          torch_np/numpy_tests/lib/test_type_check.py \
+          torch_np/test_basic.py \
+          torch_np/test_binary_ufuncs.py \
+          torch_np/test_dtype.py \
+          torch_np/test_function_base.py \
+          torch_np/test_indexing.py \
+          torch_np/test_random.py \
+          torch_np/test_reductions.py \
+          torch_np/test_scalars_0D_arrays.py \
+          torch_np/test_ufuncs_basic.py \
+          typing/test_python_operators.py \
+          xpu/test_lstm.py \
           2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
@@ -174,39 +295,3 @@ runs:
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
 
-    # Summary
-    - name: UT Test Results Summary
-      if: ${{ !cancelled() }}
-      shell: timeout 180 bash -xe {0}
-      run: |
-        pip install junitparser
-        python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-        # Check the failure logs
-        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
-          echo -e "Exist Failure logs"
-          echo "Found Failure logs as below: "
-          for file in ${{ github.workspace }}/failures*.log; do
-            echo "  - $file"
-            cp "$file" ${{ github.workspace }}/ut_log
-          done
-          echo -e "Failure logs Copied"
-        else
-          echo -e "No Failure logs"
-        fi
-        # Copied the passed logs
-        if ls passed*.log 1> /dev/null 2>&1; then
-          cp passed*.log ${{ github.workspace }}/ut_log
-          echo -e "Passed logs Copied"
-        else
-          echo -e "No Passed logs"
-        fi
-        # Copied the Summary logs
-        if ls category*.log 1> /dev/null 2>&1; then
-          cp category*.log ${{ github.workspace }}/ut_log
-          echo -e "Category logs Copied"
-        else
-          echo -e "No Category logs"
-        fi
-        if [ -e ut_failure_list.csv ];then
-            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-        fi
