@@ -101,7 +101,7 @@ macro(set_build_flags)
   #
   # PSEUDO of pure icpx compilation (no separate host compiler).
   # 1. Kernel source compilation (icpx handles both host and device code):
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
+  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -Xarch_host '${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
   # 2. Device code linkage:
   # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
   # 3. Host only source compilation:
