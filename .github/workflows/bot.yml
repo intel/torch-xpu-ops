@@ -1208,6 +1208,10 @@ jobs:
                stale as PyTorch moves forward, not a default to reach for
                first:
                `${{ env.ONEAPI_INSTALLER }}`
+               If the table's latest entry still points at the same version
+               as the hardcoded URL, that just means nobody has bumped this
+               workflow since Intel last updated the page yet — not a sign
+               something is wrong; use whatever the table says either way.
             3. Source-build via the /xpu-build-pytorch skill
                (`pip install -e . -v --no-build-isolation` from the pytorch
                checkout). Confirm `torch.xpu.is_available()` is True on the
