@@ -208,7 +208,9 @@ jobs:
           use_bedrock: "true"
           github_token: ${{ secrets.MERGE_TOKEN }}
           settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep"
+          # Write (not Edit) so it can emit review_result.json without being
+          # able to touch source.
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep,Write"
           prompt: |
             You are an INDEPENDENT reviewer. Another agent just built PyTorch
             from source with the fix from torch-xpu-ops PR #${{ inputs.fix_pr }}
