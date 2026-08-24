@@ -533,6 +533,9 @@ Tensor _sparse_csr_linear_solve_xpu(
   TORCH_CHECK(b.size(0) == A.size(1), "linear system size mismatch.");
   TORCH_CHECK(A.dtype() == b.dtype(), "A, x, and b must have the same dtype");
   TORCH_CHECK(
+      A.scalar_type() == kFloat || A.scalar_type() == kDouble,
+      "only float32 and float64 dtypes are supported by the Sparse CSR backend");
+  TORCH_CHECK(
       left == true, "only left == true is supported by the Sparse CSR backend");
 
   Tensor A_dense = A.to_dense();
