@@ -1191,13 +1191,23 @@ jobs:
             have GPU access via /dev/dri and root in this container):
             1. Clone pytorch, apply your fix (pytorch-side diff and/or
                torch-xpu-ops-side diff per AGENTS.md's `xpu.txt` override).
-            2. Install the Intel Deep Learning Essentials via the OFFLINE
+            2. Install the Intel Deep Learning Essentials (DLE) via the OFFLINE
                installer (this container has no Intel apt repo, so
-               `apt install intel-deep-learning-essentials` fails):
+               `apt install intel-deep-learning-essentials` fails). **The DLE
+               version must match the PyTorch version you installed in step 1**
+               (the nightly install above always tracks latest, so this drifts
+               forward over time — do not assume last week's version pairing
+               still holds). WebFetch
+               https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu.html
+               for the current PyTorch<->DLE compatibility table (the "PyTorch
+               and Intel Deep Learning Essentials Compatibility" section) and
+               the matching offline installer URL (the "Install Using Offline
+               Installation Scripts" section). Only fall back to the
+               hardcoded URL below if that page is unreachable — it is a
+               last-resort pin (2026.1, matches PyTorch 2.14+) that WILL go
+               stale as PyTorch moves forward, not a default to reach for
+               first:
                `${{ env.ONEAPI_INSTALLER }}`
-               (or find a current one via WebFetch against
-               docs/source/notes/get_start_xpu.md and its linked Intel page if
-               this URL is stale).
             3. Source-build via the /xpu-build-pytorch skill
                (`pip install -e . -v --no-build-isolation` from the pytorch
                checkout). Confirm `torch.xpu.is_available()` is True on the
