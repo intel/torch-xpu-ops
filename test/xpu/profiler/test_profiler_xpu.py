@@ -2302,7 +2302,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
     @skipIfTorchDynamo("profiler gets ignored if dynamo activated")
     def test_cpu_annotation_overlap(self):
         with torch.profiler.profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            activities=supported_activities(),
             record_shapes=True,
             with_stack=True,
             schedule=torch.profiler.schedule(wait=0, warmup=0, active=5, repeat=1),
