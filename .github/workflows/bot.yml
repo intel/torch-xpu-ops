@@ -1597,7 +1597,12 @@ jobs:
   # Open a draft PR from the branch a prior `fix` run pushed, once a human has
   # reviewed the diff on the issue. Deliberately does NOT rebuild or re-verify
   # (the fix job already did, and the human just reviewed the diff) — it only
-  # turns the already-verified branch into a draft PR.
+  # turns the branch into a draft PR.
+  #
+  # Trust model: this only checks the branch exists, not that it passed the
+  # verify gate. The `fix` job force-pushes agent/fix-issue-<N> even on a gate
+  # failure, so a stale/unverified branch can exist. The safeguard is human:
+  # a maintainer reviews the posted diff and only then runs fix-pr-create.
   fix-pr-create:
     needs: parse-command
     runs-on: ubuntu-latest
@@ -1607,7 +1612,6 @@ jobs:
       && needs.parse-command.outputs.authorized == 'true'
     env:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
-      GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       FIX_BRANCH: agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
     steps:
       - name: Open draft PR from the verified fix branch
@@ -1665,11 +1669,19 @@ jobs:
               core.warning(`could not read issue comments for summary: ${e.message}`);
             }
 
-            const pr = await github.rest.pulls.create({
-              owner, repo, head: branch, base: 'main', draft: true,
-              title: `Fix issue #${issue}`,
-              body: prBody,
-            });
+            let pr;
+            try {
+              pr = await github.rest.pulls.create({
+                owner, repo, head: branch, base: 'main', draft: true,
+                title: `Fix issue #${issue}`,
+                body: prBody,
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue,
+                body: `Could not open a draft PR from \`${branch}\`: ${e.message}` });
+              core.setFailed(`pulls.create failed: ${e.message}`);
+              return;
+            }
             await github.rest.issues.createComment({ owner, repo, issue_number: issue,
               body: `Opened draft PR ${pr.data.html_url} from \`${branch}\`.` });
 
