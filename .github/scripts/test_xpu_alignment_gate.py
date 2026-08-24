@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from xpu_alignment_collect import collect
 from xpu_alignment_gate import build_decision
 
 
@@ -16,22 +17,63 @@ def digest(path: Path) -> str:
 class AlignmentArtifacts:
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.collection_root = root / "collection"
         self.prepare_root = root / "prepare"
         self.runner_root = root / "runner"
         self.scan_root = root / "scan"
         self.review_root = root / "review"
-        for path in (self.prepare_root, self.runner_root, self.scan_root, self.review_root):
+        for path in (
+            self.collection_root,
+            self.prepare_root,
+            self.runner_root,
+            self.scan_root,
+            self.review_root,
+        ):
             path.mkdir(parents=True)
 
     def write(self, unit_ids: list[str] | None = None) -> dict[str, Path]:
         unit_ids = ["issue-123"] if unit_ids is None else unit_ids
+        scan_window = {
+            "start": "2026-08-20T00:00:00Z",
+            "end": "2026-08-21T00:00:00Z",
+        }
+
+        class GitHub:
+            def snapshot(self, repository: str) -> dict:
+                return {"default_branch": "main", "default_branch_head": "a" * 40}
+
+            def page(self, repository, source, cursor, snapshot, window):
+                nodes = []
+                if source == "issues-created":
+                    nodes = [
+                        {
+                            "id": unit_id,
+                            "kind": "issue",
+                            "title": f"Candidate {unit_id}",
+                            "url": (
+                                "https://github.com/pytorch/pytorch/issues/"
+                                f"{unit_id.rsplit('-', 1)[-1]}"
+                            ),
+                            "event_at": "2026-08-20T01:00:00Z",
+                        }
+                        for unit_id in unit_ids
+                    ]
+                return {
+                    "nodes": nodes,
+                    "page_info": {"has_next_page": False, "end_cursor": None},
+                    "rate": {"remaining": 900, "reset_at": "2026-08-21T03:00:00Z"},
+                    "raw": {"nodes": nodes},
+                }
+
+        collection = collect("pytorch/pytorch", scan_window, self.collection_root, GitHub())
+        collection_path = self.collection_root / "collection/collection.json"
         scripts = self.prepare_root / "scripts"
         logs = self.runner_root / "runner/logs"
         reviews = self.review_root / "review"
         scripts.mkdir()
         logs.mkdir(parents=True)
         reviews.mkdir()
-        inventory = []
+        decisions = []
         executions = []
         results = []
         candidates = []
@@ -42,13 +84,9 @@ class AlignmentArtifacts:
             script.write_text("print('xpu evidence')\n")
             log = logs / f"{unit_id}.log"
             log.write_text("target XPU path raised the upstream error\n")
-            inventory.append(
+            decisions.append(
                 {
                     "id": unit_id,
-                    "kind": "issue",
-                    "title": f"Candidate {unit_id}",
-                    "url": f"https://github.com/pytorch/pytorch/issues/{number}",
-                    "events": [{"type": "created", "at": "2026-08-20T01:00:00Z"}],
                     "triage": "validate",
                     "reason": "shared operator path",
                 }
@@ -97,37 +135,13 @@ class AlignmentArtifacts:
                     },
                 }
             )
-        queries = []
-        for source in (
-            "issues-created",
-            "prs-created",
-            "prs-merged",
-            "default-branch-commits",
-        ):
-            count = len(unit_ids) if source == "issues-created" else 0
-            queries.append(
-                {
-                    "source": source,
-                    "request": f"query {source}",
-                    "pages": 1,
-                    "count": count,
-                    "truncated": False,
-                    "errors": [],
-                }
-            )
         prepare = {
             "schema_version": 1,
             "status": "complete",
-            "scan_window": {
-                "start": "2026-08-20T00:00:00Z",
-                "end": "2026-08-21T00:00:00Z",
-            },
-            "collection": {
-                "queries": queries,
-                "observed_count": sum(query["count"] for query in queries),
-                "unique_count": len(inventory),
-            },
-            "inventory": inventory,
+            "scan_window": scan_window,
+            "collection_sha256": digest(collection_path),
+            "collection_status": collection["status"],
+            "decisions": decisions,
             "executions": executions,
             "blockers": [],
         }
@@ -135,6 +149,7 @@ class AlignmentArtifacts:
         prepare_path.write_text(json.dumps(prepare) + "\n")
         runner = {
             "schema_version": 1,
+            "collection_sha256": digest(collection_path),
             "prepare_sha256": digest(prepare_path),
             "status": "complete",
             "results": results,
@@ -145,6 +160,8 @@ class AlignmentArtifacts:
         scan = {
             "schema_version": 1,
             "status": "complete",
+            "collection_sha256": digest(collection_path),
+            "collection_status": collection["status"],
             "prepare_sha256": digest(prepare_path),
             "runner_sha256": digest(runner_path),
             "environment": {"xpu_available": True},
@@ -156,6 +173,8 @@ class AlignmentArtifacts:
         review = {
             "schema_version": 1,
             "status": "complete",
+            "collection_sha256": digest(collection_path),
+            "collection_status": collection["status"],
             "scan_sha256": digest(scan_path),
             "units": units,
             "blockers": [],
@@ -163,11 +182,44 @@ class AlignmentArtifacts:
         review_path = reviews / "review.json"
         review_path.write_text(json.dumps(review) + "\n")
         return {
+            "collection": collection_path,
             "prepare": prepare_path,
             "runner": runner_path,
             "scan": scan_path,
             "review": review_path,
         }
+
+    def make_partial(self, paths: dict[str, Path]) -> None:
+        collection = json.loads(paths["collection"].read_text())
+        collection["status"] = "partial"
+        collection["sources"][0].update(
+            {
+                "status": "partial",
+                "boundary_reached": False,
+                "error": {"kind": "rate-limit", "message": "quota exhausted"},
+            }
+        )
+        collection["blockers"] = ["issues-created:rate-limit"]
+        paths["collection"].write_text(json.dumps(collection) + "\n")
+        prepare = json.loads(paths["prepare"].read_text())
+        prepare["collection_sha256"] = digest(paths["collection"])
+        prepare["collection_status"] = "partial"
+        paths["prepare"].write_text(json.dumps(prepare) + "\n")
+        runner = json.loads(paths["runner"].read_text())
+        runner["collection_sha256"] = digest(paths["collection"])
+        runner["prepare_sha256"] = digest(paths["prepare"])
+        paths["runner"].write_text(json.dumps(runner) + "\n")
+        scan = json.loads(paths["scan"].read_text())
+        scan["collection_sha256"] = digest(paths["collection"])
+        scan["collection_status"] = "partial"
+        scan["prepare_sha256"] = digest(paths["prepare"])
+        scan["runner_sha256"] = digest(paths["runner"])
+        paths["scan"].write_text(json.dumps(scan) + "\n")
+        review = json.loads(paths["review"].read_text())
+        review["collection_sha256"] = digest(paths["collection"])
+        review["collection_status"] = "partial"
+        review["scan_sha256"] = digest(paths["scan"])
+        paths["review"].write_text(json.dumps(review) + "\n")
 
 
 class AlignmentGateTests(unittest.TestCase):
@@ -180,6 +232,7 @@ class AlignmentGateTests(unittest.TestCase):
 
     def decision(self, *, mode: str = "schedule", producers_clean: bool = True) -> dict:
         return build_decision(
+            self.artifacts.collection_root,
             self.artifacts.prepare_root,
             self.artifacts.runner_root,
             self.artifacts.scan_root,
@@ -198,41 +251,68 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "file-one")
         self.assertEqual(decision["payloads"][0]["unit_id"], "issue-123")
 
-    def test_truncated_collection_blocks_all_candidate_publishing(self) -> None:
+    def test_partial_collection_returns_diagnostic_payloads(self) -> None:
         paths = self.artifacts.write()
-        prepare = json.loads(paths["prepare"].read_text())
-        prepare["collection"]["queries"][0]["truncated"] = True
-        paths["prepare"].write_text(json.dumps(prepare) + "\n")
+        self.artifacts.make_partial(paths)
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "diagnostic")
+        self.assertEqual(decision["payloads"][0]["unit_id"], "issue-123")
+        self.assertEqual(decision["collection_status"], "partial")
+        self.assertIn("issues-created:rate-limit", decision["blockers"])
+
+    def test_partial_dry_run_returns_a_diagnostic_decision(self) -> None:
+        paths = self.artifacts.write()
+        self.artifacts.make_partial(paths)
+
+        decision = self.decision(mode="dry-run")
+
+        self.assertEqual(decision["decision"], "dry-run-diagnostic")
+        self.assertEqual(decision["would_decision"], "diagnostic")
+
+    def test_inventory_count_mismatch_blocks_publishing(self) -> None:
+        paths = self.artifacts.write()
+        collection = json.loads(paths["collection"].read_text())
+        collection["unique_count"] = 99
+        paths["collection"].write_text(json.dumps(collection) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertTrue(any("inventory counts" in blocker for blocker in decision["blockers"]))
+
+    def test_inventory_event_outside_scan_window_blocks_publishing(self) -> None:
+        paths = self.artifacts.write()
+        collection = json.loads(paths["collection"].read_text())
+        collection["inventory"][0]["events"] = [
+            {"type": "created", "at": "2026-08-19T23:59:59Z"}
+        ]
+        paths["collection"].write_text(json.dumps(collection) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertTrue(
+            any(
+                "outside the scan window" in blocker
+                for blocker in decision["blockers"]
+            )
+        )
+
+    def test_malformed_collection_timestamp_becomes_a_blocker(self) -> None:
+        paths = self.artifacts.write()
+        collection = json.loads(paths["collection"].read_text())
+        collection["inventory"][0]["events"][0]["at"] = "not-a-timestamp"
+        paths["collection"].write_text(json.dumps(collection) + "\n")
 
         decision = self.decision()
 
         self.assertEqual(decision["decision"], "blocked")
         self.assertEqual(decision["payloads"], [])
-        self.assertIn("collection-query-truncated:0", decision["blockers"])
-
-    def test_inventory_count_mismatch_blocks_publishing(self) -> None:
-        paths = self.artifacts.write()
-        prepare = json.loads(paths["prepare"].read_text())
-        prepare["collection"]["unique_count"] = 99
-        paths["prepare"].write_text(json.dumps(prepare) + "\n")
-
-        decision = self.decision()
-
-        self.assertEqual(decision["decision"], "blocked")
-        self.assertIn("collection-unique-count-mismatch", decision["blockers"])
-
-    def test_inventory_event_outside_scan_window_blocks_publishing(self) -> None:
-        paths = self.artifacts.write()
-        prepare = json.loads(paths["prepare"].read_text())
-        prepare["inventory"][0]["events"] = [
-            {"type": "created", "at": "2026-08-19T23:59:59Z"}
-        ]
-        paths["prepare"].write_text(json.dumps(prepare) + "\n")
-
-        decision = self.decision()
-
-        self.assertEqual(decision["decision"], "blocked")
-        self.assertIn("inventory-event-outside-window:issue-123", decision["blockers"])
+        self.assertTrue(
+            any("collection-invalid" in blocker for blocker in decision["blockers"])
+        )
 
     def test_tampered_runner_log_blocks_publishing(self) -> None:
         self.artifacts.write()

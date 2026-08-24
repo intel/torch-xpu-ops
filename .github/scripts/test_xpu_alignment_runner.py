@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from xpu_alignment_collect import collect
 from xpu_alignment_runner import PlanError, _identity, load_prepare, run_plan
 
 
@@ -18,19 +19,49 @@ def sha256(path: Path) -> str:
 
 
 def write_prepare(root: Path, scripts: list[tuple[str, str]]) -> Path:
+    scan_window = {
+        "start": "2026-08-20T00:00:00Z",
+        "end": "2026-08-21T00:00:00Z",
+    }
+
+    class GitHub:
+        def snapshot(self, repository: str) -> dict:
+            return {"default_branch": "main", "default_branch_head": "a" * 40}
+
+        def page(self, repository, source, cursor, snapshot, window):
+            nodes = []
+            if source == "issues-created":
+                nodes = [
+                    {
+                        "id": unit_id,
+                        "kind": "issue",
+                        "title": unit_id,
+                        "url": (
+                            "https://github.com/pytorch/pytorch/issues/"
+                            f"{unit_id.removeprefix('issue-')}"
+                        ),
+                        "event_at": "2026-08-20T01:00:00Z",
+                    }
+                    for unit_id, _ in scripts
+                ]
+            return {
+                "nodes": nodes,
+                "page_info": {"has_next_page": False, "end_cursor": None},
+                "rate": {"remaining": 900, "reset_at": "2026-08-21T03:00:00Z"},
+                "raw": {"nodes": nodes},
+            }
+
+    collection = collect("pytorch/pytorch", scan_window, root, GitHub())
+    collection_path = root / "collection/collection.json"
     (root / "scripts").mkdir(parents=True)
-    inventory = []
+    decisions = []
     executions = []
     for unit_id, source in scripts:
         script = root / f"scripts/repro_{unit_id}.py"
         script.write_text(source, encoding="utf-8")
-        inventory.append(
+        decisions.append(
             {
                 "id": unit_id,
-                "kind": "issue",
-                "title": unit_id,
-                "url": f"https://github.com/pytorch/pytorch/issues/{unit_id}",
-                "events": [{"type": "created", "at": "2026-08-20T01:00:00Z"}],
                 "triage": "validate",
                 "reason": "shared operator path",
             }
@@ -46,37 +77,15 @@ def write_prepare(root: Path, scripts: list[tuple[str, str]]) -> Path:
             }
         )
     prepare = root / "prepare.json"
-    queries = [
-        {
-            "source": source,
-            "request": f"query {source}",
-            "pages": 1,
-            "count": len(inventory) if source == "issues-created" else 0,
-            "truncated": False,
-            "errors": [],
-        }
-        for source in (
-            "issues-created",
-            "prs-created",
-            "prs-merged",
-            "default-branch-commits",
-        )
-    ]
     prepare.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "status": "complete",
-                "scan_window": {
-                    "start": "2026-08-20T00:00:00Z",
-                    "end": "2026-08-21T00:00:00Z",
-                },
-                "collection": {
-                    "queries": queries,
-                    "observed_count": len(inventory),
-                    "unique_count": len(inventory),
-                },
-                "inventory": inventory,
+                "scan_window": scan_window,
+                "collection_sha256": sha256(collection_path),
+                "collection_status": collection["status"],
+                "decisions": decisions,
                 "executions": executions,
                 "blockers": [],
             }
@@ -224,24 +233,39 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanError, "complete"):
                 load_prepare(root, prepare)
 
-    def test_rejects_truncated_collection_before_execution(self) -> None:
+    def test_accepts_partial_collection_for_diagnostic_execution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            prepare = write_prepare(root, [("issue-123", "print('must not run')\n")])
+            prepare = write_prepare(root, [("issue-123", "print('diagnostic')\n")])
+            collection_path = root / "collection/collection.json"
+            collection = json.loads(collection_path.read_text())
+            collection["status"] = "partial"
+            collection["sources"][0].update(
+                {
+                    "status": "partial",
+                    "boundary_reached": False,
+                    "error": {"kind": "rate-limit", "message": "quota exhausted"},
+                }
+            )
+            collection["blockers"] = ["issues-created:rate-limit"]
+            collection_path.write_text(json.dumps(collection) + "\n")
             payload = json.loads(prepare.read_text())
-            payload["collection"]["queries"][0]["truncated"] = True
+            payload["collection_sha256"] = sha256(collection_path)
+            payload["collection_status"] = "partial"
             prepare.write_text(json.dumps(payload) + "\n")
 
-            with self.assertRaisesRegex(PlanError, "collection"):
-                load_prepare(root, prepare)
+            entries = load_prepare(root, prepare)
+
+            self.assertEqual([entry["id"] for entry in entries], ["issue-123"])
 
     def test_rejects_inventory_outside_scan_window_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             prepare = write_prepare(root, [("issue-123", "print('must not run')\n")])
-            payload = json.loads(prepare.read_text())
-            payload["inventory"][0]["events"][0]["at"] = "2026-08-19T23:59:59Z"
-            prepare.write_text(json.dumps(payload) + "\n")
+            collection_path = root / "collection/collection.json"
+            collection = json.loads(collection_path.read_text())
+            collection["inventory"][0]["events"][0]["at"] = "2026-08-19T23:59:59Z"
+            collection_path.write_text(json.dumps(collection) + "\n")
 
             with self.assertRaisesRegex(PlanError, "scan window"):
                 load_prepare(root, prepare)

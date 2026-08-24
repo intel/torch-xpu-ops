@@ -26,8 +26,31 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertEqual(self.text.count("runs-on: xpu-agent"), 2)
         self.assertNotIn("runs-on: ${{ inputs.runner", self.text)
 
+    def test_collector_is_bounded_and_precedes_every_agent(self) -> None:
+        collector = self.text.split("  collect:", 1)[1].split("  scan-prepare:", 1)[0]
+        self.assertIn("runs-on: ubuntu-latest", collector)
+        self.assertIn("timeout-minutes: 30", collector)
+        self.assertIn("xpu_alignment_collect.py", collector)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", collector)
+        self.assertNotIn("BEDROCK", collector)
+        self.assertNotIn("issues: write", collector)
+        self.assertLess(
+            self.text.index("xpu_alignment_collect.py"),
+            self.text.index("role `scan-prepare`"),
+        )
+
+    def test_agent_model_remains_the_global_opus_profile(self) -> None:
+        self.assertIn("BEDROCK_MODEL: global.anthropic.claude-opus-5", self.text)
+        self.assertEqual(self.text.count("--model ${{ env.BEDROCK_MODEL }}"), 3)
+
+    def test_every_stage_restores_the_original_collection(self) -> None:
+        self.assertEqual(self.text.count("name: ${{ env.ALIGNMENT_ARTIFACT }}-collection"), 6)
+        self.assertIn("--collection-root collection_snapshot", self.text)
+        self.assertIn("needs: [collect, scan-prepare]", self.text)
+
     def test_agent_roles_surround_the_deterministic_runner(self) -> None:
         positions = [
+            self.text.index("xpu_alignment_collect.py"),
             self.text.index("role `scan-prepare`"),
             self.text.index("xpu_alignment_runner.py"),
             self.text.index("role `scan-finalize`"),

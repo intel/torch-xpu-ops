@@ -11,8 +11,10 @@ import hashlib
 import json
 import os
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
+
+from xpu_alignment_collect import CollectionError, validate_collection
 
 
 SCHEMA_VERSION = 1
@@ -20,12 +22,6 @@ UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
-EXPECTED_SOURCES = {
-    "issues-created",
-    "prs-created",
-    "prs-merged",
-    "default-branch-commits",
-}
 LOCAL_RESULTS = {
     "confirmed",
     "related-failure",
@@ -47,11 +43,6 @@ VERDICTS = {
     "verification-gap",
 }
 IMPLEMENTATION_REPOSITORIES = {"intel/torch-xpu-ops", "pytorch/pytorch"}
-EVENT_TYPES = {
-    "issue": {"created"},
-    "pr": {"created", "merged"},
-    "commit": {"committed"},
-}
 
 
 def _sha256(path: Path) -> str:
@@ -110,8 +101,50 @@ def _expected_window(scan_date: str, errors: list[str]) -> dict[str, str] | None
     }
 
 
-def _validate_prepare(
+def _validate_collection(
     root: Path, scan_date: str
+) -> tuple[
+    Path | None,
+    dict[str, object],
+    dict[str, dict[str, object]],
+    list[dict[str, object]],
+    list[str],
+]:
+    errors: list[str] = []
+    expected = _expected_window(scan_date, errors)
+    if expected is None:
+        return None, {}, {}, [], errors
+    try:
+        path, collection, inventory = validate_collection(root, expected)
+    except (CollectionError, TypeError, ValueError) as error:
+        return None, {}, {}, [], [f"collection-invalid:{error}"]
+    progress = [
+        {
+            key: source.get(key)
+            for key in (
+                "source",
+                "status",
+                "pages_completed",
+                "items_fetched",
+                "last_cursor",
+                "boundary_reached",
+                "rate_remaining",
+                "rate_reset_at",
+                "error",
+            )
+        }
+        for source in collection["sources"]
+        if isinstance(source, dict)
+    ]
+    return path, collection, inventory, progress, errors
+
+
+def _validate_prepare(
+    root: Path,
+    scan_date: str,
+    collection_path: Path | None,
+    collection: dict[str, object],
+    inventory: dict[str, dict[str, object]],
 ) -> tuple[Path | None, dict[str, dict[str, object]], dict[str, dict[str, object]], list[str]]:
     errors: list[str] = []
     path = _one(root, "prepare.json", "prepare", errors)
@@ -128,100 +161,37 @@ def _validate_prepare(
     expected = _expected_window(scan_date, errors)
     if expected is not None and prepare.get("scan_window") != expected:
         errors.append("prepare-window-mismatch")
-    window_start = window_end = None
-    if expected is not None:
-        window_start = datetime.fromisoformat(expected["start"].replace("Z", "+00:00"))
-        window_end = datetime.fromisoformat(expected["end"].replace("Z", "+00:00"))
-
-    collection = prepare.get("collection")
-    queries = collection.get("queries") if isinstance(collection, dict) else None
-    seen_sources: set[str] = set()
-    observed_count = 0
-    if not isinstance(queries, list):
-        errors.append("collection-queries-not-list")
+    if collection_path is not None and prepare.get("collection_sha256") != _sha256(
+        collection_path
+    ):
+        errors.append("prepare-collection-digest-mismatch")
+    if prepare.get("collection_status") != collection.get("status"):
+        errors.append("prepare-collection-status-mismatch")
+    decisions: dict[str, dict[str, object]] = {}
+    raw_decisions = prepare.get("decisions")
+    if not isinstance(raw_decisions, list):
+        errors.append("decisions-not-list")
     else:
-        for index, query in enumerate(queries):
-            if not isinstance(query, dict):
-                errors.append(f"collection-query-not-object:{index}")
-                continue
-            source = query.get("source")
-            if source not in EXPECTED_SOURCES:
-                errors.append(f"collection-query-invalid-source:{index}")
-            else:
-                seen_sources.add(str(source))
-            if not str(query.get("request", "")).strip():
-                errors.append(f"collection-query-missing-request:{index}")
-            pages, count = query.get("pages"), query.get("count")
-            if not isinstance(pages, int) or isinstance(pages, bool) or pages < 1:
-                errors.append(f"collection-query-invalid-pages:{index}")
-            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-                errors.append(f"collection-query-invalid-count:{index}")
-            else:
-                observed_count += count
-            if query.get("truncated") is not False:
-                errors.append(f"collection-query-truncated:{index}")
-            query_errors = query.get("errors")
-            if not isinstance(query_errors, list) or query_errors:
-                errors.append(f"collection-query-has-errors:{index}")
-        if seen_sources != EXPECTED_SOURCES:
-            errors.append("collection-source-coverage")
-    if isinstance(collection, dict) and collection.get("observed_count") != observed_count:
-        errors.append("collection-observed-count-mismatch")
-
-    inventory: dict[str, dict[str, object]] = {}
-    raw_inventory = prepare.get("inventory")
-    if not isinstance(raw_inventory, list):
-        errors.append("inventory-not-list")
-    else:
-        for index, item in enumerate(raw_inventory):
+        for index, item in enumerate(raw_decisions):
             if not isinstance(item, dict):
-                errors.append(f"inventory-not-object:{index}")
+                errors.append(f"decision-not-object:{index}")
                 continue
             unit_id = item.get("id")
             if (
                 not isinstance(unit_id, str)
                 or not UNIT_ID_RE.fullmatch(unit_id)
-                or unit_id in inventory
+                or unit_id in decisions
+                or unit_id not in inventory
             ):
-                errors.append(f"inventory-invalid-id:{unit_id}")
+                errors.append(f"decision-invalid-id:{unit_id}")
                 continue
-            kind = item.get("kind")
-            if kind not in EVENT_TYPES:
-                errors.append(f"inventory-invalid-kind:{unit_id}")
-            if not str(item.get("url", "")).startswith("https://github.com/pytorch/pytorch/"):
-                errors.append(f"inventory-invalid-url:{unit_id}")
-            events = item.get("events")
-            if not isinstance(events, list) or not events:
-                errors.append(f"inventory-missing-events:{unit_id}")
-            elif kind in EVENT_TYPES:
-                event_in_window = False
-                for event_index, event in enumerate(events):
-                    if not isinstance(event, dict) or event.get("type") not in EVENT_TYPES[kind]:
-                        errors.append(f"inventory-invalid-event:{unit_id}:{event_index}")
-                        continue
-                    at = event.get("at")
-                    try:
-                        event_time = datetime.strptime(str(at), "%Y-%m-%dT%H:%M:%SZ").replace(
-                            tzinfo=timezone.utc
-                        )
-                    except ValueError:
-                        errors.append(f"inventory-invalid-event-time:{unit_id}:{event_index}")
-                        continue
-                    if (
-                        window_start is not None
-                        and window_end is not None
-                        and window_start <= event_time < window_end
-                    ):
-                        event_in_window = True
-                if not event_in_window:
-                    errors.append(f"inventory-event-outside-window:{unit_id}")
             if item.get("triage") not in {"reject", "validate"}:
-                errors.append(f"inventory-invalid-triage:{unit_id}")
+                errors.append(f"decision-invalid-triage:{unit_id}")
             if not str(item.get("reason", "")).strip():
-                errors.append(f"inventory-missing-reason:{unit_id}")
-            inventory[unit_id] = item
-    if isinstance(collection, dict) and collection.get("unique_count") != len(inventory):
-        errors.append("collection-unique-count-mismatch")
+                errors.append(f"decision-missing-reason:{unit_id}")
+            decisions[unit_id] = item
+    if set(decisions) != set(inventory):
+        errors.append("decision-coverage-mismatch")
 
     executions: dict[str, dict[str, object]] = {}
     raw_executions = prepare.get("executions")
@@ -236,7 +206,7 @@ def _validate_prepare(
             if not isinstance(unit_id, str) or unit_id in executions:
                 errors.append(f"execution-invalid-id:{unit_id}")
                 continue
-            if unit_id not in inventory or inventory[unit_id].get("triage") != "validate":
+            if unit_id not in decisions or decisions[unit_id].get("triage") != "validate":
                 errors.append(f"execution-not-validated:{unit_id}")
             script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
             script_digest = entry.get("script_sha256")
@@ -251,7 +221,7 @@ def _validate_prepare(
                 if not str(entry.get(field, "")).strip():
                     errors.append(f"execution-missing-{field}:{unit_id}")
             executions[unit_id] = entry
-    validated = {unit_id for unit_id, item in inventory.items() if item.get("triage") == "validate"}
+    validated = {unit_id for unit_id, item in decisions.items() if item.get("triage") == "validate"}
     if set(executions) != validated:
         errors.append("execution-coverage-mismatch")
     return path, inventory, executions, errors
@@ -259,6 +229,7 @@ def _validate_prepare(
 
 def _validate_runner(
     root: Path,
+    collection_path: Path | None,
     prepare_path: Path | None,
     executions: dict[str, dict[str, object]],
 ) -> tuple[Path | None, dict[str, dict[str, object]], list[str]]:
@@ -271,6 +242,8 @@ def _validate_runner(
         errors.append("runner-invalid-version")
     if runner.get("status") != "complete":
         errors.append(f"runner-not-complete:{runner.get('status', 'missing')}")
+    if collection_path is not None and runner.get("collection_sha256") != _sha256(collection_path):
+        errors.append("runner-collection-digest-mismatch")
     if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("runner-prepare-digest-mismatch")
     results: dict[str, dict[str, object]] = {}
@@ -316,6 +289,8 @@ def _validate_runner(
 def _validate_scan(
     root: Path,
     runner_root: Path,
+    collection_path: Path | None,
+    collection: dict[str, object],
     prepare_path: Path | None,
     runner_path: Path | None,
     executions: dict[str, dict[str, object]],
@@ -328,6 +303,10 @@ def _validate_scan(
     scan = _read_json(path, "scan", errors)
     if scan.get("schema_version") != SCHEMA_VERSION:
         errors.append("scan-invalid-version")
+    if collection_path is not None and scan.get("collection_sha256") != _sha256(collection_path):
+        errors.append("scan-collection-digest-mismatch")
+    if scan.get("collection_status") != collection.get("status"):
+        errors.append("scan-collection-status-mismatch")
     if prepare_path is not None and scan.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("scan-prepare-digest-mismatch")
     if runner_path is not None and scan.get("runner_sha256") != _sha256(runner_path):
@@ -382,7 +361,11 @@ def _validate_scan(
 
 
 def _validate_review(
-    root: Path, scan_path: Path | None, actionable: list[str]
+    root: Path,
+    collection_path: Path | None,
+    collection: dict[str, object],
+    scan_path: Path | None,
+    actionable: list[str],
 ) -> tuple[list[dict[str, object]], dict[str, str], list[str]]:
     errors: list[str] = []
     path = _one(root, "review.json", "review", errors)
@@ -391,6 +374,10 @@ def _validate_review(
     review = _read_json(path, "review", errors)
     if review.get("schema_version") != SCHEMA_VERSION:
         errors.append("review-invalid-version")
+    if collection_path is not None and review.get("collection_sha256") != _sha256(collection_path):
+        errors.append("review-collection-digest-mismatch")
+    if review.get("collection_status") != collection.get("status"):
+        errors.append("review-collection-status-mismatch")
     if review.get("status") != "complete":
         errors.append(f"review-not-complete:{review.get('status', 'missing')}")
     blockers = review.get("blockers")
@@ -447,6 +434,7 @@ def _validate_review(
 
 
 def build_decision(
+    collection_root: Path,
     prepare_root: Path,
     runner_root: Path,
     scan_root: Path,
@@ -459,22 +447,54 @@ def build_decision(
 ) -> dict[str, object]:
     if mode not in {"schedule", "dry-run"}:
         raise ValueError(f"unsupported mode: {mode}")
-    prepare_path, _, executions, prepare_errors = _validate_prepare(prepare_root, scan_date)
-    runner_path, results, runner_errors = _validate_runner(runner_root, prepare_path, executions)
-    scan_path, actionable, scan_errors = _validate_scan(
-        scan_root, runner_root, prepare_path, runner_path, executions, results
+    collection_path, collection, inventory, progress, collection_errors = _validate_collection(
+        collection_root, scan_date
     )
-    payloads, verdicts, review_errors = _validate_review(review_root, scan_path, actionable)
-    blockers = prepare_errors + runner_errors + scan_errors + review_errors
+    prepare_path, _, executions, prepare_errors = _validate_prepare(
+        prepare_root, scan_date, collection_path, collection, inventory
+    )
+    runner_path, results, runner_errors = _validate_runner(
+        runner_root, collection_path, prepare_path, executions
+    )
+    scan_path, actionable, scan_errors = _validate_scan(
+        scan_root,
+        runner_root,
+        collection_path,
+        collection,
+        prepare_path,
+        runner_path,
+        executions,
+        results,
+    )
+    payloads, verdicts, review_errors = _validate_review(
+        review_root, collection_path, collection, scan_path, actionable
+    )
+    validation_errors = (
+        collection_errors
+        + prepare_errors
+        + runner_errors
+        + scan_errors
+        + review_errors
+    )
     if not producers_clean:
-        blockers.append("producer-job-failed")
+        validation_errors.append("producer-job-failed")
+    scope_blockers = (
+        collection.get("blockers")
+        if isinstance(collection.get("blockers"), list)
+        else []
+    )
+    blockers = validation_errors + [str(blocker) for blocker in scope_blockers]
     attention_reasons = []
     if "verification-gap" in verdicts.values():
         attention_reasons.append("review-verification-gap")
 
-    if blockers:
+    collection_status = collection.get("status")
+    if validation_errors:
         would_decision = "blocked"
         published_payloads: list[dict[str, object]] = []
+    elif collection_status == "partial":
+        would_decision = "diagnostic"
+        published_payloads = payloads
     elif not payloads:
         would_decision = "none"
         published_payloads = []
@@ -484,7 +504,10 @@ def build_decision(
     else:
         would_decision = "triage"
         published_payloads = payloads
-    decision = "dry-run" if mode == "dry-run" else would_decision
+    if mode == "dry-run":
+        decision = "dry-run-diagnostic" if would_decision == "diagnostic" else "dry-run"
+    else:
+        decision = would_decision
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
@@ -495,6 +518,8 @@ def build_decision(
         "needs_attention": bool(blockers or attention_reasons),
         "attention_reasons": attention_reasons,
         "blockers": blockers,
+        "collection_status": collection_status,
+        "collection_progress": progress,
         "mandatory_units": actionable,
         "unit_verdicts": verdicts,
         "actionable_units": sorted(str(item["unit_id"]) for item in published_payloads),
@@ -504,6 +529,7 @@ def build_decision(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--collection-root", type=Path, required=True)
     parser.add_argument("--prepare-root", type=Path, required=True)
     parser.add_argument("--runner-root", type=Path, required=True)
     parser.add_argument("--scan-root", type=Path, required=True)
@@ -515,6 +541,7 @@ def main() -> int:
     parser.add_argument("--producers-clean", action="store_true")
     args = parser.parse_args()
     decision = build_decision(
+        args.collection_root,
         args.prepare_root,
         args.runner_root,
         args.scan_root,

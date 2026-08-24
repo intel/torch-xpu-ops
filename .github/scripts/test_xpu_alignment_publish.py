@@ -167,6 +167,84 @@ class PublisherTests(unittest.TestCase):
         self.assertIn("@owner", post.call_args.args[2])
         create.assert_not_called()
 
+    def test_partial_schedule_posts_idempotent_diagnostics_and_notifies(self) -> None:
+        decision = {
+            "run_id": "42-1",
+            "scan_date": "2026-08-20",
+            "mode": "schedule",
+            "decision": "diagnostic",
+            "would_decision": "diagnostic",
+            "collection_status": "partial",
+            "collection_progress": {
+                "pull_requests_created": {
+                    "pages_completed": 3,
+                    "items_fetched": 250,
+                    "last_cursor": "cursor-3",
+                    "rate_remaining": 0,
+                    "rate_reset_at": "2026-08-21T02:15:00Z",
+                    "status": "partial",
+                    "error": "rate limit did not recover",
+                }
+            },
+            "needs_attention": True,
+            "attention_reasons": [],
+            "blockers": ["pull_requests_created:rate-limit"],
+            "payloads": [payload()],
+        }
+
+        post, create, update = self.invoke(decision)
+
+        self.assertEqual(post.call_count, 2)
+        draft = post.call_args_list[0].args[2]
+        summary = post.call_args_list[1].args[2]
+        self.assertIn("alignment-diagnostic-unit", draft)
+        self.assertNotIn("<!-- alignment-unit: issue-123 -->", draft)
+        self.assertIn("[INCOMPLETE SCAN]", draft)
+        self.assertIn("3 page(s), 250 item(s)", summary)
+        self.assertIn("@owner", summary)
+        create.assert_not_called()
+        update.assert_not_called()
+
+        existing = [
+            {"id": 71, "body": draft},
+            {"id": 72, "body": summary},
+        ]
+        retry_post, retry_create, retry_update = self.invoke(decision, comments=existing)
+        retry_post.assert_not_called()
+        retry_create.assert_not_called()
+        retry_update.assert_not_called()
+
+    def test_partial_dry_run_reposts_diagnostics_without_notification(self) -> None:
+        decision = {
+            "run_id": "42-1",
+            "scan_date": "2026-08-20",
+            "mode": "dry-run",
+            "decision": "dry-run-diagnostic",
+            "would_decision": "diagnostic",
+            "collection_status": "partial",
+            "collection_progress": {},
+            "needs_attention": True,
+            "attention_reasons": [],
+            "blockers": ["issues_created:http-429"],
+            "payloads": [payload()],
+        }
+        existing = [
+            {
+                "id": 71,
+                "body": "<!-- alignment-dry-run-diagnostic-unit: 42-1:issue-123 -->",
+            }
+        ]
+
+        post, create, update = self.invoke(decision, comments=existing)
+
+        self.assertEqual(post.call_count, 2)
+        self.assertIn("alignment-dry-run-diagnostic-unit", post.call_args_list[0].args[2])
+        summary = post.call_args_list[1].args[2]
+        self.assertIn("[DRY RUN][INCOMPLETE SCAN]", summary)
+        self.assertNotIn("@owner", summary)
+        create.assert_not_called()
+        update.assert_not_called()
+
     def test_scheduled_retry_resumes_an_unfiled_formal_draft(self) -> None:
         existing = [
             {

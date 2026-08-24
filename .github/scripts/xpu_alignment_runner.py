@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import hashlib
 import json
 import os
 import pwd
@@ -17,33 +16,19 @@ import signal
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from xpu_alignment_collect import CollectionError, sha256, validate_collection
 
 
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 600
-EXPECTED_SOURCES = {
-    "issues-created",
-    "prs-created",
-    "prs-merged",
-    "default-branch-commits",
-}
-EVENT_TYPES = {
-    "issue": {"created"},
-    "pr": {"created", "merged"},
-    "commit": {"committed"},
-}
 PR_SET_CHILD_SUBREAPER = 36
 
 
 class PlanError(ValueError):
     pass
-
-
-def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _inside(root: Path, value: object, *, existing: bool) -> Path:
@@ -73,99 +58,50 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
     blockers = prepare.get("blockers")
     if not isinstance(blockers, list) or blockers:
         raise PlanError("prepare artifact must have an empty blocker list")
-    collection = prepare.get("collection")
-    queries = collection.get("queries") if isinstance(collection, dict) else None
-    if not isinstance(queries, list):
-        raise PlanError("prepare collection queries must be a list")
-    sources: set[str] = set()
-    observed_count = 0
-    for index, query in enumerate(queries):
-        if not isinstance(query, dict):
-            raise PlanError(f"prepare collection query {index} is not an object")
-        source = query.get("source")
-        if source not in EXPECTED_SOURCES:
-            raise PlanError(f"prepare collection query {index} has an invalid source")
-        sources.add(str(source))
-        pages, count = query.get("pages"), query.get("count")
-        if not str(query.get("request", "")).strip():
-            raise PlanError(f"prepare collection query {index} has no request evidence")
-        if not isinstance(pages, int) or isinstance(pages, bool) or pages < 1:
-            raise PlanError(f"prepare collection query {index} has an invalid page count")
-        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-            raise PlanError(f"prepare collection query {index} has an invalid result count")
-        if query.get("truncated") is not False or query.get("errors") != []:
-            raise PlanError(f"prepare collection query {index} is incomplete")
-        observed_count += count
-    if sources != EXPECTED_SOURCES:
-        raise PlanError("prepare collection does not cover every required source")
-    if collection.get("observed_count") != observed_count:
-        raise PlanError("prepare collection observed count does not match query evidence")
-    window = prepare.get("scan_window")
-    if not isinstance(window, dict):
-        raise PlanError("prepare scan window must be an object")
     try:
-        window_start = datetime.strptime(str(window.get("start")), "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
+        collection_path, collection, inventory = validate_collection(
+            root,
+            {
+                "start": str(prepare["scan_window"]["start"]),
+                "end": str(prepare["scan_window"]["end"]),
+            },
         )
-        window_end = datetime.strptime(str(window.get("end")), "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
-        )
-    except ValueError as error:
-        raise PlanError("prepare scan window must contain UTC timestamps") from error
-    if window_start.time().isoformat() != "00:00:00" or window_end - window_start != timedelta(
-        days=1
-    ):
-        raise PlanError("prepare scan window must be one complete UTC day")
+    except (CollectionError, KeyError, TypeError, ValueError) as error:
+        raise PlanError(f"collection artifact rejected: {error}") from error
+    if prepare.get("collection_sha256") != sha256(collection_path):
+        raise PlanError("prepare collection digest does not match")
+    if prepare.get("collection_status") != collection.get("status"):
+        raise PlanError("prepare collection status does not match")
     executions = prepare.get("executions")
     if not isinstance(executions, list):
         raise PlanError("prepare executions must be a list")
-    inventory = prepare.get("inventory")
-    if not isinstance(inventory, list):
-        raise PlanError("prepare inventory must be a list")
-    if collection.get("unique_count") != len(inventory):
-        raise PlanError("prepare collection unique count does not match inventory")
 
     validated: set[str] = set()
-    inventory_ids: set[str] = set()
-    for index, item in enumerate(inventory):
+    decisions = prepare.get("decisions")
+    if not isinstance(decisions, list):
+        raise PlanError("prepare decisions must be a list")
+    decision_ids: set[str] = set()
+    for index, item in enumerate(decisions):
         if not isinstance(item, dict):
-            raise PlanError(f"inventory item {index} is not an object")
+            raise PlanError(f"decision {index} is not an object")
         unit_id = item.get("id")
         if (
             not isinstance(unit_id, str)
             or not UNIT_ID_RE.fullmatch(unit_id)
-            or unit_id in inventory_ids
+            or unit_id in decision_ids
+            or unit_id not in inventory
         ):
-            raise PlanError(f"invalid or duplicate inventory id: {unit_id!r}")
+            raise PlanError(f"invalid or duplicate decision id: {unit_id!r}")
         triage = item.get("triage")
         if triage not in {"reject", "validate"}:
             raise PlanError(f"{unit_id}: invalid triage")
         if not str(item.get("reason", "")).strip():
             raise PlanError(f"{unit_id}: missing triage reason")
-        kind = item.get("kind")
-        if kind not in EVENT_TYPES:
-            raise PlanError(f"{unit_id}: invalid inventory kind")
-        if not str(item.get("url", "")).startswith("https://github.com/pytorch/pytorch/"):
-            raise PlanError(f"{unit_id}: invalid inventory URL")
-        events = item.get("events")
-        if not isinstance(events, list) or not events:
-            raise PlanError(f"{unit_id}: missing inventory events")
-        event_in_window = False
-        for event in events:
-            if not isinstance(event, dict) or event.get("type") not in EVENT_TYPES[kind]:
-                raise PlanError(f"{unit_id}: invalid inventory event")
-            try:
-                event_time = datetime.strptime(
-                    str(event.get("at")), "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=timezone.utc)
-            except ValueError as error:
-                raise PlanError(f"{unit_id}: invalid inventory event time") from error
-            event_in_window = event_in_window or window_start <= event_time < window_end
-        if not event_in_window:
-            raise PlanError(f"{unit_id}: no inventory event is inside the scan window")
-        inventory_ids.add(unit_id)
+        decision_ids.add(unit_id)
         if triage == "validate":
             validated.add(unit_id)
+    if decision_ids != set(inventory):
+        raise PlanError("decision coverage does not match collected inventory")
 
     normalized: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -364,6 +300,9 @@ def run_plan(
         )
     return {
         "schema_version": 1,
+        "collection_sha256": json.loads(prepare_path.read_text(encoding="utf-8"))[
+            "collection_sha256"
+        ],
         "prepare_sha256": sha256(prepare_path),
         "status": "complete",
         "results": results,

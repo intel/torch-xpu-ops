@@ -20,6 +20,10 @@ import tempfile
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
+DIAGNOSTIC_UNIT_MARKER = "<!-- alignment-diagnostic-unit: {scan_date}:{unit_id} -->"
+DRY_RUN_DIAGNOSTIC_UNIT_MARKER = (
+    "<!-- alignment-dry-run-diagnostic-unit: {run_id}:{unit_id} -->"
+)
 # Provenance is visible text, not an HTML comment: a triager reading a draft
 # needs the run that produced it in order to re-read the underlying evidence.
 PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
@@ -86,6 +90,30 @@ def render_draft(
     )
 
 
+def render_diagnostic_draft(
+    unit_id: str,
+    title: str,
+    body: str,
+    run_id: str,
+    scan_date: str,
+    *,
+    dry_run: bool = False,
+) -> str:
+    """Render evidence from a partial scan without a fileable unit marker."""
+    marker = (
+        DRY_RUN_DIAGNOSTIC_UNIT_MARKER.format(run_id=run_id, unit_id=unit_id)
+        if dry_run
+        else DIAGNOSTIC_UNIT_MARKER.format(scan_date=scan_date, unit_id=unit_id)
+    )
+    prefix = "[DRY RUN][INCOMPLETE SCAN]" if dry_run else "[INCOMPLETE SCAN]"
+    return (
+        f"{marker}\n"
+        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date)}\n"
+        f"> This diagnostic draft came from a partial collection and cannot be filed.\n\n"
+        f"### {prefix} {title}\n\n{body}\n"
+    )
+
+
 def post_comment(repo: str, issue: int, body: str) -> int:
     created = json.loads(
         gh(
@@ -98,6 +126,11 @@ def post_comment(repo: str, issue: int, body: str) -> int:
 
 def has_unit(comments: list[dict], unit_id: str) -> bool:
     marker = UNIT_MARKER.format(unit_id=unit_id)
+    return any(marker in (comment.get("body") or "") for comment in comments)
+
+
+def has_diagnostic_unit(comments: list[dict], scan_date: str, unit_id: str) -> bool:
+    marker = DIAGNOSTIC_UNIT_MARKER.format(scan_date=scan_date, unit_id=unit_id)
     return any(marker in (comment.get("body") or "") for comment in comments)
 
 
