@@ -1102,7 +1102,11 @@ jobs:
   fix:
     needs: parse-command
     runs-on: xpu-agent
-    timeout-minutes: 180
+    # Bumped from 180: a C++/SYCL fix now source-builds in-loop (DLE install +
+    # cold build). Smoke data (handoff_0820_end.md): ~43min agent + ~31min
+    # build on this runner for a small diff. 300 leaves headroom for a
+    # bigger diff or an AOT-arch build.
+    timeout-minutes: 300
     if: >-
       needs.parse-command.outputs.command == 'fix'
       && needs.parse-command.outputs.authorized == 'true'
@@ -1118,6 +1122,10 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # Known-good Intel DLE offline installer (2026.1 matches PyTorch 2.14+).
+      # Only used when the fix needs a source build. Agent may also find a
+      # newer one via WebFetch against the prereq doc if this one 404s.
+      ONEAPI_INSTALLER: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
     steps:
       - name: Post starting message
         id: start-comment
@@ -1173,19 +1181,58 @@ jobs:
             The repository checkout is at ${{ github.workspace }}.
 
             This runner has a prebuilt nightly PyTorch-XPU wheel installed and no
-            PyTorch source or build tree, so there is no way to recompile
-            libtorch_xpu.so here. That constrains what you may claim:
+            PyTorch source or build tree yet. That's fine for Python-level changes
+            (test files, skip lists, xpu_test_utils, Python operator code) — take
+            effect immediately, reproduce/fix/re-verify them normally.
 
-            - Python-level changes (test files, skip lists, xpu_test_utils, Python
-              operator code) take effect immediately. Reproduce, fix, and re-verify
-              them normally.
-            - A change to C++ or SYCL sources under src/ CANNOT be verified on this
-              runner, because the installed wheel still contains the old kernels.
-              Do not run a repro after such an edit and report it as verified. Stop
-              instead, and report the root cause plus the suggested patch for a human
-              to build and verify.
+            If the fix touches C++ or SYCL sources under src/, the installed wheel
+            still has the old kernels, so you must source-build to verify it
+            yourself (do not stop and hand this off as "needs human build" — you
+            have GPU access via /dev/dri and root in this container):
+            1. Clone pytorch, apply your fix (pytorch-side diff and/or
+               torch-xpu-ops-side diff per AGENTS.md's `xpu.txt` override).
+            2. Install the Intel Deep Learning Essentials via the OFFLINE
+               installer (this container has no Intel apt repo, so
+               `apt install intel-deep-learning-essentials` fails):
+               `${{ env.ONEAPI_INSTALLER }}`
+               (or find a current one via WebFetch against
+               docs/source/notes/get_start_xpu.md and its linked Intel page if
+               this URL is stale).
+            3. Source-build via the /xpu-build-pytorch skill
+               (`pip install -e . -v --no-build-isolation` from the pytorch
+               checkout). Confirm `torch.xpu.is_available()` is True on the
+               source build.
+            4. Re-run the reproducer (and regression tests) from
+               `<pytorch_dir>/test` — never from the pytorch root, it shadows
+               the installed torch with `No module named torch.version`.
+            5. Write `<pytorch_dir>/build_pytorch.env` (exports USE_XPU=1,
+               USE_CUDA=0, sources your DLE setvars.sh) so an independent
+               recheck step can reproduce your runtime without rebuilding.
+               **The gate step runs in a brand-new shell in a brand-new job
+               step** — it has NONE of your session's exported vars, PATH
+               additions, or activated venvs; it only has the container's
+               baseline env plus whatever `build_pytorch.env` sources. Before
+               moving on, open a genuinely new bash process (not just another
+               command in your current shell) and confirm sourcing only
+               `build_pytorch.env` is enough to get `torch.xpu.is_available()
+               == True` and to run `refined_command` successfully from
+               `<pytorch_dir>/test`. If either only works from your existing
+               shell's accumulated state, `build_pytorch.env` is missing
+               something — fix it now, or the gate will fail even though your
+               patch is correct.
+            6. Write `/tmp/fix_result.json` with keys: `needs_build` (bool,
+               true here), `build_ok` (bool), `xpu_available` (bool),
+               `pytorch_dir` (absolute path), `refined_command` (single
+               shell-executable pytest invocation, run from
+               `<pytorch_dir>/test`, that must PASS on your build), `notes`.
+               Only write `build_ok: true` after the fresh-shell check above
+               passes — that check is exactly what the gate step replays.
 
-            When you have a verified Python-level fix, commit it to an agent/<slug>
+            For a Python-only fix, still write `/tmp/fix_result.json` with
+            `needs_build: false` (the gate step skips the build recheck in that
+            case).
+
+            When you have a verified fix, commit it to an agent/<slug>
             branch and push it. Do not open a pull request: per the
             /xpu-ops-pr-creation skill, a human opens the PR after reviewing your
             summary. End by reporting the branch name and your summary.
@@ -1193,11 +1240,71 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      # Objective gate: claude-code-action exits 0 regardless of the agent's own
+      # conclusion. For a build-in-the-loop fix, re-run the agent's own
+      # refined_command independently against the build it produced instead of
+      # trusting its self-report. See handoff_0820_end.md for the smoke
+      # workflow this is adapted from.
+      - name: Verify gate — independent recheck (build-in-the-loop only)
+        id: gate
+        if: always()
+        run: |
+          set -uxo pipefail
+          if [ ! -f /tmp/fix_result.json ]; then
+            echo "no /tmp/fix_result.json from the agent; nothing to gate (agent"
+            echo "likely stopped early or errored — the 'Verify: AI fix succeeded'"
+            echo "step below handles that case)."
+            exit 0
+          fi
+          needs_build=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json')).get('needs_build', False))")
+          if [ "$needs_build" != "True" ]; then
+            echo "needs_build=false (python-only fix); no build to independently recheck."
+            exit 0
+          fi
+          pytorch_dir=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json'))['pytorch_dir'])")
+          refined_command=$(python3 -c "import json; print(json.load(open('/tmp/fix_result.json'))['refined_command'])")
+          [ -f "$pytorch_dir/build_pytorch.env" ] || { echo "::error::agent claimed needs_build=true but did not write build_pytorch.env; chain incomplete"; exit 1; }
+          # Explicit path: `source <bare-name>` searches PATH, not cwd.
+          # shellcheck disable=SC1091
+          source "$pytorch_dir/build_pytorch.env"
+          avail=$(python3 -c "import torch; print(torch.xpu.is_available())")
+          echo "### verify gate (independent recheck)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- xpu available (source build): \`$avail\`" >> "$GITHUB_STEP_SUMMARY"
+          [ "$avail" = "True" ] || { echo "::error::source build has no XPU"; exit 1; }
+          cd "$pytorch_dir/test"
+          if bash -c "$refined_command"; then
+            echo "- refined_command: \`PASSED\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- refined_command: \`FAILED\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::verify gate: refined_command failed on the agent's own build"
+            exit 1
+          fi
+
+      # Persist the agent transcript (thinking + every tool call/result) so a
+      # build-in-the-loop run can be reviewed offline. Otherwise discarded with
+      # the runner (handoff_0820_end.md ★★).
+      - name: Stage + upload agent transcript
+        if: always()
+        run: |
+          f='${{ steps.ai-fix.outputs.execution_file }}'
+          if [ -n "$f" ] && [ -f "$f" ]; then
+            cp "$f" /tmp/agent_transcript.json
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
+          path: |
+            /tmp/agent_transcript.json
+            /tmp/fix_result.json
+          if-no-files-found: ignore
+
       - name: Post result comment
         if: always() && steps.ai-fix.outputs.execution_file
         uses: actions/github-script@v9
         env:
           START_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1214,8 +1321,16 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const trigger = context.payload.comment;
             const header = `> Replying to [this comment](${trigger.html_url}) by @${trigger.user.login}\n\n`;
+            // The agent's own summary below may claim the fix is verified even
+            // when the independent gate step disagreed (it re-runs the
+            // agent's refined_command against the agent's own build — see
+            // handoff_0820_end.md). Flag that mismatch up front so a human
+            // does not take the agent's self-report at face value.
+            const gateWarning = process.env.GATE_OUTCOME === 'failure'
+              ? `> [!WARNING]\n> The independent verify gate **failed** to reproduce the pass below on the agent's own build. Treat the summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Verify gate" step.\n\n`
+              : '';
             const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
-            const body = header + result.result + footer;
+            const body = header + gateWarning + result.result + footer;
 
             // Overwrite the "starting" comment instead of adding a second one.
             // Failures deliberately post a new comment so the mention notifies.
