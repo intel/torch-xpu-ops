@@ -90,7 +90,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'fix-pr-created', 'triage', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'fix-pr-create', 'triage', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -104,7 +104,7 @@ jobs:
 
             // Context check: fix and triage are issue-only, help works on
             // both, the rest are PR-only.
-            if (normalizedCommand === 'fix' || normalizedCommand === 'triage' || normalizedCommand === 'fix-pr-created') {
+            if (normalizedCommand === 'fix' || normalizedCommand === 'triage' || normalizedCommand === 'fix-pr-create') {
               if (isPR) {
                 reject(`\`@torchxpubot ${normalizedCommand}\` can only be used on issue comments, not on pull requests.`);
                 return;
@@ -125,9 +125,9 @@ jobs:
 
             if (command === 'help') {
               authorized = true; // anyone
-            } else if (command === 'fix' || command === 'fix-pr-created') {
+            } else if (command === 'fix' || command === 'fix-pr-create') {
               // fix drives an autonomous agent with write access, and
-              // fix-pr-created opens a PR from its branch, so both are gated
+              // fix-pr-create opens a PR from its branch, so both are gated
               // like `merge -f` rather than like the read-only commands.
               authorized = maintainerOnly.includes(assoc);
             } else if (!privileged.includes(assoc)) {
@@ -246,8 +246,8 @@ jobs:
               msg = 'Only OWNER or MEMBER can use `@torchxpubot merge -f` (force merge).';
             } else if (cmd === 'fix') {
               msg = 'Only OWNER or MEMBER can use `@torchxpubot fix`.';
-            } else if (cmd === 'fix-pr-created') {
-              msg = 'Only OWNER or MEMBER can use `@torchxpubot fix-pr-created`.';
+            } else if (cmd === 'fix-pr-create') {
+              msg = 'Only OWNER or MEMBER can use `@torchxpubot fix-pr-create`.';
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -291,7 +291,7 @@ jobs:
             | Command | Description |
             |---------|-------------|
             | \`@torchxpubot fix\` | Reproduce this issue on an XPU host and attempt a fix (OWNER/MEMBER only) |
-            | \`@torchxpubot fix-pr-created\` | Open a draft PR from the branch a prior \`fix\` run pushed, after you've reviewed the diff (OWNER/MEMBER only) |
+            | \`@torchxpubot fix-pr-create\` | Open a draft PR from the branch a prior \`fix\` run pushed, after you've reviewed the diff (OWNER/MEMBER only) |
             | \`@torchxpubot triage\` | Shallow text-only triage: classify, detect reproducer, apply agent labels |
             | \`@torchxpubot help\` | Show this help message |
 
@@ -301,7 +301,7 @@ jobs:
             and independently re-verified. Either way the fix is pushed to
             \`agent/fix-issue-<N>\` and its diff is posted here for review.
 
-            After you review that diff, comment \`@torchxpubot fix-pr-created\`
+            After you review that diff, comment \`@torchxpubot fix-pr-create\`
             to open a draft PR from that branch (no rebuild — it reuses the
             already-verified branch).
 
@@ -1268,9 +1268,9 @@ jobs:
             When you have a verified fix, commit it and push it to the branch
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
             (force-push is fine; this exact name is the contract the
-            `fix-pr-created` command relies on to find your branch later). Do
+            `fix-pr-create` command relies on to find your branch later). Do
             not open a pull request: a human reviews the diff posted on the
-            issue and then comments `@torchxpubot fix-pr-created` to open a
+            issue and then comments `@torchxpubot fix-pr-create` to open a
             draft PR from this branch. End by reporting the branch name and
             your summary.
         env:
@@ -1407,7 +1407,7 @@ jobs:
           if-no-files-found: ignore
 
       # Post the pushed branch's diff to the issue so a human can review it and,
-      # if it looks right, comment `@torchxpubot fix-pr-created` to open a draft
+      # if it looks right, comment `@torchxpubot fix-pr-create` to open a draft
       # PR from that branch. Captured objectively here (from the branch the
       # agent pushed) rather than trusting the agent to paste its own diff.
       - name: Post fix diff for human review
@@ -1439,7 +1439,7 @@ jobs:
             const body =
               `### Proposed fix on \`${branch}\`\n\n` +
               `Review the diff below. If it looks right, comment ` +
-              `\`@torchxpubot fix-pr-created\` on this issue to open a draft PR from this branch.\n\n` +
+              `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
               '```diff\n' + clipped + '\n```';
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -1477,7 +1477,7 @@ jobs:
               ? `> [!WARNING]\n> Independent review did **not** confirm the pass claimed below. Treat this summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Review" and "Verify gate" steps.\n\n`
               : '';
             const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
-            // Hidden marker so `fix-pr-created` (a separate workflow run that
+            // Hidden marker so `fix-pr-create` (a separate workflow run that
             // can't see this run's execution_file) can find this summary later
             // and reuse it as the PR body.
             const marker = `\n<!-- agent:fix-summary:issue-${process.env.ISSUE_NUMBER} -->`;
@@ -1598,12 +1598,12 @@ jobs:
   # reviewed the diff on the issue. Deliberately does NOT rebuild or re-verify
   # (the fix job already did, and the human just reviewed the diff) — it only
   # turns the already-verified branch into a draft PR.
-  fix-pr-created:
+  fix-pr-create:
     needs: parse-command
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: >-
-      needs.parse-command.outputs.command == 'fix-pr-created'
+      needs.parse-command.outputs.command == 'fix-pr-create'
       && needs.parse-command.outputs.authorized == 'true'
     env:
       ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
@@ -1624,7 +1624,7 @@ jobs:
               await github.rest.repos.getBranch({ owner, repo, branch });
             } catch (e) {
               await github.rest.issues.createComment({ owner, repo, issue_number: issue,
-                body: `No branch \`${branch}\` found. Run \`@torchxpubot fix\` first, and only use \`fix-pr-created\` after it pushes a verified fix.` });
+                body: `No branch \`${branch}\` found. Run \`@torchxpubot fix\` first, and only use \`fix-pr-create\` after it pushes a verified fix.` });
               core.setFailed(`branch ${branch} not found`);
               return;
             }
@@ -1644,7 +1644,7 @@ jobs:
             // the summary from the issue comment instead.
             const marker = `<!-- agent:fix-summary:issue-${issue} -->`;
             const boilerplate =
-              `\nFixes #${issue}\n\n---\n_Draft PR opened by \`@torchxpubot fix-pr-created\` from the ` +
+              `\nFixes #${issue}\n\n---\n_Draft PR opened by \`@torchxpubot fix-pr-create\` from the ` +
               `verified fix branch \`${branch}\`. The fix was built and independently ` +
               `re-verified by the \`fix\` job, and a human reviewed the diff before this ` +
               `PR was opened; kept as a draft for a final check before merge._`;
