@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -41,7 +42,7 @@ def main():
     )
     pr = json.loads(pr_json)
 
-    # `merged` is not a gh pr view field; state is MERGED once the PR lands.
+    # state is MERGED once the PR lands.
     if pr["state"] != "MERGED":
         print(f"::error::PR #{args.pr_number} is not merged. Cannot revert.")
         # Post comment via gh
@@ -94,16 +95,13 @@ def main():
     # Push the revert branch
     run(f"git push origin {revert_branch}")
 
-    # Create the revert PR (use temp files to avoid shell injection)
+    # gh pr create has --body-file but no --title-file; quote the title instead.
     revert_title = f'Revert "{original_title}"'
     revert_body = (
         f"Reverts #{args.pr_number}\n\n"
         f"**Reason:** {args.reason}\n\n"
         f"Original PR: #{args.pr_number}"
     )
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
-        tf.write(revert_title)
-        title_file = tf.name
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as bf:
         bf.write(revert_body)
         body_file = bf.name
@@ -111,7 +109,7 @@ def main():
     pr_url = run(
         f"gh pr create --repo {args.repo} "
         f"--base {base_branch} --head {revert_branch} "
-        f"--title-file {title_file} "
+        f"--title {shlex.quote(revert_title)} "
         f"--body-file {body_file}"
     )
 
