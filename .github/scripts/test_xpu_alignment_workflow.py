@@ -59,6 +59,23 @@ class AlignmentWorkflowTests(unittest.TestCase):
         ]
         self.assertEqual(positions, sorted(positions))
 
+    def test_agent_prompts_preserve_the_mvp_candidate_scope(self) -> None:
+        prepare = self.text.split("  scan-prepare:", 1)[1].split(
+            "  run-reproducers:", 1
+        )[0]
+        prepare = " ".join(prepare.split())
+        self.assertIn("already scoped exclusively to XPU", prepare)
+        self.assertIn("CPU, CUDA, ROCm, MPS", prepare)
+        self.assertIn("A title, label, or XPU mention alone", prepare)
+        self.assertIn("linked issue, PR, and commit chain", prepare)
+
+        review = self.text.split("  independent-review:", 1)[1].split(
+            "  gate-and-publish:", 1
+        )[0]
+        review = " ".join(review.split())
+        self.assertIn("existing intel/torch-xpu-ops tracker", review)
+        self.assertIn("do not create a payload or comment on it", review)
+
     def test_untrusted_reproducer_user_has_no_outbound_network(self) -> None:
         runner = self.text.split("  run-reproducers:", 1)[1].split(
             "  scan-finalize:", 1

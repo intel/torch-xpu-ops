@@ -251,6 +251,26 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "file-one")
         self.assertEqual(decision["payloads"][0]["unit_id"], "issue-123")
 
+    def test_existing_ops_tracker_prevents_a_new_issue_payload(self) -> None:
+        paths = self.artifacts.write()
+        review = json.loads(paths["review"].read_text())
+        review["units"][0].update(
+            {
+                "verdict": "duplicate",
+                "canonical_tracker": (
+                    "https://github.com/intel/torch-xpu-ops/issues/456"
+                ),
+                "payload": None,
+            }
+        )
+        paths["review"].write_text(json.dumps(review) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "none")
+        self.assertEqual(decision["payloads"], [])
+        self.assertEqual(decision["unit_verdicts"], {"issue-123": "duplicate"})
+
     def test_partial_collection_returns_diagnostic_payloads(self) -> None:
         paths = self.artifacts.write()
         self.artifacts.make_partial(paths)

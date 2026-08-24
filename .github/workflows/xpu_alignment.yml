@@ -139,6 +139,15 @@ jobs:
             object exactly one reject/validate decision. The collector, not this
             agent, owns enumeration and collection status. Preserve a `partial`
             status and its blockers exactly; do not infer uncollected objects.
+            Reject work already scoped exclusively to XPU when its body,
+            reproducer, tests, or diff show that upstream already tracks or
+            implements the XPU work. A title, label, or XPU mention alone is not
+            enough to reject it. Generic or shared work originating in CPU,
+            CUDA, ROCm, MPS, or another backend remains eligible while XPU parity
+            is unknown.
+            Reproduce a linked issue, PR, and commit chain only once; reject the
+            other objects as `duplicate-chain` and name the canonical object in
+            the free-text reason.
             For each validated object, write a faithful bounded XPU reproducer
             and execution entry with its exact SHA-256, 120-second timeout,
             upstream oracle, and expected target path.
@@ -410,6 +419,9 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
+            If an existing intel/torch-xpu-ops tracker covers the same work,
+            record it as `canonical_tracker`; do not create a payload or comment
+            on it.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`
