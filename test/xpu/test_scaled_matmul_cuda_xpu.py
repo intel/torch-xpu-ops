@@ -17,7 +17,15 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyXPU,
 )
-from torch.testing._internal.common_utils import parametrize, run_tests, skipIfXpu
+from torch.testing._internal.common_utils import (
+    IS_WINDOWS,
+    parametrize,
+    random_matrix_with_scaled_reduction_dim,
+    run_tests,
+    skipIfXpu,
+)
+
+f8_msg = "FP8 is only supported on H100+, SM 8.9 and MI300+ and XPU devices"
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -28,11 +36,7 @@ with XPUPatchForImport(False):
     from test_scaled_matmul_cuda import (
         e4m3_type,
         e5m2_type,
-        f8_msg,
-        IS_WINDOWS,
         mm_float8_emulated,
-        PLATFORM_SUPPORTS_FP8,
-        random_matrix_with_scaled_reduction_dim,
         scaled_mm_wrap,
         tensor_to_scale,
         tensor_to_scale_block,
@@ -210,8 +214,6 @@ TestFP8Matmul.test_scaled_mm_deepseek_error_messages = (
 # Note that the test is still parameterized by base_dtype, which may be
 # fp16/bf16 even if fp8 isn't supported,
 # so we check FP8 support at runtime rather than gating the entire test with @skipIfXpu.
-
-f8_msg = "FP8 is only supported on H100+, SM 8.9 and MI300+ and XPU devices"
 
 current_accelerator_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
