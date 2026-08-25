@@ -43,6 +43,12 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("BEDROCK_MODEL: global.anthropic.claude-opus-5", self.text)
         self.assertEqual(self.text.count("--model ${{ env.BEDROCK_MODEL }}"), 3)
 
+    def test_prepare_has_enough_turns_for_the_daily_inventory(self) -> None:
+        prepare = self.text.split("  scan-prepare:", 1)[1].split(
+            "  run-reproducers:", 1
+        )[0]
+        self.assertIn("--max-turns 300", prepare)
+
     def test_every_stage_restores_the_original_collection(self) -> None:
         self.assertEqual(self.text.count("name: ${{ env.ALIGNMENT_ARTIFACT }}-collection"), 6)
         self.assertIn("--collection-root collection_snapshot", self.text)
