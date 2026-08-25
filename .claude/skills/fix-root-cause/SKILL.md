@@ -136,8 +136,8 @@ Skip deep analysis if any of these apply:
   is null, or no `analyzed_sha` recorded, or no marker found in
   any comment → treat as fresh analysis and proceed.
 - Labeled `task` / `[Task]` / `[Feature]`, or describes broad
-  alignment work → emit `NEEDS_HUMAN(reason=umbrella_task)` with
-  `reason_detail="Umbrella/task issue, not a single fixable bug."`
+  alignment work → emit `NEEDS_HUMAN(reason=task_or_feature)` with
+  `reason_detail="Task/feature request, not a single fixable bug."`
 - Describes a "feature gap" or "blocked by missing feature" →
   emit `NEEDS_HUMAN(reason=feature_gap)`.
 - Performance issue with no specific failing test → emit
@@ -518,7 +518,7 @@ On `verdict=IMPLEMENTING`:
 
 On `verdict=NEEDS_HUMAN`:
 
-- `umbrella_task` — labeled `task` / `[Task]` / `[Feature]` or
+- `task_or_feature` — labeled `task` / `[Task]` / `[Feature]` or
   describes broad alignment work (Step 0).
 - `feature_gap` — "feature gap" / "blocked by missing feature"
   (Step 0).
