@@ -126,6 +126,34 @@ class TestFftOut(TestCase):
         self.assertEqual(out.stride(), stride)
         self.assertEqual(out, expected)
 
+    def test_fft_out_preserves_size_one_strides(self, device):
+        xc = torch.randn(2, 1, 4, dtype=torch.complex64, device=device)
+        xr = torch.randn(2, 1, 4, device=device)
+
+        c2c_expected = torch.ops.aten._fft_c2c.default(xc, [2], 0, True)
+        c2c_out = torch.empty_strided(
+            c2c_expected.shape, (4, 99, 1), dtype=torch.complex64, device=device
+        )
+        torch.ops.aten._fft_c2c.out(xc, [2], 0, True, out=c2c_out)
+        self.assertEqual(c2c_out.stride(), (4, 99, 1))
+        self.assertEqual(c2c_out, c2c_expected)
+
+        r2c_expected = torch.ops.aten._fft_r2c.default(xr, [2], 0, True)
+        r2c_out = torch.empty_strided(
+            r2c_expected.shape, (3, 99, 1), dtype=torch.complex64, device=device
+        )
+        torch.ops.aten._fft_r2c.out(xr, [2], 0, True, out=r2c_out)
+        self.assertEqual(r2c_out.stride(), (3, 99, 1))
+        self.assertEqual(r2c_out, r2c_expected)
+
+        c2r_expected = torch.ops.aten._fft_c2r.default(r2c_expected, [2], 0, 4)
+        c2r_out = torch.empty_strided(
+            c2r_expected.shape, (4, 99, 1), dtype=torch.float32, device=device
+        )
+        torch.ops.aten._fft_c2r.out(r2c_expected, [2], 0, 4, out=c2r_out)
+        self.assertEqual(c2r_out.stride(), (4, 99, 1))
+        self.assertEqual(c2r_out, c2r_expected)
+
     def test_fft_out_aliased_input(self, device):
         x = torch.randn(2, 3, 4, dtype=torch.complex64, device=device)
         expected = torch.ops.aten._fft_c2c.default(x, [2], 0, True)
@@ -177,29 +205,85 @@ class TestFftOut(TestCase):
             self.assertEqual(out.dtype, expected_dtype)
             self.assertEqual(out, functional)
 
-    def test_fft_half_normalization(self, device):
-        # The functional variants normalize at the promoted precision and
-        # downcast afterwards, so every normalization mode has to stay within
-        # half's own resolution of the double reference.
-        x = torch.randn(8, 16, dtype=torch.complex64, device=device).to(torch.complex32)
-        reference = x.to(torch.complex128)
+    def test_fft_out_casts_from_the_functional_result_dtype(self, device):
+        # The out= contract is functional-result-then-copy: an out tensor with
+        # a wider dtype must contain the low-precision functional result cast
+        # to that dtype, rather than a result computed directly at the wider
+        # transform precision.
+        xc = torch.randn(4, 16, dtype=torch.complex64, device=device).to(
+            torch.complex32
+        )
+        xr = torch.randn(4, 16, dtype=torch.float16, device=device)
 
         for normalization in (0, 1, 2):
+            c2c_expected = torch.ops.aten._fft_c2c.default(xc, [1], normalization, True)
+            c2c_out = torch.empty_like(c2c_expected, dtype=torch.complex64)
+            torch.ops.aten._fft_c2c.out(xc, [1], normalization, True, out=c2c_out)
+            self.assertEqual(
+                c2c_out,
+                c2c_expected.to(c2c_out.dtype),
+                msg=f"c2c normalization={normalization}",
+            )
+
+            r2c_expected = torch.ops.aten._fft_r2c.default(xr, [1], normalization, True)
+            r2c_out = torch.empty_like(r2c_expected, dtype=torch.complex64)
+            torch.ops.aten._fft_r2c.out(xr, [1], normalization, True, out=r2c_out)
+            self.assertEqual(
+                r2c_out,
+                r2c_expected.to(r2c_out.dtype),
+                msg=f"r2c normalization={normalization}",
+            )
+
+            c2r_expected = torch.ops.aten._fft_c2r.default(xc, [1], normalization, 30)
+            c2r_out = torch.empty_like(c2r_expected, dtype=torch.float32)
+            torch.ops.aten._fft_c2r.out(xc, [1], normalization, 30, out=c2r_out)
+            self.assertEqual(
+                c2r_out,
+                c2r_expected.to(c2r_out.dtype),
+                msg=f"c2r normalization={normalization}",
+            )
+
+    def test_fft_half_normalization(self, device):
+        # Preserve the established MKL ordering for complex-half c2c/c2r:
+        # execute at the promoted precision, cast to the functional result
+        # dtype, and normalize that low-precision result in place.
+        generator = torch.Generator().manual_seed(0)
+        x = torch.randn(2, 3, dtype=torch.complex64, generator=generator).to(
+            device=device, dtype=torch.complex32
+        )
+        c2c_unnormalized = torch.ops.aten._fft_c2c.default(x, [1], 0, True)
+        c2r_unnormalized = torch.ops.aten._fft_c2r.default(x, [0, 1], 0, 4)
+
+        for normalization, scale in ((1, 1 / 3**0.5), (2, 1 / 3)):
             got = torch.ops.aten._fft_c2c.default(x, [1], normalization, True)
             self.assertEqual(got.dtype, torch.complex32)
-            expected = torch.ops.aten._fft_c2c.default(
-                reference, [1], normalization, True
-            )
+            expected = c2c_unnormalized.clone().mul_(scale)
             self.assertEqual(
-                got.to(torch.complex128),
+                got,
                 expected,
-                atol=1e-2,
-                rtol=1e-2,
-                msg=f"normalization={normalization}",
+                rtol=0,
+                atol=0,
+                msg=f"c2c normalization={normalization}",
             )
 
             out = torch.empty(got.shape, dtype=torch.complex32, device=device)
             torch.ops.aten._fft_c2c.out(x, [1], normalization, True, out=out)
+            self.assertEqual(out, got, msg=f"normalization={normalization}")
+
+        for normalization, scale in ((1, 1 / 8**0.5), (2, 1 / 8)):
+            got = torch.ops.aten._fft_c2r.default(x, [0, 1], normalization, 4)
+            self.assertEqual(got.dtype, torch.float16)
+            expected = c2r_unnormalized.clone().mul_(scale)
+            self.assertEqual(
+                got,
+                expected,
+                rtol=0,
+                atol=0,
+                msg=f"c2r normalization={normalization}",
+            )
+
+            out = torch.empty(got.shape, dtype=torch.float16, device=device)
+            torch.ops.aten._fft_c2r.out(x, [0, 1], normalization, 4, out=out)
             self.assertEqual(out, got, msg=f"normalization={normalization}")
 
     def test_fft_r2c_out_twosided(self, device):
