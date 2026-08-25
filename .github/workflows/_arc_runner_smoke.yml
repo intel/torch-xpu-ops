@@ -355,7 +355,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 50
+            --model ${{ env.BEDROCK_MODEL }} --max-turns 300
             --allowedTools Bash(sha256sum:*),Read,Write,Edit,Glob,Grep,Skill
           prompt: |
             Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
@@ -448,7 +448,7 @@ jobs:
           github_token: ${{ github.token }}
           settings: '{"alwaysThinkingEnabled": true}'
           claude_args: >-
-            --model ${{ env.BEDROCK_MODEL }} --max-turns 60
+            --model ${{ env.BEDROCK_MODEL }} --max-turns 300
             --allowedTools "Bash(gh api:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh issue view:*),Read,Write,Edit,Glob,Grep,WebFetch,Skill"
           prompt: |
             Use .claude/skills/xpu-alignment/SKILL.md in automation mode with
