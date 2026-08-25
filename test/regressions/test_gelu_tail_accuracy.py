@@ -42,8 +42,11 @@ class TestGeluTailAccuracy(TestCase):
 
         tail = xref.abs() >= 4.0
         rel_err = (
-            (actual - expected)[tail] / expected[tail].abs().clamp(min=1e-30)
-        ).abs().max().item()
+            ((actual - expected)[tail] / expected[tail].abs().clamp(min=1e-30))
+            .abs()
+            .max()
+            .item()
+        )
         # Pre-fix this was ~1.0 (100% off, flushed to zero); fp32 rounding of
         # x / sqrt(2) leaves a residual well under 1e-3 after the fix.
         self.assertLess(rel_err, 1e-3)
@@ -64,16 +67,17 @@ class TestGeluTailAccuracy(TestCase):
 
         tail = xref.abs() >= 4.0
         rel_err = (
-            (actual - expected)[tail] / expected[tail].abs().clamp(min=1e-30)
-        ).abs().max().item()
+            ((actual - expected)[tail] / expected[tail].abs().clamp(min=1e-30))
+            .abs()
+            .max()
+            .item()
+        )
         self.assertLess(rel_err, 1e-3)
 
     def test_gelu_matches_cpu_tail_xpu(self):
         # CPU exact gelu is already accurate in the tail; XPU should match it.
         dtype = torch.float32
-        x = torch.tensor(
-            [-10.0, -8.0, -6.0, -5.5, -5.0, -2.0, 3.0], dtype=dtype
-        )
+        x = torch.tensor([-10.0, -8.0, -6.0, -5.5, -5.0, -2.0, 3.0], dtype=dtype)
         y_cpu = F.gelu(x)
         y_xpu = F.gelu(x.to(xpu_device)).cpu()
         self.assertEqual(y_cpu, y_xpu, atol=1e-6, rtol=1e-5)
