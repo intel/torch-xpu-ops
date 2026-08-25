@@ -38,7 +38,7 @@ tracked files, or push anything to any remote. After returning
 depths and on different inputs:
 
 - **`issue-triage`** — cheap text-only classification of the raw GitHub
-  issue (bug / skip-list / nonbug), initial `scope` estimate,
+  issue (single-bug / batch-bug / nonbug), initial `scope` estimate,
   `runtime_dependencies`, and a preliminary `verdict` (agent-fixable /
   NEEDS_HUMAN). No source access, no root-cause analysis. Runs first on
   every issue.
@@ -46,10 +46,11 @@ depths and on different inputs:
   confirmed failure: reads source, cross-references upstream, decides
   final `target_repo`, `domain`, and `IMPLEMENTING`/`NEEDS_HUMAN`. Has
   authority to override `issue-triage`'s initial `scope`/`verdict`
-  after seeing the code. Runs only after `issue-triage` says `bug` with
-  verdict `agent-fixable` **and** `fix-reproduce` produces a result.
-  Also entered directly by `xpu-nightly-ci-fix` (no issue body to
-  triage).
+  after seeing the code. Runs on a single failure — either a
+  `single-bug` issue, or one sub-item of a `batch-bug` — after
+  `issue-triage` says the failure is a bug with verdict `agent-fixable`
+  **and** `fix-reproduce` produces a result. Also entered directly by
+  `xpu-nightly-ci-fix` (no issue body to triage).
 
 ## Inputs
 
