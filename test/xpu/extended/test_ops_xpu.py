@@ -147,6 +147,7 @@ class Namespace:
                 # the parity check still runs. Widen only when both sides
                 # agree, so a one-sided promotion still fails on dtype.
                 # Track: https://github.com/pytorch/pytorch/issues/177859
+                # TODO: Remove this widening after BComplex32 support is ready.
                 if (
                     isinstance(xpu_results, torch.Tensor)
                     and isinstance(cpu_results, torch.Tensor)
