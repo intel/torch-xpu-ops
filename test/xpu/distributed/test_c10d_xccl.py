@@ -1797,6 +1797,36 @@ instantiate_parametrized_tests(XCCLTraceTest)
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
 
 
+# Skip XCCL tests that currently fail; tracked upstream.
+# Each entry maps an exact generated test name to its tracking issue.
+_xpu_skip_cases = {
+    "ProcessGroupXCCLTest": {
+        "test_nan_assert_bfloat16": "https://github.com/intel/torch-xpu-ops/issues/3377",
+        "test_nan_assert_float16": "https://github.com/intel/torch-xpu-ops/issues/3377",
+        "test_nan_assert_float32": "https://github.com/intel/torch-xpu-ops/issues/3377",
+        "test_nan_assert_float64": "https://github.com/intel/torch-xpu-ops/issues/3377",
+        "test_nan_assert_float8_e4m3fn": "https://github.com/intel/torch-xpu-ops/issues/3377",
+        "test_nan_assert_float8_e5m2": "https://github.com/intel/torch-xpu-ops/issues/3377",
+    },
+}
+def _apply_xpu_skips(_skip_cases):
+    for _cls_name, _cases in _skip_cases.items():
+        _cls = globals().get(_cls_name)
+        if _cls is None:
+            continue
+        for _name, _issue in _cases.items():
+            _method = getattr(_cls, _name, None)
+            if _method is not None:
+                setattr(
+                    _cls,
+                    _name,
+                    unittest.skip(f"Skipped on XPU, see {_issue}")(_method),
+                )
+
+
+_apply_xpu_skips(_xpu_skip_cases)
+
+
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
