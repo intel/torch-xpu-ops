@@ -26,10 +26,10 @@ When the `error_message` is absent, generic, or identical across cases (e.g. a
 bare `AssertionError`), break the tie with the facet keys below, in order — the
 FIRST key that shows a demonstrably different cause decides the split, then STOP:
 
-1. **Dtype** — one dtype hits an unsupported-dtype/`NotImplementedError` path
-   while another fails a tolerance check. Same failing dtype -> same group.
-2. **Op / kernel** — the failing operator or kernel named in the traceback
+1. **Op / kernel** — the failing operator or kernel named in the traceback
    (e.g. `addmm` vs `layer_norm`). Different originating op -> different group.
+2. **Dtype** — one dtype hits an unsupported-dtype/`NotImplementedError` path
+   while another fails a tolerance check. Same failing dtype -> same group.
 3. **Parameters** — non-shape parametrization (flags, modes, reduction type,
    `keepdim`, backend, memory format) when it changes the code path taken.
 4. **Tensor shape** — split only when the shape itself is the cause (e.g. one

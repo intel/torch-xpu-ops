@@ -17,25 +17,26 @@ Root cause: <=2 lines, specific, with file:line when a trace read one>
 
 <optional header notes, one line each - see below>
 
-| label | reason |
-|---|---|
-| `type: <value>` | ... |
-| `test: <value>` | ... |
-| `module: <value>` | ... |
-| `priority: <value>` | ... |
-| `os: <value>` | ... |
-| `hw: <value>` | ... |
-| `dtype: <value>` | ... |
-| `dependency component: <value>` | ... |
-| `<symptom label>` | ... |
-| `duplicate` | Duplicate of <url> (<relevance>, <recommended_action>) |
-| `wontfix` | <own_labels or duplicate:<repo>#<n>> |
-| `need_split` | <N> groups: <one-line signature each> |
+| axis | value | reason |
+|---|---|---|
+| `type` | `<value>` | ... |
+| `test` | `test: <value>` | ... |
+| `module` | `module: <value>` | ... |
+| `priority` | `<value>` | ... |
+| `os` | `os: <value>` | ... |
+| `hw` | `hw: <value>` | ... |
+| `dtype` | `dtype: <value>` | ... |
+| `dependency component` | `dependency component: <value>` | ... |
+| symptom | `<symptom label>` | ... |
+| triage | `duplicate` | Duplicate of <url> (<relevance>, <recommended_action>) |
+| triage | `wontfix` | <own_labels or duplicate:<repo>#<n>> |
+| triage | `need_split` | <N> groups: <one-line signature each> |
 ```
 
-The table is a **contract**: a workflow applies every row verbatim as a label
-(or, for `type` and `priority`, as the issue's native Type / project Priority
-field). Emit each name exactly as it appears in `proposed_labels.json`.
+The `value` column is the token a workflow applies verbatim: a label name for
+label axes (with its `type:` / `module:` / etc. prefix), or the bare enum value
+for the native `type` (GitHub Type) and `priority` (project Priority) fields.
+Emit each value exactly as it appears in `proposed_labels.json`.
 
 ## Axis sources
 
@@ -105,15 +106,15 @@ Root cause: oneDNN has no bf16 `addmm` matmul primitive on this platform
 
 Analyzed case: test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (case 1 of 4; the other 3 not analyzed).
 
-| label | reason |
-|---|---|
-| `type: Bug` | `issue_type` is `Bug`. |
-| `test: ut` | Reproduce steps run `pytest test/xpu/test_matmul_xpu.py`. |
-| `module: gemm` | Fails in the oneDNN matmul path, the addmm/gemm family. |
-| `priority: Medium` | 4 UT cases, RuntimeError without crash. |
-| `dtype: bfloat16` | Analyzed case is `test_addmm_bfloat16`; error names the bf16 matmul primitive. |
-| `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
-| `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
+| axis | value | reason |
+|---|---|---|
+| `type` | `Bug` | `issue_type` is `Bug`. |
+| `test` | `test: ut` | Reproduce steps run `pytest test/xpu/test_matmul_xpu.py`. |
+| `module` | `module: gemm` | Fails in the oneDNN matmul path, the addmm/gemm family. |
+| `priority` | `Medium` | 4 UT cases, RuntimeError without crash. |
+| `dtype` | `dtype: bfloat16` | Analyzed case is `test_addmm_bfloat16`; error names the bf16 matmul primitive. |
+| `dependency component` | `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
+| triage | `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
 ```
 
 Evidence-only (no `pytorch_folder`; owner not pinned, so `type` is inferred and
@@ -129,10 +130,10 @@ Analyzed case: test/xpu/test_ops_xpu.py::TestOpsXPU::test_foo_xpu (case 1 of 3; 
 
 Trace mode: evidence-only (no pytorch_folder provided).
 
-| label | reason |
-|---|---|
-| `type: Bug` | `issue_type` empty; heuristic matches `AssertionError` in body. |
-| `test: ut` | Traceback shows a `pytest` frame with no e2e/oob markers. |
-| `module: infra` | Owning component not identifiable from traceback alone; catch-all. |
-| `priority: Medium` | 3 UT cases, AssertionError without crash. |
+| axis | value | reason |
+|---|---|---|
+| `type` | `Bug` | `issue_type` empty; heuristic matches `AssertionError` in body. |
+| `test` | `test: ut` | Traceback shows a `pytest` frame with no e2e/oob markers. |
+| `module` | `module: infra` | Owning component not identifiable from traceback alone; catch-all. |
+| `priority` | `Medium` | 3 UT cases, AssertionError without crash. |
 ```

@@ -42,7 +42,6 @@ stop; it degrades the trace, not the run.
 ## Prerequisites
 
 - Authenticated `gh` CLI on PATH (`read:project` scope for project fields).
-- `python3` is NOT required: Step 1 uses the script-free `extract-issue` skill.
 - `pytorch_folder`, when given, exists and is a git checkout. When absent or not
   a checkout, continue in evidence-only mode instead of stopping.
 
@@ -59,6 +58,7 @@ source; do not decide from memory. Two kinds of source:
 | Axis | Reasoning pack | JSON-only source |
 |---|---|---|
 | grouping | `group_issue.md` | `categories.triage` (split label) |
+| root cause | `triage_issue.md` | — |
 | `dependency` | `dependency.md` (+ `dependency_info.md` for oneMKL/oneDNN) | — |
 | duplicate / wontfix | `duplicates.md` | `categories.triage` |
 | `os` / `hw` | `platform_specific.md` | `categories.os` / `categories.hw` |
@@ -67,6 +67,7 @@ source; do not decide from memory. Two kinds of source:
 | `dtype` | — | `categories.dtype` |
 | `symptom` | — | `categories.symptom` |
 | priority | — | `priority_field` |
+| type | — | `issue_type_field` (native Type; preserve `extract.json` `issue_type`) |
 
 ## Workflow
 
@@ -95,17 +96,8 @@ substitute a Python extraction script for `extract-issue`.
 ### Step 2 — Group the failures
 
 An issue may report several failing cases. Follow `reference/group_issue.md` to
-group `extract.json`'s failures by cause: when a per-case `error_message` or the
-issue `traceback` is present it groups by that first (breaking generic-signature
-ties with the dtype -> op/kernel -> parameters -> tensor shape facets), and when
-neither is present it decides splits from the case facets directly. It defines
-the signal-vs-noise rule and the one-group / two-or-more-group outcome.
-
-- **One group** -> no split signal.
-- **Two or more groups** -> the issue mixes distinct causes. Emit the
-  split-recommendation label from `categories.triage` (match its `evidence`;
-  read the name from the JSON). Record a one-line signature per group for the
-  output. This skill NEVER splits, files sub-issues, or edits anything.
+group `extract.json`'s failures by cause and decide the one-group /
+two-or-more-group outcome.
 
 ### Step 3 — Analyze the representative case
 
@@ -120,33 +112,10 @@ and `keywords` for that axis — never from a hard-coded label list here.
 
 #### 3.1 — Root cause
 
-From `extract.json` (`traceback`, the representative case's `error_message`,
-`test_cases`, `reproduce_steps`, `title`, `body`), establish the defect and its
-owner for the representative case. The `error_message` is the primary failure
-signature — read the exception class and message first, then place it with the
-`traceback` frame. Mode depends on `pytorch_folder`:
-
-| | Mode A — traced | Mode B — evidence-only |
-|---|---|---|
-| When | `pytorch_folder` given and exists | absent or nonexistent |
-| Sources | the checkout, plus Step 1 evidence | Step 1 evidence and `gh` only |
-| Never | propose a fix | clone, fetch, or search a checkout |
-
-**Mode A.** Delegate the trace to a read-only deep-analysis subagent: the call
-path to the failure with `file:line`, and whether the owner is the test file,
-`pytorch/{aten,torch,c10}`, `third_party/torch-xpu-ops/`, or a third party.
-Await it rather than repeating the search.
-
-**Mode B.** Conclude a cause ONLY when the evidence is self-sufficient (the
-traceback or `error_message` names the owning file and states the defect); cite
-what you used. Otherwise set `root_cause` to exactly:
-
-```
-insufficient information for root causing: no pytorch_folder provided and issue evidence is not self-sufficient
-```
-
-Never guess an owner or infer a `file:line` you did not read. Record
-`trace_mode` and `root_cause` in at most 2 lines.
+Follow `reference/triage_issue.md` to establish the defect and its owner for the
+representative case. It defines the `error_message`/`traceback` reading order, the
+Mode A (traced) vs Mode B (evidence-only) split on `pytorch_folder`, and how to
+record `trace_mode` and `root_cause`.
 
 #### 3.2 — Duplicate
 
@@ -168,38 +137,27 @@ checks (3.4 and 3.5), and go straight to Step 4 output.
 
 #### 3.4 — Type, priority, module, symptom, dtype
 
-Decide each from its JSON section. For every axis, if `extract.json` already
-carries a human-set value for that axis, preserve it verbatim and note the human
-origin; otherwise derive it:
+Decide each axis from its JSON section, applying these shared rules:
 
-- **type** — `issue_type_field`: the native GitHub Type (`Bug` \| `Feature` \|
-  `Task` \| `Epic`). Preserve a non-empty `extract.json` `issue_type` verbatim.
-  Otherwise evaluate the `values` and take the FIRST whose `evidence`/`keywords`
-  match `lowercase(title + " " + body + " " + traceback)` (a reported failure ->
-  `Bug`, new functionality -> `Feature`); the `keywords` are hints only and never
-  override an explicitly set Type. An empty axis is valid.
-- **priority** — `priority_field`: the tiers, per-tier `evidence`, and fallback
-  `keywords`. Preserve a non-empty `extract.json` `priority`. Otherwise evaluate
-  tiers in severity order and stop at the first matching `evidence`, defaulting
-  to the tier the JSON marks as default. The whole-issue case-count conditions
-  count every `test_cases[]` entry, not just the representative case.
-- **module** — `categories.module`: pick exactly ONE label. The `labels` array
-  is ordered by decision priority, so walk it top-to-bottom and take the FIRST
-  whose `evidence` is met, driven by the traced root cause (keywords are hints
-  only). The axis `description` carries the tie-break rules. Preserve a non-empty
-  `extract.json` `module`.
-- **symptom** — `categories.symptom`: multi-label; independently evaluate EVERY
-  label and emit one row for EACH whose `evidence`/`keywords` are met by the
-  representative case — a single issue routinely carries several symptom labels
-  (e.g. `regression` + `inference`, or `Accuracy` + `training`). Do not stop at
-  the first match. An empty axis is valid.
-- **dtype** — `categories.dtype`: multi-label; follow the axis `description`
-  (structured-field-first, part-of-failure-signature, AMP disambiguation) and
-  per-label `evidence`. An empty axis is valid.
+- **Human value wins.** If `extract.json` already carries a human-set value for
+  the axis, preserve it verbatim, note the human origin, and skip deriving it.
+- **Match on `evidence`, not `keywords`.** `keywords` are only hints; they never
+  override an explicit value or an `evidence` match. When matching text, use
+  `lowercase(title + " " + body + " " + traceback)`, excluding the
+  `## Versions` / `Collecting environment` dump.
+- **Single vs multi.** A *single*-label axis takes the FIRST matching entry in
+  JSON order; a *multi*-label axis emits one row per matching entry. An empty axis
+  is always valid.
 
-When falling back to keyword matching for symptom/dtype, match against
-`lowercase(title + " " + body + " " + traceback)`, excluding the
-`## Versions` / `Collecting environment` dump.
+Per-axis specifics:
+
+| Axis | JSON section | Kind | How to decide |
+|---|---|---|---|
+| type | `issue_type_field` | single | Match `values` by `evidence`/`keywords`. |
+| priority | `priority_field` | single | Evaluate tiers in severity order by `evidence`; default to the tier the JSON marks as default. Case-count conditions count every `test_cases[]` entry, not just the representative case. |
+| module | `categories.module` | single | `labels` is ordered by decision priority; take the FIRST whose `evidence` is met, driven by the traced root cause. The axis `description` carries the tie-break rules. |
+| symptom | `categories.symptom` | multi | Evaluate EVERY label against the representative case. One issue routinely carries several (e.g. `regression` + `inference`, or `Accuracy` + `training`). |
+| dtype | `categories.dtype` | multi | Follow the axis `description` (structured-field-first, part-of-failure-signature, AMP disambiguation) and per-label `evidence`. |
 
 The `os` / `hw` axes are already decided by `extract-issue` per
 `reference/platform_specific.md` (emitted only when the issue is

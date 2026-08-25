@@ -5,20 +5,21 @@ unit-test parsing entirely.
 
 ## `test`
 
-One of the `code` values in `categories.test` of
-`../../reference/proposed_labels.json`, process in the order of 
-the defitions in the json file, determine with the evidence and keywords of the code 
-against `lowercase(label + " " + title + " " + body)`.
+The `test` value is one of the `code` values in `categories.test` of
+`../../reference/proposed_labels.json`. Evaluate the codes in the order they are
+defined in the JSON, testing each code's `evidence` and `keywords` against
+`lowercase(label + " " + title + " " + body)`.
 
-### 4. Precedence and default
+### Precedence and default
+
+Take the first signal that fires, in this order:
 
 1. e2e signal -> end-to-end code
 2. oob signal -> out-of-box code
 3. ut signal -> unit-test code
-4. otherwise -> unit-test code
 
-The default is the unit-test code (the surface `categories.test` marks as the
-fallback when no e2e/oob signal fires).
+If none fires, default to the unit-test code — the surface `categories.test`
+marks as the fallback.
 
 ## Unit-test entries
 
