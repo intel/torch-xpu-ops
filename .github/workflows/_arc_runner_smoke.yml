@@ -350,12 +350,18 @@ jobs:
             ${{ env.AGENT_SPACE }}/reviewer_transcript.json
           if-no-files-found: ignore
 
-      # Files created inside the privileged container are root-owned; hand them
-      # back so the next run on this self-hosted runner does not fail. _actions,
-      # _tool and _temp are separate bind mounts under /__w, so `chown -R /__w`
-      # does not reliably recurse into them; name them explicitly. A stale
-      # root-owned _actions cache makes the NEXT job die in "Prepare workflow
-      # directory" before any step runs.
+      # This privileged container runs as root, so every file it writes into the
+      # runner's bind mounts is root-owned. In particular claude-code-action runs
+      # `bun install` inside its own _actions dir, leaving a root-owned
+      # node_modules there. _actions/_tool/_temp are SEPARATE bind mounts under
+      # /__w, so `chown -R /__w` does not reliably recurse into them; name each
+      # explicitly. If left root-owned, the NEXT job on this self-hosted runner
+      # dies in "Prepare workflow directory" (Access to .../_actions/... denied)
+      # before any step runs. Derive the runner uid:gid from /__e (the runner's
+      # externals, a read-only mount it owns) instead of hardcoding 1000 — the
+      # service user here is not uid 1000.
       - name: Cleanup workspace
         if: always()
-        run: chown 1000:1000 -R /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
+        run: |
+          owner="$(stat -c '%u:%g' /__e)"
+          chown -R "$owner" /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
