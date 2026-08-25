@@ -134,6 +134,26 @@ def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias(self, wrap_v2, device):
     self.assertEqual(out.dtype, torch.float32)
     self.assertEqual(out.shape, (M, N))
 
+    x_dequantized = x_fp8.float() * x_scales.reciprocal()
+    y_dequantized = y_fp8.float() * y_scales.reciprocal()
+    expected = torch.mm(x_dequantized, y_dequantized)
+    self.assertEqual(out, expected + bias, atol=1e-2, rtol=1e-2)
+
+    out_without_bias = scaled_mm_wrap(
+        x_fp8,
+        y_fp8,
+        scale_a=x_scales.reciprocal(),
+        scale_b=y_scales.reciprocal(),
+        out_dtype=torch.float32,
+        wrap_v2=wrap_v2,
+    )
+    self.assertEqual(
+        out - out_without_bias,
+        bias.float().expand_as(out),
+        atol=1e-2,
+        rtol=1e-2,
+    )
+
 
 TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias = (
     _xpu_test_scaled_mm_row_wise_fp32_out_with_bias
