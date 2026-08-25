@@ -299,6 +299,24 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Restore runner access after XPU execution
+        if: always()
+        run: |
+          set -euo pipefail
+          runner_owner="$(stat --format='%u:%g' /__e)"
+          for target in \
+            "$GITHUB_WORKSPACE" \
+            /__w/_actions \
+            /__w/_tool \
+            /__w/_temp \
+            /github; do
+            if [[ ! -e "$target" ]]; then
+              continue
+            fi
+            chown --recursive --no-dereference "$runner_owner" "$target"
+            chmod --recursive u+rwX "$target"
+          done
+
   scan-finalize:
     name: Finalize scan from runner evidence
     needs: [collect, scan-prepare, run-reproducers]

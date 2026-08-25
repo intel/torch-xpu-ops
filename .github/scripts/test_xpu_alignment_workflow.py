@@ -105,6 +105,26 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn('--uid-owner "$repro_uid"', runner)
         self.assertIn("Outbound network remains available to xpu-repro", runner)
 
+    def test_reproducer_restores_access_to_its_runner_mounts(self) -> None:
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        cleanup = runner.split(
+            "- name: Restore runner access after XPU execution", 1
+        )[1]
+        self.assertIn("if: always()", cleanup)
+        self.assertIn("stat --format='%u:%g' /__e", cleanup)
+        for target in (
+            '"$GITHUB_WORKSPACE"',
+            "/__w/_actions",
+            "/__w/_tool",
+            "/__w/_temp",
+            "/github",
+        ):
+            self.assertIn(target, cleanup)
+        self.assertIn("chown --recursive --no-dereference", cleanup)
+        self.assertIn("chmod --recursive u+rwX", cleanup)
+
     def test_only_gate_job_requests_issue_write_permission(self) -> None:
         self.assertEqual(self.text.count("issues: write"), 1)
         gate = self.text.split("  gate-and-publish:", 1)[1]
