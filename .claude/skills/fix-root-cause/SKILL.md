@@ -103,7 +103,8 @@ Determine:
 1. **Root cause** — what exactly is failing and why.
 2. **Fix strategy** — what files/functions to change.
 3. **Target repo** — `pytorch` or `torch-xpu-ops`.
-4. **Domain** — which domain knowledge pack applies (see Step 1).
+4. **Domain** — which domain knowledge pack(s) apply (see Step 1).
+   May be more than one; list the root-cause domain first.
 5. **Verdict** — `IMPLEMENTING` (agent can fix) or `NEEDS_HUMAN`.
 
 ## Step 0: Quick classification
@@ -153,11 +154,14 @@ Skip deep analysis if any of these apply:
 
 ## Step 1: Classify the failure type and domain
 
-Emit exactly one `domain` value from the registry at
-`domain-registry.md` (same directory as this file) — that file is
-the closed set of valid values and their `target_repo` mapping. If
-none of the registered domains fits the failure, emit `NEEDS_HUMAN`
-instead of inventing a new value.
+Domain values come from the shared knowledge base registry at
+`../domain-knowledge/domain-registry.md`. Read that file first — it
+is the closed set of valid values, their `target_repo` mapping, and
+the authoritative loading contract. The knowledge base lives in its
+own folder rather than co-located here because `fix-implement`
+reuses the same domain files. If none of the registered domains fits
+the failure, emit `NEEDS_HUMAN(reason=no_registered_domain)` instead
+of inventing a new value.
 
 Current registered domains (see the registry for the authoritative
 list and each domain's `target_repo`, test/fix locations):
@@ -174,27 +178,32 @@ list and each domain's `target_repo`, test/fix locations):
   hasn't already, re-run with `TORCHINDUCTOR_FORCE_DISABLE_CACHES=1`
   to rule out stale-cache pollution.
 
-Based on the bullet descriptions above (or the more detailed
-`applies_when` column in `domain-registry.md` when the bullets
-are ambiguous), tentatively pick one domain and load its matching
-sibling file for path conventions and domain-specific rules:
+**Loading is need-driven — a failure may span more than one domain.**
+Match the failure against the registry's `applies_when` column. A
+single failure can match several rows (e.g. an Inductor UT that fails
+because of a missing XPU kernel matches both `inductor` and
+`xpu-kernel`). Load **every** matching reference file, not just the
+first:
 
-- `domain: xpu-kernel` → `domain-xpu-kernel.md`
-- `domain: inductor` → `domain-inductor.md`
-- `domain: upstream-pytorch` → `domain-upstream-pytorch.md`
+- `domain: xpu-kernel` → `../domain-knowledge/domain-xpu-kernel.md`
+- `domain: inductor` → `../domain-knowledge/domain-inductor.md`
+- `domain: upstream-pytorch` → `../domain-knowledge/domain-upstream-pytorch.md`
 
-Progressive disclosure: load exactly one initially, not all three.
-The closed set lives in the registry; deep knowledge only loads
-when a domain matches.
+Emit every matched domain in the `domains` array, **root-cause
+domain first**. That first entry owns the root cause and its registry
+row must match `target_repo`; the rest are loaded for their path
+conventions or recipes and do not affect `target_repo`.
 
-If after reading the loaded file the failure clearly does not fit
-that domain (its paths don't match the failing source; its
-signature descriptions rule your failure out), discard the
-tentative pick and load the correct `domain-<other>.md` instead.
-You may end up reading two of the three; do not force-fit the
-failure into the first file you loaded, a wrong domain propagates
-through `target_repo`, fix locations, and the downstream
-`fix-implement` recipe. If no domain fits after re-checking, emit
+Progressive disclosure is preserved: the registry (closed set) is
+always read; deep per-domain files enter context only for domains
+that actually matched. Do not preload all three "just in case".
+
+If after reading a loaded file the failure clearly does not fit that
+domain (its paths don't match the failing source; its signature
+descriptions rule your failure out), drop it from the matched set.
+Do not force-fit — a wrong root-cause domain propagates through
+`target_repo`, fix locations, and the downstream `fix-implement`
+recipe. If no domain fits after re-checking, emit
 `NEEDS_HUMAN(reason=no_registered_domain)`.
 
 Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
@@ -233,8 +242,8 @@ of which need the full history reachable. `--filter=blob:none`
 gives you the speed of a shallow clone without the pin-unreachable
 failure mode.
 
-See the matching sibling `domain-<name>.md` (loaded in Step 1) for
-upstream path mappings.
+See the matched `../domain-knowledge/domain-<name>.md` file(s)
+(loaded in Step 1) for upstream path mappings.
 
 ## Step 3: Investigate
 
@@ -341,7 +350,7 @@ can be isolated to a single repo:
   `"Cross-repo coordinated fix (pytorch + torch-xpu-ops) required;
   agent supports only single-repo fixes in this run."`
 
-See the matching sibling `domain-<name>.md` for path conventions.
+See the matched `../domain-knowledge/domain-<name>.md` file(s) for path conventions.
 
 ## Step 5: Assess fixability
 
@@ -378,12 +387,12 @@ Before emitting output, confirm all five:
    pytorch core code, `target_repo` must be `"pytorch"`, not
    `"torch-xpu-ops"`.
 3. **`target_repo` matches the domain registry** — re-load
-   `domain-registry.md` via the Read tool at this step (do not rely
-   on what you remember from Step 1) and cross-check the
-   `target_repo` column for the `domain` you're about to emit. A
-   mismatch means one of them is wrong; fix it before emitting (do
-   not rely on the orchestrator's downstream check as a safety
-   net).
+   `../domain-knowledge/domain-registry.md` via the Read tool at this
+   step (do not rely on what you remember from Step 1) and cross-check
+   the `target_repo` column for the first entry in `domains` (the
+   root-cause domain). A mismatch means one of them is wrong; fix it
+   before emitting (do not rely on the orchestrator's downstream check
+   as a safety net).
 4. **Not concluding "already fixed" from a skip decorator** — a skip
    confirms the issue exists; it is not a fix.
 5. **Every claim in `root_cause` and `fix_strategy` traces to
@@ -445,7 +454,7 @@ responsibility — this skill only emits the report.
   "fix_strategy": "specific files/functions to change",
   "target_repo": "pytorch or torch-xpu-ops",
   "analyzed_sha": "<full 40-char sha of target_repo HEAD at analysis time>",
-  "domain": "xpu-kernel or upstream-pytorch or inductor",
+  "domains": ["<root-cause domain>", "<other applied domains>", "..."],
   "verdict": "IMPLEMENTING or NEEDS_HUMAN",
   "reason": "<enumerated reason code, see below>",
   "reason_detail": "one-line human-readable detail"
@@ -466,12 +475,15 @@ Capture command: `git -C $target_repo_dir rev-parse HEAD`. On
 `NEEDS_HUMAN` where `target_repo` is `null`, emit
 `analyzed_sha=null` too.
 
-`target_repo`, `domain`, and `fix_strategy` are required (non-null)
-only when `verdict == "IMPLEMENTING"`. On `NEEDS_HUMAN` — including
-the Step 0 early exits and the "no registered domain fits" case —
-emit `null` for whichever of them the analysis could not determine.
-Do not invent a domain or a repo just to fill the schema;
-orchestrators only consult those fields on `IMPLEMENTING`.
+`target_repo`, `domains`, and `fix_strategy` are required (non-null)
+only when `verdict == "IMPLEMENTING"`. `domains` is a non-empty array
+with the root-cause domain first; `target_repo` MUST match that first
+domain's registry entry. On `NEEDS_HUMAN` — including the Step 0 early
+exits and the "no registered domain fits" case — emit `null` for
+`target_repo` / `fix_strategy` and `[]` for `domains` where the
+analysis could not determine them. Do not invent a domain or a repo
+just to fill the schema; orchestrators only consult those fields on
+`IMPLEMENTING`.
 
 ### Markdown ↔ JSON field mapping
 

@@ -1,8 +1,11 @@
 # Domain: Inductor
 
-Reference material loaded by `fix-root-cause` when it emits
-`domain: inductor`. Not a standalone skill. See `SKILL.md` and
-`domain-registry.md` in the same directory for the routing contract.
+Shared knowledge base for `domain: inductor`, loaded on demand by
+`fix-root-cause` and `fix-implement`. Not a standalone skill. See
+`domain-registry.md` in this directory for the routing/loading
+contract. May be loaded alongside other `domain-*.md` files when a
+failure spans multiple domains (e.g. an Inductor UT that fails on a
+missing XPU kernel also loads `domain-xpu-kernel.md`).
 
 ## Path conventions
 

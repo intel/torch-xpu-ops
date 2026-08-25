@@ -1,9 +1,10 @@
 # Domain: Upstream PyTorch Framework
 
-Reference material loaded by `fix-root-cause` when it emits
-`domain: upstream-pytorch`. Not a standalone skill. See `SKILL.md`
-and `domain-registry.md` in the same directory for the routing
-contract.
+Shared knowledge base for `domain: upstream-pytorch`, loaded on
+demand by `fix-root-cause` and `fix-implement`. Not a standalone
+skill. See `domain-registry.md` in this directory for the
+routing/loading contract. May be loaded alongside other `domain-*.md`
+files when a failure spans multiple domains.
 
 - `target_repo` must be `"pytorch"`. Never `third_party/torch-xpu-ops/`.
 
@@ -11,8 +12,8 @@ The signature list below is a curated set of known-misleading
 failure patterns — cases where the error surface looks like a
 backend bug but the fix is in framework code. **It is not
 exhaustive.** If the failure does not match any signature here,
-fall back to the standard investigation in `SKILL.md` Step 3; do
-not force-fit an unmatched failure to the closest signature.
+fall back to the standard investigation in `fix-root-cause` Step 3;
+do not force-fit an unmatched failure to the closest signature.
 
 ## Common signatures that belong here
 
@@ -37,9 +38,9 @@ kernel.
 ## Adding a new signature
 
 Add a bullet under "Common signatures that belong here" only after
-`fix-root-cause` has actually landed a fix (or a NEEDS_HUMAN
-verdict tied to a filed pytorch issue) that turned on this
-domain's misleading-surface trap. Include:
+the pipeline has actually landed a fix (or a NEEDS_HUMAN verdict
+tied to a filed pytorch issue) that turned on this domain's
+misleading-surface trap. Include:
 
 - The exact error string or minimal signature (so future agents
   can grep-match).
