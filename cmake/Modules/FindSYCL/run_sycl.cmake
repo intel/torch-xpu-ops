@@ -37,6 +37,7 @@ set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 set(SYCL_host_flags_excluded_from_sycl [==[@SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL@]==]) # list
+set(SYCL_host_flags_only_for_sycl [==[@SYCL_HOST_FLAGS_ONLY_FOR_SYCL@]==]) # list
 
 list(REMOVE_DUPLICATES SYCL_include_dirs)
 
@@ -71,6 +72,9 @@ foreach(flag ${CMAKE_HOST_FLAGS})
   if(NOT flag IN_LIST SYCL_host_flags_excluded_from_sycl)
     list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
   endif()
+endforeach()
+foreach(flag ${SYCL_host_flags_only_for_sycl})
+  list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
 endforeach()
 
 # SYCL_execute_process - Executes a command with optional command echo and status message.

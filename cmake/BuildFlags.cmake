@@ -38,6 +38,7 @@ macro(set_build_flags)
   endif()
   set(SYCL_HOST_FLAGS)
   set(SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL)
+  set(SYCL_HOST_FLAGS_ONLY_FOR_SYCL)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
   set(SYCL_HOST_PER_CONFIG_FLAGS)
   set(SYCL_KERNEL_OPTIONS)
@@ -81,6 +82,11 @@ macro(set_build_flags)
       -Wno-dangling-reference
       -Werror=dangling-reference
       -Wno-error=dangling-reference)
+    # Suppress warnings from third-party headers only for the Intel
+    # SYCL/Clang host frontend. Regular host sources are compiled by GCC.
+    list(APPEND SYCL_HOST_FLAGS_ONLY_FOR_SYCL
+      -Wno-logical-op-parentheses
+      -Wno-deprecated-copy-with-user-provided-copy)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
