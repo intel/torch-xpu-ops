@@ -29,9 +29,7 @@ class TestReplicationPadChannelMismatch(TestCase):
         grad_output = torch.ones(2, 0, 6, 8, device=xpu_device)
         inp = torch.ones(2, 2, 4, 4, device=xpu_device)
         with self.assertRaisesRegex(RuntimeError, "gradOutput channel unexpected"):
-            torch.ops.aten.replication_pad2d_backward(
-                grad_output, inp, [2, 2, 1, 1]
-            )
+            torch.ops.aten.replication_pad2d_backward(grad_output, inp, [2, 2, 1, 1])
 
     def test_replication_pad2d_backward_valid_xpu(self):
         # A matching-channel grad_output must still work (no false rejection).
