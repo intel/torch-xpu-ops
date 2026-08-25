@@ -90,7 +90,7 @@ owns the checklist state:
 | `<!-- agent:root-cause -->` | `fix-root-cause` |
 | `<!-- agent:implement -->` | `fix-implement` |
 | `<!-- agent:verify -->` | `fix-verify` |
-| `<!-- agent:skip-list-sweep -->` | `issue-handler` (skip-list Phase 1 summary) |
+| `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
 ### 4. Canonical section headings
 
@@ -124,13 +124,13 @@ Objective, Current Status`.
   (posted by the leaf).
 - **Stage 6** (`issue-handler` itself) owns: advancing
   `agent:status` to the terminal value; final Action Items check;
-  in skip-list runs, the `<!-- agent:skip-list-sweep -->` Phase-1
+  in batch fan-out runs (Stage 1u), the `<!-- agent:batch-fanout -->`
   summary comment.
 
-## Reset-between-entries recipe (batched Phase 2)
+## Reset-between-entries recipe (batched fan-out)
 
-Both orchestrators run a Phase-2 deep-fix loop over independent
-entries (`issue-handler`'s skip-list path, `xpu-nightly-ci-fix`'s
+Both orchestrators run a fan-out loop over independent
+entries (`issue-handler`'s Stage 1u batch path, `xpu-nightly-ci-fix`'s
 nightly batch). Each entry is a separate sub-bug and can triage to a
 different `target_repo`, so a prior entry's staged diff must not
 bleed into the next. Both orchestrators use this identical recipe;
@@ -164,3 +164,29 @@ Loop bound inside a single entry (Stage 4 <-> Stage 5 retry):
 `max_agent_attempts`. On attempts exhausted, record
 `NEEDS_HUMAN(reason=attempts_exhausted)` for that entry and continue;
 do not abort the whole loop on any single entry's failure.
+
+## Re-run gate (pipeline mode)
+
+`agent:active` issues get re-triggered often. The orchestrator's Stage 0
+decides first-run vs re-run using two comment queries, shared here so the
+"who is the bot" and "what counts as new" rules stay in one place:
+
+- **Last agent comment timestamp** — the most recent comment whose body
+  matches `<!-- agent:`. Empty → first run (run the full pipeline).
+- **New human feedback** — any comment authored by a login other than
+  the bot account (`$BOT_LOGIN`, the author of the `agent:*` comments)
+  **and** created after the last agent comment. Its presence makes the
+  run a **human-feedback re-run**: read the feedback verbatim and
+  prepend it to the failure description handed to `fix-root-cause`
+  (no new leaf input — the leaf already takes a free-form description),
+  then run the full pipeline (no skip fast-paths). Human feedback
+  outranks any cached verdict.
+
+When there is no new human feedback, it is a **bare re-run**: run only
+Stage 1 (triage) + Stage 2 (reproduce), then lean on `fix-root-cause`'s
+`<!-- agent:root-cause -->` `analyzed_sha` fast-path — if reproduce is
+identical and `target_repo` HEAD sha equals the recorded `analyzed_sha`,
+the leaf re-emits the prior verdict and the orchestrator stops. Reproduce
+differing, or the sha having moved, resumes the pipeline from Stage 3.
+This is the only cross-run "skip redundant work" mechanism; it reuses the
+leaf's existing sha check rather than adding orchestrator-side caching.

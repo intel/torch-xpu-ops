@@ -4,9 +4,9 @@ description: >
   Use when asked to fix nightly CI failures, analyze a nightly failure
   report, debug XPU tests from a CI run, or process a batch of failing
   tests emailed from the nightly job. Runs the same leaf pipeline as
-  `issue-handler` but batches multiple failures using the two-phase
-  skip-list loop: reproduce all failures first (sweep summary), then
-  deep-fix each STILL_FAILING entry with `allow_skip=true` so
+  `issue-handler` but batches multiple failures using a two-phase
+  sweep-then-fix loop: reproduce all failures first (sweep summary),
+  then deep-fix each STILL_FAILING entry with `allow_skip=true` so
   unfixable failures can be skip-listed with a tracking issue and
   nightly CI is unblocked while the deep fix is pursued
   asynchronously.
@@ -20,7 +20,8 @@ as `issue-handler`; the differences are:
 
 1. Input is a **list of failing tests** (from a nightly report /
    email / log excerpt), not a single GitHub issue.
-2. Uses the **skip-list two-phase loop** structurally: Phase 1
+2. Uses a **two-phase sweep-then-fix loop** structurally (the same
+   shape as `issue-handler`'s Stage 1u batch fan-out): Phase 1
    sweeps every failure through `fix-reproduce(stage=nightly)`,
    Phase 2 deep-fixes STILL_FAILING entries.
 3. Runs `fix-implement` with `allow_skip=true` — a nightly failure
@@ -200,7 +201,7 @@ is empty.
 
 Capture the two base SHAs and reset both checkouts between entries per
 the shared
-[reset-between-entries recipe](../issue-handler/references/execution-modes.md#reset-between-entries-recipe-batched-phase-2)
+[reset-between-entries recipe](../issue-handler/references/execution-modes.md#reset-between-entries-recipe-batched-fan-out)
 (identical to `issue-handler`'s Phase 2, including the 3-attempt cap).
 
 For each STILL_FAILING entry:

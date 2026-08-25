@@ -2,11 +2,13 @@
 name: issue-handler
 description: >
   Use when asked to fix a GitHub issue end-to-end, run the agent pipeline
-  on an issue, or process an `agent:active` / skip-list tracking issue.
-  Orchestrates the full pipeline: `issue-triage` → `fix-reproduce` →
-  `fix-root-cause` → `fix-implement` → `fix-verify` → report. Handles
-  both single-bug issues and skip-list tracking issues (two-phase loop:
-  reproduce all entries first, then fix the ones that still fail).
+  on an issue, or process an `agent:active` / batch tracking issue.
+  Orchestrates the full pipeline: `issue-triage` → `fix-reproduce`
+  → `fix-root-cause` → `fix-implement` → `fix-verify` → report. Handles
+  single-bug issues and batch-bug issues (a parent tracking multiple
+  sub-bugs — skip-list or heterogeneous — fanned out one fix branch per
+  sub-bug). On re-run, prioritizes new human feedback and skips work
+  that is still valid.
 ---
 
 # Issue Handler — End-to-End Orchestrator
@@ -27,9 +29,10 @@ PR-creation path with human review.
 - [Pipeline overview](#pipeline-overview)
 - [Inputs](#inputs)
 - [Execution modes](#execution-modes)
+- Stage 0: [Re-run gate](#stage-0--re-run-gate-first-run-vs-re-run)
 - Stage 1: [Triage](#stage-1--triage-issue-triage)
 - Stage 2: [Reproduce](#stage-2--reproduce-fix-reproduce)
-- [Stage 2b: Skip-list two-phase loop](#stage-2b--skip-list-two-phase-loop)
+- [Stage 1u: Batch-issue fan-out](#stage-1u--batch-issue-fan-out) (skip-list + heterogeneous)
 - Stage 3: [Root cause](#stage-3--root-cause-fix-root-cause)
 - Stage 4: [Implement](#stage-4--implement-fix-implement)
 - Stage 5: [Verify](#stage-5--verify-fix-verify)
@@ -39,7 +42,7 @@ PR-creation path with human review.
 
 ## Pipeline overview
 
-Single-bug path (default for `issue_type=bug`):
+Single-bug path (default for `issue_type=single-bug`):
 
 ```
 triage → reproduce → root-cause → implement → verify → report
@@ -47,26 +50,26 @@ triage → reproduce → root-cause → implement → verify → report
                        └─── loop up to 3 times ───┘
 ```
 
-Skip-list path (for `issue_type=skip-list`):
+Batch path (`issue_type=batch-bug`, either `batch_kind`) — fan out the
+single-bug pipeline per sub-item, each on its own fix branch:
 
 ```
-                    ┌── Phase 1 (fast reproduce sweep) ──┐
-triage → install nightly wheel once → for entry in list: fix-reproduce
-                                                      │
-                                          → report reproduce summary
-                                                      │
-                    ┌── Phase 2 (deep fix per STILL_FAILING) ──┐
-                    for entry in STILL_FAILING:
-                       reset checkouts →
-                       root-cause → implement → verify →
-                       leaf skills post their own per-entry comments
-                                                      │
-                                          → final report
+triage → [preflight: install nightly wheel once]
+       → for each sub-item:
+             reset + reproduce
+               ├─ NOT_REPRODUCED → stale (skip-list: mark STALE_SKIP + follow-up)
+               └─ REPRODUCED → branch fix/<parent#>-<slug>
+                               → root-cause → implement → verify
+             (any failure marks the sub-item and continues the batch)
+       → fan-out report
 ```
+
+skip-list vs heterogeneous differ only in how a `NOT_REPRODUCED`
+sub-item is labeled; the loop is identical.
 
 | Stage | Leaf skill | Purpose |
 |-------|-----------|---------|
-| 1. Triage | `issue-triage` | Text-only classification: bug / skip-list / nonbug, `scope`, `runtime_dependencies`, preliminary verdict |
+| 1. Triage | `issue-triage` | Text-only classification: single-bug / batch-bug (+ `batch_kind`) / nonbug, `scope`, `runtime_dependencies`, preliminary verdict |
 | 2. Reproduce | `fix-reproduce` | Verify the failure still reproduces (three-stage fallback: nightly → source_build → ci_env) |
 | 3. Root cause | `fix-root-cause` | Deep source analysis, `target_repo`, `domain`, `IMPLEMENTING`/`NEEDS_HUMAN` |
 | 4. Implement | `fix-implement` | Edit code, stage the diff (never commit) |
@@ -100,27 +103,108 @@ the full contract.
   skills leave their `<!-- agent:<name> -->` comments, and stop when
   the pipeline settles on a terminal verdict.
 
+## Stage 0 — Re-run gate (first-run vs re-run)
+
+**Pipeline mode only; skip in interactive mode** (a human is already
+driving, so just run the full pipeline). An `agent:active` issue is
+frequently re-triggered — a maintainer leaves feedback, or the bot is
+re-invoked with no new information. This gate decides, before spending
+a build, whether this is a fresh run, a **human-feedback re-run**
+(highest priority), or a **bare re-run** (skip work that already ran and
+is still valid).
+
+### Step 0.1: Detect prior agent activity
+
+Find the most recent agent comment and its timestamp:
+
+```bash
+last_agent_ts=$(gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
+  --jq '[.comments[] | select(.body | test("<!-- agent:"))] | last | .createdAt // ""')
+```
+
+Empty `last_agent_ts` → **first run**. Skip the rest of Stage 0 and go
+to Stage 1 normally.
+
+### Step 0.2: Detect new human feedback
+
+A comment is *human feedback* when it is authored by a non-bot account
+**and** created after `last_agent_ts`. (The bot account is the one that
+authored the `<!-- agent:* -->` comments; exclude it by login.)
+
+```bash
+new_human=$(gh issue view "$N" --repo "$OWNER/$REPO" --json comments \
+  --jq --arg ts "$last_agent_ts" --arg bot "$BOT_LOGIN" \
+  '[.comments[] | select(.author.login != $bot and .createdAt > $ts)] | length')
+```
+
+- `new_human > 0` → **human-feedback re-run**. Human feedback is the
+  **highest priority signal.** Read every such comment verbatim and
+  **prepend it to the failure description** you hand to Stage 3
+  (`fix-root-cause` takes a free-form failure description; a leading
+  "Maintainer feedback since last run: ..." block steers the
+  re-analysis without any new leaf input). Run the **full** pipeline
+  from Stage 1; do not take any of the skip fast-paths below. A human
+  saying "still wrong" or "change X" overrides any cached verdict.
+- `new_human == 0` → **bare re-run**. Continue to Step 0.3.
+
+### Step 0.3: Bare re-run — skip what is still valid
+
+No human pointed anything out since the last agent comment, so re-doing
+the whole pipeline would just repeat identical work. Re-run **only** the
+cheap front of the pipeline and compare against last time:
+
+1. Run **Stage 1 (triage)** and **Stage 2 (reproduce)** as normal.
+2. Compare the reproduce result to the previous run. The previous
+   `refined_command` + verdict are recoverable from the last
+   `<!-- agent:root-cause -->` comment's `analyzed_sha` context, or
+   re-derived by reading the prior `<!-- agent:reproduce -->` /
+   sweep comment. "Identical" means same verdict **and** same
+   `refined_command`.
+   - **Reproduce differs** (now passes, or a different command
+     reproduces) → the situation changed on its own; resume the full
+     pipeline **from Stage 3 (root-cause)** with the new reproduce
+     result. Do not reuse the cached root-cause.
+   - **Reproduce identical** → nothing observable changed. Hand off to
+     Stage 3, which runs `fix-root-cause`'s own
+     `<!-- agent:root-cause -->` `analyzed_sha` fast-path: if
+     `target_repo` HEAD sha equals the recorded `analyzed_sha`, that
+     leaf re-emits the prior verdict verbatim and this orchestrator
+     **stops** (the earlier outcome — fix already staged, or
+     `NEEDS_HUMAN` — still stands; there is nothing new to do). If the
+     sha moved, `fix-root-cause` re-analyzes and the pipeline continues
+     from Stage 3 as usual.
+
+This never skips Stage 1/Stage 2 — they are cheap (text + nightly wheel)
+and are the only way to notice the failure went away. It only avoids the
+expensive Stage 3-5 rebuild+fix when both the observable failure and the
+analyzed code are unchanged.
+
 ## Stage 1 — Triage (`issue-triage`)
 
 Call `issue-triage` on the issue body + comments. It emits
-`issue_type` (`bug` / `skip-list` / `nonbug`), `reproduction_missing`
+`issue_type` (`single-bug` / `batch-bug` / `nonbug`), `batch_kind`
+(`skip-list` / `heterogeneous` / `null`), `reproduction_missing`
 (`yes` / `no`), `scope`, `runtime_dependencies`, and a preliminary
 `handling` (`agent-fixable` / `needs-human`).
 
-Branch on `issue_type`:
+Branch on `issue_type` (triage already made the batch-vs-nonbug call;
+no re-detection here):
 
 - `nonbug` → stop the fix pipeline; skip to Stage 6 Report with
   `SKIPPED(reason=nonbug)`.
-- `bug` with `reproduction_missing=yes` → stop; Stage 6 Report with
-  `NEEDS_HUMAN(reason=reproduction_missing)`. `issue-triage`'s
+- `single-bug` with `reproduction_missing=yes` → stop; Stage 6 Report
+  with `NEEDS_HUMAN(reason=reproduction_missing)`. `issue-triage`'s
   own comment already asks the reporter for a reproducer.
-- `bug` with `reproduction_missing=no` → continue to Stage 2.
-- `skip-list` → go to Stage 2b (two-phase loop).
+- `single-bug` with `reproduction_missing=no` → continue to Stage 2.
+- `batch-bug` → **Stage 1u**, passing through `batch_kind` (the loop
+  uses it only to label a `NOT_REPRODUCED` sub-item).
+
+
 
 ## Stage 2 — Reproduce (`fix-reproduce`)
 
-Only for single-bug path (`issue_type=bug`). Call `fix-reproduce`
-with:
+Only for the single-bug path (`issue_type=single-bug`). Call
+`fix-reproduce` with:
 
 - `reproducer_command` — extracted by `issue-triage` from the issue
   body.
@@ -140,25 +224,52 @@ Branch on its verdict:
 - `CANNOT_VERIFY` → Stage 6 Report with
   `NEEDS_HUMAN(reason=cannot_verify)` and the `blocker` field.
 
-## Stage 2b — Skip-list two-phase loop
+## Stage 1u — Batch-issue fan-out
 
-Only for `issue_type=skip-list`. A skip-list tracking issue lists
-many failing tests that were skipped in CI; the orchestrator sweeps
-them all first (Phase 1), reports the sweep result, then only
-attempts to fix the ones that still fail (Phase 2).
+One loop for every parent issue that tracks multiple children. The
+parent lists several sub-items; run the single-bug pipeline on each
+**independently**, each on its own fix branch, and report every outcome
+back on the parent. "Fix what you can" — a sub-item that can't be fixed
+is marked and the batch continues.
 
-### Preflight: install nightly wheel once
+Entered for `issue_type=batch-bug`. `issue-triage` already set
+`batch_kind`; the two kinds share the entire loop and differ only in how
+a **`NOT_REPRODUCED`** sub-item is labeled (see step 2 below):
 
-Skip-list issues can list dozens of entries. `fix-reproduce`
-Stage 1 always runs `pip install --pre --upgrade` (it deliberately
-refuses to reuse a stale wheel). Running the upgrade once here, before
-the loop, does the real work — it pulls and installs the newest
-nightly and settles the index metadata. Every per-entry
-`fix-reproduce(stage=nightly)` call afterwards issues the same
-`--upgrade` command, but pip finds the environment already current
-and returns quickly without reinstalling. There is no
-`skip_wheel_install` flag to pass; the preflight is purely to front-
-load the one real install:
+- `heterogeneous` — the parent body lists *distinct* sub-bugs.
+- `skip-list` — a `Bug Skip` issue listing *homogeneous* already-skipped
+  tests. A `NOT_REPRODUCED` entry here means the skip decorator is now
+  stale.
+
+No child GitHub issues are created. Each sub-item is a checklist entry
+on the parent; its fix lives on a dedicated branch so a human can open
+one PR per fixed sub-item.
+
+### Extract sub-items
+
+Parse the parent body into a list of sub-items. Each is either:
+
+- an inline sub-bug — a checklist line naming a test node id or
+  reproducer (skip-list entries are always this form; normalize a bare
+  `Class::method` to a node id, `fix-reproduce`'s Prepare step resolves
+  the file), or
+- a linked child reference `owner/repo#N` — fetch that issue and use
+  its body as the sub-item's failure description. Only follow
+  `intel/torch-xpu-ops` and `pytorch/pytorch` references; ignore any
+  other repo (untrusted, per `fix-root-cause`).
+
+Give each sub-item a stable short slug (from the test name or child
+issue number) for branch naming. Skip headers, prose, and empty lines.
+
+### Preflight (many entries): install nightly wheel once
+
+When the list is long (skip-list issues routinely have dozens),
+front-load the one real wheel install so the per-entry
+`fix-reproduce(stage=nightly)` calls each find the env already current
+and return fast. `fix-reproduce` always issues `pip install --pre
+--upgrade` (it refuses to trust a stale wheel); running it once here
+does the real work. There is no `skip_wheel_install` flag — this is
+purely an ordering optimization:
 
 ```bash
 pip3 install --pre --upgrade torch torchvision torchaudio \
@@ -166,112 +277,123 @@ pip3 install --pre --upgrade torch torchvision torchaudio \
 python -c "import torch; print('nightly:', torch.__version__)"
 ```
 
-### Extract the skip-list entries
+### Per-sub-item loop
 
-Parse the issue body — typical shape is a checklist of tests, e.g.
+Capture the two base SHAs once, then for each sub-item reset both
+checkouts per the shared
+[reset-between-entries recipe](references/execution-modes.md#reset-between-entries-recipe-batched-fan-out)
+— a prior sub-item's staged diff must not bleed into the next.
 
-```markdown
-- [ ] test/xpu/test_ops_xpu.py::TestFooXPU::test_bar_xpu_float32
-- [ ] test/xpu/test_ops_xpu.py::TestFooXPU::test_baz_xpu_bfloat16
-- [ ] TestQuxXPU::test_quux
+For each sub-item:
+
+1. **Reset** both checkouts to the base SHAs (shared recipe).
+2. **Reproduce** (`fix-reproduce`, `stage=auto`). It detaches the
+   pytorch tree to its base (`origin/main` or the `ci_commit`
+   fallback) and returns that `base` plus a `refined_command`. Branch
+   on the verdict:
+   - `REPRODUCED` → continue to step 3; keep its `base` and
+     `refined_command`.
+   - `NOT_REPRODUCED` → **stale**: nothing to fix. Record it and go to
+     the next sub-item. If `batch_kind=skip-list`, additionally mark it
+     `STALE_SKIP` and record a **follow-up** to remove the now-obsolete
+     skip decorator — the orchestrator does **not** delete it here (see
+     "Stale skips" below).
+   - `NO_REPRODUCER` → **INVALID_ENTRY** (renamed/removed test, or
+     malformed). Record, continue.
+   - `CANNOT_VERIFY` → **UNVERIFIED** (environmental). Record, continue.
+3. **Root-cause, then branch.** Run **Stage 3** (`fix-root-cause`)
+   first — it returns `target_repo`, which decides *which* checkout the
+   fix (and thus the branch) lives in:
+   - `target_repo=pytorch` → `target_repo_dir = pytorch_dir`, base is
+     the reproduce `base` on the pytorch tree.
+   - `target_repo=torch-xpu-ops` →
+     `target_repo_dir = pytorch_dir/third_party/torch-xpu-ops`, base is
+     `xpu_ops_base` (the submodule's pinned commit from the shared
+     recipe). `fix-implement` / `fix-verify` handle the `xpu.txt` pin
+     rewrite internally; the orchestrator only creates the branch.
+
+   Create the isolated fix branch on `target_repo_dir` off its base so
+   the diff is pushable on its own:
+
+   ```bash
+   git -C "$target_repo_dir" checkout -B "fix/${parent_num}-${slug}" "$base"
+   ```
+
+   Then run **Stage 4 → 5** (same contract and 3-attempt bound as the
+   single-bug path). `fix-implement` expects exactly this: a fresh
+   branch the orchestrator just created, clean worktree.
+4. **On any leaf `NEEDS_HUMAN` / `CANNOT_VERIFY` / `FAILED`** (or
+   attempts exhausted): mark **this sub-item** blocked with the reason,
+   record it, and **continue to the next sub-item** — never abort the
+   whole batch on one hard sub-item.
+5. **On `fix-verify` PASSED**: the staged diff sits on
+   `fix/${parent_num}-${slug}`. Leave it staged for the invoking
+   workflow to commit + push that branch and open one PR (with human
+   review). Record the sub-item as fixed with its branch name.
+
+Leaf skills post their own `<!-- agent:root-cause -->` /
+`<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
+sub-item on the **parent** issue (pass the parent issue number
+through).
+
+### Stale skips (`batch_kind=skip-list` only)
+
+A `STALE_SKIP` sub-item's skip decorator can be removed, but this
+orchestrator does **not** delete it. Deleting a skip is itself a code
+change that needs its own verify + PR; folding it into this sweep would
+mix "the skip is obsolete" with "and here's the removal diff" and
+obscure the batch outcome. Instead, surface every `STALE_SKIP` in the
+report as an explicit follow-up (candidate for a human, or a separately
+invoked `fix-implement` run to remove the decorator). The report is the
+hand-off; nothing is auto-removed.
+
+### Fan-out report
+
+Post one summary comment on the parent (or surface to the user in
+interactive mode), and mirror it into the parent's checklist:
+
 ```
+<!-- agent:batch-fanout -->
 
-Normalize each into a pytest node id (a bare `Class::method` gets
-resolved during `fix-reproduce`'s Prepare step). Skip empty lines,
-comments, and headers.
+## Batch fan-out results
 
-### Phase 1: reproduce sweep
+Base: <torch nightly version or base sha>
 
-For each entry, call `fix-reproduce` with `stage=nightly` (Stage 1
-only — skip-list sweeps do not need source builds; source build is
-Phase 2's concern):
-
-```
-for entry in entries:
-    result = fix-reproduce(reproducer_command=entry, stage=nightly, ci_repo=<from repo>)
-    record: (entry, result.verdict, result.refined_command, result.reason)
-```
-
-Categorize:
-
-- `REPRODUCED` → **STILL_FAILING**. Keep the `refined_command` and
-  `stage=source_build` needed base for Phase 2.
-- `NOT_REPRODUCED` → **STALE_SKIP**. Candidate for skip removal.
-- `NO_REPRODUCER` → **INVALID_ENTRY**. The entry doesn't collect;
-  either the test was renamed / removed upstream, or the entry is
-  malformed. Human decides.
-- `CANNOT_VERIFY` → **UNVERIFIED**. Environmental — human decides.
-
-Do **not** abort on any single entry's `CANNOT_VERIFY` or
-`NO_REPRODUCER` — continue sweeping so the summary is complete.
-
-### Phase 1 report
-
-Post a single Phase-1 comment on the issue (or surface it to the user
-in interactive mode) with a summary table:
-
-```
-<!-- agent:skip-list-sweep -->
-
-## Skip-list reproduce sweep
-
-Base: <torch nightly version>
-
-| Test | Verdict | Category |
+| Sub-item | Outcome | Branch / Reason |
 |---|---|---|
-| test_bar_xpu_float32 | NOT_REPRODUCED | STALE_SKIP |
-| test_baz_xpu_bfloat16 | REPRODUCED (FAILED) | STILL_FAILING |
-| test_quux | NO_REPRODUCER | INVALID_ENTRY |
+| test_bar_xpu_float32 | FIXED | fix/4321-test_bar |
+| test_baz (#4400) | NEEDS_HUMAN | cross_repo_coordinated |
+| test_qux | NEEDS_HUMAN | attempts_exhausted |
+| test_old | STALE_SKIP | follow-up: remove skip decorator |
+| test_gone | INVALID_ENTRY | does not collect |
 
-- **STALE_SKIP:** N tests — remove the skip decorator.
-- **STILL_FAILING:** M tests — Phase 2 will attempt to fix.
-- **INVALID_ENTRY:** P tests — needs human review.
-- **UNVERIFIED:** Q tests — environmental issue during sweep.
+- **FIXED:** N sub-items — one branch each, ready for a human to open
+  a PR.
+- **NEEDS_HUMAN:** M sub-items — see per-sub-item reason.
+- **STALE_SKIP:** K sub-items (skip-list only) — no longer reproduce;
+  follow up to remove the obsolete skip decorator.
+- **INVALID_ENTRY / UNVERIFIED:** P sub-items — malformed/renamed, or
+  environmental during reproduce.
 
 *Automated by issue-handler.*
 ```
 
-The `<!-- agent:skip-list-sweep -->` marker is unique to this
-orchestrator so a re-run can locate and update the same comment in
-place instead of duplicating it.
+Omit category rows that have no members (a `heterogeneous` batch never
+has `STALE_SKIP`). The `<!-- agent:batch-fanout -->` marker lets a
+re-run locate and update this same comment in place. On a re-run
+(Stage 0), only re-process sub-items that are not already `FIXED` on a
+live branch, unless human feedback (Stage 0.2) reopens a specific one.
 
-**Stop here** if the caller asked for reproduce-only, or if
-STILL_FAILING is empty (nothing to deep-fix). STALE_SKIP entries are
-**not** cleared by this orchestrator — Phase 2 only iterates
-STILL_FAILING. Clearing stale skip decorators is left to a human (or
-a separately invoked `fix-implement` run); the sweep comment surfaces
-them as candidates, nothing more.
-
-### Phase 2: deep-fix each STILL_FAILING entry
-
-For each STILL_FAILING entry, run the full pipeline. Each entry is
-an independent sub-bug — the diffs must not bleed across entries.
-Capture the two base SHAs and reset both checkouts between entries
-per the shared
-[reset-between-entries recipe](references/execution-modes.md#reset-between-entries-recipe-batched-phase-2).
-
-Before each entry:
-
-1. Reset both candidate checkouts (see the shared recipe above) so a
-   prior entry's staged diff does not pollute the next.
-2. Call `fix-root-cause` on the entry's failure signature. If it
-   returns `NEEDS_HUMAN`, log and move on to the next entry.
-3. On `IMPLEMENTING`, call `fix-implement`. If it returns `READY`,
-   call `fix-verify`. If any of `fix-implement` / `fix-verify` returns
-   `NEEDS_HUMAN` / `CANNOT_VERIFY` / `FAILED`, log and move on to the
-   next entry — do **not** stop the loop.
-4. Each leaf posts its own `<!-- agent:root-cause -->` /
-   `<!-- agent:implement -->` / `<!-- agent:verify -->` comment per
-   entry (leaves handle their own comment location; nothing to do
-   here beyond passing the issue number).
-
-After the loop, go to Stage 6 Report for the final skip-list
-outcome.
+After the loop, go to Stage 6 Report with the aggregate outcome
+(`IMPLEMENTING(fix_verified)` if any sub-item was fixed;
+`NEEDS_HUMAN` only if *every* actionable sub-item needed a human —
+`STALE_SKIP` follow-ups do not by themselves force `NEEDS_HUMAN`).
 
 ## Stage 3 — Root cause (`fix-root-cause`)
 
-Single-bug path only. Call `fix-root-cause` with the failure
-description and the `refined_command` from Stage 2.
+Called on the single-bug path, and once per sub-item from Stage 1u.
+Call `fix-root-cause` with the failure description and the
+`refined_command` from Stage 2.
 
 Branch on its `verdict`:
 
@@ -328,21 +450,21 @@ the issue's `agent:status` to the terminal stage
 (`DONE` / `NEEDS_HUMAN` / `SKIPPED`) and update the checklist per
 [execution-modes.md](references/execution-modes.md); the leaf skills
 already left their own `<!-- agent:<name> -->` comments so no extra
-summary comment is needed unless the pipeline is a skip-list run
-(which posts the Phase-1 sweep summary as a distinct comment).
+summary comment is needed unless the pipeline is a batch fan-out (which
+posts the `<!-- agent:batch-fanout -->` summary).
 
 Always include in the summary:
 
 - **Issue:** link/number and one-line title.
-- **Path:** `single-bug` / `skip-list`.
+- **Path:** `single-bug` / `batch` (with `batch_kind`).
 - **Outcome:** `IMPLEMENTING(fix_verified)` / `NEEDS_HUMAN(<reason>)`
   / `SKIPPED(<reason>)`.
 - **Root cause** (from Stage 3, if reached).
 - **Files changed** (from Stage 4, if reached).
 - **Verification** (from Stage 5, if reached).
-- For skip-list: the four category counts (`STALE_SKIP`,
-  `STILL_FAILING`, `INVALID_ENTRY`, `UNVERIFIED`) plus per-entry
-  Phase-2 verdicts.
+- For a batch: per-sub-item outcome + branch name (FIXED) or reason
+  (NEEDS_HUMAN / INVALID_ENTRY / UNVERIFIED), plus any `STALE_SKIP`
+  follow-ups when `batch_kind=skip-list`.
 
 If the outcome is `IMPLEMENTING(fix_verified)`, the invoking
 workflow reads the staged diff (`git -C $target_repo_dir diff
