@@ -35,6 +35,9 @@ jobs:
       rerun_mode: ${{ steps.parse.outputs.rerun_mode }}
       pytorch_ref: ${{ steps.parse.outputs.pytorch_ref }}
       revert_reason: ${{ steps.parse.outputs.revert_reason }}
+      onto_branch: ${{ steps.parse.outputs.onto_branch }}
+      classification: ${{ steps.parse.outputs.classification }}
+      fixes: ${{ steps.parse.outputs.fixes }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
       issue_number: ${{ steps.parse.outputs.issue_number }}
       is_pr: ${{ steps.parse.outputs.is_pr }}
@@ -87,7 +90,7 @@ jobs:
 
             const command = match[1].toLowerCase();
             const args = (match[2] || '').trim();
-            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'fix', 'triage', 'help'];
+            const validCommands = ['merge', 'revert', 'rebase', 'lint', 'rerun', 'review', 'pr-review', 'ut-check', 'check-ut', 'ut', 'cherry-pick', 'fix', 'triage', 'help'];
 
             if (!validCommands.includes(command)) {
               reject('Unknown command. Use `@torchxpubot help` to see available commands.');
@@ -135,6 +138,9 @@ jobs:
             let rerunMode = 'all';
             let pytorchRef = '';
             let revertReason = '';
+            let ontoBranch = '';
+            let classification = '';
+            let fixes = '';
 
             if (command === 'merge') {
               if (args.includes('-f')) {
@@ -161,6 +167,28 @@ jobs:
               if (branchMatch) {
                 pytorchRef = branchMatch[1];
               }
+            } else if (command === 'cherry-pick') {
+              const ontoMatch = args.match(/--onto\s+(\S+)/);
+              if (!ontoMatch) {
+                reject('`cherry-pick` needs a target branch. Usage: `@torchxpubot cherry-pick --onto release/2.14 -c critical`');
+                return;
+              }
+              ontoBranch = ontoMatch[1];
+              if (!/^release\/\d+\.\d+$/.test(ontoBranch)) {
+                reject(`\`${ontoBranch}\` is not a release branch. cherry-pick only targets branches named \`release/x.xx\`.`);
+                return;
+              }
+              const classMatch = args.match(/-c\s+(\S+)/);
+              const valid = ['regression', 'critical', 'fixnewfeature', 'docs', 'release'];
+              if (!classMatch || !valid.includes(classMatch[1])) {
+                reject('`cherry-pick` needs a classification: `-c ' + valid.join('|') + '`.');
+                return;
+              }
+              classification = classMatch[1];
+              const fixesMatch = args.match(/--fixes\s+(#?\d+|https:\/\/\S+)/);
+              if (fixesMatch) {
+                fixes = fixesMatch[1];
+              }
             }
 
             core.setOutput('command', normalizedCommand);
@@ -168,6 +196,9 @@ jobs:
             core.setOutput('rerun_mode', rerunMode);
             core.setOutput('pytorch_ref', pytorchRef);
             core.setOutput('revert_reason', revertReason);
+            core.setOutput('onto_branch', ontoBranch);
+            core.setOutput('classification', classification);
+            core.setOutput('fixes', fixes);
             core.setOutput('authorized', String(authorized));
 
   invalid-command:
@@ -247,6 +278,7 @@ jobs:
             | \`@torchxpubot rerun -b <branch_or_commit>\` | Rerun CI against a pytorch ref |
             | \`@torchxpubot review\` (or \`pr-review\`) | AI-powered PR code review |
             | \`@torchxpubot ut-check\` (or \`check-ut\`, \`ut\`) | Analyze UT results: new failures, relevance, coverage |
+            | \`@torchxpubot cherry-pick --onto release/x.xx -c <class>\` | Cherry-pick this merged PR onto a release branch |
             | \`@torchxpubot help\` | Show this help message |
 
             \`@torchxpubot fix\` is only available on issue comments.`;
@@ -1034,6 +1066,38 @@ jobs:
             --pr-number ${{ needs.parse-command.outputs.pr_number }} \
             --repo ${{ github.repository }} \
             --deterministic
+
+  cherry-pick:
+    needs: parse-command
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      needs.parse-command.outputs.command == 'cherry-pick'
+      && needs.parse-command.outputs.authorized == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.MERGE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Cherry-pick onto the release branch
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr_number }}
+          ONTO_BRANCH: ${{ needs.parse-command.outputs.onto_branch }}
+          CLASSIFICATION: ${{ needs.parse-command.outputs.classification }}
+          FIXES: ${{ needs.parse-command.outputs.fixes }}
+          ACTOR: ${{ needs.parse-command.outputs.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          python .github/scripts/bot_cherry_pick.py \
+            --pr-number "$PR_NUMBER" \
+            --onto "$ONTO_BRANCH" \
+            --classification "$CLASSIFICATION" \
+            --fixes "$FIXES" \
+            --actor "$ACTOR" \
+            --repo "$REPO"
 
   fix:
     needs: parse-command

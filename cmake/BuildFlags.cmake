@@ -77,7 +77,6 @@ macro(set_build_flags)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
@@ -104,9 +103,9 @@ macro(set_build_flags)
   # to be replaced with an approximately equivalent set of instructions or
   # alternative math function calls, which have great errors.
   #
-  # PSEUDO of separate compilation with DPCPP compiler.
-  # 1. Kernel source compilation:
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} ${SYCL_DEVICE_COMPILE_DEFINITIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+  # PSEUDO of pure icpx compilation (no separate host compiler).
+  # 1. Kernel source compilation (icpx handles both host and device code):
+  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
   # 2. Device code linkage:
   # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
   # 3. Host only source compilation:
@@ -156,6 +155,17 @@ macro(set_build_flags)
     if(SUPPORTS_NO_FTZ)
       list(APPEND SYCL_KERNEL_OPTIONS -no-ftz)
     endif()
+  endif()
+
+  if(WIN32)
+    list(APPEND _sycl_intel_lib_libirc_flag "/Qno-intel-lib:libirc")
+  else()
+    list(APPEND _sycl_intel_lib_libirc_flag "-no-intel-lib=libirc")
+  endif()
+
+  CHECK_SYCL_FLAG("${_sycl_intel_lib_libirc_flag}" SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
+  if(SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
+    list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_intel_lib_libirc_flag})
   endif()
 
   # -- Device debug flags (aligned with CUDA behavior)
@@ -254,7 +264,7 @@ macro(set_build_flags)
     message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
   endif()
 
-  list(APPEND SYCL_COMPILE_FLAGS ${SYCL_KERNEL_OPTIONS})
+  list(APPEND SYCL_COMPILE_FLAGS ${SYCL_KERNEL_OPTIONS} ${SYCL_HOST_FLAGS})
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 endmacro()
