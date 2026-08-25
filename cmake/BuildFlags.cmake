@@ -161,6 +161,17 @@ macro(set_build_flags)
     endif()
   endif()
 
+  if(WIN32)
+    list(APPEND _sycl_intel_lib_libirc_flag "/Qno-intel-lib:libirc")
+  else()
+    list(APPEND _sycl_intel_lib_libirc_flag "-no-intel-lib=libirc")
+  endif()
+
+  CHECK_SYCL_FLAG("${_sycl_intel_lib_libirc_flag}" SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
+  if(SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
+    list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_intel_lib_libirc_flag})
+  endif()
+
   # -- Device debug flags (aligned with CUDA behavior)
   # XPU_DEVICE_DEBUG=1: full device debug, disables optimization (like CUDA's -g -G)
   #   Orthogonal to build type, always forces device debug.
