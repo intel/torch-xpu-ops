@@ -113,6 +113,24 @@ class TestFftOut(TestCase):
             self.assertEqual(out.stride(), stride, f"dims={dims}")
             self.assertEqual(out, expected, msg=f"dims={dims}")
 
+    def test_fft_r2c_out_preserves_layout_for_size_one_input_strides(self, device):
+        # A size-one dimension may have an arbitrary stride while the tensor is
+        # still contiguous. The out path must not propagate that input layout to
+        # the caller-provided output.
+        source = torch.randn(2, 1, 4, device=device)
+        x = torch.empty_strided((2, 1, 4), (4, 999, 1), device=device)
+        x.copy_(source)
+        self.assertTrue(x.is_contiguous())
+
+        for onesided in (True, False):
+            expected = torch.ops.aten._fft_r2c.default(x, [2], 0, onesided)
+            out = torch.empty(expected.shape, dtype=expected.dtype, device=device)
+            stride = out.stride()
+            result = torch.ops.aten._fft_r2c.out(x, [2], 0, onesided, out=out)
+            self.assertIs(result, out)
+            self.assertEqual(out.stride(), stride, f"onesided={onesided}")
+            self.assertEqual(out, expected, msg=f"onesided={onesided}")
+
     def test_fft_out_noncontiguous_output(self, device):
         complex_xpu = torch.randn(2, 3, 4, 5, dtype=torch.complex64, device=device)
         expected = torch.ops.aten._fft_c2c.default(complex_xpu, [2, 3], 0, True)

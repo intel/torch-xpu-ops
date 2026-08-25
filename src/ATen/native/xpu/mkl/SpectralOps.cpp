@@ -649,14 +649,15 @@ static void _fft_r2c_mkl_out_impl(
   const auto c2c_pass_count =
       (dim.size() - 1 + impl::mkl_max_ndim - 1) / impl::mkl_max_ndim;
   const auto pass_count = 1 + c2c_pass_count;
+  auto working_tensor = self.contiguous();
 
   const bool needs_type_conversion = fft_dtype != out.scalar_type();
-  // The transform runs on a contiguous copy of self, so _exec_fft leaves a
-  // contiguous layout only when the single pass acts on the innermost dim.
   const bool can_write_out = !needs_type_conversion &&
       (!preserve_out_layout || out.scalar_type() == result_dtype) &&
       impl::_has_exact_contiguous_strides(out) &&
-      (!preserve_out_layout || (pass_count == 1 && last_dim == self.dim() - 1));
+      (!preserve_out_layout ||
+       (pass_count == 1 &&
+        impl::_exec_fft_preserves_layout(working_tensor, last_dim)));
   Tensor fft_out = can_write_out
       ? out
       : at::empty(out_sizes, self.options().dtype(fft_dtype));
@@ -667,8 +668,6 @@ static void _fft_r2c_mkl_out_impl(
   if (pass_count > 1) {
     scratch = at::empty(out_sizes, self.options().dtype(fft_dtype));
   }
-
-  auto working_tensor = self.contiguous();
 
   // First do the R2C transform on the last dimension
   Tensor& first_pass_out = pass_count % 2 == 1 ? fft_out : scratch;
