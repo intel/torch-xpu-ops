@@ -422,6 +422,14 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   heartbeatMonitor_->start();
 }
 
+// Destroying a communicator that was created for a point-to-point pair tears
+// down oneCCL's global transport state, which wedges the internal KVS server
+// and hangs the process at exit. Only the per-device communicators can be
+// released until oneCCL fixes this.
+static bool isPointToPointCommKey(const std::string& key) {
+  return key.find(':') != std::string::npos;
+}
+
 // Abort this backend.
 void ProcessGroupXCCL::abort() {
   LOG(WARNING) << logPrefix()
@@ -429,6 +437,9 @@ void ProcessGroupXCCL::abort() {
                   "in-flight collectives to finish.";
   std::lock_guard<std::mutex> lock(mutex_);
   for (auto& it : devXCCLCommMap_) {
+    if (isPointToPointCommKey(it.first)) {
+      continue;
+    }
     auto res = onecclCommDestroy(*it.second);
     if (res != onecclSuccess) {
       LOG(ERROR) << logPrefix() << "onecclCommDestroy for comm on device "
@@ -470,6 +481,9 @@ void ProcessGroupXCCL::shutdown() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& it : devXCCLCommMap_) {
+      if (isPointToPointCommKey(it.first)) {
+        continue;
+      }
       auto res = onecclCommDestroy(*it.second);
       if (res != onecclSuccess) {
         LOG(ERROR) << logPrefix() << "onecclCommDestroy for comm on device "
