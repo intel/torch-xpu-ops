@@ -49,6 +49,17 @@ class AlignmentWorkflowTests(unittest.TestCase):
         )[0]
         self.assertIn("--max-turns 300", prepare)
 
+    def test_reproducer_uses_the_bmg_runtime_image(self) -> None:
+        prepare = self.text.split("  scan-prepare:", 1)[1].split(
+            "  run-reproducers:", 1
+        )[0]
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        self.assertIn("intelgpu/ubuntu-24.04-lts2:2523.40", prepare)
+        self.assertIn("intelgpu/ubuntu-26.04-rolling:26.18", runner)
+        self.assertNotIn("intelgpu/ubuntu-24.04-lts2:2523.40", runner)
+
     def test_prepare_restores_runner_access_to_the_claude_action_cache(self) -> None:
         prepare = self.text.split("  scan-prepare:", 1)[1].split(
             "  run-reproducers:", 1
