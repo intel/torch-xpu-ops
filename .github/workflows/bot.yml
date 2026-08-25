@@ -1162,20 +1162,6 @@ jobs:
       # unless the lookup itself fails.
       ONEAPI_INSTALLER: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
     steps:
-      # Belt-and-braces with the trailing "Cleanup workspace" step. The runner
-      # admins will not add a pre-job hook, and a prior root-owning run may have
-      # ended without its cleanup running (killed job, runner crash), leaving
-      # root-owned files in the shared caches. Hand them back at job start too,
-      # before anything reads them. Note: this runs AFTER "Prepare workflow
-      # directory", so it cannot rescue a job that already died in setup — only
-      # a runner-level pre-job hook could, which admins declined. This is the
-      # best a workflow-only fix can do. Owner derived from /__e (read-only mount
-      # the runner owns), not hardcoded, since the service user is not uid 1000.
-      - name: Reclaim runner-owned caches
-        run: |
-          owner="$(stat -c '%u:%g' /__e)"
-          chown -R "$owner" /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
-
       - name: Post starting message
         id: start-comment
         uses: actions/github-script@v9
