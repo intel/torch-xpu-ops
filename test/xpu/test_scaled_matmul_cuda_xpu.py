@@ -108,9 +108,6 @@ TestFP8Matmul.test_scaled_mm_row_wise_fp32_out_with_bias_errors = skipIfXpu(
 @unittest.skipIf(not PLATFORM_SUPPORTS_FP8 or IS_WINDOWS, f8_msg)
 @parametrize("wrap_v2", [True, False])
 def _xpu_test_scaled_mm_row_wise_fp32_out_with_bias(self, wrap_v2, device):
-    if torch.version.hip:
-        raise unittest.SkipTest("hipblaslt rowwise _scaled_mm only supports BFloat16")
-
     M, K, N = 16, 32, 48
     input_dtype = e4m3_type
     x = random_matrix_with_scaled_reduction_dim(
