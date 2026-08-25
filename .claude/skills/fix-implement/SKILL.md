@@ -86,8 +86,8 @@ If the issue is not yet triaged, run `fix-root-cause` first.
 - **Never cherry-pick** upstream fixes. If a fix already landed on trunk,
   rebase (`git rebase origin/main`) instead.
 - **Stay in your repo** — see the domain reference file loaded during
-  triage (`../fix-root-cause/domain-<name>.md`, per the domain registry)
-  for path conventions.
+  triage (`../domain-knowledge/domain-<name>.md`, per the domain
+  registry) for path conventions.
 - **Never modify unrelated files.**
 
 ### Fix strategies by category
