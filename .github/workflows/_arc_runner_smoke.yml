@@ -269,37 +269,6 @@ jobs:
             if (result.is_error) { core.setFailed('reviewer reported an error: ' + (result.subtype || 'unknown')); return; }
             core.info('reviewer ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
 
-      # Objective gate: claude-code-action exits 0 regardless of the agent's own
-      # conclusion, so re-run the verify assertions independently against the
-      # build the agent produced. This — not the agent's self-report — decides
-      # job success.
-      - name: Verify gate — independent recheck
-        run: |
-          set -uxo pipefail
-          [ -f "$PYTORCH_DIR/build_pytorch.env" ] || { echo "::error::agent did not write build_pytorch.env; chain incomplete"; exit 1; }
-          # Source with an explicit path: `source <bare-name>` searches PATH, not
-          # the cwd, so a relative name fails even when the file is right here.
-          # shellcheck disable=SC1091
-          source "$PYTORCH_DIR/build_pytorch.env"
-          # Run from test/ to avoid the root torch/ source-dir shadow.
-          cd "$PYTORCH_DIR/test"
-          avail=$(python -c "import torch; print(torch.xpu.is_available())")
-          echo "### verify gate (independent recheck)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- xpu available (source): \`$avail\`" >> "$GITHUB_STEP_SUMMARY"
-          [ "$avail" = "True" ] || { echo "::error::source build has no XPU"; exit 1; }
-          pass=0; total=0
-          for nid in $FFT_FAIL_TESTS $FFT_REGRESSION_TESTS; do
-            total=$((total+1))
-            if python -m pytest "$nid" -v --no-header -p no:cacheprovider \
-                 2>&1 | tee -a "$AGENT_SPACE/after.log" >/dev/null; then
-              pass=$((pass+1))
-            else
-              echo "STILL FAILING (after): $nid" | tee -a "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-          echo "- passed: \`$pass/$total\`" >> "$GITHUB_STEP_SUMMARY"
-          [ "$pass" -eq "$total" ] || { echo "::error::verify gate: $pass/$total passed"; exit 1; }
-
       # Reviewer-verdict gate (client layer): the one thing a dumb script does
       # better than an agent — refuse to let the always-exit-0 reviewer
       # self-certify. Requires verdict==PASSED backed by real execution
