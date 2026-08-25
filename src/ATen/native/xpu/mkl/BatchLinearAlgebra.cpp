@@ -60,17 +60,22 @@ void error_handle(
   for (size_t i = 0; i < errs.size(); ++i) {
     try {
       std::rethrow_exception(errs[i]);
-    } catch (const oneapi::mkl::lapack::exception& e) {
-      TORCH_WARN(
-          "Caught lapack exception:\nWhat: ",
-          e.what(),
-          "\nInfo: ",
-          e.info(),
-          "\nDetail: ",
-          e.detail());
-      info_cpu[ids[i]] = e.info();
-    } catch (const sycl::exception& e) {
-      TORCH_WARN("Caught SYCL exception:\nWhat: ", e.what(), "\nInfo: -1");
+    } catch (const oneapi::mkl::lapack::exception&) {
+      // NOTE(issue #5041): Do NOT call any method (what()/info()/detail())
+      // on the caught oneapi::mkl::lapack::exception here. Those exceptions
+      // are thrown from the DPC++/icx-compiled oneMKL SYCL runtime;
+      // invoking a virtual method on them (e.g. the inherited
+      // std::exception::what()) from this MSVC-compiled translation unit
+      // crashes with an access violation on Windows (confirmed via
+      // debugger: the exception object's vtable pointer is invalid at the
+      // call site) - a cross-compiler C++ exception ABI/vtable
+      // incompatibility. Just mark the corresponding batch element as
+      // failed without touching the exception object's fields.
+      TORCH_WARN("Caught lapack exception for batch element ", ids[i]);
+      info_cpu[ids[i]] = 1;
+    } catch (const sycl::exception&) {
+      // See note above: do not call methods on the caught exception object.
+      TORCH_WARN("Caught SYCL exception for batch element ", ids[i]);
       info_cpu[ids[i]] = -1;
     }
   }
