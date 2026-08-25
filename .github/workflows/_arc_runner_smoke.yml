@@ -351,7 +351,11 @@ jobs:
           if-no-files-found: ignore
 
       # Files created inside the privileged container are root-owned; hand them
-      # back so the next checkout on this self-hosted runner does not fail.
+      # back so the next run on this self-hosted runner does not fail. _actions,
+      # _tool and _temp are separate bind mounts under /__w, so `chown -R /__w`
+      # does not reliably recurse into them; name them explicitly. A stale
+      # root-owned _actions cache makes the NEXT job die in "Prepare workflow
+      # directory" before any step runs.
       - name: Cleanup workspace
         if: always()
-        run: chown 1000:1000 /__w /github ./ -R || true
+        run: chown 1000:1000 -R /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
