@@ -177,6 +177,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Restore runner access to the cached Claude action
+        if: always()
+        run: |
+          set -euo pipefail
+          actions_root=/__w/_actions
+          claude_action_root="$actions_root/anthropics/claude-code-action"
+          if [[ ! -d "$claude_action_root" ]]; then
+            exit 0
+          fi
+          runner_owner="$(stat --format='%u:%g' "$actions_root")"
+          chown --recursive --no-dereference "$runner_owner" "$claude_action_root"
+          chmod --recursive u+rwX "$claude_action_root"
+
   run-reproducers:
     name: Run immutable reproducers without agent credentials
     needs: [collect, scan-prepare]
