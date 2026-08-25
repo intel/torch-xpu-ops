@@ -526,6 +526,12 @@
           "origin": "existing; unchanged; also target of old 'kernel_optimization'"
         },
         {
+          "name": "functionality",
+          "evidence": "A functional failure: an operation errors, asserts, hangs, or otherwise behaves incorrectly (RuntimeError/AssertionError/exception/hang/timeout/NotImplementedError) where the defect is functional rather than specifically numerical accuracy, performance. Emit when the failure is a functional defect not already captured by a more specific symptom.",
+          "keywords": ["functional", "functionality", "assertionerror", "runtimeerror", "exception", "traceback", "hang", "hangs", "timeout", "deadlock", "crash", "segfault", "not equal", "notimplementederror", "not implemented", "fails", "failure"],
+          "origin": "new"
+        },
+        {
           "name": "regression",
           "evidence": "A regression backed by an explicit before/after signal: a version or commit where it passed and one where it fails. The bare word regression in prose is not enough.",
           "keywords": ["regression", "passed on", "fails on", "previously worked", "worked before", "used to work", "no longer works", "broke in"],
