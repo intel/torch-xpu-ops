@@ -23,7 +23,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-inline int get_group_reduce_group_size(int simd) {
+inline constexpr int get_group_reduce_group_size(int simd) {
   // Limited by group reduce implementation. We use two sub group shuffles,
   // The second sub group shuffle only could handle simd size elements.
   return std::min(512, simd * simd);
@@ -57,7 +57,7 @@ template <typename T, int SIMD, typename shared_t, int DIM>
 inline T& GroupReduceSumWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
@@ -102,7 +102,7 @@ template <typename T, int SIMD, typename shared_t, int DIM>
 inline T& GroupReduceMaxWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
@@ -147,7 +147,7 @@ inline T& GroupReduceWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
     const ReduceOp& op,
-    shared_t shared) {
+    shared_t& shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
