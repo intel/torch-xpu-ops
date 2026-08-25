@@ -22,7 +22,7 @@ fallback when no e2e/oob signal fires).
 
 ## Unit-test entries
 
-Shape: `{test_type, test_file, origin_test_file, test_class, test_case, source}`.
+Shape: `{test_type, test_file, origin_test_file, test_class, test_case, error_message, source}`.
 
 ### Sources to scan, in this order
 
@@ -151,7 +151,7 @@ keep it - it records a module-level import failure.
 ## E2E entries
 
 Shape: `{reproducer, benchmark, model, phase, dtype, amp, test_type, backend,
-disable_cudagraphs}`. No `source` field.
+disable_cudagraphs, error_message}`. No `source` field.
 
 Match against `title + " " + body`, case-insensitively.
 
@@ -185,6 +185,29 @@ benchmark, model, phase, dtype, backend, test_type, amp, disable_cudagraphs
 `reproducer` is EXCLUDED, so flag-order and whitespace variants of one run
 collapse. Two entries differing in any of the eight - including AMP or cudagraph
 mode alone - stay distinct. First occurrence wins.
+
+## `error_message` - per-case failure signature
+
+Every entry (unit-test and E2E) carries an `error_message`: the normalized
+error/exception text attributed to THAT case, used by the grouping step
+(`group_issue.md`) to separate distinct causes. Populate it in this order:
+
+1. **Explicit per-case column.** If a `Cases:` / `test_cases:` CSV row carries a
+   4th field after the case (`<type>,<path>,<case>,<error>`), that field is the
+   `error_message`, verbatim.
+2. **Adjacent error line.** Otherwise, the exception header attributed to the
+   case in the body - the last `SomeError: message` / `E   SomeError: message`
+   line inside the traceback or `FAILED ...` block for that case.
+3. **Sole traceback fallback.** Otherwise, when the issue reports exactly one
+   failure signature (one traceback, one exception header) and cannot be
+   attributed per case, every entry takes that same normalized header.
+4. **None found.** Otherwise `""`.
+
+Normalize before storing: keep the exception class and message text, drop
+run-specific noise (memory addresses, device ids, absolute file paths, line
+numbers, tolerances/deltas, timestamps). This is the SAME normalization the
+grouping step assumes, so two cases with the same true cause yield the same
+`error_message` string.
 
 ## Ordering - the determinism contract
 

@@ -130,6 +130,7 @@ always yields `""`.
 | platform_specific | you | `true`/`false`, derived per [../reference/platform_specific.md](../reference/platform_specific.md). Judged from the text; never probe local hardware. |
 | test | you | `ut` \| `e2e` \| `oob`, per [../reference/testcase_rules.md](../reference/testcase_rules.md) (keywords in `categories.test` of `../reference/proposed_labels.json`). |
 | traceback | you | Full Python traceback, chained segments included, per [../reference/text_rules.md](../reference/text_rules.md). |
+| error_message | you | Issue-level normalized error/exception header (the sole failure signature), or "". Per-case `error_message` lives on each `test_cases[]` entry per [../reference/testcase_rules.md](../reference/testcase_rules.md). |
 | reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [../reference/text_rules.md](../reference/text_rules.md). |
 | test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [../reference/testcase_rules.md](../reference/testcase_rules.md). All "" on an E2E issue. |
 | test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [../reference/testcase_rules.md](../reference/testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |

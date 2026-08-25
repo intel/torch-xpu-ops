@@ -95,10 +95,11 @@ substitute a Python extraction script for `extract-issue`.
 ### Step 2 — Group the failures
 
 An issue may report several failing cases. Follow `reference/group_issue.md` to
-group `extract.json`'s failures by cause: it defines the ordered ladder of
-grouping keys (error message -> dtype -> op/kernel -> parameters -> tensor shape,
-first key that resolves the split wins), the signal-vs-noise rule, and the
-one-group / two-or-more-group outcome.
+group `extract.json`'s failures by cause: when a per-case `error_message` or the
+issue `traceback` is present it groups by that first (breaking generic-signature
+ties with the dtype -> op/kernel -> parameters -> tensor shape facets), and when
+neither is present it decides splits from the case facets directly. It defines
+the signal-vs-noise rule and the one-group / two-or-more-group outcome.
 
 - **One group** -> no split signal.
 - **Two or more groups** -> the issue mixes distinct causes. Emit the
@@ -119,9 +120,11 @@ and `keywords` for that axis — never from a hard-coded label list here.
 
 #### 3.1 — Root cause
 
-From `extract.json` (`traceback`, `test_cases`, `reproduce_steps`, `title`,
-`body`), establish the defect and its owner for the representative case. Mode
-depends on `pytorch_folder`:
+From `extract.json` (`traceback`, the representative case's `error_message`,
+`test_cases`, `reproduce_steps`, `title`, `body`), establish the defect and its
+owner for the representative case. The `error_message` is the primary failure
+signature — read the exception class and message first, then place it with the
+`traceback` frame. Mode depends on `pytorch_folder`:
 
 | | Mode A — traced | Mode B — evidence-only |
 |---|---|---|
@@ -135,8 +138,8 @@ path to the failure with `file:line`, and whether the owner is the test file,
 Await it rather than repeating the search.
 
 **Mode B.** Conclude a cause ONLY when the evidence is self-sufficient (the
-traceback names the owning file and the error states the defect); cite what you
-used. Otherwise set `root_cause` to exactly:
+traceback or `error_message` names the owning file and states the defect); cite
+what you used. Otherwise set `root_cause` to exactly:
 
 ```
 insufficient information for root causing: no pytorch_folder provided and issue evidence is not self-sufficient
