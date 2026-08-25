@@ -58,7 +58,7 @@ triage → [preflight: install nightly wheel once]
        → for each sub-item:
              reset + reproduce
                ├─ NOT_REPRODUCED → stale (skip-list: mark STALE_SKIP + follow-up)
-               └─ REPRODUCED → branch fix/<parent#>-<slug>
+               └─ REPRODUCED → branch agent/fix-issue-<N>-<seq>-<slug>
                                → root-cause → implement → verify
              (any failure marks the sub-item and continues the batch)
        → fan-out report
@@ -258,8 +258,22 @@ Parse the parent body into a list of sub-items. Each is either:
   `intel/torch-xpu-ops` and `pytorch/pytorch` references; ignore any
   other repo (untrusted, per `fix-root-cause`).
 
-Give each sub-item a stable short slug (from the test name or child
-issue number) for branch naming. Skip headers, prose, and empty lines.
+Give each sub-item two identifiers used for branch naming:
+
+- **`seq`** — 1-based position in the body checklist order. Readable and
+  maps a branch back to its body line. Not the stable identity (editing
+  or reordering the body changes it).
+- **`slug`** — the stable identity, derived from the sub-item's test node
+  id: take the leaf method name, strip device suffixes (`_cpu` / `_xpu` /
+  `_cuda` / `_meta`) and any dtype suffix, lowercase, keep `[a-z0-9._-]`,
+  truncate to 40 chars. If two sub-items produce the same slug, append
+  `-2`, `-3`, … in body order so every slug is unique within the issue.
+
+Branch name is `agent/fix-issue-<N>-<seq>-<slug>` (N = parent issue
+number). On a **re-run**, match a sub-item to its prior branch by slug —
+look for an existing `agent/fix-issue-<N>-*-<slug>` (any seq); if found,
+that is the same sub-item (rename to the current seq if it moved, never
+create a duplicate). Skip headers, prose, and empty lines.
 
 ### Preflight (many entries): install nightly wheel once
 
@@ -316,7 +330,7 @@ For each sub-item:
    the diff is pushable on its own:
 
    ```bash
-   git -C "$target_repo_dir" checkout -B "fix/${parent_num}-${slug}" "$base"
+   git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}-${seq}-${slug}" "$base"
    ```
 
    Then run **Stage 4 → 5** (same contract and 3-attempt bound as the
@@ -327,9 +341,11 @@ For each sub-item:
    record it, and **continue to the next sub-item** — never abort the
    whole batch on one hard sub-item.
 5. **On `fix-verify` PASSED**: the staged diff sits on
-   `fix/${parent_num}-${slug}`. Leave it staged for the invoking
-   workflow to commit + push that branch and open one PR (with human
-   review). Record the sub-item as fixed with its branch name.
+   `agent/fix-issue-${N}-${seq}-${slug}`. Leave it staged for the
+   invoking workflow to commit + push that branch and open one PR (with
+   human review). Record the sub-item as fixed with its branch name, and
+   write its `fix_result-${slug}.json` (see "Machine-readable outputs"
+   below) so the bot's reviewer/gate can re-verify it per sub-item.
 
 Leaf skills post their own `<!-- agent:root-cause -->` /
 `<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
@@ -361,8 +377,8 @@ Base: <torch nightly version or base sha>
 
 | Sub-item | Outcome | Branch / Reason |
 |---|---|---|
-| test_bar_xpu_float32 | FIXED | fix/4321-test_bar |
-| test_baz (#4400) | NEEDS_HUMAN | cross_repo_coordinated |
+| test_bar_xpu_float32 | FIXED | agent/fix-issue-4321-1-test_bar |
+| test_baz | NEEDS_HUMAN | cross_repo_coordinated |
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
 | test_gone | INVALID_ENTRY | does not collect |
@@ -388,6 +404,44 @@ After the loop, go to Stage 6 Report with the aggregate outcome
 (`IMPLEMENTING(fix_verified)` if any sub-item was fixed;
 `NEEDS_HUMAN` only if *every* actionable sub-item needed a human —
 `STALE_SKIP` follow-ups do not by themselves force `NEEDS_HUMAN`).
+
+### Machine-readable outputs (pipeline mode)
+
+The `<!-- agent:batch-fanout -->` comment is for humans. In pipeline mode
+also write machine-readable files under `$AGENT_SPACE` (the gitignored
+scratch dir) so the invoking bot workflow can drive per-sub-item
+re-verification and PR creation without re-parsing the comment:
+
+- **`batch_summary.json`** — one file listing every sub-item:
+
+  ```json
+  {
+    "issue": 4321,
+    "kind": "batch-bug",
+    "batch_kind": "heterogeneous",
+    "sub_items": [
+      { "seq": 1, "slug": "test_bar", "outcome": "FIXED",
+        "branch": "agent/fix-issue-4321-1-test_bar",
+        "target_repo": "torch-xpu-ops",
+        "fix_result": "fix_result-test_bar.json",
+        "summary": "one-line what/why" },
+      { "seq": 2, "slug": "test_baz", "outcome": "NEEDS_HUMAN",
+        "branch": null, "reason": "cross_repo_coordinated" },
+      { "seq": 3, "slug": "test_old", "outcome": "STALE_SKIP",
+        "branch": null, "reason": "follow-up: remove skip decorator" }
+    ]
+  }
+  ```
+
+- **`fix_result-<slug>.json`** — for each `FIXED` sub-item, the same
+  schema the single-bug fix job writes as `fix_result.json` (`needs_build`,
+  `build_ok`, `xpu_available`, `pytorch_dir`, `refined_command`, `notes`),
+  suffixed by slug so the bot's reviewer/gate loop can re-verify each
+  sub-item independently.
+
+Branch enumeration (`agent/fix-issue-<N>-*`) remains the bot's primary
+source of truth; `batch_summary.json` only enriches it (target_repo,
+summary line). Its absence is not fatal to PR creation.
 
 ## Stage 3 — Root cause (`fix-root-cause`)
 
