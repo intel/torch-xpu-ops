@@ -250,7 +250,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   // 3) preserve flexibility for future handle-based features (for example,
   //    reconstructing multicast objects from physical/shared handles).
   void* ptr = sycl::malloc_device(block_size, current_queue);
-  current_queue.memset(ptr, 0, block_size);
+  current_queue.memset(ptr, 0, block_size).wait();
   auto alloc_ref = c10::make_intrusive<AllocationRef>(
       ptr, ptr, block_size, device_idx, true);
   auto block = c10::make_intrusive<Block>(
