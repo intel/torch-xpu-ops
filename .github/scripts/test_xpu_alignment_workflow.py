@@ -49,6 +49,19 @@ class AlignmentWorkflowTests(unittest.TestCase):
         )[0]
         self.assertIn("--max-turns 300", prepare)
 
+    def test_prepare_restores_runner_access_to_the_claude_action_cache(self) -> None:
+        prepare = self.text.split("  scan-prepare:", 1)[1].split(
+            "  run-reproducers:", 1
+        )[0]
+        cleanup = prepare.split(
+            "- name: Restore runner access to the cached Claude action", 1
+        )[1]
+        self.assertIn("if: always()", cleanup)
+        self.assertIn("/__w/_actions", cleanup)
+        self.assertIn("anthropics/claude-code-action", cleanup)
+        self.assertIn("chown --recursive --no-dereference", cleanup)
+        self.assertIn("chmod --recursive u+rwX", cleanup)
+
     def test_every_stage_restores_the_original_collection(self) -> None:
         self.assertEqual(self.text.count("name: ${{ env.ALIGNMENT_ARTIFACT }}-collection"), 6)
         self.assertIn("--collection-root collection_snapshot", self.text)
