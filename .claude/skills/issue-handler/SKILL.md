@@ -401,7 +401,7 @@ Branch on its `verdict`:
   `target_repo`, `domain`, `analyzed_sha`, `root_cause`,
   `fix_strategy`.
 - `NEEDS_HUMAN` → Stage 6 Report with the specific
-  `reason` (`umbrella_task` / `feature_gap` / `hardware_specific` /
+  `reason` (`task_or_feature` / `feature_gap` / `hardware_specific` /
   `cross_repo_coordinated` / `no_registered_domain` / etc.). Each
   reason maps to a different final `agent:status` value; see
   [execution-modes.md](references/execution-modes.md).
