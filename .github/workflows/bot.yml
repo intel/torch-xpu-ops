@@ -1234,9 +1234,12 @@ jobs:
             working tree, build outputs, `fix_result.json`) — it's the
             gitignored scratch dir from this repo's AGENTS.md, already the
             convention other skills use, so nothing here needs `/tmp`:
-            1. Clone pytorch into `${{ env.AGENT_SPACE }}/pytorch`, apply your
-               fix (pytorch-side diff and/or torch-xpu-ops-side diff per
-               AGENTS.md's `xpu.txt` override).
+            1. Clone pytorch into `${{ env.AGENT_SPACE }}/pytorch` and set up
+               the local torch-xpu-ops override per AGENTS.md (`xpu.txt`).
+               Clone that override FROM the workspace checkout —
+               `git clone ${{ github.workspace }} <pytorch_dir>/third_party/torch-xpu-ops`
+               — so the tree you build is the same repo you later push, and
+               apply your torch-xpu-ops-side fix there.
             2. Install the Intel Deep Learning Essentials (DLE) via the OFFLINE
                installer (this container has no Intel apt repo, so
                `apt install intel-deep-learning-essentials` fails). **The DLE
@@ -1275,7 +1278,7 @@ jobs:
                `refined_command` from `<pytorch_dir>/test`. If it only works
                from your current shell's accumulated state, the file is
                missing something.
-             6. Write `${{ env.AGENT_SPACE }}/fix_result.json` with keys:
+            6. Write `${{ env.AGENT_SPACE }}/fix_result.json` with keys:
                `needs_build` (bool, true here), `build_ok` (bool),
                `xpu_available` (bool), `pytorch_dir` (absolute path),
                `refined_command` (single shell-executable pytest invocation,
@@ -1284,18 +1287,25 @@ jobs:
                Only write `build_ok: true` after the fresh-shell check from
                step 5 passes — the reviewer agent replays exactly that.
 
-             DELIVERY BOUNDARY (important): the branch you push and the PR
-             `fix-pr-create` later opens live in ${{ github.repository }}, so
-             only the **torch-xpu-ops-side** part of your fix can be delivered
-             automatically. A pytorch-side edit (a change under the pytorch
-             checkout that is NOT the `third_party/torch-xpu-ops` submodule)
-             cannot be shipped by this flow — it has no branch and no PR here.
-             So: only commit/push the torch-xpu-ops-side changes to the branch.
-             If your fix ALSO required a pytorch-side edit, set
-             `pytorch_side: true` and put that pytorch-side diff verbatim in
-             `notes` (as a ```diff block) so a human can apply it upstream —
-             do NOT drop it. If your fix is torch-xpu-ops-side only (the common
-             case), set `pytorch_side: false`.
+            DELIVERY BOUNDARY (important): the branch you push and the PR
+            `fix-pr-create` later opens live in ${{ github.repository }}, so
+            only the **torch-xpu-ops-side** part of your fix can be delivered
+            automatically. A pytorch-side edit — a change under the pytorch
+            checkout that is NOT inside the `third_party/torch-xpu-ops`
+            submodule — cannot be shipped by this flow: it has no branch and
+            no PR here. Two exclusions: the `third_party/xpu.txt` pin bump is
+            build plumbing (step 1's local-override recipe), NOT part of the
+            fix, and neither is anything else you touched only to make the
+            build work. Do not count either as a pytorch-side edit.
+            So: only commit/push the torch-xpu-ops-side changes to the branch.
+            If your fix ALSO required a real pytorch-side edit, set
+            `pytorch_side: true` and put that pytorch-side diff verbatim in
+            `notes` (as a ```diff block) so a human can apply it upstream —
+            do NOT drop it. If your fix is torch-xpu-ops-side only (the common
+            case), set `pytorch_side: false`. Do not guess: the reviewer agent
+            independently derives this from `git status` in your build tree and
+            the gate takes either signal as pytorch-side, so a wrong `false`
+            here is caught, not believed.
 
             For a Python-only fix, still write
             `${{ env.AGENT_SPACE }}/fix_result.json` with `needs_build: false`
@@ -1305,17 +1315,23 @@ jobs:
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
             (force-push is fine; this exact name is the contract the
             `fix-pr-create` command relies on to find your branch later).
-            Push from the workspace checkout at ${{ github.workspace }}, NOT
-            from the pytorch build tree's `third_party/torch-xpu-ops` clone:
-            only the workspace checkout carries this repo's push credentials
-            (a fresh clone under `${{ env.AGENT_SPACE }}` has none, so a push
-            from there fails or lands empty and `fix-pr-create` then sees "no
-            diff on branch"). Copy the torch-xpu-ops-side changes you verified
-            in the build tree into the workspace checkout, commit them there,
-            and push that. Do not open a pull request: a human reviews the diff
-            posted on the issue and then comments `@torchxpubot fix-pr-create`
-            to open a draft PR from this branch. End by reporting the branch
-            name and your summary.
+            Commit in the tree you actually built and verified — the build
+            tree's `third_party/torch-xpu-ops` clone from step 1 — then push
+            that commit by object from the workspace checkout, which is the
+            only tree carrying this repo's push credentials (a clone under
+            `${{ env.AGENT_SPACE }}` has none, so a push from there fails or
+            lands empty and `fix-pr-create` then sees "no diff on branch"):
+
+                cd ${{ github.workspace }}
+                git fetch <pytorch_dir>/third_party/torch-xpu-ops HEAD
+                git push --force origin FETCH_HEAD:refs/heads/agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
+
+            Push the commit, never a hand-copied working tree: re-copying files
+            into the workspace checkout risks pushing something you never
+            built. Do not open a pull request: a human reviews the diff posted
+            on the issue and then comments `@torchxpubot fix-pr-create` to open
+            a draft PR from this branch. End by reporting the branch name and
+            your summary.
 
             BATCH ISSUE: if `/issue-handler` classifies this as a `batch-bug`
             (a parent tracking several sub-bugs), it fans out and handles each
@@ -1392,6 +1408,14 @@ jobs:
               `<pytorch_dir>/build_pytorch.env`, confirm
               `torch.xpu.is_available()` is True, then run `refined_command`
               from `<pytorch_dir>/test`.
+            - Then determine `pytorch_side` YOURSELF, from the build tree
+              rather than from the fix agent's claim. Only torch-xpu-ops-side
+              changes can be delivered by this flow, so run
+              `git -C <pytorch_dir> status --porcelain` and treat the fix as
+              pytorch-side if any modified path is outside
+              `third_party/torch-xpu-ops/`, ignoring `third_party/xpu.txt`
+              (the local-override pin) and any file changed only to make the
+              build work. Report what you found in `reason` when it is true.
 
             Judge the OUTCOME semantically, not just by exit code — an exit 0
             with `collected 0 items`, `no tests ran`, all-skipped, or
@@ -1408,6 +1432,9 @@ jobs:
             - `commands`: array of {`cmd`, `exit_code`, `tests_collected`
               (int, -1 if N/A), `tests_passed` (int, -1 if N/A)} for every
               command you actually ran to verify
+            - `pytorch_side`: bool, your own finding from the recipe above
+              (not the fix agent's `pytorch_side`). Omit only if
+              `needs_build` is false and there is no build tree to inspect.
             - `reason`: one sentence
             Only write `verdict: "PASSED"` if at least one command you ran had
             exit_code 0 AND tests_collected >= 1 AND tests_passed >= 1 (or, for
@@ -1444,14 +1471,25 @@ jobs:
           # The gate deliberately exit-0s in several non-PASS cases (batch,
           # nothing-to-gate), so downstream steps must NOT infer PASSED from
           # steps.gate.outcome==success. Emit an explicit verdict instead:
-          #   PASSED  single-bug fix, reviewer verdict PASSED + execution-backed
-          #   BATCH   batch run (per-sub-item status is in gate_status.json)
-          #   NONE    nothing to gate (agent pushed no fix_result)
+          #   PASSED         single-bug fix, reviewer verdict PASSED + execution-backed
+          #   UNDELIVERABLE  verified, but part of it is pytorch-side and cannot ship here
+          #   BATCH          batch run (per-sub-item status is in gate_status.json)
+          #   NONE           nothing to gate (agent pushed no fix_result)
           # A hard failure exit-1s and never sets a verdict (outcome=failure).
           gate_verdict() { echo "verdict=$1" >> "$GITHUB_OUTPUT"; }
           # jq filter: PASSED and backed by >=1 exit-0, >=1 collected, >=1 passed.
           backed() {
             jq -e '.verdict == "PASSED" and ([.commands[]? | select(.exit_code == 0 and (.tests_collected // -1) >= 1 and (.tests_passed // -1) >= 1)] | length >= 1)' "$1" >/dev/null 2>&1
+          }
+          # True if EITHER layer says the fix also needs a pytorch-side edit:
+          # the fix agent's self-declared flag ($1) or the reviewer's own
+          # finding from `git status` in the build tree ($2). The fix agent
+          # grading its own deliverability is exactly the conflict of interest
+          # the reviewer exists to cover, so take the union, not its word.
+          pytorch_side() {
+            [ "$(jq -r '.pytorch_side // false' "$1" 2>/dev/null)" = "true" ] && return 0
+            [ "$(jq -r '.pytorch_side // false' "$2" 2>/dev/null)" = "true" ] && return 0
+            return 1
           }
 
           batch_json="$AGENT_SPACE/batch_summary.json"
@@ -1466,9 +1504,16 @@ jobs:
               # (mirrors the charset parse-command enforces on the CLI arg).
               case "$slug" in *[!a-z0-9._-]*|'') echo "skipping malformed slug: '$slug'"; continue;; esac
               rj="$AGENT_SPACE/review_result-$slug.json"
+              fj="$AGENT_SPACE/fix_result-$slug.json"
               status="WARNING"
               if [ -f "$rj" ] && backed "$rj"; then
                 status="PASSED"
+              fi
+              # Same delivery boundary as single-bug mode: a sub-item that also
+              # needs a pytorch-side edit is not fully shippable from here, so
+              # it must not be labeled "independently confirmed".
+              if [ "$status" = "PASSED" ] && pytorch_side "$fj" "$rj"; then
+                status="UNDELIVERABLE"
               fi
               reason=$(jq -r '.reason // "(no review_result)"' "$rj" 2>/dev/null || echo "(no review_result)")
               echo "- \`$slug\`: **$status** — $reason" >> "$GITHUB_STEP_SUMMARY"
@@ -1520,13 +1565,15 @@ jobs:
           # this flow (the branch/PR are torch-xpu-ops-only) and both
           # verification layers replay it in the same local build tree, so a
           # PASSED here would claim "independently confirmed" about a change we
-          # cannot ship. Downgrade to WARNING and leave the verdict empty so the
-          # diff comment tells the human to apply the pytorch-side diff (in the
-          # fix_result notes) upstream themselves. Non-fatal: the torch-xpu-ops
-          # half is real and reviewable.
-          if [ "$(jq -r '.pytorch_side // false' "$result_json")" = "true" ]; then
-            echo "::warning::fix includes a pytorch-side change that cannot be delivered here; downgrading to WARNING"
+          # cannot ship. Emit UNDELIVERABLE instead of PASSED so the diff
+          # comment says "verified but incomplete" rather than "the reviewer did
+          # not confirm it" — the review DID pass; the change just can't ship
+          # whole. Non-fatal: the torch-xpu-ops half is real and reviewable, and
+          # the pytorch-side diff is in the fix_result notes for a human.
+          if pytorch_side "$result_json" "$review_json"; then
+            echo "::warning::fix includes a pytorch-side change that cannot be delivered here; downgrading to UNDELIVERABLE"
             echo "### fix includes an undeliverable pytorch-side change — see fix_result notes" >> "$GITHUB_STEP_SUMMARY"
+            gate_verdict UNDELIVERABLE
             exit 0
           fi
           echo "reviewer verdict PASSED and execution-backed; gate satisfied"
@@ -1567,8 +1614,9 @@ jobs:
       # PR from that branch. Captured objectively here (from the branch the
       # agent pushed) rather than trusting the agent to paste its own diff.
       # Posted regardless of the gate outcome, with the gate's verdict labeled
-      # inline (PASSED vs WARNING) so the reviewer knows whether the fix was
-      # independently confirmed before deciding to run fix-pr-create.
+      # inline (PASSED / INCOMPLETE / WARNING) so the reviewer knows whether
+      # the fix was independently confirmed before deciding to run
+      # fix-pr-create.
       - name: Post fix diff for human review
         if: always()
         env:
@@ -1645,19 +1693,56 @@ jobs:
                 return null;
               }
             }
-            // GitHub-alert gate block for a given PASSED/WARNING status.
-            function gateBlock(passed) {
-              return passed
-                ? `> [!NOTE]\n> **Verify gate: PASSED.** A second, independent reviewer ` +
+            // GitHub-alert gate block for a given per-item gate status.
+            //   PASSED         reviewer independently confirmed it
+            //   UNDELIVERABLE  reviewer confirmed it, but part of the fix is
+            //                  pytorch-side and cannot ship from this branch
+            //   anything else  no independent confirmation
+            function gateBlock(status) {
+              if (status === 'PASSED') {
+                return `> [!NOTE]\n> **Verify gate: PASSED.** A second, independent reviewer ` +
                   `agent re-ran the fix in a clean shell and its PASSED verdict was ` +
                   `backed by at least one command that collected and passed >=1 test. ` +
-                  `Independently confirmed, but still review before \`fix-pr-create\`.\n\n`
-                : `> [!WARNING]\n> **Verify gate: WARNING.** The fix agent built and ` +
-                  `self-verified before pushing, but the independent reviewer did not ` +
-                  `confirm it (FAILED/INCONCLUSIVE, unbacked PASSED, or the reviewer/gate ` +
-                  `errored). This does **not** mean the fix is wrong — only that the ` +
-                  `independent recheck is absent. Review the diff yourself before ` +
-                  `\`fix-pr-create\`.\n\n`;
+                  `Independently confirmed, but still review before \`fix-pr-create\`.\n\n`;
+              }
+              if (status === 'UNDELIVERABLE') {
+                return `> [!WARNING]\n> **Verify gate: INCOMPLETE.** The independent reviewer ` +
+                  `did confirm the fix works, but it also needs a **pytorch-side change** ` +
+                  `that this flow cannot deliver, so the branch below is only part of it. ` +
+                  `Apply the pytorch-side diff upstream yourself; \`fix-pr-create\` here ` +
+                  `ships the torch-xpu-ops half only.\n\n`;
+              }
+              return `> [!WARNING]\n> **Verify gate: WARNING.** The fix agent built and ` +
+                `self-verified before pushing, but the independent reviewer did not ` +
+                `confirm it (FAILED/INCONCLUSIVE, unbacked PASSED, or the reviewer/gate ` +
+                `errored). This does **not** mean the fix is wrong — only that the ` +
+                `independent recheck is absent. Review the diff yourself before ` +
+                `\`fix-pr-create\`.\n\n`;
+            }
+
+            // If the fix also needed a pytorch-side edit, it is NOT on the
+            // branch (delivery is torch-xpu-ops-only). Surface that diff from
+            // the fix_result notes so the human can apply it upstream. The
+            // notes are agent-authored and unbounded, so clamp them: they share
+            // the comment's byte budget with the diff, and blowing past
+            // GitHub's 65536 cap makes createComment 422 — i.e. no diff comment
+            // at all, which is worse than a truncated one.
+            const NOTE_MAX = 15000;
+            function pytorchNoteFor(frPath, rjPath) {
+              let fr = {}, rj = {};
+              try { fr = JSON.parse(fs.readFileSync(frPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
+              try { rj = JSON.parse(fs.readFileSync(rjPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
+              if (!fr.pytorch_side && !rj.pytorch_side) return '';
+              let notes = fr.notes || '';
+              if (notes.length > NOTE_MAX) {
+                notes = notes.slice(0, NOTE_MAX) +
+                  `\n... (notes truncated; full text in the run's fix_result artifact)`;
+              }
+              return `> [!IMPORTANT]\n> This fix also required a **pytorch-side change** that ` +
+                `cannot be delivered from here — the branch above and \`fix-pr-create\` ` +
+                `only cover torch-xpu-ops. Apply the pytorch-side diff (below, from the ` +
+                `agent's notes) to pytorch/pytorch yourself before this fix is complete.\n\n` +
+                (notes ? `<details><summary>pytorch-side notes</summary>\n\n${notes}\n\n</details>\n\n` : '');
             }
 
             const batchPath = `${agentSpace}/batch_summary.json`;
@@ -1671,21 +1756,32 @@ jobs:
               const other = subs.filter(s => !(s.outcome === 'FIXED' && s.branch));
               if (!fixed.length && !other.length) { core.info('empty batch_summary'); return; }
 
-              // Split the diff budget across fixed sub-items.
-              const perBudget = fixed.length ? Math.floor((MAX_TOTAL - 4000) / fixed.length) : MAX_TOTAL;
+              // Notes first: they are part of the same budget as the diffs.
+              const notes = {};
+              let notesTotal = 0;
+              for (const s of fixed) {
+                notes[s.slug] = pytorchNoteFor(
+                  `${agentSpace}/fix_result-${s.slug}.json`,
+                  `${agentSpace}/review_result-${s.slug}.json`);
+                notesTotal += notes[s.slug].length;
+              }
+              // Split the remaining diff budget across fixed sub-items.
+              const perBudget = fixed.length
+                ? Math.max(500, Math.floor((MAX_TOTAL - 4000 - notesTotal) / fixed.length))
+                : MAX_TOTAL;
               let body =
                 `### Batch fix results — issue #${issue}\n\n` +
                 `${fixed.length} sub-item(s) fixed, ${other.length} not. Review each ` +
                 `diff below; comment \`@torchxpubot fix-pr-create\` to open a draft PR ` +
                 `for every fixed sub-item, or \`@torchxpubot fix-pr-create <slug>\` for one.\n\n`;
               for (const s of fixed) {
-                const passed = gateStatus[s.slug] === 'PASSED';
                 const d = branchDiff(s.branch, perBudget);
                 // Per-section marker so fix-pr-create can recover this
                 // sub-item's summary for its PR body.
                 body += `<!-- agent:fix-summary:issue-${issue}:${s.slug} -->\n`;
                 body += `### \`${s.slug}\` — ${s.branch}\n\n`;
-                body += gateBlock(passed);
+                body += gateBlock(gateStatus[s.slug]);
+                body += notes[s.slug];
                 if (s.summary) body += `${s.summary}\n\n`;
                 body += d?.diff ? ('```diff\n' + d.diff + '\n```\n\n')
                   : d?.note ? (d.note + '\n\n')
@@ -1704,30 +1800,18 @@ jobs:
 
             // ---- SINGLE-BUG (unchanged behavior). ----
             const branch = process.env.FIX_BRANCH;
-            const d = branchDiff(branch, MAX_TOTAL);
+            const pytorchNote = pytorchNoteFor(
+              `${agentSpace}/fix_result.json`, `${agentSpace}/review_result.json`);
+            const d = branchDiff(branch, Math.max(500, MAX_TOTAL - pytorchNote.length));
             if (!d) return;
-            // If the fix also needed a pytorch-side edit, it is NOT on this
-            // branch (delivery is torch-xpu-ops-only). Surface that diff from
-            // fix_result notes so the human can apply it upstream themselves.
-            let pytorchNote = '';
-            try {
-              const fr = JSON.parse(fs.readFileSync(`${agentSpace}/fix_result.json`, 'utf8'));
-              if (fr.pytorch_side) {
-                pytorchNote =
-                  `> [!IMPORTANT]\n> This fix also required a **pytorch-side change** that ` +
-                  `cannot be delivered from here — the branch above and \`fix-pr-create\` ` +
-                  `only cover torch-xpu-ops. Apply the pytorch-side diff (below, from the ` +
-                  `agent's notes) to pytorch/pytorch yourself before this fix is complete.\n\n` +
-                  (fr.notes ? `<details><summary>pytorch-side notes</summary>\n\n${fr.notes}\n\n</details>\n\n` : '');
-              }
-            } catch (e) { /* no fix_result / not JSON: nothing to surface */ }
-            const body =
+            let body =
               `### Proposed fix on \`${branch}\`\n\n` +
-              gateBlock(process.env.GATE_VERDICT === 'PASSED') +
+              gateBlock(process.env.GATE_VERDICT) +
               pytorchNote +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
               (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note);
+            if (body.length > 65000) body = body.slice(0, 65000) + '\n... (truncated)';
             await github.rest.issues.createComment({
               owner, repo, issue_number: issue, body,
             });
@@ -1763,9 +1847,12 @@ jobs:
             // non-PASS cases). Warn on anything that isn't a clean single-bug
             // PASS, except BATCH (each sub-item is labeled on the diff comment).
             const verdict = process.env.GATE_VERDICT || '';
-            const gateWarning = (verdict !== 'PASSED' && verdict !== 'BATCH')
-              ? `> [!WARNING]\n> Independent review did **not** confirm the pass claimed below. Treat this summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Review" and "Verify gate" steps.\n\n`
-              : '';
+            const gateWarning =
+              verdict === 'UNDELIVERABLE'
+                ? `> [!WARNING]\n> Independent review confirmed the fix, but it also needs a **pytorch-side change** that this flow cannot deliver — the branch here is only part of it. See the [\`fix\` job](${jobUrl}) "Verify gate" step and the pytorch-side notes on the diff comment.\n\n`
+                : (verdict !== 'PASSED' && verdict !== 'BATCH')
+                ? `> [!WARNING]\n> Independent review did **not** confirm the pass claimed below. Treat this summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Review" and "Verify gate" steps.\n\n`
+                : '';
             const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
             // Hidden marker so `fix-pr-create` (a separate workflow run that
             // can't see this run's execution_file) can find this summary later
@@ -1993,32 +2080,40 @@ jobs:
             // so the PR body doesn't claim "independently re-verified" for a
             // branch the reviewer never confirmed. Batch: the sub-item's
             // section (per-bareSlug marker -> next marker). Single-bug: the
-            // "Proposed fix on `<branch>`" comment. Returns true only when
-            // that section explicitly shows the PASSED gate note. `bareSlug`
+            // "Proposed fix on `<branch>`" comment. Returns the labeled status:
+            // 'PASSED', 'INCOMPLETE' (reviewer confirmed it but part of the fix
+            // is pytorch-side and not on this branch), or 'UNKNOWN'. `bareSlug`
             // must be the bare slug (no seq prefix) that keys the markers.
-            function gatePassed(branch, bareSlug) {
+            function gateStatusOf(branch, bareSlug) {
               const anchor = bareSlug
                 ? `<!-- agent:fix-summary:issue-${issue}:${bareSlug} -->`
                 : `Proposed fix on \`${branch}\``;
               const c = comments.slice().reverse().find(x => x.body && x.body.includes(anchor));
-              if (!c) return false;
+              if (!c) return 'UNKNOWN';
               let section = c.body;
               if (bareSlug) {
                 const start = section.indexOf(anchor);
                 let end = section.indexOf('<!-- agent:fix-summary:', start + anchor.length);
                 section = section.slice(start, end === -1 ? undefined : end);
               }
-              return section.includes('Verify gate: PASSED');
+              if (section.includes('Verify gate: PASSED')) return 'PASSED';
+              if (section.includes('Verify gate: INCOMPLETE')) return 'INCOMPLETE';
+              return 'UNKNOWN';
             }
 
             function bodyFor(branch, bareSlug) {
               const marker = bareSlug
                 ? `<!-- agent:fix-summary:issue-${issue}:${bareSlug} -->`
                 : `<!-- agent:fix-summary:issue-${issue} -->`;
-              const verified = gatePassed(branch, bareSlug);
-              const provenance = verified
+              const status = gateStatusOf(branch, bareSlug);
+              const provenance = status === 'PASSED'
                 ? `The fix was built and independently re-verified by the \`fix\` job, and a ` +
                   `human reviewed the diff before this PR was opened;`
+                : status === 'INCOMPLETE'
+                ? `The fix was built and independently re-verified by the \`fix\` job, and a ` +
+                  `human reviewed the diff before this PR was opened. It also needs a ` +
+                  `**pytorch-side change** that is not in this PR (see the issue's fix-diff ` +
+                  `comment) — this PR alone does not complete the fix;`
                 : `The fix was built and self-verified by the \`fix\` job, but the independent ` +
                   `reviewer did **not** confirm it (see the verify-gate verdict on the issue's ` +
                   `fix-diff comment); a human reviewed the diff before this PR was opened;`;
