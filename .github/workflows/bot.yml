@@ -126,7 +126,7 @@ jobs:
             if (command === 'help') {
               authorized = true; // anyone
             } else if (command === 'fix') {
-              // fix drives an autonomous agent with write access, so it's
+              // fix drives an autonomous agent with write access, so it is
               // gated like `merge -f` rather than like the read-only commands.
               authorized = maintainerOnly.includes(assoc);
             } else if (!privileged.includes(assoc)) {
