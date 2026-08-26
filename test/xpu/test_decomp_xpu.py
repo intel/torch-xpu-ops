@@ -85,7 +85,6 @@ CROSS_REF_EXCLUDE_SET.add(
 # XPU: dot_xpu_mkl for ops listed is not implemented for int8/uint8
 CROSS_REF_EXCLUDE_SET.update(
     {
-        ("xpu", None, "max_pool2d_with_indices_backward"),
         ("xpu", torch.int8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for int8
         ("xpu", torch.uint8, "__rmatmul__"),  # "dot_xpu_mkl" not implemented for uint8
         ("xpu", torch.int8, "tensordot"),  # "dot_xpu_mkl" not implemented for int8
