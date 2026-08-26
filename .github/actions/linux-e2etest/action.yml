@@ -102,6 +102,12 @@ runs:
                 if ! contains "accuracy,performance" "$scenario"; then
                   continue
                 fi
+                if [[ "${{ inputs.overwrite_model_list }}" == "true" && "$suite" == "timm_models" ]]; then
+                  cp ../.ci/benchmarks/timm_models.yaml benchmarks/dynamo/timm_models.yaml
+                  if [[ "$mode,$dt" != "training,bfloat16" && "$mode,$dt" != "training,amp_bf16" ]]; then
+                    sed -i '/^  - convnextv2_nano\.fcmae_ft_in22k_in1k$/d' benchmarks/dynamo/timm_models.yaml
+                  fi
+                fi
                 run_with_shard
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
