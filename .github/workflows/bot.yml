@@ -1548,13 +1548,19 @@ jobs:
             const agentSpace = `${cwd}/agent_space_xpu`;
             const MAX_TOTAL = 60000; // GitHub comment cap is 65536; leave room.
 
-            // Diff of one branch vs origin/main, or null if the branch has no
-            // diff / doesn't exist. Fetches lazily with an explicit refspec:
-            // actions/checkout uses a single-branch refmap, so a bare
+            // Diff of one branch vs origin/main. Fetches lazily with an explicit
+            // refspec: actions/checkout uses a single-branch refmap, so a bare
             // `git fetch origin <branch>` only updates FETCH_HEAD and leaves no
             // refs/remotes/origin/<branch> for the range diff to name. origin/main
             // already exists locally (checkout uses fetch-depth: 0). execFileSync
             // (not execSync) so the agent-authored branch name never hits /bin/sh.
+            //
+            // Returns { diff } to render in a ```diff fence, or { note } for a
+            // plain-text line (diff too large / errored), or null when there is
+            // nothing to show (no branch / empty diff). A diff that exceeds the
+            // 10 MB maxBuffer must NOT masquerade as "no diff" — point the human
+            // at the branch (with a --stat summary if we can get one cheaply).
+            const DIFF_MAXBUF = 10 * 1024 * 1024;
             function branchDiff(branch, budget) {
               try {
                 execFileSync('git', ['fetch', 'origin',
@@ -1566,13 +1572,27 @@ jobs:
               try {
                 const d = execFileSync('git',
                   ['diff', `origin/main...origin/${branch}`], {
-                  cwd, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024,
+                  cwd, encoding: 'utf8', maxBuffer: DIFF_MAXBUF,
                 });
                 if (!d.trim()) return null;
-                return d.length > budget
+                return { diff: d.length > budget
                   ? d.slice(0, budget) + `\n... (truncated; full diff on branch \`${branch}\`)`
-                  : d;
+                  : d };
               } catch (e) {
+                if (e.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+                  core.warning(`diff for ${branch} exceeds ${DIFF_MAXBUF} bytes; linking to the branch instead`);
+                  let stat = '';
+                  try {
+                    stat = execFileSync('git',
+                      ['diff', '--stat', `origin/main...origin/${branch}`],
+                      { cwd, encoding: 'utf8', maxBuffer: DIFF_MAXBUF }).trim();
+                  } catch (e2) { /* --stat huge too; fall back to the bare link */ }
+                  const compareUrl = `${context.serverUrl}/${owner}/${repo}/compare/main...${branch}`;
+                  const note = `_Diff too large to inline (>${Math.floor(DIFF_MAXBUF / 1048576)} MB). ` +
+                    `See it on the branch: [\`${branch}\`](${compareUrl})._` +
+                    (stat ? `\n\n<details><summary>Changed files</summary>\n\n\`\`\`\n${stat}\n\`\`\`\n\n</details>` : '');
+                  return { note };
+                }
                 core.warning(`failed to diff branch ${branch}: ${e.message}`);
                 return null;
               }
@@ -1619,7 +1639,9 @@ jobs:
                 body += `### \`${s.slug}\` — ${s.branch}\n\n`;
                 body += gateBlock(passed);
                 if (s.summary) body += `${s.summary}\n\n`;
-                body += d ? ('```diff\n' + d + '\n```\n\n') : '_(no diff on branch)_\n\n';
+                body += d?.diff ? ('```diff\n' + d.diff + '\n```\n\n')
+                  : d?.note ? (d.note + '\n\n')
+                  : '_(no diff on branch)_\n\n';
               }
               if (other.length) {
                 body += `### Not fixed\n\n`;
@@ -1634,14 +1656,14 @@ jobs:
 
             // ---- SINGLE-BUG (unchanged behavior). ----
             const branch = process.env.FIX_BRANCH;
-            const diff = branchDiff(branch, MAX_TOTAL);
-            if (!diff) return;
+            const d = branchDiff(branch, MAX_TOTAL);
+            if (!d) return;
             const body =
               `### Proposed fix on \`${branch}\`\n\n` +
               gateBlock(process.env.GATE_VERDICT === 'PASSED') +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
-              '```diff\n' + diff + '\n```';
+              (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note);
             await github.rest.issues.createComment({
               owner, repo, issue_number: issue, body,
             });
