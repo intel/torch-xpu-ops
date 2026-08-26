@@ -106,15 +106,17 @@ macro(set_build_flags)
   # to be replaced with an approximately equivalent set of instructions or
   # alternative math function calls, which have great errors.
   #
-  # PSEUDO of pure icpx compilation (no separate host compiler).
+  # PSEUDO of the default Linux pure icpx build (BUILD_SEPARATE_OPS disabled).
   # 1. Kernel source compilation (icpx handles both host and device code):
   # icpx ${SYCL_COMPILE_FLAGS} -Xarch_host '${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
   # 2. Device code linkage:
   # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
   # 3. Host only source compilation:
   # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
-  # 4. Linkage:
-  # gcc -shared host.o kernel.o device-code.o -o libxxx.so
+  # 4. Archive torch-xpu-ops objects:
+  # ar rcs libtorch_xpu_ops.a host.o kernel.o device-code.o
+  # 5. Link the final PyTorch XPU shared library:
+  # gcc -shared ${PYTORCH_XPU_OBJECTS} -Wl,--whole-archive libtorch_xpu_ops.a -Wl,--no-whole-archive -o libtorch_xpu.so
   list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-unnamed-lambda)
   list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-id-queries-fit-in-int)
   list(APPEND SYCL_COMPILE_FLAGS -sycl-std=2020)
