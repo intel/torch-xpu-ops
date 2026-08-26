@@ -55,16 +55,17 @@ def create_pair(B_I, O):
     return x, w
 
 
-def get_mem_and_flops(f, memory_budget=None):
-    # Returns megabytes rounded to 1 decimal point and FLOPs
-    # Note that each value of size (512, 512, torch.float32) is 1 MiB
+def get_mem_and_flops(f, memory_budget=None, round_mem=True):
+    # Returns megabytes and FLOPs. Note that each value of size
+    # (512, 512, torch.float32) is 1 MiB. round_mem=False skips the
+    # rounding, for comparing two measurements against each other.
     torch._dynamo.reset()
     with config.patch(activation_memory_budget=memory_budget):
         if memory_budget is not None:
             f = torch.compile(f, backend="aot_eager_decomp_partition")
 
-        # We round this to nearest 10th of a megabyte.
-        return round(get_act_mem(f), 1), get_bw_flops(f)
+        mem = get_act_mem(f)
+        return (round(mem, 1) if round_mem else mem), get_bw_flops(f)
 
 
 class MemoryBudgetTest(TestCase):
@@ -402,11 +403,11 @@ class MemoryBudgetTest(TestCase):
         def call():
             return g(x).sum()
 
-        eager_mem, eager_flops = get_mem_and_flops(call)
+        eager_mem, eager_flops = get_mem_and_flops(call, round_mem=False)
         # give the memory budget logic a value that should cause it to run,
         # but not recompute the matmuls
-        mem, flops = get_mem_and_flops(call, memory_budget=0.01)
-        self.assertEqual(mem, eager_mem)
+        mem, flops = get_mem_and_flops(call, memory_budget=0.01, round_mem=False)
+        self.assertEqual(mem, eager_mem, atol=0.02, rtol=0)
         self.assertEqual(flops, eager_flops)
 
 
