@@ -401,8 +401,8 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["payloads"], [])
         self.assertIn("producer-job-failed", decision["blockers"])
 
-    def test_timed_out_reproducer_makes_the_scan_fail_closed(self) -> None:
-        paths = self.artifacts.write()
+    def test_timed_out_unit_does_not_block_other_reviewed_candidates(self) -> None:
+        paths = self.artifacts.write(["issue-123", "issue-456"])
         runner = json.loads(paths["runner"].read_text())
         runner["results"][0].update(
             {"returncode": None, "timed_out": True, "error": None}
@@ -414,18 +414,46 @@ class AlignmentGateTests(unittest.TestCase):
         scan["candidates"][0].update(
             {"local_result": "blocked-script-error", "target_path_verified": False}
         )
-        scan["blockers"] = ["issue-123 timed out"]
+        scan["blockers"] = [
+            {
+                "id": "issue-123",
+                "local_result": "blocked-script-error",
+                "detail": "reproducer timed out",
+                "evidence": "runner/logs/issue-123.log",
+            }
+        ]
         paths["scan"].write_text(json.dumps(scan) + "\n")
         review = json.loads(paths["review"].read_text())
         review["scan_sha256"] = digest(paths["scan"])
-        review["units"] = []
+        review["units"] = review["units"][1:]
         paths["review"].write_text(json.dumps(review) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "file-one")
+        self.assertEqual(decision["payloads"][0]["unit_id"], "issue-456")
+        self.assertIn(
+            "scan-blocked-result:issue-123:blocked-script-error",
+            decision["blockers"],
+        )
+        self.assertEqual(decision["global_blockers"], [])
+        self.assertEqual(
+            decision["unit_blockers"],
+            ["scan-blocked-result:issue-123:blocked-script-error"],
+        )
+
+    def test_unstructured_scan_blocker_is_global(self) -> None:
+        paths = self.artifacts.write()
+        scan = json.loads(paths["scan"].read_text())
+        scan["status"] = "incomplete"
+        scan["blockers"] = ["runner stopped before coverage was complete"]
+        paths["scan"].write_text(json.dumps(scan) + "\n")
 
         decision = self.decision()
 
         self.assertEqual(decision["decision"], "blocked")
         self.assertEqual(decision["payloads"], [])
-        self.assertIn("scan-not-complete:incomplete", decision["blockers"])
+        self.assertIn("scan-global-blocker:0", decision["blockers"])
 
 
 if __name__ == "__main__":

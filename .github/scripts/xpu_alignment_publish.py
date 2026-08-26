@@ -114,6 +114,10 @@ def run_note(
         lines.append("")
         if diagnostic:
             lines.append("No formal conclusion or issue was published; see the gate artifact.")
+        elif filed or payloads:
+            lines.append(
+                "Reviewed candidates were published or queued; blocked units were excluded."
+            )
         else:
             lines.append("Nothing was published for the affected part; see the gate artifact.")
 
