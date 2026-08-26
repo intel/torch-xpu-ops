@@ -10,7 +10,7 @@ fail_test = []
 error_log = ""
 
 # libfabric WA to hang issue
-os.environ["FI_PROVIDER"] = "tcp"
+# os.environ["FI_PROVIDER"] = "tcp"
 
 os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
