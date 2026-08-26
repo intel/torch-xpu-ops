@@ -41,7 +41,6 @@ macro(set_build_flags)
   set(SYCL_HOST_FLAGS_ONLY_FOR_SYCL)
   set(SYCL_DEVICE_COMPILE_DEFINITIONS)
   set(SYCL_HOST_PER_CONFIG_FLAGS)
-  set(SYCL_KERNEL_OPTIONS)
   set(SYCL_COMPILE_FLAGS ${SYCL_FLAGS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_LINK_FLAGS})
   set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS)
@@ -95,7 +94,7 @@ macro(set_build_flags)
   if(USE_PER_OPERATOR_HEADERS)
     list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
   endif()
-  # -- Kernel flags (SYCL_KERNEL_OPTIONS)
+  # -- Common SYCL compile flags (SYCL_COMPILE_FLAGS)
   # The fast-math will be enabled by default in SYCL compiler.
   # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
   # 1. We enable below flags here to be warn about NaN and Infinity,
@@ -109,18 +108,18 @@ macro(set_build_flags)
   #
   # PSEUDO of pure icpx compilation (no separate host compiler).
   # 1. Kernel source compilation (icpx handles both host and device code):
-  # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -Xarch_host '${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+  # icpx ${SYCL_COMPILE_FLAGS} -Xarch_host '${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
   # 2. Device code linkage:
   # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
   # 3. Host only source compilation:
   # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
   # 4. Linkage:
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
-  list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-unnamed-lambda)
-  list(APPEND SYCL_KERNEL_OPTIONS -fno-sycl-id-queries-fit-in-int)
-  list(APPEND SYCL_KERNEL_OPTIONS -sycl-std=2020)
-  list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-div)
-  list(APPEND SYCL_KERNEL_OPTIONS -foffload-fp32-prec-sqrt)
+  list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-unnamed-lambda)
+  list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-id-queries-fit-in-int)
+  list(APPEND SYCL_COMPILE_FLAGS -sycl-std=2020)
+  list(APPEND SYCL_COMPILE_FLAGS -foffload-fp32-prec-div)
+  list(APPEND SYCL_COMPILE_FLAGS -foffload-fp32-prec-sqrt)
 
   # SYCL defaults fast-math ON, which strips the inf/NaN our kernels check.
   # Probe the compiler for the strict-FP flag and fail if it is rejected. Keep
@@ -136,28 +135,28 @@ macro(set_build_flags)
       "SYCL compiler ${SYCL_COMPILER} rejects ${_sycl_strict_fp_flag}; its "
       "default fast-math would silently break kernel inf/NaN semantics.")
   endif()
-  list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_strict_fp_flag})
+  list(APPEND SYCL_COMPILE_FLAGS ${_sycl_strict_fp_flag})
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # On Windows icx uses the clang-cl driver, which ignores -std= with
     # only a warning; spell it as -Qstd= so device code is really C++20.
-    list(APPEND SYCL_KERNEL_OPTIONS -Qstd=${CPP_STD})
-    list(APPEND SYCL_KERNEL_OPTIONS /Qfma)
-    list(APPEND SYCL_KERNEL_OPTIONS /Qftz-)
+    list(APPEND SYCL_COMPILE_FLAGS -Qstd=${CPP_STD})
+    list(APPEND SYCL_COMPILE_FLAGS /Qfma)
+    list(APPEND SYCL_COMPILE_FLAGS /Qftz-)
     # Suppress warnings about dllexport.
-    list(APPEND SYCL_KERNEL_OPTIONS -Wno-ignored-attributes)
+    list(APPEND SYCL_COMPILE_FLAGS -Wno-ignored-attributes)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    list(APPEND SYCL_KERNEL_OPTIONS -std=${CPP_STD})
-    list(APPEND SYCL_KERNEL_OPTIONS -Wno-absolute-value)
+    list(APPEND SYCL_COMPILE_FLAGS -std=${CPP_STD})
+    list(APPEND SYCL_COMPILE_FLAGS -Wno-absolute-value)
     # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
     # with very old version of the ICX compiler. The -ffp-contract=fast is supported by both closed
     # source and open source DPC++ compiler versions.
-    list(APPEND SYCL_KERNEL_OPTIONS -ffp-contract=fast)
+    list(APPEND SYCL_COMPILE_FLAGS -ffp-contract=fast)
     # -no-ftz is supported only by ICX compiler shipped with oneAPI Toolkits. For the
     # DPCLANG open source compiler that's the default mode and no option is needed.
     CHECK_SYCL_FLAG("-no-ftz" SUPPORTS_NO_FTZ)
     if(SUPPORTS_NO_FTZ)
-      list(APPEND SYCL_KERNEL_OPTIONS -no-ftz)
+      list(APPEND SYCL_COMPILE_FLAGS -no-ftz)
     endif()
   endif()
 
@@ -169,7 +168,7 @@ macro(set_build_flags)
 
   CHECK_SYCL_FLAG("${_sycl_intel_lib_libirc_flag}" SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
   if(SUPPORTS_INTEL_LIB_LIBIRC_FLAG)
-    list(APPEND SYCL_KERNEL_OPTIONS ${_sycl_intel_lib_libirc_flag})
+    list(APPEND SYCL_COMPILE_FLAGS ${_sycl_intel_lib_libirc_flag})
   endif()
 
   # -- Device debug flags (aligned with CUDA behavior)
@@ -179,9 +178,9 @@ macro(set_build_flags)
   #   Only effective in Debug/RelWithDebInfo builds.
   # DEBUG=1 alone: does NOT affect device code (same as CUDA).
   if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
-    list(APPEND SYCL_KERNEL_OPTIONS -g -O0 -Rno-debug-disables-optimization)
+    list(APPEND SYCL_COMPILE_FLAGS -g -O0 -Rno-debug-disables-optimization)
   elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
-    list(APPEND SYCL_KERNEL_OPTIONS
+    list(APPEND SYCL_COMPILE_FLAGS
       $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only;-O2>)
   endif()
 
@@ -230,7 +229,7 @@ macro(set_build_flags)
         -Wno-error=unused-but-set-variable
         -Wno-error=uninitialized)
     endif()
-    list(APPEND SYCL_KERNEL_OPTIONS ${SYCL_TARGETS_OPTION})
+    list(APPEND SYCL_COMPILE_FLAGS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
     if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
@@ -254,20 +253,18 @@ macro(set_build_flags)
         string(FIND "${AOT_TARGETS}" "dg2" _dg2_index)
         string(FIND "${AOT_TARGETS}" "ats-m" _atsm_index)
         if(_dg2_index GREATER_EQUAL 0 OR _atsm_index GREATER_EQUAL 0)
-          list(APPEND SYCL_KERNEL_OPTIONS -fsycl-fp64-conv-emu)
+          list(APPEND SYCL_COMPILE_FLAGS -fsycl-fp64-conv-emu)
           list(APPEND SYCL_DEVICE_LINK_FLAGS -fsycl-fp64-conv-emu)
         endif()
       endif()
       set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen,spir64)
-      list(APPEND SYCL_KERNEL_OPTIONS ${SYCL_TARGETS_OPTION})
+      list(APPEND SYCL_COMPILE_FLAGS ${SYCL_TARGETS_OPTION})
       list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
       set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
       set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
     endif()
     message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
   endif()
-
-  list(APPEND SYCL_COMPILE_FLAGS ${SYCL_KERNEL_OPTIONS})
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 endmacro()
