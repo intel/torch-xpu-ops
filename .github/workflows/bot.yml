@@ -195,10 +195,13 @@ jobs:
             } else if (command === 'fix-pr-create') {
               // Optional single positional slug: `fix-pr-create <slug>` opens
               // just that batch sub-item's PR; no arg opens all fixed ones.
-              // Validate against branch-safe charset to prevent injection into
-              // the later `git`/branch-name usage.
-              const slugArg = args.split(/\s+/)[0] || '';
+              // Slugs are always lowercased by the fix job's slug algorithm, so
+              // lowercase the arg before validating — a human who copies a slug
+              // with stray uppercase still selects the right sub-item.
+              const slugArg = (args.split(/\s+/)[0] || '').toLowerCase();
               if (slugArg) {
+                // Validate against branch-safe charset to prevent injection into
+                // the later `git`/branch-name usage.
                 if (!/^[a-z0-9._-]+$/.test(slugArg)) {
                   reject('`fix-pr-create <slug>` slug may only contain [a-z0-9._-].');
                   return;
@@ -1413,6 +1416,15 @@ jobs:
         if: always()
         run: |
           set -uo pipefail
+          command -v jq >/dev/null || { echo "::error::jq not found in the fix container; cannot gate the reviewer verdict"; exit 1; }
+          # The gate deliberately exit-0s in several non-PASS cases (batch,
+          # nothing-to-gate), so downstream steps must NOT infer PASSED from
+          # steps.gate.outcome==success. Emit an explicit verdict instead:
+          #   PASSED  single-bug fix, reviewer verdict PASSED + execution-backed
+          #   BATCH   batch run (per-sub-item status is in gate_status.json)
+          #   NONE    nothing to gate (agent pushed no fix_result)
+          # A hard failure exit-1s and never sets a verdict (outcome=failure).
+          gate_verdict() { echo "verdict=$1" >> "$GITHUB_OUTPUT"; }
           # jq filter: PASSED and backed by >=1 exit-0, >=1 collected, >=1 passed.
           backed() {
             jq -e '.verdict == "PASSED" and ([.commands[]? | select(.exit_code == 0 and (.tests_collected // -1) >= 1 and (.tests_passed // -1) >= 1)] | length >= 1)' "$1" >/dev/null 2>&1
@@ -1425,6 +1437,9 @@ jobs:
             echo "{}" > "$AGENT_SPACE/gate_status.json"
             gated=0
             for slug in $(jq -r '.sub_items[] | select(.outcome == "FIXED") | .slug' "$batch_json"); do
+              # Guard against a malformed slug traversing out of AGENT_SPACE
+              # (mirrors the charset parse-command enforces on the CLI arg).
+              case "$slug" in *[!a-z0-9._-]*|'') echo "skipping malformed slug: '$slug'"; continue;; esac
               rj="$AGENT_SPACE/review_result-$slug.json"
               status="WARNING"
               if [ -f "$rj" ] && backed "$rj"; then
@@ -1443,6 +1458,7 @@ jobs:
             # Per-sub-item failures are non-fatal in batch mode; the diff
             # comment labels each one. The job stays green so fix-pr-create can
             # still open PRs for the sub-items that did pass.
+            gate_verdict BATCH
             exit 0
           fi
 
@@ -1452,6 +1468,7 @@ jobs:
           if [ ! -f "$result_json" ]; then
             echo "no $result_json from the fix agent; nothing to gate (it likely"
             echo "stopped early or errored — 'Verify: AI fix succeeded' handles that)."
+            gate_verdict NONE
             exit 0
           fi
           if [ ! -f "$review_json" ]; then
@@ -1474,6 +1491,7 @@ jobs:
             exit 1
           fi
           echo "reviewer verdict PASSED and execution-backed; gate satisfied"
+          gate_verdict PASSED
 
 
       # Persist both agents' transcripts (thinking + every tool call/result)
@@ -1517,13 +1535,13 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ needs.parse-command.outputs.issue_number }}
           FIX_BRANCH: agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
-          GATE_OUTCOME: ${{ steps.gate.outcome }}
+          GATE_VERDICT: ${{ steps.gate.outputs.verdict }}
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const { execSync } = require('child_process');
+            const { execFileSync } = require('child_process');
             const cwd = process.env.GITHUB_WORKSPACE;
             const owner = context.repo.owner, repo = context.repo.repo;
             const issue = Number(process.env.ISSUE_NUMBER);
@@ -1531,11 +1549,23 @@ jobs:
             const MAX_TOTAL = 60000; // GitHub comment cap is 65536; leave room.
 
             // Diff of one branch vs origin/main, or null if the branch has no
-            // diff / doesn't exist. Fetches lazily.
+            // diff / doesn't exist. Fetches lazily with an explicit refspec:
+            // actions/checkout uses a single-branch refmap, so a bare
+            // `git fetch origin <branch>` only updates FETCH_HEAD and leaves no
+            // refs/remotes/origin/<branch> for the range diff to name. origin/main
+            // already exists locally (checkout uses fetch-depth: 0). execFileSync
+            // (not execSync) so the agent-authored branch name never hits /bin/sh.
             function branchDiff(branch, budget) {
               try {
-                execSync(`git fetch origin ${branch} origin/main`, { cwd });
-                const d = execSync(`git diff origin/main...origin/${branch}`, {
+                execFileSync('git', ['fetch', 'origin',
+                  `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd });
+              } catch (e) {
+                core.info(`no branch ${branch} to diff: ${e.message}`);
+                return null;
+              }
+              try {
+                const d = execFileSync('git',
+                  ['diff', `origin/main...origin/${branch}`], {
                   cwd, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024,
                 });
                 if (!d.trim()) return null;
@@ -1543,7 +1573,7 @@ jobs:
                   ? d.slice(0, budget) + `\n... (truncated; full diff on branch \`${branch}\`)`
                   : d;
               } catch (e) {
-                core.info(`no branch ${branch} to diff: ${e.message}`);
+                core.warning(`failed to diff branch ${branch}: ${e.message}`);
                 return null;
               }
             }
@@ -1608,7 +1638,7 @@ jobs:
             if (!diff) return;
             const body =
               `### Proposed fix on \`${branch}\`\n\n` +
-              gateBlock(process.env.GATE_OUTCOME === 'success') +
+              gateBlock(process.env.GATE_VERDICT === 'PASSED') +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
               '```diff\n' + diff + '\n```';
@@ -1621,7 +1651,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           START_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
-          GATE_OUTCOME: ${{ steps.gate.outcome }}
+          GATE_VERDICT: ${{ steps.gate.outputs.verdict }}
         with:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
@@ -1642,8 +1672,12 @@ jobs:
             // even when the independent reviewer disagreed (or the gate found
             // the reviewer's PASSED verdict wasn't backed by real execution).
             // Flag that mismatch up front so a human does not take the fix
-            // agent's self-report at face value.
-            const gateWarning = process.env.GATE_OUTCOME === 'failure'
+            // agent's self-report at face value. Key off the gate's explicit
+            // verdict, not its step outcome (the gate exit-0s in several
+            // non-PASS cases). Warn on anything that isn't a clean single-bug
+            // PASS, except BATCH (each sub-item is labeled on the diff comment).
+            const verdict = process.env.GATE_VERDICT || '';
+            const gateWarning = (verdict !== 'PASSED' && verdict !== 'BATCH')
               ? `> [!WARNING]\n> Independent review did **not** confirm the pass claimed below. Treat this summary as unverified until a human re-checks. See the [\`fix\` job](${jobUrl}) "Review" and "Verify gate" steps.\n\n`
               : '';
             const footer = `\n\n---\n_Generated by [\`fix\` job](${jobUrl})._`;
@@ -1765,6 +1799,15 @@ jobs:
               });
             }
 
+      # A build-in-the-loop run leaves a full pytorch clone + build tree (tens
+      # of GB, hundreds of thousands of files) under $AGENT_SPACE on this shared
+      # self-hosted runner. Everything worth keeping was already uploaded as an
+      # artifact above and read by the comment steps, so reclaim it now — this
+      # also keeps the chown below from having to walk that tree.
+      - name: Reclaim agent scratch space
+        if: ${{ always() }}
+        run: rm -rf "$AGENT_SPACE" || true
+
       # This privileged container runs as root, so every file it writes into the
       # runner's bind mounts is root-owned (claude-code-action's `bun install`
       # under _actions, tool installs under _tool, step files under _temp, the
@@ -1828,12 +1871,17 @@ jobs:
             branches = branches.filter(b => re.test(b));
 
             // Map a branch to its sub-item slug (batch), or '' (single-bug).
+            // slugOf keeps the branch's `<seq>-<slug>` tail (used for matching);
+            // bareSlugOf strips the leading numeric seq to recover the bare
+            // slug the fix job wrote into batch_summary.json / the comment
+            // markers (`<seq>-<slug>` -> `<slug>`).
             const slugOf = (b) => b === base ? '' : b.slice(base.length + 1);
+            const bareSlugOf = (b) => slugOf(b).replace(/^\d+-/, '');
 
             if (slugArg) {
-              // Open just the one sub-item whose slug matches the arg.
-              branches = branches.filter(b => slugOf(b) === slugArg
-                || slugOf(b).endsWith(`-${slugArg}`));  // tolerate seq prefix
+              // Open just the one sub-item whose bare slug matches the arg
+              // (slugArg is the bare slug a human copied from the comment).
+              branches = branches.filter(b => bareSlugOf(b) === slugArg);
               if (!branches.length) {
                 await github.rest.issues.createComment({ owner, repo, issue_number: issue,
                   body: `No branch for slug \`${slugArg}\` under \`${base}-*\`. Run \`@torchxpubot fix\` first.` });
@@ -1858,17 +1906,18 @@ jobs:
             // diff comment (this run has no access to that run's gate_status),
             // so the PR body doesn't claim "independently re-verified" for a
             // branch the reviewer never confirmed. Batch: the sub-item's
-            // section (per-slug marker -> next marker). Single-bug: the
+            // section (per-bareSlug marker -> next marker). Single-bug: the
             // "Proposed fix on `<branch>`" comment. Returns true only when
-            // that section explicitly shows the PASSED gate note.
-            function gatePassed(branch, slug) {
-              const anchor = slug
-                ? `<!-- agent:fix-summary:issue-${issue}:${slug} -->`
+            // that section explicitly shows the PASSED gate note. `bareSlug`
+            // must be the bare slug (no seq prefix) that keys the markers.
+            function gatePassed(branch, bareSlug) {
+              const anchor = bareSlug
+                ? `<!-- agent:fix-summary:issue-${issue}:${bareSlug} -->`
                 : `Proposed fix on \`${branch}\``;
               const c = comments.slice().reverse().find(x => x.body && x.body.includes(anchor));
               if (!c) return false;
               let section = c.body;
-              if (slug) {
+              if (bareSlug) {
                 const start = section.indexOf(anchor);
                 let end = section.indexOf('<!-- agent:fix-summary:', start + anchor.length);
                 section = section.slice(start, end === -1 ? undefined : end);
@@ -1876,11 +1925,11 @@ jobs:
               return section.includes('Verify gate: PASSED');
             }
 
-            function bodyFor(branch, slug) {
-              const marker = slug
-                ? `<!-- agent:fix-summary:issue-${issue}:${slug} -->`
+            function bodyFor(branch, bareSlug) {
+              const marker = bareSlug
+                ? `<!-- agent:fix-summary:issue-${issue}:${bareSlug} -->`
                 : `<!-- agent:fix-summary:issue-${issue} -->`;
-              const verified = gatePassed(branch, slug);
+              const verified = gatePassed(branch, bareSlug);
               const provenance = verified
                 ? `The fix was built and independently re-verified by the \`fix\` job, and a ` +
                   `human reviewed the diff before this PR was opened;`
@@ -1896,7 +1945,7 @@ jobs:
               // For a grouped batch comment, take just this sub-item's section
               // (from its marker to the next marker or end).
               let text = hit.body;
-              if (slug) {
+              if (bareSlug) {
                 const start = text.indexOf(marker);
                 let end = text.indexOf('<!-- agent:fix-summary:', start + marker.length);
                 text = text.slice(start, end === -1 ? undefined : end);
@@ -1906,19 +1955,20 @@ jobs:
 
             const opened = [], skipped = [];
             for (const branch of branches) {
-              const slug = slugOf(branch);
+              const bareSlug = bareSlugOf(branch);
+              const label = bareSlug || 'fix';
               // Skip if a PR from this head is already open.
               const existing = await github.rest.pulls.list({ owner, repo, head: `${owner}:${branch}`, state: 'open' });
-              if (existing.data.length) { skipped.push(`\`${slug || 'fix'}\` (already open: ${existing.data[0].html_url})`); continue; }
+              if (existing.data.length) { skipped.push(`\`${label}\` (already open: ${existing.data[0].html_url})`); continue; }
               try {
                 const pr = await github.rest.pulls.create({
                   owner, repo, head: branch, base: 'main', draft: true,
-                  title: slug ? `Fix issue #${issue}: ${slug}` : `Fix issue #${issue}`,
-                  body: bodyFor(branch, slug),
+                  title: bareSlug ? `Fix issue #${issue}: ${bareSlug}` : `Fix issue #${issue}`,
+                  body: bodyFor(branch, bareSlug),
                 });
-                opened.push(`\`${slug || 'fix'}\` → ${pr.data.html_url}`);
+                opened.push(`\`${label}\` → ${pr.data.html_url}`);
               } catch (e) {
-                skipped.push(`\`${slug || 'fix'}\` (error: ${e.message})`);
+                skipped.push(`\`${label}\` (error: ${e.message})`);
               }
             }
 
@@ -1927,7 +1977,9 @@ jobs:
             if (skipped.length) lines.push(`Skipped ${skipped.length}:`, ...skipped.map(s => `- ${s}`));
             await github.rest.issues.createComment({ owner, repo, issue_number: issue,
               body: lines.join('\n') || 'Nothing to open.' });
-            if (!opened.length && !skipped.length) core.setFailed('no PRs opened');
+            // #4: all creations may have thrown into `skipped`; fail unless at
+            // least one PR actually opened.
+            if (!opened.length) core.setFailed('no PRs opened');
 
   triage:
     needs: parse-command
