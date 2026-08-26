@@ -26,6 +26,7 @@ from torch.testing._internal.common_cuda import tf32_on_and_off
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
+    onlyCUDA,
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
@@ -942,6 +943,15 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
+TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_float_out_reduced_input
+)
+TestLinalg.test_addmm_out_distinct_c_and_d_is_selected = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_is_selected
+)
+TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32 = onlyCUDA(
+    TestLinalg.test_addmm_out_distinct_c_and_d_not_selected_for_fp32
+)
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings

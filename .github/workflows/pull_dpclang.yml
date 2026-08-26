@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: intel/llvm
-          ref: v7.0.0
+          ref: v7.0.1
           path: intel-llvm
       - name: Install prerequisites
         run: |
@@ -46,11 +46,6 @@ jobs:
           /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
           pip install cmake ninja
           dnf install -y libtool libzstd-devel
-      - name: Patch sources
-        run: |
-          # WA for https://github.com/intel/llvm/issues/22893
-          sed -i '2224,2225d' sycl/source/detail/scheduler/commands.cpp
-        working-directory: ./intel-llvm
       - name: Build intel-llvm
         run: |
           source /opt/rh/gcc-toolset-13/enable
@@ -124,7 +119,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: pvc
+      runner: bmg-test
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}

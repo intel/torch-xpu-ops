@@ -1903,7 +1903,7 @@ Tensor& masked_softmax_forward(
     Tensor& output,
     Tensor& input,
     int dim,
-    const Tensor mask) {
+    const Tensor& mask) {
   auto inner_size = input.stride(dim);
   auto dim_size = input.size(dim);
   auto outer_size = input.numel() / (inner_size * dim_size);
