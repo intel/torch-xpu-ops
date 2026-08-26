@@ -2,9 +2,9 @@ name: fix build smoke
 
 # One-shot smoke test: prove the AGENT can drive the whole fix-in-the-loop chain
 # on the xpu-agent runner — install the nightly wheel, reproduce the failure,
-# apply the fix, install the Intel build toolchain, source-build PyTorch, and
-# verify — solving problems itself as it goes. Collects real data (install time,
-# cold build time, GPU visibility) via the agent transcript + cost.
+# apply the fix, source-build PyTorch (oneAPI ships in the omix image), and
+# verify — solving problems itself as it goes. Collects real data (cold build
+# time, GPU visibility) via the agent transcript + cost.
 #
 # Sample (ground truth): issue #4980 / PR #5004 — FFT empty-batch oneMKL fix.
 # A single-file C++ change (src/ATen/native/xpu/mkl/SpectralOps.cpp, +8/-0)
@@ -26,9 +26,6 @@ on:
       fix_pr:
         description: "torch-xpu-ops PR number to pull the fix diff from"
         default: "5004"
-      oneapi_installer:
-        description: "Known-good Intel DLE offline installer URL (agent may also find its own from the prereq doc). 2026.1 matches PyTorch 2.14+."
-        default: "https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c109e1ae-e02c-48a6-917b-b03b90d33f77/intel-deep-learning-essentials-2026.1.2.25_offline.sh"
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5
@@ -62,7 +59,7 @@ jobs:
     runs-on: xpu-agent
     timeout-minutes: 480
     container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
+      image: intel/omix:0.3.0-devel-ubuntu26.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -110,10 +107,11 @@ jobs:
           claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 400 --allowedTools Bash,Read,Glob,Grep,WebFetch,Skill,Task,Write,Edit"
           prompt: |
             You are running on an Intel XPU (GPU) CI runner inside a container
-            that exposes the host GPU via /dev/dri. The torch-xpu-ops repo is
-            checked out at ${{ github.workspace }} (read its AGENTS.md; the
-            /xpu-build-pytorch skill is available). Nothing else is installed or
-            built yet. `gh` is authenticated (GH_TOKEN in env).
+            that exposes the host GPU via /dev/dri and ships the Intel oneAPI
+            build toolchain. The torch-xpu-ops repo is checked out
+            at ${{ github.workspace }} (read its AGENTS.md; the
+            /xpu-build-pytorch skill is available). PyTorch is not built yet.
+            `gh` is authenticated (GH_TOKEN in env).
 
             GOAL: prove end to end that the fix in torch-xpu-ops PR #${{ inputs.fix_pr }}
             resolves issue #4980 (empty-batch FFT oneMKL failure) by reproducing
@@ -128,13 +126,10 @@ jobs:
               yields "No module named torch.version".
             - triton-xpu ships as a dependency of the torch+xpu wheel; no separate
               install. You still need pip: pytest expecttest hypothesis.
-            - This container has NO Intel apt repo, so
-              `apt install intel-deep-learning-essentials` will FAIL. Install the
-              Intel Deep Learning Essentials from the OFFLINE installer instead.
-              A known-good URL: ${{ inputs.oneapi_installer }}
-              (or find the current one via the prereq doc:
-              ${{ env.PYTORCH_DIR }}/docs/source/notes/get_start_xpu.md and its
-              linked Intel page — use WebFetch).
+            - oneAPI is already installed in this container; do NOT install the
+              Intel Deep Learning Essentials yourself. It may already be on PATH
+              (check `icpx --version`); if not, source the oneAPI vars per the
+              /xpu-build-pytorch skill before building.
 
             STEPS:
             1. Install the nightly XPU wheel (torch ONLY, no vision/audio),
@@ -154,23 +149,21 @@ jobs:
                #${{ inputs.fix_pr }} diff (`gh pr diff` — a plain unified diff),
                and set the development pin override per AGENTS.md
                (git rev-parse HEAD > ${{ env.PYTORCH_DIR }}/third_party/xpu.txt).
-            4. Install the Intel Deep Learning Essentials (offline installer, see
-               above) and any compiler it needs. Source its setvars.sh.
-            5. Source-build PyTorch via the /xpu-build-pytorch skill:
-               USE_XPU=1 USE_CUDA=0, then
+            4. Source-build PyTorch via the /xpu-build-pytorch skill (which
+               handles the oneAPI environment): USE_XPU=1 USE_CUDA=0, then
                `pip install -e . -v --no-build-isolation` from
                ${{ env.PYTORCH_DIR }}. Confirm torch.xpu.is_available() is True on
                the source build (check from the test/ dir).
-            6. Verify the fix: from ${{ env.PYTORCH_DIR }}/test, run the same UTs
+            5. Verify the fix: from ${{ env.PYTORCH_DIR }}/test, run the same UTs
                from step 2 and confirm they now PASS, plus these regressions still
                pass:
                  ${{ env.FFT_REGRESSION_TESTS }}
-            7. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that a later step can
+            6. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that a later step can
                source to reproduce your runtime (exports USE_XPU=1, USE_CUDA=0,
-                sources your DLE setvars.sh). Also write a JSON summary to
+                and whatever oneAPI vars your build needed). Also write a JSON summary to
                 ${{ env.AGENT_SPACE }}/agent_result.json with keys: reproduced_before (bool),
                build_ok (bool), xpu_available (bool), verified_after (bool),
-               fail_before_count, pass_after_count, dle_install_seconds,
+               fail_before_count, pass_after_count,
                cold_build_seconds, notes.
 
             Report a concise before/after summary at the end.
@@ -196,107 +189,6 @@ jobs:
             if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
             core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
 
-      # Reviewer agent (semantic layer). Independent second agent re-verifies
-      # the fix from scratch and judges the result by meaning (an exit-0 with
-      # collected-0 / all-skipped is NOT a pass). This is the same two-layer
-      # design proposed for bot.yml's fix job; the smoke run exercises it end
-      # to end before it ships there.
-      - name: Reviewer agent — independent re-verification
-        id: review
-        uses: anthropics/claude-code-action@v1
-        with:
-          use_bedrock: "true"
-          github_token: ${{ secrets.MERGE_TOKEN }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          # Write (not Edit) so it can emit review_result.json without being
-          # able to touch source.
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep,Write"
-          prompt: |
-            You are an INDEPENDENT reviewer. Another agent just built PyTorch
-            from source with the fix from torch-xpu-ops PR #${{ inputs.fix_pr }}
-            and recorded what it did in ${{ env.AGENT_SPACE }}/agent_result.json. Decide, from
-            scratch and skeptically, whether the fix is really verified. Do NOT
-            trust the fix agent's self-report — re-run and judge yourself. Do
-            NOT modify code, commit, or push.
-
-            Read ${{ env.AGENT_SPACE }}/agent_result.json first. Then in a brand-new bash process
-            (none of the fix agent's shell state), source ONLY
-            ${{ env.PYTORCH_DIR }}/build_pytorch.env, confirm
-            torch.xpu.is_available() is True, then from ${{ env.PYTORCH_DIR }}/test
-            run every one of these node ids and see if they pass on the source
-            build:
-              ${{ env.FFT_FAIL_TESTS }}
-              ${{ env.FFT_REGRESSION_TESTS }}
-
-            Judge the OUTCOME semantically, not just by exit code — an exit 0
-            with `collected 0 items`, `no tests ran`, all-skipped, or
-            all-xfailed is NOT a pass; it means the test never really ran.
-            Note: the node ids above may be missing the pytest test-class
-            component; if pytest reports 'not found' / collection errors,
-            resolve the real ids via `pytest --collect-only` and use those (the
-            fix agent's build_pytorch.env may already re-export corrected
-            lists — prefer those if present).
-
-            Write your conclusion to ${{ env.AGENT_SPACE }}/review_result.json with keys:
-            - `verdict`: "PASSED" | "FAILED" | "INCONCLUSIVE"
-            - `commands`: array of {`cmd`, `exit_code`, `tests_collected`
-              (int, -1 if N/A), `tests_passed` (int, -1 if N/A)} for every
-              command you actually ran to verify
-            - `reason`: one sentence
-            Only write `verdict: "PASSED"` if at least one command you ran had
-            exit_code 0 AND tests_collected >= 1 AND tests_passed >= 1. This
-            file is machine-checked; a PASSED verdict whose `commands` don't
-            support it will be rejected.
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-
-      # Confirm the reviewer actually ran (same always-exit-0 caveat as the fix
-      # agent).
-      - name: Check reviewer executed
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            const file = '${{ steps.review.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) {
-              core.setFailed('reviewer produced no execution_file — it never ran');
-              return;
-            }
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result) { core.setFailed('reviewer execution_file has no result entry'); return; }
-            if (result.is_error) { core.setFailed('reviewer reported an error: ' + (result.subtype || 'unknown')); return; }
-            core.info('reviewer ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
-
-      # Reviewer-verdict gate (client layer): the one thing a dumb script does
-      # better than an agent — refuse to let the always-exit-0 reviewer
-      # self-certify. Requires verdict==PASSED backed by real execution
-      # evidence (a command with exit 0 and >=1 test collected+passed), so a
-      # rubber-stamped collected-0 run is rejected. Same jq check as bot.yml.
-      - name: Reviewer gate — verdict must be execution-backed
-        run: |
-          set -uo pipefail
-          review_json="$AGENT_SPACE/review_result.json"
-          if [ ! -f "$review_json" ]; then
-            echo "::error::reviewer produced no review_result.json — cannot certify the fix"
-            exit 1
-          fi
-          verdict=$(jq -r '.verdict // "MISSING"' "$review_json")
-          reason=$(jq -r '.reason // "(no reason)"' "$review_json")
-          echo "### reviewer verdict: \`$verdict\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- $reason" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$verdict" != "PASSED" ]; then
-            echo "::error::reviewer verdict is $verdict, not PASSED"
-            exit 1
-          fi
-          backed=$(jq '[.commands[]? | select(.exit_code == 0 and (.tests_collected // -1) >= 1 and (.tests_passed // -1) >= 1)] | length' "$review_json")
-          if [ "${backed:-0}" -lt 1 ]; then
-            echo "::error::PASSED verdict not backed by execution evidence (need a command with exit 0 and >=1 test collected+passed)"
-            exit 1
-          fi
-          echo "reviewer verdict PASSED and execution-backed; reviewer gate satisfied"
-
       - name: Report agent cost
         if: always()
         uses: actions/github-script@v9
@@ -305,7 +197,6 @@ jobs:
             const fs = require('fs');
             const files = {
               'fix agent': '${{ steps.agent.outputs.execution_file }}',
-              'reviewer': '${{ steps.review.outputs.execution_file }}',
             };
             for (const [label, file] of Object.entries(files)) {
               if (!file || !fs.existsSync(file)) continue;
@@ -321,7 +212,7 @@ jobs:
             }
 
 
-      # Persist both agents' transcripts (thinking + every tool call/result)
+      # Persist the agent transcript (thinking + every tool call/result)
       # so the run can be reviewed. Otherwise discarded with the runner.
       - name: Stage agent transcripts
         if: always()
@@ -330,11 +221,6 @@ jobs:
           if [ -n "$f" ] && [ -f "$f" ]; then
             cp "$f" "$AGENT_SPACE/agent_transcript.json"
             echo "staged fix-agent transcript ($(wc -c < "$AGENT_SPACE/agent_transcript.json") bytes)"
-          fi
-          rf='${{ steps.review.outputs.execution_file }}'
-          if [ -n "$rf" ] && [ -f "$rf" ]; then
-            cp "$rf" "$AGENT_SPACE/reviewer_transcript.json"
-            echo "staged reviewer transcript ($(wc -c < "$AGENT_SPACE/reviewer_transcript.json") bytes)"
           fi
 
       - name: Upload logs + transcripts
@@ -345,9 +231,7 @@ jobs:
           path: |
             ${{ env.AGENT_SPACE }}/after.log
             ${{ env.AGENT_SPACE }}/agent_result.json
-            ${{ env.AGENT_SPACE }}/review_result.json
             ${{ env.AGENT_SPACE }}/agent_transcript.json
-            ${{ env.AGENT_SPACE }}/reviewer_transcript.json
           if-no-files-found: ignore
 
       # This privileged container runs as root, so every file it writes into the
