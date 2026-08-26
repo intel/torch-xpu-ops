@@ -1304,11 +1304,18 @@ jobs:
             When you have a verified fix, commit it and push it to the branch
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
             (force-push is fine; this exact name is the contract the
-            `fix-pr-create` command relies on to find your branch later). Do
-            not open a pull request: a human reviews the diff posted on the
-            issue and then comments `@torchxpubot fix-pr-create` to open a
-            draft PR from this branch. End by reporting the branch name and
-            your summary.
+            `fix-pr-create` command relies on to find your branch later).
+            Push from the workspace checkout at ${{ github.workspace }}, NOT
+            from the pytorch build tree's `third_party/torch-xpu-ops` clone:
+            only the workspace checkout carries this repo's push credentials
+            (a fresh clone under `${{ env.AGENT_SPACE }}` has none, so a push
+            from there fails or lands empty and `fix-pr-create` then sees "no
+            diff on branch"). Copy the torch-xpu-ops-side changes you verified
+            in the build tree into the workspace checkout, commit them there,
+            and push that. Do not open a pull request: a human reviews the diff
+            posted on the issue and then comments `@torchxpubot fix-pr-create`
+            to open a draft PR from this branch. End by reporting the branch
+            name and your summary.
 
             BATCH ISSUE: if `/issue-handler` classifies this as a `batch-bug`
             (a parent tracking several sub-bugs), it fans out and handles each
@@ -1595,10 +1602,19 @@ jobs:
             const DIFF_MAXBUF = 10 * 1024 * 1024;
             function branchDiff(branch, budget) {
               try {
-                execFileSync('git', ['fetch', 'origin',
-                  `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd });
+                execFileSync('git', ['fetch', '--quiet', 'origin',
+                  `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
+                  { cwd, maxBuffer: DIFF_MAXBUF });
               } catch (e) {
-                core.info(`no branch ${branch} to diff: ${e.message}`);
+                // Distinguish the expected "branch was never pushed" (info)
+                // from a real fetch failure (auth/network) — conflating them
+                // is exactly what hid the origin/main refspec bug for two
+                // iterations.
+                if (/couldn't find remote ref/i.test(e.message || '')) {
+                  core.info(`no branch ${branch} to diff`);
+                } else {
+                  core.warning(`failed to fetch branch ${branch}: ${e.message}`);
+                }
                 return null;
               }
               try {
