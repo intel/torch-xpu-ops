@@ -310,12 +310,18 @@ jobs:
             | \`@torchxpubot file <unit-id>\` | On the alignment triage issue, file one reviewed draft as its own issue (OWNER/MEMBER only) |
             | \`@torchxpubot help\` | Show this help message |
 
-            \`fix\` reproduces the issue on a runner that has a prebuilt nightly
-            PyTorch-XPU wheel and no build tree. Python-level fixes (tests, skip
-            lists, Python operator code) are verified and pushed to an
-            \`agent/<slug>\` branch for a human to turn into a PR. A change to C++
-            or SYCL sources cannot be compiled there, so those are reported as a
-            root cause plus a suggested patch, not as a verified fix.
+            \`fix\` reproduces the issue on an XPU runner. Python-level fixes
+            (tests, skip lists, Python operator code) are verified against the
+            installed nightly wheel; C++/SYCL fixes are source-built in the loop
+            and independently re-verified. Either way the fix is pushed to
+            \`agent/fix-issue-<N>\` and its diff is posted here for review. A
+            **batch** issue (a parent tracking several sub-bugs) fans out: each
+            fixed sub-item lands on its own \`agent/fix-issue-<N>-<seq>-<slug>\`
+            branch, and the diffs are posted in one grouped comment.
+
+            After you review that diff, open a PR from the pushed branch
+            yourself. If the fix also needs a pytorch-side change, the comment
+            includes a patch proposal to apply upstream.
 
             \`fix\` also updates this issue's body with agent status markers and
             applies stage labels while it runs.
@@ -1128,12 +1134,12 @@ jobs:
   fix:
     needs: parse-command
     runs-on: xpu-agent
-    timeout-minutes: 180
+    timeout-minutes: 300
     if: >-
       needs.parse-command.outputs.command == 'fix'
       && needs.parse-command.outputs.authorized == 'true'
     container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
+      image: intel/omix:0.3.0-devel-ubuntu26.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri
@@ -1144,6 +1150,10 @@ jobs:
       GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # AGENTS.md's gitignored scratch dir. Everything the agent produces for
+      # a build-in-the-loop fix (pytorch clone, build tree) lives here instead
+      # of /tmp, so it's all in one already-established, gitignored place.
+      AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
     steps:
       - name: Post starting message
         id: start-comment
@@ -1178,6 +1188,9 @@ jobs:
         with:
           python: '3.10'
 
+      - name: Prepare agent scratch dir
+        run: mkdir -p "$AGENT_SPACE"
+
       - name: Install latest nightly PyTorch-XPU
         run: |
           # Reproduce/verify environment: latest nightly XPU build.
@@ -1198,23 +1211,30 @@ jobs:
             #${{ needs.parse-command.outputs.issue_number }} in ${{ github.repository }}.
             The repository checkout is at ${{ github.workspace }}.
 
-            This runner has a prebuilt nightly PyTorch-XPU wheel installed and no
-            PyTorch source or build tree, so there is no way to recompile
-            libtorch_xpu.so here. That constrains what you may claim:
+            This runner has all oneAPI components installed and GPU access
+            (/dev/dri) with root, so you can build PyTorch from source and
+            verify any fix -- including C++/SYCL kernels. Do build/scratch work
+            under `${{ env.AGENT_SPACE }}` (the gitignored scratch dir from this
+            repo's AGENTS.md):
+            - Python-level changes (test files, skip lists, xpu_test_utils,
+              Python operator code) take effect against the installed nightly
+              wheel immediately -- reproduce, fix, and re-verify normally, no
+              build needed.
+            - A change to C++ or SYCL sources under src/ is NOT reflected by the
+              installed wheel, so you MUST source-build to verify it -- do not
+              hand it off unverified. Following the /issue-handler and
+              /xpu-build-pytorch skills, clone the pytorch repo into
+              `${{ env.AGENT_SPACE }}`, clone THIS workspace checkout into its
+              `third_party/torch-xpu-ops` so the tree you build is the tree you
+              later push, apply your fix, source-build, confirm
+              `torch.xpu.is_available()` is True, and re-run the reproducer from
+              `<pytorch_dir>/test`.
 
-            - Python-level changes (test files, skip lists, xpu_test_utils, Python
-              operator code) take effect immediately. Reproduce, fix, and re-verify
-              them normally.
-            - A change to C++ or SYCL sources under src/ CANNOT be verified on this
-              runner, because the installed wheel still contains the old kernels.
-              Do not run a repro after such an edit and report it as verified. Stop
-              instead, and report the root cause plus the suggested patch for a human
-              to build and verify.
-
-            When you have a verified Python-level fix, commit it to an agent/<slug>
-            branch and push it. Do not open a pull request: per the
-            /xpu-ops-pr-creation skill, a human opens the PR after reviewing your
-            summary. End by reporting the branch name and your summary.
+            When you have a verified fix, commit it and push it to the branch
+            `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
+            (force-push is fine). Do not open a pull request: a human reviews
+            the fix and opens a PR themselves. End by reporting the branch name
+            and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -1323,36 +1343,57 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) return;
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result) return;
-
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner, repo: context.repo.repo,
               run_id: context.runId
             });
             const job = jobs.data.jobs.find(j => j.name === 'fix');
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-
             const date = new Date().toISOString().split('T')[0];
-            const cost = (result.total_cost_usd || 0).toFixed(4);
-            const usage = Object.values(result.modelUsage || {})[0] || {};
-            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
-            const outTok = (usage.outputTokens || 0).toLocaleString();
-            const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
-            });
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (file && fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              if (!result) return;
+              const cost = (result.total_cost_usd || 0).toFixed(4);
+              const usage = Object.values(result.modelUsage || {})[0] || {};
+              const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+              const outTok = (usage.outputTokens || 0).toLocaleString();
+              const status = result.is_error ? 'error' : 'ok';
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: ${{ env.COST_TRACKING_ISSUE }},
+                body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              });
+            }
 
+      # A build-in-the-loop run leaves a full pytorch clone + build tree (tens
+      # of GB, hundreds of thousands of files) under $AGENT_SPACE on this shared
+      # self-hosted runner. The fix was already pushed to its branch and
+      # reported in the issue comment, so reclaim it now — this also keeps the
+      # chown below from having to walk that tree.
+      - name: Reclaim agent scratch space
+        if: ${{ always() }}
+        run: rm -rf "$AGENT_SPACE" || true
+
+      # This privileged container runs as root, so every file it writes into the
+      # runner's bind mounts is root-owned (claude-code-action's `bun install`
+      # under _actions, tool installs under _tool, step files under _temp, the
+      # checked-out repo under _work/<repo>). _actions/_tool/_temp are SEPARATE
+      # bind mounts under /__w, so `chown -R /__w` does not reliably recurse into
+      # them; name each explicitly. If left root-owned, the NEXT job on this
+      # shared self-hosted runner dies in "Prepare workflow directory" (Access
+      # to .../_actions/... denied) before any step runs. The runner admins will
+      # not add a pre-job hook, so each job must hand these back itself. Derive
+      # the runner uid:gid from /__e (the runner's externals, a read-only mount
+      # it owns and never writes to) instead of hardcoding 1000 — the service
+      # user here is not uid 1000.
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
-          chown 1000:1000 /__w /github ./ -R
+          owner="$(stat -c '%u:%g' /__e)"
+          chown -R "$owner" /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
 
   file:
     needs: parse-command
