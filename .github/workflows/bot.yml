@@ -1179,9 +1179,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          # "*" not just the workspace: a source-build fix clones pytorch and
-          # torch-xpu-ops as nested root-owned repos under agent_space_xpu/, and
-          # CMake runs git in third_party/torch-xpu-ops on every build.
+          # "*": a source-build fix makes nested root-owned git repos under agent_space_xpu/ that git would otherwise reject.
           git config --global --add safe.directory "*"
           git config --global user.name "torchxpubot"
           git config --global user.email "torchxpubot@intel.com"
