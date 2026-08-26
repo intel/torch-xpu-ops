@@ -31,6 +31,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
+        INSTALL_PREFIX: ${{ github.workspace }}/_install
         PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
     steps:
@@ -40,21 +41,33 @@ jobs:
           repository: intel/llvm
           ref: v7.0.1
           path: intel-llvm
+      - name: Checkout pti-gpu
+        uses: actions/checkout@v7
+        with:
+          repository: intel/pti-gpu
+          ref: pti-1.0.1
+          path: pti-gpu
       - name: Install prerequisites
         run: |
           rm -rf /tmp/xpu-tool/myvenv
+          rm -rf $INSTALL_PREFIX
           /opt/python/cp314-cp314/bin/python3 -m venv /tmp/xpu-tool/myvenv
           pip install cmake ninja
           dnf install -y libtool libzstd-devel
+          echo "CMAKE_PREFIX_PATH=$INSTALL_PREFIX" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$INSTALL_PREFIX/lib/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$INSTALL_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$INSTALL_PREFIX:$PATH" >> $GITHUB_ENV
+          echo "$INSTALL_PREFIX/bin" >> $GITHUB_PATH
       - name: Build intel-llvm
         run: |
           source /opt/rh/gcc-toolset-13/enable
           # SYCL_UR_FORCE_FETCH_LEVEL_ZERO=ON is required to handle destination
           # test systems with potentially old drivers (i.e. PVC) where dpclang
           # binaries will be installed.
-          cmake -B build -S llvm -G Ninja \
+          cmake -B _build -S llvm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
             -DBUILD_SHARED_LIBS=ON \
             -DLLVM_BUILD_TOOLS=ON \
             -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -80,13 +93,27 @@ jobs:
             -DLLVM_EXTERNAL_XPTIFW_SOURCE_DIR=$(pwd)/xptifw \
             -DSYCL_INCLUDE_TESTS=OFF \
             -DXPTI_ENABLE_WERROR=OFF
-          cmake --build build
-          cmake --install build
+          cmake --build _build
+          cmake --install _build
         working-directory: ./intel-llvm
+      - name: Build pti-gpu
+        env:
+          CC: dpclang
+          CXX: dpclang++
+        run: |
+          source /opt/rh/gcc-toolset-13/enable
+          cmake -B _build -S sdk -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+            -DPTI_BUILD_SAMPLES=OFF \
+            -DPTI_BUILD_TESTING=OFF
+          cmake --build _build
+          cmake --install _build
+        working-directory: ./pti-gpu
       - name: Compress output
         run: |
           # Compressing manually to preserve access permissions for executables
-          tar czvf install-dpclang.tgz -C intel-llvm/install .
+          tar czvf install-dpclang.tgz -C $INSTALL_PREFIX .
       - name: Upload dpclang
         uses: actions/upload-artifact@v7
         with:
