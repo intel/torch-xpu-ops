@@ -1785,45 +1785,68 @@ jobs:
               const other = subs.filter(s => !(s.outcome === 'FIXED' && s.branch));
               if (!fixed.length && !other.length) { core.info('empty batch_summary'); return; }
 
-              // Notes first: they are part of the same budget as the diffs.
-              const notes = {};
-              let notesTotal = 0;
-              for (const s of fixed) {
-                notes[s.slug] = pytorchNoteFor(
-                  `${agentSpace}/fix_result-${s.slug}.json`,
-                  `${agentSpace}/review_result-${s.slug}.json`);
-                notesTotal += notes[s.slug].length;
-              }
-              // Split the remaining diff budget across fixed sub-items.
-              const perBudget = fixed.length
-                ? Math.max(500, Math.floor((MAX_TOTAL - 4000 - notesTotal) / fixed.length))
-                : MAX_TOTAL;
-              let body =
+              // Budget against GitHub's 65536-byte cap. A single comment can't
+              // hold every sub-item when there are many, so paginate across
+              // multiple comments instead of dropping any: assemble
+              // section-by-section, and when the next section wouldn't fit,
+              // post the current comment and start a fresh one. Never cut
+              // inside a section (that would drop its hidden marker and make
+              // fix-pr-create mislabel a PASSED sub-item); fix-pr-create scans
+              // ALL issue comments for markers, so splitting is transparent to
+              // it as long as each section stays whole within one comment. A
+              // per-item note+diff budget keeps any single section < CAP so it
+              // always fits somewhere.
+              const CAP = 65000; // headroom under the hard 65536.
+              const header =
                 `### Batch fix results — issue #${issue}\n\n` +
                 `${fixed.length} sub-item(s) fixed, ${other.length} not. Review each ` +
                 `diff below; comment \`@torchxpubot fix-pr-create\` to open a draft PR ` +
                 `for every fixed sub-item, or \`@torchxpubot fix-pr-create <slug>\` for one.\n\n`;
+              // Cap each section near half the comment so two always fit and no
+              // single section can overflow a comment on its own.
+              const perItem = Math.floor(CAP / 2);
+              const notes = {};
               for (const s of fixed) {
-                const d = branchDiff(s.branch, perBudget);
+                notes[s.slug] = pytorchNoteFor(
+                  `${agentSpace}/fix_result-${s.slug}.json`,
+                  `${agentSpace}/review_result-${s.slug}.json`).slice(0, Math.floor(perItem / 3));
+              }
+
+              const pending = [];               // comment bodies to post, in order
+              let body = header;
+              const flush = () => { if (body) { pending.push(body); body = ''; } };
+              for (const s of fixed) {
+                const diffBudget = Math.max(200, perItem - notes[s.slug].length);
+                const d = branchDiff(s.branch, diffBudget);
                 // Per-section marker so fix-pr-create can recover this
                 // sub-item's summary for its PR body.
-                body += `<!-- agent:fix-summary:issue-${issue}:${s.slug} -->\n`;
-                body += `### \`${s.slug}\` — ${s.branch}\n\n`;
-                body += gateBlock(gateStatus[s.slug]);
-                body += notes[s.slug];
-                if (s.summary) body += `${s.summary}\n\n`;
-                body += d?.diff ? ('```diff\n' + d.diff + '\n```\n\n')
+                let section = `<!-- agent:fix-summary:issue-${issue}:${s.slug} -->\n`;
+                section += `### \`${s.slug}\` — ${s.branch}\n\n`;
+                section += gateBlock(gateStatus[s.slug]);
+                section += notes[s.slug];
+                if (s.summary) section += `${String(s.summary).slice(0, perItem)}\n\n`;
+                section += d?.diff ? ('```diff\n' + d.diff + '\n```\n\n')
                   : d?.note ? (d.note + '\n\n')
                   : '_(no diff on branch)_\n\n';
+                if (body.length + section.length > CAP) flush(); // start a new comment
+                body += section;
               }
+              // "Not fixed" list goes at the end; new comment if it won't fit.
               if (other.length) {
-                body += `### Not fixed\n\n`;
+                let notFixed = `### Not fixed\n\n`;
                 for (const s of other) {
-                  body += `- \`${s.slug}\` — **${s.outcome}**${s.reason ? `: ${s.reason}` : ''}\n`;
+                  notFixed += `- \`${s.slug}\` — **${s.outcome}**${s.reason ? `: ${s.reason}` : ''}\n`;
                 }
+                if (body.length + notFixed.length > CAP) flush();
+                body += notFixed;
               }
-              if (body.length > 65000) body = body.slice(0, 65000) + '\n... (truncated)';
-              await github.rest.issues.createComment({ owner, repo, issue_number: issue, body });
+              flush();
+              // Label each comment when there is more than one.
+              const total = pending.length;
+              for (let i = 0; i < total; i++) {
+                const b = total > 1 ? `_(part ${i + 1}/${total})_\n\n${pending[i]}` : pending[i];
+                await github.rest.issues.createComment({ owner, repo, issue_number: issue, body: b });
+              }
               return;
             }
 
