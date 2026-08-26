@@ -1733,31 +1733,37 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) return;
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result) return;
-
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner, repo: context.repo.repo,
               run_id: context.runId
             });
             const job = jobs.data.jobs.find(j => j.name === 'fix');
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-
             const date = new Date().toISOString().split('T')[0];
-            const cost = (result.total_cost_usd || 0).toFixed(4);
-            const usage = Object.values(result.modelUsage || {})[0] || {};
-            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
-            const outTok = (usage.outputTokens || 0).toLocaleString();
-            const status = result.is_error ? 'error' : 'ok';
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: ${{ env.COST_TRACKING_ISSUE }},
-              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
-            });
+            // Both the fix agent and the independent reviewer are full
+            // claude-code-action runs; report each so the reviewer's spend
+            // (a second from-scratch verify, may rebuild) isn't lost.
+            const agents = [
+              ['fix', '${{ steps.ai-fix.outputs.execution_file }}'],
+              ['review', '${{ steps.review.outputs.execution_file }}'],
+            ];
+            for (const [label, file] of agents) {
+              if (!file || !fs.existsSync(file)) continue;
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const result = data.filter(e => e.type === 'result').pop();
+              if (!result) continue;
+              const cost = (result.total_cost_usd || 0).toFixed(4);
+              const usage = Object.values(result.modelUsage || {})[0] || {};
+              const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+              const outTok = (usage.outputTokens || 0).toLocaleString();
+              const status = result.is_error ? 'error' : 'ok';
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: ${{ env.COST_TRACKING_ISSUE }},
+                body: `\`${date}\` [\`${label}\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+              });
+            }
 
       # This privileged container runs as root, so every file it writes into the
       # runner's bind mounts is root-owned (claude-code-action's `bun install`
@@ -1847,14 +1853,43 @@ jobs:
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issue, per_page: 100,
             });
+
+            // Recover the verify-gate verdict the `fix` job labeled on its
+            // diff comment (this run has no access to that run's gate_status),
+            // so the PR body doesn't claim "independently re-verified" for a
+            // branch the reviewer never confirmed. Batch: the sub-item's
+            // section (per-slug marker -> next marker). Single-bug: the
+            // "Proposed fix on `<branch>`" comment. Returns true only when
+            // that section explicitly shows the PASSED gate note.
+            function gatePassed(branch, slug) {
+              const anchor = slug
+                ? `<!-- agent:fix-summary:issue-${issue}:${slug} -->`
+                : `Proposed fix on \`${branch}\``;
+              const c = comments.slice().reverse().find(x => x.body && x.body.includes(anchor));
+              if (!c) return false;
+              let section = c.body;
+              if (slug) {
+                const start = section.indexOf(anchor);
+                let end = section.indexOf('<!-- agent:fix-summary:', start + anchor.length);
+                section = section.slice(start, end === -1 ? undefined : end);
+              }
+              return section.includes('Verify gate: PASSED');
+            }
+
             function bodyFor(branch, slug) {
               const marker = slug
                 ? `<!-- agent:fix-summary:issue-${issue}:${slug} -->`
                 : `<!-- agent:fix-summary:issue-${issue} -->`;
+              const verified = gatePassed(branch, slug);
+              const provenance = verified
+                ? `The fix was built and independently re-verified by the \`fix\` job, and a ` +
+                  `human reviewed the diff before this PR was opened;`
+                : `The fix was built and self-verified by the \`fix\` job, but the independent ` +
+                  `reviewer did **not** confirm it (see the verify-gate verdict on the issue's ` +
+                  `fix-diff comment); a human reviewed the diff before this PR was opened;`;
               const boilerplate =
                 `\nFixes #${issue}\n\n---\n_Draft PR opened by \`@torchxpubot fix-pr-create\` from the ` +
-                `fix branch \`${branch}\`. The fix was built and independently re-verified by the ` +
-                `\`fix\` job, and a human reviewed the diff before this PR was opened; kept as a ` +
+                `fix branch \`${branch}\`. ${provenance} kept as a ` +
                 `draft for a final check before merge._`;
               const hit = comments.slice().reverse().find(c => c.body && c.body.includes(marker));
               if (!hit) return boilerplate;
