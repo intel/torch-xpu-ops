@@ -1179,7 +1179,10 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global --add safe.directory "${{ github.workspace }}"
+          # "*" not just the workspace: a source-build fix clones pytorch and
+          # torch-xpu-ops as nested root-owned repos under agent_space_xpu/, and
+          # CMake runs git in third_party/torch-xpu-ops on every build.
+          git config --global --add safe.directory "*"
           git config --global user.name "torchxpubot"
           git config --global user.email "torchxpubot@intel.com"
 
