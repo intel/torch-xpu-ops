@@ -62,11 +62,6 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # install gh
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf install -y gh --repo gh-cli
-          gh --version
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
       - name: Install dependencies and driver
@@ -249,8 +244,7 @@ jobs:
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
             # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
-            dnf install -y zlib-devel
+            sudo apt install -y zlib1g-dev
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
@@ -272,7 +266,7 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          rpm -qa |grep -iE 'opencl|libze|libigc|intel-igc|ocloc' || true
+          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc|ocloc'
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v7
