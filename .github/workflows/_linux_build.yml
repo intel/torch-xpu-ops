@@ -48,7 +48,7 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ inputs.runner }}
     container:
-      image: 'ubuntu:24.04'
+      image: 'intel/omix:0.3.0-devel-ubuntu24.04-20260805'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
@@ -76,26 +76,6 @@ jobs:
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100
           update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100
           gcc -v && g++ -v && gcov -v
-
-          # install driver
-          . /etc/os-release
-          if [[ ! " jammy noble " =~ " ${VERSION_CODENAME} " ]]; then
-              echo "Ubuntu version ${VERSION_CODENAME} not supported"
-          else
-              wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
-              sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
-              echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2523 unified" | \
-              sudo tee /etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list
-              sudo apt update
-          fi
-          sudo apt install -y \
-              intel-opencl-icd libze-intel-gpu1 libze1 \
-              intel-media-va-driver-non-free libmfx-gen1 libvpl2 \
-              libegl-mesa0 libegl1-mesa-dev libgbm1 libgl1-mesa-dev libgl1-mesa-dri \
-              libglapi-mesa libgles2-mesa-dev libglx-mesa0 libigdgmm12 libxatracker2 mesa-va-drivers \
-              mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all vainfo hwinfo clinfo
-          sudo apt install -y \
-              libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev libze-dev intel-ocloc xpu-smi
 
           # install oneapi
           rm -rf /opt/intel/oneapi
