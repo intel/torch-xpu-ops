@@ -57,7 +57,7 @@ single-bug pipeline per sub-item, each on its own fix branch:
 triage → [preflight: install nightly wheel once]
        → for each sub-item:
              reset + reproduce
-               ├─ NOT_REPRODUCED → stale (skip-list: mark STALE_SKIP + follow-up)
+               ├─ NOT_REPRODUCED → heterogeneous: ALREADY_FIXED · skip-list: STALE_SKIP (+follow-up)
                └─ REPRODUCED → branch agent/fix-issue-<N>-<seq>-<slug>
                                → root-cause → implement → verify
              (any failure marks the sub-item and continues the batch)
@@ -236,10 +236,12 @@ Entered for `issue_type=batch-bug`. `issue-triage` already set
 `batch_kind`; the two kinds share the entire loop and differ only in how
 a **`NOT_REPRODUCED`** sub-item is labeled (see step 2 below):
 
-- `heterogeneous` — the parent body lists *distinct* sub-bugs.
+- `heterogeneous` — the parent body lists *distinct* sub-bugs. A
+  `NOT_REPRODUCED` entry means that bug is **ALREADY_FIXED** (no longer
+  reproduces); nothing to do.
 - `skip-list` — a `Bug Skip` issue listing *homogeneous* already-skipped
-  tests. A `NOT_REPRODUCED` entry here means the skip decorator is now
-  stale.
+  tests. A `NOT_REPRODUCED` entry means the test now passes, so its skip
+  decorator is now **stale** and should be removed (follow-up).
 
 No child GitHub issues are created. Each sub-item is a checklist entry
 on the parent; its fix lives on a dedicated branch so a human can open
@@ -307,11 +309,15 @@ For each sub-item:
    on the verdict:
    - `REPRODUCED` → continue to step 3; keep its `base` and
      `refined_command`.
-   - `NOT_REPRODUCED` → **stale**: nothing to fix. Record it and go to
-     the next sub-item. If `batch_kind=skip-list`, additionally mark it
-     `STALE_SKIP` and record a **follow-up** to remove the now-obsolete
-     skip decorator — the orchestrator does **not** delete it here (see
-     "Stale skips" below).
+   - `NOT_REPRODUCED` → nothing to fix; record it and go to the next
+     sub-item. The label depends on `batch_kind`:
+     - `heterogeneous` → **ALREADY_FIXED**: the reported bug no longer
+       reproduces on latest nightly (upstream fixed it, or it was flaky).
+       No action needed.
+     - `skip-list` → **STALE_SKIP**: the test now passes, so its skip
+       decorator is obsolete. Record a **follow-up** to remove the
+       decorator — the orchestrator does **not** delete it here (see
+       "Stale skips" below).
    - `NO_REPRODUCER` → **INVALID_ENTRY** (renamed/removed test, or
      malformed). Record, continue.
    - `CANNOT_VERIFY` → **UNVERIFIED** (environmental). Record, continue.
@@ -380,13 +386,16 @@ Base: <torch nightly version or base sha>
 | test_bar_xpu_float32 | FIXED | agent/fix-issue-4321-1-test_bar |
 | test_baz | NEEDS_HUMAN | cross_repo_coordinated |
 | test_qux | NEEDS_HUMAN | attempts_exhausted |
+| test_new | ALREADY_FIXED | no longer reproduces on latest nightly |
 | test_old | STALE_SKIP | follow-up: remove skip decorator |
 | test_gone | INVALID_ENTRY | does not collect |
 
 - **FIXED:** N sub-items — one branch each, ready for a human to open
   a PR.
 - **NEEDS_HUMAN:** M sub-items — see per-sub-item reason.
-- **STALE_SKIP:** K sub-items (skip-list only) — no longer reproduce;
+- **ALREADY_FIXED:** J sub-items (heterogeneous only) — no longer
+  reproduce; the reported bug is resolved, no action needed.
+- **STALE_SKIP:** K sub-items (skip-list only) — the test now passes;
   follow up to remove the obsolete skip decorator.
 - **INVALID_ENTRY / UNVERIFIED:** P sub-items — malformed/renamed, or
   environmental during reproduce.
@@ -394,8 +403,9 @@ Base: <torch nightly version or base sha>
 *Automated by issue-handler.*
 ```
 
-Omit category rows that have no members (a `heterogeneous` batch never
-has `STALE_SKIP`). The `<!-- agent:batch-fanout -->` marker lets a
+Omit category rows that have no members (a `heterogeneous` batch has
+`ALREADY_FIXED` but never `STALE_SKIP`, and vice versa). The
+`<!-- agent:batch-fanout -->` marker lets a
 re-run locate and update this same comment in place. On a re-run
 (Stage 0), only re-process sub-items that are not already `FIXED` on a
 live branch, unless human feedback (Stage 0.2) reopens a specific one.
@@ -427,8 +437,8 @@ re-verification and PR creation without re-parsing the comment:
         "summary": "one-line what/why" },
       { "seq": 2, "slug": "test_baz", "outcome": "NEEDS_HUMAN",
         "branch": null, "reason": "cross_repo_coordinated" },
-      { "seq": 3, "slug": "test_old", "outcome": "STALE_SKIP",
-        "branch": null, "reason": "follow-up: remove skip decorator" }
+      { "seq": 3, "slug": "test_new", "outcome": "ALREADY_FIXED",
+        "branch": null, "reason": "no longer reproduces on latest nightly" }
     ]
   }
   ```
@@ -517,8 +527,8 @@ Always include in the summary:
 - **Files changed** (from Stage 4, if reached).
 - **Verification** (from Stage 5, if reached).
 - For a batch: per-sub-item outcome + branch name (FIXED) or reason
-  (NEEDS_HUMAN / INVALID_ENTRY / UNVERIFIED), plus any `STALE_SKIP`
-  follow-ups when `batch_kind=skip-list`.
+  (NEEDS_HUMAN / ALREADY_FIXED / INVALID_ENTRY / UNVERIFIED), plus any
+  `STALE_SKIP` follow-ups when `batch_kind=skip-list`.
 
 If the outcome is `IMPLEMENTING(fix_verified)`, the invoking
 workflow reads the staged diff (`git -C $target_repo_dir diff
