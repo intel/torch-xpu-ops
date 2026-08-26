@@ -82,11 +82,6 @@ macro(set_build_flags)
       -Wno-dangling-reference
       -Werror=dangling-reference
       -Wno-error=dangling-reference)
-    # Suppress warnings from third-party headers only for the Intel
-    # SYCL/Clang host frontend. Regular host sources are compiled by GCC.
-    list(APPEND SYCL_HOST_FLAGS_ONLY_FOR_SYCL
-      -Wno-logical-op-parentheses
-      -Wno-deprecated-copy-with-user-provided-copy)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
@@ -226,6 +221,16 @@ macro(set_build_flags)
 
   if(REPLACE_FLAGS_FOR_SYCLTLA)
     set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      # Keep third-party SYCL-TLA diagnostics visible without making them
+      # errors in WERROR builds. This flag set is captured only by the
+      # torch-xpu-ops-sycltla target.
+      list(APPEND SYCL_HOST_FLAGS_ONLY_FOR_SYCL
+        -Wno-error=logical-op-parentheses
+        -Wno-error=deprecated-copy-with-user-provided-copy
+        -Wno-error=unused-but-set-variable
+        -Wno-error=uninitialized)
+    endif()
     list(APPEND SYCL_KERNEL_OPTIONS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS ${SYCL_TARGETS_OPTION})
     list(APPEND SYCL_DEVICE_LINK_FLAGS "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")

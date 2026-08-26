@@ -265,7 +265,6 @@ void nll_loss2d_forward_kernel(
        &target_,
        &output,
        &total_weight,
-       &input,
        &target,
        &reduction,
        &ignore_index] {
