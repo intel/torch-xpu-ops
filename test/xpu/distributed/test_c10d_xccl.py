@@ -1809,6 +1809,8 @@ _xpu_skip_cases = {
         "test_nan_assert_float8_e5m2": "https://github.com/intel/torch-xpu-ops/issues/3377",
     },
 }
+
+
 def _apply_xpu_skips(_skip_cases):
     for _cls_name, _cases in _skip_cases.items():
         _cls = globals().get(_cls_name)

@@ -19,9 +19,8 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_optim import TestOptimRenewed
 
-from copy import deepcopy
-
 import unittest
+from copy import deepcopy
 
 import torch
 from torch.testing._internal.common_device_type import TEST_WITH_ROCM
@@ -215,6 +214,8 @@ _xpu_skip_cases = {
         "test_state_dict_with_cuda_params_Muon_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/2837",
     },
 }
+
+
 def _apply_xpu_skips(_skip_cases):
     for _cls_name, _cases in _skip_cases.items():
         _cls = globals().get(_cls_name)

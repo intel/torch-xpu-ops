@@ -31,6 +31,8 @@ _xpu_skip_cases = {
         "test_flip_xpu_float32": "https://github.com/intel/torch-xpu-ops/issues/2722",
     },
 }
+
+
 def _apply_xpu_skips(_skip_cases):
     for _cls_name, _cases in _skip_cases.items():
         _cls = globals().get(_cls_name)

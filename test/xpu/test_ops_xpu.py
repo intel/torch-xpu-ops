@@ -118,6 +118,8 @@ _xpu_skip_cases = {
         "test_neg_view_histogramdd_xpu_float64": "https://github.com/intel/torch-xpu-ops/issues/2249",
     },
 }
+
+
 def _apply_xpu_skips(_skip_cases):
     for _cls_name, _cases in _skip_cases.items():
         _cls = globals().get(_cls_name)
