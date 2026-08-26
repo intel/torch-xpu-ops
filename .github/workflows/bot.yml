@@ -1292,7 +1292,7 @@ jobs:
             only the **torch-xpu-ops-side** part of your fix can be delivered
             automatically. A pytorch-side edit — a change under the pytorch
             checkout that is NOT inside the `third_party/torch-xpu-ops`
-            submodule — cannot be shipped by this flow: it has no branch and
+            clone — cannot be shipped by this flow: it has no branch and
             no PR here. Two exclusions: the `third_party/xpu.txt` pin bump is
             build plumbing (step 1's local-override recipe), NOT part of the
             fix, and neither is anything else you touched only to make the
@@ -1332,8 +1332,8 @@ jobs:
             so any build AFTER the commit would silently check out the stale
             pin and build the UNFIXED tree, making `build_ok: true` attest to
             the wrong code. If you must rebuild after committing, first bump the
-            pin to your commit so the checkout is a no-op:
-            `git -C <pytorch_dir> rev-parse HEAD:third_party/torch-xpu-ops > <pytorch_dir>/third_party/xpu.txt`.
+            pin to your commit per the /xpu-build-pytorch skill's local-override
+            recipe so CMake's checkout becomes a no-op.
             Push the commit, never a hand-copied working tree: re-copying files
             into the workspace checkout risks pushing something you never
             built. Do not open a pull request: a human reviews the diff posted
@@ -1746,7 +1746,7 @@ jobs:
             // 65536 cap makes createComment 422 — i.e. no comment at all,
             // which is worse than a truncated one.
             const NOTE_MAX = 15000;
-            function pytorchNoteFor(frPath, rjPath) {
+            function pytorchNoteFor(frPath, rjPath, maxPatch = NOTE_MAX) {
               let fr = {}, rj = {};
               try { fr = JSON.parse(fs.readFileSync(frPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
               try { rj = JSON.parse(fs.readFileSync(rjPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
@@ -1755,9 +1755,12 @@ jobs:
                 `cannot be delivered from here — the branch above and \`fix-pr-create\` ` +
                 `only cover torch-xpu-ops. Apply the patch proposal below to ` +
                 `pytorch/pytorch yourself; this fix is not complete without it.\n\n`;
+              // Clamp the patch BEFORE fencing so truncation never cuts the
+              // ```diff / <details> block open (the batch caller must not slice
+              // the composed product).
               let patch = fr.notes || '';
-              if (patch.length > NOTE_MAX) {
-                patch = patch.slice(0, NOTE_MAX) +
+              if (patch.length > maxPatch) {
+                patch = patch.slice(0, maxPatch) +
                   `\n... (patch truncated; full text in the run's fix_result artifact)`;
               }
               if (patch) {
@@ -1797,27 +1800,34 @@ jobs:
               // per-item note+diff budget keeps any single section < CAP so it
               // always fits somewhere.
               const CAP = 65000; // headroom under the hard 65536.
+              // Reserve room for each section's fixed chrome (marker, heading,
+              // gateBlock, fences, the "(part i/total)" prefix), then split the
+              // rest three ways — note, diff, summary each get an equal slice —
+              // so note+diff+summary+chrome can never exceed CAP for one
+              // section. (Budgeting only note+diff, with summary a separate
+              // unbudgeted perItem on top, is how a single section overflowed.)
+              const CHROME = 1500;
+              const perItem = Math.floor((CAP - CHROME) / 3);
               const header =
                 `### Batch fix results — issue #${issue}\n\n` +
                 `${fixed.length} sub-item(s) fixed, ${other.length} not. Review each ` +
                 `diff below; comment \`@torchxpubot fix-pr-create\` to open a draft PR ` +
                 `for every fixed sub-item, or \`@torchxpubot fix-pr-create <slug>\` for one.\n\n`;
-              // Cap each section near half the comment so two always fit and no
-              // single section can overflow a comment on its own.
-              const perItem = Math.floor(CAP / 2);
+              // Clamp the patch INSIDE pytorchNoteFor (before fencing) — never
+              // slice the composed block, which would cut the ```diff/<details>
+              // open.
               const notes = {};
               for (const s of fixed) {
                 notes[s.slug] = pytorchNoteFor(
                   `${agentSpace}/fix_result-${s.slug}.json`,
-                  `${agentSpace}/review_result-${s.slug}.json`).slice(0, Math.floor(perItem / 3));
+                  `${agentSpace}/review_result-${s.slug}.json`, perItem);
               }
 
               const pending = [];               // comment bodies to post, in order
               let body = header;
               const flush = () => { if (body) { pending.push(body); body = ''; } };
               for (const s of fixed) {
-                const diffBudget = Math.max(200, perItem - notes[s.slug].length);
-                const d = branchDiff(s.branch, diffBudget);
+                const d = branchDiff(s.branch, perItem);
                 // Per-section marker so fix-pr-create can recover this
                 // sub-item's summary for its PR body.
                 let section = `<!-- agent:fix-summary:issue-${issue}:${s.slug} -->\n`;
@@ -1831,22 +1841,31 @@ jobs:
                 if (body.length + section.length > CAP) flush(); // start a new comment
                 body += section;
               }
-              // "Not fixed" list goes at the end; new comment if it won't fit.
+              // "Not fixed" list, paginated line-by-line so a long list with
+              // long reasons can't 422 as one atomic block.
               if (other.length) {
-                let notFixed = `### Not fixed\n\n`;
+                const heading = `### Not fixed\n\n`;
+                if (body.length + heading.length > CAP) flush();
+                body += heading;
                 for (const s of other) {
-                  notFixed += `- \`${s.slug}\` — **${s.outcome}**${s.reason ? `: ${s.reason}` : ''}\n`;
+                  const line = `- \`${s.slug}\` — **${s.outcome}**${s.reason ? `: ${String(s.reason).slice(0, 500)}` : ''}\n`;
+                  if (body.length + line.length > CAP) { flush(); body += heading; }
+                  body += line;
                 }
-                if (body.length + notFixed.length > CAP) flush();
-                body += notFixed;
               }
               flush();
-              // Label each comment when there is more than one.
+              // Post each comment; don't let one failure abort the rest.
               const total = pending.length;
+              const failed = [];
               for (let i = 0; i < total; i++) {
                 const b = total > 1 ? `_(part ${i + 1}/${total})_\n\n${pending[i]}` : pending[i];
-                await github.rest.issues.createComment({ owner, repo, issue_number: issue, body: b });
+                try {
+                  await github.rest.issues.createComment({ owner, repo, issue_number: issue, body: b });
+                } catch (e) {
+                  failed.push(`part ${i + 1}/${total}: ${e.message}`);
+                }
               }
+              if (failed.length) core.warning(`failed to post ${failed.length}/${total} batch comment(s): ${failed.join('; ')}`);
               return;
             }
 
@@ -1860,14 +1879,19 @@ jobs:
             // or the "Post result comment" step's UNDELIVERABLE warning points
             // at a diff comment that was never posted.
             if (!d && !pytorchNote) return;
-            let body =
-              `### Proposed fix on \`${branch}\`\n\n` +
-              gateBlock(process.env.GATE_VERDICT) +
-              pytorchNote +
-              `Review the diff below. If it looks right, comment ` +
-              `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
-              (d ? (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note)
-                 : '_No torch-xpu-ops changes on the branch — this fix is pytorch-side only (see the patch proposal above)._');
+            let body = d
+              ? `### Proposed fix on \`${branch}\`\n\n` +
+                gateBlock(process.env.GATE_VERDICT) +
+                pytorchNote +
+                `Review the diff below. If it looks right, comment ` +
+                `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
+                (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note)
+              // Pytorch-only: no branch exists, so don't offer fix-pr-create or
+              // name a branch that isn't there (fix-pr-create would no-op).
+              : `### Fix for issue #${issue} (pytorch-side only)\n\n` +
+                gateBlock(process.env.GATE_VERDICT) +
+                pytorchNote +
+                `_This fix has no torch-xpu-ops changes and no branch to open a PR from — apply the pytorch-side patch above upstream._`;
             if (body.length > 65000) body = body.slice(0, 65000) + '\n... (truncated)';
             await github.rest.issues.createComment({
               owner, repo, issue_number: issue, body,
