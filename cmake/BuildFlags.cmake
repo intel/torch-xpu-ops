@@ -80,7 +80,6 @@ macro(set_build_flags)
     list(APPEND SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL
       -Wno-stringop-overflow
       -Wno-dangling-reference
-      -Werror=dangling-reference
       -Wno-error=dangling-reference)
     # Excluding warnings which flood the compilation output
     # TODO: fix warnings in the source code and then reenable them in compilation
