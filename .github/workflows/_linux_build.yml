@@ -68,7 +68,7 @@ jobs:
         run: |
           export GCC_VERSION=13
           apt-get update
-          apt-get install -y gh gcc g++ gcc-${GCC_VERSION} g++-${GCC_VERSION} build-essential cmake ninja-build pkg-config autoconf automake
+          apt-get install -y sudo gh gcc g++ gcc-${GCC_VERSION} g++-${GCC_VERSION} build-essential cmake ninja-build pkg-config autoconf automake
           apt-get install -y python3-dev git zip unzip rsync jq pciutils ca-certificates
           apt-get install wget curl gpg gpg-agent gnupg -y
           gh --version
