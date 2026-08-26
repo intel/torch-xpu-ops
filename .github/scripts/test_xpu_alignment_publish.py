@@ -112,6 +112,29 @@ class PublisherTests(unittest.TestCase):
         create.assert_called_once()
         update.assert_called_once()
 
+    def test_scheduled_candidate_is_filed_when_other_units_are_blocked(self) -> None:
+        post, create, update = self.invoke(
+            {
+                "run_id": "42-1",
+                "scan_date": "2026-08-20",
+                "mode": "schedule",
+                "decision": "file-one",
+                "would_decision": "file-one",
+                "needs_attention": True,
+                "attention_reasons": [],
+                "blockers": ["scan-blocked-result:issue-456:blocked-env"],
+                "payloads": [payload("issue-123")],
+            }
+        )
+
+        self.assertEqual(post.call_count, 2)
+        create.assert_called_once()
+        update.assert_called_once()
+        summary = post.call_args_list[-1].args[2]
+        self.assertIn("published or queued", summary)
+        self.assertIn("blocked units were excluded", summary)
+        self.assertIn("@owner", summary)
+
     def test_scheduled_quiet_day_posts_summary_without_notification(self) -> None:
         post, create, _ = self.invoke(
             {

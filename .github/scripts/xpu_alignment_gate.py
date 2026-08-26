@@ -295,11 +295,11 @@ def _validate_scan(
     runner_path: Path | None,
     executions: dict[str, dict[str, object]],
     results: dict[str, dict[str, object]],
-) -> tuple[Path | None, list[str], list[str]]:
+) -> tuple[Path | None, list[str], list[dict[str, str]], list[str]]:
     errors: list[str] = []
     path = _one(root, "scan.json", "scan", errors)
     if path is None:
-        return None, [], errors
+        return None, [], [], errors
     scan = _read_json(path, "scan", errors)
     if scan.get("schema_version") != SCHEMA_VERSION:
         errors.append("scan-invalid-version")
@@ -311,11 +311,11 @@ def _validate_scan(
         errors.append("scan-prepare-digest-mismatch")
     if runner_path is not None and scan.get("runner_sha256") != _sha256(runner_path):
         errors.append("scan-runner-digest-mismatch")
-    if scan.get("status") != "complete":
-        errors.append(f"scan-not-complete:{scan.get('status', 'missing')}")
+    if scan.get("status") not in {"complete", "incomplete"}:
+        errors.append(f"scan-invalid-status:{scan.get('status', 'missing')}")
     blockers = scan.get("blockers")
-    if not isinstance(blockers, list) or blockers:
-        errors.append("scan-has-blockers")
+    if not isinstance(blockers, list):
+        errors.append("scan-blockers-not-list")
     candidates: dict[str, dict[str, object]] = {}
     raw_candidates = scan.get("candidates")
     if not isinstance(raw_candidates, list):
@@ -332,8 +332,6 @@ def _validate_scan(
             result = candidate.get("local_result")
             if result not in LOCAL_RESULTS:
                 errors.append(f"scan-invalid-result:{unit_id}")
-            if result in BLOCKED_RESULTS:
-                errors.append(f"scan-blocked-result:{unit_id}:{result}")
             runner_result = results.get(unit_id, {})
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
                 if runner_result.get("timed_out") or runner_result.get("error") is not None:
@@ -352,12 +350,50 @@ def _validate_scan(
             candidates[unit_id] = candidate
     if set(candidates) != set(executions):
         errors.append("scan-coverage-mismatch")
+    unit_blockers: list[dict[str, str]] = []
+    if isinstance(blockers, list):
+        for index, blocker in enumerate(blockers):
+            if not isinstance(blocker, dict):
+                errors.append(f"scan-global-blocker:{index}")
+                continue
+            blocker_id = blocker.get("id")
+            blocker_result = blocker.get("local_result")
+            if (
+                not isinstance(blocker_id, str)
+                or blocker_id not in candidates
+                or blocker_result != candidates[blocker_id].get("local_result")
+                or blocker_result not in BLOCKED_RESULTS
+            ):
+                errors.append(f"scan-global-blocker:{blocker_id}")
+                continue
+            evidence = _inside_file(
+                runner_root,
+                blocker.get("evidence"),
+                f"scan-blocker-evidence:{blocker_id}",
+                errors,
+            )
+            expected_log = results.get(blocker_id, {}).get("log")
+            if evidence is not None and blocker.get("evidence") != expected_log:
+                errors.append(f"scan-blocker-evidence-mismatch:{blocker_id}")
+                continue
+            unit_blockers.append(
+                {"id": blocker_id, "local_result": str(blocker_result)}
+            )
+    blocked_candidate_ids = {
+        unit_id
+        for unit_id, candidate in candidates.items()
+        if candidate.get("local_result") in BLOCKED_RESULTS
+    }
+    if scan.get("status") == "incomplete" and not blockers:
+        errors.append("scan-incomplete-without-blockers")
+    if blocked_candidate_ids != {item["id"] for item in unit_blockers}:
+        errors.append("scan-blocker-coverage-mismatch")
     actionable = sorted(
         unit_id
         for unit_id, candidate in candidates.items()
         if candidate.get("local_result") in ACTIONABLE_RESULTS
     )
-    return path, actionable, errors
+    return path, actionable, unit_blockers, errors
 
 
 def _validate_review(
@@ -456,7 +492,7 @@ def build_decision(
     runner_path, results, runner_errors = _validate_runner(
         runner_root, collection_path, prepare_path, executions
     )
-    scan_path, actionable, scan_errors = _validate_scan(
+    scan_path, actionable, unit_blockers, scan_errors = _validate_scan(
         scan_root,
         runner_root,
         collection_path,
@@ -483,7 +519,12 @@ def build_decision(
         if isinstance(collection.get("blockers"), list)
         else []
     )
-    blockers = validation_errors + [str(blocker) for blocker in scope_blockers]
+    global_blockers = validation_errors + [str(blocker) for blocker in scope_blockers]
+    unit_blocker_messages = [
+        f"scan-blocked-result:{item['id']}:{item['local_result']}"
+        for item in unit_blockers
+    ]
+    blockers = global_blockers + unit_blocker_messages
     attention_reasons = []
     if "verification-gap" in verdicts.values():
         attention_reasons.append("review-verification-gap")
@@ -517,6 +558,8 @@ def build_decision(
         "would_decision": would_decision,
         "needs_attention": bool(blockers or attention_reasons),
         "attention_reasons": attention_reasons,
+        "global_blockers": global_blockers,
+        "unit_blockers": unit_blocker_messages,
         "blockers": blockers,
         "collection_status": collection_status,
         "collection_progress": progress,

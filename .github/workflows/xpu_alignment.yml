@@ -84,7 +84,7 @@ jobs:
     outputs:
       scan_date: ${{ needs.collect.outputs.scan_date }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: intelgpu/ubuntu-26.04-rolling:26.18
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: >-
@@ -282,7 +282,10 @@ jobs:
             echo 'Outbound network remains available to xpu-repro' >&2
             exit 1
           fi
-          chmod -R a-w,a+rX alignment-run
+          chmod -R a-w,a+rX alignment-run/prepare.json alignment-run/scripts alignment-run/collection
+          mkdir -p alignment-run/runner alignment-run/torch_compile_debug
+          chmod -R u+rwX alignment-run/runner alignment-run/torch_compile_debug
+          export TORCH_COMPILE_DEBUG_DIR="$PWD/alignment-run/torch_compile_debug"
           python3 .github/scripts/xpu_alignment_runner.py \
             --root alignment-run \
             --prepare prepare.json \
@@ -369,8 +372,11 @@ jobs:
             in scan.json. Read every raw log and classify every validated unit
             from the upstream
             oracle and target-path evidence. A timeout, launch error, environment
-            failure, or inconclusive result must remain a blocked result and make
-            the scan incomplete.
+            failure, or inconclusive result must remain a blocked result for that
+            unit and be recorded in scan.json blockers with id, local_result,
+            detail, and evidence. A complete collection may still publish other
+            reviewed units; only malformed coverage or a producer/artifact
+            failure blocks the entire run.
 
             Write only alignment-run/scan.json and optional scan_report.md. Do
             not modify preparation, scripts, runner files, GitHub, or execute code.
@@ -606,5 +612,9 @@ jobs:
       - name: Report a blocked or incomplete run
         if: steps.decision.outputs.needs_attention == 'true'
         run: |
+          set -euo pipefail
           echo '::error::The alignment run needs attention; see the gate artifact.'
-          exit 1
+          if jq -e '(.global_blockers // []) | length > 0' gate/filing_decision.json >/dev/null; then
+            exit 1
+          fi
+          echo 'Unit-level blockers were isolated; reviewed candidates remain publishable.'

@@ -43,11 +43,19 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("BEDROCK_MODEL: global.anthropic.claude-opus-5", self.text)
         self.assertEqual(self.text.count("--model ${{ env.BEDROCK_MODEL }}"), 3)
 
-    def test_prepare_has_enough_turns_for_the_daily_inventory(self) -> None:
+    def test_agents_have_enough_turns_for_the_daily_inventory(self) -> None:
+        self.assertEqual(self.text.count("--max-turns 300"), 3)
+
+    def test_reproducer_uses_the_bmg_runtime_image(self) -> None:
         prepare = self.text.split("  scan-prepare:", 1)[1].split(
             "  run-reproducers:", 1
         )[0]
-        self.assertIn("--max-turns 300", prepare)
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        self.assertIn("intelgpu/ubuntu-26.04-rolling:26.18", prepare)
+        self.assertIn("intelgpu/ubuntu-26.04-rolling:26.18", runner)
+        self.assertNotIn("intelgpu/ubuntu-24.04-lts2:2523.40", runner)
 
     def test_prepare_restores_runner_access_to_the_claude_action_cache(self) -> None:
         prepare = self.text.split("  scan-prepare:", 1)[1].split(
@@ -95,6 +103,13 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("existing intel/torch-xpu-ops tracker", review)
         self.assertIn("do not create a payload or comment on it", review)
 
+        finalize = self.text.split("  scan-finalize:", 1)[1].split(
+            "  independent-review:", 1
+        )[0]
+        finalize = " ".join(finalize.split())
+        self.assertIn("blocked result for that unit", finalize)
+        self.assertIn("complete collection may still publish other reviewed units", finalize)
+
     def test_untrusted_reproducer_user_has_no_outbound_network(self) -> None:
         runner = self.text.split("  run-reproducers:", 1)[1].split(
             "  scan-finalize:", 1
@@ -104,6 +119,20 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("ip6tables --wait --append OUTPUT", runner)
         self.assertIn('--uid-owner "$repro_uid"', runner)
         self.assertIn("Outbound network remains available to xpu-repro", runner)
+
+    def test_reproducer_freezes_only_immutable_inputs(self) -> None:
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        self.assertIn("alignment-run/prepare.json", runner)
+        self.assertIn("alignment-run/scripts", runner)
+        self.assertIn("alignment-run/collection", runner)
+        self.assertIn("alignment-run/torch_compile_debug", runner)
+        self.assertIn('TORCH_COMPILE_DEBUG_DIR="$PWD/alignment-run/torch_compile_debug"', runner)
+
+    def test_unit_blockers_do_not_fail_the_workflow_report(self) -> None:
+        self.assertIn("(.global_blockers // []) | length > 0", self.text)
+        self.assertIn("reviewed candidates remain publishable", self.text)
 
     def test_reproducer_restores_access_to_its_runner_mounts(self) -> None:
         runner = self.text.split("  run-reproducers:", 1)[1].split(
