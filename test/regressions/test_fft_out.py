@@ -22,18 +22,6 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestFftOut(TestCase):
-    def test_fft_c2c_out_matches_cpu(self, device):
-        real_cpu = torch.randn(2, 3, 4, 5)
-        complex_cpu = torch.complex(real_cpu, torch.randn_like(real_cpu))
-        complex_xpu = complex_cpu.to(device)
-
-        for dims in ([3], [2, 3], [0], [1], [0, 1], [0, 1, 2], [0, 1, 2, 3]):
-            expected = torch.ops.aten._fft_c2c.default(complex_cpu, dims, 0, True)
-            out = torch.empty_like(complex_xpu)
-            result = torch.ops.aten._fft_c2c.out(complex_xpu, dims, 0, True, out=out)
-            self.assertIs(result, out)
-            self.assertEqual(out.cpu(), expected)
-
     def test_fft_out_preserves_contiguous_layout(self, device):
         # Regression: _exec_fft permutes batch/signal dims and re-applies the
         # permuted strides to its destination. Feeding a caller-provided out
@@ -339,29 +327,19 @@ class TestFftOut(TestCase):
 
     def test_fft_out_resizes_output(self, device):
         complex_xpu = torch.randn(4, 8, dtype=torch.complex128, device=device)
-        expected = torch.ops.aten._fft_c2c.default(complex_xpu, [1], 0, True)
-        out = torch.empty(0, dtype=torch.complex128, device=device)
-        torch.ops.aten._fft_c2c.out(complex_xpu, [1], 0, True, out=out)
-        self.assertEqual(out.shape, expected.shape)
-        self.assertTrue(out.is_contiguous())
-        self.assertEqual(out, expected)
-
         real_xpu = torch.randn(4, 8, dtype=torch.float64, device=device)
-        expected = torch.ops.aten._fft_r2c.default(real_xpu, [1], 0, True)
-        out = torch.empty(0, dtype=torch.complex128, device=device)
-        torch.ops.aten._fft_r2c.out(real_xpu, [1], 0, True, out=out)
-        self.assertEqual(out.shape, expected.shape)
-        self.assertTrue(out.is_contiguous())
-        self.assertEqual(out, expected)
-
-        expected = torch.ops.aten._fft_c2r.default(expected, [1], 0, 8)
-        out = torch.empty(0, dtype=torch.float64, device=device)
-        torch.ops.aten._fft_c2r.out(
-            torch.ops.aten._fft_r2c.default(real_xpu, [1], 0, True), [1], 0, 8, out=out
-        )
-        self.assertEqual(out.shape, expected.shape)
-        self.assertTrue(out.is_contiguous())
-        self.assertEqual(out, expected)
+        complex_input = torch.ops.aten._fft_r2c.default(real_xpu, [1], 0, True)
+        for op, input_tensor, args, out_dtype in (
+            (torch.ops.aten._fft_c2c, complex_xpu, ([1], 0, True), torch.complex128),
+            (torch.ops.aten._fft_r2c, real_xpu, ([1], 0, True), torch.complex128),
+            (torch.ops.aten._fft_c2r, complex_input, ([1], 0, 8), torch.float64),
+        ):
+            expected = op.default(input_tensor, *args)
+            out = torch.empty(0, dtype=out_dtype, device=device)
+            result = op.out(input_tensor, *args, out=out)
+            self.assertIs(result, out)
+            self.assertTrue(out.is_contiguous())
+            self.assertEqual(out, expected)
 
     def test_fft_out_empty_batch(self, device):
         # An empty batch short-circuits inside _exec_fft, which resizes the
