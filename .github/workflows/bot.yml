@@ -1326,6 +1326,14 @@ jobs:
                 git fetch <pytorch_dir>/third_party/torch-xpu-ops HEAD
                 git push --force origin FETCH_HEAD:refs/heads/agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
 
+            ORDER MATTERS: build and verify (steps 3-5) BEFORE you commit in
+            that clone. Committing moves its HEAD off the `third_party/xpu.txt`
+            pin, and CMake re-reads that pin and checks it out on every build —
+            so any build AFTER the commit would silently check out the stale
+            pin and build the UNFIXED tree, making `build_ok: true` attest to
+            the wrong code. If you must rebuild after committing, first bump the
+            pin to your commit so the checkout is a no-op:
+            `git -C <pytorch_dir> rev-parse HEAD:third_party/torch-xpu-ops > <pytorch_dir>/third_party/xpu.txt`.
             Push the commit, never a hand-copied working tree: re-copying files
             into the workspace checkout risks pushing something you never
             built. Do not open a pull request: a human reviews the diff posted
@@ -1410,12 +1418,16 @@ jobs:
               from `<pytorch_dir>/test`.
             - Then determine `pytorch_side` YOURSELF, from the build tree
               rather than from the fix agent's claim. Only torch-xpu-ops-side
-              changes can be delivered by this flow, so run
-              `git -C <pytorch_dir> status --porcelain` and treat the fix as
-              pytorch-side if any modified path is outside
+              changes can be delivered by this flow, so inspect BOTH uncommitted
+              and committed edits (the fix agent may have committed in the build
+              tree): union of
+              `git -C <pytorch_dir> status --porcelain` and
+              `git -C <pytorch_dir> diff --name-only $(git -C <pytorch_dir> merge-base HEAD origin/main) HEAD`.
+              Treat the fix as pytorch-side if any changed path is outside
               `third_party/torch-xpu-ops/`, ignoring `third_party/xpu.txt`
               (the local-override pin) and any file changed only to make the
-              build work. Report what you found in `reason` when it is true.
+              build work. When it is pytorch-side, list those paths in
+              `pytorch_side_paths` and say what you found in `reason`.
 
             Judge the OUTCOME semantically, not just by exit code — an exit 0
             with `collected 0 items`, `no tests ran`, all-skipped, or
@@ -1435,6 +1447,9 @@ jobs:
             - `pytorch_side`: bool, your own finding from the recipe above
               (not the fix agent's `pytorch_side`). Omit only if
               `needs_build` is false and there is no build tree to inspect.
+            - `pytorch_side_paths`: array of the pytorch-side file paths you
+              found (only when `pytorch_side` is true); lets the diff comment
+              name them when the fix agent recorded no ready-to-apply patch.
             - `reason`: one sentence
             Only write `verdict: "PASSED"` if at least one command you ran had
             exit_code 0 AND tests_collected >= 1 AND tests_passed >= 1 (or, for
@@ -1721,28 +1736,42 @@ jobs:
             }
 
             // If the fix also needed a pytorch-side edit, it is NOT on the
-            // branch (delivery is torch-xpu-ops-only). Surface that diff from
-            // the fix_result notes so the human can apply it upstream. The
-            // notes are agent-authored and unbounded, so clamp them: they share
-            // the comment's byte budget with the diff, and blowing past
-            // GitHub's 65536 cap makes createComment 422 — i.e. no diff comment
-            // at all, which is worse than a truncated one.
+            // branch (delivery is torch-xpu-ops-only). Present it as a patch
+            // proposal a human can apply upstream: the diff from the fix
+            // agent's notes when it recorded one, otherwise the reviewer's
+            // finding (which files, why) when the reviewer is the layer that
+            // caught it — never promise a diff that isn't there. The notes are
+            // agent-authored and unbounded, so clamp them: they share the
+            // comment's byte budget with the diff, and blowing past GitHub's
+            // 65536 cap makes createComment 422 — i.e. no comment at all,
+            // which is worse than a truncated one.
             const NOTE_MAX = 15000;
             function pytorchNoteFor(frPath, rjPath) {
               let fr = {}, rj = {};
               try { fr = JSON.parse(fs.readFileSync(frPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
               try { rj = JSON.parse(fs.readFileSync(rjPath, 'utf8')); } catch (e) { /* absent / not JSON */ }
               if (!fr.pytorch_side && !rj.pytorch_side) return '';
-              let notes = fr.notes || '';
-              if (notes.length > NOTE_MAX) {
-                notes = notes.slice(0, NOTE_MAX) +
-                  `\n... (notes truncated; full text in the run's fix_result artifact)`;
-              }
-              return `> [!IMPORTANT]\n> This fix also required a **pytorch-side change** that ` +
+              const header = `> [!IMPORTANT]\n> This fix also requires a **pytorch-side change** that ` +
                 `cannot be delivered from here — the branch above and \`fix-pr-create\` ` +
-                `only cover torch-xpu-ops. Apply the pytorch-side diff (below, from the ` +
-                `agent's notes) to pytorch/pytorch yourself before this fix is complete.\n\n` +
-                (notes ? `<details><summary>pytorch-side notes</summary>\n\n${notes}\n\n</details>\n\n` : '');
+                `only cover torch-xpu-ops. Apply the patch proposal below to ` +
+                `pytorch/pytorch yourself; this fix is not complete without it.\n\n`;
+              let patch = fr.notes || '';
+              if (patch.length > NOTE_MAX) {
+                patch = patch.slice(0, NOTE_MAX) +
+                  `\n... (patch truncated; full text in the run's fix_result artifact)`;
+              }
+              if (patch) {
+                return header +
+                  `<details><summary>Proposed pytorch-side patch</summary>\n\n\`\`\`diff\n${patch}\n\`\`\`\n\n</details>\n\n`;
+              }
+              // No diff recorded (the reviewer, not the fix agent, caught the
+              // flag) — surface which files and why instead of an empty promise.
+              const paths = Array.isArray(rj.pytorch_side_paths) ? rj.pytorch_side_paths : [];
+              const detail = (paths.length ? `Affected pytorch-side file(s): ${paths.map(p => `\`${p}\``).join(', ')}. ` : '') +
+                (rj.reason ? `Reviewer note: ${rj.reason}` : '');
+              return header +
+                `_No ready-to-apply diff was recorded; reconstruct the pytorch-side change from the fix branch and the run's fix_result artifact._` +
+                (detail ? `\n\n${detail}\n\n` : '\n\n');
             }
 
             const batchPath = `${agentSpace}/batch_summary.json`;
@@ -1803,14 +1832,19 @@ jobs:
             const pytorchNote = pytorchNoteFor(
               `${agentSpace}/fix_result.json`, `${agentSpace}/review_result.json`);
             const d = branchDiff(branch, Math.max(500, MAX_TOTAL - pytorchNote.length));
-            if (!d) return;
+            // A pytorch-only fix has no torch-xpu-ops branch (d === null) but
+            // still has a patch proposal to deliver — do not drop the comment,
+            // or the "Post result comment" step's UNDELIVERABLE warning points
+            // at a diff comment that was never posted.
+            if (!d && !pytorchNote) return;
             let body =
               `### Proposed fix on \`${branch}\`\n\n` +
               gateBlock(process.env.GATE_VERDICT) +
               pytorchNote +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
-              (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note);
+              (d ? (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note)
+                 : '_No torch-xpu-ops changes on the branch — this fix is pytorch-side only (see the patch proposal above)._');
             if (body.length > 65000) body = body.slice(0, 65000) + '\n... (truncated)';
             await github.rest.issues.createComment({
               owner, repo, issue_number: issue, body,
