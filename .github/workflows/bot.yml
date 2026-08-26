@@ -1355,8 +1355,9 @@ jobs:
           settings: '{"alwaysThinkingEnabled": true}'
           # Write (but not Edit) so it can emit review_result.json without
           # being able to touch source. Read-only on code, write-only on its
-          # own verdict file.
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep,Write"
+          # own verdict file. Skill so it can drive /test-verification for the
+          # reproduce/judge mechanics instead of restating them here.
+          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 80 --allowedTools Bash,Read,Glob,Grep,Write,Skill"
           prompt: |
             You are an INDEPENDENT reviewer. Another agent just fixed issue
             #${{ needs.parse-command.outputs.issue_number }} and recorded what
@@ -1384,13 +1385,16 @@ jobs:
 
             Per-file recipe (apply to each `fix_result*.json` you verify):
 
-            - If `needs_build` is false (Python-only fix): re-run its
-              `refined_command` against the installed nightly wheel yourself.
-            - If `needs_build` is true (source build): in a brand-new bash
-              process (none of the fix agent's shell state), source ONLY
-              `<pytorch_dir>/build_pytorch.env`, confirm
-              `torch.xpu.is_available()` is True, then run `refined_command`
-              from `<pytorch_dir>/test`.
+            - Independently re-verify its `refined_command` with the
+              /test-verification skill (pipeline mode). The skill owns the
+              mechanics: environment activation, running in a clean process,
+              and the semantic pass/fail rules (collected-0 / all-skipped /
+              all-xfailed is NOT a pass). For a source build (`needs_build`
+              true), the command must be run in a brand-new shell that sources
+              ONLY `<pytorch_dir>/build_pytorch.env` (none of the fix agent's
+              session state) from `<pytorch_dir>/test`; take the skill's
+              PASSED/FAILED/CANNOT_VERIFY as your verdict (CANNOT_VERIFY maps to
+              INCONCLUSIVE).
             - Then determine `pytorch_side` YOURSELF, from the build tree
               rather than from the fix agent's claim. Only torch-xpu-ops-side
               changes can be delivered by this flow, so inspect BOTH uncommitted
@@ -1404,13 +1408,8 @@ jobs:
               build work. When it is pytorch-side, list those paths in
               `pytorch_side_paths` and say what you found in `reason`.
 
-            Judge the OUTCOME semantically, not just by exit code — an exit 0
-            with `collected 0 items`, `no tests ran`, all-skipped, or
-            all-xfailed is NOT a pass; it means the test never really ran (or
-            still fails). If `refined_command` is a multi-step or non-pytest
-            reproducer, reason about whether it actually exercised the fixed
-            path and succeeded. If anything is ambiguous or you cannot
-            reproduce the agent's setup, say so rather than rubber-stamping.
+            If you cannot reproduce the agent's setup, say so (INCONCLUSIVE)
+            rather than rubber-stamping.
 
             Write each conclusion (the single `review_result.json`, or one
             `review_result-<slug>.json` per fixed sub-item) with keys:
