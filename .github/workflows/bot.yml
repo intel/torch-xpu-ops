@@ -1369,6 +1369,17 @@ jobs:
               });
             }
 
+      # Keep the agent transcript (thinking + every tool call/result) for
+      # offline review; the execution_file lives in runner temp, not under
+      # AGENT_SPACE, so the reclaim below does not touch it.
+      - name: Upload agent transcript
+        if: always() && steps.ai-fix.outputs.execution_file
+        uses: actions/upload-artifact@v4
+        with:
+          name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
+          path: ${{ steps.ai-fix.outputs.execution_file }}
+          if-no-files-found: ignore
+
       # Reclaim the tens-of-GB build tree before the chown below has to walk it.
       - name: Reclaim agent scratch space
         if: ${{ always() }}
