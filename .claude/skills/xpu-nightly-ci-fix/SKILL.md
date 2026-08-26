@@ -22,7 +22,7 @@ as `issue-handler`; the differences are:
    email / log excerpt), not a single GitHub issue.
 2. Uses a **two-phase sweep-then-fix loop** structurally (the same
    shape as `issue-handler`'s Stage 1u batch fan-out): Phase 1
-   sweeps every failure through `fix-reproduce(stage=nightly)`,
+   sweeps every failure through `fix-reproduce(stage=auto)`,
    Phase 2 deep-fixes STILL_FAILING entries.
 3. Runs `fix-implement` with `allow_skip=true` — a nightly failure
    the agent cannot deep-fix in this run can be skip-listed against
@@ -51,7 +51,7 @@ its own PR-creation path with human review.
 
 ```
 parse report → install nightly wheel once → for entry in failures:
-                                              fix-reproduce(stage=nightly)
+                                              fix-reproduce(stage=auto)
                                                              │
                                                 → sweep summary
                                                              │
@@ -69,7 +69,7 @@ flags differ:
 
 | Leaf | Flag in this orchestrator | Flag in issue-handler |
 |---|---|---|
-| `fix-reproduce` | `stage=nightly` (Phase 1 sweep only; Phase 2 does not call it) | `stage=auto` (single-bug path), `stage=nightly` (skip-list sweep) |
+| `fix-reproduce` | `stage=auto` (Phase 1 sweep only; Phase 2 does not call it) | `stage=nightly` |
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 
 `fix-verify` takes no flags — it always runs the before/after table
@@ -125,9 +125,11 @@ Same rationale as `issue-handler`'s skip-list preflight.
 `fix-reproduce` Stage 1 always issues `pip install --pre --upgrade`
 (it refuses to reuse a stale wheel), so running the upgrade once here
 front-loads the one real install; each per-entry
-`fix-reproduce(stage=nightly)` afterwards issues the same `--upgrade`
-command and pip returns quickly against the already-current
-environment. There is no flag to pass:
+`fix-reproduce(stage=auto)` afterwards issues the same `--upgrade`
+command as its first stage and pip returns quickly against the
+already-current environment (only falling through to source_build /
+ci_env when the nightly wheel does not reproduce). There is no flag to
+pass:
 
 ```bash
 pip3 install --pre --upgrade torch torchvision torchaudio \
@@ -139,14 +141,15 @@ Record the installed nightly version in the final summary.
 
 ## Step 3: Phase 1 — reproduce sweep
 
-For each failing test, call `fix-reproduce` with `stage=nightly` (Stage 1
-only — Phase 1's job is fast triage, not deep verification):
+For each failing test, call `fix-reproduce` with `stage=auto` (full
+three-stage fallback nightly → source_build → ci_env, so a failure that
+only reproduces on a source build is still caught in the sweep):
 
 ```
 for entry in failing_tests:
     result = fix-reproduce(
       reproducer_command=entry,
-      stage=nightly,
+      stage=auto,
       ci_repo=<inferred from entry path>,
     )
     record (entry, result.verdict, result.refined_command, result.reason)

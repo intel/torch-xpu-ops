@@ -70,7 +70,7 @@ sub-item is labeled; the loop is identical.
 | Stage | Leaf skill | Purpose |
 |-------|-----------|---------|
 | 1. Triage | `issue-triage` | Text-only classification: single-bug / batch-bug (+ `batch_kind`) / nonbug, `scope`, `runtime_dependencies`, preliminary verdict |
-| 2. Reproduce | `fix-reproduce` | Verify the failure still reproduces (three-stage fallback: nightly → source_build → ci_env) |
+| 2. Reproduce | `fix-reproduce` | Verify the failure still reproduces against the nightly wheel (`stage=nightly`) |
 | 3. Root cause | `fix-root-cause` | Deep source analysis, `target_repo`, `domain`, `IMPLEMENTING`/`NEEDS_HUMAN` |
 | 4. Implement | `fix-implement` | Edit code, stage the diff (never commit) |
 | 5. Verify | `fix-verify` | Run the refined command against source build, PASSED/FAILED/CANNOT_VERIFY |
@@ -208,7 +208,7 @@ Only for the single-bug path (`issue_type=single-bug`). Call
 
 - `reproducer_command` — extracted by `issue-triage` from the issue
   body.
-- `stage=auto` — full three-stage fallback.
+- `stage=nightly` — reproduce against the nightly wheel.
 - `ci_repo` — inferred from repo (`torch-xpu-ops` for issues on
   intel/torch-xpu-ops, `pytorch` for pytorch/pytorch), or the value
   the bot passes explicitly.
@@ -301,7 +301,7 @@ checkouts per the shared
 For each sub-item:
 
 1. **Reset** both checkouts to the base SHAs (shared recipe).
-2. **Reproduce** (`fix-reproduce`, `stage=auto`). It detaches the
+2. **Reproduce** (`fix-reproduce`, `stage=nightly`). It detaches the
    pytorch tree to its base (`origin/main` or the `ci_commit`
    fallback) and returns that `base` plus a `refined_command`. Branch
    on the verdict:
