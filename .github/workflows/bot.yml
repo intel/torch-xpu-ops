@@ -1368,27 +1368,12 @@ jobs:
               });
             }
 
-      # A build-in-the-loop run leaves a full pytorch clone + build tree (tens
-      # of GB, hundreds of thousands of files) under $AGENT_SPACE on this shared
-      # self-hosted runner. The fix was already pushed to its branch and
-      # reported in the issue comment, so reclaim it now — this also keeps the
-      # chown below from having to walk that tree.
+      # Reclaim the tens-of-GB build tree before the chown below has to walk it.
       - name: Reclaim agent scratch space
         if: ${{ always() }}
         run: rm -rf "$AGENT_SPACE" || true
 
-      # This privileged container runs as root, so every file it writes into the
-      # runner's bind mounts is root-owned (claude-code-action's `bun install`
-      # under _actions, tool installs under _tool, step files under _temp, the
-      # checked-out repo under _work/<repo>). _actions/_tool/_temp are SEPARATE
-      # bind mounts under /__w, so `chown -R /__w` does not reliably recurse into
-      # them; name each explicitly. If left root-owned, the NEXT job on this
-      # shared self-hosted runner dies in "Prepare workflow directory" (Access
-      # to .../_actions/... denied) before any step runs. The runner admins will
-      # not add a pre-job hook, so each job must hand these back itself. Derive
-      # the runner uid:gid from /__e (the runner's externals, a read-only mount
-      # it owns and never writes to) instead of hardcoding 1000 — the service
-      # user here is not uid 1000.
+      # Hand back root-owned files (uid from /__e, not hardcoded) so the next job on this shared runner isn't denied access to its bind mounts.
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
