@@ -1275,14 +1275,27 @@ jobs:
                `refined_command` from `<pytorch_dir>/test`. If it only works
                from your current shell's accumulated state, the file is
                missing something.
-            6. Write `${{ env.AGENT_SPACE }}/fix_result.json` with keys:
+             6. Write `${{ env.AGENT_SPACE }}/fix_result.json` with keys:
                `needs_build` (bool, true here), `build_ok` (bool),
                `xpu_available` (bool), `pytorch_dir` (absolute path),
                `refined_command` (single shell-executable pytest invocation,
                run from `<pytorch_dir>/test`, that must PASS on your build),
-               `notes`. Only write `build_ok: true` after the fresh-shell
-               check from step 5 passes — the reviewer agent replays exactly
-               that.
+               `pytorch_side` (bool, see the delivery boundary below), `notes`.
+               Only write `build_ok: true` after the fresh-shell check from
+               step 5 passes — the reviewer agent replays exactly that.
+
+             DELIVERY BOUNDARY (important): the branch you push and the PR
+             `fix-pr-create` later opens live in ${{ github.repository }}, so
+             only the **torch-xpu-ops-side** part of your fix can be delivered
+             automatically. A pytorch-side edit (a change under the pytorch
+             checkout that is NOT the `third_party/torch-xpu-ops` submodule)
+             cannot be shipped by this flow — it has no branch and no PR here.
+             So: only commit/push the torch-xpu-ops-side changes to the branch.
+             If your fix ALSO required a pytorch-side edit, set
+             `pytorch_side: true` and put that pytorch-side diff verbatim in
+             `notes` (as a ```diff block) so a human can apply it upstream —
+             do NOT drop it. If your fix is torch-xpu-ops-side only (the common
+             case), set `pytorch_side: false`.
 
             For a Python-only fix, still write
             `${{ env.AGENT_SPACE }}/fix_result.json` with `needs_build: false`
@@ -1496,6 +1509,19 @@ jobs:
             echo "::error::PASSED verdict not backed by execution evidence (need a command with exit 0 and >=1 test collected+passed)"
             exit 1
           fi
+          # A fix that also needed a pytorch-side edit cannot be delivered by
+          # this flow (the branch/PR are torch-xpu-ops-only) and both
+          # verification layers replay it in the same local build tree, so a
+          # PASSED here would claim "independently confirmed" about a change we
+          # cannot ship. Downgrade to WARNING and leave the verdict empty so the
+          # diff comment tells the human to apply the pytorch-side diff (in the
+          # fix_result notes) upstream themselves. Non-fatal: the torch-xpu-ops
+          # half is real and reviewable.
+          if [ "$(jq -r '.pytorch_side // false' "$result_json")" = "true" ]; then
+            echo "::warning::fix includes a pytorch-side change that cannot be delivered here; downgrading to WARNING"
+            echo "### fix includes an undeliverable pytorch-side change — see fix_result notes" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           echo "reviewer verdict PASSED and execution-backed; gate satisfied"
           gate_verdict PASSED
 
@@ -1664,9 +1690,25 @@ jobs:
             const branch = process.env.FIX_BRANCH;
             const d = branchDiff(branch, MAX_TOTAL);
             if (!d) return;
+            // If the fix also needed a pytorch-side edit, it is NOT on this
+            // branch (delivery is torch-xpu-ops-only). Surface that diff from
+            // fix_result notes so the human can apply it upstream themselves.
+            let pytorchNote = '';
+            try {
+              const fr = JSON.parse(fs.readFileSync(`${agentSpace}/fix_result.json`, 'utf8'));
+              if (fr.pytorch_side) {
+                pytorchNote =
+                  `> [!IMPORTANT]\n> This fix also required a **pytorch-side change** that ` +
+                  `cannot be delivered from here — the branch above and \`fix-pr-create\` ` +
+                  `only cover torch-xpu-ops. Apply the pytorch-side diff (below, from the ` +
+                  `agent's notes) to pytorch/pytorch yourself before this fix is complete.\n\n` +
+                  (fr.notes ? `<details><summary>pytorch-side notes</summary>\n\n${fr.notes}\n\n</details>\n\n` : '');
+              }
+            } catch (e) { /* no fix_result / not JSON: nothing to surface */ }
             const body =
               `### Proposed fix on \`${branch}\`\n\n` +
               gateBlock(process.env.GATE_VERDICT === 'PASSED') +
+              pytorchNote +
               `Review the diff below. If it looks right, comment ` +
               `\`@torchxpubot fix-pr-create\` on this issue to open a draft PR from this branch.\n\n` +
               (d.diff ? ('```diff\n' + d.diff + '\n```') : d.note);
