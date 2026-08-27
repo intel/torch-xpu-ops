@@ -230,6 +230,14 @@ struct TokenDispatchIshmemKernel {
   int32_t experts_per_rank;
   int32_t num_qps;
   uint64_t tag;
+  // Reproduction toggle for the "many small QPs per destination" perf issue
+  // seen in DeepSymm's LowLatencyDispatchRoleSplitKernelBK: instead of
+  // round-robining each token's put across a small, fixed `num_qps` set
+  // (cheap: few distinct QPs touched per destination), select the QP by the
+  // token's *owning local expert* so a single destination fans out across up
+  // to `experts_per_rank` distinct QPs (same scheme DeepSymm uses:
+  // qp_id = local_expert). This is off by default (round-robin, fast path).
+  bool qp_per_expert;
 
   void operator()(sycl::nd_item<1> item) const {
     const int32_t d = static_cast<int32_t>(item.get_group(0)); // destination
@@ -261,12 +269,20 @@ struct TokenDispatchIshmemKernel {
       const int64_t src_off = static_cast<int64_t>(tok) * token_bytes;
       const int64_t dst_slot = dst_slot_base + j;
       const int64_t dst_off = dst_slot * token_bytes;
+      // Fast path (default): a handful of QPs shared round-robin by lane id.
+      // Repro path (qp_per_expert): one QP per local expert on the
+      // destination, i.e. up to `experts_per_rank` distinct QPs fanned out
+      // to the SAME destination rank -- this is what DeepSymm's BK kernel
+      // does (qp_id = local_expert) and is what makes it slow.
+      const unsigned int qp_id = qp_per_expert
+          ? static_cast<unsigned int>(expert_ids[tok] % experts_per_rank)
+          : static_cast<unsigned int>(lid & (num_qps - 1));
       ishmemx_putmem_nbi_qp(
           static_cast<void*>(symm_recv + dst_off),
           static_cast<const void*>(symm_send + src_off),
           static_cast<size_t>(token_bytes),
           d,
-          static_cast<unsigned int>(lid & (num_qps - 1)));
+          qp_id);
     }
 
     // Ensure all work-group threads have issued their puts before leader
@@ -415,6 +431,11 @@ at::Tensor token_dispatch_ishmem(
   // QPS_PER_PE from env (must be power of 2 for bitmask selection in library)
   const char* qps_env = std::getenv("ISHMEM_IBGDA_QPS_PER_PE");
   const int32_t num_qps = qps_env ? std::max(1, std::atoi(qps_env)) : 2;
+  // Perf-issue repro toggle: TOKEN_DISPATCH_QP_PER_EXPERT=1 switches the QP
+  // selection from round-robin-by-lane (few QPs/destination, fast) to
+  // one-QP-per-local-expert (up to experts_per_rank QPs/destination, slow --
+  // reproduces DeepSymm's LowLatencyDispatchRoleSplitKernelBK behavior).
+  const bool qp_per_expert = env_enabled("TOKEN_DISPATCH_QP_PER_EXPERT");
 
   constexpr int64_t threads = 256;
   const bool time_kernel = kernel_timing_enabled();
@@ -461,7 +482,8 @@ at::Tensor token_dispatch_ishmem(
             static_cast<int32_t>(world_size),
             static_cast<int32_t>(experts_per_rank),
             num_qps,
-            tag});
+            tag,
+            qp_per_expert});
   });
   if (time_kernel) {
     queue.wait();

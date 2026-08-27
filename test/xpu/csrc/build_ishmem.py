@@ -2,16 +2,17 @@
 """
 Build the ISHMEM-based XPU custom ops as shared libraries for Python usage.
 
-This is a focused variant of build.py that ONLY builds the four standalone
-ISHMEM ops:
+This is a focused variant of build.py that ONLY builds the following
+standalone ISHMEM ops:
     - RingAllgatherIshmem.cpp        -> libring_allgather_ishmem.so
     - RingReduceScatterIshmem.cpp    -> libring_reduce_scatter_ishmem.so
     - TokenDispatchIshmem.cpp        -> libtoken_dispatch_ishmem.so
     - TokenDispatchIshmemHier.cpp    -> libtoken_dispatch_ishmem_hier.so
+    - InternodeDispatchRdmaSender.cpp -> libinternode_dispatch_rdma_sender.so
 
 Usage:
-    python build_ishmem.py          # build all four .so outputs
-    python build_ishmem.py clean    # remove the four build artifacts
+    python build_ishmem.py          # build all .so outputs
+    python build_ishmem.py clean    # remove the build artifacts
 """
 
 import os
@@ -22,7 +23,7 @@ import sysconfig
 import torch
 
 
-# The four ISHMEM ops this script owns: (source, output, label).
+# The ISHMEM ops this script owns: (source, output, label).
 ISHMEM_TARGETS = [
     ("RingAllgatherIshmem.cpp", "libring_allgather_ishmem.so", "RingAllgatherIshmem"),
     (
@@ -35,6 +36,11 @@ ISHMEM_TARGETS = [
         "TokenDispatchIshmemHier.cpp",
         "libtoken_dispatch_ishmem_hier.so",
         "TokenDispatchIshmemHier",
+    ),
+    (
+        "InternodeDispatchRdmaSender.cpp",
+        "libinternode_dispatch_rdma_sender.so",
+        "InternodeDispatchRdmaSender",
     ),
 ]
 
@@ -139,6 +145,7 @@ def build_one_ishmem(cfg, ishmem_cfg, src_name, out_name, label):
     cmd = [
         "icpx",
         "-fsycl",
+        "-fsycl-default-sub-group-size=32",
         "-std=c++17",
         "-shared",
         "-fPIC",

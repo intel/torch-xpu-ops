@@ -211,3 +211,60 @@ allgather_with_symm_mem(input_shard, output_tensor=output, group=group)
 | `AllgatherWithSymmMem.cpp` | SYCL kernel 实现 + op 注册 |
 | `build.py` | 编译脚本（icpx） |
 | `allgather_local_permute_fusion.py` | Python 封装（kernel + fallback） |
+
+# LowLatencyDispatchRoleSplitIshmem XPU Kernel
+
+DeepSymm `LowLatencyDispatchRoleSplitKernelBK`（`moe_ep/internode_ll.cpp`）低延迟
+MoE dispatch kernel的简化 reproducer：单个 kernel launch 内把 work-group 分成两种
+角色 —— "expert" WG（每个 WG 独占一个全局 expert id，扫描本 rank 的本地 token，把命中
+的 token 通过 ISHMEM RDMA（`ishmemx_putmem_nbi_work_group_qp`）推送到 expert 所在
+rank 的接收 buffer，再发布完成 flag/count）和 "receiver" WG（每个本 rank 拥有的
+local expert 一个，等待所有 source rank 的完成 flag 后，把到达的 token gather 进
+`packed_recv_x` / `packed_recv_src_info`，并记录 DeepEP 风格的 `(count, begin)`
+layout range）。省略了生产 kernel 的 mask buffer / fp8 cast / cumulative stats /
+NVLink+RDMA 分层等附加特性，只保留 role-split + RDMA + on-device 完成信号这一核心
+模式，便于单独做功能验证和性能测试。
+
+注册为 `torch.ops.symm_mem.low_latency_dispatch_role_split_ishmem`。
+
+## 前置条件
+
+- Intel oneAPI 工具链（`icpx` 编译器）+ ISHMEM（设置 `ISHMEM_HOME`/`ISHMEM_ROOT`）
+- PyTorch（已安装且支持 XPU），多张 XPU 设备 + RDMA 网卡（NIC 间可互通）
+- MPI（用于 ISHMEM 的 host bootstrap）
+
+## 构建
+
+```bash
+cd test/xpu/csrc
+python build.py
+```
+
+生成 `liblow_latency_dispatch_role_split_ishmem.so`。
+
+## 运行测试（功能正确性 + 性能）
+
+```bash
+cd test/xpu/distributed
+./test_low_latency_dispatch_role_split_ishmem.sh
+# 或者手动：
+mpirun -np 4 --prepend-rank python test_low_latency_dispatch_role_split_ishmem.py
+```
+
+测试用例校验 `packed_recv_x` / `packed_recv_src_info` / `packed_recv_count` /
+`packed_recv_layout_range` 与 python 端按相同 role-split 语义重放的参考实现完全一致，
+随后在 timed loop 中测量端到端延迟，并（默认开启 `ENABLE_PROFILE=1`）用
+`torch.profiler` 抓取 chrome trace，从 trace 中提取纯 kernel 耗时计算
+GB/s/PE 带宽。
+
+主要环境变量：`TOKENS_PER_RANK` (128)、`HIDDEN_SIZE` (2048)、`TOPK` (8)、
+`NUM_EXPERTS` (32)、`CAPACITY_MULT` (4)、`LOOP` (40)、`WARMUP` (20)。
+
+## 文件说明
+
+| 文件 | 说明 |
+|------|------|
+| `LowLatencyDispatchRoleSplitIshmem.cpp` | SYCL + ISHMEM kernel 实现 + op 注册 |
+| `build.py` | 编译脚本（icpx + ISHMEM 静态库） |
+| `../distributed/test_low_latency_dispatch_role_split_ishmem.py` | 正确性 + 性能 UT |
+| `../distributed/test_low_latency_dispatch_role_split_ishmem.sh` | mpirun 启动脚本 |

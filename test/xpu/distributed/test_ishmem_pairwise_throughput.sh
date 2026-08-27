@@ -5,8 +5,9 @@ cd "$(dirname "$0")"
 
 # --- Runtime environment ----------------------------------------------------
 # Source Intel oneAPI (compiler/MPI/ISHMEM/MKL) and select the conda env whose
-# torch the prebuilt libring_allgather_ishmem.so was linked against (hanchao).
-# setvars.sh references unbound vars, so relax `set -u` only around the source.
+# torch the prebuilt libinternode_dispatch_rdma_sender.so was linked against
+# (hanchao). setvars.sh references unbound vars, so relax `set -u` only around
+# the source.
 set +u
 source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1
 set -u
@@ -33,9 +34,9 @@ export ISHMEM_IBGDA_BAR_BACKEND=igub
 export ISHMEM_IB_TRAFFIC_CLASS="${ISHMEM_IB_TRAFFIC_CLASS:-96}"
 export I_MPI_FABRICS=shm
 export ISHMEM_DEBUG=0
-# Print per-PE debug lines from RingAllgatherIshmem.cpp (ring launch/finalize
-# steps) so a hang can be localized to a specific rank/step.
-export RING_ALLGATHER_ISHMEM_DEBUG=1
+# Print per-PE debug lines from InternodeDispatchRdmaSender.cpp (launch/
+# finalize steps) so a hang can be localized to a specific rank/step.
+export INTERNODE_DISPATCH_RDMA_SENDER_DEBUG=1
 
 RING_WORLD_SIZE="${RING_WORLD_SIZE:-4}"
 #GPU_IDS=(0 1 2 3 4 5 6 7)
@@ -48,6 +49,13 @@ NIC_IDS=(0 2 4 6)
 
 if (( RING_WORLD_SIZE < 2 || RING_WORLD_SIZE > ${#GPU_IDS[@]} )); then
   echo "RING_WORLD_SIZE must be in [2, ${#GPU_IDS[@]}], got ${RING_WORLD_SIZE}" >&2
+  exit 1
+fi
+
+# internode_dispatch_rdma_sender groups ranks into nodes of NUM_MAX_NVL_PEERS=2
+# (baked into InternodeDispatchRdmaSender.cpp), so world_size must be even.
+if (( RING_WORLD_SIZE % 2 != 0 )); then
+  echo "RING_WORLD_SIZE must be even (NUM_MAX_NVL_PEERS=2), got ${RING_WORLD_SIZE}" >&2
   exit 1
 fi
 
@@ -80,10 +88,11 @@ for ((rank = 0; rank < RING_WORLD_SIZE; ++rank)); do
 done
 
 # The extension statically links libishmem.a, so relink whenever the library,
-# public headers, build helper, or ring source is newer than the existing .so.
+# public headers, build helper, or the sender source is newer than the
+# existing .so.
 ISHMEM_HOME="${ISHMEM_HOME:-/opt/intel/ishmem_ibgda}"
-ring_so=../csrc/libring_allgather_ishmem.so
-ring_src=../csrc/RingAllgatherIshmem.cpp
+sender_so=../csrc/libinternode_dispatch_rdma_sender.so
+sender_src=../csrc/InternodeDispatchRdmaSender.cpp
 build_helper=../csrc/build.py
 ishmem_static="${ISHMEM_HOME%/}/lib/libishmem.a"
 ishmem_include="${ISHMEM_HOME%/}/include"
@@ -93,16 +102,16 @@ if [[ ! -f "$ishmem_static" || ! -d "$ishmem_include" ]]; then
   exit 1
 fi
 
-rebuild_ring=0
-if [[ ! -f "$ring_so" || "$ring_src" -nt "$ring_so" ||
-      "$build_helper" -nt "$ring_so" || "$ishmem_static" -nt "$ring_so" ]]; then
-  rebuild_ring=1
-elif [[ -n "$(find "$ishmem_include" -type f -newer "$ring_so" -print -quit)" ]]; then
-  rebuild_ring=1
+rebuild_sender=0
+if [[ ! -f "$sender_so" || "$sender_src" -nt "$sender_so" ||
+      "$build_helper" -nt "$sender_so" || "$ishmem_static" -nt "$sender_so" ]]; then
+  rebuild_sender=1
+elif [[ -n "$(find "$ishmem_include" -type f -newer "$sender_so" -print -quit)" ]]; then
+  rebuild_sender=1
 fi
 
-if (( rebuild_ring )); then
-  echo "[test_ishmem] rebuilding libring_allgather_ishmem.so from ${ISHMEM_HOME}"
+if (( rebuild_sender )); then
+  echo "[test_ishmem] rebuilding libinternode_dispatch_rdma_sender.so from ${ISHMEM_HOME}"
   ( cd ../csrc && ISHMEM_HOME="$ISHMEM_HOME" python - <<'PY'
 import build
 cfg = build.get_build_config()
@@ -110,9 +119,9 @@ ishmem_cfg = build.get_ishmem_config()
 build.build_one_ishmem(
     cfg,
     ishmem_cfg,
-    "RingAllgatherIshmem.cpp",
-    "libring_allgather_ishmem.so",
-    "RingAllgatherIshmem",
+    "InternodeDispatchRdmaSender.cpp",
+    "libinternode_dispatch_rdma_sender.so",
+    "InternodeDispatchRdmaSender",
 )
 PY
   )
@@ -127,8 +136,7 @@ mpirun -np "${RING_WORLD_SIZE}" --prepend-rank bash -c '
   nic_ids=($RING_NIC_IDS)
   export ZE_AFFINITY_MASK=${gpu_ids[PMI_RANK]}
   export ISHMEM_IBGDA_NIC=mlx5_${nic_ids[PMI_RANK]}
-  exec python test_token_dispatch_ishmem_hier.py
-
+  exec python test_internode_dispatch_rdma_sender.py
 
 # test_token_dispatch_ishmem_hier.py
 
