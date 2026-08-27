@@ -555,7 +555,7 @@ void _sparse_binary_op_intersection_kernel_impl(
         ? (*source_indices_hash_opt).contiguous()
         : at::empty({0}, probably_coalesced._indices().options().dtype(kLong));
     const auto* RESTRICT hash_ptr = source_indices_hash_opt.has_value()
-        ? hash.data_ptr<int64_t>()
+        ? hash.const_data_ptr<int64_t>()
         : nullptr;
 
     auto iter = TensorIteratorConfig()

@@ -33,7 +33,9 @@ jobs:
               echo "runner_name=${RUNNER_NAME}"
               echo "runner_os=${RUNNER_OS}"
               echo "runner_arch=${RUNNER_ARCH}"
+              cat /etc/os-release
               uname -a
+              id
           - name: git-and-gh-tools
             run: |
               git --version

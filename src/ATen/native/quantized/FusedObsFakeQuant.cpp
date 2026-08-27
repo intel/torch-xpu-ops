@@ -92,11 +92,16 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
         per_row_fq);
   }
 
-  float* scale_ptr = scale.data_ptr<float>();
-  int32_t* zp_ptr = zero_point.data_ptr<int32_t>();
+  at::Tensor scale_for_qparams =
+      scale.scalar_type() == at::kFloat ? scale : scale.to(at::kFloat);
+  at::Tensor zero_point_for_qparams = zero_point.scalar_type() == at::kInt
+      ? zero_point
+      : zero_point.to(at::kInt);
+
+  float* scale_ptr = scale_for_qparams.data_ptr<float>();
+  int32_t* zp_ptr = zero_point_for_qparams.data_ptr<int32_t>();
 
   native::xpu::_calc_moving_avg_qparams_helper(
-      x_contig,
       fake_quant_on.to(at::kLong),
       running_min,
       running_max,
@@ -108,23 +113,47 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
       size,
       per_row_fq);
 
+  if (!scale_for_qparams.is_same(scale)) {
+    scale.copy_(scale_for_qparams);
+  }
+  if (!zero_point_for_qparams.is_same(zero_point)) {
+    zero_point.copy_(zero_point_for_qparams);
+  }
+
+  const bool needs_double_fallback = x.scalar_type() == at::kDouble;
+  const at::Tensor x_for_fake_quant =
+      needs_double_fallback ? x.to(at::kFloat) : x;
+
+  std::tuple<at::Tensor, at::Tensor> out;
+
   if (per_row_fq) {
     if (fake_quant_on.item().toInt()) {
-      return at::fake_quantize_per_channel_affine_cachemask(
-          x, scale, zero_point, 0, quant_min, quant_max);
+      out = at::fake_quantize_per_channel_affine_cachemask(
+          x_for_fake_quant,
+          scale_for_qparams,
+          zero_point_for_qparams,
+          0,
+          quant_min,
+          quant_max);
     } else {
       auto mask = at::ones_like(x, at::kBool, MemoryFormat::Preserve);
-      return std::make_tuple(x.clone(), mask);
+      out = std::make_tuple(x.clone(), mask);
     }
   } else {
-    return at::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        x,
-        scale,
-        zero_point,
+    out = at::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        x_for_fake_quant,
+        scale_for_qparams,
+        zero_point_for_qparams,
         fake_quant_on.to(at::kLong),
         quant_min,
         quant_max);
   }
+
+  if (needs_double_fallback) {
+    return std::make_tuple(
+        std::get<0>(out).to(x.scalar_type()), std::move(std::get<1>(out)));
+  }
+  return out;
 }
 
 } // namespace native

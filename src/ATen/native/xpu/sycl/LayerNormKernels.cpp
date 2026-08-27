@@ -27,7 +27,8 @@ namespace native {
 namespace xpu {
 
 template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
-class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
+class LayerNormBackward
+    : public NormBackward<scalar_t, mean_t, weight_t, rms_norm> {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   LayerNormBackward() = delete;
@@ -40,7 +41,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       const weight_t* gamma_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -50,9 +51,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             nullptr,
             nullptr),
         M(M),
-        N(N) {
-    numel = M * N;
-  }
+        N(N) {}
 
   LayerNormBackward(
       const scalar_t* X_data,
@@ -65,7 +64,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       accscalar_t* b_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -76,7 +75,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  using NB = NormBackward<scalar_t, mean_t, weight_t>;
+  using NB = NormBackward<scalar_t, mean_t, weight_t, rms_norm>;
 
   template <
       int vec_size,
@@ -188,7 +187,6 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
   int64_t M;
   int64_t N;
-  int64_t numel;
 };
 
 // we could make it dependent on dtype, but that would lead to different results
@@ -1162,9 +1160,10 @@ void layer_norm_backward_kernel_impl(
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      Tensor a = at::empty({M}, X.options().dtype(kAccType));
+      Tensor a =
+          rms_norm ? Tensor() : at::empty({M}, X.options().dtype(kAccType));
+      accscalar_t* a_data = rms_norm ? nullptr : a.data_ptr<accscalar_t>();
       Tensor b = at::empty({M}, X.options().dtype(kAccType));
-      accscalar_t* a_data = a.data_ptr<accscalar_t>();
       accscalar_t* b_data = b.data_ptr<accscalar_t>();
 
       LayerNormBackward<scalar_t, mean_t, weight_t, rms_norm> norm(
@@ -1179,8 +1178,7 @@ void layer_norm_backward_kernel_impl(
           M,
           N);
       Tensor semaphores, scratchpad;
-      config.template init_global_reduce<accscalar_t>(
-          X, semaphores, scratchpad);
+      config.template init_global_reduce<rms_norm>(X, semaphores, scratchpad);
       rowwise_moments_kernel<
           scalar_t,
           mean_t,
