@@ -610,7 +610,7 @@ struct InternodeDispatchRdmaSenderKernel {
       // send_data for remote, or directly into recv_data for local) are
       // visible work-group-wide before lane 0 publishes completion; the
       // subsequent release store then makes them visible device-wide.
-      item.barrier(sycl::access::fence_space::global_and_local_space);
+      item.barrier(sycl::access::fence_space::global_and_local);
 
       // Declare this team done copying `rd` -- but, unlike before, do NOT
       // block here waiting for the OTHER teams to also finish. The

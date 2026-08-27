@@ -48,7 +48,7 @@ NUM_MAX_NVL_PEERS = 2
 NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 16))
 HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 1024))
 TOPK = int(os.environ.get("TOPK", 8))
-EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 8))
+EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 32))
 num_max_tokens_per_rank = int(os.environ.get("NUM_MAX_TOKENS_PER_RANK", 32))
 SEED = int(os.environ.get("SEED", 1234))
 ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "1") != "0"
@@ -146,6 +146,7 @@ def main():
         torch.rand(NUM_TOKENS, num_experts, device=device)
         .argsort(dim=1)[:, :TOPK]
         .to(torch.int64)
+        .contiguous()
     )
     topk_weights = torch.rand(NUM_TOKENS, TOPK, device=device, dtype=torch.float32)
     dest_rank = topk_idx // EXPERTS_PER_RANK
