@@ -233,7 +233,16 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
+        # Land the environment and the exact shas under test in ut_log so they
+        # ride along in the UT artifact; ut_auto_issue.py reads them to render
+        # the issue body and to build baseline..current compare links.
+        mkdir -p "${{ github.workspace }}/ut_log"
+        python pytorch/torch/utils/collect_env.py |tee "${{ github.workspace }}/ut_log/collect_env.log"
+        # collect_env only carries an abbreviated torch sha and no torch-xpu-ops sha.
+        printf 'torch=%s\ntorch_xpu_ops=%s\n' \
+          "${TORCH_COMMIT_ID}" \
+          "$(git -C pytorch/third_party/torch-xpu-ops rev-parse HEAD 2>/dev/null || echo unknown)" \
+          > "${{ github.workspace }}/ut_log/versions.txt"
         uv pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then

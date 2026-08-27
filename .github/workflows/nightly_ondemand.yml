@@ -169,6 +169,25 @@ jobs:
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
+  Linux-Nightly-Ondemand-UT-Auto-Issue:
+    name: linux-ut-auto-issue
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-UT-Tests]
+    # Not success(): the UT job fails whenever there are new failures, which is
+    # precisely when this needs to run.
+    if: >-
+      ${{ !cancelled() && github.event_name == 'schedule'
+          && needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' }}
+    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_ut_auto_issue.yml
+    with:
+      run_id: ${{ github.run_id }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      dry_run: ${{ vars.UT_AUTO_ISSUE_ENABLED != 'true' }}
+
   Linux-Nightly-Ondemand-E2E-Tests:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
