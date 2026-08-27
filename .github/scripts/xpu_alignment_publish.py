@@ -26,12 +26,10 @@ from alignment_triage import (
     filed_body,
     find_draft,
     has_run_note,
-    has_diagnostic_unit,
     has_unit,
     list_comments,
     post_comment,
     render_draft,
-    render_diagnostic_draft,
     render_run_note,
     parse_draft,
     update_comment,
@@ -44,33 +42,8 @@ def run_note(
     """What a human must be told about this run, if anything."""
     lines: list[str] = []
     mode = decision.get("mode", "schedule")
-    diagnostic = decision.get("decision") in {"diagnostic", "dry-run-diagnostic"}
-    if diagnostic:
-        lines.append(
-            "Collection was incomplete. These candidates are diagnostic only and cannot be filed."
-        )
-        progress = decision.get("collection_progress") or {}
-        if isinstance(progress, dict):
-            for source, state in sorted(progress.items()):
-                if not isinstance(state, dict):
-                    continue
-                lines.append(
-                    f"- `{source}`: {state.get('pages_completed', 0)} page(s), "
-                    f"{state.get('items_fetched', 0)} item(s), status "
-                    f"`{state.get('status', 'unknown')}`; last cursor "
-                    f"`{state.get('last_cursor') or 'none'}`"
-                )
-                if state.get("error"):
-                    lines.append(f"  - error: `{state['error']}`")
-                if state.get("rate_reset_at"):
-                    lines.append(f"  - rate reset: `{state['rate_reset_at']}`")
-        if payloads:
-            lines.append("")
-            lines += [
-                f"- diagnostic `{payload['unit_id']}` — {payload['title']}"
-                for payload in payloads
-            ]
-    elif mode == "dry-run":
+    partial = decision.get("collection_status") == "partial"
+    if mode == "dry-run":
         would = decision.get("would_decision", "blocked")
         lines.append(
             f"Dry run completed with `{would}` and {len(payloads)} review-approved candidate(s)."
@@ -93,14 +66,42 @@ def run_note(
         lines.append("")
         lines.append("Approve them one at a time with `@torchxpubot file <unit-id>`.")
 
+    if partial:
+        if lines:
+            lines.append("")
+        lines.append(
+            "Collection was incomplete; reviewed candidates from the observed inventory "
+            + (
+                "were emitted as dry-run drafts."
+                if mode == "dry-run"
+                else "were still published or queued."
+            )
+            if payloads
+            else "Collection was incomplete and produced no review-approved candidates."
+        )
+        progress = decision.get("collection_progress") or []
+        if isinstance(progress, list):
+            for state in progress:
+                if not isinstance(state, dict):
+                    continue
+                lines.append(
+                    f"- `{state.get('source', 'unknown')}`: "
+                    f"{state.get('pages_completed', 0)} page(s), "
+                    f"{state.get('items_fetched', 0)} item(s), status "
+                    f"`{state.get('status', 'unknown')}`; last cursor "
+                    f"`{state.get('last_cursor') or 'none'}`"
+                )
+                error = state.get("error")
+                if isinstance(error, dict) and error.get("message"):
+                    lines.append(f"  - error: `{error['message']}`")
+                if state.get("rate_reset_at"):
+                    lines.append(f"  - rate reset: `{state['rate_reset_at']}`")
+
     if decision.get("needs_attention"):
         reasons: list[str] = []
         attention = decision.get("attention_reasons") or []
         if attention:
             reasons.append("scan state: " + ", ".join(f"`{item}`" for item in attention))
-        pending = decision.get("pending_units") or []
-        if pending:
-            reasons.append(f"{len(pending)} candidate(s) never ran, so the day is unfinished")
         blockers = decision.get("blockers") or []
         if blockers:
             shown = ", ".join(f"`{blocker}`" for blocker in blockers[:5])
@@ -112,9 +113,7 @@ def run_note(
         lines.append("")
         lines += [f"- {reason}" for reason in reasons]
         lines.append("")
-        if diagnostic:
-            lines.append("No formal conclusion or issue was published; see the gate artifact.")
-        elif filed or payloads:
+        if filed or payloads:
             lines.append(
                 "Reviewed candidates were published or queued; blocked units were excluded."
             )
@@ -123,9 +122,9 @@ def run_note(
 
     if not lines:
         lines.append("The scheduled scan completed with 0 review-approved candidates.")
-    if decision.get("decision") == "dry-run-diagnostic":
+    if partial and mode == "dry-run":
         headline = "[DRY RUN][INCOMPLETE SCAN] XPU alignment run"
-    elif decision.get("decision") == "diagnostic":
+    elif partial:
         headline = "[INCOMPLETE SCAN] XPU alignment run"
     elif mode == "dry-run":
         headline = "[DRY RUN] XPU alignment run"
@@ -155,7 +154,7 @@ def main() -> int:
 
     decision = json.loads(args.decision.read_text(encoding="utf-8"))
     if not isinstance(decision, dict) or decision.get("schema_version") != 1:
-        fail("The publishing decision is not an XPU alignment v1 artifact.")
+        fail("The publishing decision is not an XPU alignment artifact.")
     verdict = decision["decision"]
     if verdict not in {
         "none",
@@ -163,18 +162,13 @@ def main() -> int:
         "triage",
         "blocked",
         "dry-run",
-        "diagnostic",
-        "dry-run-diagnostic",
     }:
         fail(f"Unknown publishing decision: {verdict}")
     mode = decision.get("mode", "schedule")
     if mode not in {"schedule", "dry-run"}:
         fail(f"Unknown publishing mode: {mode}")
-    if (mode == "dry-run") != (verdict in {"dry-run", "dry-run-diagnostic"}):
+    if (mode == "dry-run") != (verdict == "dry-run"):
         fail("Dry-run mode and decision do not agree.")
-    diagnostic = verdict in {"diagnostic", "dry-run-diagnostic"}
-    if diagnostic and decision.get("collection_status") != "partial":
-        fail("Diagnostic publishing requires a partial collection.")
     run_id = str(decision.get("run_id", ""))
     scan_date = str(decision.get("scan_date", ""))
     # A blocked gate carries no payloads, so this loop is what keeps its
@@ -191,21 +185,6 @@ def main() -> int:
     filed: list[tuple[str, str]] = []
     for payload in payloads:
         unit_id = payload["unit_id"]
-        if diagnostic:
-            if mode == "schedule" and has_diagnostic_unit(existing, scan_date, unit_id):
-                print(f"Skipping diagnostic {unit_id}: already present on #{args.triage_issue}.")
-                continue
-            draft = render_diagnostic_draft(
-                unit_id,
-                payload["title"],
-                payload["body"],
-                run_id,
-                scan_date,
-                dry_run=mode == "dry-run",
-            )
-            post_comment(args.repo, args.triage_issue, draft)
-            print(f"Posted diagnostic draft for {unit_id} on #{args.triage_issue}")
-            continue
         if mode == "schedule" and has_unit(existing, unit_id):
             if verdict == "file-one":
                 comment = find_draft(existing, unit_id)

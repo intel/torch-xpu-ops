@@ -152,6 +152,15 @@ class AlignmentArtifacts:
             "collection_sha256": digest(collection_path),
             "prepare_sha256": digest(prepare_path),
             "status": "complete",
+            "environment": {
+                "python_executable": "/usr/bin/python3",
+                "python_version": "3.13.7",
+                "torch_version": "2.9.0.dev20260820+xpu",
+                "torch_path": "/opt/torch/__init__.py",
+                "xpu_available": True,
+                "xpu_device_name": None,
+                "environment_warnings": ["device name unavailable"],
+            },
             "results": results,
         }
         runner_path = self.runner_root / "runner/results.json"
@@ -164,7 +173,7 @@ class AlignmentArtifacts:
             "collection_status": collection["status"],
             "prepare_sha256": digest(prepare_path),
             "runner_sha256": digest(runner_path),
-            "environment": {"xpu_available": True},
+            "environment": runner["environment"],
             "candidates": candidates,
             "blockers": [],
         }
@@ -271,25 +280,44 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["payloads"], [])
         self.assertEqual(decision["unit_verdicts"], {"issue-123": "duplicate"})
 
-    def test_partial_collection_returns_diagnostic_payloads(self) -> None:
+    def test_partial_collection_files_one_fully_reviewed_candidate(self) -> None:
         paths = self.artifacts.write()
         self.artifacts.make_partial(paths)
 
         decision = self.decision()
 
-        self.assertEqual(decision["decision"], "diagnostic")
+        self.assertEqual(decision["decision"], "file-one")
         self.assertEqual(decision["payloads"][0]["unit_id"], "issue-123")
         self.assertEqual(decision["collection_status"], "partial")
         self.assertIn("issues-created:rate-limit", decision["blockers"])
 
-    def test_partial_dry_run_returns_a_diagnostic_decision(self) -> None:
+    def test_partial_dry_run_uses_the_normal_dry_run_decision(self) -> None:
         paths = self.artifacts.write()
         self.artifacts.make_partial(paths)
 
         decision = self.decision(mode="dry-run")
 
-        self.assertEqual(decision["decision"], "dry-run-diagnostic")
-        self.assertEqual(decision["would_decision"], "diagnostic")
+        self.assertEqual(decision["decision"], "dry-run")
+        self.assertEqual(decision["would_decision"], "file-one")
+
+    def test_partial_collection_without_payloads_reports_no_candidate(self) -> None:
+        paths = self.artifacts.write([])
+        self.artifacts.make_partial(paths)
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "none")
+        self.assertEqual(decision["payloads"], [])
+        self.assertTrue(decision["needs_attention"])
+
+    def test_partial_collection_with_multiple_payloads_uses_human_triage(self) -> None:
+        paths = self.artifacts.write(["issue-123", "issue-456"])
+        self.artifacts.make_partial(paths)
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "triage")
+        self.assertEqual(decision["actionable_units"], ["issue-123", "issue-456"])
 
     def test_inventory_count_mismatch_blocks_publishing(self) -> None:
         paths = self.artifacts.write()
@@ -343,6 +371,17 @@ class AlignmentGateTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "blocked")
         self.assertIn("runner-log-digest-mismatch:issue-123", decision["blockers"])
 
+    def test_scan_must_copy_the_exact_runner_environment(self) -> None:
+        paths = self.artifacts.write()
+        scan = json.loads(paths["scan"].read_text())
+        scan["environment"]["torch_path"] = "/different/torch/__init__.py"
+        paths["scan"].write_text(json.dumps(scan) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertIn("scan-environment-mismatch", decision["blockers"])
+
     def test_prepare_timeout_above_the_contract_limit_blocks_publishing(self) -> None:
         paths = self.artifacts.write()
         prepare = json.loads(paths["prepare"].read_text())
@@ -391,6 +430,20 @@ class AlignmentGateTests(unittest.TestCase):
 
         self.assertEqual(decision["decision"], "blocked")
         self.assertIn("review-coverage-mismatch", decision["blockers"])
+
+    def test_incomplete_prepare_coverage_blocks_all_partial_results(self) -> None:
+        paths = self.artifacts.write(["issue-123", "issue-456"])
+        self.artifacts.make_partial(paths)
+        prepare = json.loads(paths["prepare"].read_text())
+        prepare["decisions"] = prepare["decisions"][:1]
+        prepare["executions"] = prepare["executions"][:1]
+        paths["prepare"].write_text(json.dumps(prepare) + "\n")
+
+        decision = self.decision()
+
+        self.assertEqual(decision["decision"], "blocked")
+        self.assertEqual(decision["payloads"], [])
+        self.assertIn("decision-coverage-mismatch", decision["global_blockers"])
 
     def test_failed_producer_blocks_all_candidate_publishing(self) -> None:
         self.artifacts.write()

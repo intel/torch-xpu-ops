@@ -11,7 +11,24 @@ from pathlib import Path
 from unittest import mock
 
 from xpu_alignment_collect import collect
-from xpu_alignment_runner import PlanError, _identity, load_prepare, run_plan
+from xpu_alignment_runner import (
+    PlanError,
+    _identity,
+    load_prepare,
+    probe_environment,
+    run_plan,
+)
+
+
+TEST_ENVIRONMENT = {
+    "python_executable": "/usr/bin/python3",
+    "python_version": "3.13.7",
+    "torch_version": "2.9.0.dev20260820+xpu",
+    "torch_path": "/opt/torch/__init__.py",
+    "xpu_available": True,
+    "xpu_device_name": None,
+    "environment_warnings": ["xpu device name unavailable: test fixture"],
+}
 
 
 def sha256(path: Path) -> str:
@@ -107,13 +124,72 @@ class RunnerTests(unittest.TestCase):
             prepare = write_prepare(root, [("issue-123", "print('repro ran')\n")])
 
             entries = load_prepare(root, prepare)
-            result = run_plan(root, Path(sys.executable), prepare, entries)
+            result = run_plan(
+                root,
+                Path(sys.executable),
+                prepare,
+                entries,
+                environment=TEST_ENVIRONMENT,
+            )
 
             row = result["results"][0]
             self.assertEqual(row["returncode"], 0)
             self.assertFalse(row["timed_out"])
             self.assertEqual(row["script_sha256"], sha256(root / "scripts/repro_issue-123.py"))
             self.assertIn("repro ran", (root / row["log"]).read_text())
+            self.assertEqual(result["environment"], TEST_ENVIRONMENT)
+
+    def test_environment_probe_requires_xpu_but_keeps_optional_warnings(self) -> None:
+        completed = mock.Mock(
+            returncode=0,
+            stdout=(
+                json.dumps(
+                    {
+                        **TEST_ENVIRONMENT,
+                        "xpu_available": False,
+                        "environment_warnings": ["torch path unavailable"],
+                    }
+                )
+                + "\n"
+            ),
+            stderr="",
+        )
+        with (
+            mock.patch.dict(os.environ, {"GH_TOKEN": "secret"}),
+            mock.patch(
+                "xpu_alignment_runner.subprocess.run", return_value=completed
+            ) as run,
+        ):
+            with self.assertRaisesRegex(PlanError, "XPU is unavailable"):
+                probe_environment(Path(sys.executable))
+
+        self.assertNotIn("GH_TOKEN", run.call_args.kwargs["env"])
+        self.assertIn("TORCH_COMPILE_DEBUG_DIR", run.call_args.kwargs["env"])
+
+    def test_each_reproducer_has_one_writable_scratch_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = (
+                "import os,pathlib\n"
+                "paths = [os.getcwd(), os.environ['HOME'], os.environ['TMPDIR'], "
+                "os.environ['TORCH_COMPILE_DEBUG_DIR']]\n"
+                "print('\\n'.join(paths))\n"
+                "[pathlib.Path(path).joinpath('write-test').write_text('ok') for path in paths]\n"
+            )
+            prepare = write_prepare(root, [("issue-123", source)])
+
+            result = run_plan(
+                root,
+                Path(sys.executable),
+                prepare,
+                load_prepare(root, prepare),
+                environment=TEST_ENVIRONMENT,
+            )
+
+            paths = (root / result["results"][0]["log"]).read_text().splitlines()
+            self.assertEqual(paths[0], paths[1])
+            self.assertEqual(paths[0], paths[2])
+            self.assertEqual(Path(paths[3]).parent, Path(paths[0]))
 
     def test_reproducer_cannot_read_agent_or_github_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -140,7 +216,13 @@ class RunnerTests(unittest.TestCase):
                     "ANTHROPIC_API_KEY": "model-secret",
                 },
             ):
-                result = run_plan(root, Path(sys.executable), prepare, entries)
+                result = run_plan(
+                    root,
+                    Path(sys.executable),
+                    prepare,
+                    entries,
+                    environment=TEST_ENVIRONMENT,
+                )
 
             log = (root / result["results"][0]["log"]).read_text()
             self.assertIn("None\nNone\nNone", log)
@@ -155,7 +237,13 @@ class RunnerTests(unittest.TestCase):
                 "print('tampered')\n", encoding="utf-8"
             )
 
-            result = run_plan(root, Path(sys.executable), prepare, entries)
+            result = run_plan(
+                root,
+                Path(sys.executable),
+                prepare,
+                entries,
+                environment=TEST_ENVIRONMENT,
+            )
 
             row = result["results"][0]
             self.assertIn("changed", row["error"])
@@ -181,6 +269,7 @@ class RunnerTests(unittest.TestCase):
                 Path(sys.executable),
                 prepare,
                 load_prepare(root, prepare),
+                environment=TEST_ENVIRONMENT,
             )
 
             self.assertTrue(result["results"][0]["timed_out"])
@@ -205,7 +294,13 @@ class RunnerTests(unittest.TestCase):
             )
             prepare = write_prepare(root, [("issue-123", source)])
 
-            run_plan(root, Path(sys.executable), prepare, load_prepare(root, prepare))
+            run_plan(
+                root,
+                Path(sys.executable),
+                prepare,
+                load_prepare(root, prepare),
+                environment=TEST_ENVIRONMENT,
+            )
             time.sleep(0.8)
 
             self.assertFalse(marker.exists())
@@ -244,10 +339,10 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanError, "complete"):
                 load_prepare(root, prepare)
 
-    def test_accepts_partial_collection_for_diagnostic_execution(self) -> None:
+    def test_accepts_partial_collection_for_reviewable_execution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            prepare = write_prepare(root, [("issue-123", "print('diagnostic')\n")])
+            prepare = write_prepare(root, [("issue-123", "print('reviewable')\n")])
             collection_path = root / "collection/collection.json"
             collection = json.loads(collection_path.read_text())
             collection["status"] = "partial"

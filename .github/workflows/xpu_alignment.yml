@@ -177,18 +177,23 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Restore runner access to the cached Claude action
+      - name: Restore runner access after XPU preparation
         if: always()
         run: |
           set -euo pipefail
-          actions_root=/__w/_actions
-          claude_action_root="$actions_root/anthropics/claude-code-action"
-          if [[ ! -d "$claude_action_root" ]]; then
-            exit 0
-          fi
-          runner_owner="$(stat --format='%u:%g' "$actions_root")"
-          chown --recursive --no-dereference "$runner_owner" "$claude_action_root"
-          chmod --recursive u+rwX "$claude_action_root"
+          runner_owner="$(stat --format='%u:%g' /__e)"
+          for target in \
+            "$GITHUB_WORKSPACE" \
+            /__w/_actions \
+            /__w/_tool \
+            /__w/_temp \
+            /github; do
+            if [[ ! -e "$target" ]]; then
+              continue
+            fi
+            chown --recursive --no-dereference "$runner_owner" "$target"
+            chmod --recursive u+rwX "$target"
+          done
 
   run-reproducers:
     name: Run immutable reproducers without agent credentials
@@ -231,14 +236,6 @@ jobs:
           python3 -m pip install --upgrade pip wheel setuptools
           python3 -m pip install --pre torch torchvision torchaudio \
             --index-url https://download.pytorch.org/whl/nightly/xpu
-          python3 - <<'PY'
-          import torch
-          print(torch.__version__)
-          if not torch.xpu.is_available():
-              raise SystemExit('XPU is not available on the runner')
-          print(torch.xpu.device_count())
-          print(torch.xpu.get_device_name(0))
-          PY
 
       - name: Execute as an unprivileged credential-free user
         run: |
@@ -283,9 +280,8 @@ jobs:
             exit 1
           fi
           chmod -R a-w,a+rX alignment-run/prepare.json alignment-run/scripts alignment-run/collection
-          mkdir -p alignment-run/runner alignment-run/torch_compile_debug
-          chmod -R u+rwX alignment-run/runner alignment-run/torch_compile_debug
-          export TORCH_COMPILE_DEBUG_DIR="$PWD/alignment-run/torch_compile_debug"
+          mkdir -p alignment-run/runner
+          chmod -R u+rwX alignment-run/runner
           python3 .github/scripts/xpu_alignment_runner.py \
             --root alignment-run \
             --prepare prepare.json \
@@ -369,14 +365,14 @@ jobs:
 
             Verify prepare and runner digests and exact execution coverage.
             Preserve the original collection digest and complete/partial status
-            in scan.json. Read every raw log and classify every validated unit
-            from the upstream
+            in scan.json, and copy its environment object exactly into scan.json.
+            Read every raw log and classify every validated unit from the upstream
             oracle and target-path evidence. A timeout, launch error, environment
             failure, or inconclusive result must remain a blocked result for that
             unit and be recorded in scan.json blockers with id, local_result,
-            detail, and evidence. A complete collection may still publish other
-            reviewed units; only malformed coverage or a producer/artifact
-            failure blocks the entire run.
+            detail, and evidence. A unit blocker may still allow other reviewed
+            units to publish; only malformed coverage or a producer/artifact
+            failure blocks every unit.
 
             Write only alignment-run/scan.json and optional scan_report.md. Do
             not modify preparation, scripts, runner files, GitHub, or execute code.
@@ -614,7 +610,8 @@ jobs:
         run: |
           set -euo pipefail
           echo '::error::The alignment run needs attention; see the gate artifact.'
-          if jq -e '(.global_blockers // []) | length > 0' gate/filing_decision.json >/dev/null; then
+          if jq -e '((.global_blockers // []) | length > 0) or (.collection_status == "partial")' \
+            gate/filing_decision.json >/dev/null; then
             exit 1
           fi
           echo 'Unit-level blockers were isolated; reviewed candidates remain publishable.'

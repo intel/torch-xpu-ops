@@ -609,7 +609,7 @@ def validate_collection(
     except (OSError, json.JSONDecodeError) as error:
         raise CollectionError(f"collection manifest is unreadable: {error}") from error
     if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
-        raise CollectionError("collection manifest is not a v1 object")
+        raise CollectionError("collection manifest uses an unsupported schema")
     status = manifest.get("status")
     if status not in {"complete", "partial"}:
         raise CollectionError("collection status is invalid")

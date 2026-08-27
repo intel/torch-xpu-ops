@@ -5,7 +5,6 @@ from unittest import mock
 import alignment_triage
 
 from alignment_triage import (
-    DIAGNOSTIC_UNIT_MARKER,
     DRY_RUN_UNIT_MARKER,
     UNIT_MARKER,
     filed_body,
@@ -14,7 +13,6 @@ from alignment_triage import (
     has_unit,
     parse_draft,
     render_draft,
-    render_diagnostic_draft,
     render_run_note,
 )
 from xpu_alignment_publish import run_note
@@ -64,20 +62,6 @@ class DraftLookupTests(unittest.TestCase):
         self.assertIn(DRY_RUN_UNIT_MARKER.format(run_id="12345", unit_id="candidate-1"), body)
         with self.assertRaises(SystemExit):
             find_draft([{"id": 1, "body": body}], "candidate-1")
-
-    def test_diagnostic_draft_cannot_be_filed(self) -> None:
-        body = render_diagnostic_draft(
-            "candidate-1", TITLE, "Details.", "12345", "2026-08-18"
-        )
-        self.assertIn(
-            DIAGNOSTIC_UNIT_MARKER.format(
-                scan_date="2026-08-18", unit_id="candidate-1"
-            ),
-            body,
-        )
-        with self.assertRaises(SystemExit):
-            find_draft([{"id": 1, "body": body}], "candidate-1")
-
 
 class DraftParsingTests(unittest.TestCase):
     def test_splits_title_and_body(self) -> None:

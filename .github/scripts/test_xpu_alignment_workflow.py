@@ -57,16 +57,23 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("intelgpu/ubuntu-26.04-rolling:26.18", runner)
         self.assertNotIn("intelgpu/ubuntu-24.04-lts2:2523.40", runner)
 
-    def test_prepare_restores_runner_access_to_the_claude_action_cache(self) -> None:
+    def test_prepare_restores_access_to_its_runner_mounts(self) -> None:
         prepare = self.text.split("  scan-prepare:", 1)[1].split(
             "  run-reproducers:", 1
         )[0]
         cleanup = prepare.split(
-            "- name: Restore runner access to the cached Claude action", 1
+            "- name: Restore runner access after XPU preparation", 1
         )[1]
         self.assertIn("if: always()", cleanup)
-        self.assertIn("/__w/_actions", cleanup)
-        self.assertIn("anthropics/claude-code-action", cleanup)
+        self.assertIn("stat --format='%u:%g' /__e", cleanup)
+        for target in (
+            '"$GITHUB_WORKSPACE"',
+            "/__w/_actions",
+            "/__w/_tool",
+            "/__w/_temp",
+            "/github",
+        ):
+            self.assertIn(target, cleanup)
         self.assertIn("chown --recursive --no-dereference", cleanup)
         self.assertIn("chmod --recursive u+rwX", cleanup)
 
@@ -108,7 +115,7 @@ class AlignmentWorkflowTests(unittest.TestCase):
         )[0]
         finalize = " ".join(finalize.split())
         self.assertIn("blocked result for that unit", finalize)
-        self.assertIn("complete collection may still publish other reviewed units", finalize)
+        self.assertIn("unit blocker may still allow other reviewed units to publish", finalize)
 
     def test_untrusted_reproducer_user_has_no_outbound_network(self) -> None:
         runner = self.text.split("  run-reproducers:", 1)[1].split(
@@ -127,11 +134,29 @@ class AlignmentWorkflowTests(unittest.TestCase):
         self.assertIn("alignment-run/prepare.json", runner)
         self.assertIn("alignment-run/scripts", runner)
         self.assertIn("alignment-run/collection", runner)
-        self.assertIn("alignment-run/torch_compile_debug", runner)
-        self.assertIn('TORCH_COMPILE_DEBUG_DIR="$PWD/alignment-run/torch_compile_debug"', runner)
+        self.assertNotIn("alignment-run/torch_compile_debug", runner)
+        self.assertNotIn("export TORCH_COMPILE_DEBUG_DIR", runner)
+
+    def test_deterministic_runner_owns_the_only_xpu_environment_probe(self) -> None:
+        runner = self.text.split("  run-reproducers:", 1)[1].split(
+            "  scan-finalize:", 1
+        )[0]
+        provision = runner.split("- name: Provision nightly XPU runtime", 1)[1].split(
+            "- name: Execute as an unprivileged credential-free user", 1
+        )[0]
+        self.assertNotIn("torch.xpu.is_available", provision)
+        self.assertNotIn("torch.xpu.get_device_name", provision)
+        self.assertIn("xpu_alignment_runner.py", runner)
+
+    def test_finalize_copies_the_deterministic_runner_environment(self) -> None:
+        finalize = self.text.split("  scan-finalize:", 1)[1].split(
+            "  independent-review:", 1
+        )[0]
+        self.assertIn("copy its environment object exactly into scan.json", finalize)
 
     def test_unit_blockers_do_not_fail_the_workflow_report(self) -> None:
         self.assertIn("(.global_blockers // []) | length > 0", self.text)
+        self.assertIn('.collection_status == "partial"', self.text)
         self.assertIn("reviewed candidates remain publishable", self.text)
 
     def test_reproducer_restores_access_to_its_runner_mounts(self) -> None:

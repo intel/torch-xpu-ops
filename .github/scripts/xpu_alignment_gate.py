@@ -43,6 +43,15 @@ VERDICTS = {
     "verification-gap",
 }
 IMPLEMENTATION_REPOSITORIES = {"intel/torch-xpu-ops", "pytorch/pytorch"}
+ENVIRONMENT_FIELDS = {
+    "python_executable",
+    "python_version",
+    "torch_version",
+    "torch_path",
+    "xpu_available",
+    "xpu_device_name",
+    "environment_warnings",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -99,6 +108,26 @@ def _expected_window(scan_date: str, errors: list[str]) -> dict[str, str] | None
         "start": f"{day.isoformat()}T00:00:00Z",
         "end": f"{(day + timedelta(days=1)).isoformat()}T00:00:00Z",
     }
+
+
+def _validate_environment(value: object, errors: list[str]) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != ENVIRONMENT_FIELDS:
+        errors.append("runner-environment-invalid-fields")
+        return {}
+    for field in ("python_executable", "python_version", "torch_version"):
+        if not isinstance(value.get(field), str) or not value[field]:
+            errors.append(f"runner-environment-invalid:{field}")
+    for field in ("torch_path", "xpu_device_name"):
+        if value.get(field) is not None and not isinstance(value[field], str):
+            errors.append(f"runner-environment-invalid:{field}")
+    warnings = value.get("environment_warnings")
+    if not isinstance(warnings, list) or not all(
+        isinstance(item, str) and item for item in warnings
+    ):
+        errors.append("runner-environment-invalid:environment_warnings")
+    if value.get("xpu_available") is not True:
+        errors.append("runner-environment-xpu-unavailable")
+    return value
 
 
 def _validate_collection(
@@ -232,11 +261,16 @@ def _validate_runner(
     collection_path: Path | None,
     prepare_path: Path | None,
     executions: dict[str, dict[str, object]],
-) -> tuple[Path | None, dict[str, dict[str, object]], list[str]]:
+) -> tuple[
+    Path | None,
+    dict[str, object],
+    dict[str, dict[str, object]],
+    list[str],
+]:
     errors: list[str] = []
     path = _one(root, "results.json", "runner", errors)
     if path is None:
-        return None, {}, errors
+        return None, {}, {}, errors
     runner = _read_json(path, "runner", errors)
     if runner.get("schema_version") != SCHEMA_VERSION:
         errors.append("runner-invalid-version")
@@ -246,6 +280,7 @@ def _validate_runner(
         errors.append("runner-collection-digest-mismatch")
     if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("runner-prepare-digest-mismatch")
+    environment = _validate_environment(runner.get("environment"), errors)
     results: dict[str, dict[str, object]] = {}
     raw_results = runner.get("results")
     if not isinstance(raw_results, list):
@@ -283,7 +318,7 @@ def _validate_runner(
             results[unit_id] = result
     if set(results) != set(executions):
         errors.append("runner-coverage-mismatch")
-    return path, results, errors
+    return path, environment, results, errors
 
 
 def _validate_scan(
@@ -293,6 +328,7 @@ def _validate_scan(
     collection: dict[str, object],
     prepare_path: Path | None,
     runner_path: Path | None,
+    runner_environment: dict[str, object],
     executions: dict[str, dict[str, object]],
     results: dict[str, dict[str, object]],
 ) -> tuple[Path | None, list[str], list[dict[str, str]], list[str]]:
@@ -311,6 +347,8 @@ def _validate_scan(
         errors.append("scan-prepare-digest-mismatch")
     if runner_path is not None and scan.get("runner_sha256") != _sha256(runner_path):
         errors.append("scan-runner-digest-mismatch")
+    if scan.get("environment") != runner_environment:
+        errors.append("scan-environment-mismatch")
     if scan.get("status") not in {"complete", "incomplete"}:
         errors.append(f"scan-invalid-status:{scan.get('status', 'missing')}")
     blockers = scan.get("blockers")
@@ -489,7 +527,7 @@ def build_decision(
     prepare_path, _, executions, prepare_errors = _validate_prepare(
         prepare_root, scan_date, collection_path, collection, inventory
     )
-    runner_path, results, runner_errors = _validate_runner(
+    runner_path, runner_environment, results, runner_errors = _validate_runner(
         runner_root, collection_path, prepare_path, executions
     )
     scan_path, actionable, unit_blockers, scan_errors = _validate_scan(
@@ -499,6 +537,7 @@ def build_decision(
         collection,
         prepare_path,
         runner_path,
+        runner_environment,
         executions,
         results,
     )
@@ -514,28 +553,31 @@ def build_decision(
     )
     if not producers_clean:
         validation_errors.append("producer-job-failed")
-    scope_blockers = (
+    collection_blockers = (
         collection.get("blockers")
         if isinstance(collection.get("blockers"), list)
         else []
     )
-    global_blockers = validation_errors + [str(blocker) for blocker in scope_blockers]
+    global_blockers = validation_errors
     unit_blocker_messages = [
         f"scan-blocked-result:{item['id']}:{item['local_result']}"
         for item in unit_blockers
     ]
-    blockers = global_blockers + unit_blocker_messages
+    blockers = (
+        global_blockers
+        + [str(blocker) for blocker in collection_blockers]
+        + unit_blocker_messages
+    )
     attention_reasons = []
+    if collection.get("status") == "partial":
+        attention_reasons.append("incomplete-collection")
     if "verification-gap" in verdicts.values():
         attention_reasons.append("review-verification-gap")
 
     collection_status = collection.get("status")
-    if validation_errors:
+    if global_blockers:
         would_decision = "blocked"
         published_payloads: list[dict[str, object]] = []
-    elif collection_status == "partial":
-        would_decision = "diagnostic"
-        published_payloads = payloads
     elif not payloads:
         would_decision = "none"
         published_payloads = []
@@ -546,7 +588,7 @@ def build_decision(
         would_decision = "triage"
         published_payloads = payloads
     if mode == "dry-run":
-        decision = "dry-run-diagnostic" if would_decision == "diagnostic" else "dry-run"
+        decision = "dry-run"
     else:
         decision = would_decision
     return {

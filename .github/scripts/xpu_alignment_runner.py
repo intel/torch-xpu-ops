@@ -25,6 +25,15 @@ UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_TIMEOUT_SECONDS = 120
 PR_SET_CHILD_SUBREAPER = 36
+ENVIRONMENT_FIELDS = {
+    "python_executable",
+    "python_version",
+    "torch_version",
+    "torch_path",
+    "xpu_available",
+    "xpu_device_name",
+    "environment_warnings",
+}
 
 
 class PlanError(ValueError):
@@ -52,7 +61,7 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
     except (OSError, json.JSONDecodeError) as error:
         raise PlanError(f"cannot read prepare artifact: {error}") from error
     if not isinstance(prepare, dict) or prepare.get("schema_version") != 1:
-        raise PlanError("prepare artifact must be a v1 JSON object")
+        raise PlanError("prepare artifact uses an unsupported schema")
     if prepare.get("status") != "complete":
         raise PlanError("prepare artifact must be complete before execution")
     blockers = prepare.get("blockers")
@@ -162,6 +171,131 @@ def _safe_environment() -> dict[str, str]:
     return environment
 
 
+def _execution_context(
+    scratch: str, identity: tuple[int, int, list[int]] | None
+) -> tuple[dict[str, str], dict[str, object]]:
+    scratch_path = Path(scratch)
+    debug = scratch_path / "torch_compile_debug"
+    debug.mkdir()
+    environment = _safe_environment()
+    environment.update(
+        {
+            "HOME": scratch,
+            "TMPDIR": scratch,
+            "TORCH_COMPILE_DEBUG_DIR": str(debug),
+        }
+    )
+    process: dict[str, object] = {}
+    if identity is not None:
+        uid, gid, groups = identity
+        os.chown(scratch_path, uid, gid)
+        os.chown(debug, uid, gid)
+        environment.update({"USER": str(uid), "LOGNAME": str(uid)})
+        process.update(
+            {
+                "user": uid,
+                "group": gid,
+                "extra_groups": groups,
+                "umask": 0o077,
+            }
+        )
+    return environment, process
+
+
+def _validated_environment(value: object) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != ENVIRONMENT_FIELDS:
+        raise PlanError("environment probe returned an invalid field set")
+    for field in ("python_executable", "python_version", "torch_version"):
+        if not isinstance(value.get(field), str) or not value[field]:
+            raise PlanError(f"environment probe returned invalid {field}")
+    for field in ("torch_path", "xpu_device_name"):
+        if value.get(field) is not None and not isinstance(value[field], str):
+            raise PlanError(f"environment probe returned invalid {field}")
+    warnings = value.get("environment_warnings")
+    if not isinstance(warnings, list) or not all(
+        isinstance(item, str) and item for item in warnings
+    ):
+        raise PlanError("environment probe returned invalid warnings")
+    if value.get("xpu_available") is not True:
+        raise PlanError("XPU is unavailable in the reproducer environment")
+    return value
+
+
+def probe_environment(
+    python: Path, identity: tuple[int, int, list[int]] | None = None
+) -> dict[str, object]:
+    """Record the actual credential-free environment used by reproducers."""
+    source = """
+import json
+import platform
+import sys
+
+payload = {
+    "python_executable": sys.executable,
+    "python_version": platform.python_version(),
+    "torch_version": "unknown",
+    "torch_path": None,
+    "xpu_available": False,
+    "xpu_device_name": None,
+    "environment_warnings": [],
+}
+try:
+    import torch
+except Exception as error:
+    payload["core_error"] = f"cannot import torch: {type(error).__name__}: {error}"
+else:
+    payload["torch_version"] = str(getattr(torch, "__version__", "unknown"))
+    try:
+        path = torch.__file__
+        payload["torch_path"] = str(path) if path else None
+        if not path:
+            payload["environment_warnings"].append("torch path is unavailable")
+    except Exception as error:
+        payload["environment_warnings"].append(
+            f"torch path unavailable: {type(error).__name__}: {error}"
+        )
+    try:
+        payload["xpu_available"] = bool(torch.xpu.is_available())
+    except Exception as error:
+        payload["core_error"] = f"cannot query XPU availability: {type(error).__name__}: {error}"
+    if payload["xpu_available"]:
+        try:
+            payload["xpu_device_name"] = str(torch.xpu.get_device_name(0))
+        except Exception as error:
+            payload["environment_warnings"].append(
+                f"XPU device name unavailable: {type(error).__name__}: {error}"
+            )
+print(json.dumps(payload, sort_keys=True))
+"""
+    with tempfile.TemporaryDirectory(prefix="xpu-alignment-environment-") as scratch:
+        environment, process = _execution_context(scratch, identity)
+        try:
+            completed = subprocess.run(
+                [str(python), "-I", "-c", source],
+                cwd=scratch,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+                **process,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise PlanError(f"environment probe failed: {error}") from error
+    if completed.returncode != 0:
+        raise PlanError(
+            f"environment probe exited {completed.returncode}: {completed.stderr.strip()}"
+        )
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise PlanError("environment probe returned malformed JSON") from error
+    if isinstance(payload, dict) and payload.get("core_error"):
+        raise PlanError(str(payload["core_error"]))
+    return _validated_environment(payload)
+
+
 def _identity(user: str) -> tuple[int, int, list[int]]:
     try:
         account = pwd.getpwnam(user)
@@ -221,10 +355,15 @@ def run_plan(
     prepare_path: Path,
     entries: list[dict[str, object]],
     identity: tuple[int, int, list[int]] | None = None,
+    *,
+    environment: dict[str, object] | None = None,
 ) -> dict[str, object]:
     if not python.is_file():
         raise PlanError(f"python executable does not exist: {python}")
     _become_child_subreaper()
+    recorded_environment = _validated_environment(
+        environment if environment is not None else probe_environment(python, identity)
+    )
     logs = root / "runner/logs"
     logs.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
@@ -239,21 +378,7 @@ def run_plan(
         with log.open("wb") as output, tempfile.TemporaryDirectory(
             prefix=f"xpu-alignment-{unit_id}-"
         ) as scratch:
-            environment = _safe_environment()
-            child_user: int | None = None
-            child_group: int | None = None
-            child_groups: list[int] | None = None
-            child_umask = -1
-            if identity is not None:
-                uid, gid, groups = identity
-                os.chown(scratch, uid, gid)
-                environment.update(
-                    {"HOME": scratch, "TMPDIR": scratch, "USER": str(uid), "LOGNAME": str(uid)}
-                )
-                child_user = uid
-                child_group = gid
-                child_groups = groups
-                child_umask = 0o077
+            child_environment, process_options = _execution_context(scratch, identity)
             if sha256(script) != entry["script_sha256"]:
                 error = "script bytes changed after prepare validation"
             else:
@@ -261,16 +386,13 @@ def run_plan(
                 try:
                     process = subprocess.Popen(
                         [str(python), "-I", str(script)],
-                        cwd=root,
-                        env=environment,
+                        cwd=scratch,
+                        env=child_environment,
                         stdin=subprocess.DEVNULL,
                         stdout=output,
                         stderr=subprocess.STDOUT,
                         start_new_session=True,
-                        user=child_user,
-                        group=child_group,
-                        extra_groups=child_groups,
-                        umask=child_umask,
+                        **process_options,
                     )
                     returncode = process.wait(timeout=int(entry["timeout_seconds"]))
                 except subprocess.TimeoutExpired:
@@ -305,6 +427,7 @@ def run_plan(
         ],
         "prepare_sha256": sha256(prepare_path),
         "status": "complete",
+        "environment": recorded_environment,
         "results": results,
     }
 

@@ -190,25 +190,29 @@ class PublisherTests(unittest.TestCase):
         self.assertIn("@owner", post.call_args.args[2])
         create.assert_not_called()
 
-    def test_partial_schedule_posts_idempotent_diagnostics_and_notifies(self) -> None:
+    def test_partial_schedule_files_a_reviewed_candidate_and_reports_progress(self) -> None:
         decision = {
             "run_id": "42-1",
             "scan_date": "2026-08-20",
             "mode": "schedule",
-            "decision": "diagnostic",
-            "would_decision": "diagnostic",
+            "decision": "file-one",
+            "would_decision": "file-one",
             "collection_status": "partial",
-            "collection_progress": {
-                "pull_requests_created": {
+            "collection_progress": [
+                {
+                    "source": "prs-created",
                     "pages_completed": 3,
                     "items_fetched": 250,
                     "last_cursor": "cursor-3",
                     "rate_remaining": 0,
                     "rate_reset_at": "2026-08-21T02:15:00Z",
                     "status": "partial",
-                    "error": "rate limit did not recover",
+                    "error": {
+                        "kind": "rate-limit",
+                        "message": "rate limit did not recover",
+                    },
                 }
-            },
+            ],
             "needs_attention": True,
             "attention_reasons": [],
             "blockers": ["pull_requests_created:rate-limit"],
@@ -220,16 +224,17 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(post.call_count, 2)
         draft = post.call_args_list[0].args[2]
         summary = post.call_args_list[1].args[2]
-        self.assertIn("alignment-diagnostic-unit", draft)
-        self.assertNotIn("<!-- alignment-unit: issue-123 -->", draft)
-        self.assertIn("[INCOMPLETE SCAN]", draft)
+        self.assertIn("<!-- alignment-unit: issue-123 -->", draft)
+        self.assertNotIn("INCOMPLETE SCAN", draft)
         self.assertIn("3 page(s), 250 item(s)", summary)
+        self.assertIn("rate limit did not recover", summary)
+        self.assertIn("[INCOMPLETE SCAN]", summary)
         self.assertIn("@owner", summary)
-        create.assert_not_called()
-        update.assert_not_called()
+        create.assert_called_once()
+        update.assert_called_once()
 
         existing = [
-            {"id": 71, "body": draft},
+            {"id": 71, "body": update.call_args.args[2]},
             {"id": 72, "body": summary},
         ]
         retry_post, retry_create, retry_update = self.invoke(decision, comments=existing)
@@ -237,15 +242,15 @@ class PublisherTests(unittest.TestCase):
         retry_create.assert_not_called()
         retry_update.assert_not_called()
 
-    def test_partial_dry_run_reposts_diagnostics_without_notification(self) -> None:
+    def test_partial_dry_run_reposts_normal_drafts_without_notification(self) -> None:
         decision = {
             "run_id": "42-1",
             "scan_date": "2026-08-20",
             "mode": "dry-run",
-            "decision": "dry-run-diagnostic",
-            "would_decision": "diagnostic",
+            "decision": "dry-run",
+            "would_decision": "file-one",
             "collection_status": "partial",
-            "collection_progress": {},
+            "collection_progress": [],
             "needs_attention": True,
             "attention_reasons": [],
             "blockers": ["issues_created:http-429"],
@@ -254,17 +259,43 @@ class PublisherTests(unittest.TestCase):
         existing = [
             {
                 "id": 71,
-                "body": "<!-- alignment-dry-run-diagnostic-unit: 42-1:issue-123 -->",
+                "body": "<!-- alignment-dry-run-unit: 42-1:issue-123 -->",
             }
         ]
 
         post, create, update = self.invoke(decision, comments=existing)
 
         self.assertEqual(post.call_count, 2)
-        self.assertIn("alignment-dry-run-diagnostic-unit", post.call_args_list[0].args[2])
+        self.assertIn("alignment-dry-run-unit", post.call_args_list[0].args[2])
         summary = post.call_args_list[1].args[2]
         self.assertIn("[DRY RUN][INCOMPLETE SCAN]", summary)
         self.assertNotIn("@owner", summary)
+        create.assert_not_called()
+        update.assert_not_called()
+
+    def test_partial_schedule_queues_multiple_fileable_drafts(self) -> None:
+        post, create, update = self.invoke(
+            {
+                "run_id": "42-1",
+                "scan_date": "2026-08-20",
+                "mode": "schedule",
+                "decision": "triage",
+                "would_decision": "triage",
+                "collection_status": "partial",
+                "collection_progress": [],
+                "needs_attention": True,
+                "attention_reasons": ["incomplete-collection"],
+                "blockers": ["issues-created:rate-limit"],
+                "payloads": [payload("issue-123"), payload("issue-456")],
+            }
+        )
+
+        self.assertEqual(post.call_count, 3)
+        for call in post.call_args_list[:2]:
+            self.assertIn("<!-- alignment-unit:", call.args[2])
+            self.assertNotIn("INCOMPLETE SCAN", call.args[2])
+        self.assertIn("[INCOMPLETE SCAN]", post.call_args_list[-1].args[2])
+        self.assertIn("@owner", post.call_args_list[-1].args[2])
         create.assert_not_called()
         update.assert_not_called()
 
