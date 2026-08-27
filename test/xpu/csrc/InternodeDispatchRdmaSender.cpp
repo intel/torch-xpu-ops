@@ -766,6 +766,13 @@ struct UnpackRecvKernel {
   float* recv_topk_weights_ptr; // [num_rdma_ranks, cap, num_topk]
   int32_t* recv_src_rdma_rank_ptr; // [num_rdma_ranks, cap]
   int32_t* recv_src_nvl_bits_ptr; // [num_rdma_ranks, cap]
+  // [num_rdma_ranks], indexed by source node: published as (actual_count + 1)
+  // by the sender kernel, 0 meaning "never signalled" (treated as count 0).
+  // Used to skip slots beyond the actual per-source token count so we don't
+  // burn bandwidth/cycles unpacking unused (and potentially stale, left over
+  // from a previous call reusing the same symmetric buffer) slots when
+  // `cap` is provisioned well above the typical/actual routed token count.
+  const int32_t* recv_count;
 
   int32_t cap;
   int32_t num_scales;
@@ -782,6 +789,13 @@ struct UnpackRecvKernel {
     const size_t slot_global = idx[0];
     const int32_t src = static_cast<int32_t>(slot_global / cap);
     const int32_t slot = static_cast<int32_t>(slot_global % cap);
+    const int32_t published = recv_count[src];
+    const int32_t actual_count = published > 0 ? (published - 1) : 0;
+    if (slot >= actual_count) {
+      // No token was ever written into this slot -- leave the caller's
+      // output tensors untouched instead of copying unused/stale bytes.
+      return;
+    }
     const uint8_t* payload_ptr =
         recv_data + static_cast<size_t>(src) * node_stride + static_cast<size_t>(slot) * nbpt;
 
@@ -1033,6 +1047,7 @@ at::Tensor internode_dispatch_rdma_sender(
             recv_topk_weights_ptr,
             recv_src_rdma_rank_ptr,
             recv_src_nvl_bits_ptr,
+            recv_count,
             static_cast<int32_t>(cap),
             static_cast<int32_t>(num_scales),
             static_cast<int32_t>(num_topk),

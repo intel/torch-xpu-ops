@@ -194,6 +194,7 @@ def build_one_ishmem(cfg, ishmem_cfg, src_name, out_name, label):
     cmd = [
         "icpx",
         "-fsycl",
+        "-fsycl-default-sub-group-size=32",
         "-std=c++17",
         "-shared",
         "-fPIC",

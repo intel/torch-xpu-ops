@@ -49,7 +49,7 @@ NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 16))
 HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 1024))
 TOPK = int(os.environ.get("TOPK", 8))
 EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 32))
-num_max_tokens_per_rank = int(os.environ.get("NUM_MAX_TOKENS_PER_RANK", 32))
+num_max_tokens_per_rank = int(os.environ.get("NUM_MAX_TOKENS_PER_RANK", 128))
 SEED = int(os.environ.get("SEED", 1234))
 ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "1") != "0"
 LOOP = int(os.environ.get("LOOP", 30))
