@@ -127,6 +127,12 @@ inline void rearrangeDims(
   }
 }
 
+// Note [tensor_apply base index]
+// `baseIndex` is the linear index of the first element handled by this
+// invocation. It is forwarded unchanged through the unrolling recursion and
+// handed to the op so that ops needing a per-element identity (e.g. seeding an
+// RNG) do not have to derive one from the work-item id: the kernel uses a
+// global-range-strided loop, so a single work-item processes many elements.
 template <
     typename Op,
     typename scalar1,
@@ -136,11 +142,11 @@ template <
     typename... Offsets>
 struct ApplyOp2 {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int64_t n,
+      IndexType baseIndex,
       IndexType linearIndex,
       Offsets... aOffsets,
       Offsets... bOffsets) {
@@ -163,11 +169,11 @@ struct ApplyOp2 {
         const IndexType,
         Offsets...>::
         apply(
-            item,
             a,
             b,
             op,
             n,
+            baseIndex,
             linearIndex + 1,
             aOffsets...,
             aOffset,
@@ -186,15 +192,15 @@ template <
     typename Offset>
 struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offset> {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int /*n*/,
+      IndexType baseIndex,
       IndexType /*linearIndex*/,
       Offset aOffset,
       Offset bOffset) {
-    op(item, a.data[aOffset], b.data[bOffset]);
+    op(static_cast<uint64_t>(baseIndex), a.data[aOffset], b.data[bOffset]);
   }
 };
 
@@ -206,15 +212,18 @@ template <
     typename... Offsets>
 struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offsets...> {
   inline static void apply(
-      sycl::nd_item<1>& item,
       TensorInfo<scalar1, IndexType> a,
       TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int n,
-      IndexType linearIndex,
+      IndexType baseIndex,
+      IndexType /*linearIndex*/,
       Offsets... aOffsets,
       Offsets... bOffsets) {
-    op(item, n, a.data[aOffsets]..., b.data[bOffsets]...);
+    op(static_cast<uint64_t>(baseIndex),
+       n,
+       a.data[aOffsets]...,
+       b.data[bOffsets]...);
   }
 };
 
@@ -233,11 +242,11 @@ struct PointwiseApply2Functor {
          linearIndex +=
          item.get_group_range(0) * item.get_local_range(0) * step) {
       ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
-          item,
           a_,
           b_,
           op_,
           std::min(step, static_cast<int>(totalElements_ - linearIndex)),
+          linearIndex,
           linearIndex);
     }
   }

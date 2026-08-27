@@ -719,7 +719,7 @@ void uniform_kernel(
 template <typename scalar_t, typename prob_t>
 struct BernoulliTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      uint64_t linear_index,
       int n,
       scalar_t& v1,
       scalar_t& v2,
@@ -731,11 +731,7 @@ struct BernoulliTensorApplyFunctor {
       const prob_t& p4) const {
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
+    rand_init(std::get<0>(seeds), linear_index, std::get<1>(seeds), &state);
     auto rand = rand_uniform4(&state);
     switch (n) {
       case 4: {

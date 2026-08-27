@@ -21,7 +21,7 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct PoissonTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      uint64_t linear_index,
       scalar_t& ret_val,
       const scalar_t& lambda) const {
     SYCL_KERNEL_ASSERT(
@@ -29,11 +29,7 @@ struct PoissonTensorApplyFunctor {
         "invalid Poisson rate, expected rate to be non-negative");
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
+    rand_init(std::get<0>(seeds), linear_index, std::get<1>(seeds), &state);
     ret_val = static_cast<scalar_t>(rand_poisson(&state, lambda));
   }
   PoissonTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
@@ -133,16 +129,12 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
 template <typename scalar_t, typename accscalar_t>
 struct GammaTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      uint64_t linear_index,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
     auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
+    rand_init(std::get<0>(seeds), linear_index, std::get<1>(seeds), &state);
 
     auto uniform_lambda = [&state]() { return rand_uniform(&state); };
     BaseSampler<accscalar_t, decltype(uniform_lambda)> standard_uniform(
