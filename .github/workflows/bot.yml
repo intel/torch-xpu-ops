@@ -1179,8 +1179,8 @@ jobs:
 
       - name: Configure git identity
         run: |
-          # "*": a source-build fix makes nested root-owned git repos under agent_space_xpu/ that git would otherwise reject.
-          git config --global --add safe.directory "*"
+          # A source-build fix clones PyTorch as root under agent_space_xpu/; add only that tree to safe.directory.
+          git config --global --add safe.directory "${{ github.workspace }}/agent_space_xpu"
           git config --global user.name "torchxpubot"
           git config --global user.email "torchxpubot@intel.com"
 
