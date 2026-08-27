@@ -1,0 +1,76 @@
+name: Nightly UT Auto Issue
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        required: true
+        type: string
+        description: Nightly run to analyse
+      test_type:
+        type: string
+        default: ''
+        description: Recorded in the report for context, e.g. build-nightly
+      dry_run:
+        type: boolean
+        default: true
+        description: Render and report only; create nothing
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+        type: string
+        description: Nightly run to analyse. Use a past build-from-source run id
+      test_type:
+        type: string
+        default: ''
+        description: Recorded in the report for context, e.g. build-nightly
+      dry_run:
+        type: boolean
+        default: true
+        description: Render and report only; create nothing
+
+permissions:
+  contents: read
+
+# Neither nightly_ondemand.yml nor _linux_ut.yml declares concurrency, so two
+# attempts against the same run must serialise rather than race each other into
+# duplicate issues.
+concurrency:
+  group: ut-auto-issue-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  auto-issue:
+    name: ut-auto-issue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      # Issues created with the default GITHUB_TOKEN do not fire the `issues`
+      # event, which is what issue_operator.yml needs to attach the UT Backlog
+      # milestone. Fall back so dry runs still work without the secret.
+      GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v7
+      - name: File issues for new UT failures
+        # Stdlib only, so the runner's system python3 is enough - no setup-python
+        # and no venv needed.
+        run: |
+          python3 .github/scripts/ut_auto_issue.py \
+            --run-id "${{ inputs.run_id }}" \
+            --test-type "${{ inputs.test_type }}" \
+            --work-dir "${{ runner.temp }}/ut-auto-issue" \
+            --report-dir "${{ github.workspace }}/ut_auto_issue_report" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+      - name: Upload report
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: UT-Auto-Issue-Report-${{ inputs.run_id }}
+          path: ${{ github.workspace }}/ut_auto_issue_report
+          if-no-files-found: ignore
