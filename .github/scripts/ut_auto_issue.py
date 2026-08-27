@@ -186,11 +186,33 @@ class Case:
         return CATEGORY_LEG.get(self.category, "unknown")
 
     @property
-    def test_file(self) -> str:
-        parts = [p for p in self.class_name.split(".") if p]
+    def is_collection_error(self) -> bool:
+        """Whether this row is a whole-module failure rather than a test case.
+
+        pytest reports a module that failed to import with an empty classname
+        and the dotted module path as the name, because
+        _pytest/junitxml.py:mangle_test_address has nothing before the first
+        `::` to put in classname. Every real case carries a class.
+        """
+        return not self.class_name
+
+    @property
+    def module(self) -> str:
+        """Dotted path of the test file this row belongs to.
+
+        For a collection error the module is the name; for a test case it is
+        the classname with its trailing class segments removed.
+        """
+        source = self.test_name if self.is_collection_error else self.class_name
+        parts = [p for p in source.split(".") if p]
         while parts and parts[-1][:1].isupper():
             parts.pop()
-        return f"{parts[-1]}.py" if parts else "unknown"
+        return ".".join(parts)
+
+    @property
+    def test_file(self) -> str:
+        module = self.module
+        return f"{module.rsplit('.', 1)[-1]}.py" if module else "unknown"
 
 
 @dataclass
@@ -199,7 +221,12 @@ class Group:
     test_file: str
     cases: list[Case] = field(default_factory=list)
     headline: str = ""
-    quarantined: bool = False
+    # Non-empty means: report it, never file it, never mute it.
+    quarantine: str = ""
+
+    @property
+    def collection_error(self) -> bool:
+        return any(c.is_collection_error for c in self.cases)
 
     @property
     def sig(self) -> str:
@@ -274,6 +301,10 @@ class Baseline:
     passed: set[str]
     failed: set[str]
     all_cases: set[str]
+    # Per test module, so a whole-module failure can be measured against the
+    # baseline: its own row exists in neither of the sets above.
+    passed_by_module: dict[str, int]
+    all_by_module: dict[str, int]
 
 
 @dataclass
@@ -542,7 +573,6 @@ def build_groups(cases: list[Case]) -> list[Group]:
         group = groups.get(key)
         if group is None:
             group = Group(normalized_error=key[0], test_file=key[1])
-            group.quarantined = is_infra(key[0])
             groups[key] = group
         group.cases.append(case)
     for group in groups.values():
@@ -553,6 +583,14 @@ def build_groups(cases: list[Case]) -> list[Group]:
         # it before the sort would quote whichever case the CSV happened to list
         # first.
         group.headline = headline_of(group.cases[0].message) or group.normalized_error
+        if is_infra(group.normalized_error):
+            group.quarantine = "infra"
+        elif group.collection_error:
+            # One row standing for a whole file. Filing it would mute that one
+            # row and leave the file dark every night, and neither of the two
+            # labels fits: the cases it hides used to pass, so it is not a new
+            # case, and the row itself never passed, so it is not a regression.
+            group.quarantine = "collection_error"
     return sorted(groups.values(), key=lambda g: (-len(g.cases), g.sig))
 
 
@@ -580,6 +618,19 @@ def read_case_sets(root: Path, category: str) -> tuple[set, set, set]:
     failed = set(read_lines(find_file(root, f"failures_{category}.log")))
     every = set(read_lines(find_file(root, f"all_cases_{category}.log")))
     return passed, failed, every | passed | failed
+
+
+def module_counts(lines: set[str]) -> dict[str, int]:
+    """`category,class_name,test_name` lines, counted per test module."""
+    counts: dict[str, int] = {}
+    for line in lines:
+        parts = line.split(",")
+        if len(parts) < 3:
+            continue
+        module = Case(parts[0], parts[1], ",".join(parts[2:]), "").module
+        if module:
+            counts[module] = counts.get(module, 0) + 1
+    return counts
 
 
 def resolve_baselines(run_id: int, categories: set[str], work: Path,
@@ -630,6 +681,8 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
                 passed=passed,
                 failed=failed,
                 all_cases=every,
+                passed_by_module=module_counts(passed),
+                all_by_module=module_counts(every),
             )
             pending.discard(category)
         for path in dirs.values():
@@ -648,7 +701,16 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
 
 
 def classify_case(case: Case, baselines: dict[str, Baseline]) -> str:
-    """Per case, against its own category's baseline. Exact set membership."""
+    """Per case, against its own category's baseline. Exact set membership.
+
+    Only ever reached for filed groups, so every case here is a real test case.
+    Whole-module rows are quarantined in Stage 2 precisely because this
+    comparison cannot see them: the baseline records the module's individual
+    cases and never the module itself, so exact membership would always fall
+    through to CLS_NEW_CASE. Widening the comparison to the module for real
+    cases too would be wrong in the other direction - a dtype parametrization
+    added upstream is a new case even though its module is years old.
+    """
     baseline = baselines.get(case.category)
     if baseline is None:
         return CLS_UNKNOWN
@@ -665,6 +727,113 @@ def new_case_reason(case: Case, baseline: Baseline | None) -> str:
     if baseline is None or case.line not in baseline.all_cases:
         return "absent"
     return "skipped"
+
+
+# --------------------------------------------------------------------------- #
+# Stage 4b - what stopped running
+#
+# A module that fails to import does not fail its cases, it erases them: they
+# reach neither passed_<cat>.log nor failures_<cat>.log, so they never enter
+# new_ut_failure_list.csv, and a few hundred missing cases sit far below the 5%
+# count gate in ut_result_check.sh:check_test_cases. Comparing module coverage
+# against the baseline is the only thing here that sees them.
+#
+# Everything in this stage is report-only. Filing an issue mutes a case, and
+# muting cases that already stopped running is the one outcome this bot must
+# never produce.
+# --------------------------------------------------------------------------- #
+
+
+def collection_error_context(group: Group,
+                             baselines: dict[str, Baseline]) -> list[dict]:
+    """Per module in a quarantined collection-error group, what it used to run."""
+    context = []
+    for case in group.cases:
+        if not case.is_collection_error:
+            continue
+        base = baselines.get(case.category)
+        if base is None:
+            state, passed = "no baseline", 0
+        elif base.passed_by_module.get(case.module):
+            state, passed = "was passing", base.passed_by_module[case.module]
+        elif case.module in base.all_by_module:
+            state, passed = "known, none passing", 0
+        else:
+            state, passed = "new test file", 0
+        context.append({
+            "category": case.category,
+            "module": case.module,
+            "state": state,
+            "baseline_passed": passed,
+            "baseline_run": base.run_id if base else None,
+        })
+    return context
+
+
+def record_quarantined(groups: list[Group], baselines: dict[str, Baseline],
+                       report: dict) -> None:
+    for group in groups:
+        entry = {
+            "sig": group.sig, "cases": len(group.cases),
+            "test_file": group.test_file, "error": group.headline,
+            "reason": group.quarantine,
+        }
+        if group.quarantine == "collection_error":
+            entry["modules"] = collection_error_context(group, baselines)
+            dropped = sum(m["baseline_passed"] for m in entry["modules"])
+            entry["dropped_cases"] = dropped
+            warn(
+                f"{group.test_file}: whole-module collection error "
+                f"({group.headline[:80]}). {dropped} case(s) that passed in the "
+                "baseline did not run at all tonight. Reported only - not filed "
+                "and not muted."
+            )
+        else:
+            warn(
+                f"quarantined {len(group.cases)} cases in {group.test_file} "
+                f"({group.headline[:80]}): infra-flavoured, not filed and not muted"
+            )
+        report["quarantined"].append(entry)
+
+
+def record_vanished_modules(work: Path, categories: set[str],
+                            baselines: dict[str, Baseline],
+                            report: dict) -> None:
+    """Modules that produced cases in the baseline and none at all in this run.
+
+    Independent of the collection-error rows above, so it also catches a file
+    that stops producing cases without reporting an error. The likeliest way
+    for that to happen here is the skip list: xpu_test_utils.py:launch_test
+    turns it into `pytest -k "not ..."`, and deselected cases are absent from
+    the JUnit XML entirely rather than recorded as skipped, so a pattern that
+    happens to match a whole file empties it silently.
+    """
+    for category in sorted(categories):
+        base = baselines.get(category)
+        if base is None:
+            continue
+        root = work / f"current-{CATEGORY_LEG[category]}"
+        if not root.is_dir():
+            continue
+        _, _, every = read_case_sets(root, category)
+        tonight = module_counts(every)
+        gone = [
+            (module, count)
+            for module, count in base.passed_by_module.items()
+            if module not in tonight
+        ]
+        for module, count in sorted(gone, key=lambda kv: (-kv[1], kv[0])):
+            report["vanished_modules"].append({
+                "category": category, "module": module,
+                "baseline_passed": count, "baseline_run": base.run_id,
+            })
+    if report["vanished_modules"]:
+        total = sum(v["baseline_passed"] for v in report["vanished_modules"])
+        warn(
+            f"{len(report['vanished_modules'])} module(s) produced no cases in "
+            f"this run but had {total} passing case(s) in their baseline; see "
+            "the report artifact. Reported only - nothing filed, nothing muted."
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -1259,6 +1428,7 @@ def main() -> int:
         "categories": [],
         "skipped_legs": [],
         "quarantined": [],
+        "vanished_modules": [],
         "baseline_walk": [],
         "actions": [],
     }
@@ -1276,10 +1446,6 @@ def main() -> int:
     for leg in LEG_CATEGORIES:
         cases.extend(collect_leg(args.run_id, leg, names, work, jobs, report, current))
 
-    if not cases:
-        print("No new failures to file.")
-        return finish(report, report_dir)
-
     if len(cases) > ABORT_THRESHOLD:
         print(
             f"::error::{len(cases)} new failures exceeds ABORT_THRESHOLD "
@@ -1291,16 +1457,7 @@ def main() -> int:
     groups = build_groups(cases)
     filed, quarantined = [], []
     for group in groups:
-        (quarantined if group.quarantined else filed).append(group)
-    for group in quarantined:
-        report["quarantined"].append({
-            "sig": group.sig, "cases": len(group.cases),
-            "test_file": group.test_file, "error": group.headline,
-        })
-        warn(
-            f"quarantined {len(group.cases)} cases in {group.test_file} "
-            f"({group.headline[:80]}): infra-flavoured, not filed and not muted"
-        )
+        (quarantined if group.quarantine else filed).append(group)
 
     filed, overflow = apply_issue_budget(filed)
     if overflow:
@@ -1309,8 +1466,22 @@ def main() -> int:
             f"({MAX_ISSUES_PER_RUN}) and were not filed; see the umbrella issue"
         )
 
+    # Stage 4b runs before the nothing-to-file exit and needs a baseline for
+    # every healthy category, not just the ones with something to file: a
+    # category whose only symptom is that a file stopped producing cases
+    # reports no failure at all, so a night that is otherwise green is exactly
+    # the night this check has to survive to.
+    healthy = {c["category"] for c in report["categories"] if c["state"] == "complete"}
     needed = {c.category for g in filed for c in g.cases}
+    needed |= {c.category for g in quarantined for c in g.cases} | healthy
     baselines = resolve_baselines(args.run_id, needed, work, report)
+
+    record_quarantined(quarantined, baselines, report)
+    record_vanished_modules(work, healthy, baselines, report)
+
+    if not filed and not overflow:
+        print("Nothing to file.")
+        return finish(report, report_dir)
 
     wanted = {(g.cases[0].class_name, g.cases[0].test_name) for g in filed}
     tracebacks: dict[tuple[str, str], str] = {}
@@ -1502,7 +1673,34 @@ def finish(report: dict, report_dir: Path) -> int:
     for skipped in report["skipped_legs"]:
         lines.append(f"- Skipped `{skipped['leg']}`: {skipped['reason']}")
     for q in report["quarantined"]:
-        lines.append(f"- Quarantined {q['cases']} cases in `{q['test_file']}`: {q['error'][:100]}")
+        if q["reason"] == "collection_error":
+            lines.append(
+                f"- `{q['test_file']}` failed to collect, so none of it ran: "
+                f"{q['dropped_cases']} case(s) passing in the baseline are "
+                f"missing from this run. {q['error'][:100]}"
+            )
+        else:
+            lines.append(
+                f"- Quarantined {q['cases']} cases in `{q['test_file']}`: "
+                f"{q['error'][:100]}"
+            )
+    if report["vanished_modules"]:
+        lines += [
+            "",
+            "### Modules that produced no cases in this run",
+            "",
+            "These passed in their baseline and are absent here, so they did not "
+            "fail - they did not run. Nothing below is filed or muted.",
+            "",
+            "| Category | Module | Passing in baseline | Baseline run |",
+            "|---|---|---|---|",
+        ]
+        lines += [
+            f"| {v['category']} | `{v['module']}` | {v['baseline_passed']} "
+            f"| {v['baseline_run']} |"
+            for v in report["vanished_modules"]
+        ]
+        lines.append("")
     if report["actions"]:
         lines += ["", "| Action | Classification | Cases | Title |", "|---|---|---|---|"]
         lines += [
