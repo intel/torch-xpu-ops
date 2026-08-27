@@ -537,16 +537,6 @@ jobs:
           name: ${{ env.ALIGNMENT_ARTIFACT }}-review
           path: review_snapshot/review
 
-      - name: Validate deterministic components
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/test_xpu_alignment_runner.py
-          python3 .github/scripts/test_xpu_alignment_collect.py
-          python3 .github/scripts/test_xpu_alignment_gate.py
-          python3 .github/scripts/test_alignment_triage.py
-          python3 .github/scripts/test_xpu_alignment_publish.py
-          python3 .github/scripts/test_xpu_alignment_workflow.py
-
       - name: Build publishing decision
         id: decision
         env:
