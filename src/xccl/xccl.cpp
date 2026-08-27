@@ -231,6 +231,23 @@ static std::pair<bool, size_t> checkUniformAllToAll(
   return {uniformCount > 0, uniformCount};
 }
 
+// onecclAllToAllV does not take displacements: it derives them internally as
+// the running prefix sums of the counts. The native path is therefore only
+// valid when the caller's displacements match that layout.
+static bool checkContiguousDispls(
+    const size_t* counts,
+    const size_t* displs,
+    int numranks) {
+  size_t expected = 0;
+  for (int r = 0; r < numranks; ++r) {
+    if (displs[r] != expected) {
+      return false;
+    }
+    expected += counts[r];
+  }
+  return true;
+}
+
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -255,6 +272,23 @@ void onecclAllToAll(
         sendbuff, recvbuff, uniformCount, xcclDataType, comm, &stream.queue());
     return;
   }
+
+#if defined(XCCL_HAS_ALLTOALLV)
+  // Use native onecclAllToAllV for the non-uniform case when the buffers are
+  // packed contiguously, which is what c10d::computeLengthsAndOffsets produces.
+  if (checkContiguousDispls(sendcounts, senddispls, numranks) &&
+      checkContiguousDispls(recvcounts, recvdispls, numranks)) {
+    onecclAllToAllV(
+        sendbuff,
+        sendcounts,
+        recvbuff,
+        recvcounts,
+        xcclDataType,
+        comm,
+        &stream.queue());
+    return;
+  }
+#endif
 
   // Fallback to send/recv based implementation for non-uniform case
   xccl::oneccl_group_start();

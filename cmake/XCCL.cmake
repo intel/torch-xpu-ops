@@ -27,4 +27,21 @@ if(NOT __XCCL_INCLUDED)
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
     "-Wl,--no-as-needed,${XCCL_LIBRARY},--as-needed")
+
+  # onecclAllToAllV was added during the oneCCL 2022.2 cycle, so the version
+  # macros cannot tell whether a given 2022.2 header provides it. Probe the
+  # header instead. decltype avoids needing the symbol at link time.
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_INCLUDES ${XCCL_INCLUDE_DIR})
+  check_cxx_source_compiles("
+    #include <oneapi/ccl.h>
+    using alltoallv_t = decltype(&onecclAllToAllV);
+    int main() { return 0; }
+    " XCCL_HAS_ALLTOALLV)
+  unset(CMAKE_REQUIRED_INCLUDES)
+  if(XCCL_HAS_ALLTOALLV)
+    set_property(
+      TARGET torch::xccl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
+      XCCL_HAS_ALLTOALLV)
+  endif()
 endif()
