@@ -35,7 +35,14 @@ applies:
    *root cause* first; that first entry drives `target_repo`. The
    rest are loaded for their path conventions / recipes but do not
    change `target_repo`.
-4. If nothing matches, emit `NEEDS_HUMAN(reason=no_registered_domain)` —
+4. Also load the `related_domains` of every matched domain. Cross-
+   domain dependencies are maintained **here**, not in the knowledge
+   files: e.g. `inductor` lists `xpu-kernel` because an Inductor
+   failure that falls back to eager may bottom out in an XPU kernel
+   and need that domain's knowledge. Related domains are loaded for
+   their path conventions / recipes; they do not change
+   `target_repo`.
+5. If nothing matches, emit `NEEDS_HUMAN(reason=no_registered_domain)` —
    never invent a value, never silently no-op.
 
 Progressive disclosure is preserved: the closed set (this file) is
@@ -44,11 +51,11 @@ for the domains that actually matched.
 
 ## Registry
 
-| domain | reference_file | target_repo | applies_when | test_locations | fix_locations | module_labels |
-|---|---|---|---|---|---|---|
-| `xpu-kernel` | `domain-xpu-kernel.md` | `torch-xpu-ops` | root cause in XPU backend kernels, dispatch, or SYCL code | `test/xpu/`, `test/inductor/` (XPU re-enabled tests) | `src/ATen/native/xpu/` | `module: op impl`, `module: torch-ops-eltwise`, `module: torch-ops-gemm`, `module: torch-ops-reduction`, `module: torch-ops-others`, `module: sdpa`, `module: quant`, `module: sparse` |
-| `inductor` | `domain-inductor.md` | `pytorch` | root cause in `torch._inductor` or `torch._dynamo` (device-agnostic) | `test/inductor/` | `torch/_inductor/`, `torch/_dynamo/` | `module: inductor`, `module: dynamo`, `module: fx` |
-| `upstream-pytorch` | `domain-upstream-pytorch.md` | `pytorch` | root cause in device-agnostic pytorch core (framework regressions, test infra) | anywhere in `test/` | `torch/`, `aten/` (non-CUDA/XPU dirs) | `module: core`, `module: distributed`, `module: infra`, `module: build` |
+| domain | reference_file | target_repo | applies_when | related_domains | test_locations | fix_locations | module_labels |
+|---|---|---|---|---|---|---|---|
+| `xpu-kernel` | `domain-xpu-kernel.md` | `torch-xpu-ops` | root cause in XPU backend kernels, dispatch, or SYCL code | | `test/xpu/`, `test/inductor/` (XPU re-enabled tests) | `src/ATen/native/xpu/` | `module: op impl`, `module: torch-ops-eltwise`, `module: torch-ops-gemm`, `module: torch-ops-reduction`, `module: torch-ops-others`, `module: sdpa`, `module: quant`, `module: sparse` |
+| `inductor` | `domain-inductor.md` | `pytorch` | root cause in `torch._inductor` or `torch._dynamo` (device-agnostic) | `xpu-kernel` (Inductor may fall back to eager and hit an XPU kernel) | `test/inductor/` | `torch/_inductor/`, `torch/_dynamo/` | `module: inductor`, `module: dynamo`, `module: fx` |
+| `upstream-pytorch` | `domain-upstream-pytorch.md` | `pytorch` | root cause in device-agnostic pytorch core (framework regressions, test infra) | | anywhere in `test/` | `torch/`, `aten/` (non-CUDA/XPU dirs) | `module: core`, `module: distributed`, `module: infra`, `module: build` |
 
 Machine-readable list of valid `domain` values (must match the table above):
 
@@ -84,6 +91,9 @@ reuses `module:`.
 - MUST read this registry before consuming or producing domain info.
 - MUST load the `reference_file` for **every** matching domain, not
   just one — see the loading contract above.
+- MUST also load the `reference_file` of every matched domain's
+  `related_domains`; cross-domain knowledge dependencies live in this
+  registry, not in the knowledge files.
 - MUST derive `target_repo` from the first entry in `domains` (the
   root-cause domain).
 - MUST emit every applied domain in a `domains` array, root-cause
@@ -111,7 +121,9 @@ reuses `module:`.
 
 1. Create `.claude/skills/domain-knowledge/domain-<name>.md`.
 2. Add one row to the table above, including a `module_labels` cell
-   listing the existing repo `module:` labels that apply to the domain.
+   listing the existing repo `module:` labels that apply to the domain,
+   and a `related_domains` cell listing any domains whose knowledge a
+   failure in `<name>` may also need (leave empty if none).
 3. Add `<name>` to the JSON list.
 4. Update `fix-root-cause` Step 1 and `fix-implement`'s domain-load
    step to describe when `<name>` applies.

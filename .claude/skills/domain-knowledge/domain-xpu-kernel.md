@@ -1,10 +1,6 @@
 # Domain: XPU Kernel / Operator
 
-Shared knowledge base for `domain: xpu-kernel`, loaded on demand by
-`fix-root-cause` and `fix-implement`. Not a standalone skill. See
-`domain-registry.md` in this directory for the routing/loading
-contract. May be loaded alongside other `domain-*.md` files when a
-failure spans multiple domains (see the registry loading contract).
+Shared knowledge base for `domain: xpu-kernel`.
 
 ## Path conventions
 

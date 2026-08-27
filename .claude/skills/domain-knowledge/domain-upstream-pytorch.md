@@ -1,10 +1,6 @@
 # Domain: Upstream PyTorch Framework
 
-Shared knowledge base for `domain: upstream-pytorch`, loaded on
-demand by `fix-root-cause` and `fix-implement`. Not a standalone
-skill. See `domain-registry.md` in this directory for the
-routing/loading contract. May be loaded alongside other `domain-*.md`
-files when a failure spans multiple domains.
+Shared knowledge base for `domain: upstream-pytorch`.
 
 - `target_repo` must be `"pytorch"`. Never `third_party/torch-xpu-ops/`.
 
