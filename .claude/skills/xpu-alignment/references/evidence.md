@@ -30,7 +30,9 @@ Treat every observed inventory object as in scope. Its collection is partial whe
 an API quota, authentication error, timeout, or endpoint failure prevents a source
 from reaching the window boundary. Preserve its per-source page count, fetched
 count, last cursor, rate-limit state, and error instead of silently narrowing the
-set. Partial inventory may be analyzed, but it cannot authorize a formal issue.
+set. Partial inventory may be analyzed, and fully covered units may be published
+after independent review; the incomplete scope must still be reported and must
+not be mistaken for a complete scan.
 
 Titles and labels help prioritize reading but do not decide relevance. Inspect
 the body, changed code, tests, linked work, or diff whenever it could change the

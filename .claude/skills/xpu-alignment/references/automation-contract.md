@@ -1,4 +1,4 @@
-# Automation Contract (v1)
+# Automation Contract
 
 The orchestrator supplies a run directory and exactly one agent role:
 `scan-prepare`, `scan-finalize`, or `review`. Agents write only their owned
@@ -39,12 +39,14 @@ Search, to enumerate the requested half-open UTC window once:
 - commits reachable from the frozen default-branch head.
 
 Every successful page is stored as immutable JSON before requesting the next
-page. The manifest records each page's path, SHA-256, input cursor, output cursor,
-item count, remaining quota, and reset time. A source stops only after reaching
-the lower time boundary or exhausting its connection. The collector refreshes a
-partial manifest after every page, including `in-progress` and `not-started`
-source progress, and uses an internal soft deadline before the workflow's
-thirty-minute hard timeout so interruption evidence is not held only in memory.
+page. Each page entry records its path, SHA-256, input cursor, output cursor, and
+item count. The source state continuously records its aggregate progress,
+remaining quota, and reset time; these rate fields need not be repeated in every
+page entry. A source stops only after reaching the lower time boundary or
+exhausting its connection. The collector refreshes a partial manifest after every
+page, including `in-progress` and `not-started` source progress, and uses an
+internal soft deadline before the workflow's thirty-minute hard timeout so
+interruption evidence is not held only in memory.
 
 ```json
 {
@@ -174,6 +176,14 @@ network access. It runs each reproducer in a separate process group and removes
 the entire group on completion or timeout. The runner acts as a child subreaper
 and also terminates detached descendants so they cannot escape the bound.
 
+Before running a reproducer, the runner probes the execution environment as the
+same unprivileged user with the same credential-free environment used by the
+children. Failure to import PyTorch or an unavailable XPU is a global environment
+failure. Optional metadata failures retain a null value and append a concrete
+warning. Each reproducer receives a separate writable scratch directory for
+`HOME`, `TMPDIR`, and `TORCH_COMPILE_DEBUG_DIR`; immutable inputs remain
+read-only.
+
 The runner continues after a timeout, nonzero exit, signal, or launch error and
 writes one result for every execution-plan entry:
 
@@ -183,6 +193,15 @@ writes one result for every execution-plan entry:
   "collection_sha256": "...",
   "prepare_sha256": "...",
   "status": "complete",
+  "environment": {
+    "python_executable": "/usr/bin/python3",
+    "python_version": "3.13.7",
+    "torch_version": "2.9.0.dev20260820+xpu",
+    "torch_path": "/opt/conda/lib/python3.13/site-packages/torch/__init__.py",
+    "xpu_available": true,
+    "xpu_device_name": "Intel(R) Data Center GPU Max 1550",
+    "environment_warnings": []
+  },
   "results": [{
     "id": "issue-123",
     "script_sha256": "...",
@@ -201,7 +220,8 @@ writes one result for every execution-plan entry:
 every planned execution, not that every reproducer succeeded. The collection
 digest must match the prepare artifact and original collector manifest. A digest
 mismatch or missing result blocks finalization. A valid partial collection does
-not prevent diagnostic execution.
+not prevent execution or publication of fully covered, independently reviewed
+units.
 
 ## `scan-finalize` role
 
@@ -217,10 +237,13 @@ logs. Write only `scan.json` and optional `scan_report.md`:
   "prepare_sha256": "...",
   "runner_sha256": "...",
   "environment": {
-    "python": "/usr/bin/python3",
-    "torch": "...",
+    "python_executable": "/usr/bin/python3",
+    "python_version": "3.13.7",
+    "torch_version": "2.9.0.dev20260820+xpu",
+    "torch_path": "/opt/conda/lib/python3.13/site-packages/torch/__init__.py",
     "xpu_available": true,
-    "device": "..."
+    "xpu_device_name": "Intel(R) Data Center GPU Max 1550",
+    "environment_warnings": []
   },
   "candidates": [{
     "id": "issue-123",
@@ -232,7 +255,7 @@ logs. Write only `scan.json` and optional `scan_report.md`:
 }
 ```
 
-`status` is `complete`, `incomplete`, or `blocked`. Candidates cover the entire
+`status` is `complete` or `incomplete`. Candidates cover the entire
 validated set exactly once and use a result from `evidence.md`. `confirmed`,
 `related-failure`, and `not-reproduced` require a successful runner record,
 matching script and log digests, target-path proof, and a defensible oracle.
@@ -242,8 +265,9 @@ in the collection and prepare artifacts and are not copied into `scan.json`.
 `status: complete` is relative to the observed inventory; it does not clear a
 partial collection scope.
 
-This role interprets the runner's recorded XPU environment and does not require
-an XPU device or GitHub access of its own.
+The environment object must exactly match the runner artifact. This role
+interprets the runner's recorded XPU environment and does not require an XPU
+device or GitHub access of its own.
 
 ## `review` role
 
@@ -290,11 +314,12 @@ metadata and counts, triage/execution coverage, paths and digests, runner
 coverage, terminal scan results, exact review coverage, verdict vocabulary,
 payload ownership, and payload shape.
 
-Unattended filing additionally requires clean producer jobs and exactly one
-review-approved payload from a complete collection. Two or more payloads go to
-human triage. A structurally valid partial collection with clean downstream
-coverage produces diagnostic drafts on the standing triage issue: scheduled
-drafts are idempotent and notify maintainers, dry-run drafts may repeat and never
-notify. Diagnostic drafts use a separate marker, cannot be filed, and do not
-prevent a later complete run from publishing the same unit. A malformed
-collection or downstream failure publishes only a blocker summary.
+Clean producer jobs and complete artifact coverage are required for publication.
+An individual runner-backed unit blocker excludes only that unit; it does not
+invalidate other fully covered, independently reviewed payloads. Exactly one
+review-approved scheduled payload is filed automatically, while two or more go
+to human triage. The same policy applies to a structurally valid partial
+collection, but the workflow also publishes the source progress and errors,
+notifies maintainers for a scheduled run, and finishes red. Dry runs never file
+and never notify. A malformed collection, incomplete coverage, environment core
+failure, or producer job failure publishes only a blocker summary.

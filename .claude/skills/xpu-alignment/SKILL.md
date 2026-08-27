@@ -93,8 +93,10 @@ For each validated candidate, construct the smallest faithful XPU reproducer and
 an execution-plan entry. Record the upstream oracle, expected target path, exact
 script digest, and bounded timeout. In automation, stop after writing `prepare.json`
 and the reproducer scripts; do not execute them or write final scan results. A
-structurally valid partial collection may still be prepared for diagnostic
-analysis, but its partial scope remains attached to every downstream artifact.
+structurally valid partial collection may still be prepared and validated. Its
+partial scope remains attached to every downstream artifact so the gate can
+publish only fully covered, independently reviewed units while reporting the
+incomplete collection.
 
 ## Scan finalization
 
@@ -128,4 +130,5 @@ is complete relative to that same scope only when every selected validation has 
 defensible terminal runner-backed result. A review is complete relative to that
 scope only when it covers the entire provisional actionable set exactly once and
 has no blocker. Collection scope remains independently `complete` or `partial`;
-preserve partial evidence and name missing work when any phase is incomplete.
+preserve partial evidence and name missing work even when fully covered,
+independently reviewed units from the observed inventory are publishable.
