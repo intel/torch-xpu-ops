@@ -26,15 +26,18 @@ from torch.testing._internal.common_utils import (
 )
 from torch.utils._triton import has_triton
 
+
 def _kernel_events_from_trace(trace_path):
     """Return kernel-category events from a saved trace."""
     with open(trace_path) as f:
         data = json.load(f)
     return [e for e in data.get("traceEvents", []) if e.get("cat") == "kernel"]
 
+
 def _filter_gemm_kernels(kernels):
     """Filter kernel events to only include GEMM kernels."""
     return [k for k in kernels if "gemm" in k.get("name", "").lower()]
+
 
 class XpuProfilerUseCasesTest(TestCase):
     @staticmethod
