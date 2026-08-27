@@ -399,6 +399,7 @@ struct InternodeDispatchRdmaSenderKernel {
   size_t node_stride; // cap * nbpt
   size_t chunk_bytes; // max bytes per ishmemx_putmem_nbi_work_group() call
   PayloadLayout pl;
+  int32_t debug_put; // when non-zero, lane 0 prints each RDMA put's size
 
   void operator()(sycl::nd_item<1> item) const {
     auto group = item.get_group();
@@ -531,6 +532,11 @@ struct InternodeDispatchRdmaSenderKernel {
     const bool has_coordinator = nwg_col > 1;
     const int32_t num_copy_teams = has_coordinator ? (nwg_col - 1) : nwg_col;
     const bool is_coordinator = has_coordinator && (sub == nwg_col - 1);
+    // A column with a single team has no dedicated coordinator to fall back
+    // on, so that lone team must both copy AND send its remote `rd`; without
+    // this its staged send_data would never be RDMA-put.
+    const bool is_single_team = (nwg_col == 1);
+    const bool is_sender = is_single_team || is_coordinator;
 
     for (int32_t rd = col; rd < num_rdma_ranks; rd += G) {
       for (int32_t t = sub * num_sgs + sg_id; !is_coordinator && t < num_tokens;
@@ -556,8 +562,14 @@ struct InternodeDispatchRdmaSenderKernel {
         if (slot >= cap) {
           continue;
         }
-        uint8_t* payload_ptr =
-            send_data + static_cast<size_t>(rd) * node_stride + static_cast<size_t>(slot) * nbpt;
+        // Local destination is written straight into this PE's recv_data (no
+        // staging + second copy); remote destinations stage into send_data
+        // and are RDMA-put later by the sender team.
+        const bool is_local = (rd == my_rdma);
+        uint8_t* data_base = is_local
+            ? recv_data + static_cast<size_t>(my_rdma) * node_stride
+            : send_data + static_cast<size_t>(rd) * node_stride;
+        uint8_t* payload_ptr = data_base + static_cast<size_t>(slot) * nbpt;
         copy_bytes(
             payload_ptr + pl.hidden_off,
             x_bytes + static_cast<size_t>(t) * hidden_bytes,
@@ -581,17 +593,24 @@ struct InternodeDispatchRdmaSenderKernel {
             payload_ptr + pl.topk_weights_off,
             reinterpret_cast<const uint8_t*>(topk_weights_ptr + static_cast<size_t>(t) * num_topk),
             topk_weights_bytes);
-        // Publish this slot as ready the moment its own payload is fully
-        // written -- do NOT wait for the rest of this team, let alone the
-        // other `nwg_col` teams, to finish their own tokens first. The
-        // fence makes the writes above visible to any thread that later
-        // observes ready_tail advance past this slot with `acquire`.
+        // Synchronize the whole sub-group so ALL lanes have finished writing
+        // this token's payload before lane 0 publishes it; without this a
+        // reader that observes the publish could see a partially-written
+        // payload (lane 0's release alone cannot order the other lanes'
+        // writes). Only remote destinations advance ready_tail -- the sender
+        // team streams from it; local destinations are published via
+        // recv_count once every copy team has finished.
+        sycl::group_barrier(sg);
         sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
-        if (lane_id == 0) {
+        if (!is_local && lane_id == 0) {
           mark_slot_ready(rd, slot);
         }
       }
-      item.barrier(sycl::access::fence_space::local_space);
+      // Global-and-local barrier so every lane's payload writes (into
+      // send_data for remote, or directly into recv_data for local) are
+      // visible work-group-wide before lane 0 publishes completion; the
+      // subsequent release store then makes them visible device-wide.
+      item.barrier(sycl::access::fence_space::global_and_local_space);
 
       // Declare this team done copying `rd` -- but, unlike before, do NOT
       // block here waiting for the OTHER teams to also finish. The
@@ -601,7 +620,8 @@ struct InternodeDispatchRdmaSenderKernel {
       // own-node local-copy path still needs to wait for the full count.
       // The dedicated coordinator team (if any) never touches stage_arrive:
       // it does no copying, so it must not count towards the threshold the
-      // other paths wait on.
+      // other paths wait on. Release ordering pairs with the acquire loads in
+      // copy_fully_done()/the local publish path.
       if (!is_coordinator && lid == 0) {
         sycl::atomic_ref<
             int,
@@ -609,7 +629,7 @@ struct InternodeDispatchRdmaSenderKernel {
             sycl::memory_scope::device,
             sycl::access::address_space::global_space>
             a(stage_arrive[rd]);
-        a.fetch_add(1);
+        a.fetch_add(1, sycl::memory_order::release);
       }
       item.barrier(sycl::access::fence_space::local_space);
 
@@ -621,62 +641,50 @@ struct InternodeDispatchRdmaSenderKernel {
       // (the coordinator, if present, is the LAST team), so this is
       // unaffected by the role split.
       if (rd == my_rdma) {
-        if (sub == 0) {
-          if (lid == 0) {
-            sycl::atomic_ref<
-                int,
-                sycl::memory_order::relaxed,
-                sycl::memory_scope::device,
-                sycl::access::address_space::global_space>
-                a(stage_arrive[rd]);
-            while (a.load() < num_copy_teams) {
-            }
+        // Local tokens were written straight into recv_data during the copy
+        // loop, so there is no second copy here -- a single team (sub==0)
+        // just waits for every copy team to finish (acquire pairs with their
+        // release on stage_arrive, making all recv_data writes visible) and
+        // then publishes the final count.
+        if (sub == 0 && lid == 0) {
+          sycl::atomic_ref<
+              int,
+              sycl::memory_order::relaxed,
+              sycl::memory_scope::device,
+              sycl::access::address_space::global_space>
+              a(stage_arrive[rd]);
+          while (a.load(sycl::memory_order::acquire) < num_copy_teams) {
           }
-          item.barrier(sycl::access::fence_space::local_space);
           sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::device);
 
           int32_t count = send_count[rd];
           if (count > cap) {
             count = cap;
           }
-          uint8_t* dst_data = recv_data + static_cast<size_t>(my_rdma) * node_stride;
-          uint8_t* src_data = send_data + static_cast<size_t>(rd) * node_stride;
-          int* dst_count = recv_count + my_rdma;
-          if (count > 0) {
-            copy_bytes_vectorized_wg(dst_data, src_data, static_cast<size_t>(count) * nbpt, item);
-          }
-          item.barrier(sycl::access::fence_space::local_space);
-          sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
-          if (lid == 0) {
-            sycl::atomic_ref<
-                int,
-                sycl::memory_order::relaxed,
-                sycl::memory_scope::device,
-                sycl::access::address_space::global_space>
-                ref(*dst_count);
-            // Publish count+1 (0 means "not ready yet").
-            ref.store(count + 1);
-          }
+          sycl::atomic_ref<
+              int,
+              sycl::memory_order::relaxed,
+              sycl::memory_scope::device,
+              sycl::access::address_space::global_space>
+              ref(recv_count[my_rdma]);
+          // Publish count+1 (0 means "not ready yet").
+          ref.store(count + 1, sycl::memory_order::release);
         }
-        // Non-coordinator, non-sub0 teams have nothing left to do for the
-        // own-node rd; the coordinator team also skips it (own-node never
-        // goes through RDMA).
-      } else if (is_coordinator) {
+        // Other teams have nothing left to do for the own-node rd; the
+        // coordinator team also skips it (own-node never goes through RDMA).
+      } else if (is_sender) {
         // RDMA send to another node, overlapped with copying ("copy while
-        // send"), DeepEP kRDMASenderCoordinator-style: this ONE dedicated
-        // team never copies tokens -- for the whole kernel lifetime it just
-        // polls the shared `ready_tail` (advanced by whichever of the
-        // `num_copy_teams` copy teams finishes a slot) and streams out newly
-        // ready bytes as soon as they appear, instead of splitting the cap
-        // range across multiple teams that ALSO have to finish their own
-        // copy work first. This lets sends for early-completing slots start
-        // immediately, fully concurrent with the copy teams' ongoing work,
-        // mirroring how DeepEP's coordinator warp runs concurrently with
-        // its sender warps rather than each warp alternating between
-        // copying and sending. Only lane 0 drives the polling loop (a busy
-        // spin on global memory would be wasteful if done by every lane);
-        // the whole team then calls the collective put/quiet together once
-        // lane 0 has decided how much is newly ready.
+        // send"), DeepEP kRDMASenderCoordinator-style. When a column has a
+        // dedicated coordinator (nwg_col > 1) this team never copies tokens
+        // and spends its whole lifetime polling the shared `ready_tail`
+        // (advanced by whichever of the `num_copy_teams` copy teams finishes
+        // a slot), streaming out newly ready bytes as soon as they appear so
+        // sends overlap the copy teams' ongoing work. When the column has a
+        // single team (nwg_col == 1) that same team already finished its own
+        // copy loop above, so copy_fully_done() is already true and it simply
+        // streams out everything that is ready. Only lane 0 drives the
+        // polling loop; the whole team then calls the collective put/quiet
+        // together once lane 0 has decided how much is newly ready.
         const int32_t dst_pe = rd * kNumMaxNvlPeers + my_nvl;
         uint8_t* dst_data = recv_data + static_cast<size_t>(my_rdma) * node_stride;
         uint8_t* src_data = send_data + static_cast<size_t>(rd) * node_stride;
@@ -714,6 +722,13 @@ struct InternodeDispatchRdmaSenderKernel {
           while (off < ready_bytes) {
             const size_t remain = ready_bytes - off;
             const size_t chunk = (remain < chunk_bytes) ? remain : chunk_bytes;
+            // controled by INTERNODE_DISPATCH_RDMA_SENDER_DEBUG 
+            if (debug_put && lid == 0) {
+              sycl::ext::oneapi::experimental::printf(
+                  "[internode put] my_rdma=%d rd=%d dst_pe=%d off=%lu chunk=%lu ready=%lu\n",
+                  my_rdma, rd, dst_pe, static_cast<unsigned long>(off),
+                  static_cast<unsigned long>(chunk), static_cast<unsigned long>(ready_bytes));
+            }
             ishmemx_putmem_nbi_work_group(dst_data + off, src_data + off, chunk, dst_pe, group);
             off += chunk;
           }
@@ -724,16 +739,16 @@ struct InternodeDispatchRdmaSenderKernel {
 
         if (lid == 0) {
           // This is the only team ever sending for this rd, so there is no
-          // "last of several teams" race to arbitrate (unlike the previous
-          // split-range design) -- by construction we only just observed
-          // copy_fully_done()==true, so ready_tail[rd] is already final and
-          // safe to read as the actual count.
+          // "last of several teams" race to arbitrate -- by construction we
+          // only just observed copy_fully_done()==true, so ready_tail[rd] is
+          // already final and safe to read as the actual count.
           const int32_t count = load_ready_tail(rd);
           ishmem_int_atomic_set(dst_count, count + 1, dst_pe);
         }
       }
-      // Non-coordinator teams handling a remote rd have nothing left to do
-      // here -- the coordinator team owns the entire send for this rd.
+      // Non-sender teams handling a remote rd have nothing left to do here --
+      // the sender team (coordinator, or the lone team when nwg_col == 1) owns
+      // the entire send for this rd.
       item.barrier(sycl::access::fence_space::local_space);
     }
     ishmemx_quiet_work_group(group);
@@ -979,7 +994,8 @@ at::Tensor internode_dispatch_rdma_sender(
             nbpt,
             node_stride,
             put_chunk_bytes(),
-            pl});
+            pl,
+            debug_enabled() ? 1 : 0});
   });
   queue.wait_and_throw();
 

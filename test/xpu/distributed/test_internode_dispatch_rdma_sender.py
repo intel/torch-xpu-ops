@@ -19,7 +19,8 @@ Run (4 ranks == 2 nodes x 2 NVL peers/node):
     mpirun -np 4 --prepend-rank python test_internode_dispatch_rdma_sender.py
 
 Env:
-    NUM_TOKENS (17), HIDDEN_SIZE (256), TOPK (4), CAP (32), SEED (1234)
+    NUM_TOKENS (16), HIDDEN_SIZE (1024), TOPK (8), EXPERTS_PER_RANK (8),
+    NUM_MAX_TOKENS_PER_RANK (32), SEED (1234)
     DTYPE (float32)
     ENABLE_PROFILE (1)  use the PTI-based torch.profiler to capture a chrome
                         trace of the timed loop and report BW from pure
@@ -44,10 +45,11 @@ import torch.distributed as dist
 
 NUM_MAX_NVL_PEERS = 2
 
-NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 17))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 256))
-TOPK = int(os.environ.get("TOPK", 4))
-CAP = int(os.environ.get("CAP", 32))
+NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 16))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 1024))
+TOPK = int(os.environ.get("TOPK", 8))
+EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 8))
+num_max_tokens_per_rank = int(os.environ.get("NUM_MAX_TOKENS_PER_RANK", 32))
 SEED = int(os.environ.get("SEED", 1234))
 ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "1") != "0"
 LOOP = int(os.environ.get("LOOP", 30))
@@ -136,24 +138,25 @@ def main():
 
     torch.manual_seed(SEED + rank)
     x = torch.randn(NUM_TOKENS, HIDDEN_SIZE, device=device, dtype=dtype)
-    topk_idx = torch.randint(
-        0, 256, (NUM_TOKENS, TOPK), device=device, dtype=torch.int64
+    # MoE-style routing: each token picks TOPK distinct experts uniformly, and
+    # is routed to the ranks that own those experts (rank = expert // EXPERTS_PER_RANK).
+    num_experts = world_size * EXPERTS_PER_RANK
+    assert TOPK <= num_experts, f"TOPK={TOPK} must be <= num_experts={num_experts}"
+    topk_idx = (
+        torch.rand(NUM_TOKENS, num_experts, device=device)
+        .argsort(dim=1)[:, :TOPK]
+        .to(torch.int64)
     )
     topk_weights = torch.rand(NUM_TOKENS, TOPK, device=device, dtype=torch.float32)
-    # Each token independently decides (with 50% prob per global rank) whether
-    # it wants to go to that rank; guarantee at least one destination rank per
-    # token so every token is actually routed somewhere.
-    is_token_in_rank = torch.rand(NUM_TOKENS, world_size, device=device) < 0.5
-    no_dest = ~is_token_in_rank.any(dim=1)
-    if no_dest.any():
-        fallback = torch.randint(0, world_size, (int(no_dest.sum()),), device=device)
-        is_token_in_rank[no_dest, fallback] = True
+    dest_rank = topk_idx // EXPERTS_PER_RANK
+    is_token_in_rank = torch.zeros(NUM_TOKENS, world_size, dtype=torch.bool, device=device)
+    is_token_in_rank.scatter_(1, dest_rank, True)
 
-    recv_x = torch.zeros(num_rdma_ranks, CAP, HIDDEN_SIZE, device=device, dtype=dtype)
-    recv_topk_idx = torch.zeros(num_rdma_ranks, CAP, TOPK, device=device, dtype=torch.int64)
-    recv_topk_weights = torch.zeros(num_rdma_ranks, CAP, TOPK, device=device, dtype=torch.float32)
-    recv_src_rdma_rank = torch.zeros(num_rdma_ranks * CAP, device=device, dtype=torch.int32)
-    recv_src_nvl_bits = torch.zeros(num_rdma_ranks * CAP, device=device, dtype=torch.int32)
+    recv_x = torch.zeros(num_rdma_ranks, num_max_tokens_per_rank, HIDDEN_SIZE, device=device, dtype=dtype)
+    recv_topk_idx = torch.zeros(num_rdma_ranks, num_max_tokens_per_rank, TOPK, device=device, dtype=torch.int64)
+    recv_topk_weights = torch.zeros(num_rdma_ranks, num_max_tokens_per_rank, TOPK, device=device, dtype=torch.float32)
+    recv_src_rdma_rank = torch.zeros(num_rdma_ranks * num_max_tokens_per_rank, device=device, dtype=torch.int32)
+    recv_src_nvl_bits = torch.zeros(num_rdma_ranks * num_max_tokens_per_rank, device=device, dtype=torch.int32)
     recv_counts = torch.zeros(num_rdma_ranks, device=device, dtype=torch.int64)
 
     torch.ops.symm_mem.internode_dispatch_rdma_sender(
@@ -171,7 +174,7 @@ def main():
         recv_counts,
         rank,
         world_size,
-        CAP,
+        num_max_tokens_per_rank,
         0,
     )
     torch.xpu.synchronize()
@@ -212,7 +215,7 @@ def main():
         rows_topk_w = all_topk_weights[src_rank][idxs].cpu()
         rows_bits = bits[idxs].cpu()
         cnt = rows_x.size(0)
-        expected_counts[src_node] = min(cnt, CAP)
+        expected_counts[src_node] = min(cnt, num_max_tokens_per_rank)
         expected_rows[src_node] = (rows_x, rows_topk_idx, rows_topk_w, rows_bits)
 
     counts_ok = torch.equal(recv_counts.cpu(), expected_counts)
@@ -228,8 +231,8 @@ def main():
         got_x = recv_x[src_node, :c].cpu()
         got_topk_idx = recv_topk_idx[src_node, :c].cpu()
         got_topk_w = recv_topk_weights[src_node, :c].cpu()
-        got_bits = recv_src_nvl_bits[src_node * CAP : src_node * CAP + c].cpu()
-        got_src_rank = recv_src_rdma_rank[src_node * CAP : src_node * CAP + c].cpu()
+        got_bits = recv_src_nvl_bits[src_node * num_max_tokens_per_rank : src_node * num_max_tokens_per_rank + c].cpu()
+        got_src_rank = recv_src_rdma_rank[src_node * num_max_tokens_per_rank : src_node * num_max_tokens_per_rank + c].cpu()
         assert torch.equal(got_src_rank, torch.full((c,), src_node, dtype=torch.int32)), (
             f"[rank {rank}] src_rdma_rank mismatch for source node {src_node}: "
             f"{got_src_rank.tolist()}"
@@ -295,7 +298,7 @@ def main():
             recv_counts,
             rank,
             world_size,
-            CAP,
+            num_max_tokens_per_rank,
             0,
         )
 
@@ -322,16 +325,21 @@ def main():
         torch.xpu.synchronize()
     wall_ms = (time.time() - wall0) * 1000.0 / timed_iters
 
-    # Bytes moved by this rank's sender kernel per call: every local token
-    # gets packed once per non-zero-bit destination node; approximate with
-    # the per-token payload size (hidden + top-k idx/weights + src meta,
-    # 16B-aligned) times the local token count as a lower-bound throughput
-    # proxy (matches the other ISHMEM dispatch UTs' convention).
+    # Bytes this rank actually sends over RDMA per call: only tokens routed to
+    # a REMOTE node count (the sender's own node is a local device copy, not
+    # RDMA). Per destination node we send min(tokens_routed_there, cap) token
+    # payloads; sum those over all remote nodes.
     elem_size = x.element_size()
     src_meta_bytes = 8  # int32 src_rdma_rank + int32 bits
     bytes_per_token = HIDDEN_SIZE * elem_size + src_meta_bytes + TOPK * 8 + TOPK * 4
     bytes_per_token = (bytes_per_token + 15) // 16 * 16
-    bytes_per_iter = NUM_TOKENS * bytes_per_token
+    # A token hits node rd if any of that node's NUM_MAX_NVL_PEERS lanes is set;
+    # cap at the per-node slot capacity and drop this rank's own (local) node.
+    node_any = is_token_in_rank.view(NUM_TOKENS, num_rdma_ranks, NUM_MAX_NVL_PEERS).any(dim=2)
+    tokens_per_node = node_any.sum(dim=0).clamp(max=num_max_tokens_per_rank)
+    tokens_per_node[my_rdma] = 0
+    rdma_tokens = int(tokens_per_node.sum().item())
+    bytes_per_iter = rdma_tokens * bytes_per_token
 
     if ENABLE_PROFILE:
         trace_path = f"./profile_internode_dispatch_rdma_sender_rank{rank}.json"
@@ -343,7 +351,7 @@ def main():
             print(
                 f"[rank {rank}] [{_PROFILED_KERNEL_NAME}] avg={kernel_avg:.3f} ms "
                 f"min={min(kernel_latencies):.3f} ms max={max(kernel_latencies):.3f} ms "
-                f"BW~={kernel_bw:.2f} GB/s (trace={trace_path})",
+                f"RDMA BW~={kernel_bw:.2f} GB/s (trace={trace_path})",
                 flush=True,
             )
         except RuntimeError as e:
@@ -352,7 +360,7 @@ def main():
     wall_bw = bytes_per_iter / 1e6 / wall_ms
     print(
         f"[rank {rank}] end2end: avg={wall_ms:.3f} ms/iter over {timed_iters} iters "
-        f"BW~={wall_bw:.2f} GB/s (incl. host overhead)",
+        f"RDMA BW~={wall_bw:.2f} GB/s (incl. host overhead)",
         flush=True,
     )
 
