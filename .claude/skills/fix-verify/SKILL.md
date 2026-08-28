@@ -1,11 +1,11 @@
 ---
 name: fix-verify
 description: >
-  Use when asked to verify a fix works, confirm a staged patch resolves a
-  failure, or produce a before/after comparison of a fix. Runs the test
-  command against a source build with the fix applied and reports
-  PASSED / FAILED / CANNOT_VERIFY. Called by both issue-handler and
-  xpu-nightly-ci-fix orchestrators after fix-implement.
+  Use when asked to verify a fix works, confirm a staged or committed
+  patch resolves a failure, or produce a before/after summary of a fix.
+  Runs the test command against a source build with the fix applied and
+  reports PASSED / FAILED / CANNOT_VERIFY. Called by both issue-handler
+  and xpu-nightly-ci-fix orchestrators after fix-implement.
 ---
 
 # Verify — Confirm the Fix Works
@@ -21,7 +21,7 @@ see.
 - [Shell helpers](#shell-helpers)
 - Step 1: [Confirm source build environment](#step-1-confirm-source-build-environment)
 - Step 2: [Rebuild if needed](#step-2-rebuild-if-needed)
-- Step 3: [Before/after comparison](#step-3-beforeafter-comparison)
+- Step 3: [Verify the fix](#step-3-verify-the-fix)
 - Step 4: [Run test](#step-4-run-test)
 - Step 5: [Lint](#step-5-lint)
 - [Output](#output)
@@ -31,18 +31,19 @@ see.
 - `refined_command` — the exact test command from `fix-reproduce`'s
   output.
 - `PYTORCH_DIR` — path to local PyTorch checkout.
-- `target_repo_dir` — path to the checkout that holds the staged fix
+- `target_repo_dir` — path to the checkout that holds the fix (staged or
+  committed)
   (same derivation rule as in `fix-implement`: equals `PYTORCH_DIR` for
   `target_repo=pytorch`, `<PYTORCH_DIR>/third_party/torch-xpu-ops` for
-  `target_repo=torch-xpu-ops`). All `git stash`/`git diff --cached`
-  operations run against `target_repo_dir`. The rebuild (Step 2) still
+  `target_repo=torch-xpu-ops`). All git operations run against
+  `target_repo_dir`. The rebuild (Step 3) still
   runs from `PYTORCH_DIR` because `pip install -e .` builds pytorch and
   pulls its submodule pin.
 - `changed_files` — list of changed files from `fix-implement`'s
   output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`) or CMake
   (`CMakeLists.txt`, `*.cmake`), a rebuild is required before running.
 
-This skill always runs the before/after comparison (Step 3) and lints
+This skill always runs the test with the fix applied (Step 3) and lints
 a passing result (Step 5); there are no flags to toggle either off.
 
 ## Shell helpers
@@ -83,97 +84,48 @@ reproduced at `stage=nightly`).
 ## Step 2: Rebuild if needed
 
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`)
-or CMake (`CMakeLists.txt`, `*.cmake`), a rebuild is required. On the
-first rebuild, clean the build cache and retry once if
-`xpu-build-pytorch` reports a cache-related failure.
+or CMake (`CMakeLists.txt`, `*.cmake`), a rebuild is required so the fix
+is compiled in before the test runs. On the first rebuild, clean the
+build cache and retry once if `xpu-build-pytorch` reports a cache-related
+failure. The rebuild itself (and, for a torch-xpu-ops fix, the
+`third_party/xpu.txt` pin override that makes CMake see the fix) happens
+in Step 3.
 
-**When `target_repo_dir != PYTORCH_DIR`** (i.e. the fix is inside
-`third_party/torch-xpu-ops`), the pytorch build reads
-`third_party/xpu.txt` and would clobber the staged fix by resetting
-the submodule to the pinned commit. Apply the "Commit Pin & Development
-Override" procedure from AGENTS.md **before** loading `xpu-build-pytorch`:
+If all changed files are python-only, no rebuild is needed — the source
+tree already reflects the edit.
 
-```bash
-# Rewrite the pin to the working branch's HEAD so CMake's checkout
-# becomes a no-op. Do NOT stage or commit this file (never staging
-# third_party/xpu.txt is a HARD RULE in fix-implement).
-git -C $target_repo_dir rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
-```
+## Step 3: Verify the fix
 
-**When the changed files require a rebuild** (C++/SYCL or CMake, per
-Step 2), DO NOT rebuild first. A rebuild with the fix staged compiles
-the fix into `torch/lib/*.so`, and the later "before" run (Step 3, after
-`git stash -u`) would still load the fix's `.so` even with sources
-removed — producing a false-negative "before" that already passes.
-Instead, defer the rebuild into Step 3's before/after loop where it is
-done at each phase.
-
-If all changed files are python-only, no rebuild is needed here (the
-before/after loop in Step 3 re-imports without a build step).
-
-## Step 3: Before/after comparison
-
-**Contract:** this step requires that `fix-implement` left changes
-staged but uncommitted. `git stash -u` temporarily removes them to
-obtain a before-state. If the stash
-finds nothing (orchestrator committed the changes early), the contract
-is violated — return
-`CANNOT_VERIFY(reason=no_staged_changes)` with `blocker="no staged
-changes; fix-implement contract requires uncommitted changes"`, do NOT
-silently produce an after-only table.
+Reaching this skill means `fix-reproduce` already ran the test and
+observed the failure (the "before" state). This step only needs to run
+the test **with the fix applied** and confirm it now passes; the fix may
+be staged or already committed — either is fine, no stash/checkout dance.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
 
-**When any `changed_files` are C++/SYCL, the before/after phases each
-run their own rebuild** (see Step 2 rationale). For python-only changes
-the rebuild lines below are no-ops.
+**When any `changed_files` are C++/SYCL or CMake**, the fix must be
+compiled in before the test (per Step 2). For python-only changes the
+installed source tree already reflects the edit.
 
 ```bash
-# Capture the staged diff BEFORE stashing so we can compare after pop.
-staged_before=$(git -C $target_repo_dir diff --cached)
-[ -z "$staged_before" ] && \
-  abort "no staged changes; fix-implement contract requires uncommitted staged changes"
-
-# Record BEFORE (without the fix)
-git -C $target_repo_dir stash -u   # stash staged, unstaged, untracked
-# For torch-xpu-ops fixes, also restore xpu.txt to the base commit's pin
-# so the rebuild sees the ORIGINAL submodule state.
-if [ "$target_repo_dir" != "$PYTORCH_DIR" ]; then
-    git -C $PYTORCH_DIR checkout -- third_party/xpu.txt
-fi
-# Rebuild WITHOUT the fix (only if C++/SYCL changed):
-#   invoke xpu-build-pytorch skill here
-# run test, capture output as before_output
-
-# Restore the fix. `--index` restores the staged state the orchestrator
-# commits from — but git will silently fall back to a non-index pop
-# if the working tree conflicts with the popped state (e.g. a rebuild
-# artifact appearing at a path that clashes with a stashed file).
-git -C $target_repo_dir stash pop --index || \
-  abort "git stash pop failed; staged fix state cannot be restored"
-
-# Verify the staged diff matches what we captured before stashing.
-# Compare via hash to handle diffs that exceed ARG_MAX.
-before_sha=$(printf %s "$staged_before" | sha256sum | cut -d' ' -f1)
-after_sha=$(printf %s "$(git -C $target_repo_dir diff --cached)" \
-            | sha256sum | cut -d' ' -f1)
-if [ "$before_sha" != "$after_sha" ]; then
-    abort "git stash pop --index did not restore staged state"
-fi
-
-# Re-apply the xpu.txt override so the rebuild sees the working branch.
+# For torch-xpu-ops fixes, point the pin at the working branch so the
+# rebuild sees the fix (Commit Pin & Development Override in AGENTS.md;
+# do NOT stage or commit this file).
 if [ "$target_repo_dir" != "$PYTORCH_DIR" ]; then
     git -C $target_repo_dir rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
 fi
-# Rebuild WITH the fix (only if C++/SYCL changed):
+# Rebuild WITH the fix (only if C++/SYCL or CMake changed):
 #   invoke xpu-build-pytorch skill here
-# Record AFTER (with the fix)
-# run test, capture output as after_output
+# Then run the test in Step 4; its result is the "after" output.
 ```
 
-The before/after outputs are folded into the markdown report (see
-Output section) as a comparison table.
+The "before" cell of the comparison table (Output section) is filled
+from `fix-reproduce`'s recorded failure, not re-run here; "after" is the
+result from Step 4 with the fix applied. The two come from different
+phases (reproduce may have run against a nightly wheel, verify always
+against a source build), so the table is a before-fix-vs-after-fix
+summary, not a single-build A/B.
 
 ## Step 4: Run test
 
@@ -250,6 +202,9 @@ update is the **caller's** responsibility.
 
 ### Before / after
 
+Before = the failure `fix-reproduce` recorded; After = the result from
+Step 3 with the fix applied.
+
 | Test case | Before | After |
 |-----------|--------|-------|
 | TestFooXPU::test_bar | FAILED (AssertionError: ...) | PASSED |
@@ -276,9 +231,10 @@ update is the **caller's** responsibility.
 - `refined_command` — echo the exact command that was run.
 - `changed_files` — echo from `fix-implement`; downstream orchestrator
   uses this to build the commit's file list.
-- `before_after_table` — the markdown table from Step 3 when both
-  phases ran successfully; `null` only when Step 3 could not produce it
-  (e.g. a `CANNOT_VERIFY` before reaching the after phase).
+- `before_after_table` — the markdown table pairing `fix-reproduce`'s
+  recorded failure (before) with Step 3's result (after); `null` only
+  when Step 3 could not produce an after result (e.g. a `CANNOT_VERIFY`
+  before the test ran).
 - `failure_output` — non-null on `FAILED`; excerpt of the test or lint
   output (bounded — do not dump multi-MB logs, ~40 lines is enough for
   a human to see the failure).
@@ -305,12 +261,8 @@ On `verdict=CANNOT_VERIFY`:
 
 - `wheel_install_not_source` — Step 1 saw `torch` imported from
   `site-packages`; can't verify a source-tree fix through a wheel.
-- `rebuild_failed` — `xpu-build-pytorch` returned failure in Step 2 or
-  Step 3.
-- `no_staged_changes` — Step 3 found nothing to stash; the contract
-  from `fix-implement` (staged, uncommitted) is violated.
-- `stash_pop_failed` — `git stash pop --index` failed or did not
-  restore the staged state in Step 3.
+- `rebuild_failed` — `xpu-build-pytorch` returned failure during the
+  Step 3 rebuild.
 - `environmental_skip` — Step 4's `all skipped` had an environmental
   reason (missing dep, no accelerator).
 - `test_collect_zero` — Step 4's `refined_command` resolves to zero
