@@ -12,8 +12,7 @@ description: >
 # Implement — Apply the Fix
 
 Takes triage output and makes the code change. Does not run tests (that
-is `fix-verify`'s job) and does not open PRs or commit (that is the
-orchestrator's job).
+is `fix-verify`'s job); staging-only, see HARD RULES.
 
 ## Contents
 
@@ -83,8 +82,6 @@ If the issue is not yet triaged, run `fix-root-cause` first.
 
 - **Minimal changes** — fix only what's broken; every changed line must
   trace to the triage output.
-- **Never cherry-pick** upstream fixes. If a fix already landed on trunk,
-  rebase (`git rebase origin/main`) instead.
 - **Stay in your repo** — see the domain reference file loaded during
   triage (`../domain-knowledge/domain-<name>.md`, per the domain
   registry) for path conventions.
@@ -366,7 +363,8 @@ reviewer confidence in a claim that was never verified.
 - NEVER stage `third_party/xpu.txt`. It is a submodule pin managed by
   build tooling; staging it is never part of a bug fix, regardless of
   domain (xpu-kernel / inductor / upstream-pytorch).
-- NEVER cherry-pick upstream commits. Rebase instead.
+- NEVER cherry-pick upstream commits. If a fix already landed on trunk,
+  rebase (`git rebase origin/main`) instead.
 - NEVER commit, push, tag, or open a PR. This skill only stages the
   diff (`git add`); the workflow that invoked it takes over after
   `fix-verify` passes and drives its own PR-creation path.

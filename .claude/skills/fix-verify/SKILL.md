@@ -118,8 +118,9 @@ staged but uncommitted. `git stash -u` temporarily removes them to
 obtain a before-state. If the stash
 finds nothing (orchestrator committed the changes early), the contract
 is violated — return
-`CANNOT_VERIFY(reason=no_staged_changes)` (see below), do NOT silently
-produce an after-only table.
+`CANNOT_VERIFY(reason=no_staged_changes)` with `blocker="no staged
+changes; fix-implement contract requires uncommitted changes"`, do NOT
+silently produce an after-only table.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
@@ -173,10 +174,6 @@ fi
 
 The before/after outputs are folded into the markdown report (see
 Output section) as a comparison table.
-
-If `git stash -u` reports "No local changes to save", return
-`CANNOT_VERIFY(reason=no_staged_changes)` with `blocker="no staged
-changes; fix-implement contract requires uncommitted changes"`.
 
 ## Step 4: Run test
 
