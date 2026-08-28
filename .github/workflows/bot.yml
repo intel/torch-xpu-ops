@@ -1149,6 +1149,13 @@ jobs:
       # a build-in-the-loop fix (pytorch clone, build tree) lives here instead
       # of /tmp, so it's all in one already-established, gitignored place.
       AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
+      # A cold PyTorch+SYCL source build runs 1-3h in the foreground; the Bash
+      # tool's default cap (~2min) would kill it. Raise both to just under the
+      # 300min job timeout so a stuck build surfaces as an agent error, not a
+      # hard job kill. A single foreground build call needs no background/poll
+      # protocol inside a container.
+      BASH_DEFAULT_TIMEOUT_MS: "17700000"
+      BASH_MAX_TIMEOUT_MS: "17700000"
     steps:
       - name: Post starting message
         id: start-comment
@@ -1370,6 +1377,7 @@ jobs:
       # public artifact: the agent runs unconstrained Bash and any tool output
       # (env, git remote -v, verbose pip/git) could echo a token.
       - name: Redact secrets from agent transcript
+        id: redact
         if: always() && steps.ai-fix.outputs.execution_file
         env:
           TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
@@ -1379,18 +1387,28 @@ jobs:
             ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
           [ -f "$TRANSCRIPT" ] || exit 0
+          # Fail (not silently skip) if perl is missing, so the upload gate
+          # (steps.redact.outcome == 'success') blocks an unredacted transcript.
+          command -v perl >/dev/null || { echo "perl missing; refusing to publish unredacted transcript" >&2; exit 1; }
           # perl \Q..\E treats the token as a literal string, so tokens with
           # regex-special chars (+, ., $, /) are matched safely.
           while IFS= read -r secret; do
             [ -n "$secret" ] || continue
             SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$TRANSCRIPT"
+            # actions/checkout persists the GH token into .git/config as
+            # base64("x-access-token:<token>"); redact that form too since a
+            # `git config --list` / `cat .git/config` in a tool result leaks it.
+            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
+            SECRET="$b64" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$TRANSCRIPT"
           done <<< "$SECRETS"
 
       # Keep the agent transcript (thinking + every tool call/result) for
       # offline review; the execution_file lives in runner temp, not under
       # AGENT_SPACE, so the reclaim below does not touch it.
       - name: Upload agent transcript
-        if: always() && steps.ai-fix.outputs.execution_file
+        # Only upload when redaction actually succeeded; a failed/skipped redact
+        # must never publish an unredacted transcript to a public artifact.
+        if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
         uses: actions/upload-artifact@v4
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-transcript
@@ -1402,12 +1420,14 @@ jobs:
         if: ${{ always() }}
         run: rm -rf "$AGENT_SPACE" || true
 
-      # Hand back root-owned files (uid from /__e, not hardcoded) so the next job on this shared runner isn't denied access to its bind mounts.
+      # Hand back root-owned files so the next job on this shared runner isn't
+      # denied access. _actions / _tool / _temp are independent bind mounts (see
+      # `docker create` in the run log), NOT reached by `chown -R /__w`, so they
+      # must be listed explicitly -- a root-owned _actions is exactly what breaks
+      # the next run's "Prepare workflow directory" step.
       - name: Cleanup workspace
         if: ${{ always() }}
-        run: |
-          owner="$(stat -c '%u:%g' /__e)"
-          chown -R "$owner" /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
+        run: chown -R 1000:1000 /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
 
   file:
     needs: parse-command
