@@ -1244,73 +1244,43 @@ jobs:
             in a privileged container; treat that access as strictly for
             building and testing the fix.
 
-            This runner has all oneAPI components installed and GPU access
-            (/dev/dri) with root, so you can build PyTorch from source and
-            verify any fix -- including C++/SYCL kernels. Do build/scratch work
-            under `${{ env.AGENT_SPACE }}` (the gitignored scratch dir from this
-            repo's AGENTS.md):
-            - Python-level changes (test files, skip lists, xpu_test_utils,
-              Python operator code) take effect against the installed nightly
-              wheel immediately -- reproduce, fix, and re-verify normally in the
-              workspace checkout at ${{ github.workspace }}, no build needed.
-              COMMIT the fix on the `agent/fix-issue-<N>` branch there (do not
-              leave it only staged) so the patch export can capture it.
-            - A change to C++ or SYCL sources under src/ needs a source build.
-              Work in ONE tree to avoid a verified-vs-kept mismatch:
-              /fix-reproduce (then /fix-root-cause) clones pytorch into
-              `${{ env.AGENT_SPACE }}/pytorch` and populates its
-              `third_party/torch-xpu-ops` submodule -- that submodule is your
-              working tree. Make the fix THERE, commit it on a branch named
-              `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`,
-              point that pytorch tree's `third_party/xpu.txt` at your branch HEAD
-              (do NOT commit that pin change) so CMake builds your code, then
-              build with /xpu-build-pytorch. The build runs 1-3h; pass an
-              explicit long timeout on the build Bash call (e.g. 17700000 ms) --
-              the default 2min cap will otherwise kill it. TORCH_XPU_ARCH_LIST
-              is already set for this runner's hardware in the job env -- use it,
-              do not leave it unset
-              (that AOT-compiles every arch and is far slower). Verify against
-              that same built tree. If the build cannot complete, report
-              NEEDS_HUMAN with the root cause and suggested patch -- do not claim
-              it was verified.
+            Environment facts (the /issue-handler pipeline drives the rest):
+            - Do all build/scratch work under `${{ env.AGENT_SPACE }}` (the
+              gitignored scratch dir from AGENTS.md).
+            - oneAPI, a GPU (/dev/dri), and root are available, so C++/SYCL
+              fixes can be source-built and verified. `TORCH_XPU_ARCH_LIST` is
+              set for this runner (bmg,pvc) -- use it, do not leave it unset.
+            - A cold source build runs 1-3h; pass an explicit long timeout on
+              the build Bash call (e.g. 17700000 ms) or the 2min default kills it.
+            - The latest nightly XPU wheel is already installed for the
+              reproduce/verify environment.
 
-            Do NOT push, do NOT fetch the branch anywhere, and do NOT open a
-            PR. Instead, record where the fix lives so the workflow can export
-            it as a patch: write `${{ env.AGENT_SPACE }}/fix_result.json` with
-            (at least) these keys:
-              - `fix_repo_dir`: absolute path of the git repo holding the fix
-                commit (for a C++/SYCL fix this is
-                `${{ env.AGENT_SPACE }}/pytorch/third_party/torch-xpu-ops`; for a
-                python-only fix it is `${{ github.workspace }}`),
-              - `branch`: `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`,
-              - `base_sha`: the commit the fix branch was started from (so the
-                patch is exactly your commits, no unrelated history),
-              - plus `needs_build`, `build_ok`, `xpu_available`, `refined_command`,
-                `notes`.
-            The workflow reads these, runs `git format-patch base_sha..branch`
-            in `fix_repo_dir`, and uploads the result. End by reporting the
-            branch name and your summary.
+            Output contract (the pipeline already implements this; do not
+            deviate): on a verified fix, /issue-handler commits it onto
+            `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
+            (single bug) or per-sub-item branches (batch) and writes
+            `${{ env.AGENT_SPACE }}/fix_result*.json` recording `verdict`,
+            `target_repo`, `fix_repo_dir`, `branch`, `base_sha`, `changed_files`.
+            Do NOT push, fetch, or open a PR -- the workflow reads each
+            fix_result, exports `base_sha..branch` as a patch artifact, and a
+            human applies it. End by reporting the branch name and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
-      # The fix is never pushed (a human decides that), and the pytorch-side
-      # tree can't be pushed as a branch anyway, so persist it as a downloadable
-      # patch. The agent recorded where the fix lives (fix_repo_dir / branch /
-      # Persist the fix(es) as downloadable patch series. The fix is never
-      # pushed. issue-handler writes one fix_result*.json per fixed unit
-      # (fix_result.json for a single bug, fix_result-<slug>.json per batch
-      # sub-item), each recording where the fix lives. Export ALL of them,
-      # handling both a committed fix (format-patch base..branch) and a
-      # still-staged fix (git diff --cached). Runs before the reclaim wipes
-      # $AGENT_SPACE, and before redaction so patches are scrubbed too.
-      # Fails if a unit that reported a verified fix produced no patch, so a
-      # lost fix is never a silent green.
+      # Turn the pipeline's verified fixes into downloadable patch series.
+      # issue-handler commits each fix onto its own branch and writes one
+      # fix_result*.json per unit (fix_result.json single bug,
+      # fix_result-<slug>.json per batch sub-item) with a strict schema:
+      # verdict / target_repo / fix_repo_dir / branch / base_sha / changed_files.
+      # This step is the schema gate AND the exporter: a PASSED unit with a bad
+      # schema, or one that yields no patch, FAILS the job -- a lost fix is never
+      # a silent green. Runs before the reclaim wipes $AGENT_SPACE, and before
+      # redaction so the patches are scrubbed too.
       - name: Export fix patch
         if: always()
         env:
           OUT: ${{ runner.temp }}/fixpatch
-          DEFAULT_BRANCH: agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
         run: |
           mkdir -p "$OUT"
           python3 - <<'PY'
@@ -1318,8 +1288,6 @@ jobs:
 
           agent_space = os.environ["AGENT_SPACE"]
           out = os.environ["OUT"]
-          default_branch = os.environ["DEFAULT_BRANCH"]
-          workspace = os.environ["GITHUB_WORKSPACE"]
 
           results = sorted(glob.glob(os.path.join(agent_space, "fix_result*.json")))
           if not results:
@@ -1330,51 +1298,56 @@ jobs:
               return subprocess.run(["git", "-C", repo, *args],
                                     capture_output=True, text=True)
 
-          lost = []
+          errors = []   # schema / lost-fix problems -> fail the job
           made = 0
           for fr in results:
               try:
                   d = json.load(open(fr))
               except Exception as e:
-                  print(f"WARN: cannot parse {fr}: {e}")
+                  errors.append(f"{fr}: unparseable ({e})")
                   continue
-              repo = d.get("fix_repo_dir") or workspace
-              branch = d.get("branch") or default_branch
+
+              verdict = str(d.get("verdict", "")).upper()
+              # Only PASSED units are exported; other verdicts are reported by
+              # the agent and carry no patch.
+              if verdict != "PASSED":
+                  print(f"{fr}: verdict={verdict or 'MISSING'} -> no patch expected")
+                  continue
+
+              # Schema gate: a PASSED unit MUST carry a usable, valid contract.
+              repo = d.get("fix_repo_dir") or ""
+              branch = d.get("branch") or ""
               base = d.get("base_sha") or ""
-              # A unit that claims a verified fix must yield a patch.
-              verified = bool(d.get("build_ok") or d.get("verified_after")
-                              or str(d.get("verdict", "")).upper() == "PASSED")
+              changed = d.get("changed_files") or []
+              missing = [k for k, v in
+                         (("fix_repo_dir", repo), ("branch", branch),
+                          ("base_sha", base), ("changed_files", changed)) if not v]
+              if missing:
+                  errors.append(f"{fr}: PASSED but missing {', '.join(missing)}")
+                  continue
+              if not os.path.isdir(repo):
+                  errors.append(f"{fr}: fix_repo_dir does not exist: {repo}")
+                  continue
+              if git(repo, "rev-parse", "--verify", branch).returncode != 0:
+                  errors.append(f"{fr}: branch not found in {repo}: {branch}")
+                  continue
+              if git(repo, "rev-parse", "--verify", base).returncode != 0:
+                  errors.append(f"{fr}: base_sha not found in {repo}: {base}")
+                  continue
+
               slug = os.path.basename(fr)[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
               dest = os.path.join(out, slug)
               os.makedirs(dest, exist_ok=True)
+              git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
+              if any(f.endswith(".patch") for f in os.listdir(dest)):
+                  made += 1
+                  print(f"{fr}: exported {branch} ({base[:12]}..)")
+              else:
+                  errors.append(f"{fr}: PASSED but format-patch produced nothing "
+                                f"({base}..{branch})")
 
-              has_branch = git(repo, "rev-parse", "--verify", branch).returncode == 0
-              n_before = len(os.listdir(dest))
-              if has_branch and base and git(repo, "rev-parse", "--verify", base).returncode == 0:
-                  git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
-              elif has_branch:
-                  # Committed fix but no usable base: patch the commits since the
-                  # branch diverged from origin/main (do NOT --root: that dumps the
-                  # whole repo history).
-                  mb = git(repo, "merge-base", "origin/main", branch)
-                  if mb.returncode == 0:
-                      b = mb.stdout.strip()
-                      git(repo, "format-patch", f"--base={b}", f"{b}..{branch}", "-o", dest)
-              # Staged-but-uncommitted fix: capture the index as a patch.
-              if len(os.listdir(dest)) == n_before:
-                  diff = git(repo, "diff", "--cached")
-                  if diff.returncode == 0 and diff.stdout.strip():
-                      open(os.path.join(dest, "0001-staged.patch"), "w").write(diff.stdout)
-
-              produced = len(os.listdir(dest)) > n_before
-              made += 1 if produced else 0
-              print(f"{fr}: repo={repo} branch={branch} verified={verified} -> "
-                    f"{'patch' if produced else 'NO PATCH'}")
-              if verified and not produced:
-                  lost.append(fr)
-
-          if lost:
-              print("ERROR: verified fix produced no patch: " + ", ".join(lost),
+          if errors:
+              print("ERROR: patch export problems:\n  " + "\n  ".join(errors),
                     file=sys.stderr)
               sys.exit(1)
           print(f"exported {made} patch series")

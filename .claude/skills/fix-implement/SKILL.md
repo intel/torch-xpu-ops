@@ -322,11 +322,9 @@ On `verdict=NEEDS_HUMAN`:
 - `other` — fallback; put full explanation in `reason_detail`.
 
 **Contract:** this leaf leaves the changes **staged** (`git add`) and
-does not itself commit. The orchestrator (or the invoking workflow) may
-then either verify the staged diff directly or commit it to the fix
-branch before verifying — `fix-verify` accepts the fix staged *or*
-committed, so it no longer depends on `git stash` / an uncommitted
-working tree.
+does not commit. `fix-verify` reads the staged diff directly; the
+invoking workflow, not this skill, turns the staged diff into a patch
+after a PASSED verdict. Nobody commits the fix inside the pipeline.
 
 ### HARD RULE: every upstream/CUDA claim in "Why" must cite a source
 
@@ -368,5 +366,6 @@ reviewer confidence in a claim that was never verified.
 - NEVER cherry-pick upstream commits. If a fix already landed on trunk,
   rebase (`git rebase origin/main`) instead.
 - NEVER commit, push, tag, or open a PR. This skill only stages the
-  diff (`git add`); the workflow that invoked it takes over after
-  `fix-verify` passes and drives its own PR-creation path.
+  diff (`git add`); the workflow that invoked it reads the staged diff
+  after `fix-verify` passes and exports it as a patch (no branch, no
+  push) for a human to apply.

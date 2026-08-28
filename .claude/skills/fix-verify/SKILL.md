@@ -1,8 +1,8 @@
 ---
 name: fix-verify
 description: >
-  Use when asked to verify a fix works, confirm a staged or committed
-  patch resolves a failure, or produce a before/after summary of a fix.
+  Use when asked to verify a fix works, confirm a staged patch resolves a
+  failure, or produce a before/after summary of a fix.
   Runs the test command against a source build with the fix applied and
   reports PASSED / FAILED / CANNOT_VERIFY. Called by both issue-handler
   and xpu-nightly-ci-fix orchestrators after fix-implement.
@@ -31,8 +31,8 @@ see.
 - `refined_command` — the exact test command from `fix-reproduce`'s
   output.
 - `PYTORCH_DIR` — path to local PyTorch checkout.
-- `target_repo_dir` — path to the checkout that holds the fix, staged or
-  committed (same derivation rule as in `fix-implement`: equals
+- `target_repo_dir` — path to the checkout that holds the staged fix
+  (same derivation rule as in `fix-implement`: equals
   `PYTORCH_DIR` for `target_repo=pytorch`,
   `<PYTORCH_DIR>/third_party/torch-xpu-ops` for `target_repo=torch-xpu-ops`).
   All git operations run against `target_repo_dir`. The rebuild (Step 3)
@@ -101,8 +101,8 @@ tree already reflects the edit.
 Reaching this skill means `fix-reproduce` already ran the test and
 observed the failure (the "before" state). This step rebuilds with the
 fix applied (when needed) and sets up for the Step 4 test run that
-confirms it now passes; the fix may be staged or already committed —
-either is fine, no stash/checkout dance.
+confirms it now passes. The fix is staged (never committed inside the
+pipeline), so no stash/checkout dance is needed.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
@@ -174,27 +174,13 @@ the repo that owns the changed files — not in `PYTORCH_DIR`:
 
 ```bash
 cd $target_repo_dir
-# Determine how the fix is currently held, BEFORE fixlint touches the tree:
-# staged (changes in the index, not yet committed) vs committed (already a
-# commit on the branch, index clean).
-if ! git -C $target_repo_dir diff --cached --quiet; then
-    fix_mode=staged
-else
-    fix_mode=committed
-fi
-
 spin fixlint
 # fixlint rewrites files in the working tree, which UNSTAGES those hunks.
-# Nothing outside changed_files may become staged; if `git status` shows
-# fixlint touched other files, return FAILED rather than widening the diff.
+# Re-stage them so the lint fixes stay part of the staged diff the workflow
+# exports. Nothing outside changed_files may become staged; if `git status`
+# shows fixlint touched other files, return FAILED rather than widening the
+# diff.
 git -C $target_repo_dir add -- <changed_files>
-# Persist the lint fixes so they are not silently dropped:
-if [ "$fix_mode" = committed ]; then
-    # Amend them into the fix commit, or the kept/exported branch lacks the
-    # lint fixes and fails lint CI when a human opens the PR.
-    git -C $target_repo_dir commit --amend --no-edit
-fi
-# staged: leave them staged; the orchestrator commits what is staged.
 spin lint 2>&1 | tail -40
 ```
 

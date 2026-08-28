@@ -19,11 +19,13 @@ skills into one iterative pipeline and reports the result. Each stage's
 mechanics live in its own skill — read and follow that skill when you
 reach its stage.
 
-Every agent-produced diff is a **proposal**. This skill and the leaves
-it calls may commit the fix to a local branch to preserve it, but never
-push, tag, or open a PR — a human (or the invoking workflow) reviews the
-committed branch (or the staged diff) after `fix-verify` passes and
-drives its own push / PR-creation path.
+Every agent-produced diff is a **proposal**. After `fix-verify` returns
+`PASSED`, this skill commits the staged fix onto a dedicated local branch
+`agent/fix-issue-<N>` (single bug) or `agent/fix-issue-<N>-<seq>-<slug>`
+(per batch sub-item) and records it in a `fix_result*.json`. It never
+pushes, tags, or opens a PR — the invoking workflow reads each
+`fix_result*.json`, exports `base_sha..branch` as a patch, and a human
+applies it. The leaves themselves only stage (they never commit).
 
 ## Contents
 
@@ -347,13 +349,19 @@ For each sub-item:
    attempts exhausted): mark **this sub-item** blocked with the reason,
    record it, and **continue to the next sub-item** — never abort the
    whole batch on one hard sub-item.
-5. **On `fix-verify` PASSED**: the fix sits on
-   `agent/fix-issue-${N}-${seq}-${slug}` (committed to that branch, or
-   staged on it). Do NOT push or open a PR — a human reviews the branch
-   and drives push / PR creation. Record the sub-item as fixed with its
-   branch name, and
-   write its `fix_result-${slug}.json` (see "Machine-readable outputs"
-   below) so a human (or a later step) can re-verify it per sub-item.
+5. **On `fix-verify` PASSED**: commit the staged fix onto this
+   sub-item's branch `agent/fix-issue-${N}-${seq}-${slug}` (created in
+   step 3):
+
+   ```bash
+   git -C "$target_repo_dir" commit -m "fix: <summary> (#${N} sub-item ${slug})"
+   ```
+
+   Do NOT push or open a PR. Record the sub-item as fixed with its branch
+   name, and write its `fix_result-${slug}.json` (see "Machine-readable
+   outputs") with `verdict=PASSED`, `fix_repo_dir`, `branch`, `base_sha`
+   (the sub-item's base from step 3), `changed_files`, so the workflow can
+   export `base_sha..branch` per sub-item.
 
 Leaf skills post their own `<!-- agent:root-cause -->` /
 `<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
@@ -447,13 +455,15 @@ re-verification and PR creation without re-parsing the comment:
 
 - **`fix_result-<slug>.json`** — for each `FIXED` sub-item, the same
   schema the single-bug fix job writes as `fix_result.json`. It MUST
-  include the keys the patch-export step reads —
-  - `fix_repo_dir` — absolute path of the git repo holding the fix,
+  include the keys the workflow's schema gate and patch-export read:
+  - `verdict` — `PASSED` (only PASSED units are exported),
+  - `target_repo` — `torch-xpu-ops` | `pytorch`,
+  - `fix_repo_dir` — absolute path of the git repo holding the fix commit,
   - `branch` — `agent/fix-issue-<N>-<seq>-<slug>` (single bug: `agent/fix-issue-<N>`),
   - `base_sha` — the commit the fix branch was started from,
-  - and a verified flag (`build_ok` / `verdict`),
-  plus `needs_build`, `xpu_available`, `refined_command`, `notes`. Suffixed
-  by slug so each sub-item can be exported / re-verified independently.
+  - `changed_files` — list of the files the fix touched,
+  plus `needs_build`, `refined_command`, `notes`. Suffixed by slug so each
+  sub-item can be exported / re-verified independently.
 
 The patch-export step iterates every `fix_result*.json` and emits one
 patch series per unit from `base_sha..branch` (the branches are not
@@ -503,9 +513,21 @@ unconditionally produces the FAIL->PASS before/after table and runs
 
 Branch on the verdict:
 
-- `PASSED(reason=ok)` → Stage 6 Report with
-  `IMPLEMENTING(fix_verified)`. The staged diff is ready for the
-  workflow to open a PR (with human review).
+- `PASSED(reason=ok)` → the fix is verified. Commit it onto a dedicated
+  branch and record it, then go to Stage 6 with
+  `IMPLEMENTING(fix_verified)`:
+
+  ```bash
+  base=$(git -C "$target_repo_dir" rev-parse HEAD)   # pre-fix base
+  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
+  git -C "$target_repo_dir" commit -m "fix: <one-line summary> (#${N})"
+  ```
+
+  Then write `$AGENT_SPACE/fix_result.json` (see "Machine-readable
+  outputs") with `verdict=PASSED`, `fix_repo_dir=$target_repo_dir`,
+  `branch=agent/fix-issue-${N}`, `base_sha=$base`, `target_repo`,
+  `changed_files`, `needs_build`, `notes`. The workflow exports
+  `base_sha..branch` as the patch. Never push or open a PR.
 - `FAILED` → **loop back to Stage 4** with the failure output as
   additional context. See "Iterative loop bounds" below.
 - `CANNOT_VERIFY` → Stage 6 Report with
@@ -537,11 +559,11 @@ Always include in the summary:
   (NEEDS_HUMAN / ALREADY_FIXED / INVALID_ENTRY / UNVERIFIED), plus any
   `STALE_SKIP` follow-ups when `batch_kind=skip-list`.
 
-If the outcome is `IMPLEMENTING(fix_verified)`, the fix is left on its
-`agent/fix-issue-<N>` branch — committed to that branch, or staged on it
-(`git -C $target_repo_dir diff --cached`). A human (or the invoking
-workflow) reviews it and drives push / PR creation. **Do not push or open
-the PR from this skill.**
+If the outcome is `IMPLEMENTING(fix_verified)`, the fix is committed on
+its `agent/fix-issue-<N>` branch and recorded in `fix_result.json`. The
+invoking workflow reads that, exports `base_sha..branch` as a patch
+artifact, and a human applies it. **Do not push or open the PR from this
+skill.**
 
 ## Iterative loop bounds
 
