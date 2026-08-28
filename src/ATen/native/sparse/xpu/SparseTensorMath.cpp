@@ -383,10 +383,20 @@ Tensor& _sspaddmm_out_xpu(
       self.sparse_dim(),
       "D");
   TORCH_CHECK(
+      self.dense_dim() == 0,
+      "sspaddmm: Argument #1: scalar values expected, got ",
+      self.dense_dim(),
+      "D values");
+  TORCH_CHECK(
       mat1.sparse_dim() == 2,
       "sspaddmm: expected 'mat1' to be 2D sparse, got ",
       mat1.sparse_dim(),
       "D");
+  TORCH_CHECK(
+      mat1.dense_dim() == 0,
+      "sspaddmm: Argument #2: scalar values expected, got ",
+      mat1.dense_dim(),
+      "D values");
   TORCH_CHECK(
       mat2.dim() == 2,
       "sspaddmm: expected 'mat2' to be 2D dense, got ",
@@ -417,13 +427,47 @@ Tensor& _sspaddmm_out_xpu(
       ", got ",
       self.size(1));
 
-  // Convert sparse matrices to dense for computation
-  Tensor mat1_dense = mat1.to_dense();
-  Tensor self_dense = self.to_dense();
+  // SpTTM formulation: accumulate the sparse self term and the sparse-matrix
+  // times dense-matrix term, choosing the most efficient computation path.
+  SparseTensor mat1_coalesced = mat1.coalesce();
+  int64_t nnz1 = mat1_coalesced._nnz();
 
-  // Compute: result = self*beta + (mat1_dense @ mat2)*alpha
-  Tensor mm_result = at::mm(mat1_dense, mat2);
-  Tensor dense_result = self_dense * beta + mm_result * alpha;
+  Tensor dense_result;
+  if (nnz1 == 0) {
+    if (beta.to<double>() == 0.0 || self._nnz() == 0) {
+      dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+    } else {
+      dense_result = self.to_dense() * beta;
+    }
+  } else if (nnz1 * 4 < dim_i * dim_j) {
+    // Sparse SpTTM path: gather rows from mat2 for nonzeros in mat1,
+    // multiply by mat1 values, and accumulate into result rows.
+    Tensor row_indices = mat1_coalesced._indices()[0];
+    Tensor col_indices = mat1_coalesced._indices()[1];
+    Tensor values1 = mat1_coalesced._values();
+
+    Tensor gathered = mat2.index_select(0, col_indices);
+    Tensor prod = gathered * values1.unsqueeze(1);
+
+    dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+    dense_result.index_add_(0, row_indices, prod);
+
+    if (alpha.to<double>() != 1.0) {
+      dense_result.mul_(alpha);
+    }
+    if (beta.to<double>() != 0.0 && self._nnz() > 0) {
+      dense_result.add_(self.to_dense(), beta);
+    }
+  } else {
+    // Dense GEMM path: used when mat1 is relatively dense and dense GEMM is faster.
+    Tensor mat1_dense = mat1_coalesced.to_dense();
+    Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+        ? self.to_dense()
+        : at::zeros({dim_i, dim_k}, mat2.options());
+    Tensor mm_result = at::mm(mat1_dense, mat2);
+    dense_result = self_dense * beta + mm_result * alpha;
+  }
+
   Tensor sparse_result = dense_result.to_sparse();
 
   // Write the sparse result into the provided out tensor.
