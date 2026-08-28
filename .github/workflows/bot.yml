@@ -1260,41 +1260,57 @@ jobs:
               NEEDS_HUMAN with the root cause and suggested patch -- do not claim
               it was verified.
 
-            Once verified, bring the branch back to the workspace checkout so it
-            survives this job (the `${{ env.AGENT_SPACE }}` scratch dir is
-            reclaimed at the end):
-
-                git -C ${{ github.workspace }} fetch \
-                  "${{ env.AGENT_SPACE }}/pytorch/third_party/torch-xpu-ops" \
-                  "agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}:agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}"
-
-            (Python-only fixes are already committed on that branch in the
-            workspace checkout, so this fetch is only for the source-build path.)
-            Do NOT push and do NOT open a PR. The workflow exports the branch as
-            a downloadable patch artifact for a human to review and apply. End by
-            reporting the branch name and your summary.
+            Do NOT push, do NOT fetch the branch anywhere, and do NOT open a
+            PR. Instead, record where the fix lives so the workflow can export
+            it as a patch: write `${{ env.AGENT_SPACE }}/fix_result.json` with
+            (at least) these keys:
+              - `fix_repo_dir`: absolute path of the git repo holding the fix
+                commit (for a C++/SYCL fix this is
+                `${{ env.AGENT_SPACE }}/pytorch/third_party/torch-xpu-ops`; for a
+                python-only fix it is `${{ github.workspace }}`),
+              - `branch`: `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`,
+              - `base_sha`: the commit the fix branch was started from (so the
+                patch is exactly your commits, no unrelated history),
+              - plus `needs_build`, `build_ok`, `xpu_available`, `refined_command`,
+                `notes`.
+            The workflow reads these, runs `git format-patch base_sha..branch`
+            in `fix_repo_dir`, and uploads the result. End by reporting the
+            branch name and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       # The fix is never pushed (a human decides that), and the pytorch-side
-      # tree can't be pushed as a branch anyway, so persist the fix as a
-      # downloadable patch. The agent has committed / fetched it onto
-      # agent/fix-issue-<N> in the workspace checkout by now. Export runs before
-      # redaction so the patch (its commit messages are agent free text) is
-      # scrubbed too.
+      # tree can't be pushed as a branch anyway, so persist it as a downloadable
+      # patch. The agent recorded where the fix lives (fix_repo_dir / branch /
+      # base_sha) in fix_result.json; export from there BEFORE the reclaim wipes
+      # $AGENT_SPACE, and before redaction so the patch (its commit messages are
+      # agent free text) is scrubbed too.
       - name: Export fix patch
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/fixpatch"
+          fr="$AGENT_SPACE/fix_result.json"
           branch="agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}"
-          git -C "${{ github.workspace }}" rev-parse --verify "$branch" >/dev/null 2>&1 || {
-            echo "no $branch in the workspace checkout; nothing to export"; exit 0; }
-          # Base the patch on origin/main; --root as a fallback if unrelated.
-          git -C "${{ github.workspace }}" format-patch origin/main.."$branch" \
-            -o "$RUNNER_TEMP/fixpatch" 2>/dev/null \
-            || git -C "${{ github.workspace }}" format-patch --root "$branch" \
-                 -o "$RUNNER_TEMP/fixpatch"
+          # Read fix_repo_dir / branch / base_sha from fix_result.json if present.
+          repo="" base=""
+          if [ -f "$fr" ]; then
+            repo=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('fix_repo_dir',''))" 2>/dev/null || true)
+            base=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('base_sha',''))" 2>/dev/null || true)
+            b=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('branch',''))" 2>/dev/null || true)
+            [ -n "$b" ] && branch="$b"
+          fi
+          # Fall back to the workspace checkout if the agent didn't record a repo.
+          [ -n "$repo" ] || repo="${{ github.workspace }}"
+          git -C "$repo" rev-parse --verify "$branch" >/dev/null 2>&1 || {
+            echo "no $branch in $repo; nothing to export"; exit 0; }
+          if [ -n "$base" ] && git -C "$repo" rev-parse --verify "$base" >/dev/null 2>&1; then
+            git -C "$repo" format-patch "$base".."$branch" -o "$RUNNER_TEMP/fixpatch"
+          else
+            # No recorded base: fall back to origin/main, then --root.
+            git -C "$repo" format-patch origin/main.."$branch" -o "$RUNNER_TEMP/fixpatch" 2>/dev/null \
+              || git -C "$repo" format-patch --root "$branch" -o "$RUNNER_TEMP/fixpatch"
+          fi
 
       # Redact known secret values BEFORE anything reads the agent output --
       # the result/cost comments post result.result verbatim to a public issue,
