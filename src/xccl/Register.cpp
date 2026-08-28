@@ -158,15 +158,14 @@ std::tuple<at::Tensor, c10::intrusive_ptr<Work>> _allgather_base_XPU(
     bool asyncOp,
     int64_t timeout,
     OptionalCollectiveConfig config) {
-  auto work =
-      process_group->getBackend(c10::DeviceType::XPU)
-          ->all_gather_single(
-              output_tensor,
-              input_tensor,
-              AllgatherOptions{
-                  std::chrono::milliseconds(timeout),
-                  asyncOp,
-                  std::move(config)});
+  auto work = process_group->getBackend(c10::DeviceType::XPU)
+                  ->all_gather_single(
+                      output_tensor,
+                      input_tensor,
+                      AllgatherOptions{
+                          std::chrono::milliseconds(timeout),
+                          asyncOp,
+                          std::move(config)});
   return std::tuple<at::Tensor, c10::intrusive_ptr<Work>>(output_tensor, work);
 }
 
@@ -314,15 +313,14 @@ std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>> alltoall_XPU(
     OptionalCollectiveConfig config) {
   auto output_tensors_vec = output_tensors.vec();
   auto input_tensors_vec = input_tensors.vec();
-  auto work =
-      process_group->getBackend(c10::DeviceType::XPU)
-          ->alltoall(
-              output_tensors_vec,
-              input_tensors_vec,
-              AllToAllOptions{
-                  std::chrono::milliseconds(timeout),
-                  asyncOp,
-                  std::move(config)});
+  auto work = process_group->getBackend(c10::DeviceType::XPU)
+                  ->alltoall(
+                      output_tensors_vec,
+                      input_tensors_vec,
+                      AllToAllOptions{
+                          std::chrono::milliseconds(timeout),
+                          asyncOp,
+                          std::move(config)});
   return std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>>(
       std::move(output_tensors_vec), work);
 }
@@ -343,9 +341,7 @@ c10::intrusive_ptr<Work> alltoall_base_XPU(
           output_split_sizes,
           input_split_sizes,
           AllToAllOptions{
-              std::chrono::milliseconds(timeout),
-              asyncOp,
-              std::move(config)});
+              std::chrono::milliseconds(timeout), asyncOp, std::move(config)});
 }
 
 c10::intrusive_ptr<Work> barrier_XPU(
