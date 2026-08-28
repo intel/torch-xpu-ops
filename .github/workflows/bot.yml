@@ -1306,15 +1306,21 @@ jobs:
                                     capture_output=True, text=True)
 
           # Cross-check the agent's own claim against a fact the workflow can
-          # observe: an agent/fix-issue-* branch in any git repo under
-          # $AGENT_SPACE means a fix was committed. If such a branch exists but
-          # no fix_result*.json was written, the agent produced a fix and then
-          # lost the hand-off contract -- fail loudly instead of the silent
-          # green that "nothing to export" + exit 0 would otherwise be (this is
-          # the single most likely way to lose a verified fix).
+          # observe: an agent/fix-issue-* branch means a fix was committed. If
+          # such a branch exists but no fix_result*.json was written, the agent
+          # produced a fix and then lost the hand-off contract -- fail loudly
+          # instead of the silent green that "nothing to export" + exit 0 would
+          # otherwise be (the single most likely way to lose a verified fix).
+          # Scan from the workspace root, not just $AGENT_SPACE: for a
+          # torch-xpu-ops fix, fix_repo_dir is the main checkout at the
+          # workspace root, while $AGENT_SPACE (a subdirectory of it) holds only
+          # the pytorch build tree. Walking the root covers both. Directory-only
+          # walk with .git pruned, so a tens-of-GB build tree costs well under a
+          # second.
           def fix_branches():
               found = []
-              for root, dirs, _ in os.walk(agent_space):
+              root_dir = os.environ.get("GITHUB_WORKSPACE") or agent_space
+              for root, dirs, _ in os.walk(root_dir):
                   if ".git" in dirs:
                       r = git(root, "for-each-ref", "--format=%(refname:short)",
                               "refs/heads/agent/fix-issue-*")
