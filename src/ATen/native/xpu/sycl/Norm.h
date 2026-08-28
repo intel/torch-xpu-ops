@@ -26,8 +26,8 @@ using namespace at::native::memory;
 using namespace at::xpu;
 
 // syclDeviceMaxWorkGroup is allowed for launching Norm kernels, only if SIMD
-// is 32. Related kernels include FusedNormKernelFunctor and
-// RowwiseMomentsKernelFunctor. Don't change SIMD, unless refactor the kernels.
+// is 32. Related kernels include fused_norm_kernel and row_wise_moments_kernel.
+// Don't change SIMD, unless refactor the kernels.
 constexpr int SIMD = 32;
 
 template <
