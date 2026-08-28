@@ -66,7 +66,11 @@ runs:
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v8
       with:
-        pattern: ${{ inputs.category != '' && format('Torch-XPU-Wheel-*-{0}', inputs.category) || 'Torch-XPU-Wheel-*' }}
+        name: Torch-XPU-Wheel-db0a92735d11e07e4daffdea837f250ffd594dd9-32016215456-1
+        github-token: ${{ github.token }}
+        repository: intel/torch-xpu-ops
+        run-id: 32016215456
+        path: ${{ github.workspace }}/wheels
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -78,8 +82,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          uv pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
+          uv pip install ${{ github.workspace }}/wheels/*.whl
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
