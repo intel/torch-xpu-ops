@@ -30,13 +30,13 @@ see.
 
 - `refined_command` — the exact test command from `fix-reproduce`'s
   output.
-- `pytorch_dir` — path to local PyTorch checkout.
+- `PYTORCH_DIR` — path to local PyTorch checkout.
 - `target_repo_dir` — path to the checkout that holds the staged fix
-  (same derivation rule as in `fix-implement`: equals `pytorch_dir` for
-  `target_repo=pytorch`, `<pytorch_dir>/third_party/torch-xpu-ops` for
+  (same derivation rule as in `fix-implement`: equals `PYTORCH_DIR` for
+  `target_repo=pytorch`, `<PYTORCH_DIR>/third_party/torch-xpu-ops` for
   `target_repo=torch-xpu-ops`). All `git stash`/`git diff --cached`
   operations run against `target_repo_dir`. The rebuild (Step 2) still
-  runs from `pytorch_dir` because `pip install -e .` builds pytorch and
+  runs from `PYTORCH_DIR` because `pip install -e .` builds pytorch and
   pulls its submodule pin.
 - `changed_files` — list of changed files from `fix-implement`'s
   output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`), a rebuild
@@ -61,7 +61,7 @@ silently".
 
 ## Step 1: Confirm source build environment
 
-The installed `torch` must be the one built from `pytorch_dir`, not a
+The installed `torch` must be the one built from `PYTORCH_DIR`, not a
 wheel. Checking `torch.version.git_version` is NOT sufficient —
 released and nightly wheels also carry a real commit hash there.
 Check where `torch` is imported from instead:
@@ -70,7 +70,7 @@ Check where `torch` is imported from instead:
 python -c "import torch, os; print(os.path.realpath(torch.__file__))"
 ```
 
-The printed path must be under `$(realpath $pytorch_dir)/torch/`. If it
+The printed path must be under `$(realpath $PYTORCH_DIR)/torch/`. If it
 resolves into `site-packages` of an unrelated prefix, the environment
 is a wheel install: return
 `CANNOT_VERIFY(reason=wheel_install_not_source)` with `blocker="torch
@@ -85,7 +85,7 @@ reproduced at `stage=nightly`).
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
 a rebuild is required.
 
-**When `target_repo_dir != pytorch_dir`** (i.e. the fix is inside
+**When `target_repo_dir != PYTORCH_DIR`** (i.e. the fix is inside
 `third_party/torch-xpu-ops`), the pytorch build reads
 `third_party/xpu.txt` and would clobber the staged fix by resetting
 the submodule to the pinned commit. Apply the "Commit Pin & Development
@@ -95,7 +95,7 @@ Override" procedure from AGENTS.md **before** loading `xpu-build-pytorch`:
 # Rewrite the pin to the working branch's HEAD so CMake's checkout
 # becomes a no-op. Do NOT stage or commit this file (never staging
 # third_party/xpu.txt is a HARD RULE in fix-implement).
-git -C $target_repo_dir rev-parse HEAD > $pytorch_dir/third_party/xpu.txt
+git -C $target_repo_dir rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
 ```
 
 **When the changed files include C++/SYCL sources**, DO NOT rebuild
@@ -119,7 +119,7 @@ is violated — return
 `CANNOT_VERIFY(reason=no_staged_changes)` (see below), do NOT silently
 produce an after-only table.
 
-All git commands here run against `target_repo_dir` (not `pytorch_dir`);
+All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
 
 **When any `changed_files` are C++/SYCL, the before/after phases each
@@ -136,8 +136,8 @@ staged_before=$(git -C $target_repo_dir diff --cached)
 git -C $target_repo_dir stash -u   # stash staged, unstaged, untracked
 # For torch-xpu-ops fixes, also restore xpu.txt to the base commit's pin
 # so the rebuild sees the ORIGINAL submodule state.
-if [ "$target_repo_dir" != "$pytorch_dir" ]; then
-    git -C $pytorch_dir checkout -- third_party/xpu.txt
+if [ "$target_repo_dir" != "$PYTORCH_DIR" ]; then
+    git -C $PYTORCH_DIR checkout -- third_party/xpu.txt
 fi
 # Rebuild WITHOUT the fix (only if C++/SYCL changed):
 #   invoke xpu-build-pytorch skill here
@@ -160,8 +160,8 @@ if [ "$before_sha" != "$after_sha" ]; then
 fi
 
 # Re-apply the xpu.txt override so the rebuild sees the working branch.
-if [ "$target_repo_dir" != "$pytorch_dir" ]; then
-    git -C $target_repo_dir rev-parse HEAD > $pytorch_dir/third_party/xpu.txt
+if [ "$target_repo_dir" != "$PYTORCH_DIR" ]; then
+    git -C $target_repo_dir rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
 fi
 # Rebuild WITH the fix (only if C++/SYCL changed):
 #   invoke xpu-build-pytorch skill here
@@ -206,7 +206,7 @@ Result interpretation:
 ## Step 5: Lint
 
 Always run after a passing test result. Run it in `target_repo_dir` —
-the repo that owns the changed files — not in `pytorch_dir`:
+the repo that owns the changed files — not in `PYTORCH_DIR`:
 
 ```bash
 cd $target_repo_dir

@@ -30,17 +30,17 @@ orchestrator's job).
 
 - `triage_result` — JSON output from `fix-root-cause` (`root_cause`,
   `fix_strategy`, `target_repo`, `domain`, `analyzed_sha`).
-- `pytorch_dir` — path to local PyTorch checkout.
+- `PYTORCH_DIR` — path to local PyTorch checkout.
 - `target_repo_dir` — path to the checkout that will be edited. Derived
-  from `pytorch_dir` and `triage_result.target_repo`:
-  - `target_repo == "pytorch"` → `target_repo_dir = pytorch_dir`.
+  from `PYTORCH_DIR` and `triage_result.target_repo`:
+  - `target_repo == "pytorch"` → `target_repo_dir = PYTORCH_DIR`.
   - `target_repo == "torch-xpu-ops"` →
-    `target_repo_dir = <pytorch_dir>/third_party/torch-xpu-ops`
+    `target_repo_dir = <PYTORCH_DIR>/third_party/torch-xpu-ops`
     (per AGENTS.md "Commit Pin & Development Override"; the caller
     is expected to have cloned the working branch there ahead of
     time).
   All git and edit operations in this skill run against
-  `target_repo_dir`, never against `pytorch_dir` when the two differ.
+  `target_repo_dir`, never against `PYTORCH_DIR` when the two differ.
 - `allow_skip` — controls skip decorator strategy:
   - `false` (**issue-handler**): never add skip decorators; must unskip
     and really fix.
