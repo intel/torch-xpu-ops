@@ -429,12 +429,25 @@ After the loop, go to Stage 6 Report with the aggregate outcome
 `NEEDS_HUMAN` only if *every* actionable sub-item needed a human —
 `STALE_SKIP` follow-ups do not by themselves force `NEEDS_HUMAN`).
 
-### Machine-readable outputs (pipeline mode)
+### Machine-readable outputs
 
-The `<!-- agent:batch-fanout -->` comment is for humans. In pipeline mode
-also write machine-readable files under `$AGENT_SPACE` (the gitignored
-scratch dir) so the invoking bot workflow can drive per-sub-item
-re-verification and PR creation without re-parsing the comment:
+Written on **both** paths: the single-bug Stage 4/5 writes
+`fix_result.json`, and a batch fan-out writes `batch_summary.json` plus
+one `fix_result-<slug>.json` per fixed sub-item. The
+`<!-- agent:batch-fanout -->` comment is for humans; these files let the
+invoking bot workflow export patches and drive re-verification without
+re-parsing a comment.
+
+They live under `$AGENT_SPACE` (the gitignored scratch dir). In pipeline
+mode the bot workflow always sets it. In interactive mode it is usually
+unset, which would resolve to `/fix_result.json` — so fall back to
+`<repo>/agent_space_xpu/` (the same gitignored dir AGENTS.md defines) and
+report the path you used:
+
+```bash
+agent_space="${AGENT_SPACE:-$(git -C "$target_repo_dir" rev-parse --show-toplevel)/agent_space_xpu}"
+mkdir -p "$agent_space"
+```
 
 - **`batch_summary.json`** — one file listing every sub-item:
 
@@ -521,7 +534,8 @@ Branch on the verdict:
   git -C "$target_repo_dir" commit -m "fix: <one-line summary> (#${N})"
   ```
 
-  Then write `$AGENT_SPACE/fix_result.json` with the fields known so far
+  Then write `fix_result.json` (see "Machine-readable outputs" for the
+  path and its interactive-mode fallback) with the fields known so far
   and `verdict=PENDING_VERIFY`: `target_repo`, `fix_repo_dir`, `branch`,
   `base_sha`, `changed_files`, `analyzed_sha`, `root_cause`, `notes`.
   A `PENDING_VERIFY` unit carries no patch yet (Export only exports

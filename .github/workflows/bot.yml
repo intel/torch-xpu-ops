@@ -1314,14 +1314,17 @@ jobs:
           # Scan from the workspace root, not just $AGENT_SPACE: for a
           # torch-xpu-ops fix, fix_repo_dir is the main checkout at the
           # workspace root, while $AGENT_SPACE (a subdirectory of it) holds only
-          # the pytorch build tree. Walking the root covers both. Directory-only
-          # walk with .git pruned, so a tens-of-GB build tree costs well under a
-          # second.
+          # the pytorch build tree. Walking the root covers both. Match `.git`
+          # as a file too, not just a directory: a submodule populated by
+          # `git submodule update` has a `.git` FILE, and the fix can land in
+          # one (third_party/torch-xpu-ops is a submodule of the pytorch tree).
+          # Directory-only walk with .git pruned: measured 0.4s over a 12GB
+          # tree with 70 repos.
           def fix_branches():
               found = []
               root_dir = os.environ.get("GITHUB_WORKSPACE") or agent_space
-              for root, dirs, _ in os.walk(root_dir):
-                  if ".git" in dirs:
+              for root, dirs, files in os.walk(root_dir):
+                  if ".git" in dirs or ".git" in files:
                       r = git(root, "for-each-ref", "--format=%(refname:short)",
                               "refs/heads/agent/fix-issue-*")
                       if r.returncode == 0:
