@@ -73,12 +73,26 @@ jobs:
       # /tmp), matching bot.yml's fix job.
       AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
       PYTORCH_DIR: ${{ github.workspace }}/agent_space_xpu/pytorch
+      # Match bot.yml: pin AOT to the runner GPUs (BMG/PVC) instead of every
+      # supported arch, and let the agent request a long build (default 2min
+      # cap would kill the 1-3h source build) while unrelated hung commands
+      # still fail fast at the stock default.
+      TORCH_XPU_ARCH_LIST: "bmg,pvc"
+      BASH_MAX_TIMEOUT_MS: "28200000"
     steps:
       - name: Checkout torch-xpu-ops (for AGENTS.md + skills)
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.MERGE_TOKEN }}
           fetch-depth: 0
+
+      - name: Probe runner ownership
+        run: |
+          echo "id: $(id)"
+          echo "/__e  -> $(stat -c '%u:%g (%U:%G)' /__e 2>/dev/null || echo 'missing')"
+          echo "/__w  -> $(stat -c '%u:%g (%U:%G)' /__w 2>/dev/null || echo 'missing')"
+          echo "/github -> $(stat -c '%u:%g (%U:%G)' /github 2>/dev/null || echo 'missing')"
+          echo "/__w/_actions -> $(stat -c '%u:%g (%U:%G)' /__w/_actions 2>/dev/null || echo 'missing')"
 
       - name: Configure git identity
         run: |
@@ -152,8 +166,12 @@ jobs:
             4. Source-build PyTorch via the /xpu-build-pytorch skill (which
                handles the oneAPI environment): USE_XPU=1 USE_CUDA=0, then
                `pip install -e . -v --no-build-isolation` from
-               ${{ env.PYTORCH_DIR }}. Confirm torch.xpu.is_available() is True on
-               the source build (check from the test/ dir).
+               ${{ env.PYTORCH_DIR }}. The build runs 1-3h; pass an explicit
+               long timeout on the build Bash call (e.g. 28200000 ms) so the
+               default 2min cap does not kill it. TORCH_XPU_ARCH_LIST is set in
+               the job env (bmg,pvc) -- use it, do not leave it unset. Confirm
+               torch.xpu.is_available() is True on the source build (check from
+               the test/ dir).
             5. Verify the fix: from ${{ env.PYTORCH_DIR }}/test, run the same UTs
                from step 2 and confirm they now PASS, plus these regressions still
                pass:
