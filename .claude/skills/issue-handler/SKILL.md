@@ -357,11 +357,15 @@ For each sub-item:
    git -C "$target_repo_dir" commit -m "fix: <summary> (#${N} sub-item ${slug})"
    ```
 
-   Do NOT push or open a PR. Record the sub-item as fixed with its branch
-   name, and write its `fix_result-${slug}.json` (see "Machine-readable
-   outputs") with `verdict=PASSED`, `fix_repo_dir`, `branch`, `base_sha`
-   (the sub-item's base from step 3), `changed_files`, so the workflow can
-   export `base_sha..branch` per sub-item.
+   Do NOT push or open a PR. **Update** the sub-item's
+   `fix_result-${slug}.json` in place (written at `verdict=PENDING_VERIFY`
+   when the branch was committed) to `verdict=PASSED` with `fix_repo_dir`,
+   `branch`, `base_sha` (the sub-item's base from step 3), `changed_files`,
+   so the workflow can export `base_sha..branch` per sub-item. As in the
+   single-bug path, commit the branch and write the `PENDING_VERIFY`
+   record as soon as `fix-implement` returns `READY`, not only on PASSED,
+   so a crash mid-sub-item leaves a recoverable record instead of an
+   orphan branch.
 
 Leaf skills post their own `<!-- agent:root-cause -->` /
 `<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
@@ -454,9 +458,14 @@ re-verification and PR creation without re-parsing the comment:
   ```
 
 - **`fix_result-<slug>.json`** — for each `FIXED` sub-item, the same
-  schema the single-bug fix job writes as `fix_result.json`. It MUST
+  schema the single-bug Stage 5 writes as `fix_result.json`. It MUST
   include the keys the workflow's schema gate and patch-export read:
-  - `verdict` — `PASSED` (only PASSED units are exported),
+  - `verdict` — `PASSED` (only PASSED units are exported) / `FAILED` /
+    `CANNOT_VERIFY` / `PENDING_VERIFY`. Written incrementally: Stage 4
+    writes `PENDING_VERIFY` when it commits the branch, Stage 5 updates
+    it to the terminal verdict. A non-PASSED verdict records that a
+    branch exists and why it is not exportable, so Export never mistakes
+    it for a lost fix.
   - `target_repo` — `torch-xpu-ops` | `pytorch`,
   - `fix_repo_dir` — absolute path of the git repo holding the fix commit,
   - `branch` — `agent/fix-issue-<N>-<seq>-<slug>` (single bug: `agent/fix-issue-<N>`),
@@ -499,7 +508,25 @@ Call `fix-implement` with `triage_result`, `pytorch_dir`,
 
 Branch on the verdict:
 
-- `READY(reason=ok)` → continue to Stage 5.
+- `READY(reason=ok)` → **commit the staged fix onto its branch now, and
+  write the incremental `fix_result.json`**, then continue to Stage 5.
+  Do NOT wait for Stage 5 to persist — if verify then crashes or the
+  context runs out, the committed branch would otherwise be an
+  orphan the Export step flags as a lost fix. Committing here keeps the
+  branch and the hand-off record in lock-step:
+
+  ```bash
+  base=$(git -C "$target_repo_dir" rev-parse HEAD)   # pre-fix base
+  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
+  git -C "$target_repo_dir" commit -m "fix: <one-line summary> (#${N})"
+  ```
+
+  Then write `$AGENT_SPACE/fix_result.json` with the fields known so far
+  and `verdict=PENDING_VERIFY`: `target_repo`, `fix_repo_dir`, `branch`,
+  `base_sha`, `changed_files`, `analyzed_sha`, `root_cause`, `notes`.
+  A `PENDING_VERIFY` unit carries no patch yet (Export only exports
+  `PASSED`), but it records that a fix exists on a branch so a
+  crash before Stage 6 is recoverable rather than a silent orphan.
 - `NEEDS_HUMAN` → Stage 6 Report. The specific `reason`
   (`skip_outside_target_repo` / `skip_guard_rejected` /
   `no_fix_possible` / etc.) drives the final label.
@@ -525,27 +552,22 @@ unconditionally produces the FAIL->PASS before/after table and runs
 
 Branch on the verdict:
 
-- `PASSED(reason=ok)` → the fix is verified. Commit it onto a dedicated
-  branch and record it, then go to Stage 6 with
-  `IMPLEMENTING(fix_verified)`:
-
-  ```bash
-  base=$(git -C "$target_repo_dir" rev-parse HEAD)   # pre-fix base
-  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
-  git -C "$target_repo_dir" commit -m "fix: <one-line summary> (#${N})"
-  ```
-
-  Then write `$AGENT_SPACE/fix_result.json` (see "Machine-readable
-  outputs") with `verdict=PASSED`, `fix_repo_dir=$target_repo_dir`,
-  `branch=agent/fix-issue-${N}`, `base_sha=$base`, `target_repo`,
-  `changed_files`, `needs_build`, `notes`. The workflow exports
-  `base_sha..branch` as the patch. Never push or open a PR.
+- `PASSED(reason=ok)` → the fix is verified. The branch and
+  `fix_result.json` already exist from Stage 4; **update** the record
+  in place — set `verdict=PASSED` and add `needs_build`, the
+  before/after result, and any final `notes` — then go to Stage 6 with
+  `IMPLEMENTING(fix_verified)`. The commit was already made in Stage 4;
+  do not re-commit. The workflow exports `base_sha..branch` as the
+  patch. Never push or open a PR.
 - `FAILED` → **loop back to Stage 4** with the failure output as
-  additional context. See "Iterative loop bounds" below.
-- `CANNOT_VERIFY` → Stage 6 Report with
-  `NEEDS_HUMAN(reason=<verify's reason>)` and the blocker. Do not
-  loop on CANNOT_VERIFY — the environment problem will not fix
-  itself.
+  additional context (see "Iterative loop bounds"). If attempts are
+  exhausted, update `fix_result.json` to `verdict=FAILED` with the last
+  failure in `notes` so the record explains the branch, then Stage 6
+  Report `NEEDS_HUMAN(reason=attempts_exhausted)`.
+- `CANNOT_VERIFY` → update `fix_result.json` to
+  `verdict=CANNOT_VERIFY` with the blocker in `notes`, then Stage 6
+  Report `NEEDS_HUMAN(reason=<verify's reason>)`. Do not loop on
+  CANNOT_VERIFY — the environment problem will not fix itself.
 
 ## Stage 6 — Report
 
