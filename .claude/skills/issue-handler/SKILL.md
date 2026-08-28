@@ -20,9 +20,10 @@ mechanics live in its own skill — read and follow that skill when you
 reach its stage.
 
 Every agent-produced diff is a **proposal**. This skill and the leaves
-it calls never commit, push, tag, or open a PR — the invoking workflow
-takes the staged diff after `fix-verify` passes and drives its own
-PR-creation path with human review.
+it calls may commit the fix to a local branch to preserve it, but never
+push, tag, or open a PR — a human (or the invoking workflow) reviews the
+committed branch (or the staged diff) after `fix-verify` passes and
+drives its own push / PR-creation path.
 
 ## Contents
 
@@ -346,10 +347,11 @@ For each sub-item:
    attempts exhausted): mark **this sub-item** blocked with the reason,
    record it, and **continue to the next sub-item** — never abort the
    whole batch on one hard sub-item.
-5. **On `fix-verify` PASSED**: the staged diff sits on
-   `agent/fix-issue-${N}-${seq}-${slug}`. Leave it staged for the
-   invoking workflow to commit + push that branch and open one PR (with
-   human review). Record the sub-item as fixed with its branch name, and
+5. **On `fix-verify` PASSED**: the fix sits on
+   `agent/fix-issue-${N}-${seq}-${slug}` (committed to that branch, or
+   staged on it). Do NOT push or open a PR — a human reviews the branch
+   and drives push / PR creation. Record the sub-item as fixed with its
+   branch name, and
    write its `fix_result-${slug}.json` (see "Machine-readable outputs"
    below) so the bot's reviewer/gate can re-verify it per sub-item.
 
@@ -530,10 +532,11 @@ Always include in the summary:
   (NEEDS_HUMAN / ALREADY_FIXED / INVALID_ENTRY / UNVERIFIED), plus any
   `STALE_SKIP` follow-ups when `batch_kind=skip-list`.
 
-If the outcome is `IMPLEMENTING(fix_verified)`, the invoking
-workflow reads the staged diff (`git -C $target_repo_dir diff
---cached`) and drives its own PR-creation path. **Do not open the
-PR from this skill.**
+If the outcome is `IMPLEMENTING(fix_verified)`, the fix is left on its
+`agent/fix-issue-<N>` branch — committed to that branch, or staged on it
+(`git -C $target_repo_dir diff --cached`). A human (or the invoking
+workflow) reviews it and drives push / PR creation. **Do not push or open
+the PR from this skill.**
 
 ## Iterative loop bounds
 

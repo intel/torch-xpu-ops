@@ -1149,12 +1149,12 @@ jobs:
       # a build-in-the-loop fix (pytorch clone, build tree) lives here instead
       # of /tmp, so it's all in one already-established, gitignored place.
       AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
-      # A cold PyTorch+SYCL source build runs 1-3h in the foreground; the Bash
-      # tool's default cap (~2min) would kill it. Raise both to just under the
-      # 300min job timeout so a stuck build surfaces as an agent error, not a
-      # hard job kill. A single foreground build call needs no background/poll
-      # protocol inside a container.
-      BASH_DEFAULT_TIMEOUT_MS: "17700000"
+      # A cold PyTorch+SYCL source build runs 1-3h; the Bash tool caps a call
+      # at max(BASH_MAX_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS). Raise only MAX to
+      # just under the 300min job timeout so the agent CAN request a long build
+      # (it passes an explicit timeout on the build call, see the prompt). Leave
+      # DEFAULT at the stock 2min so an unrelated hung command fails fast instead
+      # of silently eating the whole job.
       BASH_MAX_TIMEOUT_MS: "17700000"
     steps:
       - name: Post starting message
@@ -1196,6 +1196,16 @@ jobs:
       - name: Prepare agent scratch dir
         run: mkdir -p "$AGENT_SPACE"
 
+      # Fail in seconds if the container lacks the oneAPI toolchain, instead of
+      # after the agent burns turns discovering it can't build. The path is the
+      # one /xpu-build-pytorch sources.
+      - name: Verify oneAPI toolchain
+        run: |
+          vars=/opt/intel/oneapi/compiler/latest/env/vars.sh
+          test -f "$vars" || { echo "oneAPI vars.sh not found at $vars in this image" >&2; exit 1; }
+          . "$vars"
+          icpx --version
+
       - name: Install latest nightly PyTorch-XPU
         run: |
           # Reproduce/verify environment: latest nightly XPU build.
@@ -1226,20 +1236,23 @@ jobs:
               wheel immediately -- reproduce, fix, and re-verify normally, no
               build needed.
             - A change to C++ or SYCL sources under src/ needs a source build.
-              Commit your fix in THIS workspace checkout (it is what you push
-              from). Then follow the /xpu-build-pytorch skill: clone pytorch into
-              `${{ env.AGENT_SPACE }}`, clone this checkout into its
-              `third_party/torch-xpu-ops`, point `third_party/xpu.txt` at your
-              HEAD (do NOT commit that pin change) so CMake builds your code, and
-              build. If the build cannot complete, report NEEDS_HUMAN with the
-              root cause and suggested patch -- do not claim it was verified.
+              Commit your fix on a branch named
+              `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
+              in THIS workspace checkout, then follow the /xpu-build-pytorch
+              skill to verify it: clone pytorch into `${{ env.AGENT_SPACE }}`,
+              clone this checkout into its `third_party/torch-xpu-ops`, point
+              `third_party/xpu.txt` at your HEAD (do NOT commit that pin change)
+              so CMake builds your code, and build. The build runs 1-3h; pass an
+              explicit long timeout on the build Bash call (e.g. 17700000 ms) --
+              the default 2min cap will otherwise kill it. If the build cannot
+              complete, report NEEDS_HUMAN with the root cause and suggested
+              patch -- do not claim it was verified.
 
-            When you have a verified fix committed in the workspace checkout,
-            push that checkout to the branch
-            `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
-            (force-push is fine). Do not open a pull request: a human reviews
-            the fix and opens a PR themselves. End by reporting the branch name
-            and your summary.
+            Commit the verified fix on
+            `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}` in
+            the workspace checkout, but do NOT push and do NOT open a PR -- a
+            human reviews the committed branch and decides how to push it. End by
+            reporting the branch name and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -1348,6 +1361,12 @@ jobs:
           github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!file || !fs.existsSync(file)) return;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const result = data.filter(e => e.type === 'result').pop();
+            if (!result) return;
+
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner, repo: context.repo.repo,
               run_id: context.runId
@@ -1356,29 +1375,25 @@ jobs:
             const jobUrl = job?.html_url || `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const date = new Date().toISOString().split('T')[0];
 
-            const file = '${{ steps.ai-fix.outputs.execution_file }}';
-            if (file && fs.existsSync(file)) {
-              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              const result = data.filter(e => e.type === 'result').pop();
-              if (!result) return;
-              const cost = (result.total_cost_usd || 0).toFixed(4);
-              const usage = Object.values(result.modelUsage || {})[0] || {};
-              const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
-              const outTok = (usage.outputTokens || 0).toLocaleString();
-              const status = result.is_error ? 'error' : 'ok';
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: ${{ env.COST_TRACKING_ISSUE }},
-                body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
-              });
-            }
+            const cost = (result.total_cost_usd || 0).toFixed(4);
+            const usage = Object.values(result.modelUsage || {})[0] || {};
+            const inTok = ((usage.inputTokens || 0) + (usage.cacheReadInputTokens || 0) + (usage.cacheCreationInputTokens || 0)).toLocaleString();
+            const outTok = (usage.outputTokens || 0).toLocaleString();
+            const status = result.is_error ? 'error' : 'ok';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: ${{ env.COST_TRACKING_ISSUE }},
+              body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
+            });
 
-      # Redact known secret values from the transcript before it becomes a
-      # public artifact: the agent runs unconstrained Bash and any tool output
-      # (env, git remote -v, verbose pip/git) could echo a token.
-      - name: Redact secrets from agent transcript
+      # Redact known secret values from everything that becomes a public
+      # artifact (the transcript and the fix_result/batch_summary JSON): the
+      # agent runs unconstrained Bash and any tool output (env, git remote -v,
+      # verbose pip/git) could echo a token, and the JSON's free-text fields
+      # (notes, refined_command) pass through agent output too.
+      - name: Redact secrets from agent artifacts
         id: redact
-        if: always() && steps.ai-fix.outputs.execution_file
+        if: always()
         env:
           TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
           SECRETS: |
@@ -1386,20 +1401,29 @@ jobs:
             ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
             ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
-          [ -f "$TRANSCRIPT" ] || exit 0
-          # Fail (not silently skip) if perl is missing, so the upload gate
-          # (steps.redact.outcome == 'success') blocks an unredacted transcript.
-          command -v perl >/dev/null || { echo "perl missing; refusing to publish unredacted transcript" >&2; exit 1; }
+          # Collect the files to scrub: the transcript (if any) plus any JSON
+          # the pipeline wrote under AGENT_SPACE.
+          targets=()
+          [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && targets+=("$TRANSCRIPT")
+          while IFS= read -r f; do targets+=("$f"); done < <(
+            find "$AGENT_SPACE" -maxdepth 1 -type f \
+              \( -name 'fix_result*.json' -o -name 'batch_summary.json' \) 2>/dev/null)
+          [ ${#targets[@]} -eq 0 ] && exit 0
+          # Fail (not silently skip) if perl is missing, so the upload gates
+          # (steps.redact.outcome == 'success') block an unredacted artifact.
+          command -v perl >/dev/null || { echo "perl missing; refusing to publish unredacted artifacts" >&2; exit 1; }
           # perl \Q..\E treats the token as a literal string, so tokens with
           # regex-special chars (+, ., $, /) are matched safely.
           while IFS= read -r secret; do
             [ -n "$secret" ] || continue
-            SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$TRANSCRIPT"
             # actions/checkout persists the GH token into .git/config as
             # base64("x-access-token:<token>"); redact that form too since a
             # `git config --list` / `cat .git/config` in a tool result leaks it.
             b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
-            SECRET="$b64" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$TRANSCRIPT"
+            for t in "${targets[@]}"; do
+              SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
+              SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
+            done
           done <<< "$SECRETS"
 
       # Keep the agent transcript (thinking + every tool call/result) for
@@ -1415,19 +1439,37 @@ jobs:
           path: ${{ steps.ai-fix.outputs.execution_file }}
           if-no-files-found: ignore
 
+      # Save the pipeline's machine-readable outputs (fix_result*.json,
+      # batch_summary.json -- a few kB each) BEFORE the reclaim wipes
+      # $AGENT_SPACE. issue-handler writes these so a human / later step can
+      # re-verify each sub-item; the reclaim below deletes the whole dir, so
+      # grab them first.
+      - name: Upload fix result metadata
+        # Gated on redaction success, same as the transcript upload.
+        if: always() && steps.redact.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-result
+          path: |
+            ${{ env.AGENT_SPACE }}/fix_result*.json
+            ${{ env.AGENT_SPACE }}/batch_summary.json
+          if-no-files-found: ignore
+
       # Reclaim the tens-of-GB build tree before the chown below has to walk it.
       - name: Reclaim agent scratch space
         if: ${{ always() }}
         run: rm -rf "$AGENT_SPACE" || true
 
       # Hand back root-owned files so the next job on this shared runner isn't
-      # denied access. _actions / _tool / _temp are independent bind mounts (see
-      # `docker create` in the run log), NOT reached by `chown -R /__w`, so they
-      # must be listed explicitly -- a root-owned _actions is exactly what breaks
-      # the next run's "Prepare workflow directory" step.
+      # denied access to its bind mounts. `chown -R /__w` crosses mount
+      # boundaries (no --one-file-system), so it already covers the _actions /
+      # _tool / _temp bind mounts -- no need to list them. No `|| true`: a chown
+      # that cannot hand everything back is exactly the state that breaks the
+      # next run's "Prepare workflow directory", so let it surface. Matches the
+      # form used by the repo's other container jobs (e.g. _linux_ut.yml).
       - name: Cleanup workspace
         if: ${{ always() }}
-        run: chown -R 1000:1000 /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
+        run: chown 1000:1000 /__w /github ./ -R
 
   file:
     needs: parse-command
