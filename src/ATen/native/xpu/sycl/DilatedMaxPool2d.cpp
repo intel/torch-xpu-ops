@@ -46,11 +46,7 @@ static inline int p_start(
       : (size + pad - ((kernel - 1) * dilation + 1)) / stride + 1;
 }
 
-static inline int p_end(
-    int size,
-    int pad,
-    int pooled_size,
-    int stride) {
+static inline int p_end(int size, int pad, int pooled_size, int stride) {
   return std::min((size + pad) / stride + 1, pooled_size);
 }
 #endif

@@ -18,7 +18,6 @@ namespace at::native::xpu {
   return src / padding * padding;
 }
 
-
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
