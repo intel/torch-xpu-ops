@@ -116,7 +116,7 @@ macro(set_build_flags)
   # 4. Archive torch-xpu-ops objects:
   # ar rcs libtorch_xpu_ops.a host.o kernel.o device-code.o
   # 5. Link the final PyTorch XPU shared library:
-  # gcc -shared ${PYTORCH_XPU_OBJECTS} -Wl,--whole-archive libtorch_xpu_ops.a -Wl,--no-whole-archive -o libtorch_xpu.so
+  # gcc -shared -Wl,--whole-archive libtorch_xpu_ops.a -Wl,--no-whole-archive -o libtorch_xpu.so
   list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-unnamed-lambda)
   list(APPEND SYCL_COMPILE_FLAGS -fno-sycl-id-queries-fit-in-int)
   list(APPEND SYCL_COMPILE_FLAGS -sycl-std=2020)
