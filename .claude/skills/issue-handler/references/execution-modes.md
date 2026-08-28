@@ -122,7 +122,7 @@ Objective, Current Status`.
   comment (posted by the leaf); staged diff (never committed).
 - **Stage 5** (`fix-verify`) owns: `<!-- agent:verify -->` comment
   (posted by the leaf).
-- **Stage 6** (`issue-handler` itself) owns: advancing
+- **Stage 6** (the orchestrator's own wrap-up, not a leaf) owns: advancing
   `agent:status` to the terminal value; final Action Items check;
   in batch fan-out runs (Stage 1u), the `<!-- agent:batch-fanout -->`
   summary comment.
