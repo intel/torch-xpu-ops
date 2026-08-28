@@ -560,7 +560,12 @@ Branch on the verdict:
   do not re-commit. The workflow exports `base_sha..branch` as the
   patch. Never push or open a PR.
 - `FAILED` → **loop back to Stage 4** with the failure output as
-  additional context (see "Iterative loop bounds"). If attempts are
+  additional context (see "Iterative loop bounds"). On a retry the
+  branch already carries the previous attempt's commit, so **amend it**
+  (`git commit --amend --no-edit` after staging the new edits) rather
+  than creating a second commit or a new branch — `base_sha..branch`
+  must stay a single reviewable fix, and Stage 5's clean-worktree
+  assertion requires nothing left uncommitted. If attempts are
   exhausted, update `fix_result.json` to `verdict=FAILED` with the last
   failure in `notes` so the record explains the branch, then Stage 6
   Report `NEEDS_HUMAN(reason=attempts_exhausted)`.

@@ -101,26 +101,36 @@ tree already reflects the edit.
 Reaching this skill means `fix-reproduce` already ran the test and
 observed the failure (the "before" state). This step rebuilds with the
 fix applied (when needed) and sets up for the Step 4 test run that
-confirms it now passes. The fix arrives **staged** (`fix-implement`
-leaves it `git add`ed and does not commit), so no stash/checkout dance
-is needed.
+confirms it now passes. `fix-implement` always leaves the fix
+**staged**; whether the caller has already committed it depends on the
+caller — `issue-handler` commits it onto `agent/fix-issue-<N>` at its
+Stage 4 (and records `fix_result.json` at `PENDING_VERIFY`), while
+`xpu-nightly-ci-fix` deliberately keeps it staged. Either arrangement is
+accepted here. No stash/checkout dance is needed.
 
-**Assert the staged diff is what gets tested and exported.** The caller
-tests the working tree but commits/exports the index, so they must
-match. Before rebuilding, require a non-empty staged diff and an empty
-unstaged diff:
+**Assert the tested tree is the tree that gets handed off.** The caller
+either exports `base_sha..branch` (committed) or picks up
+`git diff --cached` (staged), so the fix must live entirely in one of
+those two places — never partly in the worktree. Before rebuilding:
 
 ```bash
-git -C "$target_repo_dir" diff --cached --quiet && \
-  { echo "FAILED reason=no_staged_changes"; exit 1; }   # nothing staged
+# Nothing may be left in the worktree: an unstaged edit would be tested
+# here but excluded from both hand-off paths. Check this first, so a fix
+# that was edited but never staged reports the precise cause.
 git -C "$target_repo_dir" diff --quiet || \
-  { echo "FAILED reason=unstaged_changes_present"; exit 1; }  # edits not in index
+  { echo "FAILED reason=unstaged_changes_present"; exit 1; }
+# The fix must be fully captured: either committed on the branch, or
+# staged in the index. Accept whichever the caller uses.
+committed=$(git -C "$target_repo_dir" diff --stat HEAD~1..HEAD 2>/dev/null)
+staged=$(git -C "$target_repo_dir" diff --cached --stat)
+test -n "$committed" -o -n "$staged" || \
+  { echo "FAILED reason=no_fix_found"; exit 1; }
 ```
 
-`no_staged_changes` guards the "PASSED then empty commit" trap;
+`no_fix_found` guards the "PASSED but the hand-off is empty" trap;
 `unstaged_changes_present` catches a FAILED→Stage 4 retry that edited a
-file after `git add`, which would make the tested tree differ from the
-exported patch.
+file without staging or amending it, which would make
+the tested tree differ from the exported patch.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
@@ -193,12 +203,19 @@ the repo that owns the changed files — not in `PYTORCH_DIR`:
 ```bash
 cd $target_repo_dir
 spin fixlint
-# fixlint rewrites files in the working tree, which UNSTAGES those hunks.
-# Re-stage them so the lint fixes stay part of the staged diff the workflow
-# exports. Nothing outside changed_files may become staged; if `git status`
-# shows fixlint touched other files, return FAILED rather than widening the
-# diff.
+# fixlint rewrites files in the working tree, leaving them unstaged.
+# Fold them back into whichever hand-off the caller uses, so the lint
+# fixes travel with the fix and Step 3's clean-worktree invariant holds:
+# stage them, and if the fix is already committed, amend them in.
+# Nothing outside changed_files may be folded in; if `git status` shows
+# fixlint touched other files, return FAILED rather than widening the diff.
 git -C $target_repo_dir add -- <changed_files>
+# committed model (issue-handler): fold into the existing fix commit.
+# Test for non-empty output -- `git diff --stat` exits 0 even when empty,
+# so `&&` on the command alone would amend in the staged model too.
+if [ -n "$(git -C $target_repo_dir diff --stat HEAD~1..HEAD 2>/dev/null)" ]; then
+  git -C $target_repo_dir commit --amend --no-edit
+fi
 spin lint 2>&1 | tail -40
 ```
 
@@ -277,6 +294,11 @@ On `verdict=PASSED`:
 On `verdict=FAILED`:
 
 - `test_still_failing` — Step 4 reported `FAILED`; fix is incomplete.
+- `no_fix_found` — Step 3 found the fix neither committed on the branch
+  nor staged in the index; the hand-off would be empty.
+- `unstaged_changes_present` — Step 3 found edits left in the worktree,
+  outside both hand-off paths; the tested tree would differ from what
+  the caller picks up.
 - `stale_skip_after_fix` — Step 4 reported `all skipped` with an XPU
   marker still in place.
 - `xfail_after_fix` — Step 4 reported `xfailed`; fix did not turn the
