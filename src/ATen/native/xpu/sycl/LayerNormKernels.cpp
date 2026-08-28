@@ -499,14 +499,17 @@ struct VectorizedLayerNormKernelFunctor
       // implicitly cast to T
       if (gamma_vec != nullptr && beta_vec != nullptr) {
         vec_t gamma_data = gamma_vec[i];
-        vec_t beta_data = beta_vec[i];
+        if constexpr (!rms_norm) {
+          vec_t beta_data = beta_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
-          if constexpr (!rms_norm) {
+          for (int ii = 0; ii < vec_size; ii++) {
             out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                     (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
                 static_cast<T_ACC>(beta_data.val[ii]);
-          } else {
+          }
+        } else {
+#pragma unroll
+          for (int ii = 0; ii < vec_size; ii++) {
             out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
