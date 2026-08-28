@@ -85,9 +85,13 @@ The reviewer did not produce the scan. For every `confirmed` or
 5. current source, fix PR, and canonical tracker state;
 6. whether a claimed fix is present in the tested build and passes the same check.
 
-Search `intel/torch-xpu-ops` for a canonical tracker before allowing a new issue.
-When one already covers the work, record its URL as `canonical_tracker`; do not
-create a new payload or automatically comment on the existing tracker.
+Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
+explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
+canonical tracker. The current source, a generic related issue, or an XPU mention
+alone does not establish upstream ownership. When upstream explicitly owns the
+XPU work, use `track-upstream` and emit no payload. When an existing ops tracker
+covers the work, record its URL as `canonical_tracker`; do not create a new
+payload or automatically comment on the existing tracker.
 Use exactly one verdict:
 
 - `needs-xpu-fix`
