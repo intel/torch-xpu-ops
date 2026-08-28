@@ -223,10 +223,10 @@ Check which repo you're in: `basename $(git rev-parse --show-toplevel)`
 
   ```bash
   XPU_OPS_ROOT=$(git -C <path-to-torch-xpu-ops-checkout> rev-parse --show-toplevel)
-  pytorch_dir="$XPU_OPS_ROOT/agent_space_xpu/pytorch"
-  if [[ ! -d "$pytorch_dir/.git" ]]; then
+  PYTORCH_DIR="$XPU_OPS_ROOT/agent_space_xpu/pytorch"
+  if [[ ! -d "$PYTORCH_DIR/.git" ]]; then
       git clone --filter=blob:none https://github.com/pytorch/pytorch.git \
-          "$pytorch_dir"
+          "$PYTORCH_DIR"
   fi
   ```
 
