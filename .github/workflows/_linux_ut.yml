@@ -245,6 +245,7 @@ jobs:
               # Use both class_name and test_name for precise matching in pipe-delimited CSV
               grep -F "$class_prefix$class_name | $test_name |" "$ut_failure_csv" \
                 >> "$new_failure_csv" || true
+            done < "$new_failure_list"
             # Verify count matches filtered log
             expected_count=$(grep -c . "$new_failure_list")
             actual_count=$(grep -c . "$new_failure_csv")
