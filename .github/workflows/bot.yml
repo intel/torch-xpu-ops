@@ -1217,7 +1217,9 @@ jobs:
           # Reproduce/verify environment: latest nightly XPU build.
           uv pip install --prerelease=allow torch torchvision torchaudio \
             --index-url https://download.pytorch.org/whl/nightly/xpu
-          python -c "import torch; print('torch', torch.__version__); print('xpu available:', torch.xpu.is_available())"
+          # Fail fast if the container has no working XPU runtime, instead of
+          # burning a 300min job on a box where every reproduce/verify fails.
+          python -c "import torch; print('torch', torch.__version__); assert torch.xpu.is_available(), 'torch.xpu.is_available() is False -- no working XPU runtime in this container'"
 
       - name: Run AI fix
         id: ai-fix
@@ -1251,6 +1253,8 @@ jobs:
               Python operator code) take effect against the installed nightly
               wheel immediately -- reproduce, fix, and re-verify normally in the
               workspace checkout at ${{ github.workspace }}, no build needed.
+              COMMIT the fix on the `agent/fix-issue-<N>` branch there (do not
+              leave it only staged) so the patch export can capture it.
             - A change to C++ or SYCL sources under src/ needs a source build.
               Work in ONE tree to avoid a verified-vs-kept mismatch:
               /fix-reproduce (then /fix-root-cause) clones pytorch into
@@ -1293,34 +1297,88 @@ jobs:
       # The fix is never pushed (a human decides that), and the pytorch-side
       # tree can't be pushed as a branch anyway, so persist it as a downloadable
       # patch. The agent recorded where the fix lives (fix_repo_dir / branch /
-      # base_sha) in fix_result.json; export from there BEFORE the reclaim wipes
-      # $AGENT_SPACE, and before redaction so the patch (its commit messages are
-      # agent free text) is scrubbed too.
+      # Persist the fix(es) as downloadable patch series. The fix is never
+      # pushed. issue-handler writes one fix_result*.json per fixed unit
+      # (fix_result.json for a single bug, fix_result-<slug>.json per batch
+      # sub-item), each recording where the fix lives. Export ALL of them,
+      # handling both a committed fix (format-patch base..branch) and a
+      # still-staged fix (git diff --cached). Runs before the reclaim wipes
+      # $AGENT_SPACE, and before redaction so patches are scrubbed too.
+      # Fails if a unit that reported a verified fix produced no patch, so a
+      # lost fix is never a silent green.
       - name: Export fix patch
         if: always()
+        env:
+          OUT: ${{ runner.temp }}/fixpatch
+          DEFAULT_BRANCH: agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}
         run: |
-          mkdir -p "$RUNNER_TEMP/fixpatch"
-          fr="$AGENT_SPACE/fix_result.json"
-          branch="agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}"
-          # Read fix_repo_dir / branch / base_sha from fix_result.json if present.
-          repo="" base=""
-          if [ -f "$fr" ]; then
-            repo=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('fix_repo_dir',''))" 2>/dev/null || true)
-            base=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('base_sha',''))" 2>/dev/null || true)
-            b=$(python3 -c "import json,sys;d=json.load(open('$fr'));print(d.get('branch',''))" 2>/dev/null || true)
-            [ -n "$b" ] && branch="$b"
-          fi
-          # Fall back to the workspace checkout if the agent didn't record a repo.
-          [ -n "$repo" ] || repo="${{ github.workspace }}"
-          git -C "$repo" rev-parse --verify "$branch" >/dev/null 2>&1 || {
-            echo "no $branch in $repo; nothing to export"; exit 0; }
-          if [ -n "$base" ] && git -C "$repo" rev-parse --verify "$base" >/dev/null 2>&1; then
-            git -C "$repo" format-patch "$base".."$branch" -o "$RUNNER_TEMP/fixpatch"
-          else
-            # No recorded base: fall back to origin/main, then --root.
-            git -C "$repo" format-patch origin/main.."$branch" -o "$RUNNER_TEMP/fixpatch" 2>/dev/null \
-              || git -C "$repo" format-patch --root "$branch" -o "$RUNNER_TEMP/fixpatch"
-          fi
+          mkdir -p "$OUT"
+          python3 - <<'PY'
+          import glob, json, os, subprocess, sys
+
+          agent_space = os.environ["AGENT_SPACE"]
+          out = os.environ["OUT"]
+          default_branch = os.environ["DEFAULT_BRANCH"]
+          workspace = os.environ["GITHUB_WORKSPACE"]
+
+          results = sorted(glob.glob(os.path.join(agent_space, "fix_result*.json")))
+          if not results:
+              print("no fix_result*.json; nothing to export")
+              sys.exit(0)
+
+          def git(repo, *args):
+              return subprocess.run(["git", "-C", repo, *args],
+                                    capture_output=True, text=True)
+
+          lost = []
+          made = 0
+          for fr in results:
+              try:
+                  d = json.load(open(fr))
+              except Exception as e:
+                  print(f"WARN: cannot parse {fr}: {e}")
+                  continue
+              repo = d.get("fix_repo_dir") or workspace
+              branch = d.get("branch") or default_branch
+              base = d.get("base_sha") or ""
+              # A unit that claims a verified fix must yield a patch.
+              verified = bool(d.get("build_ok") or d.get("verified_after")
+                              or str(d.get("verdict", "")).upper() == "PASSED")
+              slug = os.path.basename(fr)[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
+              dest = os.path.join(out, slug)
+              os.makedirs(dest, exist_ok=True)
+
+              has_branch = git(repo, "rev-parse", "--verify", branch).returncode == 0
+              n_before = len(os.listdir(dest))
+              if has_branch and base and git(repo, "rev-parse", "--verify", base).returncode == 0:
+                  git(repo, "format-patch", f"--base={base}", f"{base}..{branch}", "-o", dest)
+              elif has_branch:
+                  # Committed fix but no usable base: patch the commits since the
+                  # branch diverged from origin/main (do NOT --root: that dumps the
+                  # whole repo history).
+                  mb = git(repo, "merge-base", "origin/main", branch)
+                  if mb.returncode == 0:
+                      b = mb.stdout.strip()
+                      git(repo, "format-patch", f"--base={b}", f"{b}..{branch}", "-o", dest)
+              # Staged-but-uncommitted fix: capture the index as a patch.
+              if len(os.listdir(dest)) == n_before:
+                  diff = git(repo, "diff", "--cached")
+                  if diff.returncode == 0 and diff.stdout.strip():
+                      open(os.path.join(dest, "0001-staged.patch"), "w").write(diff.stdout)
+
+              produced = len(os.listdir(dest)) > n_before
+              made += 1 if produced else 0
+              print(f"{fr}: repo={repo} branch={branch} verified={verified} -> "
+                    f"{'patch' if produced else 'NO PATCH'}")
+              if verified and not produced:
+                  lost.append(fr)
+
+          if lost:
+              print("ERROR: verified fix produced no patch: " + ", ".join(lost),
+                    file=sys.stderr)
+              sys.exit(1)
+          print(f"exported {made} patch series")
+          PY
 
       # Redact known secret values BEFORE anything reads the agent output --
       # the result/cost comments post result.result verbatim to a public issue,
@@ -1345,7 +1403,7 @@ jobs:
           while IFS= read -r f; do targets+=("$f"); done < <(
             find "$AGENT_SPACE" -maxdepth 1 -type f \
               \( -name 'fix_result*.json' -o -name 'batch_summary.json' \) 2>/dev/null
-            find "$RUNNER_TEMP/fixpatch" -maxdepth 1 -type f -name '*.patch' 2>/dev/null)
+            find "$RUNNER_TEMP/fixpatch" -type f -name '*.patch' 2>/dev/null)
           [ ${#targets[@]} -eq 0 ] && exit 0
           # Fail (not silently skip) if perl is missing, so the upload gates
           # (steps.redact.outcome == 'success') block an unredacted artifact.
@@ -1534,7 +1592,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-patch
-          path: ${{ runner.temp }}/fixpatch/*.patch
+          path: ${{ runner.temp }}/fixpatch/**/*.patch
           if-no-files-found: ignore
 
       # Reclaim the tens-of-GB build tree before the chown below has to walk it.
