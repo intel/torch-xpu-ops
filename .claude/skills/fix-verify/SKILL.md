@@ -39,8 +39,8 @@ see.
   runs from `PYTORCH_DIR` because `pip install -e .` builds pytorch and
   pulls its submodule pin.
 - `changed_files` — list of changed files from `fix-implement`'s
-  output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`), a rebuild
-  is required before running.
+  output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`) or CMake
+  (`CMakeLists.txt`, `*.cmake`), a rebuild is required before running.
 
 This skill always runs the before/after comparison (Step 3) and lints
 a passing result (Step 5); there are no flags to toggle either off.
@@ -82,8 +82,10 @@ reproduced at `stage=nightly`).
 
 ## Step 2: Rebuild if needed
 
-If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`),
-a rebuild is required.
+If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`)
+or CMake (`CMakeLists.txt`, `*.cmake`), a rebuild is required. On the
+first rebuild, clean the build cache and retry once if
+`xpu-build-pytorch` reports a cache-related failure.
 
 **When `target_repo_dir != PYTORCH_DIR`** (i.e. the fix is inside
 `third_party/torch-xpu-ops`), the pytorch build reads
@@ -98,9 +100,9 @@ Override" procedure from AGENTS.md **before** loading `xpu-build-pytorch`:
 git -C $target_repo_dir rev-parse HEAD > $PYTORCH_DIR/third_party/xpu.txt
 ```
 
-**When the changed files include C++/SYCL sources**, DO NOT rebuild
-first. A rebuild with the fix staged compiles the fix into
-`torch/lib/*.so`, and the later "before" run (Step 3, after
+**When the changed files require a rebuild** (C++/SYCL or CMake, per
+Step 2), DO NOT rebuild first. A rebuild with the fix staged compiles
+the fix into `torch/lib/*.so`, and the later "before" run (Step 3, after
 `git stash -u`) would still load the fix's `.so` even with sources
 removed — producing a false-negative "before" that already passes.
 Instead, defer the rebuild into Step 3's before/after loop where it is
