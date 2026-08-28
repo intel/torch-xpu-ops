@@ -317,7 +317,8 @@ jobs:
             pushed); the agent's summary is posted here.
 
             Download the patch artifact, review it, and apply / open a PR
-            yourself.
+            yourself. A patch under \`unverified/\` means the fix was committed
+            but never passed verification -- review it with extra care.
 
             \`fix\` also updates this issue's body with agent status markers and
             applies stage labels while it runs.
@@ -1345,6 +1346,7 @@ jobs:
 
           errors = []   # schema / lost-fix problems -> fail the job
           made = 0
+          salvaged = 0
           for fr in results:
               try:
                   d = json.load(open(fr))
@@ -1353,9 +1355,33 @@ jobs:
                   continue
 
               verdict = str(d.get("verdict", "")).upper()
-              # Only PASSED units are exported; other verdicts are reported by
-              # the agent and carry no patch.
+              # A non-PASSED unit carries no verified fix, but it may still
+              # point at a real commit -- PENDING_VERIFY means the fix was
+              # committed and verification never finished. That branch is local
+              # and dies with the runner, so exporting only PASSED would lose
+              # the work while the job stayed green and the uploaded
+              # fix_result.json described a fix nobody can retrieve. Salvage it
+              # as a clearly-separated unverified patch (under the same
+              # fixpatch root, so the redact step still scrubs it). Best effort:
+              # a non-PASSED unit with an unusable contract is reported, not
+              # fatal -- only PASSED units are schema-gated.
               if verdict != "PASSED":
+                  repo = d.get("fix_repo_dir") or ""
+                  branch = d.get("branch") or ""
+                  base = d.get("base_sha") or ""
+                  if (repo and branch and base and os.path.isdir(repo)
+                          and git(repo, "rev-parse", "--verify", branch).returncode == 0
+                          and git(repo, "rev-parse", "--verify", base).returncode == 0):
+                      slug = os.path.basename(fr)[len("fix_result"):].lstrip("-").removesuffix(".json") or "single"
+                      dest = os.path.join(out, "unverified", slug)
+                      os.makedirs(dest, exist_ok=True)
+                      git(repo, "format-patch", f"--base={base}", f"{base}..{branch}",
+                          "-o", dest)
+                      if any(f.endswith(".patch") for f in os.listdir(dest)):
+                          salvaged += 1
+                          print(f"{fr}: verdict={verdict or 'MISSING'} -> salvaged "
+                                f"UNVERIFIED patch from {branch} ({base[:12]}..)")
+                          continue
                   print(f"{fr}: verdict={verdict or 'MISSING'} -> no patch expected")
                   continue
 
@@ -1401,6 +1427,10 @@ jobs:
           # trap (branch exists, nothing explains it) is caught by the
           # no-results guard above, before any file is read.
           print(f"exported {made} patch series")
+          if salvaged:
+              print(f"WARNING: also salvaged {salvaged} UNVERIFIED patch series "
+                    f"under unverified/ -- a fix was committed but never passed "
+                    f"verification. Review before applying.")
           PY
 
       # Redact known secret values BEFORE anything reads the agent output --

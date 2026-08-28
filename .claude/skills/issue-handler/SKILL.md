@@ -473,12 +473,13 @@ mkdir -p "$agent_space"
 - **`fix_result-<slug>.json`** — for each `FIXED` sub-item, the same
   schema the single-bug Stage 5 writes as `fix_result.json`. It MUST
   include the keys the workflow's schema gate and patch-export read:
-  - `verdict` — `PASSED` (only PASSED units are exported) / `FAILED` /
-    `CANNOT_VERIFY` / `PENDING_VERIFY`. Written incrementally: Stage 4
-    writes `PENDING_VERIFY` when it commits the branch, Stage 5 updates
-    it to the terminal verdict. A non-PASSED verdict records that a
-    branch exists and why it is not exportable, so Export never mistakes
-    it for a lost fix.
+  - `verdict` — `PASSED` / `FAILED` / `CANNOT_VERIFY` / `PENDING_VERIFY`.
+    Written incrementally: Stage 4 writes `PENDING_VERIFY` when it commits
+    the branch, Stage 5 updates it to the terminal verdict. Only `PASSED`
+    is exported as a normal patch; a non-PASSED verdict that still names a
+    reachable `branch` + `base_sha` is salvaged as an `unverified/` patch
+    so the committed work is not lost with the runner. Keep `branch` and
+    `base_sha` accurate even on a non-PASSED record.
   - `target_repo` — `torch-xpu-ops` | `pytorch`,
   - `fix_repo_dir` — absolute path of the git repo holding the fix commit,
   - `branch` — `agent/fix-issue-<N>-<seq>-<slug>` (single bug: `agent/fix-issue-<N>`),
@@ -538,9 +539,10 @@ Branch on the verdict:
   path and its interactive-mode fallback) with the fields known so far
   and `verdict=PENDING_VERIFY`: `target_repo`, `fix_repo_dir`, `branch`,
   `base_sha`, `changed_files`, `analyzed_sha`, `root_cause`, `notes`.
-  A `PENDING_VERIFY` unit carries no patch yet (Export only exports
-  `PASSED`), but it records that a fix exists on a branch so a
-  crash before Stage 6 is recoverable rather than a silent orphan.
+  The branch is local and dies with the runner, so this record is what
+  lets the workflow salvage the commit as an `unverified/` patch if
+  verification never finishes — without it, a crash after this point
+  loses the work outright.
 - `NEEDS_HUMAN` → Stage 6 Report. The specific `reason`
   (`skip_outside_target_repo` / `skip_guard_rejected` /
   `no_fix_possible` / etc.) drives the final label.
