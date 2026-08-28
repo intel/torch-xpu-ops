@@ -1242,17 +1242,19 @@ jobs:
               wheel immediately -- reproduce, fix, and re-verify normally in the
               workspace checkout at ${{ github.workspace }}, no build needed.
             - A change to C++ or SYCL sources under src/ needs a source build.
-              Work in ONE tree to avoid a verified-vs-kept mismatch: the
-              /xpu-build-pytorch skill clones pytorch into `${{ env.AGENT_SPACE }}`
-              whose `third_party/torch-xpu-ops` submodule is your working tree.
-              Make the fix THERE, commit it on a branch named
+              Work in ONE tree to avoid a verified-vs-kept mismatch:
+              /fix-reproduce (then /fix-root-cause) clones pytorch into
+              `${{ env.AGENT_SPACE }}/pytorch` and populates its
+              `third_party/torch-xpu-ops` submodule -- that submodule is your
+              working tree. Make the fix THERE, commit it on a branch named
               `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`,
               point that pytorch tree's `third_party/xpu.txt` at your branch HEAD
-              (do NOT commit that pin change) so CMake builds your code, and
-              build. The build runs 1-3h; pass an explicit long timeout on the
-              build Bash call (e.g. 17700000 ms) -- the default 2min cap will
-              otherwise kill it. TORCH_XPU_ARCH_LIST is already set for this
-              runner's hardware in the job env -- use it, do not leave it unset
+              (do NOT commit that pin change) so CMake builds your code, then
+              build with /xpu-build-pytorch. The build runs 1-3h; pass an
+              explicit long timeout on the build Bash call (e.g. 17700000 ms) --
+              the default 2min cap will otherwise kill it. TORCH_XPU_ARCH_LIST
+              is already set for this runner's hardware in the job env -- use it,
+              do not leave it unset
               (that AOT-compiles every arch and is far slower). Verify against
               that same built tree. If the build cannot complete, report
               NEEDS_HUMAN with the root cause and suggested patch -- do not claim
@@ -1510,9 +1512,12 @@ jobs:
           if-no-files-found: ignore
 
       # Reclaim the tens-of-GB build tree before the chown below has to walk it.
+      # No `|| true`: a failed reclaim leaves tens of GB on a shared runner, so
+      # surface it (same reasoning as the cleanup step below). The next Cleanup
+      # step still runs (always()).
       - name: Reclaim agent scratch space
         if: ${{ always() }}
-        run: rm -rf "$AGENT_SPACE" || true
+        run: rm -rf "$AGENT_SPACE"
 
       # Hand back root-owned files so the next job on this shared runner isn't
       # denied access to its bind mounts. `chown -R /__w` crosses mount

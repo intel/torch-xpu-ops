@@ -353,7 +353,7 @@ For each sub-item:
    and drives push / PR creation. Record the sub-item as fixed with its
    branch name, and
    write its `fix_result-${slug}.json` (see "Machine-readable outputs"
-   below) so the bot's reviewer/gate can re-verify it per sub-item.
+   below) so a human (or a later step) can re-verify it per sub-item.
 
 Leaf skills post their own `<!-- agent:root-cause -->` /
 `<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
@@ -448,12 +448,13 @@ re-verification and PR creation without re-parsing the comment:
 - **`fix_result-<slug>.json`** — for each `FIXED` sub-item, the same
   schema the single-bug fix job writes as `fix_result.json` (`needs_build`,
   `build_ok`, `xpu_available`, `pytorch_dir`, `refined_command`, `notes`),
-  suffixed by slug so the bot's reviewer/gate loop can re-verify each
+  suffixed by slug so a human (or a later step) can re-verify each
   sub-item independently.
 
-Branch enumeration (`agent/fix-issue-<N>-*`) remains the bot's primary
-source of truth; `batch_summary.json` only enriches it (target_repo,
-summary line). Its absence is not fatal to PR creation.
+Local branch enumeration (`agent/fix-issue-<N>-*`) is what the workflow
+exports as patch artifacts (the branches are not pushed);
+`batch_summary.json` enriches it (target_repo, summary line). Its absence
+is not fatal to exporting the patches.
 
 ## Stage 3 — Root cause (`fix-root-cause`)
 

@@ -73,7 +73,12 @@ flags differ:
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 
 `fix-verify` takes no flags — it always runs the before/after table
-and lint — so it is identical for both orchestrators.
+and lint — so the leaf call is identical for both orchestrators.
+`fix-verify` accepts the fix staged *or* committed, but this
+orchestrator consumes the **staged** diff (`git diff --cached`, see
+Output), so keep the fix staged here: do not commit it, or the pickup
+below sees an empty diff. (Committing is only for the `issue-handler`
+bot path that exports a patch from a branch.)
 
 ## Inputs
 
