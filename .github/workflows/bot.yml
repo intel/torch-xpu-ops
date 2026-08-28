@@ -310,13 +310,14 @@ jobs:
             | \`@torchxpubot file <unit-id>\` | On the alignment triage issue, file one reviewed draft as its own issue (OWNER/MEMBER only) |
             | \`@torchxpubot help\` | Show this help message |
 
-            \`fix\` reproduces the issue on an XPU runner. Python-level fixes
-            (tests, skip lists, Python operator code) are verified against the
-            installed nightly wheel; C++/SYCL fixes are source-built in the
-            loop and verified there. The fix is pushed to
-            \`agent/fix-issue-<N>\` and the agent's summary is posted here.
+            \`fix\` reproduces the issue on an XPU runner and, for C++/SYCL
+            changes, source-builds and verifies the fix in the loop. The fix is
+            committed to a local \`agent/fix-issue-<N>\` branch and exported as a
+            downloadable **patch artifact** on the workflow run (it is not
+            pushed); the agent's summary is posted here.
 
-            After you review the pushed branch, open a PR from it yourself.
+            Download the patch artifact, review it, and apply / open a PR
+            yourself.
 
             \`fix\` also updates this issue's body with agent status markers and
             applies stage labels while it runs.
@@ -1267,15 +1268,78 @@ jobs:
 
             (Python-only fixes are already committed on that branch in the
             workspace checkout, so this fetch is only for the source-build path.)
-            Do NOT push and do NOT open a PR -- a human reviews the committed
-            branch and decides how to push it. End by reporting the branch name
-            and your summary.
+            Do NOT push and do NOT open a PR. The workflow exports the branch as
+            a downloadable patch artifact for a human to review and apply. End by
+            reporting the branch name and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      # The fix is never pushed (a human decides that), and the pytorch-side
+      # tree can't be pushed as a branch anyway, so persist the fix as a
+      # downloadable patch. The agent has committed / fetched it onto
+      # agent/fix-issue-<N> in the workspace checkout by now. Export runs before
+      # redaction so the patch (its commit messages are agent free text) is
+      # scrubbed too.
+      - name: Export fix patch
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/fixpatch"
+          branch="agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}"
+          git -C "${{ github.workspace }}" rev-parse --verify "$branch" >/dev/null 2>&1 || {
+            echo "no $branch in the workspace checkout; nothing to export"; exit 0; }
+          # Base the patch on origin/main; --root as a fallback if unrelated.
+          git -C "${{ github.workspace }}" format-patch origin/main.."$branch" \
+            -o "$RUNNER_TEMP/fixpatch" 2>/dev/null \
+            || git -C "${{ github.workspace }}" format-patch --root "$branch" \
+                 -o "$RUNNER_TEMP/fixpatch"
+
+      # Redact known secret values BEFORE anything reads the agent output --
+      # the result/cost comments post result.result verbatim to a public issue,
+      # and the transcript / fix_result JSON become public artifacts. The agent
+      # runs unconstrained Bash, so any tool output (env, git remote -v, verbose
+      # pip/git) or the JSON's free-text fields could echo a token.
+      - name: Redact secrets from agent artifacts
+        id: redact
+        if: always()
+        env:
+          TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
+          SECRETS: |
+            ${{ secrets.MERGE_TOKEN }}
+            ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+            ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Collect the files to scrub: the transcript (if any), the exported
+          # fix patch(es), and any JSON the pipeline wrote under AGENT_SPACE.
+          targets=()
+          [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && targets+=("$TRANSCRIPT")
+          while IFS= read -r f; do targets+=("$f"); done < <(
+            find "$AGENT_SPACE" -maxdepth 1 -type f \
+              \( -name 'fix_result*.json' -o -name 'batch_summary.json' \) 2>/dev/null
+            find "$RUNNER_TEMP/fixpatch" -maxdepth 1 -type f -name '*.patch' 2>/dev/null)
+          [ ${#targets[@]} -eq 0 ] && exit 0
+          # Fail (not silently skip) if perl is missing, so the upload gates
+          # (steps.redact.outcome == 'success') block an unredacted artifact.
+          command -v perl >/dev/null || { echo "perl missing; refusing to publish unredacted artifacts" >&2; exit 1; }
+          # perl \Q..\E treats the token as a literal string, so tokens with
+          # regex-special chars (+, ., $, /) are matched safely.
+          while IFS= read -r secret; do
+            [ -n "$secret" ] || continue
+            # actions/checkout persists the GH token into .git/config as
+            # base64("x-access-token:<token>"); redact that form too since a
+            # `git config --list` / `cat .git/config` in a tool result leaks it.
+            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
+            for t in "${targets[@]}"; do
+              SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
+              SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
+            done
+          done <<< "$SECRETS"
+
       - name: Post result comment
-        if: always() && steps.ai-fix.outputs.execution_file
+        # Gated on redaction success: result.result is agent free text posted
+        # verbatim to a public issue, so never post it if redaction failed.
+        if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
         uses: actions/github-script@v9
         env:
           START_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
@@ -1334,7 +1398,11 @@ jobs:
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
               result = data.filter(e => e.type === 'result').pop();
-              console.log('Result:', JSON.stringify(result, null, 2));
+              // Log only status fields, not result.result (agent free text that
+              // may echo a token) into the job log.
+              if (result) console.log('Result status:', JSON.stringify({
+                is_error: result.is_error, total_cost_usd: result.total_cost_usd
+              }));
             }
             if (outcome === 'success' && result && !result.is_error && result.total_cost_usd > 0) {
               return;
@@ -1403,46 +1471,6 @@ jobs:
               body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
             });
 
-      # Redact known secret values from everything that becomes a public
-      # artifact (the transcript and the fix_result/batch_summary JSON): the
-      # agent runs unconstrained Bash and any tool output (env, git remote -v,
-      # verbose pip/git) could echo a token, and the JSON's free-text fields
-      # (notes, refined_command) pass through agent output too.
-      - name: Redact secrets from agent artifacts
-        id: redact
-        if: always()
-        env:
-          TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
-          SECRETS: |
-            ${{ secrets.MERGE_TOKEN }}
-            ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-        run: |
-          # Collect the files to scrub: the transcript (if any) plus any JSON
-          # the pipeline wrote under AGENT_SPACE.
-          targets=()
-          [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && targets+=("$TRANSCRIPT")
-          while IFS= read -r f; do targets+=("$f"); done < <(
-            find "$AGENT_SPACE" -maxdepth 1 -type f \
-              \( -name 'fix_result*.json' -o -name 'batch_summary.json' \) 2>/dev/null)
-          [ ${#targets[@]} -eq 0 ] && exit 0
-          # Fail (not silently skip) if perl is missing, so the upload gates
-          # (steps.redact.outcome == 'success') block an unredacted artifact.
-          command -v perl >/dev/null || { echo "perl missing; refusing to publish unredacted artifacts" >&2; exit 1; }
-          # perl \Q..\E treats the token as a literal string, so tokens with
-          # regex-special chars (+, ., $, /) are matched safely.
-          while IFS= read -r secret; do
-            [ -n "$secret" ] || continue
-            # actions/checkout persists the GH token into .git/config as
-            # base64("x-access-token:<token>"); redact that form too since a
-            # `git config --list` / `cat .git/config` in a tool result leaks it.
-            b64="$(printf 'x-access-token:%s' "$secret" | base64 -w0)"
-            for t in "${targets[@]}"; do
-              SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
-              SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
-            done
-          done <<< "$SECRETS"
-
       # Keep the agent transcript (thinking + every tool call/result) for
       # offline review; the execution_file lives in runner temp, not under
       # AGENT_SPACE, so the reclaim below does not touch it.
@@ -1470,6 +1498,15 @@ jobs:
           path: |
             ${{ env.AGENT_SPACE }}/fix_result*.json
             ${{ env.AGENT_SPACE }}/batch_summary.json
+          if-no-files-found: ignore
+
+      # Persist the fix itself as a downloadable patch (it is never pushed).
+      - name: Upload fix patch
+        if: always() && steps.redact.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fix-issue-${{ needs.parse-command.outputs.issue_number }}-patch
+          path: ${{ runner.temp }}/fixpatch/*.patch
           if-no-files-found: ignore
 
       # Reclaim the tens-of-GB build tree before the chown below has to walk it.

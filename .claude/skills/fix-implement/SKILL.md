@@ -321,10 +321,12 @@ On `verdict=NEEDS_HUMAN`:
   or adding a skip when `allow_skip=false`.
 - `other` — fallback; put full explanation in `reason_detail`.
 
-**Contract:** changes are left staged (`git add`) but NOT committed.
-The orchestrator commits only after `fix-verify` returns `PASSED`.
-`fix-verify` relies on `git stash` to record a before-state, which
-requires uncommitted changes to be present when verify is called.
+**Contract:** this leaf leaves the changes **staged** (`git add`) and
+does not itself commit. The orchestrator (or the invoking workflow) may
+then either verify the staged diff directly or commit it to the fix
+branch before verifying — `fix-verify` accepts the fix staged *or*
+committed, so it no longer depends on `git stash` / an uncommitted
+working tree.
 
 ### HARD RULE: every upstream/CUDA claim in "Why" must cite a source
 
