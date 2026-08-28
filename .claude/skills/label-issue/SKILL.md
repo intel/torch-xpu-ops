@@ -201,23 +201,40 @@ non-empty `extract.json` `dependency`.
 
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format and field rules in `reference/output_format.md`
-(read it first). Emit each label name verbatim from `proposed_labels.json`, with
+(read it first). Wrap the entire artifact in a collapsible `<details>` block whose
+`<summary>` is the `label-issue: <repo>#<id>` title, so the content stays hidden
+until clicked. Emit each label name verbatim from `proposed_labels.json`, with
 a one-line evidence reason. Also print to stdout.
 
 Emit one labels section per analyzed group, in group order, one by one:
 
-- Head each section with `## Group <n>` and name that group's representative
-  case and how many cases the group left unanalyzed.
+- When Step 2 found 2 or more groups, first emit a top-level output table
+  containing the `need_split` triage row (once, from `categories.triage`)
+  recommending the issue be split.
+- Head each group section with `## Group <n> — <summary of the group of tests>`
+  (a short phrase for what the group's tests share, not just the representative
+  case id).
 - Under each head, emit that group's own `label | reason` table decided in
-  Step 3 for its representative case.
-- When Step 2 found 2 or more groups, also emit the `need_split` triage row
-  (once, from `categories.triage`) recommending the issue be split.
+  Step 3 for its representative case, then end the block with a
+  `Test cases (<M>):` list enumerating every test case in the group.
 - For any group whose Step 3.3 short-circuited, emit that group's wontfix row
   and only the axes decided so far.
-- For a single-group issue, emit one section without the `## Group` head and
-  omit the unanalyzed-count note.
+- For a single-group issue, emit one section without the top-level table and
+  without the `## Group` head, and omit the unanalyzed-count note.
 
 This is the final step. Report the `labels.md` path; do not apply to GitHub.
+
+### Optional — Apply to GitHub
+
+The skill itself never writes to GitHub. To act on a finished `labels.md`, the
+user can run `scripts/apply_labels.py <labels.md>` (dry run by default; add
+`--apply` to write). It parses the `<summary>` for `<repo>#<id>` and every table
+row, then applies label rows via `gh issue edit --add-label`, the `type` row via
+`gh issue edit --type` (native Type field), the `priority` row to the PyTorchXPU
+project Priority field via GraphQL (tier mapped to `P0`-`P3` through
+`proposed_labels.json`), and posts the full `labels.md` as an issue comment
+(suppress with `--no-comment`). For multi-group issues it dedupes labels,
+collapses `type` to one value, and picks the most urgent priority across groups.
 
 ## Constraints
 

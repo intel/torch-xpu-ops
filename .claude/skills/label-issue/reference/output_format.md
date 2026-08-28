@@ -10,15 +10,30 @@ each axis is decided in the label-issue skill's Step 3.
 Every `<value>` below is one of the enum values defined in
 `proposed_labels.json` (see **Axis sources**); this file never enumerates them.
 
-When the issue has 2+ groups, repeat the per-group block once per group in group
-order, each under a `## Group <n>` head naming that group's representative case,
-and emit the `need_split` row exactly once (either in a top-level triage block or
-under group 1). For a single group, drop the `## Group` head and emit one block.
+Wrap the ENTIRE artifact in a collapsible `<details>` block whose `<summary>` is
+the `label-issue: <repo>#<id>` title, so the content is hidden until clicked. Keep
+a blank line after the `<summary>` line and before the closing `</details>` so
+GitHub renders the Markdown tables inside. This wrapping applies to both the
+single-group and multi-group layouts.
+
+When the issue has 2+ groups, first emit a **top-level output table** holding the
+`need_split` row (and any other issue-wide triage rows), then repeat the per-group
+block once per group in group order. Each group head is
+`## Group <n> — <summary of the group of tests>` (a short phrase describing what
+that group of tests has in common, not just the representative case id). End each
+group's block with a `Test cases (<M>):` list enumerating every test case in that
+group. For a single group, drop the top-level table and the `## Group` head and
+emit one block (no `Test cases` list needed unless the group has 2+ cases).
 
 ```markdown
-label-issue: <repo>#<id>
+<details>
+<summary>label-issue: <repo>#<id></summary>
 
-## Group <n> — <representative case id> (<M> case(s), <M-1> not analyzed)
+| axis | value | reason |
+|---|---|---|
+| triage | `need_split` | <N> groups: <one-line signature each> |
+
+## Group <n> — <summary of the group of tests>
 
 Root cause: <=2 lines, specific, with file:line when a trace read one>
 
@@ -37,8 +52,18 @@ Root cause: <=2 lines, specific, with file:line when a trace read one>
 | symptom | `<symptom label>` | ... |
 | triage | `duplicate` | Duplicate of <url> (<relevance>, <recommended_action>) |
 | triage | `wontfix` | <own_labels or duplicate:<repo>#<n>> |
-| triage | `need_split` | <N> groups: <one-line signature each> |
+
+Test cases (<M>):
+- <case 1>
+- <case 2>
+
+</details>
 ```
+
+The `need_split` row lives ONLY in the top-level table; never repeat it inside a
+group block. Per-group triage rows (`duplicate`, `wontfix`) stay in that group's
+table. When a header note names the representative case, the `## Group` summary
+still describes the whole group, not that one case.
 
 The `value` column is the token a workflow applies verbatim: a label name for
 label axes (with its `type:` / `module:` / etc. prefix), or the bare enum value
@@ -67,10 +92,10 @@ locations — never hard-code them:
 Each appears as a single line above the table, only when its condition holds:
 
 - `Analyzed case: <id> (case 1 of <M>; the other <M-1> not analyzed)` — when this
-  group's `test_cases` has 2+ entries. The labels describe this case only. Identify
-  an E2E case by `benchmark`/`model`/`phase`/`dtype`. Omit for a single case; never
-  write "case 1 of 1". With a `## Group` head already naming the case, this note is
-  redundant and may be omitted.
+  group's `test_cases` has 2+ entries. The labels describe this representative case
+  only, while the `## Group` summary and the trailing `Test cases` list describe the
+  whole group. Identify an E2E case by `benchmark`/`model`/`phase`/`dtype`. Omit for
+  a single case; never write "case 1 of 1".
 - `Trace mode: evidence-only (no pytorch_folder provided)` — in evidence-only
   mode. Cite `no local checkout provided` in any `null` reason a trace would have
   resolved.
@@ -88,7 +113,8 @@ Each appears as a single line above the table, only when its condition holds:
 | `dtype`, symptom | value present | Multi-label: one row per value, omit the axis when none. |
 | `dependency component` | value present | Match the decided value to a label by its `code`, emit its `name`; when `exists_in_repo` is false, note in the reason it must be created. Omit on `none`/`null`. |
 | `duplicate`, `wontfix` | true | Omit otherwise. |
-| `need_split` | 2+ groups | Reason = group count + one-line signature per group. Never emit for one group; never write "1 group". |
+| `need_split` | 2+ groups | Emitted once in the top-level output table (never inside a group block). Reason = group count + one-line signature per group. Never emit for one group; never write "1 group". |
+| `Test cases (<M>)` list | per group when 2+ groups, or a single group with 2+ cases | Enumerate every test case in the group at the END of that group's block, after the table. |
 
 Omitting a row means the axis produced no value — not that its step was skipped
 (Step 3.5 must still have run to conclude `null`/`none`). Do not add any prose
@@ -103,12 +129,18 @@ explaining which rows were omitted.
 
 ## Examples
 
-Multi-group (one block per group, `need_split` emitted once):
+Multi-group (top-level `need_split` table, then one block per group, each ending
+with its `Test cases` list):
 
 ```markdown
-label-issue: intel/torch-xpu-ops#4200
+<details>
+<summary>label-issue: intel/torch-xpu-ops#4200</summary>
 
-## Group 1 — test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (3 cases, 2 not analyzed)
+| axis | value | reason |
+|---|---|---|
+| triage | `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
+
+## Group 1 — bf16 addmm matmul missing oneDNN primitive
 
 Root cause: oneDNN has no bf16 `addmm` matmul primitive on this platform
 (`aten/src/ATen/native/mkldnn/xpu/Blas.cpp:214`).
@@ -121,9 +153,13 @@ Root cause: oneDNN has no bf16 `addmm` matmul primitive on this platform
 | `priority` | `Medium` | 3 UT cases in this group, RuntimeError without crash. |
 | `dtype` | `dtype: bfloat16` | Case is `test_addmm_bfloat16`; error names the bf16 matmul primitive. |
 | `dependency component` | `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
-| triage | `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
 
-## Group 2 — test/xpu/test_binary_ufuncs_xpu.py::TestBinaryUfuncsXPU::test_div_float64 (1 case)
+Test cases (3):
+- test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16
+- test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16_batched
+- test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_baddbmm_bfloat16
+
+## Group 2 — fp64 div elementwise tolerance mismatch
 
 Root cause: fp64 `div` result exceeds tolerance vs CPU reference
 (`aten/src/ATen/native/xpu/sycl/BinaryDivKernels.cpp:88`).
@@ -136,13 +172,19 @@ Root cause: fp64 `div` result exceeds tolerance vs CPU reference
 | `priority` | `Medium` | 1 UT case in this group, AssertionError without crash. |
 | `dtype` | `dtype: float64` | Case is `test_div_float64`; tolerance failure on fp64. |
 | symptom | `Accuracy` | Numeric mismatch vs CPU reference, not a functional error. |
+
+Test cases (1):
+- test/xpu/test_binary_ufuncs_xpu.py::TestBinaryUfuncsXPU::test_div_float64
+
+</details>
 ```
 
 Evidence-only (no `pytorch_folder`; owner not pinned, so `type` is inferred and
 `module` falls to the catch-all):
 
 ```markdown
-label-issue: intel/torch-xpu-ops#4302
+<details>
+<summary>label-issue: intel/torch-xpu-ops#4302</summary>
 
 Root cause: insufficient information for root causing: no pytorch_folder provided
 and issue evidence is not self-sufficient
@@ -157,4 +199,6 @@ Trace mode: evidence-only (no pytorch_folder provided).
 | `test` | `test: ut` | Traceback shows a `pytest` frame with no e2e/oob markers. |
 | `module` | `module: infra` | Owning component not identifiable from traceback alone; catch-all. |
 | `priority` | `Medium` | 3 UT cases, AssertionError without crash. |
+
+</details>
 ```
