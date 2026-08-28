@@ -312,16 +312,11 @@ jobs:
 
             \`fix\` reproduces the issue on an XPU runner. Python-level fixes
             (tests, skip lists, Python operator code) are verified against the
-            installed nightly wheel; C++/SYCL fixes are source-built in the loop
-            and independently re-verified. Either way the fix is pushed to
-            \`agent/fix-issue-<N>\` and its diff is posted here for review. A
-            **batch** issue (a parent tracking several sub-bugs) fans out: each
-            fixed sub-item lands on its own \`agent/fix-issue-<N>-<seq>-<slug>\`
-            branch, and the diffs are posted in one grouped comment.
+            installed nightly wheel; C++/SYCL fixes are source-built in the
+            loop and verified there. The fix is pushed to
+            \`agent/fix-issue-<N>\` and the agent's summary is posted here.
 
-            After you review that diff, open a PR from the pushed branch
-            yourself. If the fix also needs a pytorch-side change, the comment
-            includes a patch proposal to apply upstream.
+            After you review the pushed branch, open a PR from it yourself.
 
             \`fix\` also updates this issue's body with agent status markers and
             applies stage labels while it runs.
@@ -1179,8 +1174,10 @@ jobs:
 
       - name: Configure git identity
         run: |
-          # A source-build fix clones PyTorch as root under agent_space_xpu/; add only that tree to safe.directory.
-          git config --global --add safe.directory "${{ github.workspace }}/agent_space_xpu"
+          # Keep the workspace checkout trusted (the previous job's cleanup chowns it to another uid).
+          git config --global --add safe.directory "${{ github.workspace }}"
+          # A source-build fix clones PyTorch as root under agent_space_xpu/; /* covers every nested repo there.
+          git config --global --add safe.directory "${{ github.workspace }}/agent_space_xpu/*"
           git config --global user.name "torchxpubot"
           git config --global user.email "torchxpubot@intel.com"
 
@@ -1221,17 +1218,17 @@ jobs:
               Python operator code) take effect against the installed nightly
               wheel immediately -- reproduce, fix, and re-verify normally, no
               build needed.
-            - A change to C++ or SYCL sources under src/ is NOT reflected by the
-              installed wheel, so you MUST source-build to verify it -- do not
-              hand it off unverified. Following the /issue-handler and
-              /xpu-build-pytorch skills, clone the pytorch repo into
-              `${{ env.AGENT_SPACE }}`, clone THIS workspace checkout into its
-              `third_party/torch-xpu-ops` so the tree you build is the tree you
-              later push, apply your fix, source-build, confirm
-              `torch.xpu.is_available()` is True, and re-run the reproducer from
-              `<pytorch_dir>/test`.
+            - A change to C++ or SYCL sources under src/ needs a source build.
+              Commit your fix in THIS workspace checkout (it is what you push
+              from). Then follow the /xpu-build-pytorch skill: clone pytorch into
+              `${{ env.AGENT_SPACE }}`, clone this checkout into its
+              `third_party/torch-xpu-ops`, point `third_party/xpu.txt` at your
+              HEAD (do NOT commit that pin change) so CMake builds your code, and
+              build. If the build cannot complete, report NEEDS_HUMAN with the
+              root cause and suggested patch -- do not claim it was verified.
 
-            When you have a verified fix, commit it and push it to the branch
+            When you have a verified fix committed in the workspace checkout,
+            push that checkout to the branch
             `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
             (force-push is fine). Do not open a pull request: a human reviews
             the fix and opens a PR themselves. End by reporting the branch name
@@ -1368,6 +1365,26 @@ jobs:
                 body: `\`${date}\` [\`fix\`](${jobUrl}) on #${process.env.ISSUE_NUMBER} — **$${cost}** (${inTok} in / ${outTok} out) [${status}]`
               });
             }
+
+      # Redact known secret values from the transcript before it becomes a
+      # public artifact: the agent runs unconstrained Bash and any tool output
+      # (env, git remote -v, verbose pip/git) could echo a token.
+      - name: Redact secrets from agent transcript
+        if: always() && steps.ai-fix.outputs.execution_file
+        env:
+          TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
+          SECRETS: |
+            ${{ secrets.MERGE_TOKEN }}
+            ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+            ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+        run: |
+          [ -f "$TRANSCRIPT" ] || exit 0
+          # perl \Q..\E treats the token as a literal string, so tokens with
+          # regex-special chars (+, ., $, /) are matched safely.
+          while IFS= read -r secret; do
+            [ -n "$secret" ] || continue
+            SECRET="$secret" perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$TRANSCRIPT"
+          done <<< "$SECRETS"
 
       # Keep the agent transcript (thinking + every tool call/result) for
       # offline review; the execution_file lives in runner temp, not under
