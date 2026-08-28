@@ -55,6 +55,13 @@ pip install -e . -v --no-build-isolation 2>&1 | tee /tmp/pytorch_build_$(date +%
 echo "Build log saved to /tmp/pytorch_build_*.log"
 ```
 
+Run this as a single **blocking foreground** Bash call and pass an explicit long
+timeout on that call (e.g. `BASH_MAX_TIMEOUT_MS`, ~10800000 ms) so the default
+2-minute cap does not kill the 1-3h build. Do NOT background the build and
+`sleep`-poll a log file: polling wastes a full sleep interval after the build
+already finished. Let the foreground call block until it returns; the pipe to
+`tee` still captures the log for diagnosis.
+
 ### 4. Verify
 
 ```bash

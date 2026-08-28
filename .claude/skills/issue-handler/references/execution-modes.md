@@ -79,16 +79,39 @@ being worked on" cleanly.
 ### 3. Action Items checklist
 
 Check off `- [ ]` items as stages complete and fill the matching log
-placeholders in the template. The `agent:<name>` comments below are
-posted by leaves, not by the orchestrator; the orchestrator only
-owns the checklist state:
+placeholders in the template.
 
-| Placeholder in issue body | Owning leaf skill |
+**One comment per fix session (leaves produce text, the orchestrator
+posts).** Leaf skills do NOT post to the issue — each returns its
+`<!-- agent:<name> -->` report block on stdout (per each leaf's own
+"the skill does not post comments" contract). The `issue-handler`
+orchestrator maintains **a single session comment** and appends each
+stage's block to it as the pipeline advances, rather than one comment
+per stage:
+
+- Stage 3 (root-cause) **creates** the session comment with the
+  root-cause block.
+- Stage 4 (implement) **appends** its block to that same comment
+  (`gh issue comment --edit-last`, or locate the comment by its
+  `<!-- agent:session -->` marker and edit it in place) — not a new
+  comment.
+- Stage 5 (verify) **appends** the before/after result block to the
+  same comment.
+
+The implement block shows the **diff** (the staged `git diff`, or the
+key hunks), not a prose description of what changed — the analysis
+already lives in the root-cause block above it.
+
+For re-run detection (Stage 0), locate the single session comment by
+its `<!-- agent:session -->` marker; the per-stage `<!-- agent:<name> -->`
+markers are sub-headings within that one comment.
+
+| Block within the session comment | Producing leaf skill |
 |---|---|
 | `<!-- agent:triage -->` | `issue-triage` |
-| `<!-- agent:reproduce -->` | `fix-reproduce` (posts on invocation via `@torchxpubot reproduce` if enabled; not on pipeline runs) |
+| `<!-- agent:reproduce -->` | `fix-reproduce` (only on standalone `@torchxpubot reproduce`; not on pipeline runs) |
 | `<!-- agent:root-cause -->` | `fix-root-cause` |
-| `<!-- agent:implement -->` | `fix-implement` |
+| `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `fix-verify` |
 | `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
@@ -105,21 +128,25 @@ Objective, Current Status`.
 
 ## Per-stage ownership summary
 
-- **Stage 1** (`issue-triage`) owns: initial `<!-- agent:triage -->`
-  comment; the `agent:status:DISCOVERED → TRIAGING` transition;
-  section-heading skeleton.
+- **Stage 1** (`issue-triage`) owns: the `<!-- agent:triage -->`
+  report block (returned to the orchestrator, which seeds the session
+  comment at Stage 3); the `agent:status:DISCOVERED → TRIAGING`
+  transition; section-heading skeleton.
 - **Stage 2** (`fix-reproduce`) owns: the `refined_command`
   extracted for downstream stages; the
   `agent:status:REPRODUCING → TRIAGED` transition (via the
   orchestrator's reading of the reproduce verdict). Does NOT post a
   comment on issue-handler pipeline runs (comments are for
   standalone `@torchxpubot reproduce` invocations).
-- **Stage 3** (`fix-root-cause`) owns: `<!-- agent:root-cause -->`
-  comment (posted by the leaf); `Root Cause Analysis`, `Proposed
+- **Stage 3** (`fix-root-cause`) owns: the `<!-- agent:root-cause -->`
+  report block (returned to the orchestrator, which creates the single
+  session comment from it); `Root Cause Analysis`, `Proposed
   Fix Strategy`, `Target Repository` sections filled in the issue
   body.
-- **Stage 4** (`fix-implement`) owns: `<!-- agent:implement -->`
-  comment (posted by the leaf); staged diff (never committed).
+- **Stage 4** (`fix-implement`) owns: the `<!-- agent:implement -->`
+  report block — a **diff**, not prose — returned to the orchestrator,
+  which appends it to the session comment; staged diff (never
+  committed).
 - **Stage 5** (`fix-verify`) owns: `<!-- agent:verify -->` comment
   (posted by the leaf).
 - **Stage 6** (the orchestrator's own wrap-up, not a leaf) owns: advancing

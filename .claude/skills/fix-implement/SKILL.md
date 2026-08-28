@@ -322,9 +322,12 @@ On `verdict=NEEDS_HUMAN`:
 - `other` — fallback; put full explanation in `reason_detail`.
 
 **Contract:** this leaf leaves the changes **staged** (`git add`) and
-does not commit. `fix-verify` reads the staged diff directly; the
-invoking workflow, not this skill, turns the staged diff into a patch
-after a PASSED verdict. Nobody commits the fix inside the pipeline.
+does not commit — leaves never commit, branch, or push. `fix-verify`
+reads the staged diff directly. What happens to the staged diff after a
+PASSED verdict depends on the caller: `issue-handler` commits it onto
+`agent/fix-issue-<N>` and its workflow exports `base_sha..branch` as a
+patch; `xpu-nightly-ci-fix` keeps it staged for its own workflow to
+export. Either way this skill only stages.
 
 ### HARD RULE: every upstream/CUDA claim in "Why" must cite a source
 

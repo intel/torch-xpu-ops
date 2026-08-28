@@ -101,8 +101,26 @@ tree already reflects the edit.
 Reaching this skill means `fix-reproduce` already ran the test and
 observed the failure (the "before" state). This step rebuilds with the
 fix applied (when needed) and sets up for the Step 4 test run that
-confirms it now passes. The fix is staged (never committed inside the
-pipeline), so no stash/checkout dance is needed.
+confirms it now passes. The fix arrives **staged** (`fix-implement`
+leaves it `git add`ed and does not commit), so no stash/checkout dance
+is needed.
+
+**Assert the staged diff is what gets tested and exported.** The caller
+tests the working tree but commits/exports the index, so they must
+match. Before rebuilding, require a non-empty staged diff and an empty
+unstaged diff:
+
+```bash
+git -C "$target_repo_dir" diff --cached --quiet && \
+  { echo "FAILED reason=no_staged_changes"; exit 1; }   # nothing staged
+git -C "$target_repo_dir" diff --quiet || \
+  { echo "FAILED reason=unstaged_changes_present"; exit 1; }  # edits not in index
+```
+
+`no_staged_changes` guards the "PASSED then empty commit" trap;
+`unstaged_changes_present` catches a FAILED→Stage 4 retry that edited a
+file after `git add`, which would make the tested tree differ from the
+exported patch.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.

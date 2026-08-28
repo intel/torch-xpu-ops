@@ -1156,12 +1156,17 @@ jobs:
       # TORCH_XPU_ARCH_LIST is unset). Matches _linux_build.yml.
       TORCH_XPU_ARCH_LIST: "bmg,pvc"
       # A cold PyTorch+SYCL source build runs 1-3h; the Bash tool caps a call
-      # at max(BASH_MAX_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS). Raise only MAX to
-      # just under the 300min job timeout so the agent CAN request a long build
-      # (it passes an explicit timeout on the build call, see the prompt). Leave
-      # DEFAULT at the stock 2min so an unrelated hung command fails fast instead
-      # of silently eating the whole job.
-      BASH_MAX_TIMEOUT_MS: "17700000"
+      # at max(BASH_MAX_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS). Raise MAX so the
+      # agent CAN request a long build (it passes an explicit timeout on the
+      # build call, see the prompt), but keep it well under the 300min job
+      # timeout so a single build cannot starve the rest of the pipeline
+      # (reproduce, root-cause, tests, up-to-3 FAILED->rebuild retries) and the
+      # post-steps (redact, uploads, rm -rf $AGENT_SPACE, chown -R /__w) that
+      # must reclaim a tens-of-GB tree and hand back ownership on a shared
+      # runner. 180min leaves ~120min of headroom. Leave DEFAULT at the stock
+      # 2min so an unrelated hung command fails fast instead of silently eating
+      # the whole job.
+      BASH_MAX_TIMEOUT_MS: "10800000"
     steps:
       - name: Post starting message
         id: start-comment
@@ -1202,15 +1207,22 @@ jobs:
       - name: Prepare agent scratch dir
         run: mkdir -p "$AGENT_SPACE"
 
-      # Fail in seconds if the container lacks the oneAPI toolchain, instead of
-      # after the agent burns turns discovering it can't build. The path is the
+      # Fail in seconds if the container lacks a prerequisite, instead of after
+      # the agent burns turns (or the whole ~5h job) discovering it. Covers the
+      # oneAPI toolchain the build needs AND the tools the post-agent steps
+      # need: python3 (Export step) and perl (redact step). Those two run after
+      # the agent exits, so the agent never installs them; if the image lacks
+      # them the job would otherwise run the full fix, then fail at redact/export
+      # with the fix already made but never published. The oneAPI path is the
       # one /xpu-build-pytorch sources.
-      - name: Verify oneAPI toolchain
+      - name: Verify container prerequisites
         run: |
           vars=/opt/intel/oneapi/compiler/latest/env/vars.sh
           test -f "$vars" || { echo "oneAPI vars.sh not found at $vars in this image" >&2; exit 1; }
           . "$vars"
           icpx --version
+          command -v python3 >/dev/null || { echo "python3 missing; Export step needs it" >&2; exit 1; }
+          command -v perl >/dev/null || { echo "perl missing; redact step needs it" >&2; exit 1; }
 
       - name: Install latest nightly PyTorch-XPU
         run: |
@@ -1251,7 +1263,7 @@ jobs:
               fixes can be source-built and verified. `TORCH_XPU_ARCH_LIST` is
               set for this runner (bmg,pvc) -- use it, do not leave it unset.
             - A cold source build runs 1-3h; pass an explicit long timeout on
-              the build Bash call (e.g. 17700000 ms) or the 2min default kills it.
+              the build Bash call (e.g. 10800000 ms) or the 2min default kills it.
             - The latest nightly XPU wheel is already installed for the
               reproduce/verify environment.
 

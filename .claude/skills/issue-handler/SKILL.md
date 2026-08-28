@@ -506,6 +506,18 @@ Branch on the verdict:
 
 ## Stage 5 — Verify (`fix-verify`)
 
+**Precondition — ensure a source build exists.** `fix-verify` Step 1
+requires `torch` to import from `$PYTORCH_DIR/torch/` (a source build)
+and returns `CANNOT_VERIFY(reason=wheel_install_not_source)` otherwise.
+The bot installs the *nightly wheel* for reproduce, so unless
+`fix-reproduce` already source-built (its Stage 2, skipped when the bug
+reproduces on the wheel — the normal case), no source build exists yet.
+Before calling `fix-verify`, load `xpu-build-pytorch` and source-build
+the tree with the Stage 4 fix applied (skip only if `fix-reproduce`
+reported it already built at the fix's base). This is the build the
+before/after verification runs against; without it every run ends
+`CANNOT_VERIFY` and no `fix_result.json` is written.
+
 Call `fix-verify` with `refined_command` (from Stage 2),
 `target_repo_dir`, and `changed_files` (from Stage 4). `fix-verify`
 unconditionally produces the FAIL->PASS before/after table and runs
