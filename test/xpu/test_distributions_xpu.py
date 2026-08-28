@@ -174,8 +174,10 @@ def _test_gamma_poisson_gpu_large_sample_independence(self):
 
         # Gamma(alpha, 1) has mean == variance == alpha.
         mean_se = (alpha / n) ** 0.5
+        # Var(S^2) = (mu4 - sigma^4) / n = (2 * alpha^2 + 6 * alpha) / n.
+        var_se = ((2 * alpha**2 + 6 * alpha) / n) ** 0.5
         self.assertLess(abs(x.mean().item() - alpha) / mean_se, 5.0)
-        self.assertEqual(x.var().item(), alpha, atol=5 * mean_se, rtol=0)
+        self.assertEqual(x.var().item(), alpha, atol=5 * var_se, rtol=0)
         self.assertGreater(x.unique().numel(), n // 2)
 
     lam = torch.full((n,), 4.0, device="xpu", dtype=torch.float64)
