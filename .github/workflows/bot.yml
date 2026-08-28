@@ -1233,26 +1233,35 @@ jobs:
             repo's AGENTS.md):
             - Python-level changes (test files, skip lists, xpu_test_utils,
               Python operator code) take effect against the installed nightly
-              wheel immediately -- reproduce, fix, and re-verify normally, no
-              build needed.
+              wheel immediately -- reproduce, fix, and re-verify normally in the
+              workspace checkout at ${{ github.workspace }}, no build needed.
             - A change to C++ or SYCL sources under src/ needs a source build.
-              Commit your fix on a branch named
-              `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`
-              in THIS workspace checkout, then follow the /xpu-build-pytorch
-              skill to verify it: clone pytorch into `${{ env.AGENT_SPACE }}`,
-              clone this checkout into its `third_party/torch-xpu-ops`, point
-              `third_party/xpu.txt` at your HEAD (do NOT commit that pin change)
-              so CMake builds your code, and build. The build runs 1-3h; pass an
-              explicit long timeout on the build Bash call (e.g. 17700000 ms) --
-              the default 2min cap will otherwise kill it. If the build cannot
-              complete, report NEEDS_HUMAN with the root cause and suggested
-              patch -- do not claim it was verified.
+              Work in ONE tree to avoid a verified-vs-kept mismatch: the
+              /xpu-build-pytorch skill clones pytorch into `${{ env.AGENT_SPACE }}`
+              whose `third_party/torch-xpu-ops` submodule is your working tree.
+              Make the fix THERE, commit it on a branch named
+              `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}`,
+              point that pytorch tree's `third_party/xpu.txt` at your branch HEAD
+              (do NOT commit that pin change) so CMake builds your code, and
+              build. The build runs 1-3h; pass an explicit long timeout on the
+              build Bash call (e.g. 17700000 ms) -- the default 2min cap will
+              otherwise kill it. Verify against that same built tree. If the
+              build cannot complete, report NEEDS_HUMAN with the root cause and
+              suggested patch -- do not claim it was verified.
 
-            Commit the verified fix on
-            `agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}` in
-            the workspace checkout, but do NOT push and do NOT open a PR -- a
-            human reviews the committed branch and decides how to push it. End by
-            reporting the branch name and your summary.
+            Once verified, bring the branch back to the workspace checkout so it
+            survives this job (the `${{ env.AGENT_SPACE }}` scratch dir is
+            reclaimed at the end):
+
+                git -C ${{ github.workspace }} fetch \
+                  "${{ env.AGENT_SPACE }}/pytorch/third_party/torch-xpu-ops" \
+                  "agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}:agent/fix-issue-${{ needs.parse-command.outputs.issue_number }}"
+
+            (Python-only fixes are already committed on that branch in the
+            workspace checkout, so this fetch is only for the source-build path.)
+            Do NOT push and do NOT open a PR -- a human reviews the committed
+            branch and decides how to push it. End by reporting the branch name
+            and your summary.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
