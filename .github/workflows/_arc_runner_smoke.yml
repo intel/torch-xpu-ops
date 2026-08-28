@@ -1,63 +1,30 @@
 name: fix build smoke
 
-# One-shot smoke test: prove the AGENT can drive the whole fix-in-the-loop chain
-# on the xpu-agent runner — install the nightly wheel, reproduce the failure,
-# apply the fix, source-build PyTorch (oneAPI ships in the omix image), and
-# verify — solving problems itself as it goes. Collects real data (cold build
-# time, GPU visibility) via the agent transcript + cost.
+# PROBE-ONLY run (temporary). Goal: find out (a) whether the `bmg-test` label
+# has an online machine at all, and (b) the real uid:gid the runner service
+# uses inside this privileged container, so the cleanup `chown` in the full fix
+# flow can be set correctly instead of guessing 1000 vs stat /__e.
 #
-# Sample (ground truth): issue #4980 / PR #5004 — FFT empty-batch oneMKL fix.
-# A single-file C++ change (src/ATen/native/xpu/mkl/SpectralOps.cpp, +8/-0)
-# that a nightly wheel CANNOT verify, so it exercises the source-build path.
+# It deliberately does NOTHING heavy: no agent, no source build, no bun install,
+# no artifact upload, no chown. It only starts the container, prints ownership +
+# GPU visibility, and exits. That keeps the shared BMG runner clean so this
+# probe cannot brick the next job.
 #
-# NOTE ON FILE PATH: this reuses the `_arc_runner_smoke.yml` path on purpose.
-# workflow_dispatch only lists workflows whose file path exists on the default
-# branch; this path already does. Trigger with an explicit ref pointing at the
-# smoke branch so the runner checks out THIS content, without merging to main:
+# FILE PATH NOTE: reuses the `_arc_runner_smoke.yml` path on purpose.
+# workflow_dispatch only lists workflows whose path exists on the default
+# branch; this one does. Trigger with an explicit ref:
 #   gh workflow run _arc_runner_smoke.yml --ref agent-fix-build-smoke/zzq
-# main's real arc-runner-smoke is untouched; drop this branch when done.
 
 on:
-  workflow_dispatch:
-    inputs:
-      nightly_version:
-        description: "Nightly torch version to reproduce against. Must PREDATE the fix so the bug still reproduces (latest nightly already contains it and will NOT reproduce)."
-        default: "2.15.0.dev20260817+xpu"
-      fix_pr:
-        description: "torch-xpu-ops PR number to pull the fix diff from"
-        default: "5004"
-
-env:
-  BEDROCK_MODEL: global.anthropic.claude-opus-5
-  # UT node ids from PR #5004 test plan. Node ids are relative to <pytorch>/test
-  # (pytest MUST run from test/, not the pytorch root — the root torch/ source
-  # dir shadows the installed wheel: "No module named torch.version").
-  FFT_FAIL_TESTS: >-
-    test_ops_fwd_gradients.py::test_fn_fwgrad_bwgrad_fft_fft2_xpu_float64
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_int32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_bool
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_hfft_xpu_float64
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float64
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float16
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float16
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float64
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_bool
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_bool
-  FFT_REGRESSION_TESTS: >-
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft_xpu_float32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fft2_xpu_float32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_fftn_xpu_float32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_ifft_xpu_float32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_irfft_xpu_float32
-    inductor/test_torchinductor_opinfo.py::test_comprehensive_fft_rfft_xpu_float32
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
   smoke:
-    runs-on: xpu-agent
-    timeout-minutes: 480
+    runs-on: bmg-test
+    timeout-minutes: 30
     container:
       image: intel/omix:0.3.0-devel-ubuntu26.04
       volumes:
@@ -65,205 +32,16 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri
               --security-opt seccomp=unconfined --cap-add=SYS_ADMIN
               --shm-size=8g --privileged -e ZE_AFFINITY_MASK
-    env:
-      GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-      NIGHTLY_VERSION: ${{ inputs.nightly_version }}
-      FIX_PR: ${{ inputs.fix_pr }}
-      # AGENTS.md's gitignored scratch dir; all run artifacts live here (not
-      # /tmp), matching bot.yml's fix job.
-      AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
-      PYTORCH_DIR: ${{ github.workspace }}/agent_space_xpu/pytorch
-      # Match bot.yml: pin AOT to the runner GPUs (BMG/PVC) instead of every
-      # supported arch, and let the agent request a long build (default 2min
-      # cap would kill the 1-3h source build) while unrelated hung commands
-      # still fail fast at the stock default.
-      TORCH_XPU_ARCH_LIST: "bmg,pvc"
-      BASH_MAX_TIMEOUT_MS: "28200000"
     steps:
-      - name: Checkout torch-xpu-ops (for AGENTS.md + skills)
-        uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.MERGE_TOKEN }}
-          fetch-depth: 0
-
       - name: Probe runner ownership
         run: |
           echo "id: $(id)"
-          echo "/__e  -> $(stat -c '%u:%g (%U:%G)' /__e 2>/dev/null || echo 'missing')"
-          echo "/__w  -> $(stat -c '%u:%g (%U:%G)' /__w 2>/dev/null || echo 'missing')"
-          echo "/github -> $(stat -c '%u:%g (%U:%G)' /github 2>/dev/null || echo 'missing')"
-          echo "/__w/_actions -> $(stat -c '%u:%g (%U:%G)' /__w/_actions 2>/dev/null || echo 'missing')"
+          for p in /__e /__w /__w/_actions /__w/_tool /__w/_temp /github; do
+            echo "$p -> $(stat -c '%u:%g (%U:%G)' "$p" 2>/dev/null || echo 'missing')"
+          done
 
-      - name: Configure git identity
+      - name: Probe GPU visibility
         run: |
-          git config --global --add safe.directory "*"
-          git config --global user.name "torchxpubot"
-          git config --global user.email "torchxpubot@intel.com"
-
-      - name: Setup Python
-        uses: ./.github/actions/setup-python
-        with:
-          python: '3.10'
-
-      - name: Prepare agent scratch dir
-        run: mkdir -p "$AGENT_SPACE"
-
-      # The agent drives the ENTIRE chain and solves problems itself. The
-      # workflow only provisions runner + container + GPU + Python. Nothing is
-      # pre-installed or pre-built.
-      - name: Agent — reproduce, fix, build, verify
-        id: agent
-        uses: anthropics/claude-code-action@v1
-        with:
-          use_bedrock: "true"
-          github_token: ${{ secrets.MERGE_TOKEN }}
-          settings: '{"alwaysThinkingEnabled": true}'
-          claude_args: "--model ${{ env.BEDROCK_MODEL }} --max-turns 400 --allowedTools Bash,Read,Glob,Grep,WebFetch,Skill,Task,Write,Edit"
-          prompt: |
-            You are running on an Intel XPU (GPU) CI runner inside a container
-            that exposes the host GPU via /dev/dri and ships the Intel oneAPI
-            build toolchain. The torch-xpu-ops repo is checked out
-            at ${{ github.workspace }} (read its AGENTS.md; the
-            /xpu-build-pytorch skill is available). PyTorch is not built yet.
-            `gh` is authenticated (GH_TOKEN in env).
-
-            GOAL: prove end to end that the fix in torch-xpu-ops PR #${{ inputs.fix_pr }}
-            resolves issue #4980 (empty-batch FFT oneMKL failure) by reproducing
-            the bug on a nightly wheel, then source-building PyTorch with the fix
-            and showing the tests pass. Work the problem yourself: if a step
-            fails, diagnose and retry. Do NOT write or invent the fix — take it
-            from PR #${{ inputs.fix_pr }}.
-
-            Environment facts you must respect:
-            - Run pytest from ${{ env.PYTORCH_DIR }}/test, NEVER from the pytorch
-              root: the root torch/ source dir shadows the installed torch and
-              yields "No module named torch.version".
-            - triton-xpu ships as a dependency of the torch+xpu wheel; no separate
-              install. You still need pip: pytest expecttest hypothesis.
-            - oneAPI is already installed in this container; do NOT install the
-              Intel Deep Learning Essentials yourself. It may already be on PATH
-              (check `icpx --version`); if not, source the oneAPI vars per the
-              /xpu-build-pytorch skill before building.
-
-            STEPS:
-            1. Install the nightly XPU wheel (torch ONLY, no vision/audio),
-               pinned to the version that still has the bug:
-                 pip install --pre "torch==${{ inputs.nightly_version }}" \
-                   --index-url https://download.pytorch.org/whl/nightly/xpu
-               Record torch.__version__, torch.xpu.is_available(), and
-               torch.version.git_version (freeze this pytorch commit).
-            2. Clone pytorch at that frozen commit into ${{ env.PYTORCH_DIR }}.
-               From ${{ env.PYTORCH_DIR }}/test, run these UTs and CONFIRM they
-               FAIL on the nightly wheel (this is the "before" reproduction):
-                 ${{ env.FFT_FAIL_TESTS }}
-               If they do not genuinely FAIL (e.g. only collection errors, or they
-               pass), STOP and report — the nightly version is wrong.
-            3. Populate the submodule with the fix: clone intel/torch-xpu-ops into
-               ${{ env.PYTORCH_DIR }}/third_party/torch-xpu-ops, apply the PR
-               #${{ inputs.fix_pr }} diff (`gh pr diff` — a plain unified diff),
-               and set the development pin override per AGENTS.md
-               (git rev-parse HEAD > ${{ env.PYTORCH_DIR }}/third_party/xpu.txt).
-            4. Source-build PyTorch via the /xpu-build-pytorch skill (which
-               handles the oneAPI environment): USE_XPU=1 USE_CUDA=0, then
-               `pip install -e . -v --no-build-isolation` from
-               ${{ env.PYTORCH_DIR }}. The build runs 1-3h; pass an explicit
-               long timeout on the build Bash call (e.g. 28200000 ms) so the
-               default 2min cap does not kill it. TORCH_XPU_ARCH_LIST is set in
-               the job env (bmg,pvc) -- use it, do not leave it unset. Confirm
-               torch.xpu.is_available() is True on the source build (check from
-               the test/ dir).
-            5. Verify the fix: from ${{ env.PYTORCH_DIR }}/test, run the same UTs
-               from step 2 and confirm they now PASS, plus these regressions still
-               pass:
-                 ${{ env.FFT_REGRESSION_TESTS }}
-            6. Write ${{ env.PYTORCH_DIR }}/build_pytorch.env that a later step can
-               source to reproduce your runtime (exports USE_XPU=1, USE_CUDA=0,
-                and whatever oneAPI vars your build needed). Also write a JSON summary to
-                ${{ env.AGENT_SPACE }}/agent_result.json with keys: reproduced_before (bool),
-               build_ok (bool), xpu_available (bool), verified_after (bool),
-               fail_before_count, pass_after_count,
-               cold_build_seconds, notes.
-
-            Report a concise before/after summary at the end.
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-
-      # Confirm the agent actually ran (setup can fail before Bedrock is hit; the
-      # action still exits 0). Separates "never ran" from "ran but failed".
-      - name: Check agent executed
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            const file = '${{ steps.agent.outputs.execution_file }}';
-            if (!file || !fs.existsSync(file)) {
-              core.setFailed('agent produced no execution_file — it never ran (setup/auth failure)');
-              return;
-            }
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const result = data.filter(e => e.type === 'result').pop();
-            if (!result) { core.setFailed('agent execution_file has no result entry'); return; }
-            if (result.is_error) { core.setFailed('agent reported an error: ' + (result.subtype || 'unknown')); return; }
-            core.info('agent ran; cost $' + (result.total_cost_usd || 0).toFixed(4));
-
-      - name: Report agent cost
-        if: always()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            const files = {
-              'fix agent': '${{ steps.agent.outputs.execution_file }}',
-            };
-            for (const [label, file] of Object.entries(files)) {
-              if (!file || !fs.existsSync(file)) continue;
-              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              const r = data.filter(e => e.type === 'result').pop();
-              if (!r) continue;
-              const usage = Object.values(r.modelUsage || {})[0] || {};
-              const inTok = (usage.inputTokens||0)+(usage.cacheReadInputTokens||0)+(usage.cacheCreationInputTokens||0);
-              const line = `### ${label} cost\n- **$${(r.total_cost_usd||0).toFixed(4)}** ` +
-                `(${inTok.toLocaleString()} in / ${(usage.outputTokens||0).toLocaleString()} out), ` +
-                `turns=${r.num_turns||'?'}`;
-              await core.summary.addRaw(line + '\n').write();
-            }
-
-
-      # Persist the agent transcript (thinking + every tool call/result)
-      # so the run can be reviewed. Otherwise discarded with the runner.
-      - name: Stage agent transcripts
-        if: always()
-        run: |
-          f='${{ steps.agent.outputs.execution_file }}'
-          if [ -n "$f" ] && [ -f "$f" ]; then
-            cp "$f" "$AGENT_SPACE/agent_transcript.json"
-            echo "staged fix-agent transcript ($(wc -c < "$AGENT_SPACE/agent_transcript.json") bytes)"
-          fi
-
-      - name: Upload logs + transcripts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-logs
-          path: |
-            ${{ env.AGENT_SPACE }}/after.log
-            ${{ env.AGENT_SPACE }}/agent_result.json
-            ${{ env.AGENT_SPACE }}/agent_transcript.json
-          if-no-files-found: ignore
-
-      # This privileged container runs as root, so every file it writes into the
-      # runner's bind mounts is root-owned. In particular claude-code-action runs
-      # `bun install` inside its own _actions dir, leaving a root-owned
-      # node_modules there. _actions/_tool/_temp are SEPARATE bind mounts under
-      # /__w, so `chown -R /__w` does not reliably recurse into them; name each
-      # explicitly. If left root-owned, the NEXT job on this self-hosted runner
-      # dies in "Prepare workflow directory" (Access to .../_actions/... denied)
-      # before any step runs. Derive the runner uid:gid from /__e (the runner's
-      # externals, a read-only mount it owns) instead of hardcoding 1000 — the
-      # service user here is not uid 1000.
-      - name: Cleanup workspace
-        if: always()
-        run: |
-          owner="$(stat -c '%u:%g' /__e)"
-          chown -R "$owner" /__w /__w/_actions /__w/_tool /__w/_temp /github ./ || true
+          ls -l /dev/dri || echo "no /dev/dri"
+          (source /opt/intel/oneapi/compiler/latest/env/vars.sh 2>/dev/null && icpx --version) || echo "oneAPI not on default path"
+          command -v sycl-ls >/dev/null 2>&1 && sycl-ls || echo "sycl-ls unavailable"
