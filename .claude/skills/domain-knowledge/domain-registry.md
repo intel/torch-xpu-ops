@@ -53,9 +53,9 @@ for the domains that actually matched.
 
 | domain | reference_file | target_repo | applies_when | related_domains | test_locations | fix_locations | module_labels |
 |---|---|---|---|---|---|---|---|
-| `xpu-kernel` | `domain-xpu-kernel.md` | `torch-xpu-ops` | root cause in XPU backend kernels, dispatch, or SYCL code | | `test/xpu/`, `test/inductor/` (XPU re-enabled tests) | `src/ATen/native/xpu/` | `module: op impl`, `module: torch-ops-eltwise`, `module: torch-ops-gemm`, `module: torch-ops-reduction`, `module: torch-ops-others`, `module: sdpa`, `module: quant`, `module: sparse` |
-| `inductor` | `domain-inductor.md` | `pytorch` | root cause in `torch._inductor` or `torch._dynamo` (device-agnostic) | `xpu-kernel` (Inductor may fall back to eager and hit an XPU kernel) | `test/inductor/` | `torch/_inductor/`, `torch/_dynamo/` | `module: inductor`, `module: dynamo`, `module: fx` |
-| `upstream-pytorch` | `domain-upstream-pytorch.md` | `pytorch` | root cause in device-agnostic pytorch core (framework regressions, test infra) | | anywhere in `test/` | `torch/`, `aten/` (non-CUDA/XPU dirs) | `module: core`, `module: distributed`, `module: infra`, `module: build` |
+| `xpu-kernel` | `domain-xpu-kernel.md` | `torch-xpu-ops` | root cause in XPU backend kernels, dispatch, or SYCL code | | `test/xpu/`, `test/inductor/` (XPU re-enabled tests) | `src/ATen/native/xpu/` | `module: ops`, `module: eltwise`, `module: gemm`, `module: reduction`, `module: sdpa`, `module: ao`, `module: sparse`, `module: dpclang` |
+| `inductor` | `domain-inductor.md` | `pytorch` | root cause in `torch._inductor` or `torch._dynamo` (device-agnostic) | `xpu-kernel` (Inductor may fall back to eager and hit an XPU kernel) | `test/inductor/` | `torch/_inductor/`, `torch/_dynamo/` | `module: inductor`, `module: dynamo` |
+| `upstream-pytorch` | `domain-upstream-pytorch.md` | `pytorch` | root cause in device-agnostic pytorch core (framework regressions, test infra) | | anywhere in `test/` | `torch/`, `aten/` (non-CUDA/XPU dirs) | `module: core`, `module: distributed`, `module: infra`, `module: build`, `module: utils`, `module: rfc` |
 
 Machine-readable list of valid `domain` values (must match the table above):
 
@@ -71,7 +71,7 @@ and the code directories to inspect. It is deliberately a small closed
 set so each value maps to exactly one `domain-*.md` and one repo.
 
 The repo already has ~25 fine-grained `module: xxx` GitHub labels for
-human issue triage (`module: op impl`, `module: inductor`,
+human issue triage (`module: ops`, `module: inductor`,
 `module: dynamo`, `module: core`, ...). These are a *different, finer*
 taxonomy — one `domain` spans many `module:` labels. So we do **not**
 rename `domain` to `module`; that would either explode the routing
