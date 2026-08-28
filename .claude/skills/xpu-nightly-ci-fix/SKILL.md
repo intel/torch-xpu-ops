@@ -73,14 +73,8 @@ flags differ:
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 
 `fix-verify` takes no flags — it always runs the before/after table
-and lint — so the leaf call is identical for both orchestrators. It
-accepts the fix either committed on a branch or staged in the index,
-whichever the calling orchestrator arranged. What happens after a
-PASSED verdict differs: this orchestrator leaves the fix staged for the
-workflow to pick up (`git diff --cached`, see Output), while
-`issue-handler` commits it onto a branch (at its Stage 4, before verify)
-and exports a patch. Keep the fix staged here — do not commit it, or the
-pickup below sees an empty diff.
+and lint. **Keep the fix staged here — do not commit it**, or the
+pickup below (`git diff --cached`, see Output) sees an empty diff.
 
 ## Inputs
 

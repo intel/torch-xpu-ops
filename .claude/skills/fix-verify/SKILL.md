@@ -102,11 +102,9 @@ Reaching this skill means `fix-reproduce` already ran the test and
 observed the failure (the "before" state). This step rebuilds with the
 fix applied (when needed) and sets up for the Step 4 test run that
 confirms it now passes. `fix-implement` always leaves the fix
-**staged**; whether the caller has already committed it depends on the
-caller — `issue-handler` commits it onto `agent/fix-issue-<N>` at its
-Stage 4 (and records `fix_result.json` at `PENDING_VERIFY`), while
-`xpu-nightly-ci-fix` deliberately keeps it staged. Either arrangement is
-accepted here. No stash/checkout dance is needed.
+**staged**; the caller may additionally have committed it onto a branch
+before invoking this skill. Both arrangements are accepted — do not
+assume either. No stash/checkout dance is needed.
 
 **Assert the tested tree is the tree that gets handed off.** The caller
 either exports `base_sha..branch` (committed) or picks up
@@ -128,9 +126,9 @@ test -n "$committed" -o -n "$staged" || \
 ```
 
 `no_fix_found` guards the "PASSED but the hand-off is empty" trap;
-`unstaged_changes_present` catches a FAILED→Stage 4 retry that edited a
-file without staging or amending it, which would make
-the tested tree differ from the exported patch.
+`unstaged_changes_present` catches a re-implement retry that edited a
+file without staging or amending it, which would make the tested tree
+differ from what the caller hands off.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
@@ -210,9 +208,9 @@ spin fixlint
 # Nothing outside changed_files may be folded in; if `git status` shows
 # fixlint touched other files, return FAILED rather than widening the diff.
 git -C $target_repo_dir add -- <changed_files>
-# committed model (issue-handler): fold into the existing fix commit.
+# If the fix is already committed, fold the lint fixes into that commit.
 # Test for non-empty output -- `git diff --stat` exits 0 even when empty,
-# so `&&` on the command alone would amend in the staged model too.
+# so `&&` on the command alone would amend in the staged-only case too.
 if [ -n "$(git -C $target_repo_dir diff --stat HEAD~1..HEAD 2>/dev/null)" ]; then
   git -C $target_repo_dir commit --amend --no-edit
 fi
