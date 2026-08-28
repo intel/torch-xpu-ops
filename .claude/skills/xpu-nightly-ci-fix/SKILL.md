@@ -73,7 +73,8 @@ flags differ:
 | `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 
 `fix-verify` takes no flags — it always runs the before/after table
-and lint — so it is identical for both orchestrators.
+and lint. **Keep the fix staged here — do not commit it**, or the
+pickup below (`git diff --cached`, see Output) sees an empty diff.
 
 ## Inputs
 
