@@ -144,7 +144,6 @@ skip_dict = {
     "test_tensor_creation_ops_xpu.py": (
         "test_ones_large_xpu_complex128",
         "test_zeros_large_xpu_complex128",
-        # https://github.com/intel/torch-xpu-ops/issues/5046
         "test_range_factories_64bit_indexing_xpu",
     ),
     "test_torchvision_roi_ops.py": (
