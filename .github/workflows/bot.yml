@@ -1149,6 +1149,11 @@ jobs:
       # a build-in-the-loop fix (pytorch clone, build tree) lives here instead
       # of /tmp, so it's all in one already-established, gitignored place.
       AGENT_SPACE: ${{ github.workspace }}/agent_space_xpu
+      # xpu-agent runners are a mix of BMG and PVC GPUs. Pin AOT to just those
+      # two archs so a functionality fix builds against the hardware it runs on
+      # without the cost of AOT-compiling every supported arch (the default when
+      # TORCH_XPU_ARCH_LIST is unset). Matches _linux_build.yml.
+      TORCH_XPU_ARCH_LIST: "bmg,pvc"
       # A cold PyTorch+SYCL source build runs 1-3h; the Bash tool caps a call
       # at max(BASH_MAX_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS). Raise only MAX to
       # just under the 300min job timeout so the agent CAN request a long build
@@ -1245,9 +1250,12 @@ jobs:
               (do NOT commit that pin change) so CMake builds your code, and
               build. The build runs 1-3h; pass an explicit long timeout on the
               build Bash call (e.g. 17700000 ms) -- the default 2min cap will
-              otherwise kill it. Verify against that same built tree. If the
-              build cannot complete, report NEEDS_HUMAN with the root cause and
-              suggested patch -- do not claim it was verified.
+              otherwise kill it. TORCH_XPU_ARCH_LIST is already set for this
+              runner's hardware in the job env -- use it, do not leave it unset
+              (that AOT-compiles every arch and is far slower). Verify against
+              that same built tree. If the build cannot complete, report
+              NEEDS_HUMAN with the root cause and suggested patch -- do not claim
+              it was verified.
 
             Once verified, bring the branch back to the workspace checkout so it
             survives this job (the `${{ env.AGENT_SPACE }}` scratch dir is
