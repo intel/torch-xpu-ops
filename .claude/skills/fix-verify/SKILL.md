@@ -20,7 +20,7 @@ see.
 - [Inputs](#inputs)
 - [Shell helpers](#shell-helpers)
 - Step 1: [Confirm source build environment](#step-1-confirm-source-build-environment)
-- Step 2: [Rebuild if needed](#step-2-rebuild-if-needed)
+- Step 2: [Classify whether a rebuild is needed](#step-2-classify-whether-a-rebuild-is-needed)
 - Step 3: [Verify the fix](#step-3-verify-the-fix)
 - Step 4: [Run test](#step-4-run-test)
 - Step 5: [Lint](#step-5-lint)
@@ -31,20 +31,20 @@ see.
 - `refined_command` — the exact test command from `fix-reproduce`'s
   output.
 - `PYTORCH_DIR` — path to local PyTorch checkout.
-- `target_repo_dir` — path to the checkout that holds the fix (staged or
-  committed)
-  (same derivation rule as in `fix-implement`: equals `PYTORCH_DIR` for
-  `target_repo=pytorch`, `<PYTORCH_DIR>/third_party/torch-xpu-ops` for
-  `target_repo=torch-xpu-ops`). All git operations run against
-  `target_repo_dir`. The rebuild (Step 3) still
-  runs from `PYTORCH_DIR` because `pip install -e .` builds pytorch and
-  pulls its submodule pin.
+- `target_repo_dir` — path to the checkout that holds the fix, staged or
+  committed (same derivation rule as in `fix-implement`: equals
+  `PYTORCH_DIR` for `target_repo=pytorch`,
+  `<PYTORCH_DIR>/third_party/torch-xpu-ops` for `target_repo=torch-xpu-ops`).
+  All git operations run against `target_repo_dir`. The rebuild (Step 3)
+  still runs from `PYTORCH_DIR` because `pip install -e .` builds pytorch
+  and pulls its submodule pin.
 - `changed_files` — list of changed files from `fix-implement`'s
   output; if any are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`) or CMake
   (`CMakeLists.txt`, `*.cmake`), a rebuild is required before running.
 
-This skill always runs the test with the fix applied (Step 3) and lints
-a passing result (Step 5); there are no flags to toggle either off.
+This skill always rebuilds if needed (Step 3) and runs the test with the
+fix applied (Step 4), then lints a passing result (Step 5); there are no
+flags to toggle any of these off.
 
 ## Shell helpers
 
@@ -81,15 +81,17 @@ source build is the orchestrator's job (both orchestrators load
 `xpu-build-pytorch` before calling this skill when `fix-reproduce`
 reproduced at `stage=nightly`).
 
-## Step 2: Rebuild if needed
+## Step 2: Classify whether a rebuild is needed
+
+This step only classifies; the rebuild itself happens in Step 3.
 
 If any of `changed_files` are C++/SYCL (`.cpp`, `.h`, `.cu`, `.sycl`)
 or CMake (`CMakeLists.txt`, `*.cmake`), a rebuild is required so the fix
-is compiled in before the test runs. On the first rebuild, clean the
-build cache and retry once if `xpu-build-pytorch` reports a cache-related
-failure. The rebuild itself (and, for a torch-xpu-ops fix, the
-`third_party/xpu.txt` pin override that makes CMake see the fix) happens
-in Step 3.
+is compiled in before the test runs. On the first rebuild (Step 3), clean
+the build cache and retry once if `xpu-build-pytorch` reports a
+cache-related failure. For a torch-xpu-ops fix the rebuild also needs the
+`third_party/xpu.txt` pin override that makes CMake see the fix (done in
+Step 3).
 
 If all changed files are python-only, no rebuild is needed — the source
 tree already reflects the edit.
@@ -97,9 +99,10 @@ tree already reflects the edit.
 ## Step 3: Verify the fix
 
 Reaching this skill means `fix-reproduce` already ran the test and
-observed the failure (the "before" state). This step only needs to run
-the test **with the fix applied** and confirm it now passes; the fix may
-be staged or already committed — either is fine, no stash/checkout dance.
+observed the failure (the "before" state). This step rebuilds with the
+fix applied (when needed) and sets up for the Step 4 test run that
+confirms it now passes; the fix may be staged or already committed —
+either is fine, no stash/checkout dance.
 
 All git commands here run against `target_repo_dir` (not `PYTORCH_DIR`);
 these can differ when `target_repo == "torch-xpu-ops"`.
@@ -126,6 +129,16 @@ result from Step 4 with the fix applied. The two come from different
 phases (reproduce may have run against a nightly wheel, verify always
 against a source build), so the table is a before-fix-vs-after-fix
 summary, not a single-build A/B.
+
+> **Caveat (read before trusting a PASSED verdict):** because the
+> "before" is a nightly-wheel failure and the "after" is a source build
+> with the fix, a PASSED verdict means "the test passes on a source build
+> that includes the fix" — it does **not** prove the fix is what made it
+> pass. If the bug was already resolved upstream after the nightly was
+> cut, the source build passes regardless of the fix. This skill does not
+> re-run the source build without the fix to rule that out (that would
+> cost a second cold build). State this limitation in the report; a human
+> reviewing the patch should confirm the change is actually responsible.
 
 ## Step 4: Run test
 
@@ -161,14 +174,27 @@ the repo that owns the changed files — not in `PYTORCH_DIR`:
 
 ```bash
 cd $target_repo_dir
+# Determine how the fix is currently held, BEFORE fixlint touches the tree:
+# staged (changes in the index, not yet committed) vs committed (already a
+# commit on the branch, index clean).
+if ! git -C $target_repo_dir diff --cached --quiet; then
+    fix_mode=staged
+else
+    fix_mode=committed
+fi
+
 spin fixlint
-# fixlint rewrites files in the working tree, which UNSTAGES those
-# hunks. The orchestrator commits what is staged, so re-stage the
-# same files or the lint fixes are silently dropped from the commit.
+# fixlint rewrites files in the working tree, which UNSTAGES those hunks.
+# Nothing outside changed_files may become staged; if `git status` shows
+# fixlint touched other files, return FAILED rather than widening the diff.
 git -C $target_repo_dir add -- <changed_files>
-# Nothing outside changed_files may become staged; if `git status`
-# shows fixlint touched other files, return FAILED rather than
-# widening the diff.
+# Persist the lint fixes so they are not silently dropped:
+if [ "$fix_mode" = committed ]; then
+    # Amend them into the fix commit, or the kept/exported branch lacks the
+    # lint fixes and fails lint CI when a human opens the PR.
+    git -C $target_repo_dir commit --amend --no-edit
+fi
+# staged: leave them staged; the orchestrator commits what is staged.
 spin lint 2>&1 | tail -40
 ```
 
@@ -202,8 +228,8 @@ update is the **caller's** responsibility.
 
 ### Before / after
 
-Before = the failure `fix-reproduce` recorded; After = the result from
-Step 3 with the fix applied.
+Before = the failure `fix-reproduce` recorded; After = the Step 4 test
+result with the fix applied.
 
 | Test case | Before | After |
 |-----------|--------|-------|
@@ -232,9 +258,8 @@ Step 3 with the fix applied.
 - `changed_files` — echo from `fix-implement`; downstream orchestrator
   uses this to build the commit's file list.
 - `before_after_table` — the markdown table pairing `fix-reproduce`'s
-  recorded failure (before) with Step 3's result (after); `null` only
-  when Step 3 could not produce an after result (e.g. a `CANNOT_VERIFY`
-  before the test ran).
+  recorded failure (before) with the Step 4 result (after); `null` only
+  when the test never ran (e.g. a `CANNOT_VERIFY` before Step 4).
 - `failure_output` — non-null on `FAILED`; excerpt of the test or lint
   output (bounded — do not dump multi-MB logs, ~40 lines is enough for
   a human to see the failure).
