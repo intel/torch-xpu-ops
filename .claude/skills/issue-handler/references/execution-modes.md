@@ -98,7 +98,7 @@ per stage:
 - Stage 5 (verify) **appends** the before/after result block to the
   same comment.
 
-The implement block shows the **diff** (the staged `git diff`, or the
+The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
 already lives in the root-cause block above it.
 
@@ -145,10 +145,8 @@ Objective, Current Status`.
   body.
 - **Stage 4** (`fix-implement`) owns: the `<!-- agent:implement -->`
   report block — a **diff**, not prose — returned to the orchestrator,
-  which appends it to the session comment; staged diff (never
-  committed).
-- **Stage 5** (`fix-verify`) owns: `<!-- agent:verify -->` comment
-  (posted by the leaf).
+  which appends it to the session comment.
+- **Stage 5** (`fix-verify`) owns: the `<!-- agent:verify -->` block.
 - **Stage 6** (the orchestrator's own wrap-up, not a leaf) owns: advancing
   `agent:status` to the terminal value; final Action Items check;
   in batch fan-out runs (Stage 1u), the `<!-- agent:batch-fanout -->`

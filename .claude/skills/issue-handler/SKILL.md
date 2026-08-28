@@ -19,10 +19,10 @@ skills into one iterative pipeline and reports the result. Each stage's
 mechanics live in its own skill — read and follow that skill when you
 reach its stage.
 
-Every agent-produced diff is a **proposal**. After `fix-verify` returns
-`PASSED`, this skill commits the staged fix onto a dedicated local branch
-`agent/fix-issue-<N>` (single bug) or `agent/fix-issue-<N>-<seq>-<slug>`
-(per batch sub-item) and records it in a `fix_result*.json`. It never
+Every agent-produced diff is a **proposal**. This skill commits the
+staged fix onto a dedicated local branch `agent/fix-issue-<N>` (single
+bug) or `agent/fix-issue-<N>-<seq>-<slug>` (per batch sub-item) and
+records it in a `fix_result*.json`. It never
 pushes, tags, or opens a PR — the invoking workflow reads each
 `fix_result*.json`, exports `base_sha..branch` as a patch, and a human
 applies it. The leaves themselves only stage (they never commit).
@@ -349,28 +349,16 @@ For each sub-item:
    attempts exhausted): mark **this sub-item** blocked with the reason,
    record it, and **continue to the next sub-item** — never abort the
    whole batch on one hard sub-item.
-5. **On `fix-verify` PASSED**: commit the staged fix onto this
-   sub-item's branch `agent/fix-issue-${N}-${seq}-${slug}` (created in
-   step 3):
-
-   ```bash
-   git -C "$target_repo_dir" commit -m "fix: <summary> (#${N} sub-item ${slug})"
-   ```
-
-   Do NOT push or open a PR. **Update** the sub-item's
-   `fix_result-${slug}.json` in place (written at `verdict=PENDING_VERIFY`
-   when the branch was committed) to `verdict=PASSED` with `fix_repo_dir`,
-   `branch`, `base_sha` (the sub-item's base from step 3), `changed_files`,
+5. **On `fix-verify` PASSED**: do NOT push or open a PR. **Update** the
+   sub-item's `fix_result-${slug}.json` in place (written at
+   `verdict=PENDING_VERIFY` when the branch was committed) to
+   `verdict=PASSED` with `fix_repo_dir`, `branch`, `base_sha` (the
+   sub-item's base from step 3), `changed_files`,
    so the workflow can export `base_sha..branch` per sub-item. As in the
    single-bug path, commit the branch and write the `PENDING_VERIFY`
    record as soon as `fix-implement` returns `READY`, not only on PASSED,
    so a crash mid-sub-item leaves a recoverable record instead of an
    orphan branch.
-
-Leaf skills post their own `<!-- agent:root-cause -->` /
-`<!-- agent:implement -->` / `<!-- agent:verify -->` comments per
-sub-item on the **parent** issue (pass the parent issue number
-through).
 
 ### Stale skips (`batch_kind=skip-list` only)
 
@@ -501,9 +489,16 @@ Call `fix-root-cause` with the failure description and the
 
 Branch on its `verdict`:
 
-- `IMPLEMENTING(reason=ok)` → continue to Stage 4. Record
-  `target_repo`, `domain`, `analyzed_sha`, `root_cause`,
-  `fix_strategy`.
+- `IMPLEMENTING(reason=ok)` → record `target_repo`, `domain`,
+  `analyzed_sha`, `root_cause`, `fix_strategy`, then create the fix
+  branch before Stage 4 — `target_repo` is what decides which checkout
+  it lives in, and `fix-implement` expects a fresh branch with a clean
+  worktree (`$base` is Stage 2's reproduce base; the batch path already
+  did this in its own step 3, with its own branch name):
+
+  ```bash
+  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
+  ```
 - `NEEDS_HUMAN` → Stage 6 Report with the specific
   `reason` (`task_or_feature` / `feature_gap` / `hardware_specific` /
   `cross_repo_coordinated` / `no_registered_domain` / etc.). Each
@@ -522,16 +517,15 @@ Call `fix-implement` with `triage_result`, `pytorch_dir`,
 
 Branch on the verdict:
 
-- `READY(reason=ok)` → **commit the staged fix onto its branch now, and
-  write the incremental `fix_result.json`**, then continue to Stage 5.
+- `READY(reason=ok)` → **commit the staged fix onto the branch created in
+  Stage 3, and write the incremental `fix_result.json`**, then continue
+  to Stage 5.
   Do NOT wait for Stage 5 to persist — if verify then crashes or the
   context runs out, the committed branch would otherwise be an
   orphan the Export step flags as a lost fix. Committing here keeps the
   branch and the hand-off record in lock-step:
 
   ```bash
-  base=$(git -C "$target_repo_dir" rev-parse HEAD)   # pre-fix base
-  git -C "$target_repo_dir" checkout -B "agent/fix-issue-${N}" "$base"
   git -C "$target_repo_dir" commit -m "fix: <one-line summary> (#${N})"
   ```
 
@@ -549,18 +543,6 @@ Branch on the verdict:
 
 ## Stage 5 — Verify (`fix-verify`)
 
-**Precondition — ensure a source build exists.** `fix-verify` Step 1
-requires `torch` to import from `$PYTORCH_DIR/torch/` (a source build)
-and returns `CANNOT_VERIFY(reason=wheel_install_not_source)` otherwise.
-The bot installs the *nightly wheel* for reproduce, so unless
-`fix-reproduce` already source-built (its Stage 2, skipped when the bug
-reproduces on the wheel — the normal case), no source build exists yet.
-Before calling `fix-verify`, load `xpu-build-pytorch` and source-build
-the tree with the Stage 4 fix applied (skip only if `fix-reproduce`
-reported it already built at the fix's base). This is the build the
-before/after verification runs against; without it every run ends
-`CANNOT_VERIFY` and no `fix_result.json` is written.
-
 Call `fix-verify` with `refined_command` (from Stage 2),
 `target_repo_dir`, and `changed_files` (from Stage 4). `fix-verify`
 unconditionally produces the FAIL->PASS before/after table and runs
@@ -572,8 +554,10 @@ Branch on the verdict:
   `fix_result.json` already exist from Stage 4; **update** the record
   in place — set `verdict=PASSED` and add `needs_build`, the
   before/after result, and any final `notes` — then go to Stage 6 with
-  `IMPLEMENTING(fix_verified)`. The commit was already made in Stage 4;
-  do not re-commit. The workflow exports `base_sha..branch` as the
+  `IMPLEMENTING(fix_verified)`. `fix-verify` leaves its `spin fixlint`
+  fixes staged: amend them into the Stage 4 commit
+  (`git commit --amend --no-edit`) so they reach the exported patch —
+  never a second commit. The workflow exports `base_sha..branch` as the
   patch. Never push or open a PR.
 - `FAILED` → **loop back to Stage 4** with the failure output as
   additional context (see "Iterative loop bounds"). On a retry the
@@ -596,10 +580,8 @@ At the end, summarize the outcome. In **interactive mode** present
 this to the user in plain language. In **pipeline mode** advance
 the issue's `agent:status` to the terminal stage
 (`DONE` / `NEEDS_HUMAN` / `SKIPPED`) and update the checklist per
-[execution-modes.md](references/execution-modes.md); the leaf skills
-already left their own `<!-- agent:<name> -->` comments so no extra
-summary comment is needed unless the pipeline is a batch fan-out (which
-posts the `<!-- agent:batch-fanout -->` summary).
+[execution-modes.md](references/execution-modes.md); a batch fan-out
+run also posts the `<!-- agent:batch-fanout -->` summary.
 
 Always include in the summary:
 
