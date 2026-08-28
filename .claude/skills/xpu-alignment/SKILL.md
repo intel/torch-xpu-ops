@@ -26,8 +26,12 @@ an existing tracker, prepare a proposal for `intel/torch-xpu-ops`.
   never publish; deterministic workflow code owns collection, execution, gating,
   and publishing.
 
-Read [references/evidence.md](references/evidence.md) when collecting candidates,
-running a reproducer, classifying evidence, or reviewing a result.
+Read [references/evidence.md](references/evidence.md) only when judging semantic
+candidate eligibility, constructing or interpreting faithful XPU evidence, or
+independently reviewing a provisional actionable result. It defines the proof
+thresholds that keep weak signals and provisional results from becoming
+unsupported trackers. Do not load it for deterministic collection, artifact
+mechanics, workflow gating or publishing, or implementation of a fix.
 
 ## Inputs
 

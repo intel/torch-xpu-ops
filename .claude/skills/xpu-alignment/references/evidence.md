@@ -1,7 +1,15 @@
 # Evidence and Review
 
-Read this reference when collecting a time window, adapting or running a
-reproducer, classifying local evidence, or independently reviewing a candidate.
+Use this reference only for decisions that depend on evidence quality: semantic
+candidate eligibility, faithful XPU reproducer construction or result
+classification, and independent review. It prevents weak source signals, setup
+failures, and provisional scan results from being promoted into unsupported XPU
+trackers.
+
+Do not use it for deterministic enumeration or pagination, artifact schemas,
+stage ownership and digests, workflow gating or publishing, or implementation of
+the resulting fix. Use the
+[automation contract](automation-contract.md) for automation mechanics.
 
 ## Candidate set
 
