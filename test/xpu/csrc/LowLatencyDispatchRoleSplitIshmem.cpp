@@ -192,6 +192,35 @@ inline uint64_t pack_range(int32_t count, int32_t begin) {
       static_cast<uint32_t>(count);
 }
 
+// Coalesced work-group copy of `n` bf16 elements. Work-items stride by
+// `lsize`; promotes to 16-byte transfers when both pointers are 16B aligned
+// (scalar fallback covers the tail and unaligned pointers).
+inline void wg_copy_bf16(
+    at::BFloat16* dst,
+    const at::BFloat16* src,
+    int64_t n,
+    int32_t lid,
+    int32_t lsize) {
+  constexpr int64_t kVecElems = 8; // 8 bf16 == 16 bytes
+  const bool aligned = (reinterpret_cast<uintptr_t>(dst) % 16 == 0) &&
+      (reinterpret_cast<uintptr_t>(src) % 16 == 0);
+  if (aligned) {
+    const int64_t nvec = n / kVecElems;
+    auto* d16 = reinterpret_cast<sycl::vec<uint32_t, 4>*>(dst);
+    const auto* s16 = reinterpret_cast<const sycl::vec<uint32_t, 4>*>(src);
+    for (int64_t v = lid; v < nvec; v += lsize) {
+      d16[v] = s16[v];
+    }
+    for (int64_t h = nvec * kVecElems + lid; h < n; h += lsize) {
+      dst[h] = src[h];
+    }
+  } else {
+    for (int64_t h = lid; h < n; h += lsize) {
+      dst[h] = src[h];
+    }
+  }
+}
+
 // Single-kernel ISHMEM low-latency dispatch, split into "expert" (sender) and
 // "receiver" work-group roles -- see file header for the full description.
 // All WGs are launched together in ONE nd_range so the receiver WGs can spin
@@ -271,9 +300,7 @@ struct LowLatencyDispatchRoleSplitIshmemKernel {
 
         if (dst_rank == rank) {
           // Self-dispatch: plain local copy, no RDMA needed.
-          for (int64_t h = lid; h < hidden; h += lsize) {
-            recv_data[dst_off + h] = send_data[src_off + h];
-          }
+          wg_copy_bf16(recv_data + dst_off, send_data + src_off, hidden, lid, lsize);
           if (lid == 0) {
             recv_src[dst_slot] = static_cast<int32_t>(token_idx);
           }
@@ -378,9 +405,12 @@ struct LowLatencyDispatchRoleSplitIshmemKernel {
       const int64_t src_base = (static_cast<int64_t>(local_expert) * num_ranks + src_rank) * capacity;
       const int64_t dst_base = static_cast<int64_t>(local_expert) * num_ranks * capacity + begin;
       for (int32_t slot = 0; slot < count; ++slot) {
-        for (int64_t h = lid; h < hidden; h += lsize) {
-          packed_recv_x[(dst_base + slot) * hidden + h] = recv_data[(src_base + slot) * hidden + h];
-        }
+        wg_copy_bf16(
+            packed_recv_x + (dst_base + slot) * hidden,
+            recv_data + (src_base + slot) * hidden,
+            hidden,
+            lid,
+            lsize);
         if (lid == 0) {
           packed_recv_src_info[dst_base + slot] = recv_src[src_base + slot];
         }
@@ -518,7 +548,25 @@ at::Tensor low_latency_dispatch_role_split_ishmem(
   const int32_t num_expert_wgs = static_cast<int32_t>(num_experts);
   const int32_t num_receiver_wgs = num_local_experts;
   const int32_t total_wgs = num_expert_wgs + num_receiver_wgs;
-  constexpr int64_t kWGSize = 32;
+  // Wider WGs give the payload copies / WG-collective RDMA puts more lanes and
+  // more outstanding memory requests. Overridable via LL_ROLE_SPLIT_WG_SIZE;
+  // clamped to the device max. Each CU still hosts one WG, so residency (and
+  // the cross-WG forward-progress requirement) is unaffected.
+  int64_t kWGSize = 128;
+  {
+    const char* wg_env = std::getenv("LL_ROLE_SPLIT_WG_SIZE");
+    if (wg_env != nullptr) {
+      const int64_t v = std::atol(wg_env);
+      if (v > 0) {
+        kWGSize = v;
+      }
+    }
+    const int64_t dev_max = static_cast<int64_t>(
+        queue.get_device().get_info<sycl::info::device::max_work_group_size>());
+    if (kWGSize > dev_max) {
+      kWGSize = dev_max;
+    }
+  }
 
   // Require QPS_PER_PE >= num_local_experts.  Standard ishmem AMOs (e.g.
   // ishmem_int_atomic_set) use round-robin QP and ordered commit that deadlocks

@@ -20,10 +20,22 @@
 // non-zero -- via a local copy for the sender's own node, and an ISHMEM
 // work-group RDMA put for every other node.
 //
+// Work is decomposed DeepEP-style into `num_channels` CHANNELS, one channel
+// per work-group. A channel owns a contiguous slice of this rank's token
+// stream (`get_channel_task_range`), packs those tokens per destination node
+// into its OWN staging sub-region, and RDMA-streams each destination's region
+// on a channel-pinned QP (qp = channel; the host requires
+// ISHMEM_IBGDA_QPS_PER_PE >= num_channels so channels never share a QP) -- so
+// the same destination node is fed by `num_channels` concurrent QP streams
+// instead of a single one. The destination's recv region is partitioned by (src node,
+// channel); the host unpack pass concatenates a source's channels back into
+// one contiguous per-source range (order within a source is irrelevant here).
+//
 // Only ISHMEM APIs are used for the inter-node hop:
-//   - ishmemx_putmem_nbi_work_group  (work-group-cooperative RDMA write)
-//   - ishmemx_quiet_work_group / ishmemx_fence_work_group (order data/flag)
-//   - ishmem_int_atomic_set          (leader publishes the ready count)
+//   - ishmemx_putmem_nbi_work_group_qp   (WG-cooperative RDMA write on a QP)
+//   - ishmemx_fence_work_group_qp        (order data before the count flag)
+//   - ishmemx_uint64_atomic_set_nbi_qp   (leader publishes the count on same QP)
+//   - ishmemx_quiet_work_group           (drain outstanding puts)
 //   - ishmem_malloc / ishmem_free / ishmem_barrier_all (symmetric heap)
 //
 // Registered op: symm_mem::internode_dispatch_rdma_sender
@@ -49,16 +61,10 @@ namespace {
 // One node holds at most this many NVLink/IPC peers (matches DeepSymm).
 constexpr int kNumMaxNvlPeers = 2;
 
-// Max bytes issued per ishmemx_putmem_nbi_work_group() call. Historically
-// this was paired with an ishmemx_quiet_work_group() drain after every
-// chunk to keep the number of outstanding un-drained WQEs bounded (see
-// DeepSymm internode.cpp for the IBGDA-hang rationale this guarded against
-// -- see also repro_ishmem_hang/README.md). The RDMA send path below no
-// longer quiets after each chunk (it now streams chunks as they become
-// ready and only quiets once, at the end, to overlap copying with sending
-// -- see mark_slot_ready() in InternodeDispatchRdmaSenderKernel); this
-// constant now only bounds how much of a team's already-ready range is put
-// in a single ISHMEM call. Overridable via env for perf experimentation.
+// Max bytes issued per ishmemx_putmem_nbi_work_group_qp() call. Bounds how
+// much of a destination's already-ready range the coordinator WG puts in a
+// single ISHMEM call; the send path streams chunks as they become ready and
+// quiets once at the end. Overridable via env for perf experimentation.
 size_t put_chunk_bytes() {
   static const size_t v = [] {
     const char* s = std::getenv("INTERNODE_DISPATCH_PUT_CHUNK_BYTES");
@@ -74,14 +80,13 @@ size_t put_chunk_bytes() {
 }
 
 // Matches DeepSymm's kNumThreads (csrc/modules/moe_ep/internode.cpp): the
-// per-token/local-copy vectorized paths below assume 32-lane sub-groups
-// cooperating within a work-group of this size, and a smaller work-group
-// changes the sender/forward work-group occupancy math (see kSenderWgsPerNode
-// below), so this must stay aligned with the DeepSymm kernel to reproduce its
-// performance characteristics.
+// per-token vectorized paths below assume 32-lane sub-groups cooperating
+// within a work-group of this size, so this must stay aligned with the
+// DeepSymm kernel to reproduce its performance characteristics.
 constexpr int32_t kThreads = 512;
-// Default sender work-groups cooperating per destination node.
-constexpr int kSenderWgsPerNode = 4;
+// Default number of channels (each channel == one work-group) when the caller
+// passes num_channels <= 0 and no env override is set.
+constexpr int kDefaultChannels = 8;
 
 // 16-byte vector type (mirrors DeepSymm's csrc/sycl/configs.h `int4`), used
 // below for 128-bit vectorized global-memory copies.
@@ -361,43 +366,46 @@ uint8_t* ensure_symmetric(size_t bytes) {
   return static_cast<uint8_t*>(state.symm);
 }
 
-// Faithful port of InternodeDispatchRDMASenderKernel, including DeepSymm's
-// 128-bit (int4) vectorized copy paths (see copy_bytes_vectorized above),
-// needed to reproduce its performance characteristics.
+// DeepEP kRDMASender / kRDMASenderCoordinator split: each channel is a PAIR of
+// work-groups (channel == gid / 2). The even WG (role 0) COPIES this channel's
+// tokens into per-(channel, dst node) staging and advances a sliding-window
+// ready_tail; the odd WG (role 1) is the COORDINATOR that streams each dst
+// node's ready bytes over the channel-pinned QP and publishes the count. The
+// two WGs of a channel must run concurrently (the coordinator spins on the
+// copy WG's ready_tail / copy_done), same residency requirement as DeepEP.
 struct InternodeDispatchRdmaSenderKernel {
   const uint8_t* x_bytes;
   const float* x_scales_ptr; // nullable
   const int64_t* topk_idx_ptr;
   const float* topk_weights_ptr;
   const bool* is_token_in_rank_ptr; // [num_tokens, num_ranks]
-  int* send_count; // [num_rdma_ranks]
-  int* stage_arrive; // [num_rdma_ranks], scratch, zero-initialized per call
-  int* put_arrive; // [num_rdma_ranks], scratch, zero-initialized per call
-  int* ready_lock; // [num_rdma_ranks], scratch, zero-initialized per call: spinlock guarding ready_window/ready_tail
-  int* ready_window; // [num_rdma_ranks], scratch, zero-initialized per call: bitmap of completed slots ahead of ready_tail
-  int* ready_tail; // [num_rdma_ranks], scratch, zero-initialized per call: monotonic count of contiguous completed slots [0, cap)
-  uint8_t* send_data; // [num_rdma_ranks, cap, bytes_per_token]
-  uint8_t* recv_data; // this PE's node-local recv region: [num_rdma_ranks(src), cap, bytes_per_token]
-  int* recv_count; // this PE's node-local recv counters: [num_rdma_ranks(src)]
+  int* send_count; // [num_channels, num_rdma_ranks], per-channel slot allocator (scratch)
+  int* ready_lock; // [num_channels, num_rdma_ranks], scratch: spinlock guarding ready_window/ready_tail
+  int* ready_window; // [num_channels, num_rdma_ranks], scratch: bitmap of completed slots ahead of ready_tail
+  int* ready_tail; // [num_channels, num_rdma_ranks], scratch: contiguous completed slot count
+  int* copy_done; // [num_channels], scratch: set by the copy WG when its token scan finishes
+  uint8_t* send_data; // [num_rdma_ranks(dst), num_channels, cap_ch, bytes_per_token]
+  uint8_t* recv_data; // this PE's recv region: [num_rdma_ranks(src), num_channels, cap_ch, bytes_per_token]
+  uint64_t* recv_count; // [num_rdma_ranks(src), num_channels], published as (count + 1)
 
   int32_t num_tokens;
   int32_t num_ranks;
   int32_t num_rdma_ranks;
+  int32_t num_channels;
   int32_t hidden;
   int32_t num_scales;
   int32_t num_topk;
-  int32_t cap;
+  int32_t cap_ch;
   int32_t my_rdma;
   int32_t my_nvl;
-  int32_t sender_wgs;
 
   size_t hidden_bytes;
   size_t scales_bytes;
   size_t topk_idx_bytes;
   size_t topk_weights_bytes;
   size_t nbpt; // bytes per token
-  size_t node_stride; // cap * nbpt
-  size_t chunk_bytes; // max bytes per ishmemx_putmem_nbi_work_group() call
+  size_t channel_stride; // cap_ch * nbpt
+  size_t chunk_bytes; // max bytes per ishmemx_putmem_nbi_work_group_qp() call
   PayloadLayout pl;
   int32_t debug_put; // when non-zero, lane 0 prints each RDMA put's size
 
@@ -412,55 +420,27 @@ struct InternodeDispatchRdmaSenderKernel {
     const int32_t sg_id = static_cast<int32_t>(sg.get_group_id()[0]);
     const int32_t lane_id = static_cast<int32_t>(sg.get_local_id()[0]);
 
-    auto atomic_add_dev = [](int* addr, int v) {
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          ref(*addr);
-      return ref.fetch_add(v);
-    };
-    // Per-token copy: one whole sub-group (32 lanes) cooperatively packs a
-    // single token's fields via the lane-strided vectorized copy, instead of
-    // one lane alone serially copying the entire ~16KB token. This lets the
-    // hardware coalesce the 32 lanes' 128-bit accesses into wide bursts
-    // against one contiguous range, rather than 32 lanes each independently
-    // hammering 32 unrelated, non-contiguous token addresses.
+    const int32_t channel = gid / 2;
+    const int32_t role = gid % 2; // 0 = copy WG, 1 = coordinator WG
+    if (channel >= num_channels) {
+      return;
+    }
+
+    // One whole sub-group (32 lanes) cooperatively packs a single token.
     auto copy_bytes = [lane_id](uint8_t* dst, const uint8_t* src, size_t n) {
       copy_bytes_vectorized(dst, src, n, lane_id);
     };
 
-    // Enables "copy while send": as soon as a token's slot has been fully
-    // written into send_data, the writer marks it ready here instead of
-    // waiting for every other team to finish copying too. Because slots are
-    // assigned via an atomic counter, completion order across teams is not
-    // sequential (a later slot can finish before an earlier one) -- so this
-    // uses the same lock + 32-bit sliding-window trick as DeepEP's RDMA
-    // sender (csrc/kernels/legacy/internode.cu kRDMASender) to turn
-    // out-of-order slot completions into a monotonically advancing,
-    // contiguous "ready_tail" count that a concurrently-running sender can
-    // safely stream from.
-    auto mark_slot_ready = [&](int32_t r, int32_t slot) {
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          lock_ref(ready_lock[r]);
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          tail_ref(ready_tail[r]);
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          window_ref(ready_window[r]);
-
+    // Sliding-window release turning out-of-order slot completions into a
+    // monotonically advancing contiguous ready_tail[cr] the coordinator can
+    // stream from (DeepEP kRDMASender rdma_send_channel_{lock,tail,window}).
+    auto mark_slot_ready = [&](int32_t cr, int32_t slot) {
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> lock_ref(ready_lock[cr]);
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> tail_ref(ready_tail[cr]);
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> window_ref(ready_window[cr]);
       auto acquire = [&]() {
         int expected = 0;
         while (!lock_ref.compare_exchange_strong(
@@ -469,13 +449,10 @@ struct InternodeDispatchRdmaSenderKernel {
         }
       };
       auto release = [&]() { lock_ref.store(0, sycl::memory_order::release); };
-
       acquire();
       int tail = tail_ref.load(sycl::memory_order::relaxed);
       uint32_t window = static_cast<uint32_t>(window_ref.load(sycl::memory_order::relaxed));
       int offset = slot - tail;
-      // Not enough room in the window yet (too far ahead of the published
-      // tail) -- release and retry until earlier slots free up space.
       while (offset >= 32) {
         release();
         acquire();
@@ -490,291 +467,214 @@ struct InternodeDispatchRdmaSenderKernel {
           window >>= 1;
           ++num_ready;
         }
-        // Release ordering: any sender reading ready_tail with `acquire`
-        // is guaranteed to see this slot's payload writes too.
         tail_ref.store(tail + num_ready, sycl::memory_order::release);
       }
       window_ref.store(static_cast<int>(window), sycl::memory_order::relaxed);
       release();
     };
-    auto load_ready_tail = [&](int32_t r) {
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          ref(ready_tail[r]);
+    auto load_ready_tail = [&](int32_t cr) {
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> ref(ready_tail[cr]);
       return ref.load(sycl::memory_order::acquire);
     };
-    auto copy_fully_done = [&](int32_t r, int32_t nwg_col_for_rd) {
-      sycl::atomic_ref<
-          int,
-          sycl::memory_order::relaxed,
-          sycl::memory_scope::device,
-          sycl::access::address_space::global_space>
-          ref(stage_arrive[r]);
-      return ref.load(sycl::memory_order::acquire) >= nwg_col_for_rd;
+    auto load_copy_done = [&]() {
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> ref(copy_done[channel]);
+      return ref.load(sycl::memory_order::acquire) != 0;
     };
 
-    const int32_t G = (sender_wgs < num_rdma_ranks) ? sender_wgs : num_rdma_ranks;
-    const int32_t col = gid % G;
-    const int32_t sub = gid / G;
-    const int32_t nwg_col = (sender_wgs - col + G - 1) / G;
+    // This channel owns the contiguous token range [ts, te) (DeepEP
+    // get_channel_task_range): num_channels channels evenly split the stream.
+    const int32_t n_per = (num_tokens + num_channels - 1) / num_channels;
+    const int32_t ts = sycl::min(n_per * channel, num_tokens);
+    const int32_t te = sycl::min(ts + n_per, num_tokens);
 
-    // DeepEP-style role split: dedicate the LAST team in each column group as
-    // a pure "coordinator" (like kRDMASenderCoordinator) that never copies
-    // tokens and instead spends its whole lifetime polling ready_tail and
-    // streaming RDMA puts -- so sends for early rd's can start while the
-    // remaining `num_copy_teams` teams are still packing later tokens,
-    // instead of every team alternating between copying its own share and
-    // then also having to poll/send afterwards. Falls back to the old
-    // single-team-does-both-roles behavior when there is only one team.
-    const bool has_coordinator = nwg_col > 1;
-    const int32_t num_copy_teams = has_coordinator ? (nwg_col - 1) : nwg_col;
-    const bool is_coordinator = has_coordinator && (sub == nwg_col - 1);
-    // A column with a single team has no dedicated coordinator to fall back
-    // on, so that lone team must both copy AND send its remote `rd`; without
-    // this its staged send_data would never be RDMA-put.
-    const bool is_single_team = (nwg_col == 1);
-    const bool is_sender = is_single_team || is_coordinator;
-
-    for (int32_t rd = col; rd < num_rdma_ranks; rd += G) {
-      for (int32_t t = sub * num_sgs + sg_id; !is_coordinator && t < num_tokens;
-           t += num_copy_teams * num_sgs) {
+    if (role == 0) {
+      // ===================== COPY WG (kRDMASender) =====================
+      // Each sub-group takes whole tokens; for every dst node the token routes
+      // to, claim a slot, copy the payload, then mark the slot ready so the
+      // coordinator WG can stream it while we keep packing later tokens.
+      for (int32_t t = ts + sg_id; t < te; t += num_sgs) {
         const bool* in_rank_row = is_token_in_rank_ptr + static_cast<size_t>(t) * num_ranks;
-        int32_t bits = 0;
-        for (int32_t j = 0; j < kNumMaxNvlPeers; ++j) {
-          if (in_rank_row[rd * kNumMaxNvlPeers + j]) {
-            bits |= (1 << j);
+        for (int32_t rd = 0; rd < num_rdma_ranks; ++rd) {
+          int32_t bits = 0;
+          for (int32_t j = 0; j < kNumMaxNvlPeers; ++j) {
+            if (in_rank_row[rd * kNumMaxNvlPeers + j]) {
+              bits |= (1 << j);
+            }
+          }
+          if (bits == 0) {
+            continue;
+          }
+          const int32_t cr = channel * num_rdma_ranks + rd;
+          int32_t slot = 0;
+          if (lane_id == 0) {
+            sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                             sycl::access::address_space::global_space> ref(send_count[cr]);
+            slot = ref.fetch_add(1);
+          }
+          slot = sycl::group_broadcast(sg, slot, 0);
+          if (slot >= cap_ch) {
+            continue;
+          }
+          const bool is_local = (rd == my_rdma);
+          uint8_t* base = is_local
+              ? recv_data + (static_cast<size_t>(my_rdma) * num_channels + channel) * channel_stride
+              : send_data + (static_cast<size_t>(rd) * num_channels + channel) * channel_stride;
+          uint8_t* payload_ptr = base + static_cast<size_t>(slot) * nbpt;
+          copy_bytes(
+              payload_ptr + pl.hidden_off,
+              x_bytes + static_cast<size_t>(t) * hidden_bytes,
+              hidden_bytes);
+          if (num_scales > 0) {
+            copy_bytes(
+                payload_ptr + pl.scales_off,
+                reinterpret_cast<const uint8_t*>(x_scales_ptr + static_cast<size_t>(t) * num_scales),
+                scales_bytes);
+          }
+          if (lane_id == 0) {
+            auto* meta = reinterpret_cast<SourceMeta*>(payload_ptr + pl.src_meta_off);
+            meta->src_rdma_rank = my_rdma;
+            meta->is_token_in_nvl_rank_bits = bits;
+          }
+          copy_bytes(
+              payload_ptr + pl.topk_idx_off,
+              reinterpret_cast<const uint8_t*>(topk_idx_ptr + static_cast<size_t>(t) * num_topk),
+              topk_idx_bytes);
+          copy_bytes(
+              payload_ptr + pl.topk_weights_off,
+              reinterpret_cast<const uint8_t*>(topk_weights_ptr + static_cast<size_t>(t) * num_topk),
+              topk_weights_bytes);
+          sycl::group_barrier(sg);
+          sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
+          if (lane_id == 0) {
+            mark_slot_ready(cr, slot);
           }
         }
-        if (bits == 0) {
-          continue;
-        }
-        // Only lane 0 performs the atomic slot allocation, then broadcasts
-        // the result to the rest of the sub-group so all 32 lanes agree on
-        // the destination address before cooperatively copying.
-        int32_t slot = 0;
-        if (lane_id == 0) {
-          slot = atomic_add_dev(&send_count[rd], 1);
-        }
-        slot = sycl::group_broadcast(sg, slot, 0);
-        if (slot >= cap) {
-          continue;
-        }
-        // Local destination is written straight into this PE's recv_data (no
-        // staging + second copy); remote destinations stage into send_data
-        // and are RDMA-put later by the sender team.
-        const bool is_local = (rd == my_rdma);
-        uint8_t* data_base = is_local
-            ? recv_data + static_cast<size_t>(my_rdma) * node_stride
-            : send_data + static_cast<size_t>(rd) * node_stride;
-        uint8_t* payload_ptr = data_base + static_cast<size_t>(slot) * nbpt;
-        copy_bytes(
-            payload_ptr + pl.hidden_off,
-            x_bytes + static_cast<size_t>(t) * hidden_bytes,
-            hidden_bytes);
-        if (num_scales > 0) {
-          copy_bytes(
-              payload_ptr + pl.scales_off,
-              reinterpret_cast<const uint8_t*>(x_scales_ptr + static_cast<size_t>(t) * num_scales),
-              scales_bytes);
-        }
-        if (lane_id == 0) {
-          auto* meta = reinterpret_cast<SourceMeta*>(payload_ptr + pl.src_meta_off);
-          meta->src_rdma_rank = my_rdma;
-          meta->is_token_in_nvl_rank_bits = bits;
-        }
-        copy_bytes(
-            payload_ptr + pl.topk_idx_off,
-            reinterpret_cast<const uint8_t*>(topk_idx_ptr + static_cast<size_t>(t) * num_topk),
-            topk_idx_bytes);
-        copy_bytes(
-            payload_ptr + pl.topk_weights_off,
-            reinterpret_cast<const uint8_t*>(topk_weights_ptr + static_cast<size_t>(t) * num_topk),
-            topk_weights_bytes);
-        // Synchronize the whole sub-group so ALL lanes have finished writing
-        // this token's payload before lane 0 publishes it; without this a
-        // reader that observes the publish could see a partially-written
-        // payload (lane 0's release alone cannot order the other lanes'
-        // writes). Only remote destinations advance ready_tail -- the sender
-        // team streams from it; local destinations are published via
-        // recv_count once every copy team has finished.
-        sycl::group_barrier(sg);
-        sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
-        if (!is_local && lane_id == 0) {
-          mark_slot_ready(rd, slot);
-        }
       }
-      // Global-and-local barrier so every lane's payload writes (into
-      // send_data for remote, or directly into recv_data for local) are
-      // visible work-group-wide before lane 0 publishes completion; the
-      // subsequent release store then makes them visible device-wide.
+      // Publish "this channel's copy scan is complete" so the coordinator can
+      // drain the final ready_tail and stop.
       item.barrier(sycl::access::fence_space::global_and_local);
-
-      // Declare this team done copying `rd` -- but, unlike before, do NOT
-      // block here waiting for the OTHER teams to also finish. The
-      // coordinator team's send path below streams out data as ready_tail
-      // advances (driven by whichever copy team finishes a slot), so it can
-      // start well before every copy team has reached this point; only the
-      // own-node local-copy path still needs to wait for the full count.
-      // The dedicated coordinator team (if any) never touches stage_arrive:
-      // it does no copying, so it must not count towards the threshold the
-      // other paths wait on. Release ordering pairs with the acquire loads in
-      // copy_fully_done()/the local publish path.
-      if (!is_coordinator && lid == 0) {
-        sycl::atomic_ref<
-            int,
-            sycl::memory_order::relaxed,
-            sycl::memory_scope::device,
-            sycl::access::address_space::global_space>
-            a(stage_arrive[rd]);
-        a.fetch_add(1, sycl::memory_order::release);
+      if (lid == 0) {
+        sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                         sycl::access::address_space::global_space> d(copy_done[channel]);
+        d.store(1, sycl::memory_order::release);
       }
-      item.barrier(sycl::access::fence_space::local_space);
+      return;
+    }
 
-      // Own-node local copy: single copy team (sub==0) is enough since this
-      // is an on-device memcpy, not network-bound; but ALL of that team's
-      // threads must cooperate to actually split the range (see
-      // copy_bytes_vectorized_wg) instead of each of its 16 sub-groups
-      // redundantly copying the whole thing. sub==0 is always a copy team
-      // (the coordinator, if present, is the LAST team), so this is
-      // unaffected by the role split.
+    // ============== COORDINATOR WG (kRDMASenderCoordinator) ==============
+    // Stream every dst node's ready bytes on the channel-pinned QP, overlapping
+    // the copy WG's ongoing packing, then publish the per-(src, channel) count.
+    for (int32_t rd = 0; rd < num_rdma_ranks; ++rd) {
+      const int32_t cr = channel * num_rdma_ranks + rd;
+      const size_t recv_idx = static_cast<size_t>(my_rdma) * num_channels + channel;
       if (rd == my_rdma) {
-        // Local tokens were written straight into recv_data during the copy
-        // loop, so there is no second copy here -- a single team (sub==0)
-        // just waits for every copy team to finish (acquire pairs with their
-        // release on stage_arrive, making all recv_data writes visible) and
-        // then publishes the final count.
-        if (sub == 0 && lid == 0) {
-          sycl::atomic_ref<
-              int,
-              sycl::memory_order::relaxed,
-              sycl::memory_scope::device,
-              sycl::access::address_space::global_space>
-              a(stage_arrive[rd]);
-          while (a.load(sycl::memory_order::acquire) < num_copy_teams) {
+        // Self-node payloads were written straight into recv_data by the copy
+        // WG; wait for its scan to finish, then publish the local count.
+        if (lid == 0) {
+          while (!load_copy_done()) {
           }
           sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::device);
-
-          int32_t count = send_count[rd];
-          if (count > cap) {
-            count = cap;
+          int32_t count = load_ready_tail(cr);
+          if (count > cap_ch) {
+            count = cap_ch;
           }
-          sycl::atomic_ref<
-              int,
-              sycl::memory_order::relaxed,
-              sycl::memory_scope::device,
-              sycl::access::address_space::global_space>
-              ref(recv_count[my_rdma]);
-          // Publish count+1 (0 means "not ready yet").
-          ref.store(count + 1, sycl::memory_order::release);
+          sycl::atomic_ref<uint64_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                           sycl::access::address_space::global_space> ref(recv_count[recv_idx]);
+          ref.store(static_cast<uint64_t>(count) + 1, sycl::memory_order::release);
         }
-        // Other teams have nothing left to do for the own-node rd; the
-        // coordinator team also skips it (own-node never goes through RDMA).
-      } else if (is_sender) {
-        // RDMA send to another node, overlapped with copying ("copy while
-        // send"), DeepEP kRDMASenderCoordinator-style. When a column has a
-        // dedicated coordinator (nwg_col > 1) this team never copies tokens
-        // and spends its whole lifetime polling the shared `ready_tail`
-        // (advanced by whichever of the `num_copy_teams` copy teams finishes
-        // a slot), streaming out newly ready bytes as soon as they appear so
-        // sends overlap the copy teams' ongoing work. When the column has a
-        // single team (nwg_col == 1) that same team already finished its own
-        // copy loop above, so copy_fully_done() is already true and it simply
-        // streams out everything that is ready. Only lane 0 drives the
-        // polling loop; the whole team then calls the collective put/quiet
-        // together once lane 0 has decided how much is newly ready.
-        const int32_t dst_pe = rd * kNumMaxNvlPeers + my_nvl;
-        uint8_t* dst_data = recv_data + static_cast<size_t>(my_rdma) * node_stride;
-        uint8_t* src_data = send_data + static_cast<size_t>(rd) * node_stride;
-        int* dst_count = recv_count + my_rdma;
-
-        const size_t team_end = static_cast<size_t>(cap) * nbpt;
-
-        size_t sent_off = 0;
-        bool done = (sent_off >= team_end);
-        while (!done) {
-          int decision = 0; // 0 = keep polling, 1 = more data ready, 2 = nothing left will ever arrive
-          size_t ready_bytes = sent_off;
-          if (lid == 0) {
-            while (true) {
-              const int32_t ready_slots = load_ready_tail(rd);
-              const size_t rb = std::min(static_cast<size_t>(ready_slots) * nbpt, team_end);
-              if (rb > sent_off) {
-                decision = 1;
-                ready_bytes = rb;
-                break;
-              }
-              if (copy_fully_done(rd, num_copy_teams)) {
-                decision = 2;
-                break;
-              }
-            }
-          }
-          decision = sycl::group_broadcast(group, decision, 0);
-          ready_bytes = sycl::group_broadcast(group, ready_bytes, 0);
-          if (decision == 2) {
-            done = true;
-            break;
-          }
-          size_t off = sent_off;
-          while (off < ready_bytes) {
-            const size_t remain = ready_bytes - off;
-            const size_t chunk = (remain < chunk_bytes) ? remain : chunk_bytes;
-            // controled by INTERNODE_DISPATCH_RDMA_SENDER_DEBUG 
-            if (debug_put && lid == 0) {
-              sycl::ext::oneapi::experimental::printf(
-                  "[internode put] my_rdma=%d rd=%d dst_pe=%d off=%lu chunk=%lu ready=%lu\n",
-                  my_rdma, rd, dst_pe, static_cast<unsigned long>(off),
-                  static_cast<unsigned long>(chunk), static_cast<unsigned long>(ready_bytes));
-            }
-            ishmemx_putmem_nbi_work_group(dst_data + off, src_data + off, chunk, dst_pe, group);
-            off += chunk;
-          }
-          sent_off = ready_bytes;
-          done = (sent_off >= team_end);
-        }
-        ishmemx_quiet_work_group(group);
-
+        item.barrier(sycl::access::fence_space::local_space);
+        continue;
+      }
+      const int32_t dst_pe = rd * kNumMaxNvlPeers + my_nvl;
+      // DeepEP-style 1:1 channel -> QP (no modulo); host guarantees enough QPs.
+      const unsigned int qp = static_cast<unsigned int>(channel);
+      uint8_t* dst_data = recv_data + recv_idx * channel_stride;
+      uint8_t* src_data =
+          send_data + (static_cast<size_t>(rd) * num_channels + channel) * channel_stride;
+      const size_t team_end = static_cast<size_t>(cap_ch) * nbpt;
+      size_t sent_off = 0;
+      bool done = (sent_off >= team_end);
+      while (!done) {
+        int decision = 0; // 0 = keep polling, 1 = more ready, 2 = copy done + drained
+        size_t ready_bytes = sent_off;
         if (lid == 0) {
-          // This is the only team ever sending for this rd, so there is no
-          // "last of several teams" race to arbitrate -- by construction we
-          // only just observed copy_fully_done()==true, so ready_tail[rd] is
-          // already final and safe to read as the actual count.
-          const int32_t count = load_ready_tail(rd);
-          ishmem_int_atomic_set(dst_count, count + 1, dst_pe);
+          while (true) {
+            const int32_t ready_slots = load_ready_tail(cr);
+            const size_t rb = std::min(static_cast<size_t>(ready_slots) * nbpt, team_end);
+            if (rb > sent_off) {
+              decision = 1;
+              ready_bytes = rb;
+              break;
+            }
+            if (load_copy_done()) {
+              decision = 2;
+              break;
+            }
+          }
+        }
+        decision = sycl::group_broadcast(group, decision, 0);
+        ready_bytes = sycl::group_broadcast(group, ready_bytes, 0);
+        if (decision == 2) {
+          done = true;
+          break;
+        }
+        size_t off = sent_off;
+        while (off < ready_bytes) {
+          const size_t remain = ready_bytes - off;
+          const size_t chunk = (remain < chunk_bytes) ? remain : chunk_bytes;
+          if (debug_put && lid == 0) {
+            sycl::ext::oneapi::experimental::printf(
+                "[internode put] my_rdma=%d ch=%d rd=%d dst_pe=%d qp=%u off=%lu chunk=%lu ready=%lu\n",
+                my_rdma, channel, rd, dst_pe, qp, static_cast<unsigned long>(off),
+                static_cast<unsigned long>(chunk), static_cast<unsigned long>(ready_bytes));
+          }
+          ishmemx_putmem_nbi_work_group_qp(dst_data + off, src_data + off, chunk, dst_pe, group, qp);
+          off += chunk;
+        }
+        sent_off = ready_bytes;
+        done = (sent_off >= team_end);
+      }
+      // Order the data puts ahead of the count flag on this QP, then publish.
+      ishmemx_fence_work_group_qp(group, qp);
+      if (lid == 0) {
+        int32_t count = load_ready_tail(cr);
+        if (count > cap_ch) {
+          count = cap_ch;
+        }
+        if (count > 0) {
+          ishmemx_uint64_atomic_set_nbi_qp(
+              recv_count + recv_idx, static_cast<uint64_t>(count) + 1, dst_pe, qp);
         }
       }
-      // Non-sender teams handling a remote rd have nothing left to do here --
-      // the sender team (coordinator, or the lone team when nwg_col == 1) owns
-      // the entire send for this rd.
       item.barrier(sycl::access::fence_space::local_space);
     }
     ishmemx_quiet_work_group(group);
   }
 };
 
-// Unpacks the interleaved per-token payload slots in the symmetric recv
-// region into separate, contiguous plain tensors for the caller to inspect.
-// One work-item per (src node, slot).
+// Unpacks the per-(src node, channel) payload slots in the symmetric recv
+// region into contiguous plain tensors, concatenating a source's channels
+// back into one per-source range. One work-item per (src, channel, slot).
 struct UnpackRecvKernel {
-  const uint8_t* recv_data; // [num_rdma_ranks, cap, bytes_per_token]
+  const uint8_t* recv_data; // [num_rdma_ranks, num_channels, cap_ch, bytes_per_token]
   uint8_t* recv_x_bytes; // [num_rdma_ranks, cap, hidden] (elem_size bytes/elem)
   float* recv_x_scales_ptr; // nullable, [num_rdma_ranks, cap, num_scales]
   int64_t* recv_topk_idx_ptr; // [num_rdma_ranks, cap, num_topk]
   float* recv_topk_weights_ptr; // [num_rdma_ranks, cap, num_topk]
   int32_t* recv_src_rdma_rank_ptr; // [num_rdma_ranks, cap]
   int32_t* recv_src_nvl_bits_ptr; // [num_rdma_ranks, cap]
-  // [num_rdma_ranks], indexed by source node: published as (actual_count + 1)
-  // by the sender kernel, 0 meaning "never signalled" (treated as count 0).
-  // Used to skip slots beyond the actual per-source token count so we don't
-  // burn bandwidth/cycles unpacking unused (and potentially stale, left over
-  // from a previous call reusing the same symmetric buffer) slots when
-  // `cap` is provisioned well above the typical/actual routed token count.
-  const int32_t* recv_count;
+  // [num_rdma_ranks, num_channels]: per (src, channel) count published as
+  // (count + 1) by the sender, 0 meaning "never signalled" (treated as 0).
+  const uint64_t* recv_count;
+  // [num_rdma_ranks, num_channels] exclusive prefix within each source: the
+  // first per-source output slot this (src, channel) region maps to.
+  const int32_t* channel_prefix;
 
   int32_t cap;
+  int32_t cap_ch;
+  int32_t num_channels;
   int32_t num_scales;
   int32_t num_topk;
   size_t hidden_bytes;
@@ -782,22 +682,29 @@ struct UnpackRecvKernel {
   size_t topk_idx_bytes;
   size_t topk_weights_bytes;
   size_t nbpt;
-  size_t node_stride;
+  size_t channel_stride;
   PayloadLayout pl;
 
   void operator()(sycl::id<1> idx) const {
-    const size_t slot_global = idx[0];
-    const int32_t src = static_cast<int32_t>(slot_global / cap);
-    const int32_t slot = static_cast<int32_t>(slot_global % cap);
-    const int32_t published = recv_count[src];
-    const int32_t actual_count = published > 0 ? (published - 1) : 0;
-    if (slot >= actual_count) {
-      // No token was ever written into this slot -- leave the caller's
-      // output tensors untouched instead of copying unused/stale bytes.
+    const size_t g = idx[0];
+    const int32_t slot = static_cast<int32_t>(g % cap_ch);
+    const int32_t ch = static_cast<int32_t>((g / cap_ch) % num_channels);
+    const int32_t src =
+        static_cast<int32_t>(g / (static_cast<size_t>(cap_ch) * num_channels));
+    const size_t ci = static_cast<size_t>(src) * num_channels + ch;
+    const uint64_t published = recv_count[ci];
+    const int32_t count = published > 0 ? static_cast<int32_t>(published - 1) : 0;
+    if (slot >= count) {
+      // No token in this slot -- leave the caller's output tensors untouched.
       return;
     }
+    const int32_t global_slot = channel_prefix[ci] + slot;
+    if (global_slot >= cap) {
+      return;
+    }
+    const size_t slot_global = static_cast<size_t>(src) * cap + global_slot;
     const uint8_t* payload_ptr =
-        recv_data + static_cast<size_t>(src) * node_stride + static_cast<size_t>(slot) * nbpt;
+        recv_data + ci * channel_stride + static_cast<size_t>(slot) * nbpt;
 
     uint8_t* dst_hidden = recv_x_bytes + slot_global * hidden_bytes;
     for (size_t b = 0; b < hidden_bytes; ++b) {
@@ -850,7 +757,7 @@ at::Tensor internode_dispatch_rdma_sender(
     int64_t rank,
     int64_t num_ranks,
     int64_t num_max_tokens_per_rank,
-    int64_t num_sender_wgs) {
+    int64_t num_channels_arg) {
   TORCH_CHECK(x.dim() == 2 && x.is_contiguous(), "internode_dispatch_rdma_sender: `x` must be 2D contiguous");
   TORCH_CHECK(
       topk_idx.scalar_type() == at::kLong, "internode_dispatch_rdma_sender: `topk_idx` must be int64");
@@ -907,7 +814,33 @@ at::Tensor internode_dispatch_rdma_sender(
 
   const PayloadLayout pl(hidden, elem_size, num_scales, num_topk);
   const size_t nbpt = pl.bytes_per_token;
-  const size_t node_stride = static_cast<size_t>(cap) * nbpt;
+
+  // Channels: each channel is a PAIR of work-groups (copy + coordinator).
+  int num_channels_i = static_cast<int>(num_channels_arg);
+  if (num_channels_i <= 0) {
+    num_channels_i = env_positive_int("INTERNODE_DISPATCH_RDMA_SENDER_CHANNELS", kDefaultChannels);
+  }
+  num_channels_i = std::max(num_channels_i, 1);
+  if (num_tokens > 0 && static_cast<int64_t>(num_channels_i) > num_tokens) {
+    num_channels_i = static_cast<int>(num_tokens);
+  }
+  const int64_t num_channels = num_channels_i;
+  const int qps_per_pe = std::max(env_positive_int("ISHMEM_IBGDA_QPS_PER_PE", 1), 1);
+  // DeepEP pins one QP per channel (qp = channel, no modulo); require ISHMEM to
+  // have provisioned at least num_channels QPs so distinct channels never
+  // collide on the same QP.
+  TORCH_CHECK(
+      static_cast<int64_t>(qps_per_pe) >= num_channels,
+      "internode_dispatch_rdma_sender: ISHMEM_IBGDA_QPS_PER_PE (", qps_per_pe,
+      ") must be >= num_channels (", num_channels,
+      "). Set ISHMEM_IBGDA_QPS_PER_PE=", num_channels, " or higher.");
+
+  // A channel handles at most ceil(num_tokens / num_channels) tokens, so it can
+  // never route more than that many to any single node -- size each channel's
+  // per-node staging region accordingly (capped by the receiver's cap).
+  const int64_t n_ch = (num_tokens + num_channels - 1) / num_channels;
+  const int64_t cap_ch = std::min<int64_t>(cap, std::max<int64_t>(n_ch, 1));
+  const size_t channel_stride = static_cast<size_t>(cap_ch) * nbpt;
 
   TORCH_CHECK(
       recv_x.sizes() == at::IntArrayRef({num_rdma_ranks, cap, hidden}),
@@ -925,88 +858,88 @@ at::Tensor internode_dispatch_rdma_sender(
       recv_counts.scalar_type() == at::kLong && recv_counts.numel() == num_rdma_ranks,
       "internode_dispatch_rdma_sender: recv_counts must be int64 [num_rdma_ranks]");
 
-  // Symmetric heap layout: [send_count | send_data | recv_count | recv_data],
-  // each region sized for num_rdma_ranks entries.
-  const size_t send_count_bytes = align_up_val<size_t>(static_cast<size_t>(num_rdma_ranks) * sizeof(int), 128);
-  const size_t send_data_bytes = static_cast<size_t>(num_rdma_ranks) * node_stride;
-  const size_t recv_count_bytes = send_count_bytes;
-  const size_t recv_data_bytes = send_data_bytes;
-  const size_t total_bytes = send_count_bytes + send_data_bytes + recv_count_bytes + recv_data_bytes;
+  // Symmetric heap layout: [recv_count | send_data | recv_data]. send_data and
+  // recv_data are [num_rdma_ranks(peer), num_channels, cap_ch, bytes_per_token];
+  // recv_count is [num_rdma_ranks(src), num_channels] published as (count + 1).
+  const size_t count_slots = static_cast<size_t>(num_rdma_ranks) * static_cast<size_t>(num_channels);
+  const size_t recv_count_bytes = align_up_val<size_t>(count_slots * sizeof(uint64_t), 128);
+  const size_t region_bytes = count_slots * channel_stride;
+  const size_t total_bytes = recv_count_bytes + region_bytes + region_bytes;
 
   uint8_t* symm = ensure_symmetric(total_bytes);
-  auto* send_count = reinterpret_cast<int*>(symm);
-  uint8_t* send_data = symm + send_count_bytes;
-  auto* recv_count = reinterpret_cast<int*>(send_data + send_data_bytes);
-  uint8_t* recv_data = reinterpret_cast<uint8_t*>(recv_count) + recv_count_bytes;
+  auto* recv_count = reinterpret_cast<uint64_t*>(symm);
+  uint8_t* send_data = symm + recv_count_bytes;
+  uint8_t* recv_data = send_data + region_bytes;
 
-  // Clear the counters this PE receives into, then barrier so no peer writes
-  // before every PE has cleared (send-side counters are zeroed by every PE
-  // for itself, which is race-free since only the owner increments them).
-  queue.memset(send_count, 0, static_cast<size_t>(num_rdma_ranks) * sizeof(int));
-  queue.memset(recv_count, 0, static_cast<size_t>(num_rdma_ranks) * sizeof(int));
+  // Clear the per-(src, channel) counters this PE receives into, then barrier
+  // so no peer writes before every PE has cleared.
+  queue.memset(recv_count, 0, count_slots * sizeof(uint64_t));
   queue.wait_and_throw();
   ishmem_barrier_all();
 
-  auto stage_arrive_tensor = at::zeros({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  int* stage_arrive_ptr = stage_arrive_tensor.data_ptr<int>();
-  auto put_arrive_tensor = at::zeros({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  int* put_arrive_ptr = put_arrive_tensor.data_ptr<int>();
-  // Per-rd "copy while send" bookkeeping (see mark_slot_ready() in the
-  // kernel): a spinlock + sliding-window bitmap that turns out-of-order
-  // slot completions into a monotonically advancing ready_tail count.
-  auto ready_lock_tensor = at::zeros({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  int* ready_lock_ptr = ready_lock_tensor.data_ptr<int>();
-  auto ready_window_tensor = at::zeros({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  int* ready_window_ptr = ready_window_tensor.data_ptr<int>();
-  auto ready_tail_tensor = at::zeros({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  int* ready_tail_ptr = ready_tail_tensor.data_ptr<int>();
+  // Per-(channel, dst node) sender scratch (device only): slot allocator plus
+  // the sliding-window ready_tail bookkeeping the coordinator WG streams from.
+  const int64_t cr_slots = num_channels * num_rdma_ranks;
+  auto int_opts = at::TensorOptions().dtype(at::kInt).device(device);
+  auto send_count_tensor = at::zeros({cr_slots}, int_opts);
+  auto ready_lock_tensor = at::zeros({cr_slots}, int_opts);
+  auto ready_window_tensor = at::zeros({cr_slots}, int_opts);
+  auto ready_tail_tensor = at::zeros({cr_slots}, int_opts);
+  auto copy_done_tensor = at::zeros({num_channels}, int_opts);
 
-  int sender_wgs = static_cast<int>(num_sender_wgs);
-  if (sender_wgs <= 0) {
-    sender_wgs = env_positive_int(
-        "INTERNODE_DISPATCH_RDMA_SENDER_WGS", kSenderWgsPerNode * static_cast<int>(num_rdma_ranks));
+  // Each channel == 2 concurrent WGs (copy + coordinator); the coordinator
+  // spins on the copy WG, so both must be resident at once.
+  const int64_t total_wgs = num_channels * 2;
+  {
+    const int64_t max_cu = static_cast<int64_t>(
+        queue.get_device().get_info<sycl::info::device::max_compute_units>());
+    if (total_wgs > max_cu) {
+      TORCH_WARN(
+          "internode_dispatch_rdma_sender: channel WGs (", total_wgs,
+          " = 2 * num_channels) exceed compute units (", max_cu,
+          "); the copy/coordinator WGs may not co-reside and could hang. "
+          "Reduce num_channels.");
+    }
   }
-  sender_wgs = std::max(sender_wgs, 1);
 
   debug_log(
       rank,
-      ("launching InternodeDispatchRdmaSenderKernel: sender_wgs=" + std::to_string(sender_wgs)).c_str());
+      ("launching InternodeDispatchRdmaSenderKernel: num_channels=" + std::to_string(num_channels)).c_str());
 
   queue.submit([&](sycl::handler& cgh) {
     cgh.parallel_for(
         sycl::nd_range<1>(
-            sycl::range<1>(static_cast<size_t>(sender_wgs) * kThreads), sycl::range<1>(kThreads)),
+            sycl::range<1>(static_cast<size_t>(total_wgs) * kThreads), sycl::range<1>(kThreads)),
         InternodeDispatchRdmaSenderKernel{
             static_cast<const uint8_t*>(x.data_ptr()),
             x_scales_ptr,
             topk_idx.data_ptr<int64_t>(),
             topk_weights.data_ptr<float>(),
             is_token_in_rank.data_ptr<bool>(),
-            send_count,
-            stage_arrive_ptr,
-            put_arrive_ptr,
-            ready_lock_ptr,
-            ready_window_ptr,
-            ready_tail_ptr,
+            send_count_tensor.data_ptr<int>(),
+            ready_lock_tensor.data_ptr<int>(),
+            ready_window_tensor.data_ptr<int>(),
+            ready_tail_tensor.data_ptr<int>(),
+            copy_done_tensor.data_ptr<int>(),
             send_data,
             recv_data,
             recv_count,
             static_cast<int32_t>(num_tokens),
             static_cast<int32_t>(num_ranks),
             static_cast<int32_t>(num_rdma_ranks),
+            static_cast<int32_t>(num_channels),
             static_cast<int32_t>(hidden),
             static_cast<int32_t>(num_scales),
             static_cast<int32_t>(num_topk),
-            static_cast<int32_t>(cap),
+            static_cast<int32_t>(cap_ch),
             static_cast<int32_t>(my_rdma),
             static_cast<int32_t>(my_nvl),
-            sender_wgs,
             static_cast<size_t>(hidden) * elem_size,
             static_cast<size_t>(num_scales) * sizeof(float),
             static_cast<size_t>(num_topk) * sizeof(int64_t),
             static_cast<size_t>(num_topk) * sizeof(float),
             nbpt,
-            node_stride,
+            channel_stride,
             put_chunk_bytes(),
             pl,
             debug_enabled() ? 1 : 0});
@@ -1017,15 +950,17 @@ at::Tensor internode_dispatch_rdma_sender(
   // recv region, since recv writes can arrive asynchronously via RDMA.
   ishmem_barrier_all();
 
-  // Copy this PE's received region out into plain tensors for verification.
-  auto recv_count_i32 = at::empty({num_rdma_ranks}, at::TensorOptions().dtype(at::kInt).device(device));
-  queue.memcpy(
-      recv_count_i32.data_ptr<int>(), recv_count, static_cast<size_t>(num_rdma_ranks) * sizeof(int));
+  // Read the per-(src, channel) counts and build, per source, the exclusive
+  // prefix that concatenates a source's channels into one contiguous range.
+  auto recv_count_raw =
+      at::empty({num_rdma_ranks, num_channels}, at::TensorOptions().dtype(at::kLong).device(device));
+  queue.memcpy(recv_count_raw.data_ptr<int64_t>(), recv_count, count_slots * sizeof(uint64_t));
   queue.wait_and_throw();
-  // Publish flag is (count + 1); 0 means "never sent to" (should not happen
-  // once every node always signals, but this kernel intentionally skips
-  // signalling nodes that have no bits set for ANY token in this call).
-  recv_counts.copy_((recv_count_i32.clamp_min(1) - 1).to(at::kLong));
+  // Published flag is (count + 1); 0 means "never signalled" (treated as 0).
+  auto counts2d = (recv_count_raw.clamp_min(1) - 1);
+  auto channel_prefix = (counts2d.cumsum(1) - counts2d).to(at::kInt).contiguous();
+  auto totals = counts2d.sum(1);
+  recv_counts.copy_(totals.clamp_max(cap).to(at::kLong));
 
   auto* recv_x_bytes = static_cast<uint8_t*>(recv_x.data_ptr());
   auto* recv_topk_idx_ptr = recv_topk_idx.data_ptr<int64_t>();
@@ -1035,7 +970,8 @@ at::Tensor internode_dispatch_rdma_sender(
   float* recv_x_scales_ptr =
       recv_x_scales.has_value() ? static_cast<float*>(recv_x_scales->data_ptr()) : nullptr;
 
-  const size_t total_slots = static_cast<size_t>(num_rdma_ranks) * static_cast<size_t>(cap);
+  const size_t total_slots = static_cast<size_t>(num_rdma_ranks) *
+      static_cast<size_t>(num_channels) * static_cast<size_t>(cap_ch);
   queue.submit([&](sycl::handler& cgh) {
     cgh.parallel_for(
         sycl::range<1>(total_slots),
@@ -1048,7 +984,10 @@ at::Tensor internode_dispatch_rdma_sender(
             recv_src_rdma_rank_ptr,
             recv_src_nvl_bits_ptr,
             recv_count,
+            channel_prefix.data_ptr<int32_t>(),
             static_cast<int32_t>(cap),
+            static_cast<int32_t>(cap_ch),
+            static_cast<int32_t>(num_channels),
             static_cast<int32_t>(num_scales),
             static_cast<int32_t>(num_topk),
             static_cast<size_t>(hidden) * elem_size,
@@ -1056,7 +995,7 @@ at::Tensor internode_dispatch_rdma_sender(
             static_cast<size_t>(num_topk) * sizeof(int64_t),
             static_cast<size_t>(num_topk) * sizeof(float),
             nbpt,
-            node_stride,
+            channel_stride,
             pl});
   });
   queue.wait_and_throw();
@@ -1099,7 +1038,7 @@ TORCH_LIBRARY_FRAGMENT(symm_mem, m) {
       "internode_dispatch_rdma_sender(Tensor x, Tensor? x_scales, Tensor topk_idx, Tensor topk_weights, "
       "Tensor is_token_in_rank, Tensor(a!) recv_x, Tensor? recv_x_scales, Tensor(b!) recv_topk_idx, "
       "Tensor(c!) recv_topk_weights, Tensor(d!) recv_src_rdma_rank, Tensor(e!) recv_src_nvl_bits, "
-      "Tensor(f!) recv_counts, int rank, int num_ranks, int num_max_tokens_per_rank, int num_sender_wgs) -> Tensor(a!)");
+      "Tensor(f!) recv_counts, int rank, int num_ranks, int num_max_tokens_per_rank, int num_channels) -> Tensor(a!)");
   m.def("internode_dispatch_rdma_sender_finalize(Tensor dummy) -> ()");
 }
 
