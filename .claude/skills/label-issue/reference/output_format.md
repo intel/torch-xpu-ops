@@ -10,8 +10,15 @@ each axis is decided in the label-issue skill's Step 3.
 Every `<value>` below is one of the enum values defined in
 `proposed_labels.json` (see **Axis sources**); this file never enumerates them.
 
+When the issue has 2+ groups, repeat the per-group block once per group in group
+order, each under a `## Group <n>` head naming that group's representative case,
+and emit the `need_split` row exactly once (either in a top-level triage block or
+under group 1). For a single group, drop the `## Group` head and emit one block.
+
 ```markdown
 label-issue: <repo>#<id>
+
+## Group <n> — <representative case id> (<M> case(s), <M-1> not analyzed)
 
 Root cause: <=2 lines, specific, with file:line when a trace read one>
 
@@ -59,10 +66,11 @@ locations — never hard-code them:
 
 Each appears as a single line above the table, only when its condition holds:
 
-- `Analyzed case: <id> (case 1 of <N>; the other <N-1> not analyzed)` — when
-  `extract.json`'s `test_cases` has 2+ entries. The labels describe this case
-  only. Identify an E2E case by `benchmark`/`model`/`phase`/`dtype`. Omit for a
-  single case; never write "case 1 of 1".
+- `Analyzed case: <id> (case 1 of <M>; the other <M-1> not analyzed)` — when this
+  group's `test_cases` has 2+ entries. The labels describe this case only. Identify
+  an E2E case by `benchmark`/`model`/`phase`/`dtype`. Omit for a single case; never
+  write "case 1 of 1". With a `## Group` head already naming the case, this note is
+  redundant and may be omitted.
 - `Trace mode: evidence-only (no pytorch_folder provided)` — in evidence-only
   mode. Cite `no local checkout provided` in any `null` reason a trace would have
   resolved.
@@ -95,26 +103,39 @@ explaining which rows were omitted.
 
 ## Examples
 
-Multi-group (analyzed-case note + `need_split`; all 4 cases share one signature
-for group 0, so the labels describe only case 1):
+Multi-group (one block per group, `need_split` emitted once):
 
 ```markdown
 label-issue: intel/torch-xpu-ops#4200
 
+## Group 1 — test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (3 cases, 2 not analyzed)
+
 Root cause: oneDNN has no bf16 `addmm` matmul primitive on this platform
 (`aten/src/ATen/native/mkldnn/xpu/Blas.cpp:214`).
-
-Analyzed case: test/xpu/test_matmul_xpu.py::TestMatmulXPU::test_addmm_bfloat16 (case 1 of 4; the other 3 not analyzed).
 
 | axis | value | reason |
 |---|---|---|
 | `type` | `Bug` | `issue_type` is `Bug`. |
 | `test` | `test: ut` | Reproduce steps run `pytest test/xpu/test_matmul_xpu.py`. |
 | `module` | `module: gemm` | Fails in the oneDNN matmul path, the addmm/gemm family. |
-| `priority` | `Medium` | 4 UT cases, RuntimeError without crash. |
-| `dtype` | `dtype: bfloat16` | Analyzed case is `test_addmm_bfloat16`; error names the bf16 matmul primitive. |
+| `priority` | `Medium` | 3 UT cases in this group, RuntimeError without crash. |
+| `dtype` | `dtype: bfloat16` | Case is `test_addmm_bfloat16`; error names the bf16 matmul primitive. |
 | `dependency component` | `dependency component: oneDNN` | `RuntimeError` names the oneDNN matmul primitive descriptor. |
 | triage | `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
+
+## Group 2 — test/xpu/test_binary_ufuncs_xpu.py::TestBinaryUfuncsXPU::test_div_float64 (1 case)
+
+Root cause: fp64 `div` result exceeds tolerance vs CPU reference
+(`aten/src/ATen/native/xpu/sycl/BinaryDivKernels.cpp:88`).
+
+| axis | value | reason |
+|---|---|---|
+| `type` | `Bug` | `issue_type` is `Bug`. |
+| `test` | `test: ut` | Reproduce steps run `pytest test/xpu/test_binary_ufuncs_xpu.py`. |
+| `module` | `module: eltwise` | Elementwise div kernel mismatch. |
+| `priority` | `Medium` | 1 UT case in this group, AssertionError without crash. |
+| `dtype` | `dtype: float64` | Case is `test_div_float64`; tolerance failure on fp64. |
+| symptom | `Accuracy` | Numeric mismatch vs CPU reference, not a functional error. |
 ```
 
 Evidence-only (no `pytorch_folder`; owner not pinned, so `type` is inferred and

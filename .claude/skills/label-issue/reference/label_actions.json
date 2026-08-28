@@ -13,13 +13,17 @@
         { "label": "dependency component: oneCCL", "section": "7a" },
         { "label": "dependency component: IGC", "section": "7a" },
         { "label": "dependency component: Level_Zero", "section": "7a" },
+        { "label": "dependency component: PTI", "section": "7a", "note": "Intel PTI profiling backend; no repo equivalent." },
         { "label": "hw: ARL", "section": "6a" },
         { "label": "hw: CRI", "section": "6a" },
         { "label": "dtype: float64", "section": "11a" },
         { "label": "dtype: float4", "section": "11a" },
+        { "label": "dtype: mxfp8", "section": "11a", "note": "MX microscaling fp8; no repo equivalent." },
+        { "label": "dtype: mxfp4", "section": "11a", "note": "MX microscaling fp4; no repo equivalent." },
         { "label": "dtype: int64", "section": "11a" },
         { "label": "dtype: int32", "section": "11a" },
         { "label": "dtype: int16", "section": "11a" },
+        { "label": "functionality", "section": "12a", "note": "New symptom label; repo has Accuracy/performance/inference/training/regression/random but no 'functionality'." },
         { "label": "need_split", "section": "10", "note": "Promoted from report-only field to an applied label." },
         { "label": "os: Linux", "section": "5a", "note": "Create, OR satisfy via renaming 'os: Ubuntu' (see rename group)." },
         { "label": "test: ut", "section": "2a", "note": "Create the 'test:' set, OR satisfy via reconcile of 'module: ut'." },
@@ -92,6 +96,7 @@
         { "label": "documentation", "section": "1", "note": "github-default." },
         { "label": "duplicate", "section": "8", "note": "github-default." },
         { "label": "wontfix", "section": "9", "note": "github-default; absorbs 'not_target'." },
+        { "label": "module: others", "section": "3", "note": "Kept as-is per maintainer decision; not folded into 'module: infra'." },
         { "label": "<all rows marked (exact)>", "section": "Na tables", "note": "All existing module/dtype/hw/os/dependency labels that map exactly." }
       ]
     }

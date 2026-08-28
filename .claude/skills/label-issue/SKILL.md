@@ -1,6 +1,6 @@
 ---
 name: label-issue
-description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue (or any repo) without a local test reproduce or per-axis subagent fan-out. Use when you want a label set for an issue given its number or URL, with an optional pytorch_folder for root-cause tracing. Extracts issue metadata via the extract-issue subskill, groups the reported failures, then root-causes and labels the first group's first case. Every axis (type, test, module, priority, dtype, symptom, dependency, os, hw, and the triage duplicate/wontfix/need_split labels) is derived from the label definitions, evidence, and keywords in reference/proposed_labels.json; it never hard-codes label data the JSON already carries. Emits a markdown labels table under agent_space/label_issue/ and never writes to GitHub."
+description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue (or any repo) without a local test reproduce or per-axis subagent fan-out. Use when you want a label set for an issue given its number or URL, or when an issue reports multiple failure groups and you want one labels table per group, with an optional pytorch_folder for root-cause tracing. Extracts issue metadata via the extract-issue subskill, groups the reported failures, then root-causes and labels one representative case per group, emitting a labels table for each group one by one. Every axis (type, test, module, priority, dtype, symptom, dependency, os, hw, and the triage duplicate/wontfix/need_split labels) is derived from the label definitions, evidence, and keywords in reference/proposed_labels.json; it never hard-codes label data the JSON already carries. Emits a markdown labels table under agent_space/label_issue/ and never writes to GitHub."
 ---
 
 # Label Issue
@@ -8,6 +8,22 @@ description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue
 Derive the label set for ONE GitHub issue and write a `label | reason` table to
 disk. This is the fast path: no local test reproduce, no per-axis subagent
 fan-out.
+
+When the issue splits into multiple failure groups, analyze one representative
+case per group and emit a separate labels table for each group, one by one.
+
+## Quick start
+
+Given an issue reference (and optionally a local `pytorch_folder`):
+
+```
+label-issue issue_ref=4752 pytorch_folder=~/pytorch
+```
+
+Extracts the issue, groups its failures, root-causes one representative case per
+group, and writes
+`agent_space/label_issue/intel_torch-xpu-ops_issue_4752/labels.md` — a
+`label | reason` table per group. Analysis-only: nothing is applied to GitHub.
 
 The skill is **analysis-only**. It never adds labels, closes issues, posts
 comments, or creates issues. Its single artifact is `labels.md`, for a workflow
@@ -99,16 +115,26 @@ An issue may report several failing cases. Follow `reference/group_issue.md` to
 group `extract.json`'s failures by cause and decide the one-group /
 two-or-more-group outcome.
 
-### Step 3 — Analyze the representative case
+### Step 3 — Analyze one representative case per group
 
-Take group 0 and, within it, `extract.json`'s `test_cases[0]` — the first entry
-in emission order — as the **representative case** for the whole issue. Do not
-reorder or re-rank; index 0 is the rule so two runs agree. If `test_cases` has
-0 or 1 entries, the representative case is the issue as a whole.
+Step 2 yields one or more groups. Process **every** group in group order. For
+each group, pick its representative case and run the full per-case analysis
+(3.1-3.5) below, independently of the other groups. Two runs must agree, so the
+selection rule is fixed:
 
-Everything below is decided for the representative case ONLY, except where a
-step explicitly counts the whole issue. Decide each axis from the JSON `evidence`
+- The representative case of a group is its FIRST member in `extract.json`
+  `test_cases` emission order — do not reorder or re-rank.
+- If a group has exactly one case, that case is the representative.
+- If `test_cases` has 0 or 1 entries total, there is a single group and the
+  representative case is the issue as a whole.
+
+Everything in 3.1-3.5 is decided for the group's representative case ONLY, and
+any case-count condition (e.g. priority) counts only the cases in THIS group,
+not the whole issue. Decide each axis from the JSON `evidence`
 and `keywords` for that axis — never from a hard-coded label list here.
+
+Repeat 3.1-3.5 for each group before moving to Step 4, keeping each group's
+axis results separate.
 
 #### 3.1 — Root cause
 
@@ -154,7 +180,7 @@ Per-axis specifics:
 | Axis | JSON section | Kind | How to decide |
 |---|---|---|---|
 | type | `issue_type_field` | single | Match `values` by `evidence`/`keywords`. |
-| priority | `priority_field` | single | Evaluate tiers in severity order by `evidence`; default to the tier the JSON marks as default. Case-count conditions count every `test_cases[]` entry, not just the representative case. |
+| priority | `priority_field` | single | Evaluate tiers in severity order by `evidence`; default to the tier the JSON marks as default. Case-count conditions count only the cases in THIS group, not the whole issue. |
 | module | `categories.module` | single | `labels` is ordered by decision priority; take the FIRST whose `evidence` is met, driven by the traced root cause. The axis `description` carries the tie-break rules. |
 | symptom | `categories.symptom` | multi | Evaluate EVERY label against the representative case. One issue routinely carries several (e.g. `regression` + `inference`, or `Accuracy` + `training`). |
 | dtype | `categories.dtype` | multi | Follow the axis `description` (structured-field-first, part-of-failure-signature, AMP disambiguation) and per-label `evidence`. |
@@ -176,13 +202,20 @@ non-empty `extract.json` `dependency`.
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format and field rules in `reference/output_format.md`
 (read it first). Emit each label name verbatim from `proposed_labels.json`, with
-a one-line evidence reason. Also print the table to stdout.
+a one-line evidence reason. Also print to stdout.
 
-- When Step 2 found 2 or more cases, emit the `Analyzed case:` note naming the
-  representative case and the count left unanalyzed. Omit for a single case.
-- When Step 2 found 2 or more groups, emit the split-recommendation triage row.
-- When Step 3.3 short-circuited, emit the wontfix row and the axes decided so
-  far only.
+Emit one labels section per analyzed group, in group order, one by one:
+
+- Head each section with `## Group <n>` and name that group's representative
+  case and how many cases the group left unanalyzed.
+- Under each head, emit that group's own `label | reason` table decided in
+  Step 3 for its representative case.
+- When Step 2 found 2 or more groups, also emit the `need_split` triage row
+  (once, from `categories.triage`) recommending the issue be split.
+- For any group whose Step 3.3 short-circuited, emit that group's wontfix row
+  and only the axes decided so far.
+- For a single-group issue, emit one section without the `## Group` head and
+  omit the unanalyzed-count note.
 
 This is the final step. Report the `labels.md` path; do not apply to GitHub.
 
@@ -192,8 +225,9 @@ This is the final step. Report the `labels.md` path; do not apply to GitHub.
    `gh issue comment`, `gh label create`, or any GraphQL Type/Priority mutation.
    The only artifact is `labels.md`.
 2. No local test reproduce.
-3. Analyze exactly one representative case (group 0, `test_cases[0]`). Never
-   split a multi-group issue into sub-issues.
+3. Analyze exactly one representative case per group (each group's first
+   `test_cases` entry). Never split a multi-group issue into sub-issues — only
+   recommend the split via the `need_split` row.
 4. Decide every axis from `proposed_labels.json` (and the axis's reference pack
    for reasoning) this run. An existing triage comment or label is at most one
    input to Step 3.1; it never substitutes for reading the JSON evidence and

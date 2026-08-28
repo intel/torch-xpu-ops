@@ -44,14 +44,14 @@
       {
         "tier": "High",
         "option": "P1",
-        "evidence": "Any one holds: (1) >6 distinct failed UT cases counted across the whole issue (all test_cases[], not just the analyzed case); (2) a regression citing a version where it passed and a current version where it fails; (3) a hang/timeout/deadlock (process alive but stuck, e.g. 300s timeout, infinite wait); (4) a benchmark accuracy regression that passed in a prior release and now fails without a crash (fail_accuracy). A performance regression is scored by percentage, not here; a benchmark accuracy regression outranks Medium functional error.",
+        "evidence": "Any one holds: (1) >6 distinct failed UT cases counted within the analyzed group (not the whole issue); (2) a regression citing a version where it passed and a current version where it fails; (3) a hang/timeout/deadlock (process alive but stuck, e.g. 300s timeout, infinite wait); (4) a benchmark accuracy regression that passed in a prior release and now fails without a crash (fail_accuracy). A performance regression is scored by percentage, not here; a benchmark accuracy regression outranks Medium functional error.",
         "keywords": ["more than 6", ">6 cases", "hang", "timeout", "deadlock", "infinite wait", "benchmark accuracy regression", "fail_accuracy"],
         "origin": "existing; native project field option"
       },
       {
         "tier": "Medium",
         "option": "P2",
-        "evidence": "Any one holds: (1) a measured benchmark performance regression <=7%; (2) 1-6 failed UT cases counted across the whole issue; (3) a functional error without a crash (RuntimeError/AssertionError/incorrect result while the process continues); (4) a feature gap where tests fail because an API is NotImplementedError, without a crash. Default tier when no row in any tier matches.",
+        "evidence": "Any one holds: (1) a measured benchmark performance regression <=7%; (2) 1-6 failed UT cases counted within the analyzed group (not the whole issue); (3) a functional error without a crash (RuntimeError/AssertionError/incorrect result while the process continues); (4) a feature gap where tests fail because an API is NotImplementedError, without a crash. Default tier when no row in any tier matches.",
         "keywords": ["1-6 cases", "runtimeerror", "assertionerror", "wrong result", "not implemented", "notimplementederror", "functional error"],
         "origin": "existing; native project field option"
       },
@@ -381,6 +381,13 @@
           "exists_in_repo": false,
           "evidence": "A zeXxx call, Level Zero runtime, or device-enumeration failure.",
           "origin": "new"
+        },
+        {
+          "name": "dependency component: PTI",
+          "code": "PTI",
+          "exists_in_repo": false,
+          "evidence": "Failure originates in Intel PTI (Profiling Tools Interface): libpti/pti-sdk, ptiView* calls, or XPU profiler/Kineto tracing backed by PTI.",
+          "origin": "new"
         }
       ]
     },
@@ -427,6 +434,20 @@
           "code": "float4",
           "evidence": "fp4",
           "keywords": ["float4", "fp4"],
+          "origin": "new"
+        },
+        {
+          "name": "dtype: mxfp8",
+          "code": "mxfp8",
+          "evidence": "MX (microscaling) fp8 (mxfp8_e4m3/mxfp8_e5m2)",
+          "keywords": ["mxfp8", "mx fp8", "mxfp8_e4m3", "mxfp8_e5m2", "mx_fp8"],
+          "origin": "new"
+        },
+        {
+          "name": "dtype: mxfp4",
+          "code": "mxfp4",
+          "evidence": "MX (microscaling) fp4",
+          "keywords": ["mxfp4", "mx fp4", "mx_fp4"],
           "origin": "new"
         },
         {
