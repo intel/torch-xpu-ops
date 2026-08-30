@@ -34,27 +34,6 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
-struct OnecclGroupGuard {
-  OnecclGroupGuard() {
-    xccl::oneccl_group_start();
-  }
-
-  ~OnecclGroupGuard() noexcept {
-    // Ensure the group is always closed, even if a prior call threw.
-    // Suppress any exception here so that none can escape this noexcept
-    // destructor and trigger std::terminate during stack unwinding.
-    try {
-      xccl::oneccl_group_end();
-    } catch (...) {
-    }
-  }
-
-  OnecclGroupGuard(const OnecclGroupGuard&) = delete;
-  OnecclGroupGuard& operator=(const OnecclGroupGuard&) = delete;
-  OnecclGroupGuard(OnecclGroupGuard&&) = delete;
-  OnecclGroupGuard& operator=(OnecclGroupGuard&&) = delete;
-};
-
 void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
@@ -609,7 +588,7 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
 
   onecclUniqueId xcclID;
   if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
-    onecclGetUniqueId(&xcclID);
+    C10D_XCCL_CHECK(onecclGetUniqueId(&xcclID), nullptr);
   }
   broadcastUniqueXCCLID(
       &xcclID,
@@ -620,16 +599,8 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
       rank_,
       store_.get());
   onecclComm_t comm = nullptr;
-  TORCH_CHECK(
-      onecclSetDevice(device.index()) == onecclSuccess,
-      "xccl: onecclSetDevice(",
-      (int)device.index(),
-      ") failed");
-  auto initR = onecclCommInitRank(&comm, numRanks, xcclID, rank);
-  TORCH_CHECK(
-      initR == onecclSuccess,
-      "xccl: onecclCommInitRank failed with code ",
-      (int)initR);
+  C10D_XCCL_CHECK(onecclSetDevice(device.index()), nullptr);
+  C10D_XCCL_CHECK(onecclCommInitRank(&comm, numRanks, xcclID, rank), nullptr);
   XCCLComm = std::make_shared<onecclComm_t>(comm);
 
   RECORD_PARAM_COMMS(
@@ -1028,7 +999,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
       tensor.storage().data_ptr(), stream);
 
   if (!batchP2P) {
-    OnecclGroupGuard group_guard;
+    xccl::OnecclGroupGuard group_guard;
     fn(tensor, *comm, stream, p2pTargetRank);
   } else {
     fn(tensor, *comm, stream, p2pTargetRank);
@@ -2113,7 +2084,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
           at::Tensor& /* unused */,
           onecclComm_t& comm,
           at::xpu::XPUStream& stream) {
-        xccl::oneccl_group_start();
+        xccl::OnecclGroupGuard group_guard;
         for (const int r :
              c10::irange(static_cast<int>(outputTensors.size()))) {
           at::Tensor& input = inputTensors[r];
@@ -2125,7 +2096,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
             xccl::onecclRecv(output, comm, r, stream);
           }
         }
-        xccl::oneccl_group_end();
         return;
       },
       OpType::ALLTOALL,
