@@ -486,7 +486,7 @@ case "$ut_suite" in
     op_regression|op_regression_dev1|op_extended|op_ut|test_xpu|upstream_default|upstream_inductor|upstream_distributed)
         run_main_tests "$ut_suite"
         ;;
-    xpu_distributed)
+    xpu_distributed|xpu_distributed_bmg)
         run_distributed_tests "$ut_suite"
         ;;
     skipped_ut)
@@ -498,6 +498,6 @@ case "$ut_suite" in
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
         printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_ut, test_xpu, " >&2
-        printf "upstream_default, upstream_inductor, xpu_distributed, upstream_distributed, skipped_ut, xpu_profiling\n" >&2
+        printf "xpu_distributed, xpu_distributed_bmg, upstream_default, upstream_inductor, upstream_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
