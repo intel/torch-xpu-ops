@@ -287,8 +287,8 @@ TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_out
         skip(
             "tensordot", dtypes=[torch.int8, torch.uint8]
         ),  # "tensordot" not implemented for int8/uint8
-        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
-        # meta does not support mixed-dtype bmm.
+        # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
+        # because CPU and CUDA do not support int8/uint8 SDPA.
         skip(
             "nn.functional.scaled_dot_product_attention",
             dtypes=[torch.int8, torch.uint8],
@@ -318,8 +318,8 @@ _orig_test_meta_outplace = TestMeta.test_meta_outplace
         skip(
             "tensordot", dtypes=[torch.int8, torch.uint8]
         ),  # "tensordot" not implemented for int8/uint8
-        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
-        # meta does not support mixed-dtype bmm.
+        # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
+        # because CPU and CUDA do not support int8/uint8 SDPA.
         xfail(
             "nn.functional.scaled_dot_product_attention",
             dtypes=[torch.int8, torch.uint8],
