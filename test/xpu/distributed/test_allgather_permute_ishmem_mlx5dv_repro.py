@@ -18,7 +18,6 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(512 * 1024 * 1024))
 os.environ.setdefault("ZE_ENABLE_PCI_ID_DEVICE_ORDER", "1")
 os.environ.setdefault("ISHMEM_IBGDA_QPS_PER_PE", "1")
 os.environ.setdefault("ISHMEM_IBGDA_DB_BATCH_SIZE", "0")
-os.environ.setdefault("ISHMEM_IBGDA_BAR_BACKEND", "igub")
 os.environ.setdefault("I_MPI_FABRICS", "shm")
 os.environ.setdefault("ISHMEM_DEBUG", "0")
 

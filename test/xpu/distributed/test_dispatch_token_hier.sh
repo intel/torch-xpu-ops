@@ -30,7 +30,6 @@ export ISHMEM_ENABLE_ACCESSIBLE_HOST_HEAP=0
 # ----------------------------------------------------------------------------
 export ISHMEM_SYMMETRIC_SIZE=536870912
 export ZE_ENABLE_PCI_ID_DEVICE_ORDER=1
-export ISHMEM_IBGDA_BAR_BACKEND=igub
 export ISHMEM_IB_TRAFFIC_CLASS="${ISHMEM_IB_TRAFFIC_CLASS:-96}"
 export I_MPI_FABRICS=shm
 export ISHMEM_DEBUG=0
