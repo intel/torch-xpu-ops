@@ -813,16 +813,27 @@ def collection_error_context(group: Group,
 
 
 def record_quarantined(groups: list[Group], report: dict) -> None:
+    """Record every group, but warn once per signature.
+
+    The finding is that one error reached many files, which is a statement
+    about the set. A warning per group states it once per file and buries the
+    count that is the whole reason the groups were held back.
+    """
     for group in groups:
         report["quarantined"].append({
             "sig": group.sig, "cases": len(group.cases),
             "test_file": group.test_file, "error": group.headline,
-            "reason": group.quarantine,
+            "reason": group.quarantine, "test_files": group.signature_files,
         })
+    for family in error_families(groups).values():
+        cases = sum(len(g.cases) for g in family)
         warn(
-            f"quarantined {len(group.cases)} cases in {group.test_file} "
-            f"({group.headline[:80]}): infra signature reached several test "
-            "files, so it is read as the machine. Not filed and not muted."
+            f"possible infra: {cases} case(s) across "
+            f"{family[0].signature_files} test files failed with "
+            f"\"{family[0].headline[:80]}\". At {INFRA_MIN_TEST_FILES}+ files "
+            "this is more likely the runner than the tests, so no issue was "
+            "filed and nothing was muted. If the machine was healthy these are "
+            "real failures and need filing by hand."
         )
 
 
@@ -1821,11 +1832,29 @@ def finish(report: dict, report_dir: Path) -> int:
         for d in skipped.get("dropped", []):
             mark = "infra" if d["infra"] else "not infra"
             lines.append(f"  - ({mark}) `{d['case']}` - {d['error'][:100]}")
-    for q in report["quarantined"]:
-        lines.append(
-            f"- Quarantined {q['cases']} cases in `{q['test_file']}`: "
-            f"{q['error'][:100]}"
-        )
+    if report["quarantined"]:
+        # One row per signature, for the same reason record_quarantined warns
+        # once per signature: the reach is the finding.
+        by_error: dict[str, list[dict]] = {}
+        for q in report["quarantined"]:
+            by_error.setdefault(q["error"], []).append(q)
+        lines += [
+            "",
+            "### Possible infra - reported only, nothing filed, nothing muted",
+            "",
+            f"One error reaching {INFRA_MIN_TEST_FILES}+ test files in a single "
+            "run is read as the runner rather than the tests. If the machine "
+            "was healthy these are real failures and need filing by hand.",
+            "",
+            "| Cases | Test files | Error |",
+            "|---|---|---|",
+        ]
+        lines += [
+            f"| {sum(q['cases'] for q in qs)} | {qs[0].get('test_files', 1)} "
+            f"| {error[:100]} |"
+            for error, qs in sorted(by_error.items())
+        ]
+        lines.append("")
     if report["vanished_modules"]:
         lines += [
             "",
