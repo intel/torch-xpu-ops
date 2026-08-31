@@ -174,7 +174,7 @@ void _fft_with_size(
 // Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
 Tensor& _exec_fft(
     Tensor& out,
-    Tensor self,
+    const Tensor& self,
     IntArrayRef out_sizes,
     IntArrayRef dim,
     bool onesided,

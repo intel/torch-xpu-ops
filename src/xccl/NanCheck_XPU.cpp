@@ -31,7 +31,7 @@ struct CheckBytePack {
 #pragma unroll 8
     for (int i = 0; i < EltPerPack; i++) {
       if (at::_isnan(data[i]))
-        assert(0);
+        SYCL_KERNEL_ASSERT(0);
     }
   }
 };
@@ -41,7 +41,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 2> {
   static void check(BytePack* tmp) {
     T* data = (T*)tmp;
     if (at::_isnan(data[0]) || at::_isnan(data[1]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -51,7 +51,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 4> {
     T* data = (T*)tmp;
     if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
         at::_isnan(data[3]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -62,7 +62,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 8> {
     if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
         at::_isnan(data[3]) || at::_isnan(data[4]) || at::_isnan(data[5]) ||
         at::_isnan(data[6]) || at::_isnan(data[7])) {
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
     }
   }
 };
@@ -109,7 +109,7 @@ struct CheckBytePack<T, /*EltPerPack*/ 16> {
   static void check(BytePack* tmp) {
     if (HasNanFP8x8<T>::check(tmp->val[0]) ||
         HasNanFP8x8<T>::check(tmp->val[1]))
-      assert(0);
+      SYCL_KERNEL_ASSERT(0);
   }
 };
 
@@ -151,7 +151,7 @@ struct checkForNaN {
 
     if (offset < preProcElts) {
       if (at::_isnan(data[offset]))
-        assert(0);
+        SYCL_KERNEL_ASSERT(0);
     }
     size_left -= preProcElts;
 
@@ -171,7 +171,7 @@ struct checkForNaN {
     if (item.get_local_id(0) < size_left % EltPerPack) {
       T* tailPtr = (T*)(ptr + sizeInBP);
       if (at::_isnan(tailPtr[item.get_local_id(0)]))
-        assert(0);
+        SYCL_KERNEL_ASSERT(0);
     }
   }
   checkForNaN(T* data, size_t size) : data(data), size(size) {}
