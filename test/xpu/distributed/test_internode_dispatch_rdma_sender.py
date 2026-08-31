@@ -19,7 +19,7 @@ Run (4 ranks == 2 nodes x 2 NVL peers/node):
     mpirun -np 4 --prepend-rank python test_internode_dispatch_rdma_sender.py
 
 Env:
-    NUM_TOKENS (16), HIDDEN_SIZE (1024), TOPK (8), EXPERTS_PER_RANK (8),
+    NUM_TOKENS (16), HIDDEN_SIZE (4096), TOPK (8), EXPERTS_PER_RANK (8),
     NUM_MAX_TOKENS_PER_RANK (32), SEED (1234)
     DTYPE (float32)
     ENABLE_PROFILE (1)  use the PTI-based torch.profiler to capture a chrome
@@ -43,12 +43,16 @@ os.environ.setdefault("ISHMEM_SYMMETRIC_SIZE", str(512 * 1024 * 1024))
 import torch
 import torch.distributed as dist
 
-NUM_MAX_NVL_PEERS = 2
+# Must match the C++ op's INTERNODE_DISPATCH_NUM_MAX_NVL_PEERS override (see
+# InternodeDispatchRdmaSender.cpp) -- e.g. set both to 1 to make every rank
+# its own "node" so a 2-rank run actually exercises the RDMA put path instead
+# of only ever taking the own-node local-copy branch.
+NUM_MAX_NVL_PEERS = int(os.environ.get("INTERNODE_DISPATCH_NUM_MAX_NVL_PEERS", 2))
 
-NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 16))
-HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 1024))
+NUM_TOKENS = int(os.environ.get("NUM_TOKENS", 1024))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 4096))
 TOPK = int(os.environ.get("TOPK", 8))
-EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 32))
+EXPERTS_PER_RANK = int(os.environ.get("EXPERTS_PER_RANK", 64))
 num_max_tokens_per_rank = int(os.environ.get("NUM_MAX_TOKENS_PER_RANK", 128))
 SEED = int(os.environ.get("SEED", 1234))
 ENABLE_PROFILE = os.environ.get("ENABLE_PROFILE", "1") != "0"
@@ -183,8 +187,18 @@ def main():
     # ---- build ground truth via all_gather ----
     all_x = [torch.empty_like(x) for _ in range(world_size)]
     dist.all_gather(all_x, x)
-    all_topk_idx = [torch.empty_like(topk_idx) for _ in range(world_size)]
-    dist.all_gather(all_topk_idx, topk_idx)
+    # NOTE: dist.all_gather on this xccl backend corrupts int64 tensors (the
+    # gathered bytes for other ranks come back bit-reinterpreted, e.g. small
+    # int64 values like 63 turn into huge garbage like 4570216783041659370).
+    # int32 all_gather is unaffected, so gather topk_idx as int32 (its value
+    # range -- expert ids < world_size * EXPERTS_PER_RANK -- easily fits) and
+    # cast back to int64 afterward.
+    all_topk_idx = [
+        torch.empty(topk_idx.shape, dtype=torch.int32, device=topk_idx.device)
+        for _ in range(world_size)
+    ]
+    dist.all_gather(all_topk_idx, topk_idx.to(torch.int32))
+    all_topk_idx = [t.to(torch.int64) for t in all_topk_idx]
     all_topk_weights = [torch.empty_like(topk_weights) for _ in range(world_size)]
     dist.all_gather(all_topk_weights, topk_weights)
     all_in_rank = [torch.empty_like(is_token_in_rank) for _ in range(world_size)]
@@ -241,15 +255,21 @@ def main():
 
         exp_x, exp_topk_idx, exp_topk_w, exp_bits = expected_rows[src_node]
         # Canonicalize row order (the atomic-add slot race across a source
-        # node's NUM_MAX_NVL_PEERS ranks is nondeterministic): sort both sides
-        # by (bits, hidden-row sum, topk-idx sum) as a stable-enough key.
+        # node's NUM_MAX_NVL_PEERS ranks is nondeterministic). Sort by the
+        # full hidden-row bytes: `x` is drawn from `torch.randn`, so distinct
+        # tokens are, for all practical purposes, never bit-identical -- this
+        # gives a genuinely tie-free, lossless key (unlike bits/topk_idx/
+        # x_sum-based keys, which have very few unique values and can leave
+        # true ties whose relative order then depends on nondeterministic
+        # arrival order, causing spurious mismatches even when the got/
+        # expected token sets are identical).
         def sort_key(xt, ti, tw, bt):
-            key = (
-                bt.to(torch.float64) * 1e12
-                + xt.double().sum(dim=1) * 1e6
-                + ti.double().sum(dim=1)
+            xt_c = xt.contiguous()
+            byte_view = xt_c.view(torch.uint8).view(xt_c.size(0), -1)
+            keys = [row.numpy().tobytes() for row in byte_view]
+            order = torch.tensor(
+                sorted(range(xt.size(0)), key=lambda i: keys[i]), dtype=torch.int64
             )
-            order = torch.argsort(key)
             return xt[order], ti[order], tw[order], bt[order]
 
         got_x, got_topk_idx, got_topk_w, got_bits = sort_key(got_x, got_topk_idx, got_topk_w, got_bits)

@@ -398,6 +398,7 @@ struct InternodeDispatchRdmaSenderKernel {
   int32_t cap_ch;
   int32_t my_rdma;
   int32_t my_nvl;
+  int32_t num_max_nvl_peers;
 
   size_t hidden_bytes;
   size_t scales_bytes;
@@ -498,8 +499,8 @@ struct InternodeDispatchRdmaSenderKernel {
         const bool* in_rank_row = is_token_in_rank_ptr + static_cast<size_t>(t) * num_ranks;
         for (int32_t rd = 0; rd < num_rdma_ranks; ++rd) {
           int32_t bits = 0;
-          for (int32_t j = 0; j < kNumMaxNvlPeers; ++j) {
-            if (in_rank_row[rd * kNumMaxNvlPeers + j]) {
+          for (int32_t j = 0; j < num_max_nvl_peers; ++j) {
+            if (in_rank_row[rd * num_max_nvl_peers + j]) {
               bits |= (1 << j);
             }
           }
@@ -587,7 +588,7 @@ struct InternodeDispatchRdmaSenderKernel {
         item.barrier(sycl::access::fence_space::local_space);
         continue;
       }
-      const int32_t dst_pe = rd * kNumMaxNvlPeers + my_nvl;
+      const int32_t dst_pe = rd * num_max_nvl_peers + my_nvl;
       // DeepEP-style 1:1 channel -> QP (no modulo); host guarantees enough QPs.
       const unsigned int qp = static_cast<unsigned int>(channel);
       uint8_t* dst_data = recv_data + recv_idx * channel_stride;
@@ -637,7 +638,7 @@ struct InternodeDispatchRdmaSenderKernel {
         done = (sent_off >= team_end);
       }
       // Order the data puts ahead of the count flag on this QP, then publish.
-      ishmemx_fence_work_group_qp(group, qp);
+      ishmemx_fence_work_group_qp(dst_pe, group, qp);
       if (lid == 0) {
         int32_t count = load_ready_tail(cr);
         if (count > cap_ch) {
@@ -767,10 +768,19 @@ at::Tensor internode_dispatch_rdma_sender(
   TORCH_CHECK(
       is_token_in_rank.scalar_type() == at::kBool,
       "internode_dispatch_rdma_sender: `is_token_in_rank` must be bool");
+  // Overridable so a 2-rank run can exercise the actual RDMA put path (with
+  // the compiled-in default of 2, world_size=2 puts both ranks on the same
+  // single "node" -- num_rdma_ranks=1 -- so the kernel only ever takes the
+  // own-node local-copy branch and no ishmemx_putmem_nbi_work_group_qp is
+  // ever issued). Set INTERNODE_DISPATCH_NUM_MAX_NVL_PEERS=1 to make every
+  // rank its own node (num_rdma_ranks == num_ranks), forcing real RDMA puts
+  // between all pairs, including with just 2 ranks.
+  const int num_max_nvl_peers =
+      env_positive_int("INTERNODE_DISPATCH_NUM_MAX_NVL_PEERS", kNumMaxNvlPeers);
   TORCH_CHECK(
-      num_ranks % kNumMaxNvlPeers == 0,
+      num_ranks % num_max_nvl_peers == 0,
       "internode_dispatch_rdma_sender: num_ranks must be a multiple of ",
-      kNumMaxNvlPeers);
+      num_max_nvl_peers);
   TORCH_CHECK(x.device().is_xpu(), "internode_dispatch_rdma_sender: tensors must be on XPU");
   TORCH_CHECK(
       is_token_in_rank.size(0) == x.size(0) && is_token_in_rank.size(1) == num_ranks,
@@ -795,9 +805,9 @@ at::Tensor internode_dispatch_rdma_sender(
   const int64_t num_topk = topk_idx.size(1);
   const int64_t cap = num_max_tokens_per_rank;
   TORCH_CHECK(cap > 0, "internode_dispatch_rdma_sender: num_max_tokens_per_rank must be > 0");
-  const int64_t num_rdma_ranks = num_ranks / kNumMaxNvlPeers;
-  const int64_t my_rdma = rank / kNumMaxNvlPeers;
-  const int64_t my_nvl = rank % kNumMaxNvlPeers;
+  const int64_t num_rdma_ranks = num_ranks / num_max_nvl_peers;
+  const int64_t my_rdma = rank / num_max_nvl_peers;
+  const int64_t my_nvl = rank % num_max_nvl_peers;
 
   int64_t num_scales = 0;
   const float* x_scales_ptr = nullptr;
@@ -934,6 +944,7 @@ at::Tensor internode_dispatch_rdma_sender(
             static_cast<int32_t>(cap_ch),
             static_cast<int32_t>(my_rdma),
             static_cast<int32_t>(my_nvl),
+            num_max_nvl_peers,
             static_cast<size_t>(hidden) * elem_size,
             static_cast<size_t>(num_scales) * sizeof(float),
             static_cast<size_t>(num_topk) * sizeof(int64_t),
