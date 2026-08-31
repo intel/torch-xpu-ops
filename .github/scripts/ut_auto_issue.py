@@ -74,14 +74,14 @@ INFRA_SIGNATURE_RATIO = 0.3
 # this many new failures a single infra-looking one clears 30% on its own - it
 # does so for any n <= 3 - and the leg would be discarded on one data point.
 INFRA_MIN_CASES = 10
-# How many distinct test files one infra signature has to reach before it is
-# read as the machine rather than as the tests. Two files sharing an OOM is an
-# ordinary way for one memory regression to look, since these messages carry no
-# operator to tell them apart; five unrelated files failing the same way in one
-# night is not something a product bug does. Erring high is the safe side:
-# quarantining wrongly costs a night of red, filing wrongly mutes a test that
-# still fails.
-INFRA_MIN_TEST_FILES = 5
+# How many distinct test files one infra signature may reach and still be filed
+# as the bug it describes. Beyond this it is read as the machine instead. A
+# couple of files sharing an OOM is an ordinary way for one memory regression
+# to look, since these messages carry no operator to tell them apart; more than
+# five unrelated files failing the same way in one night is not something a
+# product bug does. Erring high is the safe side: holding a group back wrongly
+# costs a night of red, filing wrongly mutes a test that still fails.
+INFRA_MAX_FILES_TO_FILE = 5
 HEALTH_RATIO = 0.95
 GITHUB_BODY_LIMIT = 65536
 # Headroom below the hard cap for appending to an issue filed on an earlier night.
@@ -117,7 +117,7 @@ EXPECTED_CASES = {
 # test file is far likelier to be that test allocating too much or hanging the
 # GPU, which is a product bug and belongs in an issue. The same signature
 # appearing across unrelated files in one night is what the machine looks like,
-# so breadth decides - see INFRA_MIN_TEST_FILES and build_groups.
+# so breadth decides - see INFRA_MAX_FILES_TO_FILE and build_groups.
 INFRA_PATTERNS = [
     "device lost",
     "ze_result_error",
@@ -612,7 +612,7 @@ def build_groups(cases: list[Case]) -> list[Group]:
         group.headline = headline_of(group.cases[0].message) or group.normalized_error
         group.signature_files = len(files_per_error[group.normalized_error])
         if (is_infra(group.normalized_error)
-                and group.signature_files >= INFRA_MIN_TEST_FILES):
+                and group.signature_files > INFRA_MAX_FILES_TO_FILE):
             group.quarantine = "infra"
     return sorted(groups.values(), key=lambda g: (-len(g.cases), g.sig))
 
@@ -830,10 +830,10 @@ def record_quarantined(groups: list[Group], report: dict) -> None:
         warn(
             f"possible infra: {cases} case(s) across "
             f"{family[0].signature_files} test files failed with "
-            f"\"{family[0].headline[:80]}\". At {INFRA_MIN_TEST_FILES}+ files "
-            "this is more likely the runner than the tests, so no issue was "
-            "filed and nothing was muted. If the machine was healthy these are "
-            "real failures and need filing by hand."
+            f"\"{family[0].headline[:80]}\". Past {INFRA_MAX_FILES_TO_FILE} "
+            "files this is more likely the runner than the tests, so no issue "
+            "was filed and nothing was muted. If the machine was healthy these "
+            "are real failures and need filing by hand."
         )
 
 
@@ -1115,8 +1115,9 @@ def evidence_block(sub: SubGroup, current: RunInfo,
         # otherwise reads as the bot having missed one.
         reach = sub.group.signature_files
         where = (f"only `{sub.group.test_file}`" if reach == 1
-                 else f"{reach} test files, below the {INFRA_MIN_TEST_FILES} "
-                      "it would take to read as the machine")
+                 else f"{reach} test files, within the "
+                      f"{INFRA_MAX_FILES_TO_FILE} it may reach and still be "
+                      "read as a bug in the tests")
         parts.append(
             "This error matches the infra denylist, but in this run it "
             f"reached {where}. A runner losing its GPU or its disk does not "
@@ -1842,9 +1843,10 @@ def finish(report: dict, report_dir: Path) -> int:
             "",
             "### Possible infra - reported only, nothing filed, nothing muted",
             "",
-            f"One error reaching {INFRA_MIN_TEST_FILES}+ test files in a single "
-            "run is read as the runner rather than the tests. If the machine "
-            "was healthy these are real failures and need filing by hand.",
+            f"One error reaching more than {INFRA_MAX_FILES_TO_FILE} test files "
+            "in a single run is read as the runner rather than the tests. If "
+            "the machine was healthy these are real failures and need filing "
+            "by hand.",
             "",
             "| Cases | Test files | Error |",
             "|---|---|---|",
