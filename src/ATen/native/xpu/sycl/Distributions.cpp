@@ -18,25 +18,20 @@
 
 namespace at::native::xpu {
 
+constexpr int poisson_threads_per_group = 512;
+constexpr int gamma_threads_per_group = 256;
+
 template <typename scalar_t>
 struct PoissonTensorApplyFunctor {
   void operator()(
-      uint64_t linear_index,
+      randStatePhilox4_32_10_t& state,
       scalar_t& ret_val,
       const scalar_t& lambda) const {
     SYCL_KERNEL_ASSERT(
         lambda >= 0 &&
         "invalid Poisson rate, expected rate to be non-negative");
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), linear_index, std::get<1>(seeds), &state);
     ret_val = static_cast<scalar_t>(rand_poisson(&state, lambda));
   }
-  PoissonTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
-      : philox_args_(rng_engine_inputs) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
@@ -44,14 +39,15 @@ void poisson_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& lambda,
     PhiloxXpuState rng_engine_inputs) {
-  auto functor = PoissonTensorApplyFunctor<scalar_t>(rng_engine_inputs);
+  PoissonTensorApplyFunctor<scalar_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       scalar_t,
       decltype(functor),
-      /*max_threads_per_block=*/512>(
+      poisson_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(lambda),
+      rng_engine_inputs,
       functor);
 }
 
@@ -63,7 +59,8 @@ void launch_poisson_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(20);
+    rng_engine_inputs = gen->philox_xpu_state(get_apply_counter_offset(
+        ret.numel(), poisson_threads_per_group, /*offsets_per_op=*/20));
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -129,13 +126,9 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
 template <typename scalar_t, typename accscalar_t>
 struct GammaTensorApplyFunctor {
   void operator()(
-      uint64_t linear_index,
+      randStatePhilox4_32_10_t& state,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(std::get<0>(seeds), linear_index, std::get<1>(seeds), &state);
-
     auto uniform_lambda = [&state]() { return rand_uniform(&state); };
     BaseSampler<accscalar_t, decltype(uniform_lambda)> standard_uniform(
         uniform_lambda);
@@ -152,12 +145,6 @@ struct GammaTensorApplyFunctor {
     auto min_value = std::numeric_limits<scalar_t>::min();
     ret_val = (min_value > sample) ? min_value : sample;
   }
-
-  GammaTensorApplyFunctor(PhiloxXpuState philox_args)
-      : philox_args_(philox_args) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
@@ -166,14 +153,15 @@ void gamma_kernel(
     const at::TensorBase& alpha,
     PhiloxXpuState philox_args) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor(philox_args);
+  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       scalar_t,
       decltype(functor),
-      /*max_threads_per_block=*/256>(
+      gamma_threads_per_group>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(alpha),
+      philox_args,
       functor);
 }
 
@@ -185,11 +173,9 @@ void launch_gamma_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    // Using a seed value of 10 for the Philox random engine initialization.
-    // This seed was chosen to ensure consistent random number generation
-    // behavior for this specific kernel. Modify with caution as it affects
-    // reproducibility of results.
-    rng_engine_inputs = gen->philox_xpu_state(10);
+    // 10 values per sample matches CUDA's `philox_cuda_state(10)` for gamma.
+    rng_engine_inputs = gen->philox_xpu_state(get_apply_counter_offset(
+        ret.numel(), gamma_threads_per_group, /*offsets_per_op=*/10));
   }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(

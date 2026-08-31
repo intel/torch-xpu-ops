@@ -161,9 +161,9 @@ def _test_gamma_poisson_gpu_large_sample_independence(self):
     #
     # The gamma/poisson kernels run a global-range-strided loop, so the number
     # of work items launched is capped well below the element count for large
-    # tensors. Seeding Philox from the work item id instead of the element
-    # index made every element handled by the same work item reuse the exact
-    # same random stream, which duplicated samples and skewed the moments.
+    # tensors. Re-seeding Philox from the work item id on every element made
+    # each element handled by the same work item replay the exact same random
+    # stream, which duplicated samples and skewed the moments.
     set_rng_seed(0)
     n = 10000000
 
