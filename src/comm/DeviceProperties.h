@@ -29,7 +29,7 @@ namespace xpu {
 namespace sycl {
 
 template <class KernelClass>
-static int64_t syclMaxWorkGroupSize(
+static int64_t at::xpu::getKernelMaxWorkGroupSize(
     at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto& ctx = c10::xpu::get_device_context();
   auto& dev = c10::xpu::get_raw_device(dev_id);
@@ -48,15 +48,15 @@ static int64_t syclMaxWorkGroupSize(
 }
 
 template <class KernelClass>
-static int64_t syclMaxWorkGroupSize(
+static int64_t at::xpu::getKernelMaxWorkGroupSize(
     const KernelClass& /*kfn*/,
     at::DeviceIndex dev_id = at::xpu::current_device()) {
-  return syclMaxWorkGroupSize<KernelClass>(dev_id);
+  return at::xpu::getKernelMaxWorkGroupSize<KernelClass>(dev_id);
 }
 
 // For SYCL free function
 template <auto* kptr>
-static int64_t syclMaxWorkGroupSize(
+static int64_t at::xpu::getKernelMaxWorkGroupSize(
     at::DeviceIndex dev_id = at::xpu::current_device()) {
 #if defined(SYCL_COMPILER_VERSION) && SYCL_COMPILER_VERSION < 20260100
   auto q = c10::xpu::getCurrentXPUStream(dev_id).queue();

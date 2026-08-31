@@ -1220,7 +1220,7 @@ void group_norm_kernel_impl(
       using index_t = decltype(index_tag);
       using K =
           GNFusedForwardFunctor<T, T_ACC, SIMD32, FUSED_VEC_SIZE, index_t>;
-      int64_t max_wg = syclMaxWorkGroupSize<K>();
+      int64_t max_wg = at::xpu::getKernelMaxWorkGroupSize<K>();
       int64_t ideal = (DS + kElemsPerWorkItem - 1) / kElemsPerWorkItem;
       int64_t min_wg_for_occ =
           ((thread_slots / 2 + n_groups - 1) / n_groups) * simd;
@@ -1295,7 +1295,8 @@ void group_norm_kernel_impl(
     using KernelS32T =
         GNRowwiseMomentsVectorizedFunctor<T, T_ACC, SIMD32, VEC_SIZE>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        at::xpu::getKernelMaxWorkGroupSize<KernelS16T>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelS32T>());
     auto wg_size =
         get_adaptive_workgroup_size(prob_size / VEC_SIZE, simd, max_size);
     auto global_range = sycl::range<1>((stride / VEC_SIZE) * wg_size);
@@ -1316,7 +1317,8 @@ void group_norm_kernel_impl(
     using KernelS16T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD16>;
     using KernelS32T = GNRowwiseMomentsFunctor<T, T_ACC, SIMD32>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        at::xpu::getKernelMaxWorkGroupSize<KernelS16T>(),
+        at::xpu::getKernelMaxWorkGroupSize<KernelS32T>());
     auto wg_size = get_adaptive_workgroup_size(prob_size, simd, max_size);
     auto global_range = sycl::range<1>(stride * wg_size);
     auto local_range = sycl::range<1>(wg_size);

@@ -255,7 +255,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         scalar_t,
         acc_t,
         VEC_SIZE>;
-    auto max_group_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_group_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
         get_adaptive_config(
             reduction_size_, n_channels_, VEC_SIZE, max_group_size);

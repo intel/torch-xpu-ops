@@ -191,7 +191,7 @@ void histogramdd_template(
     const int64_t* num_bin_edges,
     const int64_t total_bin_size) {
   using Kernel = HistogramddKernelFunctor<scalar_t>;
-  const int64_t max_wg_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
   int64_t num_wg = input_size;
   int64_t batch_num = 1;
   int64_t batch_wg_size = max_wg_size;
@@ -311,7 +311,7 @@ void histogramdd_linear_template(
       input_size,
       input_dim,
       num_bin_edges);
-  const int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  const int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const int64_t num_wg = (input_size + work_group_size - 1) / work_group_size;
   sycl_kernel_submit(
       num_wg * work_group_size, work_group_size, getCurrentSYCLQueue(), kfn);

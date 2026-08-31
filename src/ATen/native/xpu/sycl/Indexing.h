@@ -537,7 +537,7 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
 
@@ -753,7 +753,7 @@ void _index_kernel(
     using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
 
     int64_t max_group_num = syclMaxDSSNum();
-    auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+    auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;
     auto local_index = numel / max_group_num;

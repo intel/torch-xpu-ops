@@ -145,7 +145,7 @@ static void upsample_bicubic2d_out_template(
   UpsampleBicubic2dKernelFunctor<scalar_t, accscalar_t> kfn(
       odata, idata, onum, align_corners, height_scale, width_scale);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t num_wg = at::ceil_div(onum, wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -290,7 +290,7 @@ static void upsample_bicubic2d_backward_out_template(
   UpsampleBicubic2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
       num_elements, height_scale, width_scale, align_corners, idata, odata);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t num_wg = at::ceil_div(num_elements, wg_size);
   auto queue = getCurrentSYCLQueue();
 

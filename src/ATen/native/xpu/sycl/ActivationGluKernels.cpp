@@ -136,7 +136,7 @@ void launch_glu_backward_kernel(
   GluBackwardKernelFunctor<scalar_t, OffsetCalc> kfn(
       numel, gI, I, gO, offset_calculator, gI_byte_offset, I_byte_offset);
 
-  const int64_t local_size = syclMaxWorkGroupSize(kfn);
+  const int64_t local_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const int64_t num_wg = (numel + local_size - 1) / local_size;
   const int64_t global_size = num_wg * local_size;
 

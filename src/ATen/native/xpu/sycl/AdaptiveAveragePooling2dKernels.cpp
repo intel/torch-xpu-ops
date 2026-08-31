@@ -204,8 +204,8 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
         oh_(gyacc.size(2)),
         ow_(gyacc.size(3)),
         numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
-        local_range_(
-            syclMaxWorkGroupSize<AdaptiveAvgPool2dBwdSLMKernelFunctor>()),
+        local_range_(at::xpu::getKernelMaxWorkGroupSize<
+                     AdaptiveAvgPool2dBwdSLMKernelFunctor>()),
         gyacc_(gyacc),
         gxacc_(gxacc) {
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());

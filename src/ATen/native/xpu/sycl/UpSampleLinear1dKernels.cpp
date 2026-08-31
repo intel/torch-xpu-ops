@@ -113,7 +113,7 @@ void upsample_linear1d_kernel(
         const int num_kernels = output_width;
         UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t> kfn(
             num_kernels, rwidth, align_corners, idata, odata);
-        const auto local_range = syclMaxWorkGroupSize(kfn);
+        const auto local_range = at::xpu::getKernelMaxWorkGroupSize(kfn);
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit(
@@ -212,7 +212,7 @@ void upsample_linear1d_backward_kernel(
             input_width, output_width, align_corners, scales);
         UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
             num_kernels, rwidth, align_corners, idata, odata);
-        const auto local_range = syclMaxWorkGroupSize(kfn);
+        const auto local_range = at::xpu::getKernelMaxWorkGroupSize(kfn);
         auto global_range =
             (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit(

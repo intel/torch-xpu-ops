@@ -830,7 +830,7 @@ static void pdist_kernel_impl(
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using KernelClass = PdistKernelFunctor<scalar_t, F, accscalar_t>;
   auto min_sg_size = syclMinSubGroupSize();
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   while (wgroup_size >> 1 >= m && wgroup_size >> 1 >= 32 /* sg_size */) {
     wgroup_size >>= 1;
   }

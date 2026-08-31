@@ -214,7 +214,7 @@ void remove_padding_kernel(
         output_sizes,
         output_dim,
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
@@ -227,7 +227,7 @@ void remove_padding_kernel(
         output_sizes,
         output_dim,
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
@@ -257,7 +257,7 @@ void remove_padding_transform0213_kernel(
       output_dim,
       batch_size);
 
-  int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   sycl::range<2> global_range(GRID_DIM_Y, batch_size * max_wg_size);
   sycl::range<2> local_range(1, max_wg_size);
 
@@ -567,7 +567,7 @@ void add_padding_kernel_impl(
         input_dim,
         output_sizes[1],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
@@ -583,7 +583,7 @@ void add_padding_kernel_impl(
         output_sizes[1],
         output_sizes[2],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
@@ -600,7 +600,7 @@ void add_padding_kernel_impl(
         output_sizes[2],
         output_sizes[3],
         batch_size);
-    int64_t max_wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     sycl::range<2> global_range(GRID_DIM_Y, output_batch_size * max_wg_size);
     sycl::range<2> local_range(1, max_wg_size);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
