@@ -1422,12 +1422,12 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
     """Stage 0 H3-H7 plus Stage 1 for one leg."""
     data_artifact = pick_artifact(names, "Inductor-XPU-UT-Data", leg, run_id)
     if data_artifact is None:
-        report["skipped_legs"].append({"leg": leg, "reason": "no UT data artifact (H3)"})
+        report["skipped_legs"].append({"leg": leg, "reason": "no UT data artifact"})
         warn(f"{leg}: no usable Inductor-XPU-UT-Data artifact; filing nothing")
         return []
     root = work / f"current-{leg}"
     if not download(run_id, data_artifact, root):
-        report["skipped_legs"].append({"leg": leg, "reason": "artifact download failed (H3)"})
+        report["skipped_legs"].append({"leg": leg, "reason": "artifact download failed"})
         return []
 
     current.job_urls[leg] = job_url(run_id, jobs, leg)
@@ -1448,8 +1448,9 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
         elif state == "truncated":
             warn(
                 f"{category}: {actual}/{expected} cases, below the "
-                f"{int(HEALTH_RATIO * 100)}% threshold (H5). The failures may be "
-                "real but the machine is suspect; filing nothing for it."
+                f"{int(HEALTH_RATIO * 100)}% expected for a complete run. The "
+                "failures may be real but the machine is suspect; filing "
+                "nothing for it."
             )
         else:
             print(f"note: {category} never ran in this leg; nothing to file")
@@ -1467,7 +1468,10 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
     # so a mismatch means some failures lost their error message.
     expected_rows = len(read_lines(find_file(root, "new_failure_list.txt")))
     if expected_rows and expected_rows != len(cases):
-        warn(f"{leg}: new failure count mismatch: filtered={expected_rows}, csv={len(cases)} (H6)")
+        warn(
+            f"{leg}: new failure count mismatch: filtered={expected_rows}, "
+            f"csv={len(cases)}, so some failures lost their error message"
+        )
 
     kept = [c for c in cases if c.category in healthy_categories]
     dropped = len(cases) - len(kept)
@@ -1484,14 +1488,14 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
         warn(
             f"{leg}: {len(infra)}/{len(kept)} new failures match the infra "
             f"denylist (> {INFRA_SIGNATURE_RATIO:.0%}); treating the whole leg "
-            "as infra breakage and filing nothing (H7)"
+            "as infra breakage and filing nothing"
         )
         # Recorded case by case: H7 is the one gate that drops failures without
         # rendering them anywhere, so without this the report cannot say what
         # was discarded.
         report["skipped_legs"].append({
             "leg": leg,
-            "reason": "infra signature ratio (H7)",
+            "reason": "infra signatures dominate the leg",
             "dropped": [
                 {"case": c.line, "infra": c in infra, "error": c.message[:200]}
                 for c in kept
@@ -1501,9 +1505,9 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
     if infra and len(kept) < INFRA_MIN_CASES:
         print(
             f"note: {leg} has {len(infra)}/{len(kept)} infra-looking new "
-            f"failures, below the {INFRA_MIN_CASES}-case floor for H7, so the "
-            "leg is kept. Each signature is still judged on its own reach in "
-            "Stage 2."
+            f"failures. That is under the {INFRA_MIN_CASES} it takes for the "
+            "share to mean anything, so the leg is kept. Each error is still "
+            "judged on how many test files it reached."
         )
     return kept
 
@@ -1594,8 +1598,11 @@ def main() -> int:
     # H1: if the build failed nothing downstream can be trusted.
     build_jobs = [j for j in jobs if j[1].startswith("linux-build")]
     if any(j[2] in ("failure", "cancelled") for j in build_jobs):
-        warn("build job did not succeed (H1); filing nothing for this run")
-        report["skipped_legs"].append({"leg": "*", "reason": "build not successful (H1)"})
+        warn(
+            "build job did not succeed, so nothing downstream can be trusted; "
+            "filing nothing for this run"
+        )
+        report["skipped_legs"].append({"leg": "*", "reason": "build not successful"})
         return finish(report, report_dir)
 
     names = list_artifacts(args.run_id)
