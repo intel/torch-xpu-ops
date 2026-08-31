@@ -102,6 +102,7 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     IS_FBCODE,
     parametrize,
+    recover_orig_fp32_precision,
     scoped_load_inline,
     set_default_dtype,
     skipIfHpu,
@@ -9242,6 +9243,7 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
         torch.compile(my_dyn_fn, backend=counter)(x012)
         self.assertEqual(counter.frame_count, 3)
 
+    @recover_orig_fp32_precision
     def test_recompile_on_global_state_change(self):
         last_state = []
         cnt = 0
@@ -12722,13 +12724,13 @@ fn
         from torch._dynamo.variables.user_defined import InspectVariable
 
         redirected_attrs = []
-        original_getattro_impl = InspectVariable.getattro_impl
+        original_redirect = InspectVariable._redirect
 
-        def tracking_getattro_impl(self, tx, name):
+        def tracking_redirect(self, tx, name):
             redirects = self._PROPERTY_REDIRECTS.get(type(self.value), {})
             if name in redirects:
                 redirected_attrs.append(name)
-            return original_getattro_impl(self, tx, name)
+            return original_redirect(self, tx, name)
 
         def fn(x, gn):
             sig = inspect.signature(gn)
@@ -12740,7 +12742,7 @@ fn
             return a + b
 
         x = torch.randn(2, 3)
-        with patch.object(InspectVariable, "getattro_impl", tracking_getattro_impl):
+        with patch.object(InspectVariable, "_redirect", tracking_redirect):
             opt_fn = torch.compile(fn, backend="eager", fullgraph=True)
             result = opt_fn(x, gn)
 

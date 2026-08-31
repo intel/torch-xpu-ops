@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: intel/llvm
-          ref: v7.0.0
+          ref: v7.0.1
           path: intel-llvm
       - name: Install prerequisites
         run: |
@@ -113,13 +113,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 'op_ut' tests take suspiciously too long and sometimes
-        # get cancelled. For now limit the scope to 'basic' tests.
-        ut_name: [basic]
+        ut_name: [basic, op_ut]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       category: dpclang
-      runner: pvc
+      runner: bmg-test
       pytorch: ${{ github.base_ref || github.ref_name }}
       torch_xpu_ops: ${{ 'main' }}
       ut: ${{ matrix.ut_name }}
