@@ -186,7 +186,9 @@ jobs:
     with:
       run_id: ${{ github.run_id }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-      dry_run: ${{ vars.UT_AUTO_ISSUE_ENABLED != 'true' }}
+      # Off unless the repo variable is set to 'true'. Kept as a variable rather
+      # than hardcoded so filing can be stopped without merging a PR.
+      create_issues: ${{ vars.UT_AUTO_ISSUE_ENABLED == 'true' }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     name: linux-e2e
