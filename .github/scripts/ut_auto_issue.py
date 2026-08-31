@@ -7,12 +7,12 @@ runs as the numbered stages banner-marked below, Stage 0 through Stage 8.
 
 Because the issues carry the `skipped` label, fetch_issues.sh subtracts their
 cases from the next nightly. Filing an issue therefore mutes a test, which is
-why every path here defaults to --dry-run and why Stage 0 refuses to file
-anything from a run that does not look healthy.
+why creating anything takes an explicit --create-issues and why Stage 0 refuses
+to file anything from a run that does not look healthy.
 
 Run by hand against a past nightly to inspect what it would do:
 
-    python .github/scripts/ut_auto_issue.py --run-id <run_id> --dry-run
+    python .github/scripts/ut_auto_issue.py --run-id <run_id>
 """
 
 from __future__ import annotations
@@ -1406,7 +1406,9 @@ def main() -> int:
     parser.add_argument("--test-type", default="")
     parser.add_argument("--work-dir", default="ut_auto_issue_work")
     parser.add_argument("--report-dir", default="ut_auto_issue_report")
-    parser.add_argument("--dry-run", action="store_true")
+    # Off by default: filing an issue mutes a test, so a bare invocation must
+    # only ever report.
+    parser.add_argument("--create-issues", action="store_true")
     args = parser.parse_args()
 
     work = Path(args.work_dir)
@@ -1424,7 +1426,7 @@ def main() -> int:
     report = {
         "run_id": args.run_id,
         "test_type": args.test_type,
-        "dry_run": args.dry_run,
+        "create_issues": args.create_issues,
         "categories": [],
         "skipped_legs": [],
         "quarantined": [],
@@ -1490,9 +1492,10 @@ def main() -> int:
         if root.is_dir():
             tracebacks.update(extract_tracebacks(root, wanted))
 
-    if not args.dry_run:
+    if args.create_issues:
         ensure_labels({"skipped", "skipped_bmg", "regression", "new_case_failure"})
-    # Queried in dry-run too, so the report shows real create/comment decisions.
+    # Queried when only reporting too, so the report shows real
+    # create/comment decisions.
     index = open_bot_issues()
 
     families: dict[str, list[FamilyMember]] = {}
@@ -1520,13 +1523,13 @@ def main() -> int:
                 "cases": len(overlap), "appended_cases": 0,
                 "title": f"#{ref.number} (part {ref.part}/{ref.parts})",
             })
-            if not args.dry_run:
+            if args.create_issues:
                 comment_issue(ref.number, still_failing_comment(
                     group, current, len(overlap), 0))
 
         created: list[tuple[str, str]] = []   # (cls, url) filed for this sig now
-        # `created` stays empty in a dry run, so the cross-file gate needs a
-        # decision rather than an outcome to report on truthfully.
+        # `created` stays empty when only reporting, so the cross-file gate
+        # needs a decision rather than an outcome to report on truthfully.
         will_create = False
         buckets: dict[str, list[Case]] = {}
         for case in group.cases:
@@ -1558,7 +1561,7 @@ def main() -> int:
                         f"not appending {len(sub.cases)} cases. They stay unmuted."
                     )
                     action["action"] = "append-refused"
-                elif not args.dry_run:
+                elif args.create_issues:
                     edit_body(target.number, merged)
                     comment_issue(target.number, still_failing_comment(
                         group, current, len(sub.cases), len(sub.cases)))
@@ -1583,7 +1586,7 @@ def main() -> int:
                     warn(f"body for {group.sig}/{cls} part {part} is {len(body)} chars")
                 (report_dir / f"{group.sig}-{cls}-{part}.md").write_text(
                     body, encoding="utf-8")
-                if not args.dry_run:
+                if args.create_issues:
                     url = create_issue(title, body, labels)
                     action["url"] = url
                     if part == 1:
@@ -1602,7 +1605,7 @@ def main() -> int:
         # re-post this every night.
         family = [(r.cls, f"{SERVER}/{REPO}/issues/{r.number}")
                   for r in siblings if r.part == 1] + created
-        if created and len(family) > 1 and not args.dry_run:
+        if created and len(family) > 1 and args.create_issues:
             note = ("One root cause, split by how each case compares with its "
                     "baseline:\n"
                     + "\n".join(f"- `{c}`: {u}" for c, u in sorted(family)))
@@ -1631,7 +1634,7 @@ def main() -> int:
             "cases": sum(m.cases for m in member_list),
             "title": f"{len(member_list)} test files share `{error[:80]}`",
         })
-        if args.dry_run:
+        if not args.create_issues:
             continue
         note = cross_file_note(member_list)
         for member in member_list:
@@ -1646,7 +1649,7 @@ def main() -> int:
         action = {"sig": sig, "title": title, "labels": [], "action": "create",
                   "classification": "umbrella",
                   "cases": sum(len(g.cases) for g in overflow)}
-        if not args.dry_run:
+        if args.create_issues:
             action["url"] = create_issue(title, body, [])
         report["actions"].append(action)
 
@@ -1660,7 +1663,8 @@ def finish(report: dict, report_dir: Path) -> int:
     lines = [
         "## UT auto-issue report",
         "",
-        f"Run `{report['run_id']}` - {'dry run' if report['dry_run'] else 'live'}",
+        f"Run `{report['run_id']}` - "
+        f"{'live' if report['create_issues'] else 'report only'}",
         "",
     ]
     if report["categories"]:

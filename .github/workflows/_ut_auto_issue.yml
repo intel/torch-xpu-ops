@@ -11,10 +11,10 @@ on:
         type: string
         default: ''
         description: Recorded in the report for context, e.g. build-nightly
-      dry_run:
+      create_issues:
         type: boolean
-        default: true
-        description: Render and report only; create nothing
+        default: false
+        description: Create issues for real. Off means render and report only
   workflow_dispatch:
     inputs:
       run_id:
@@ -25,10 +25,10 @@ on:
         type: string
         default: ''
         description: Recorded in the report for context, e.g. build-nightly
-      dry_run:
+      create_issues:
         type: boolean
-        default: true
-        description: Render and report only; create nothing
+        default: false
+        description: Create issues for real. Off means render and report only
 
 permissions:
   contents: read
@@ -52,7 +52,7 @@ jobs:
     env:
       # Issues created with the default GITHUB_TOKEN do not fire the `issues`
       # event, which is what issue_operator.yml needs to attach the UT Backlog
-      # milestone. Fall back so dry runs still work without the secret.
+      # milestone. Fall back so report-only runs still work without the secret.
       GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
     steps:
       - name: Checkout torch-xpu-ops
@@ -66,7 +66,7 @@ jobs:
             --test-type "${{ inputs.test_type }}" \
             --work-dir "${{ runner.temp }}/ut-auto-issue" \
             --report-dir "${{ github.workspace }}/ut_auto_issue_report" \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+            ${{ inputs.create_issues && '--create-issues' || '' }}
       - name: Upload report
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v7
