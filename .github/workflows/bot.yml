@@ -1303,6 +1303,9 @@ jobs:
       - name: Redact secrets from agent artifacts
         id: redact
         if: always()
+        # Container jobs default to `sh -e {0}` regardless of the image having
+        # bash, and this script needs arrays / process substitution / herestring.
+        shell: bash
         env:
           TRANSCRIPT: ${{ steps.ai-fix.outputs.execution_file }}
           SECRETS: |
