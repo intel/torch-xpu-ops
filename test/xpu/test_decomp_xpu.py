@@ -44,6 +44,7 @@ with XPUImportCtx(False):
         decomposition_names,
         HasDecompTest,
         normalize_op_input_output,
+        op_assert_equal_tol_table,
         op_assert_ref_tol_table,
         ref_vjp_no_create,
         TestDecomp,
@@ -72,6 +73,30 @@ op_assert_ref_tol_table.update(
 )
 
 
+# For integer output dtypes the kernel evaluates pow() in float32 (matching CUDA,
+# which does the same to avoid promotion to double) while the decomposition
+# evaluates in float64. sycl::pow is only accurate to 16 ULP, so a value such as
+# pow(3.0f, 3.0f) can come back as 26.999... and truncate to 26 instead of 27.
+# Allow the same off-by-one upstream already allows for integer linspace.
+op_assert_equal_tol_table.update(
+    {
+        (dtype, overload): (0, 1)
+        for dtype in (
+            torch.int8,
+            torch.uint8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+        )
+        for overload in (
+            torch.ops.aten.logspace.default,
+            torch.ops.aten.logspace.Tensor_Tensor,
+            torch.ops.aten.logspace.Tensor_Scalar,
+            torch.ops.aten.logspace.Scalar_Tensor,
+        )
+    }
+)
+
 # ======================================================================
 # CROSS_REF_EXCLUDE_SET patches (XPU-specific exclusions)
 # ======================================================================
@@ -79,22 +104,6 @@ op_assert_ref_tol_table.update(
 # XPU: max_pool2d_with_indices_backward tests are not applicable
 # More details in https://github.com/pytorch/pytorch/pull/182619
 CROSS_REF_EXCLUDE_SET.add(("xpu", None, "max_pool2d_with_indices_backward"))
-
-# XPU: logspace with integral output dtypes diverges from decomposition refs
-_logspace_integral_dtypes = {
-    torch.uint8,
-    torch.int8,
-    torch.int16,
-    torch.int32,
-    torch.int64,
-}
-for _unsigned_dtype in ("uint16", "uint32", "uint64"):
-    if hasattr(torch, _unsigned_dtype):
-        _logspace_integral_dtypes.add(getattr(torch, _unsigned_dtype))
-CROSS_REF_EXCLUDE_SET.update(
-    {("xpu", _dtype, "logspace") for _dtype in _logspace_integral_dtypes}
-)
-
 
 # ======================================================================
 # CROSS_REF_BACKWARD_EXCLUDE_SET patches (XPU-specific exclusions)
