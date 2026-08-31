@@ -61,6 +61,9 @@ CLS_REGRESSION = "regression"
 CLS_NEW_CASE = "new_case_failure"
 CLS_PERSISTENT = "persistent"
 CLS_UNKNOWN = "unknown"
+# Not a classification against a baseline like the four above, but it travels
+# through the same marker and report machinery, so it shares the namespace.
+CLS_COLLECTION_ERROR = "collection_error"
 # Only these two are labels; `persistent` and `unknown` are stated in the body
 # instead, because neither "it used to pass" nor "it is a new case" is true.
 CLS_LABELS = {CLS_REGRESSION, CLS_NEW_CASE}
@@ -227,10 +230,6 @@ class Group:
     headline: str = ""
     # Non-empty means: report it, never file it, never mute it.
     quarantine: str = ""
-
-    @property
-    def collection_error(self) -> bool:
-        return any(c.is_collection_error for c in self.cases)
 
     @property
     def sig(self) -> str:
@@ -590,12 +589,6 @@ def build_groups(cases: list[Case]) -> list[Group]:
         group.headline = headline_of(group.cases[0].message) or group.normalized_error
         if is_infra(group.normalized_error):
             group.quarantine = "infra"
-        elif group.collection_error:
-            # One row standing for a whole file. Filing it would mute that one
-            # row and leave the file dark every night, and neither of the two
-            # labels fits: the cases it hides used to pass, so it is not a new
-            # case, and the row itself never passed, so it is not a regression.
-            group.quarantine = "collection_error"
     return sorted(groups.values(), key=lambda g: (-len(g.cases), g.sig))
 
 
@@ -708,14 +701,16 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
 def classify_case(case: Case, baselines: dict[str, Baseline]) -> str:
     """Per case, against its own category's baseline. Exact set membership.
 
-    Only ever reached for filed groups, so every case here is a real test case.
-    Whole-module rows are quarantined in Stage 2 precisely because this
-    comparison cannot see them: the baseline records the module's individual
-    cases and never the module itself, so exact membership would always fall
-    through to CLS_NEW_CASE. Widening the comparison to the module for real
-    cases too would be wrong in the other direction - a dtype parametrization
-    added upstream is a new case even though its module is years old.
+    A whole-module row is classified before the comparison is attempted,
+    because the comparison cannot see it: the baseline records the module's
+    individual cases and never the module itself, so exact membership would
+    always fall through to CLS_NEW_CASE for a file of any age. Widening the
+    comparison to the module for real cases too would be wrong in the other
+    direction - a dtype parametrization added upstream is a new case even
+    though its module is years old.
     """
+    if case.is_collection_error:
+        return CLS_COLLECTION_ERROR
     baseline = baselines.get(case.category)
     if baseline is None:
         return CLS_UNKNOWN
@@ -743,15 +738,20 @@ def new_case_reason(case: Case, baseline: Baseline | None) -> str:
 # count gate in ut_result_check.sh:check_test_cases. Comparing module coverage
 # against the baseline is the only thing here that sees them.
 #
-# Everything in this stage is report-only. Filing an issue mutes a case, and
-# muting cases that already stopped running is the one outcome this bot must
-# never produce.
+# Nothing in this stage mutes on its own. What it produces is the blast radius
+# of a collection error - how many cases the file used to pass - which Stage 6
+# renders into the issue. A collection-error issue does mute, like any other:
+# it carries the whole-module row in its `Cases:` block, so the row stops being
+# a new failure on the next run and the job goes green with the file still
+# dark. That trade is deliberate. The alternative, leaving it red forever, ends
+# with nobody reading the nightly at all. The count below is what keeps the
+# muted state honest, so it belongs in the issue body and not only in a log.
 # --------------------------------------------------------------------------- #
 
 
 def collection_error_context(group: Group,
                              baselines: dict[str, Baseline]) -> list[dict]:
-    """Per module in a quarantined collection-error group, what it used to run."""
+    """Per module in a collection-error group, what it used to run."""
     context = []
     for case in group.cases:
         if not case.is_collection_error:
@@ -775,30 +775,17 @@ def collection_error_context(group: Group,
     return context
 
 
-def record_quarantined(groups: list[Group], baselines: dict[str, Baseline],
-                       report: dict) -> None:
+def record_quarantined(groups: list[Group], report: dict) -> None:
     for group in groups:
-        entry = {
+        report["quarantined"].append({
             "sig": group.sig, "cases": len(group.cases),
             "test_file": group.test_file, "error": group.headline,
             "reason": group.quarantine,
-        }
-        if group.quarantine == "collection_error":
-            entry["modules"] = collection_error_context(group, baselines)
-            dropped = sum(m["baseline_passed"] for m in entry["modules"])
-            entry["dropped_cases"] = dropped
-            warn(
-                f"{group.test_file}: whole-module collection error "
-                f"({group.headline[:80]}). {dropped} case(s) that passed in the "
-                "baseline did not run at all tonight. Reported only - not filed "
-                "and not muted."
-            )
-        else:
-            warn(
-                f"quarantined {len(group.cases)} cases in {group.test_file} "
-                f"({group.headline[:80]}): infra-flavoured, not filed and not muted"
-            )
-        report["quarantined"].append(entry)
+        })
+        warn(
+            f"quarantined {len(group.cases)} cases in {group.test_file} "
+            f"({group.headline[:80]}): infra-flavoured, not filed and not muted"
+        )
 
 
 def record_vanished_modules(work: Path, categories: set[str],
@@ -1002,6 +989,40 @@ def unknown_evidence(sub: SubGroup) -> str:
     )
 
 
+def collection_error_evidence(sub: SubGroup,
+                              baselines: dict[str, Baseline]) -> str:
+    """What the muted row stands for.
+
+    This issue's skip row is a whole module, not a case, so acting on it hides
+    an import error and leaves the file unrun. The count of cases the file used
+    to pass is the only measure of how much that is, and once the row is muted
+    and the job is green it is the only place that says it at all.
+    """
+    rows, dropped = [], 0
+    for entry in collection_error_context(sub.group, baselines):
+        rows.append(
+            f"| `{entry['module']}` | {entry['category']} | {entry['state']} "
+            f"| {entry['baseline_passed']} |"
+        )
+        dropped += entry["baseline_passed"]
+    return "\n".join([
+        "**Whole-module collection error**",
+        "",
+        f"`{sub.group.test_file}` failed to import, so none of its cases ran. "
+        f"{dropped} case(s) that passed in the baseline are missing from this "
+        "run entirely. They are absent rather than failing, so they reach no "
+        "failure list and no count that would otherwise notice them.",
+        "",
+        "| Module | Category | In the baseline | Cases it used to pass |",
+        "|---|---|---|---|",
+        *rows,
+        "",
+        "The skip row above is that module, not a test case. Skipping it stops "
+        f"the import error being reported as a new failure; the {dropped} "
+        "case(s) stay unrun until the import is fixed.",
+    ])
+
+
 def evidence_block(sub: SubGroup, current: RunInfo,
                    baselines: dict[str, Baseline]) -> str:
     """Everything below `## Pytorch Version`. Exactly one state applies, because
@@ -1018,6 +1039,7 @@ def evidence_block(sub: SubGroup, current: RunInfo,
         CLS_NEW_CASE: lambda: new_case_evidence(sub, baselines),
         CLS_PERSISTENT: lambda: persistent_evidence(sub, baselines),
         CLS_UNKNOWN: lambda: unknown_evidence(sub),
+        CLS_COLLECTION_ERROR: lambda: collection_error_evidence(sub, baselines),
     }[sub.cls]
     parts.append(renderer())
     return "\n" + "\n\n".join(p.rstrip() for p in parts) + "\n\n"
@@ -1048,13 +1070,26 @@ def render_body(sub: SubGroup, chunk: list[Case], part: int, parts_total: int,
     )
 
 
-TITLE_PREFIX = {CLS_REGRESSION: "[Regression] ", CLS_NEW_CASE: "[New Case] "}
+TITLE_PREFIX = {
+    CLS_REGRESSION: "[Regression] ",
+    CLS_NEW_CASE: "[New Case] ",
+    # Says up front that the skip row is a file that would not import, not a
+    # failing test, because the two need completely different triage.
+    CLS_COLLECTION_ERROR: "[Failed to collect] ",
+}
 
 
 def render_title(sub: SubGroup, part: int, parts_total: int) -> str:
     suffix = f" (part {part}/{parts_total})" if parts_total > 1 else ""
+    prefix = TITLE_PREFIX.get(sub.cls, "")
+    if sub.cls == CLS_COLLECTION_ERROR:
+        # The subject is the file, not one of its cases, and an import error
+        # usually opens with an absolute build path long enough to push the
+        # file name past the truncation if it went last.
+        return (f"[Bug Skip]: {prefix}{sub.group.test_file}: "
+                f"{sub.group.headline[:100]}{suffix}")
     return (
-        f"[Bug Skip]: {TITLE_PREFIX.get(sub.cls, '')}"
+        f"[Bug Skip]: {prefix}"
         f"{sub.group.headline[:120]} in {sub.group.test_file}{suffix}"
     )
 
@@ -1501,7 +1536,7 @@ def main() -> int:
     needed |= {c.category for g in quarantined for c in g.cases} | healthy
     baselines = resolve_baselines(args.run_id, needed, work, report)
 
-    record_quarantined(quarantined, baselines, report)
+    record_quarantined(quarantined, report)
     record_vanished_modules(work, healthy, baselines, report)
 
     if not filed and not overflow:
@@ -1703,17 +1738,10 @@ def finish(report: dict, report_dir: Path) -> int:
             mark = "infra" if d["infra"] else "not infra"
             lines.append(f"  - ({mark}) `{d['case']}` - {d['error'][:100]}")
     for q in report["quarantined"]:
-        if q["reason"] == "collection_error":
-            lines.append(
-                f"- `{q['test_file']}` failed to collect, so none of it ran: "
-                f"{q['dropped_cases']} case(s) passing in the baseline are "
-                f"missing from this run. {q['error'][:100]}"
-            )
-        else:
-            lines.append(
-                f"- Quarantined {q['cases']} cases in `{q['test_file']}`: "
-                f"{q['error'][:100]}"
-            )
+        lines.append(
+            f"- Quarantined {q['cases']} cases in `{q['test_file']}`: "
+            f"{q['error'][:100]}"
+        )
     if report["vanished_modules"]:
         lines += [
             "",
