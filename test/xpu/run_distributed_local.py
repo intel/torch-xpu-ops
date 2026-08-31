@@ -42,6 +42,12 @@ if ret == 0:
         if len(value) > len(max_affinity):
             max_affinity = value
 
+    # BMG has no XL-linked GPU groups (all-SYS topology), so each row only
+    # reports its own index; fall back to the first WORLD_SIZE GPUs instead.
+    if "," not in max_affinity:
+        world_size = int(os.environ.get("WORLD_SIZE", "4"))
+        max_affinity = ",".join(str(i) for i in range(min(world_size, len(gpu_dict))))
+
     os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
     print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
 
