@@ -1475,10 +1475,10 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
         print(f"note: dropped {dropped} {leg} cases from unhealthy categories")
 
     # H7: a leg where infra signatures dominate is infra breakage, not a set of
-    # product bugs, so none of it is filed. build_groups already quarantines a
-    # signature that reached several files; this gate is the wider reading, and
-    # distrusts the cases around them too, which takes a sample big enough for
-    # a share to mean anything.
+    # product bugs, so none of it is filed. Stage 2 judges each signature on
+    # its own reach; this gate is the wider reading, and distrusts the cases
+    # around them too, which takes a sample big enough for a share to mean
+    # anything.
     infra = {c for c in kept if is_infra(normalize_error(c.message))}
     if len(kept) >= INFRA_MIN_CASES and len(infra) / len(kept) > INFRA_SIGNATURE_RATIO:
         warn(
@@ -1501,8 +1501,9 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
     if infra and len(kept) < INFRA_MIN_CASES:
         print(
             f"note: {leg} has {len(infra)}/{len(kept)} infra-looking new "
-            f"failures, below the {INFRA_MIN_CASES}-case floor for H7; they are "
-            "still quarantined individually"
+            f"failures, below the {INFRA_MIN_CASES}-case floor for H7, so the "
+            "leg is kept. Each signature is still judged on its own reach in "
+            "Stage 2."
         )
     return kept
 
