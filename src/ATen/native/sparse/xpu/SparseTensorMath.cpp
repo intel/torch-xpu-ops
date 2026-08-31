@@ -427,10 +427,16 @@ Tensor& _sspaddmm_out_xpu(
       ", got ",
       self.size(1));
 
-  // SpTTM formulation: accumulate the sparse self term and the sparse-matrix
-  // times dense-matrix term, choosing the most efficient computation path.
-  SparseTensor mat1_coalesced = mat1.coalesce();
-  int64_t nnz1 = mat1_coalesced._nnz();
+  bool mat1_is_coalesced = mat1.is_coalesced();
+  int64_t nnz1 = mat1._nnz();
+  int64_t mat1_numel = dim_i * dim_j;
+  int64_t sparse_threshold_divisor =
+      at::isReducedFloatingType(mat1.scalar_type()) ? 128 : 8;
+  if (!mat1_is_coalesced && sparse_threshold_divisor < 128) {
+    sparse_threshold_divisor = 128;
+  }
+  bool use_sparse_path =
+      mat1_numel >= 4096 && nnz1 * sparse_threshold_divisor < mat1_numel;
 
   Tensor dense_result;
   if (nnz1 == 0) {
@@ -439,9 +445,8 @@ Tensor& _sspaddmm_out_xpu(
     } else {
       dense_result = self.to_dense() * beta;
     }
-  } else if (nnz1 * 4 < dim_i * dim_j) {
-    // Sparse SpTTM path: gather rows from mat2 for nonzeros in mat1,
-    // multiply by mat1 values, and accumulate into result rows.
+  } else if (use_sparse_path) {
+    SparseTensor mat1_coalesced = mat1_is_coalesced ? mat1 : mat1.coalesce();
     Tensor row_indices = mat1_coalesced._indices()[0];
     Tensor col_indices = mat1_coalesced._indices()[1];
     Tensor values1 = mat1_coalesced._values();
@@ -459,8 +464,7 @@ Tensor& _sspaddmm_out_xpu(
       dense_result.add_(self.to_dense(), beta);
     }
   } else {
-    // Dense GEMM path: used when mat1 is relatively dense and dense GEMM is faster.
-    Tensor mat1_dense = mat1_coalesced.to_dense();
+    Tensor mat1_dense = mat1.to_dense();
     Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
         ? self.to_dense()
         : at::zeros({dim_i, dim_k}, mat2.options());
@@ -470,7 +474,6 @@ Tensor& _sspaddmm_out_xpu(
 
   Tensor sparse_result = dense_result.to_sparse();
 
-  // Write the sparse result into the provided out tensor.
   get_sparse_impl(result)->raw_resize_(
       2, 0, {sparse_result.size(0), sparse_result.size(1)});
   get_sparse_impl(result)->set_indices_and_values_unsafe(
