@@ -75,11 +75,13 @@ INFRA_SIGNATURE_RATIO = 0.3
 # does so for any n <= 3 - and the leg would be discarded on one data point.
 INFRA_MIN_CASES = 10
 # How many distinct test files one infra signature has to reach before it is
-# read as the machine rather than as the tests. Two is the smallest number that
-# can express "somewhere other than here", and it is the right side to err on:
-# quarantining leaves the case running and the nightly red, so a wrong call
-# costs a night of noise, where filing wrongly mutes a test that still fails.
-INFRA_MIN_TEST_FILES = 2
+# read as the machine rather than as the tests. Two files sharing an OOM is an
+# ordinary way for one memory regression to look, since these messages carry no
+# operator to tell them apart; five unrelated files failing the same way in one
+# night is not something a product bug does. Erring high is the safe side:
+# quarantining wrongly costs a night of red, filing wrongly mutes a test that
+# still fails.
+INFRA_MIN_TEST_FILES = 5
 HEALTH_RATIO = 0.95
 GITHUB_BODY_LIMIT = 65536
 # Headroom below the hard cap for appending to an issue filed on an earlier night.
@@ -235,6 +237,10 @@ class Group:
     test_file: str
     cases: list[Case] = field(default_factory=list)
     headline: str = ""
+    # How many test files this group's signature reached across the whole run.
+    # A property of the set, so build_groups fills it in; the infra decision
+    # and the issue body both need it and neither can derive it from one group.
+    signature_files: int = 1
     # Non-empty means: report it, never file it, never mute it.
     quarantine: str = ""
 
@@ -604,8 +610,9 @@ def build_groups(cases: list[Case]) -> list[Group]:
         # it before the sort would quote whichever case the CSV happened to list
         # first.
         group.headline = headline_of(group.cases[0].message) or group.normalized_error
+        group.signature_files = len(files_per_error[group.normalized_error])
         if (is_infra(group.normalized_error)
-                and len(files_per_error[group.normalized_error]) >= INFRA_MIN_TEST_FILES):
+                and group.signature_files >= INFRA_MIN_TEST_FILES):
             group.quarantine = "infra"
     return sorted(groups.values(), key=lambda g: (-len(g.cases), g.sig))
 
@@ -1095,14 +1102,17 @@ def evidence_block(sub: SubGroup, current: RunInfo,
         # Reaching here means build_groups declined to call it machine
         # breakage. Say so: an issue filed against a driver-flavoured error
         # otherwise reads as the bot having missed one.
+        reach = sub.group.signature_files
+        where = (f"only `{sub.group.test_file}`" if reach == 1
+                 else f"{reach} test files, below the {INFRA_MIN_TEST_FILES} "
+                      "it would take to read as the machine")
         parts.append(
-            "This error matches the infra denylist, but it reached only "
-            f"`{sub.group.test_file}` in this run. A runner losing its GPU or "
-            "its disk does not stop at one file, so it is filed as a bug in "
-            "that test - most often allocating too much, or hanging the device "
-            "- rather than treated as machine breakage. If the runner was at "
-            "fault, closing this returns the case to the next run's new "
-            "failures."
+            "This error matches the infra denylist, but in this run it "
+            f"reached {where}. A runner losing its GPU or its disk does not "
+            "stop at a handful of files, so it is filed as a bug in the test - "
+            "most often allocating too much, or hanging the device - rather "
+            "than treated as machine breakage. If the runner was at fault, "
+            "closing this returns the case to the next run's new failures."
         )
     if sub.group.collection_error:
         # Routed on the row's shape, not on its classification: a module row
