@@ -74,6 +74,12 @@ INFRA_SIGNATURE_RATIO = 0.3
 # this many new failures a single infra-looking one clears 30% on its own - it
 # does so for any n <= 3 - and the leg would be discarded on one data point.
 INFRA_MIN_CASES = 10
+# How many distinct test files one infra signature has to reach before it is
+# read as the machine rather than as the tests. Two is the smallest number that
+# can express "somewhere other than here", and it is the right side to err on:
+# quarantining leaves the case running and the nightly red, so a wrong call
+# costs a night of noise, where filing wrongly mutes a test that still fails.
+INFRA_MIN_TEST_FILES = 2
 HEALTH_RATIO = 0.95
 GITHUB_BODY_LIMIT = 65536
 # Headroom below the hard cap for appending to an issue filed on an earlier night.
@@ -103,9 +109,13 @@ EXPECTED_CASES = {
 }
 
 # A run can pass the count check and still be poisoned - a runner losing its GPU
-# near the end of the suite barely moves the count. Groups matching these are
-# reported but never filed and never muted: an OOM or device-lost can equally be
-# a real product regression, and neither reading is safe to automate.
+# near the end of the suite barely moves the count. Matching one of these is not
+# on its own evidence of that: "infra" is a claim about the machine, and a
+# message cannot make a claim about the machine. An OOM or a device-lost in one
+# test file is far likelier to be that test allocating too much or hanging the
+# GPU, which is a product bug and belongs in an issue. The same signature
+# appearing across unrelated files in one night is what the machine looks like,
+# so breadth decides - see INFRA_MIN_TEST_FILES and build_groups.
 INFRA_PATTERNS = [
     "device lost",
     "ze_result_error",
@@ -580,6 +590,12 @@ def build_groups(cases: list[Case]) -> list[Group]:
             group = Group(normalized_error=key[0], test_file=key[1])
             groups[key] = group
         group.cases.append(case)
+    # Reach of each signature, which the infra decision below needs and no
+    # single group can see. Stage 2 keys on (error, file), so one signature
+    # spanning several files is several groups.
+    files_per_error: dict[str, set[str]] = {}
+    for group in groups.values():
+        files_per_error.setdefault(group.normalized_error, set()).add(group.test_file)
     for group in groups.values():
         group.cases.sort(key=lambda c: (c.category, c.class_name, c.test_name))
         # Taken from the same representative the ErrorLog traceback comes from
@@ -588,7 +604,8 @@ def build_groups(cases: list[Case]) -> list[Group]:
         # it before the sort would quote whichever case the CSV happened to list
         # first.
         group.headline = headline_of(group.cases[0].message) or group.normalized_error
-        if is_infra(group.normalized_error):
+        if (is_infra(group.normalized_error)
+                and len(files_per_error[group.normalized_error]) >= INFRA_MIN_TEST_FILES):
             group.quarantine = "infra"
     return sorted(groups.values(), key=lambda g: (-len(g.cases), g.sig))
 
@@ -797,7 +814,8 @@ def record_quarantined(groups: list[Group], report: dict) -> None:
         })
         warn(
             f"quarantined {len(group.cases)} cases in {group.test_file} "
-            f"({group.headline[:80]}): infra-flavoured, not filed and not muted"
+            f"({group.headline[:80]}): infra signature reached several test "
+            "files, so it is read as the machine. Not filed and not muted."
         )
 
 
@@ -1072,6 +1090,19 @@ def evidence_block(sub: SubGroup, current: RunInfo,
         parts.append(
             f"Same root cause as {refs}, split out because those cases have a "
             "different baseline classification."
+        )
+    if is_infra(sub.group.normalized_error):
+        # Reaching here means build_groups declined to call it machine
+        # breakage. Say so: an issue filed against a driver-flavoured error
+        # otherwise reads as the bot having missed one.
+        parts.append(
+            "This error matches the infra denylist, but it reached only "
+            f"`{sub.group.test_file}` in this run. A runner losing its GPU or "
+            "its disk does not stop at one file, so it is filed as a bug in "
+            "that test - most often allocating too much, or hanging the device "
+            "- rather than treated as machine breakage. If the runner was at "
+            "fault, closing this returns the case to the next run's new "
+            "failures."
         )
     if sub.group.collection_error:
         # Routed on the row's shape, not on its classification: a module row
@@ -1422,9 +1453,10 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
         print(f"note: dropped {dropped} {leg} cases from unhealthy categories")
 
     # H7: a leg where infra signatures dominate is infra breakage, not a set of
-    # product bugs, so none of it is filed. Individually infra-looking cases are
-    # quarantined by build_groups either way; this gate exists only to distrust
-    # the cases around them, which takes a sample big enough to be a share.
+    # product bugs, so none of it is filed. build_groups already quarantines a
+    # signature that reached several files; this gate is the wider reading, and
+    # distrusts the cases around them too, which takes a sample big enough for
+    # a share to mean anything.
     infra = {c for c in kept if is_infra(normalize_error(c.message))}
     if len(kept) >= INFRA_MIN_CASES and len(infra) / len(kept) > INFRA_SIGNATURE_RATIO:
         warn(
