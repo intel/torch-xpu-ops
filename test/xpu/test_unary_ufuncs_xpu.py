@@ -13,6 +13,8 @@
 # Owner(s): ["module: intel"]
 
 
+import unittest
+
 import torch
 from torch.testing._internal.common_device_type import (
     dtypes,
@@ -303,6 +305,64 @@ TestUnaryUfuncs.test_unary_out_op_mem_overlap = _test_unary_out_op_mem_overlap
 instantiate_device_type_tests(
     TestUnaryUfuncs, globals(), only_for="xpu", allow_xpu=True
 )
+
+
+# Skip XPU unary ufunc tests that currently fail; tracked upstream.
+# Each entry maps an exact generated test name to its tracking issue.
+_xpu_skip_cases = {
+    "TestUnaryUfuncsXPU": {
+        "test_reference_numerics_extremal__refs_acos_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_acosh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_asin_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_tan_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal__refs_tanh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_acosh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_asin_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_round_decimals_3_xpu_bfloat16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_tan_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_extremal_tanh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large__refs_acosh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large__refs_asinh_xpu_complex128": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large__refs_asinh_xpu_complex32": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large__refs_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large_acosh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large_asinh_xpu_complex128": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large_asinh_xpu_complex32": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_large_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal__refs_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_asinh_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+        "test_reference_numerics_normal_round_decimals_3_xpu_bfloat16": "https://github.com/intel/torch-xpu-ops/issues/2257",
+    },
+}
+
+
+def _apply_xpu_skips(_skip_cases):
+    for _cls_name, _cases in _skip_cases.items():
+        _cls = globals().get(_cls_name)
+        if _cls is None:
+            continue
+        for _name, _issue in _cases.items():
+            _method = getattr(_cls, _name, None)
+            if _method is not None:
+                setattr(
+                    _cls,
+                    _name,
+                    unittest.skip(f"Skipped on XPU, see {_issue}")(_method),
+                )
+
+
+_apply_xpu_skips(_xpu_skip_cases)
+
 
 if __name__ == "__main__":
     run_tests()
