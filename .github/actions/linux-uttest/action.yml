@@ -144,7 +144,6 @@ runs:
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
-        export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"

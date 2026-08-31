@@ -19,6 +19,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      miniforge:
+        type: boolean
+        default: false
+        description: Use a Miniforge conda environment
       ut:
         required: true
         type: string
@@ -31,6 +35,14 @@ on:
         type: boolean
         default: false
         description: 'Skip the UT summary/issue-update job (e.g. when caller handles its own comparison)'
+      pytorch_artifact_run_id:
+        type: string
+        default: ''
+        description: 'PyTorch workflow run id, used when pytorch == artifact_wheel'
+      pytorch_artifact_name:
+        type: string
+        default: ''
+        description: 'PyTorch wheel artifact name, used when pytorch == artifact_wheel'
 
 permissions:
   contents: read
@@ -65,7 +77,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          miniforge: ${{ inputs.miniforge }}
           category: ${{ inputs.category }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -104,7 +119,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          miniforge: ${{ inputs.miniforge }}
           category: ${{ inputs.category }}
+          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
+          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -230,7 +248,8 @@ jobs:
             # ut_failure_list.csv is headerless (see check-ut.py print_md_row);
             # build the report from matched rows only.
             : > "$new_failure_csv"
-            # Distributed filtered logs contain pytest node ids rather than CSV rows.
+            # Match rows by class_name AND test_name to avoid substring false positives
+            # filtered log format: category,class_name,test_name
             while IFS=',' read -r category class_name test_name || [ -n "$category$class_name$test_name" ]; do
               class_prefix="| "
               if [ "${{ inputs.ut }}" == "xpu_distributed" ]; then
@@ -241,6 +260,7 @@ jobs:
                 class_prefix="."
               fi
               [ -z "$test_name" ] && continue
+              # Use both class_name and test_name for precise matching in pipe-delimited CSV
               grep -F "$class_prefix$class_name | $test_name |" "$ut_failure_csv" \
                 >> "$new_failure_csv" || true
             done < "$new_failure_list"
