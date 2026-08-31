@@ -25,6 +25,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
+#include <bit>
 
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 
@@ -634,7 +635,7 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
       const std::string& method_name,
       const func_t& f) {
     at::assert_no_internal_overlap(self);
@@ -670,7 +671,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
                 ScatterFillInternalKernel<dtype, index_t>()(
@@ -683,7 +684,7 @@ struct ScatterFillBaseKernel {
       const Tensor& self,
       int64_t dim,
       const Tensor& index,
-      Scalar src,
+      const Scalar& src,
       const std::string& method_name,
       const ReduceMultiply& f) {
     at::assert_no_internal_overlap(self);
@@ -718,7 +719,7 @@ struct ScatterFillBaseKernel {
               scalar_t>::type;
 
           auto src_scalar_val = src.to<scalar_t>();
-          auto src_val = *(dtype*)&src_scalar_val;
+          auto src_val = std::bit_cast<dtype>(src_scalar_val);
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(),
               "scatter_fill_base_kernel_reduce_multiply",
