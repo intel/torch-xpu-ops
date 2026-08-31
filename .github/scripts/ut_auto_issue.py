@@ -61,9 +61,6 @@ CLS_REGRESSION = "regression"
 CLS_NEW_CASE = "new_case_failure"
 CLS_PERSISTENT = "persistent"
 CLS_UNKNOWN = "unknown"
-# Not a classification against a baseline like the four above, but it travels
-# through the same marker and report machinery, so it shares the namespace.
-CLS_COLLECTION_ERROR = "collection_error"
 # Only these two are labels; `persistent` and `unknown` are stated in the body
 # instead, because neither "it used to pass" nor "it is a new case" is true.
 CLS_LABELS = {CLS_REGRESSION, CLS_NEW_CASE}
@@ -230,6 +227,10 @@ class Group:
     headline: str = ""
     # Non-empty means: report it, never file it, never mute it.
     quarantine: str = ""
+
+    @property
+    def collection_error(self) -> bool:
+        return any(c.is_collection_error for c in self.cases)
 
     @property
     def sig(self) -> str:
@@ -701,19 +702,27 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
 def classify_case(case: Case, baselines: dict[str, Baseline]) -> str:
     """Per case, against its own category's baseline. Exact set membership.
 
-    A whole-module row is classified before the comparison is attempted,
-    because the comparison cannot see it: the baseline records the module's
-    individual cases and never the module itself, so exact membership would
-    always fall through to CLS_NEW_CASE for a file of any age. Widening the
-    comparison to the module for real cases too would be wrong in the other
-    direction - a dtype parametrization added upstream is a new case even
-    though its module is years old.
+    A whole-module row is compared at module granularity instead, because
+    exact membership cannot see it: pytest only emits the row when collection
+    fails, so a healthy baseline recorded the module's individual cases and
+    never the module itself, and the row would fall through to CLS_NEW_CASE for
+    a file of any age. One level up the question is the same one - did this
+    used to work - and the answer is exact, because the baseline's per-module
+    index is built from the same case sets.
+
+    Module granularity stays confined to these rows. Widening it to real cases
+    would be wrong in the other direction: a dtype parametrization added
+    upstream is a new case even though its module is years old.
     """
-    if case.is_collection_error:
-        return CLS_COLLECTION_ERROR
     baseline = baselines.get(case.category)
     if baseline is None:
         return CLS_UNKNOWN
+    if case.is_collection_error:
+        if baseline.passed_by_module.get(case.module):
+            return CLS_REGRESSION
+        if case.module in baseline.all_by_module:
+            return CLS_PERSISTENT
+        return CLS_NEW_CASE
     if case.line in baseline.passed:
         return CLS_REGRESSION
     if case.line in baseline.failed:
@@ -738,14 +747,18 @@ def new_case_reason(case: Case, baseline: Baseline | None) -> str:
 # count gate in ut_result_check.sh:check_test_cases. Comparing module coverage
 # against the baseline is the only thing here that sees them.
 #
+# The same per-module index is what classifies a collection error in Stage 4:
+# the module row is in neither the baseline's passed nor its failed set, but
+# the module is in passed_by_module, so "did this used to work" is answerable
+# exactly, one level up from the case.
+#
 # Nothing in this stage mutes on its own. What it produces is the blast radius
-# of a collection error - how many cases the file used to pass - which Stage 6
-# renders into the issue. A collection-error issue does mute, like any other:
-# it carries the whole-module row in its `Cases:` block, so the row stops being
-# a new failure on the next run and the job goes green with the file still
-# dark. That trade is deliberate. The alternative, leaving it red forever, ends
-# with nobody reading the nightly at all. The count below is what keeps the
-# muted state honest, so it belongs in the issue body and not only in a log.
+# - how many cases the file used to pass - which Stage 6 renders into the
+# issue. The issue itself does mute, like any other: it carries the whole-
+# module row, so the row stops being a new failure on the next run and the job
+# goes green with the file still dark. That trade is deliberate; leaving it red
+# forever ends with nobody reading the nightly at all. The count is what keeps
+# the muted state honest, so it belongs in the issue body and not only a log.
 # --------------------------------------------------------------------------- #
 
 
@@ -876,7 +889,9 @@ def regression_evidence(sub: SubGroup, current: RunInfo,
     """Show the work behind the "it used to pass" claim.
 
     The claim is exact here: every case in this issue is in its baseline's
-    passed set, by construction of classify_case.
+    passed set, by construction of classify_case. A module row classified as a
+    regression passed at module granularity instead and would make this block
+    false, which is why evidence_block routes those elsewhere.
     """
     rows = [
         "**Regression evidence**",
@@ -991,12 +1006,13 @@ def unknown_evidence(sub: SubGroup) -> str:
 
 def collection_error_evidence(sub: SubGroup,
                               baselines: dict[str, Baseline]) -> str:
-    """What the muted row stands for.
+    """What the muted row stands for, and the work behind its classification.
 
-    This issue's skip row is a whole module, not a case, so acting on it hides
-    an import error and leaves the file unrun. The count of cases the file used
-    to pass is the only measure of how much that is, and once the row is muted
-    and the job is green it is the only place that says it at all.
+    Stands in for the per-classification blocks rather than joining them: those
+    say "these cases passed in the baseline", which is false of a module row.
+    It is the module that used to pass, and the cases it hides that stopped
+    running. The count is the only measure of how much, and once the row is
+    muted and the job is green this is the only place that says it at all.
     """
     rows, dropped = [], 0
     for entry in collection_error_context(sub.group, baselines):
@@ -1005,6 +1021,27 @@ def collection_error_evidence(sub: SubGroup,
             f"| {entry['baseline_passed']} |"
         )
         dropped += entry["baseline_passed"]
+    verdict = {
+        CLS_REGRESSION: (
+            f"Classified as a **regression**: the module's {dropped} case(s) "
+            "passed in the baseline and do not run now. The row itself is in "
+            "neither the baseline's passed nor its failed set - a healthy run "
+            "records a module's cases, never the module - so the comparison "
+            "behind that label is at module granularity."
+        ),
+        CLS_PERSISTENT: (
+            "Classified as **persistent**: the baseline knew this module but "
+            "had nothing passing in it, so the breakage predates the baseline."
+        ),
+        CLS_NEW_CASE: (
+            "Classified as a **new test file**: the baseline had never seen "
+            "this module, so it has not been observed importing here."
+        ),
+        CLS_UNKNOWN: (
+            "**Baseline unavailable**, so whether this module used to import "
+            "could not be determined."
+        ),
+    }[sub.cls]
     return "\n".join([
         "**Whole-module collection error**",
         "",
@@ -1016,6 +1053,8 @@ def collection_error_evidence(sub: SubGroup,
         "| Module | Category | In the baseline | Cases it used to pass |",
         "|---|---|---|---|",
         *rows,
+        "",
+        verdict,
         "",
         "The skip row above is that module, not a test case. Skipping it stops "
         f"the import error being reported as a new failure; the {dropped} "
@@ -1034,12 +1073,17 @@ def evidence_block(sub: SubGroup, current: RunInfo,
             f"Same root cause as {refs}, split out because those cases have a "
             "different baseline classification."
         )
+    if sub.group.collection_error:
+        # Routed on the row's shape, not on its classification: a module row
+        # can be classified any of the four ways, and none of the four blocks
+        # describes one correctly.
+        parts.append(collection_error_evidence(sub, baselines))
+        return "\n" + "\n\n".join(p.rstrip() for p in parts) + "\n\n"
     renderer = {
         CLS_REGRESSION: lambda: regression_evidence(sub, current, baselines),
         CLS_NEW_CASE: lambda: new_case_evidence(sub, baselines),
         CLS_PERSISTENT: lambda: persistent_evidence(sub, baselines),
         CLS_UNKNOWN: lambda: unknown_evidence(sub),
-        CLS_COLLECTION_ERROR: lambda: collection_error_evidence(sub, baselines),
     }[sub.cls]
     parts.append(renderer())
     return "\n" + "\n\n".join(p.rstrip() for p in parts) + "\n\n"
@@ -1070,24 +1114,22 @@ def render_body(sub: SubGroup, chunk: list[Case], part: int, parts_total: int,
     )
 
 
-TITLE_PREFIX = {
-    CLS_REGRESSION: "[Regression] ",
-    CLS_NEW_CASE: "[New Case] ",
-    # Says up front that the skip row is a file that would not import, not a
-    # failing test, because the two need completely different triage.
-    CLS_COLLECTION_ERROR: "[Failed to collect] ",
-}
+TITLE_PREFIX = {CLS_REGRESSION: "[Regression] ", CLS_NEW_CASE: "[New Case] "}
+# Says up front that the skip row is a file that would not import rather than a
+# failing test. Independent of the classification, which a module row shares
+# with ordinary cases, because the two need completely different triage.
+COLLECTION_ERROR_PREFIX = "[Failed to collect] "
 
 
 def render_title(sub: SubGroup, part: int, parts_total: int) -> str:
     suffix = f" (part {part}/{parts_total})" if parts_total > 1 else ""
     prefix = TITLE_PREFIX.get(sub.cls, "")
-    if sub.cls == CLS_COLLECTION_ERROR:
+    if sub.group.collection_error:
         # The subject is the file, not one of its cases, and an import error
         # usually opens with an absolute build path long enough to push the
         # file name past the truncation if it went last.
-        return (f"[Bug Skip]: {prefix}{sub.group.test_file}: "
-                f"{sub.group.headline[:100]}{suffix}")
+        return (f"[Bug Skip]: {COLLECTION_ERROR_PREFIX}{prefix}"
+                f"{sub.group.test_file}: {sub.group.headline[:100]}{suffix}")
     return (
         f"[Bug Skip]: {prefix}"
         f"{sub.group.headline[:120]} in {sub.group.test_file}{suffix}"
