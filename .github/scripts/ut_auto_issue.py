@@ -70,6 +70,10 @@ MAX_CASES_PER_ISSUE = 400
 MAX_ISSUES_PER_RUN = 15
 ABORT_THRESHOLD = 5000
 INFRA_SIGNATURE_RATIO = 0.3
+# A share is only evidence once there is something to take a share of. Below
+# this many new failures a single infra-looking one clears 30% on its own - it
+# does so for any n <= 3 - and the leg would be discarded on one data point.
+INFRA_MIN_CASES = 10
 HEALTH_RATIO = 0.95
 GITHUB_BODY_LIMIT = 65536
 # Headroom below the hard cap for appending to an issue filed on an earlier night.
@@ -385,7 +389,8 @@ def read_lines(path: Path | None) -> list[str]:
 #                                     is truncated and the machine is suspect
 #   H6  new-failure CSV row count     disagrees with new_failure_list.txt, so
 #                                     some failures lost their error message
-#   H7  infra-signature share         above INFRA_SIGNATURE_RATIO: the leg is
+#   H7  infra-signature share         above INFRA_SIGNATURE_RATIO, over at
+#                                     least INFRA_MIN_CASES failures: the leg is
 #                                     infra breakage, not a set of product bugs
 #
 # H2 needs no code of its own - a cancelled or skipped leg uploads no artifact,
@@ -1340,16 +1345,34 @@ def collect_leg(run_id: int, leg: str, names: list[tuple[str, bool]], work: Path
         print(f"note: dropped {dropped} {leg} cases from unhealthy categories")
 
     # H7: a leg where infra signatures dominate is infra breakage, not a set of
-    # product bugs, so none of it is filed.
-    infra = sum(1 for c in kept if is_infra(normalize_error(c.message)))
-    if kept and infra / len(kept) > INFRA_SIGNATURE_RATIO:
+    # product bugs, so none of it is filed. Individually infra-looking cases are
+    # quarantined by build_groups either way; this gate exists only to distrust
+    # the cases around them, which takes a sample big enough to be a share.
+    infra = {c for c in kept if is_infra(normalize_error(c.message))}
+    if len(kept) >= INFRA_MIN_CASES and len(infra) / len(kept) > INFRA_SIGNATURE_RATIO:
         warn(
-            f"{leg}: {infra}/{len(kept)} new failures match the infra denylist "
-            f"(> {INFRA_SIGNATURE_RATIO:.0%}); treating the whole leg as infra "
-            "breakage and filing nothing (H7)"
+            f"{leg}: {len(infra)}/{len(kept)} new failures match the infra "
+            f"denylist (> {INFRA_SIGNATURE_RATIO:.0%}); treating the whole leg "
+            "as infra breakage and filing nothing (H7)"
         )
-        report["skipped_legs"].append({"leg": leg, "reason": "infra signature ratio (H7)"})
+        # Recorded case by case: H7 is the one gate that drops failures without
+        # rendering them anywhere, so without this the report cannot say what
+        # was discarded.
+        report["skipped_legs"].append({
+            "leg": leg,
+            "reason": "infra signature ratio (H7)",
+            "dropped": [
+                {"case": c.line, "infra": c in infra, "error": c.message[:200]}
+                for c in kept
+            ],
+        })
         return []
+    if infra and len(kept) < INFRA_MIN_CASES:
+        print(
+            f"note: {leg} has {len(infra)}/{len(kept)} infra-looking new "
+            f"failures, below the {INFRA_MIN_CASES}-case floor for H7; they are "
+            "still quarantined individually"
+        )
     return kept
 
 
@@ -1676,6 +1699,9 @@ def finish(report: dict, report_dir: Path) -> int:
         lines.append("")
     for skipped in report["skipped_legs"]:
         lines.append(f"- Skipped `{skipped['leg']}`: {skipped['reason']}")
+        for d in skipped.get("dropped", []):
+            mark = "infra" if d["infra"] else "not infra"
+            lines.append(f"  - ({mark}) `{d['case']}` - {d['error'][:100]}")
     for q in report["quarantined"]:
         if q["reason"] == "collection_error":
             lines.append(
