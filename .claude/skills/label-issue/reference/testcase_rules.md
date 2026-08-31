@@ -6,7 +6,7 @@ unit-test parsing entirely.
 ## `test`
 
 The `test` value is one of the `code` values in `categories.test` of
-`../../reference/proposed_labels.json`. Evaluate the codes in the order they are
+`proposed_labels.json`. Evaluate the codes in the order they are
 defined in the JSON, testing each code's `evidence` and `keywords` against
 `lowercase(label + " " + title + " " + body)`.
 

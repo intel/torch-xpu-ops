@@ -189,7 +189,7 @@ Evidence-only (no `pytorch_folder`; owner not pinned, so `type` is inferred and
 Root cause: insufficient information for root causing: no pytorch_folder provided
 and issue evidence is not self-sufficient
 
-Analyzed case: test/xpu/test_ops_xpu.py::TestOpsXPU::test_foo_xpu (case 1 of 3; the other 2 not analyzed).
+Analyzed case: test/xpu/test_ops_xpu.py::TestOpsXPU::test_foo_xpu (case 1 of 3; the other 2 not analyzed)
 
 Trace mode: evidence-only (no pytorch_folder provided).
 
@@ -199,6 +199,11 @@ Trace mode: evidence-only (no pytorch_folder provided).
 | `test` | `test: ut` | Traceback shows a `pytest` frame with no e2e/oob markers. |
 | `module` | `module: infra` | Owning component not identifiable from traceback alone; catch-all. |
 | `priority` | `Medium` | 3 UT cases, AssertionError without crash. |
+
+Test cases (3):
+- test/xpu/test_ops_xpu.py::TestOpsXPU::test_foo_xpu
+- test/xpu/test_ops_xpu.py::TestOpsXPU::test_bar_xpu
+- test/xpu/test_ops_xpu.py::TestOpsXPU::test_baz_xpu
 
 </details>
 ```

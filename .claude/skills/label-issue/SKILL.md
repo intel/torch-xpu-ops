@@ -5,8 +5,8 @@ description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue
 
 # Label Issue
 
-Derive the label set for ONE GitHub issue and write a `label | reason` table to
-disk. This is the fast path: no local test reproduce, no per-axis subagent
+Derive the label set for ONE GitHub issue and write an `axis | value | reason`
+table to disk. This is the fast path: no local test reproduce, no per-axis subagent
 fan-out.
 
 When the issue splits into multiple failure groups, analyze one representative
@@ -23,7 +23,7 @@ label-issue issue_ref=4752 pytorch_folder=~/pytorch
 Extracts the issue, groups its failures, root-causes one representative case per
 group, and writes
 `agent_space/label_issue/intel_torch-xpu-ops_issue_4752/labels.md` — a
-`label | reason` table per group. Analysis-only: nothing is applied to GitHub.
+`axis | value | reason` table per group. Analysis-only: nothing is applied to GitHub.
 
 The skill is **analysis-only**. It never adds labels, closes issues, posts
 comments, or creates issues. Its single artifact is `labels.md`, for a workflow
@@ -57,7 +57,8 @@ stop; it degrades the trace, not the run.
 
 ## Prerequisites
 
-- Authenticated `gh` CLI on PATH (`read:project` scope for project fields).
+- Authenticated `gh` CLI on PATH (ordinary `repo` scope; the native Priority
+  issue field writes with normal issue write access, no `project` scope needed).
 - `pytorch_folder`, when given, exists and is a git checkout. When absent or not
   a checkout, continue in evidence-only mode instead of stopping.
 
@@ -187,7 +188,7 @@ Per-axis specifics:
 
 The `os` / `hw` axes are already decided by `extract-issue` per
 `reference/platform_specific.md` (emitted only when the issue is
-platform-specific); carry `extract.json`'s `os` / `platform` straight through.
+platform-specific); carry `extract.json`'s `os` / `hw` straight through.
 
 #### 3.5 — Dependency
 
@@ -214,7 +215,7 @@ Emit one labels section per analyzed group, in group order, one by one:
 - Head each group section with `## Group <n> — <summary of the group of tests>`
   (a short phrase for what the group's tests share, not just the representative
   case id).
-- Under each head, emit that group's own `label | reason` table decided in
+- Under each head, emit that group's own `axis | value | reason` table decided in
   Step 3 for its representative case, then end the block with a
   `Test cases (<M>):` list enumerating every test case in the group.
 - For any group whose Step 3.3 short-circuited, emit that group's wontfix row
@@ -223,18 +224,6 @@ Emit one labels section per analyzed group, in group order, one by one:
   without the `## Group` head, and omit the unanalyzed-count note.
 
 This is the final step. Report the `labels.md` path; do not apply to GitHub.
-
-### Optional — Apply to GitHub
-
-The skill itself never writes to GitHub. To act on a finished `labels.md`, the
-user can run `scripts/apply_labels.py <labels.md>` (dry run by default; add
-`--apply` to write). It parses the `<summary>` for `<repo>#<id>` and every table
-row, then applies label rows via `gh issue edit --add-label`, the `type` row via
-`gh issue edit --type` (native Type field), the `priority` row to the PyTorchXPU
-project Priority field via GraphQL (tier mapped to `P0`-`P3` through
-`proposed_labels.json`), and posts the full `labels.md` as an issue comment
-(suppress with `--no-comment`). For multi-group issues it dedupes labels,
-collapses `type` to one value, and picks the most urgent priority across groups.
 
 ## Constraints
 

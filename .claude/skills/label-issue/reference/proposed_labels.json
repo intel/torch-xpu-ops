@@ -30,7 +30,7 @@
     ]
   },
   "priority_field": {
-    "description": "intel/torch-xpu-ops PyTorchXPU project 'Priority' field (Fields -> Priority) options. These are set on the project item's Priority field, NOT applied as labels. 'tier' is the canonical name emitted in labels.md; 'option' is the current project field option. 'keywords' are heuristic hints used only when the project Priority field is unset; a human-set Priority is always preserved verbatim. See Step 3.4 (priority) of the label-issue skill for the full decision tree.",
+    "description": "intel org native 'Priority' issue field (org Settings -> Planning -> Issue fields) options. Set on the issue's native Priority field via setIssueFieldValue, NOT applied as a label and NOT a project field. 'tier' is the canonical name emitted in labels.md and is also the native option name; the 'option' P0-P3 values are legacy project names kept for reference only. 'keywords' are heuristic hints used only when Priority is unset; a human-set Priority is always preserved verbatim. See Step 3.4 (priority) of the label-issue skill for the full decision tree.",
     "project": "PyTorchXPU",
     "field": "Priority",
     "values": [

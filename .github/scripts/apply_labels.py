@@ -7,10 +7,21 @@ label-issue skill), then writes to GitHub:
   * label rows (test:, module:, dtype:, symptom, dependency component:, and the
     triage duplicate/wontfix/need_split rows)  -> gh issue edit --add-label
   * the `type` row                             -> gh issue edit --type  (native Type field)
-  * the `priority` row                         -> PyTorchXPU project Priority field (GraphQL)
+  * the `priority` row                         -> native org issue field "Priority" (GraphQL setIssueFieldValue)
   * the full labels.md content                 -> posted as an issue comment
 
+The Priority field is GitHub's new native issue field (org Settings -> Planning
+-> Issue fields), NOT a project field. Its options are the tier names
+(Urgent/High/Medium/Low), so the labels.md tier maps to the option name directly.
+Writing needs only the issue's `viewerCanSetFields` permission (ordinary `repo`
+scope), not the `project` scope.
+
 Dry-run by default: prints exactly what it would do. Pass --apply to write.
+
+For a `need_split` issue, the per-group axes (module, dtype, dependency
+component, symptom, duplicate, and the priority) are NOT applied to the umbrella
+issue -- they belong to the individual sub-issues created after the split. Only
+issue-wide axes (need_split, type, test, os, hw) are applied.
 
 Usage:
   apply_labels.py path/to/labels.md            # dry run
@@ -27,8 +38,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROPOSED = os.path.join(HERE, "..", "reference", "proposed_labels.json")
 
-PROJECT_TITLE = "PyTorchXPU"
-PROJECT_ORG = "intel"
+# Name of the native org-level issue field that holds the priority tier.
+PRIORITY_FIELD_NAME = "Priority"
 
 # Axes that are NOT applied as labels.
 NATIVE_TYPE_AXIS = "type"
@@ -44,23 +55,30 @@ def run(cmd, check=True, capture=True):
         text=True,
     )
     if check and res.returncode != 0:
+        if "INSUFFICIENT_SCOPES" in (res.stderr or ""):
+            sys.stderr.write(
+                "error: gh token is missing a scope required for this write.\n"
+                "  The native Priority issue field needs ordinary write access "
+                "to the issue (the 'repo' scope); re-authenticate with\n"
+                "  gh auth login   (or add the missing scope to your PAT at "
+                "https://github.com/settings/tokens)\n"
+            )
+            sys.exit(1)
         sys.stderr.write(f"command failed: {' '.join(cmd)}\n{res.stderr}\n")
         sys.exit(1)
     return (res.stdout or "").strip()
 
 
-def gql(query, **variables):
-    cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
-    for k, v in variables.items():
-        cmd += ["-f", f"{k}={v}"]
-    return json.loads(run(cmd))
+def load_priority_order():
+    """tier name (e.g. 'Medium') -> urgency rank (0 = most urgent).
 
-
-def load_priority_map():
-    """tier (e.g. 'Medium') -> project option name (e.g. 'P2')."""
+    The native issue field's option names are the tier names themselves, so no
+    tier->option mapping is needed; this only gives an ordering so the most
+    urgent tier can be chosen across a multi-group issue.
+    """
     with open(PROPOSED) as f:
         d = json.load(f)
-    return {v["tier"]: v["option"] for v in d["priority_field"]["values"]}
+    return {v["tier"]: i for i, v in enumerate(d["priority_field"]["values"])}
 
 
 def parse_labels_md(path):
@@ -93,14 +111,25 @@ def parse_labels_md(path):
     return repo, issue_id, rows, text
 
 
-def classify(rows, priority_map):
-    """Split parsed rows into labels, native type, priority option.
+def classify(rows, priority_order):
+    """Split parsed rows into labels, native type, priority tier.
 
     A multi-group issue carries one type/priority row per group, but GitHub's
-    Type and the project's Priority are per-issue. Collapse type to the single
-    distinct value (warn on conflict) and priority to the most urgent across
-    groups (P0 < P1 < P2 < P3).
+    Type and the native Priority issue field are per-issue. Collapse type to the
+    single distinct value (warn on conflict) and priority to the most urgent
+    tier across groups (rank from priority_order, 0 = most urgent).
+
+    When the issue is `need_split`, the per-group axes (module, dtype,
+    dependency component, symptom, duplicate, and the priority) describe the
+    individual sub-issues, not the umbrella issue, so they are dropped here and
+    left for the post-split sub-issues.
     """
+    need_split = any(
+        axis == "triage" and value == "need_split" for axis, value in rows
+    )
+    # axis names (parsed, lowercased) suppressed on a need_split issue
+    split_drop_axes = {"module", "dtype", "dependency component", "symptom"}
+
     labels = []
     types = []
     priorities = []
@@ -111,10 +140,15 @@ def classify(rows, priority_map):
             if value not in types:
                 types.append(value)
         elif axis == PRIORITY_AXIS:
-            opt = priority_map.get(value, value)
-            if opt not in priorities:
-                priorities.append(opt)
+            if need_split:
+                continue
+            if value not in priorities:
+                priorities.append(value)
         else:
+            if need_split and axis in split_drop_axes:
+                continue
+            if need_split and axis == "triage" and value == "duplicate":
+                continue
             # everything else is a label token, applied verbatim
             if value not in seen:
                 seen.add(value)
@@ -126,19 +160,18 @@ def classify(rows, priority_map):
             f"warning: multiple type values {types}; using {native_type}\n"
         )
 
-    priority_option = None
+    priority_tier = None
     if priorities:
-        # most urgent = smallest P-number; unknown options sort last
-        def rank(opt):
-            m = re.match(r"P(\d+)", opt)
-            return int(m.group(1)) if m else 99
-        priority_option = min(priorities, key=rank)
+        # most urgent = smallest rank; unknown tiers sort last
+        priority_tier = min(
+            priorities, key=lambda t: priority_order.get(t, 99)
+        )
         if len(priorities) > 1:
             sys.stderr.write(
                 f"warning: multiple priority values {priorities}; "
-                f"using most urgent {priority_option}\n"
+                f"using most urgent {priority_tier}\n"
             )
-    return labels, native_type, priority_option
+    return labels, native_type, priority_tier
 
 
 def issue_node_id(repo, issue_id):
@@ -160,72 +193,45 @@ def issue_node_id(repo, issue_id):
     return data["data"]["repository"]["issue"]["id"]
 
 
-def resolve_project():
+def resolve_issue_priority_field(org):
+    """Return (field_id, {option_name: option_id}) for the org's Priority field.
+
+    'Priority' is a native org-level issue field (Settings -> Planning -> Issue
+    fields), a single-select whose option names are the tier names.
+    """
     q = """
-    query($org:String!,$query:String!){
+    query($org:String!){
       organization(login:$org){
-        projectsV2(first:10, query:$query){ nodes{ id title } }
-      }
-    }"""
-    cmd = [
-        "gh", "api", "graphql",
-        "-f", f"query={q}",
-        "-F", f"org={PROJECT_ORG}",
-        "-F", f"query={PROJECT_TITLE}",
-    ]
-    nodes = json.loads(run(cmd))["data"]["organization"]["projectsV2"]["nodes"]
-    for n in nodes:
-        if n["title"] == PROJECT_TITLE:
-            return n["id"]
-    sys.stderr.write(f"project {PROJECT_TITLE!r} not found in org {PROJECT_ORG}\n")
-    sys.exit(1)
-
-
-def resolve_priority_field(project_id):
-    q = """
-    query($id:ID!){
-      node(id:$id){
-        ... on ProjectV2 {
-          field(name:"Priority"){
-            ... on ProjectV2SingleSelectField { id options{ id name } }
+        issueFields(first:50){
+          nodes{
+            ... on IssueFieldSingleSelect { id name options{ id name } }
           }
         }
       }
     }"""
-    cmd = ["gh", "api", "graphql", "-f", f"query={q}", "-F", f"id={project_id}"]
-    field = json.loads(run(cmd))["data"]["node"]["field"]
-    return field["id"], {o["name"]: o["id"] for o in field["options"]}
+    cmd = ["gh", "api", "graphql", "-f", f"query={q}", "-F", f"org={org}"]
+    nodes = json.loads(run(cmd))["data"]["organization"]["issueFields"]["nodes"]
+    for n in nodes:
+        if n and n.get("name") == PRIORITY_FIELD_NAME:
+            return n["id"], {o["name"]: o["id"] for o in n["options"]}
+    sys.stderr.write(
+        f"native issue field {PRIORITY_FIELD_NAME!r} not found in org {org}\n"
+    )
+    sys.exit(1)
 
 
-def add_item_to_project(project_id, content_id):
+def set_issue_priority(issue_id, field_id, option_id):
     q = """
-    mutation($proj:ID!,$content:ID!){
-      addProjectV2ItemById(input:{projectId:$proj, contentId:$content}){
-        item{ id }
-      }
+    mutation($issue:ID!,$field:ID!,$opt:ID!){
+      setIssueFieldValue(input:{
+        issueId:$issue,
+        issueFields:[{fieldId:$field, singleSelectOptionId:$opt}]
+      }){ issue{ id } }
     }"""
     cmd = [
         "gh", "api", "graphql",
         "-f", f"query={q}",
-        "-F", f"proj={project_id}",
-        "-F", f"content={content_id}",
-    ]
-    return json.loads(run(cmd))["data"]["addProjectV2ItemById"]["item"]["id"]
-
-
-def set_priority(project_id, item_id, field_id, option_id):
-    q = """
-    mutation($proj:ID!,$item:ID!,$field:ID!,$opt:String!){
-      updateProjectV2ItemFieldValue(input:{
-        projectId:$proj, itemId:$item, fieldId:$field,
-        value:{ singleSelectOptionId:$opt }
-      }){ projectV2Item{ id } }
-    }"""
-    cmd = [
-        "gh", "api", "graphql",
-        "-f", f"query={q}",
-        "-F", f"proj={project_id}",
-        "-F", f"item={item_id}",
+        "-F", f"issue={issue_id}",
         "-F", f"field={field_id}",
         "-F", f"opt={option_id}",
     ]
@@ -241,15 +247,15 @@ def main():
                     help="do not post the labels.md content as an issue comment")
     args = ap.parse_args()
 
-    priority_map = load_priority_map()
+    priority_order = load_priority_order()
     repo, issue_id, rows, full_text = parse_labels_md(args.labels_md)
-    labels, native_type, priority_option = classify(rows, priority_map)
+    labels, native_type, priority_tier = classify(rows, priority_order)
 
     mode = "APPLY" if args.apply else "DRY RUN"
     print(f"[{mode}] {repo}#{issue_id}")
     print(f"  labels     : {labels}")
     print(f"  type       : {native_type}")
-    print(f"  priority   : {priority_option}")
+    print(f"  priority   : {priority_tier}")
     print(f"  comment    : {'no' if args.no_comment else 'yes'} "
           f"({len(full_text)} chars)")
 
@@ -273,20 +279,19 @@ def main():
              "--body", full_text], capture=False)
         print("  posted comment")
 
-    # 3. project priority
-    if priority_option:
-        content_id = issue_node_id(repo, issue_id)
-        project_id = resolve_project()
-        field_id, options = resolve_priority_field(project_id)
-        if priority_option not in options:
+    # 3. native org Priority issue field
+    if priority_tier:
+        org = repo.split("/", 1)[0]
+        node_id = issue_node_id(repo, issue_id)
+        field_id, options = resolve_issue_priority_field(org)
+        if priority_tier not in options:
             sys.stderr.write(
-                f"priority option {priority_option!r} not in project "
+                f"priority tier {priority_tier!r} not in issue field "
                 f"options {list(options)}; skipping priority\n"
             )
         else:
-            item_id = add_item_to_project(project_id, content_id)
-            set_priority(project_id, item_id, field_id, options[priority_option])
-            print(f"  set project Priority = {priority_option}")
+            set_issue_priority(node_id, field_id, options[priority_tier])
+            print(f"  set Priority = {priority_tier}")
 
 
 if __name__ == "__main__":
