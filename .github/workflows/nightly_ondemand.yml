@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,xpu_distributed_bmg,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -80,6 +80,7 @@ jobs:
         id: inputs-check
         run: |
           if [ "${{ github.event_name }}" == "schedule" ];then
+            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
               test_type="build-nightly"
               pytorch="main"
@@ -100,10 +101,12 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             # Weekly also runs the upstream UT scopes
             if [[ "${test_type}" == *"-weekly" ]];then
               ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
+            fi
+            if [[ "${test_type}" == "wheel-weekly" ]];then
+              ut="${ut%]},\"xpu_distributed_bmg\"]"
             fi
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
