@@ -93,9 +93,6 @@ inline std::string getXcclErrorDetailStr(
       onecclGetErrorString(result),
       "', oneCCL version ",
       getVersionString());
-  // The result code alone does not say which argument or stage failed; oneCCL's
-  // own logging records that message here. It is never cleared, so a stale
-  // message can outlive the call that produced it.
   const char* lastError = comm != nullptr ? onecclGetLastError(comm) : nullptr;
   if (lastError != nullptr && *lastError != '\0') {
     detail += c10::str("\nLast error reported by oneCCL: ", lastError);
@@ -103,11 +100,6 @@ inline std::string getXcclErrorDetailStr(
   return detail;
 }
 
-// oneCCL reports failures only through the return code, so an ignored code
-// turns a failed collective into a silent no-op. Every oneCCL call goes through
-// this macro. Pass nullptr for `comm` when the call takes no communicator.
-// The failing call is identified by the source location TORCH_CHECK_WITH
-// already attaches.
 #define C10D_XCCL_CHECK(cmd, comm)                    \
   do {                                                \
     onecclResult_t xcclResult = (cmd);                \
