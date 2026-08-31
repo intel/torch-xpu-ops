@@ -567,7 +567,17 @@ struct InternodeDispatchRdmaSenderKernel {
     // ============== COORDINATOR WG (kRDMASenderCoordinator) ==============
     // Stream every dst node's ready bytes on the channel-pinned QP, overlapping
     // the copy WG's ongoing packing, then publish the per-(src, channel) count.
-    for (int32_t rd = 0; rd < num_rdma_ranks; ++rd) {
+    // Visit remote nodes first (rotated to start right after `my_rdma`) and
+    // handle the local `rd == my_rdma` branch last. The local branch busy-waits
+    // on `copy_done`, which only flips once the copy WG's *entire* token scan
+    // finishes; visiting it first (plain rd = 0..num_rdma_ranks-1 order) makes
+    // whichever rank has my_rdma == 0 stall before issuing any RDMA puts, while
+    // every other rank starts streaming remote data immediately and overlaps
+    // that wait with the copy WG's ongoing packing. That asymmetry -- not the
+    // NIC/PCIe topology -- was the source of the ~1.7x bandwidth gap between
+    // rank0 (my_rdma == 0) and rank1 in the 2-rank test.
+    for (int32_t k = 0; k < num_rdma_ranks; ++k) {
+      const int32_t rd = (my_rdma + 1 + k) % num_rdma_ranks;
       const int32_t cr = channel * num_rdma_ranks + rd;
       const size_t recv_idx = static_cast<size_t>(my_rdma) * num_channels + channel;
       if (rd == my_rdma) {
