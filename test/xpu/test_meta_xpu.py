@@ -28,6 +28,7 @@ from torch.testing._internal.common_device_type import (
     xfail,
 )
 from torch.testing._internal.common_dtype import (
+    complex_types,
     complex_types_and,
     integral_types,
     integral_types_and,
@@ -244,6 +245,168 @@ _test_dispatch_symbolic_meta_outplace_all_strides.__name__ = (
 TestMeta.test_dispatch_symbolic_meta_outplace_all_strides = (
     _test_dispatch_symbolic_meta_outplace_all_strides
 )
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # XPU SDPA with int8/uint8 calls bmm(float_attn_weights, int_values) internally;
+        # meta does not support mixed-dtype bmm.
+        skip(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+        # Copied xfails from upstream after ovverriding the test
+        xfail("_foreach_addcdiv", dtypes=integral_types_and(b8)),
+        xfail("_foreach_addcmul", dtypes=(b8,)),
+        xfail("_foreach_ceil", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_max", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_min", dtypes=complex_types_and(b8)),
+        xfail("_foreach_erf", dtypes=complex_types()),
+        xfail("_foreach_erfc", dtypes=complex_types()),
+        xfail("_foreach_floor", dtypes=complex_types_and(b8)),
+        xfail("_foreach_frac", dtypes=integral_types_and(b8) + complex_types()),
+        xfail("_foreach_lerp", dtypes=integral_types_and(b8)),
+        xfail("_foreach_lgamma", dtypes=complex_types()),
+        xfail("_foreach_max", dtypes=(c128, c64)),
+        xfail("_foreach_maximum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_minimum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_neg", dtypes=(b8,)),
+        xfail("_foreach_norm", dtypes=integral_types_and(b8)),
+        xfail("_foreach_pow", dtypes=(b8,)),
+        xfail("_foreach_round", dtypes=complex_types_and(b8)),
+        xfail("_foreach_sign", dtypes=complex_types()),
+        xfail("_foreach_sub"),
+        xfail("_foreach_trunc", dtypes=complex_types_and(b8)),
+        xfail("empty_strided"),
+        xfail("nn.functional.binary_cross_entropy"),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+@onlyOn(["cuda", "xpu"])
+def _test_dispatch_symbolic_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=True, inplace=False)
+
+
+_test_dispatch_symbolic_meta_outplace.__name__ = "test_dispatch_symbolic_meta_outplace"
+TestMeta.test_dispatch_symbolic_meta_outplace = _test_dispatch_symbolic_meta_outplace
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
+        # because CPU and CUDA do not support int8/uint8 SDPA.
+        skip(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+        # Copied xfails from upstream after ovverriding the test
+        xfail("_foreach_addcmul", dtypes=(b8,)),
+        xfail("_foreach_addcdiv", dtypes=integral_types_and(b8)),
+        xfail("_foreach_ceil", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_max", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_min", dtypes=complex_types_and(b8)),
+        xfail("_foreach_erf", dtypes=complex_types()),
+        xfail("_foreach_erfc", dtypes=complex_types()),
+        xfail("_foreach_floor", dtypes=complex_types_and(b8)),
+        xfail("_foreach_frac", dtypes=integral_types_and(b8) + complex_types()),
+        xfail("_foreach_lerp", dtypes=integral_types_and(b8)),
+        xfail("_foreach_lgamma", dtypes=complex_types()),
+        xfail("_foreach_max", dtypes=(c128, c64)),
+        xfail("_foreach_maximum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_minimum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_norm", dtypes=integral_types_and(b8)),
+        xfail("_foreach_neg", dtypes=(b8,)),
+        xfail("_foreach_pow", dtypes=(b8,)),
+        xfail("_foreach_round", dtypes=complex_types_and(b8)),
+        xfail("_foreach_sign", dtypes=complex_types()),
+        xfail("_foreach_sub"),
+        xfail("_foreach_trunc", dtypes=complex_types_and(b8)),
+        xfail("empty_strided"),
+        xfail("nn.functional.binary_cross_entropy"),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+def _test_dispatch_meta_outplace(self, device, dtype, op):
+    self._run_dispatch_meta_test(device, dtype, op, symbolic_meta=False, inplace=False)
+
+
+_test_dispatch_meta_outplace.__name__ = "test_dispatch_meta_outplace"
+TestMeta.test_dispatch_meta_outplace = _test_dispatch_meta_outplace
+
+_orig_test_meta_outplace = TestMeta.test_meta_outplace
+
+
+@skipIfCrossRef
+@suppress_warnings
+@skipOps(
+    (
+        skip("__rmatmul__", dtypes=[torch.int8, torch.uint8]),  # NotImplementedError
+        skip(
+            "narrow_copy"
+        ),  # NotImplementedError: The operator 'aten::narrow_copy.out'
+        skip(
+            "tensordot", dtypes=[torch.int8, torch.uint8]
+        ),  # "tensordot" not implemented for int8/uint8
+        # oneDNN XPU supports int8/uint8 SDPA but it is not integrated;
+        # because CPU and CUDA do not support int8/uint8 SDPA.
+        xfail(
+            "nn.functional.scaled_dot_product_attention",
+            dtypes=[torch.int8, torch.uint8],
+            device_type="xpu",
+        ),
+        # Copied xfails from upstream after ovverriding the test
+        xfail("_foreach_add"),
+        xfail("_foreach_addcmul", dtypes=(b8,)),
+        xfail("_foreach_addcdiv", dtypes=integral_types_and(b8)),
+        xfail("_foreach_ceil", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_min", dtypes=complex_types_and(b8)),
+        xfail("_foreach_clamp_max", dtypes=complex_types_and(b8)),
+        xfail("_foreach_erf", dtypes=complex_types()),
+        xfail("_foreach_erfc", dtypes=complex_types()),
+        xfail("_foreach_floor", dtypes=complex_types_and(b8)),
+        xfail("_foreach_frac", dtypes=integral_types_and(b8) + complex_types()),
+        xfail("_foreach_lerp", dtypes=integral_types_and(b8)),
+        xfail("_foreach_lgamma", dtypes=complex_types()),
+        xfail("_foreach_max", dtypes=(c128, c64)),
+        xfail("_foreach_maximum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_minimum", dtypes=complex_types_and(b8)),
+        xfail("_foreach_neg", dtypes=(b8,)),
+        xfail("_foreach_norm", dtypes=integral_types_and(b8)),
+        xfail("_foreach_pow", dtypes=(b8,)),
+        xfail("_foreach_round", dtypes=complex_types_and(b8)),
+        xfail("_foreach_sign", dtypes=complex_types()),
+        xfail("_foreach_sub"),
+        xfail("_foreach_trunc", dtypes=complex_types_and(b8)),
+        skip("to"),
+    )
+)
+@ops(itertools.chain(op_db, foreach_op_db))
+def _test_meta_outplace(self, device, dtype, op):
+    _orig_test_meta_outplace(self, device, dtype, op)
+
+
+_test_meta_outplace.__name__ = "test_meta_outplace"
+TestMeta.test_meta_outplace = _test_meta_outplace
 
 
 # Removed @onlyCUDA; replaced with @onlyOn(["cuda", "xpu"]).
