@@ -72,7 +72,7 @@ def _load(lib):
 
 
 def parse_dtype():
-    name = os.environ.get("DTYPE", "float32").lower()
+    name = os.environ.get("DTYPE", "float16").lower()
     if name in ("bf16", "bfloat16"):
         return torch.bfloat16
     if name in ("fp16", "half", "float16"):

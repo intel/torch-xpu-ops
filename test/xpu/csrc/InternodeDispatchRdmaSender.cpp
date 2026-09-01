@@ -178,6 +178,31 @@ inline void copy_bytes_vectorized(uint8_t* dst, const uint8_t* src, size_t n, in
   }
 }
 
+inline void copy_bytes_vectorized_dual(
+    uint8_t* dst0, uint8_t* dst1, const uint8_t* src, size_t n, int lane_id) {
+  if (n == 0) {
+    return;
+  }
+  const size_t num_int4 = n / sizeof(int4_t);
+  auto* dst0_int4 = reinterpret_cast<int4_t*>(dst0);
+  auto* dst1_int4 = reinterpret_cast<int4_t*>(dst1);
+  auto* src_int4 = reinterpret_cast<const int4_t*>(src);
+  for (size_t i = static_cast<size_t>(lane_id); i < num_int4; i += 32) {
+    const int4_t value = ld_nc_global_v(src_int4 + i);
+    st_na_global_v(dst0_int4 + i, value);
+    st_na_global_v(dst1_int4 + i, value);
+  }
+  const size_t tail_bytes = n % sizeof(int4_t);
+  if (tail_bytes > 0 && lane_id == 0) {
+    const size_t base = num_int4 * sizeof(int4_t);
+    for (size_t b = 0; b < tail_bytes; ++b) {
+      const uint8_t value = src[base + b];
+      dst0[base + b] = value;
+      dst1[base + b] = value;
+    }
+  }
+}
+
 // Whole-WORK-GROUP-cooperative vectorized copy: splits [src, src+n) into
 // num_sgs contiguous slices (one per sub-group in the work-group), then each
 // sub-group lane-cooperatively copies its own slice via the 32-lane
@@ -366,13 +391,9 @@ uint8_t* ensure_symmetric(size_t bytes) {
   return static_cast<uint8_t*>(state.symm);
 }
 
-// DeepEP kRDMASender / kRDMASenderCoordinator split: each channel is a PAIR of
-// work-groups (channel == gid / 2). The even WG (role 0) COPIES this channel's
-// tokens into per-(channel, dst node) staging and advances a sliding-window
-// ready_tail; the odd WG (role 1) is the COORDINATOR that streams each dst
-// node's ready bytes over the channel-pinned QP and publishes the count. The
-// two WGs of a channel must run concurrently (the coordinator spins on the
-// copy WG's ready_tail / copy_done), same residency requirement as DeepEP.
+// Each channel uses one copy work-group plus one coordinator. The copy WG
+// advances the sliding-window ready_tail while the coordinator streams each
+// destination's ready bytes over the channel-pinned QP.
 struct InternodeDispatchRdmaSenderKernel {
   const uint8_t* x_bytes;
   const float* x_scales_ptr; // nullable
@@ -475,8 +496,13 @@ struct InternodeDispatchRdmaSenderKernel {
     };
     auto load_ready_tail = [&](int32_t cr) {
       sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
-                       sycl::access::address_space::global_space> ref(ready_tail[cr]);
-      return ref.load(sycl::memory_order::acquire);
+                       sycl::access::address_space::global_space> tail_ref(ready_tail[cr]);
+      return tail_ref.load(sycl::memory_order::acquire);
+    };
+    auto load_send_count = [&](int32_t cr) {
+      sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                       sycl::access::address_space::global_space> count_ref(send_count[cr]);
+      return count_ref.load(sycl::memory_order::acquire);
     };
     auto load_copy_done = [&]() {
       sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
@@ -497,7 +523,88 @@ struct InternodeDispatchRdmaSenderKernel {
       // coordinator WG can stream it while we keep packing later tokens.
       for (int32_t t = ts + sg_id; t < te; t += num_sgs) {
         const bool* in_rank_row = is_token_in_rank_ptr + static_cast<size_t>(t) * num_ranks;
-        for (int32_t rd = 0; rd < num_rdma_ranks; ++rd) {
+        if (num_rdma_ranks == 2) {
+          int32_t bits[2] = {0, 0};
+          for (int32_t rd = 0; rd < 2; ++rd) {
+            for (int32_t j = 0; j < num_max_nvl_peers; ++j) {
+              if (in_rank_row[rd * num_max_nvl_peers + j]) {
+                bits[rd] |= (1 << j);
+              }
+            }
+          }
+          // cap_ch >= n_per guarantees neither destination allocation can
+          // overflow, so the fallback path cannot double-allocate a slot.
+          if (bits[0] != 0 && bits[1] != 0 && cap_ch >= n_per) {
+            int32_t slots[2] = {0, 0};
+            if (lane_id == 0) {
+              for (int32_t rd = 0; rd < 2; ++rd) {
+                const int32_t cr = channel * num_rdma_ranks + rd;
+                sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                                 sycl::access::address_space::global_space> ref(send_count[cr]);
+                slots[rd] = ref.fetch_add(1);
+              }
+            }
+            slots[0] = sycl::group_broadcast(sg, slots[0], 0);
+            slots[1] = sycl::group_broadcast(sg, slots[1], 0);
+            if (slots[0] < cap_ch && slots[1] < cap_ch) {
+              uint8_t* payloads[2];
+              for (int32_t rd = 0; rd < 2; ++rd) {
+                uint8_t* base = rd == my_rdma
+                    ? recv_data +
+                        (static_cast<size_t>(my_rdma) * num_channels + channel) * channel_stride
+                    : send_data +
+                        (static_cast<size_t>(rd) * num_channels + channel) * channel_stride;
+                payloads[rd] = base + static_cast<size_t>(slots[rd]) * nbpt;
+              }
+              copy_bytes_vectorized_dual(
+                  payloads[0] + pl.hidden_off,
+                  payloads[1] + pl.hidden_off,
+                  x_bytes + static_cast<size_t>(t) * hidden_bytes,
+                  hidden_bytes,
+                  lane_id);
+              if (num_scales > 0) {
+                copy_bytes_vectorized_dual(
+                    payloads[0] + pl.scales_off,
+                    payloads[1] + pl.scales_off,
+                    reinterpret_cast<const uint8_t*>(
+                        x_scales_ptr + static_cast<size_t>(t) * num_scales),
+                    scales_bytes,
+                    lane_id);
+              }
+              if (lane_id == 0) {
+                for (int32_t rd = 0; rd < 2; ++rd) {
+                  auto* meta = reinterpret_cast<SourceMeta*>(payloads[rd] + pl.src_meta_off);
+                  meta->src_rdma_rank = my_rdma;
+                  meta->is_token_in_nvl_rank_bits = bits[rd];
+                }
+              }
+              copy_bytes_vectorized_dual(
+                  payloads[0] + pl.topk_idx_off,
+                  payloads[1] + pl.topk_idx_off,
+                  reinterpret_cast<const uint8_t*>(
+                      topk_idx_ptr + static_cast<size_t>(t) * num_topk),
+                  topk_idx_bytes,
+                  lane_id);
+              copy_bytes_vectorized_dual(
+                  payloads[0] + pl.topk_weights_off,
+                  payloads[1] + pl.topk_weights_off,
+                  reinterpret_cast<const uint8_t*>(
+                      topk_weights_ptr + static_cast<size_t>(t) * num_topk),
+                  topk_weights_bytes,
+                  lane_id);
+              sycl::group_barrier(sg);
+              sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
+              if (lane_id == 0) {
+                const int32_t remote_rd = 1 - my_rdma;
+                mark_slot_ready(
+                    channel * num_rdma_ranks + remote_rd, slots[remote_rd]);
+              }
+            }
+            continue;
+          }
+        }
+        for (int32_t k = 0; k < num_rdma_ranks; ++k) {
+          const int32_t rd = (my_rdma + 1 + k) % num_rdma_ranks;
           int32_t bits = 0;
           for (int32_t j = 0; j < num_max_nvl_peers; ++j) {
             if (in_rank_row[rd * num_max_nvl_peers + j]) {
@@ -548,7 +655,7 @@ struct InternodeDispatchRdmaSenderKernel {
               topk_weights_bytes);
           sycl::group_barrier(sg);
           sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::device);
-          if (lane_id == 0) {
+          if (lane_id == 0 && rd != my_rdma) {
             mark_slot_ready(cr, slot);
           }
         }
@@ -587,7 +694,7 @@ struct InternodeDispatchRdmaSenderKernel {
           while (!load_copy_done()) {
           }
           sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::device);
-          int32_t count = load_ready_tail(cr);
+          int32_t count = load_send_count(cr);
           if (count > cap_ch) {
             count = cap_ch;
           }
@@ -612,14 +719,18 @@ struct InternodeDispatchRdmaSenderKernel {
         size_t ready_bytes = sent_off;
         if (lid == 0) {
           while (true) {
+            const bool copy_finished = load_copy_done();
             const int32_t ready_slots = load_ready_tail(cr);
             const size_t rb = std::min(static_cast<size_t>(ready_slots) * nbpt, team_end);
-            if (rb > sent_off) {
+            // Avoid issuing one small put whenever a single token becomes
+            // ready. Wait for a full transfer chunk while packing is still in
+            // progress, then flush the remaining tail once copying finishes.
+            if (rb >= sent_off + chunk_bytes || (copy_finished && rb > sent_off)) {
               decision = 1;
               ready_bytes = rb;
               break;
             }
-            if (load_copy_done()) {
+            if (copy_finished) {
               decision = 2;
               break;
             }
@@ -907,8 +1018,8 @@ at::Tensor internode_dispatch_rdma_sender(
   auto ready_tail_tensor = at::zeros({cr_slots}, int_opts);
   auto copy_done_tensor = at::zeros({num_channels}, int_opts);
 
-  // Each channel == 2 concurrent WGs (copy + coordinator); the coordinator
-  // spins on the copy WG, so both must be resident at once.
+  // Each channel has one copy WG plus one coordinator; the coordinator spins
+  // on the copy WG, so both must be resident at once.
   const int64_t total_wgs = num_channels * 2;
   {
     const int64_t max_cu = static_cast<int64_t>(
