@@ -32,11 +32,11 @@ struct ParallelReplicationPad1dKernelFunctor {
     auto output_id = item.get_global_id(2);
     if (output_id < output_plane_size_) {
       int64_t output_x = output_id % output_.size(2);
-      int64_t i_start_x = sycl::max(int64_t(0), -pad_left_);
-      int64_t o_start_x = sycl::max(int64_t(0), pad_left_);
+      int64_t i_start_x = std::max(int64_t(0), -pad_left_);
+      int64_t o_start_x = std::max(int64_t(0), pad_left_);
       int64_t input_x =
-          sycl::min(
-              sycl::max(pad_left_, output_x), input_.size(2) + pad_left_ - 1) -
+          std::min(
+              std::max(pad_left_, output_x), input_.size(2) + pad_left_ - 1) -
           o_start_x + i_start_x;
 
       f_(input_,
@@ -156,17 +156,17 @@ struct ParallelReplicationPad2dKernelFunctor {
       const int output_x = output_id / output_.size(3); // height
       const int output_y = output_id % output_.size(3); // width
 
-      const int iStartX = sycl::max(0, static_cast<int>(-padT_));
-      const int iStartY = sycl::max(0, static_cast<int>(-padL_));
-      const int oStartX = sycl::max(0, static_cast<int>(padT_));
-      const int oStartY = sycl::max(0, static_cast<int>(padL_));
+      const int iStartX = std::max(0, static_cast<int>(-padT_));
+      const int iStartY = std::max(0, static_cast<int>(-padL_));
+      const int oStartX = std::max(0, static_cast<int>(padT_));
+      const int oStartY = std::max(0, static_cast<int>(padL_));
 
-      const int input_x = sycl::min(
-                              sycl::max(static_cast<int>(padT_), output_x),
+      const int input_x = std::min(
+                              std::max(static_cast<int>(padT_), output_x),
                               static_cast<int>(input_.size(2) + padT_ - 1)) -
           oStartX + iStartX;
-      const int input_y = sycl::min(
-                              sycl::max(static_cast<int>(padL_), output_y),
+      const int input_y = std::min(
+                              std::max(static_cast<int>(padL_), output_y),
                               static_cast<int>(input_.size(3) + padL_ - 1)) -
           oStartY + iStartY;
 
@@ -277,24 +277,24 @@ struct ParallelReplicationPad3dKernelFunctor {
       int64_t output_y = (output_id / output_.size(4)) % output_.size(3);
       int64_t output_z = output_id / (output_.size(3) * output_.size(4));
 
-      int64_t i_start_x = sycl::max(int64_t(0), -pad_left_);
-      int64_t i_start_y = sycl::max(int64_t(0), -pad_top_);
-      int64_t i_start_z = sycl::max(int64_t(0), -pad_front_);
-      int64_t o_start_x = sycl::max(int64_t(0), pad_left_);
-      int64_t o_start_y = sycl::max(int64_t(0), pad_top_);
-      int64_t o_start_z = sycl::max(int64_t(0), pad_front_);
+      int64_t i_start_x = std::max(int64_t(0), -pad_left_);
+      int64_t i_start_y = std::max(int64_t(0), -pad_top_);
+      int64_t i_start_z = std::max(int64_t(0), -pad_front_);
+      int64_t o_start_x = std::max(int64_t(0), pad_left_);
+      int64_t o_start_y = std::max(int64_t(0), pad_top_);
+      int64_t o_start_z = std::max(int64_t(0), pad_front_);
 
       int64_t input_x =
-          sycl::min(
-              sycl::max(pad_left_, output_x), input_.size(4) + pad_left_ - 1) -
+          std::min(
+              std::max(pad_left_, output_x), input_.size(4) + pad_left_ - 1) -
           o_start_x + i_start_x;
       int64_t input_y =
-          sycl::min(
-              sycl::max(pad_top_, output_y), input_.size(3) + pad_top_ - 1) -
+          std::min(
+              std::max(pad_top_, output_y), input_.size(3) + pad_top_ - 1) -
           o_start_y + i_start_y;
-      int64_t input_z = sycl::min(
-                            sycl::max(pad_front_, output_z),
-                            input_.size(2) + pad_front_ - 1) -
+      int64_t input_z =
+          std::min(
+              std::max(pad_front_, output_z), input_.size(2) + pad_front_ - 1) -
           o_start_z + i_start_z;
 
       f_(input_,

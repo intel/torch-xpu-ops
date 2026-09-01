@@ -39,14 +39,14 @@ struct AvgPool2dKernelFunctor {
       int hstart = ph * stride_h_ - pad_h_;
       int wstart = pw * stride_w_ - pad_w_;
       int hend =
-          sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
+          std::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
       int wend =
-          sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
+          std::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
       const int pool_size = (hend - hstart) * (wend - wstart);
-      hstart = sycl::max(hstart, 0);
-      wstart = sycl::max(wstart, 0);
-      hend = sycl::min(hend, static_cast<int>(height_));
-      wend = sycl::min(wend, static_cast<int>(width_));
+      hstart = std::max(hstart, 0);
+      wstart = std::max(wstart, 0);
+      hend = std::min(hend, static_cast<int>(height_));
+      wend = std::min(wend, static_cast<int>(width_));
 
       if (hstart >= hend || wstart >= wend) {
         top_data_[index] = scalar_t(0);
@@ -142,14 +142,14 @@ struct AvgPool2dChannelsLastKernelFunctor {
       int hstart = ph * stride_h_ - pad_h_;
       int wstart = pw * stride_w_ - pad_w_;
       int hend =
-          sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
+          std::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
       int wend =
-          sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
+          std::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
       const int pool_size = (hend - hstart) * (wend - wstart);
-      hstart = sycl::max(hstart, 0);
-      wstart = sycl::max(wstart, 0);
-      hend = sycl::min(hend, static_cast<int>(height_));
-      wend = sycl::min(wend, static_cast<int>(width_));
+      hstart = std::max(hstart, 0);
+      wstart = std::max(wstart, 0);
+      hend = std::min(hend, static_cast<int>(height_));
+      wend = std::min(wend, static_cast<int>(width_));
 
       if (hstart >= hend || wstart >= wend) {
         top_data_[index] = scalar_t(0);
@@ -338,9 +338,9 @@ struct AvgPool2dChannelsLastBackwardKernelFunctor {
       const int h = (index / channels_ / width_) % height_ + pad_h_;
       const int n = index / channels_ / width_ / height_;
       const int phstart = (h < kernel_h_) ? 0 : (h - kernel_h_) / stride_h_ + 1;
-      const int phend = sycl::min(h / stride_h_ + 1, pooled_height_);
+      const int phend = std::min(h / stride_h_ + 1, pooled_height_);
       const int pwstart = (w < kernel_w_) ? 0 : (w - kernel_w_) / stride_w_ + 1;
-      const int pwend = sycl::min(w / stride_w_ + 1, pooled_width_);
+      const int pwend = std::min(w / stride_w_ + 1, pooled_width_);
       accscalar_t gradient = accscalar_t(0);
       const scalar_t* const top_slice =
           top_data_ + n * channels_ * pooled_height_ * pooled_width_ + c;
@@ -350,14 +350,14 @@ struct AvgPool2dChannelsLastBackwardKernelFunctor {
           int hstart = ph * stride_h_ - pad_h_;
           int wstart = pw * stride_w_ - pad_w_;
           int hend =
-              sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
+              std::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
           int wend =
-              sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
+              std::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
           int pool_size = (hend - hstart) * (wend - wstart);
-          hstart = sycl::max(hstart, 0);
-          wstart = sycl::max(wstart, 0);
-          hend = sycl::min(hend, static_cast<int>(height_));
-          wend = sycl::min(wend, static_cast<int>(width_));
+          hstart = std::max(hstart, 0);
+          wstart = std::max(wstart, 0);
+          hend = std::min(hend, static_cast<int>(height_));
+          wend = std::min(wend, static_cast<int>(width_));
           if (hstart >= hend || wstart >= wend) {
             continue;
           }
@@ -445,9 +445,9 @@ struct AvgPool2dBackwarKernelFunctor {
       const int c = (index / width_ / height_) % channels_;
       const int n = index / width_ / height_ / channels_;
       const int phstart = (h < kernel_h_) ? 0 : (h - kernel_h_) / stride_h_ + 1;
-      const int phend = sycl::min(h / stride_h_ + 1, pooled_height_);
+      const int phend = std::min(h / stride_h_ + 1, pooled_height_);
       const int pwstart = (w < kernel_w_) ? 0 : (w - kernel_w_) / stride_w_ + 1;
-      const int pwend = sycl::min(w / stride_w_ + 1, pooled_width_);
+      const int pwend = std::min(w / stride_w_ + 1, pooled_width_);
       accscalar_t gradient = accscalar_t(0);
       const scalar_t* const top_data_slice =
           top_data_ + (n * channels_ + c) * pooled_height_ * pooled_width_;
@@ -457,14 +457,14 @@ struct AvgPool2dBackwarKernelFunctor {
           int hstart = ph * stride_h_ - pad_h_;
           int wstart = pw * stride_w_ - pad_w_;
           int hend =
-              sycl::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
+              std::min(hstart + kernel_h_, static_cast<int>(height_ + pad_h_));
           int wend =
-              sycl::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
+              std::min(wstart + kernel_w_, static_cast<int>(width_ + pad_w_));
           int pool_size = (hend - hstart) * (wend - wstart);
-          hstart = sycl::max(hstart, 0);
-          wstart = sycl::max(wstart, 0);
-          hend = sycl::min(hend, static_cast<int>(height_));
-          wend = sycl::min(wend, static_cast<int>(width_));
+          hstart = std::max(hstart, 0);
+          wstart = std::max(wstart, 0);
+          hend = std::min(hend, static_cast<int>(height_));
+          wend = std::min(wend, static_cast<int>(width_));
           if (hstart >= hend || wstart >= wend) {
             continue;
           }
