@@ -119,6 +119,14 @@ local result is `confirmed` or `related-failure`; do not silently omit a difficu
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 
+Use `mergedAt`, not a generic closed state, to determine whether an upstream PR
+merged. An open or unmerged PR may justify `needs-xpu-fix` only when the evidence
+independently establishes a defect in the current XPU implementation whose fix
+does not depend on that PR landing. If the XPU parity requirement exists only
+after the proposed upstream behavior lands, use `track-upstream` and emit no
+payload. Treat a closed, unmerged proposal with no independent current XPU defect
+as `non-issue`.
+
 Only `needs-xpu-fix` without a reusable canonical tracker may carry a new issue
 payload. When an existing `intel/torch-xpu-ops` issue covers the work, record it
 as `canonical_tracker` and do not create a payload or comment on the tracker. In

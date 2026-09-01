@@ -462,6 +462,12 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
+            Use mergedAt, not a generic closed state, to decide whether an upstream
+            PR merged. An open or unmerged PR is publishable only when the evidence
+            independently establishes a defect in the current XPU implementation
+            whose fix does not depend on that PR landing. If the parity requirement
+            exists only after the proposed behavior lands, use track-upstream and
+            do not include a payload.
             If an existing intel/torch-xpu-ops tracker covers the same work,
             record it as `canonical_tracker`; do not create a payload or comment
             on it.
