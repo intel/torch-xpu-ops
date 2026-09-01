@@ -25,7 +25,7 @@ Judge `platform_specific` from the title, labels, and description text alone
 4. Two platforms are contrasted (phrasing such as "passed on ..., failed on
    ...", "... passes, ... fails").
 
-Otherwise `platform_specific = false`, and both `os` and `platform` are `""` —
+Otherwise `platform_specific = false`, and both `os` and `hw` are `""` —
 stop here.
 
 Case 4 is the strongest signal; when two platforms disagree, the FAILING one is
@@ -44,7 +44,7 @@ dimension. Determine it only from the text that made the issue OS-specific
 Entries are ordered so the more specific OS is checked first, so file order is
 authoritative.
 
-## Step 3 — `platform` (only when platform-specific)
+## Step 3 — `hw` (only when platform-specific)
 
 A hardware `code` from `categories.hw`, or `""` when hardware is not the specific
 dimension. Stop at the first hit:

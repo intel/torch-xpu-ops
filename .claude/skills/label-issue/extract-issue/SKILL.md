@@ -1,6 +1,6 @@
 ---
 name: extract-issue
-description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test cases, traceback, reproduce steps, platform, and PyTorchXPU project fields for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
+description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test cases, traceback, reproduce steps, platform, and the native Priority field for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
 ---
 
 # Extract Issue Info
@@ -20,8 +20,9 @@ one issue per invocation.
 
 ## Prerequisites
 
-Authenticated `gh` CLI on `PATH`, with `read:project` scope for the GraphQL
-project fields. `gh`, plus `ls`/`cat` for the benchmark model lists, are the only
+Authenticated `gh` CLI on `PATH` with ordinary `repo` scope (enough to read the
+issue, its native Type, and its native Priority field; no `project` scope is
+needed). `gh`, plus `ls`/`cat` for the benchmark model lists, are the only
 commands used.
 
 ## Inputs
@@ -56,30 +57,31 @@ Non-zero exit, or empty/non-JSON output, is a **hard-stop**; `Not Found` in the
 error means the issue does not exist. A `pull_request` key in the response is the
 PR rejection from Step 1.
 
-Then fetch the native issue type, the native `Priority` issue field, and the
-PyTorchXPU project fields:
+Then fetch the native issue type:
+
+```bash
+gh api graphql -f query='
+query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner:$owner, name:$name) {
+    issue(number:$number) { issueType { name } }
+  }
+}' -F owner=<owner> -F name=<repo> -F number=<number>
+```
+
+Separately, best-effort, fetch the native `Priority` issue field. Keep this in
+its OWN call: `issueFieldValues` is recent GitHub preview surface and may fail to
+parse (some issue-field previews need a `GraphQL-Features` header that
+`gh api graphql` does not send by default). Isolating it means a parse failure
+blanks only `priority`, never the verified `issueType` above.
 
 ```bash
 gh api graphql -f query='
 query($owner:String!, $name:String!, $number:Int!) {
   repository(owner:$owner, name:$name) {
     issue(number:$number) {
-      issueType { name }
       issueFieldValues(first: 30) {
         nodes {
           ... on IssueFieldSingleSelectValue { name field { ... on IssueFieldCommon { name } } }
-        }
-      }
-      projectItems(first: 10) {
-        nodes {
-          project { title }
-          fieldValues(first: 30) {
-            nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } }
-              ... on ProjectV2ItemFieldTextValue      { text field { ... on ProjectV2FieldCommon { name } } }
-              ... on ProjectV2ItemFieldNumberValue    { number field { ... on ProjectV2FieldCommon { name } } }
-            }
-          }
         }
       }
     }
@@ -89,17 +91,13 @@ query($owner:String!, $name:String!, $number:Int!) {
 
 `priority` comes from the issue's native org-level `Priority` issue field
 (Settings -> Planning -> Issue fields) read from `issueFieldValues`. It is NOT a
-project field: do NOT read `Priority` from the PyTorchXPU project. Take the
-single-select value whose field `name` is `Priority` (the tier name, e.g.
-`High`), or `""`.
+project field: do NOT read `Priority` from any project. Take the single-select
+value whose field `name` is `Priority` (the tier name, e.g. `High`), or `""`.
+Do not read any PyTorchXPU project fields; they are not part of the extraction.
 
-From the project titled `PyTorchXPU`, read only the `pytorchxpu_*` fields,
-mapping by field name: `Status`, `Estimate`, `Depending`, and `Short Comments`
-to the matching `pytorchxpu_*` fields.
-
-This fetch is **best-effort**. On any failure, or for a repo/org without the
-field or project, set `issue_type`, `priority`, and every `pytorchxpu_*` field to
-`""` and continue. That is not a hard-stop.
+Both fetches are **best-effort**. On any failure, or for a repo/org without the
+native field, set the affected field (`issue_type` and/or `priority`) to `""` and
+continue. That is not a hard-stop.
 
 ### Step 3 - Classify
 
@@ -136,8 +134,7 @@ always yields `""`.
 | milestone | gh REST | Milestone title, or "". |
 | summary | gh REST | The `title`, verbatim. |
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
-| pytorchxpu_status / _estimate / _depending / _short_comments | gh GraphQL | Project fields, or "". |
-| priority | gh GraphQL / labels | The native org-level `Priority` issue field (from `issueFieldValues`) verbatim, else a human-set priority label from `categories.priority` of `../reference/proposed_labels.json`. NOT the PyTorchXPU project field. `""` when neither is set — the parent decides `priority` itself when blank. Never inferred from severity text. |
+| priority | gh GraphQL | The native org-level `Priority` issue field (from `issueFieldValues`), whose options are defined in `priority_field` of `../reference/proposed_labels.json`. NOT a label and NOT a project field. `""` when unset — the parent decides `priority` itself when blank. Never inferred from severity text. |
 | os | you | An `os` code from `categories.os` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
 | hw | you | A `hw` code from `categories.hw` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
 | platform_specific | you | `true`/`false`, derived per [../reference/platform_specific.md](../reference/platform_specific.md). Judged from the text; never probe local hardware. |
@@ -153,10 +150,10 @@ always yields `""`.
 
 Fields sourced from `gh REST` or `gh GraphQL` are copied from that one response.
 Do not re-derive `issue_type` from the title text, the body, or the labels: a
-blank Type field means `""`. `priority`, `dependency`, and `module` are copied
-from the native `Priority` issue field (priority only) or a human-set label; when no
-such field/label exists they are `""` and the parent decides them itself (e.g.
-`priority` in Step 8 of the label-issue skill), so an invented value would
+blank Type field means `""`. `priority` is copied from the native `Priority`
+issue field only; `dependency` and `module` are copied from a human-set label.
+When no such field/label exists they are `""` and the parent decides them itself
+(e.g. `priority` in Step 8 of the label-issue skill), so an invented value would
 suppress that.
 
 ## Authoritative-source fields
@@ -190,5 +187,6 @@ field beats a guess.
 - `gh` missing or unauthenticated.
 - Fetch failure: 404, network error, empty or non-JSON response.
 
-Normal degraded outcomes, NOT hard stops: a failed project/GraphQL fetch, a
-missing `pytorch_folder`, unavailable benchmark model lists, and any `""` axis.
+Normal degraded outcomes, NOT hard stops: a failed GraphQL fetch (native Type or
+Priority), a missing `pytorch_folder`, unavailable benchmark model lists, and any
+`""` axis.

@@ -67,8 +67,11 @@ still describes the whole group, not that one case.
 
 The `value` column is the token a workflow applies verbatim: a label name for
 label axes (with its `type:` / `module:` / etc. prefix), or the bare enum value
-for the native `type` (GitHub Type) and `priority` (project Priority) fields.
-Emit each value exactly as it appears in `proposed_labels.json`.
+for the native `type` (GitHub Type) and `priority` (native org Priority issue
+field) fields.
+Emit each value exactly as it appears in `proposed_labels.json`. (Exception: on a
+`need_split` issue a consumer applies only the issue-wide axes to the umbrella
+issue — see the need_split suppression policy below.)
 
 ## Axis sources
 
@@ -78,7 +81,7 @@ locations — never hard-code them:
 | Row | JSON source | Emitted as |
 |---|---|---|
 | `type` | `issue_type_field.values[].name` | native Type (not a label) |
-| `priority` | `priority_field.values[].tier` | project Priority (not a label) |
+| `priority` | `priority_field.values[].tier` | native org Priority issue field (not a label) |
 | `test` | `categories.test` | label |
 | `module` | `categories.module` | label |
 | `os` / `hw` | `categories.os` / `categories.hw` | label |
@@ -119,6 +122,18 @@ Each appears as a single line above the table, only when its condition holds:
 Omitting a row means the axis produced no value — not that its step was skipped
 (Step 3.5 must still have run to conclude `null`/`none`). Do not add any prose
 explaining which rows were omitted.
+
+### need_split suppression policy
+
+When the `need_split` row is present, the per-group axes describe the individual
+sub-issues that will be created by the split, not the umbrella issue. A consumer
+applying labels.md to the umbrella issue (e.g. `apply_labels.py`) therefore
+applies ONLY the issue-wide axes — `need_split`, `type`, `test`, `os`, `hw` — and
+suppresses the per-group axes `module`, `dtype`, `dependency component`,
+`symptom`, `duplicate`, `wontfix`, and `priority`. Those carry over to the
+sub-issues once the split happens. The artifact still emits every row for the
+human reader and for the sub-issues; the suppression is a write-time policy, not
+a reason to drop rows from labels.md.
 
 ## Reasons
 

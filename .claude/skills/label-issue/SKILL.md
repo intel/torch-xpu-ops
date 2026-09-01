@@ -1,6 +1,6 @@
 ---
 name: label-issue
-description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue (or any repo) without a local test reproduce or per-axis subagent fan-out. Use when you want a label set for an issue given its number or URL, or when an issue reports multiple failure groups and you want one labels table per group, with an optional pytorch_folder for root-cause tracing. Extracts issue metadata via the extract-issue subskill, groups the reported failures, then root-causes and labels one representative case per group, emitting a labels table for each group one by one. Every axis (type, test, module, priority, dtype, symptom, dependency, os, hw, and the triage duplicate/wontfix/need_split labels) is derived from the label definitions, evidence, and keywords in reference/proposed_labels.json; it never hard-codes label data the JSON already carries. Emits a markdown labels table under agent_space/label_issue/ and never writes to GitHub."
+description: "Propose GitHub issue labels for a single intel/torch-xpu-ops issue (or any repo) given an issue number or URL, with an optional pytorch_folder for root-cause tracing. Groups multi-failure issues and emits one axis|value|reason labels table per group covering type, test, module, priority, dtype, symptom, dependency, os, hw, and duplicate/wontfix/need_split. Analysis-only: writes labels.md under agent_space/label_issue/ and never edits GitHub."
 ---
 
 # Label Issue
@@ -36,7 +36,7 @@ is defined once in `reference/proposed_labels.json`:
 
 - `categories.<axis>` holds the per-axis label list (`type`, `test`, `module`,
   `os`, `hw`, `dependency`, `dtype`, `triage`, `symptom`, ...).
-- `priority_field` holds the project Priority tiers.
+- `priority_field` holds the native org Priority issue field tiers.
 
 Read label names, keywords, and evidence from that JSON at decision time. NEVER
 hard-code a label spelling, a keyword, or an evidence rule in this skill or in a
@@ -103,7 +103,7 @@ Invoke `extract-issue` with `<issue_ref>`, the optional `repo`, the optional
 `<repo_underscored>` replaces `/` with `_` (e.g. `intel_torch-xpu-ops`).
 
 `extract.json` carries `title`, `body`, `traceback`, `test_cases`,
-`reproduce_steps`, and the pre-read project fields (`os`, `hw`,
+`reproduce_steps`, and the pre-read fields (`os`, `hw`,
 `platform_specific`, `test`, `dependency`, `module`, `priority`, `issue_type`).
 
 A hard stop inside that skill (missing/unauthenticated `gh`, 404, network
@@ -171,7 +171,13 @@ Decide each axis from its JSON section, applying these shared rules:
 - **Match on `evidence`, not `keywords`.** `keywords` are only hints; they never
   override an explicit value or an `evidence` match. When matching text, use
   `lowercase(title + " " + body + " " + traceback)`, excluding the
-  `## Versions` / `Collecting environment` dump.
+  `## Versions` / `Collecting environment` dump. **Exception:** a good-vs-bad
+  commit or version pair inside the `## Versions` block IS in scope for the
+  `regression` symptom. Scan the Versions block for a paired before/after signal —
+  e.g. `latest good : <sha>` with `current : <sha>`, or `good`/`bad`,
+  `passed on`/`fails on` — and treat a populated pair as satisfying the
+  `regression` `evidence`. This carve-out applies ONLY to the `regression`
+  symptom; every other axis still ignores the Versions dump entirely.
 - **Single vs multi.** A *single*-label axis takes the FIRST matching entry in
   JSON order; a *multi*-label axis emits one row per matching entry. An empty axis
   is always valid.

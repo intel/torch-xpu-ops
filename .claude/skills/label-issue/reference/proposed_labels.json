@@ -31,7 +31,6 @@
   },
   "priority_field": {
     "description": "intel org native 'Priority' issue field (org Settings -> Planning -> Issue fields) options. Set on the issue's native Priority field via setIssueFieldValue, NOT applied as a label and NOT a project field. 'tier' is the canonical name emitted in labels.md and is also the native option name; the 'option' P0-P3 values are legacy project names kept for reference only. 'keywords' are heuristic hints used only when Priority is unset; a human-set Priority is always preserved verbatim. See Step 3.4 (priority) of the label-issue skill for the full decision tree.",
-    "project": "PyTorchXPU",
     "field": "Priority",
     "values": [
       {
@@ -39,28 +38,28 @@
         "option": "P0",
         "evidence": "Any one holds: (1) a measured, quantified performance regression >7% between releases (a cited percentage, strictly >7%, not <=7%); (2) SIGSEGV/access violation on a Core API (import, tensor creation, .to(device)/.xpu(), matmul, .backward() on a <=3-op graph, nn.Linear/nn.Conv2d fwd/bwd, save/load, indexing/view/reshape); (3) a legacy Torch build failure (compilation/linker errors preventing a build).",
         "keywords": ["segfault", "sigsegv", "access violation", "crash on import", "build failure", "linker error", ">7%", "regression >7"],
-        "origin": "existing; native project field option"
+        "origin": "existing; native Priority issue field option"
       },
       {
         "tier": "High",
         "option": "P1",
         "evidence": "Any one holds: (1) >6 distinct failed UT cases counted within the analyzed group (not the whole issue); (2) a regression citing a version where it passed and a current version where it fails; (3) a hang/timeout/deadlock (process alive but stuck, e.g. 300s timeout, infinite wait); (4) a benchmark accuracy regression that passed in a prior release and now fails without a crash (fail_accuracy). A performance regression is scored by percentage, not here; a benchmark accuracy regression outranks Medium functional error.",
         "keywords": ["more than 6", ">6 cases", "hang", "timeout", "deadlock", "infinite wait", "benchmark accuracy regression", "fail_accuracy"],
-        "origin": "existing; native project field option"
+        "origin": "existing; native Priority issue field option"
       },
       {
         "tier": "Medium",
         "option": "P2",
         "evidence": "Any one holds: (1) a measured benchmark performance regression <=7%; (2) 1-6 failed UT cases counted within the analyzed group (not the whole issue); (3) a functional error without a crash (RuntimeError/AssertionError/incorrect result while the process continues); (4) a feature gap where tests fail because an API is NotImplementedError, without a crash. Default tier when no row in any tier matches.",
         "keywords": ["1-6 cases", "runtimeerror", "assertionerror", "wrong result", "not implemented", "notimplementederror", "functional error"],
-        "origin": "existing; native project field option"
+        "origin": "existing; native Priority issue field option"
       },
       {
         "tier": "Low",
         "option": "P3",
         "evidence": "Any one holds: (1) an enhancement/feature request (title asks to implement/enable/support/RFC/consider/investigate, or body describes desired new functionality -- but NotImplementedError is Medium, not this); (2) a validation or error-message difference vs CPU/CUDA without incorrect computation; (3) a minor/cosmetic/warning issue (warning mismatch, deprecated API, doc gap); (4) CUDA alignment where XPU behavior differs from CUDA but is not incorrect.",
         "keywords": ["enhancement", "feature request", "implement", "enable", "support", "error message mismatch", "warning", "cosmetic", "cuda alignment", "documentation"],
-        "origin": "existing; native project field option"
+        "origin": "existing; native Priority issue field option"
       }
     ]
   },
@@ -554,8 +553,8 @@
         },
         {
           "name": "regression",
-          "evidence": "A regression backed by an explicit before/after signal: a version or commit where it passed and one where it fails. The bare word regression in prose is not enough.",
-          "keywords": ["regression", "passed on", "fails on", "previously worked", "worked before", "used to work", "no longer works", "broke in"],
+          "evidence": "A regression backed by an explicit before/after signal: a version or commit where it passed and one where it fails. The bare word regression in prose is not enough. A paired good/bad commit or version in the Versions block -- e.g. the '[Bug Skip]' CI template's 'latest good : <sha>' with 'current : <sha>' -- qualifies as this before/after signal.",
+          "keywords": ["regression", "passed on", "fails on", "previously worked", "worked before", "used to work", "no longer works", "broke in", "latest good", "current :", "good :", "bad :"],
           "origin": "existing; unchanged"
         },
         {
