@@ -93,15 +93,21 @@ The reviewer did not produce the scan. For every `confirmed` or
 5. current source, fix PR merge state, and canonical tracker state;
 6. whether a claimed fix is present in the tested build and passes the same check.
 
-Determine whether a PR merged from its non-null merge timestamp: `mergedAt` in
-GraphQL and `gh pr view`, or `merged_at` in the REST API. A closed state alone
-does not establish a merge. An open or unmerged PR may justify `needs-xpu-fix`
-only when evidence independently establishes a defect in the current XPU
-implementation whose fix does not depend on that PR landing. If independent XPU
-parity work would be required only after the proposed upstream behavior lands,
-use `track-upstream`, set `implementation_repository` to
-`intel/torch-xpu-ops`, and emit no payload. Treat a closed, unmerged proposal
-with no independent current XPU defect as `non-issue`.
+A non-null merge timestamp (`mergedAt` in GraphQL and `gh pr view`, or
+`merged_at` in the REST API) establishes that a PR was merged directly. Its
+absence does not establish that the change is unmerged: check the frozen
+default-branch snapshot for a linked commit or an equivalent source change.
+Treat the behavior as landed when that evidence is reachable from the default
+branch, even if the PR is closed without a merge timestamp. A closed state alone
+establishes neither outcome.
+
+An open or genuinely unlanded PR may justify `needs-xpu-fix` only when evidence
+independently establishes a defect in the current XPU implementation whose fix
+does not depend on that PR landing. If independent XPU parity work would be
+required only after the proposed upstream behavior lands, use `track-upstream`,
+set `implementation_repository` to `intel/torch-xpu-ops`, and emit no payload.
+Treat a closed, unlanded proposal with no independent current XPU defect as
+`non-issue`.
 
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
