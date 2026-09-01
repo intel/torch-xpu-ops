@@ -90,16 +90,28 @@ The reviewer did not produce the scan. For every `confirmed` or
 2. target-path XPU execution and observed signature;
 3. whether the behavior is a defect rather than unsupported or expected behavior;
 4. whether an independent XPU change is required;
-5. current source, fix PR, and canonical tracker state;
+5. current source, fix PR merge state, and canonical tracker state;
 6. whether a claimed fix is present in the tested build and passes the same check.
+
+Determine whether a PR merged from its non-null merge timestamp: `mergedAt` in
+GraphQL and `gh pr view`, or `merged_at` in the REST API. A closed state alone
+does not establish a merge. An open or unmerged PR may justify `needs-xpu-fix`
+only when evidence independently establishes a defect in the current XPU
+implementation whose fix does not depend on that PR landing. If independent XPU
+parity work would be required only after the proposed upstream behavior lands,
+use `track-upstream`, set `implementation_repository` to
+`intel/torch-xpu-ops`, and emit no payload. Treat a closed, unmerged proposal
+with no independent current XPU defect as `non-issue`.
 
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream` and emit no payload. When an existing ops tracker
-covers the work, record its URL as `canonical_tracker`; do not create a new
-payload or automatically comment on the existing tracker.
+XPU work, use `track-upstream`, set `implementation_repository` to
+`pytorch/pytorch`, and emit no payload. When an existing ops tracker covers the
+work, record its URL as `canonical_tracker`; do not create a new payload or
+automatically comment on the existing tracker.
+
 Use exactly one verdict:
 
 - `needs-xpu-fix`
