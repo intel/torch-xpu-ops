@@ -40,7 +40,7 @@ Outputs:
   PYTEST_ADDOPTS
   XPU_CPU_COUNT
   XPU_TOTAL_COUNT
-  XPU_ONLINE_COUNT
+  NUM_GPUS
 EOF
 }
 
@@ -321,7 +321,7 @@ main() {
   emit_var PYTEST_ADDOPTS "${pytest_addopts}"
   emit_var XPU_CPU_COUNT "${cpu_count}"
   emit_var XPU_TOTAL_COUNT "${total_xpu_count}"
-  emit_var XPU_ONLINE_COUNT "${online_xpu_count}"
+  emit_var NUM_GPUS "${online_xpu_count}"
 
   print_summary "${cpu_count}" "${total_xpu_count}" "${online_xpu_count}" "${ze_affinity_mask}" "${cpus_per_xpu}" "${device_names}"
 }
