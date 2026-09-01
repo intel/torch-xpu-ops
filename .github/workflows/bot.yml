@@ -1296,7 +1296,7 @@ jobs:
             id `$SESSION_COMMENT_ID` on the issue is yours, so edit it in place
             at every stage (`gh api --method PATCH
             /repos/${{ github.repository }}/issues/comments/$SESSION_COMMENT_ID
-            -f body=@file`) and never create a second comment. It is public and
+            -F body=@file`) and never create a second comment. It is public and
             not retractable (edit history stays visible), so it carries your
             stage reports only -- never raw command output, env, or credentials.
             End by appending your summary to it and reporting the branch name.
@@ -1365,6 +1365,41 @@ jobs:
               SECRET="$b64"    perl -i -pe 's/\Q$ENV{SECRET}\E/***REDACTED***/g' "$t"
             done
           done <<< "$SECRETS"
+
+      # The prompt cannot guarantee the pipeline actually updated its session
+      # comment -- an earlier run left the issue with nothing but the "Starting"
+      # placeholder. Backfill only when the comment carries no
+      # `<!-- agent:session -->` marker (never written, or written wrong): a
+      # partially filled comment is the pipeline's and is left alone. Runs after
+      # redaction because result.result is agent free text going to a public
+      # issue.
+      - name: Backfill session comment
+        if: always() && steps.redact.outcome == 'success' && steps.ai-fix.outputs.execution_file
+        uses: actions/github-script@v9
+        env:
+          SESSION_COMMENT_ID: ${{ steps.start-comment.outputs.comment_id }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const id = Number(process.env.SESSION_COMMENT_ID);
+            if (!id) return;
+            const current = await github.rest.issues.getComment({
+              owner: context.repo.owner, repo: context.repo.repo, comment_id: id
+            });
+            if ((current.data.body || '').includes('<!-- agent:session -->')) return;
+            const fs = require('fs');
+            const file = '${{ steps.ai-fix.outputs.execution_file }}';
+            if (!fs.existsSync(file)) return;
+            const result = JSON.parse(fs.readFileSync(file, 'utf8'))
+              .filter(e => e.type === 'result').pop();
+            if (!result || result.is_error || !result.result) return;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const footer = `\n\n---\n_The [\`fix\` job](${runUrl}) did not update this comment itself, so this is the agent's closing summary only._`;
+            let body = `<!-- agent:session -->\n\n${result.result}${footer}`;
+            if (body.length > 65000) body = body.slice(0, 64800 - footer.length) + `\n\n_(truncated -- full output in the job artifacts)_` + footer;
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner, repo: context.repo.repo, comment_id: id, body
+            });
 
       - name: "Verify: AI fix succeeded"
         if: always()
