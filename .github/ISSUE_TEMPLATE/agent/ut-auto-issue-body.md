@@ -1,19 +1,19 @@
 <!--
-Body template for issues filed by .github/scripts/ut_auto_issue.py.
-Placeholders use Python str.format() syntax: {field_name}. Every slot is filled
-with a fully pre-rendered string, so add no literal braces to this file.
+Body template for issues filed from a nightly UT run by the ut-issue-authoring
+skill. Copy the structure exactly and replace the <angle bracket> slots.
 
-The shape mirrors issue #5070. Two parts are load-bearing and must not change
-without updating their consumers:
+Two parts are load-bearing and must not change without updating their consumers:
 
   * The `Cases:` block is parsed by fetch_issues.sh plus the awk filter in
-    _linux_ut.yml. It must start with a line containing `Cases:`, carry one
-    `<category>,<class name>,<test name>` line per case with no blank lines in
-    between, and never be truncated - an incomplete block silently fails to
-    skip the case. The cases:begin/end markers bound the region the bot is
-    allowed to append to on a re-sighting.
-  * The trailing ut-auto-issue marker carries the grouping signature and is how
-    the bot recognises its own issues. Editing it will cause a duplicate issue.
+    _linux_ut.yml, and every line in it is removed from the next run's failures
+    by `grep -vFxf` in ut_result_check.sh. It must start with a line containing
+    `Cases:`, carry one `<category>,<class name>,<test name>` line per case with
+    no blank lines in between, and never be truncated or abbreviated - an
+    incomplete block silently fails to skip the case, and a line that names no
+    real case silently mutes a future failure. Every line is copied verbatim
+    from the evidence; none is ever typed out or reformatted.
+  * The trailing ut-auto-issue marker is how a machine-filed issue is
+    recognised on later nights.
 
 Everything else is for humans and is safe to edit by hand.
 -->
@@ -21,18 +21,40 @@ Everything else is for humans and is safe to edit by hand.
 
 <!-- cases:begin -->
 Cases:
-{cases}
+<one verbatim case line per case, no blank lines, never abbreviated>
 <!-- cases:end -->
 
-{error_log}## Pytorch Version
+## Summary
 
-{version_block}
-{evidence_block}### Versions
+<one to three sentences on what is failing and why these cases are one bug>
+
+## ErrorLog
+
+### <the failing message, as it appears in the evidence>
+
+```
+<traceback lines copied from tracebacks.json, or "No traceback captured in the JUnit XML.">
+```
+
+## Reproduce
+
+```bash
+<the cd from reproduce.file_path>
+<the command from reproduce.command_template, with the case substituted>
+```
+
+## Pytorch Version
+
+<the version lines: detected in, latest good where it applies, current>
+
+<the evidence block for this issue's classification, pasted from blocks.json>
+
+### Versions
 
 <details><summary>Detail</summary>
 
-{collect_env}
+<collect_env for this issue's leg, from run.json>
 
 </details>
 
-<!-- {marker} -->
+<!-- ut-auto-issue:v1:run=<run id>:part=<n>/<total> -->
