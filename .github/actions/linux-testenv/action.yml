@@ -253,4 +253,5 @@ runs:
       run: |
         pip uninstall -y torch && pip uninstall -y torch
         pip install ${{ github.workspace }}/wheels/torch-*.whl
+        sudo apt install opencl-headers -y
         pip list |grep -E 'intel|torch|triton'
