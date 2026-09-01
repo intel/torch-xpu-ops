@@ -105,8 +105,11 @@ gh api "/repos/$OWNER/$REPO/issues/comments/$SESSION_COMMENT_ID" \
   --jq .body > session_comment.md
 cat next_block.md >> session_comment.md
 gh api --method PATCH "/repos/$OWNER/$REPO/issues/comments/$SESSION_COMMENT_ID" \
-  -f body=@session_comment.md
+  -F body=@session_comment.md
 ```
+
+`-F`, not `-f`: only `--field` reads a value from `@file`; `--raw-field`
+would post the literal string `@session_comment.md` as the comment.
 
 Keep the accumulating body under 65000 chars (the GitHub limit is 65536,
 and a PATCH over it fails outright): if the diff in the implement block

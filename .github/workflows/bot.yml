@@ -1296,7 +1296,7 @@ jobs:
             id `$SESSION_COMMENT_ID` on the issue is yours, so edit it in place
             at every stage (`gh api --method PATCH
             /repos/${{ github.repository }}/issues/comments/$SESSION_COMMENT_ID
-            -f body=@file`) and never create a second comment. It is public and
+            -F body=@file`) and never create a second comment. It is public and
             not retractable (edit history stays visible), so it carries your
             stage reports only -- never raw command output, env, or credentials.
             End by appending your summary to it and reporting the branch name.
