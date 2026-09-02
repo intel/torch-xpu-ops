@@ -694,7 +694,7 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
     candidate that produced no readable artifact for it costs it nothing.
     """
     pending = set(categories)
-    looked = {c: 0 for c in categories}
+    looked = dict.fromkeys(categories, 0)
     baselines: dict[str, Baseline] = {}
     walked = 0
     for age, cand in enumerate(baseline_candidates(run_id), 1):
