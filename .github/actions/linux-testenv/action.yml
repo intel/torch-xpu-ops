@@ -32,6 +32,17 @@ runs:
         cat /etc/os-release
         gcc -v && g++ -v
         uname -a
+        . /etc/os-release
+        if [ "${VERSION_CODENAME}" == "resolute" ];then
+          rm -rf /etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-resolute.sources
+          apt update
+          apt-get install -y software-properties-common
+          add-apt-repository -y ppa:kobuk-team/intel-graphics
+          apt-get install -y libze-intel-gpu1 libze1 intel-metrics-discovery intel-opencl-icd clinfo intel-gsc \
+            intel-media-va-driver-non-free libmfx-gen1.2 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo \
+            libze-dev intel-ocloc xpu-smi
+          apt autoremove -y --purge
+        fi
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
         if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
