@@ -298,7 +298,9 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. `status: blocked`
+`needs-xpu-fix` without a canonical tracker has a payload. `implementation_repository`
+is `null` for verdicts that identify no implementation owner, such as
+`non-issue` and `verification-gap`. `status: blocked`
 lists blockers and contains no payloads. When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.

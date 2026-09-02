@@ -477,7 +477,11 @@ def _validate_review(
             errors.append(f"review-invalid-verdict:{unit_id}")
             continue
         verdicts[unit_id] = str(verdict)
-        if entry.get("implementation_repository") not in IMPLEMENTATION_REPOSITORIES:
+        repository = entry.get("implementation_repository")
+        repository_required = verdict in {"needs-xpu-fix", "track-upstream"}
+        if (repository_required or repository is not None) and (
+            repository not in IMPLEMENTATION_REPOSITORIES
+        ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         if tracker is not None and (
