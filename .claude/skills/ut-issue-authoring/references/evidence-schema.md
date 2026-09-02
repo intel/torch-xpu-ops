@@ -48,10 +48,11 @@ artifacts by a deterministic collector; none of it is a judgement.
               "infra_max_test_files": 5, "infra_leg_share": 0.3,
               "infra_leg_min_cases": 10 },
 
-  "labels": { "always": ["skipped"], "bmg_legs": ["basic", "op_ut"],
-              "bmg_label": "skipped_bmg",
-              "by_classification": { "regression": "regression",
-                                     "new_case_failure": "new_case_failure" } },
+  // Resolved label lists, keyed `<cls>|<leg>`, the runner being per leg. Every
+  // case in cases.json also carries its own; both are copied, never derived.
+  "labels": { "regression|op_ut": ["skipped", "skipped_bmg", "regression"],
+              "persistent|op_ut": ["skipped", "skipped_bmg"],
+              "unknown|basic":    ["skipped", "skipped_bmg"] },
 
   "marker_template": "<!-- ut-auto-issue:{version}:run={run_id}:part={part}/{parts} -->",
   "marker_version": "v1",
@@ -89,6 +90,7 @@ grouping must cover exactly.
       "is_collection_error": false,
       "message": "RuntimeError: index 5 is out of bounds for dimension 0 ...",
       "cls": "regression",
+      "labels": ["skipped", "skipped_bmg", "regression"],
       "runner_name": "bmg-test-04",
       "has_traceback": true
     }
@@ -117,6 +119,11 @@ category, already done:
 | `new_case_failure` | absent from the baseline, or present but skipped |
 | `persistent` | already failing in the baseline; the onset predates it |
 | `unknown` | no usable baseline for that category |
+
+`labels` is the issue's label list, already resolved from `cls` and
+`runner_name`. Copy it. `skipped` is on every case; `skipped_bmg` only on a
+BMG runner; `persistent` and `unknown` deliberately carry no classification
+label.
 
 `reproduce` gives the directory and command shape for each category, recorded
 by the UT job itself. Use it to build `reproduce_command`.

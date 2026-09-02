@@ -108,9 +108,11 @@ LEG_CATEGORIES = {
 }
 CATEGORY_LEG = {c: leg for leg, cats in LEG_CATEGORIES.items() for c in cats}
 
-# nightly_ondemand.yml:166 runs both phase-1 legs on `bmg-test`, so both carry
-# the BMG-only known-failure label honoured by fetch_issues.sh:25.
-BMG_LEGS = {"basic", "op_ut"}
+# fetch_issues.sh:25 honours the BMG-only known-failure label only on a runner
+# whose name contains `bmg`, so the label has to follow the machine that ran the
+# leg rather than the leg itself: nightly_ondemand.yml:166 sends `xpu_distributed`
+# to `distributed`, and a leg that lands off BMG must not carry a BMG-only skip.
+BMG_LABEL = "skipped_bmg"
 
 # Mirrors EXPECTED_CASES in ut_result_check.sh (linux column). Only a fallback:
 # runs predating run_health.jsonl carry no recorded verdict of their own.
@@ -1177,6 +1179,29 @@ def rendered_blocks(evidence: Evidence) -> dict:
     }
 
 
+def is_bmg(runner: str) -> bool:
+    # Case-insensitive where fetch_issues.sh is not, because the runner label
+    # there is `bmg-test` while the hostname recorded here is `BMG-17691`.
+    return "bmg" in runner.lower()
+
+
+def labels_for(cls: str, runner: str) -> list[str]:
+    """The final list, not the rule that produces it.
+
+    Which labels an issue carries is a pure function of its classification and
+    the machine that ran it, with no judgement in it anywhere, so it is
+    resolved here and copied at filing time. Handing the filing step three
+    lookups to perform instead is how a `persistent` group ends up labelled
+    `new_case_failure`.
+    """
+    labels = ["skipped"]
+    if is_bmg(runner):
+        labels.append(BMG_LABEL)
+    if cls in CLS_LABELS:
+        labels.append(cls)
+    return labels
+
+
 def emit_evidence(evidence: Evidence, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     run = evidence.run
@@ -1206,12 +1231,13 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
             "infra_leg_share": INFRA_SIGNATURE_RATIO,
             "infra_leg_min_cases": INFRA_MIN_CASES,
         },
+        # Resolved, keyed `<cls>|<leg>`, because the runner is per leg. Every
+        # case also carries its own resolved list; this map is here for a group
+        # whose cases have all been placed already and for cross-checking a split.
         "labels": {
-            "always": ["skipped"],
-            "bmg_legs": sorted(BMG_LEGS),
-            "bmg_label": "skipped_bmg",
-            "by_classification": {CLS_REGRESSION: CLS_REGRESSION,
-                                  CLS_NEW_CASE: CLS_NEW_CASE},
+            f"{cls}|{leg}": labels_for(cls, runner)
+            for cls in (CLS_REGRESSION, CLS_NEW_CASE, CLS_PERSISTENT, CLS_UNKNOWN)
+            for leg, runner in sorted(run.runners.items())
         },
         "marker_template": MARKER_TEMPLATE,
         "marker_version": MARKER_VERSION,
@@ -1230,6 +1256,9 @@ def emit_evidence(evidence: Evidence, out: Path) -> None:
                 "is_collection_error": c.is_collection_error,
                 "message": c.message,
                 "cls": evidence.classification.get(c.line, CLS_UNKNOWN),
+                "labels": labels_for(
+                    evidence.classification.get(c.line, CLS_UNKNOWN),
+                    run.runners.get(c.leg, "")),
                 "runner_name": run.runners.get(c.leg, ""),
                 "has_traceback": c.line in evidence.tracebacks,
             }

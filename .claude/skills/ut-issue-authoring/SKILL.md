@@ -79,6 +79,11 @@ below.**
 
 ## What you decide, and what you must not touch
 
+You own two decisions and nothing else: **which failures belong together**, and
+**whether to file at all**. Everything a reader will see that is not prose -
+the case lines, the classification, the labels, the tracebacks, the marker - is
+copied out of the evidence.
+
 Do:
 
 - **Judge whether the run itself is trustworthy.** Widespread device errors on
@@ -86,7 +91,8 @@ Do:
   is a run to file nothing from.
 - **Group the failures by root cause, from scratch.** This is the judgement
   the script cannot make and where you are worth the most.
-- **Decide, per group, whether it describes a product bug or the machine.**
+- **Decide, per group, whether it describes a product bug or the machine**, and
+  so whether it is filed.
 - **Write the human-facing text**: a title, a short summary, an optional root
   cause, and a reproduce command.
 - **File the issues**, one per group, and cross-link the ones that share a
@@ -99,7 +105,11 @@ Do not:
   baseline of ~180,000 cases, and it is already in the evidence. Do not
   question it, override it, or restate it as your own finding. If a
   classification looks wrong to you, say so in the group's `reason` field.
-- **Do not put cases with different classifications, or a whole-module row
+- **Do not choose labels.** Each case in `cases.json` carries the resolved
+  `labels` list its issue must have. Copy it. Never add `regression` or
+  `new_case_failure` to a group whose cases do not already carry it - that is
+  classifying by the back door.
+- **Do not put cases carrying different `labels`, or a whole-module row
   and an ordinary case, in one group.** See below.
 - **Do not write a case line.** Copy every one from `cases.json`. This is the
   single most important rule in this skill; see above for why.
@@ -115,12 +125,14 @@ Two properties of a group decide how its issue is labelled and what its body
 claims. Both are read off the evidence in `cases.json`, so check them there
 rather than inferring them from the failure message.
 
-**One classification per group.** Every case in a group must have the same
-`cls`. The label on the issue is that classification, and the body states what
-it means - that these cases passed in the previous healthy nightly, or that
-they never existed in it. Mixing `regression` with `new_case_failure` would
-make that statement false of half the issue and leave the label with nothing
-honest to say.
+**One `labels` list per group.** Every case in a group must carry the same
+`labels`, which follows from every case having the same `cls`. That list is the
+issue's labels *and* the claim its body makes - that these cases passed in the
+previous healthy nightly, or that they never existed in it. Mixing a
+`regression` case with a `new_case_failure` one would make that claim false of
+half the issue and leave one label with nothing honest to say. Two failures
+with one root cause but different `labels` are **two issues**, cross-linked;
+see below.
 
 **Ordinary cases and whole-module rows never share a group.** A row with
 `is_collection_error: true` is a test *file* that would not import, standing in
@@ -133,7 +145,7 @@ that, and an issue cannot be both.
 Those two rules will sometimes cut through a single root cause. One kernel
 change can make `test_foo_float32` go from passing to failing (`regression`)
 while a newly added `test_foo_bfloat16` fails the first time it ever runs
-(`new_case_failure`). Different classifications, so two groups - but one bug,
+(`new_case_failure`). Different `labels`, so two groups - but one bug,
 and a triager who cannot see that reads them as two unrelated ones.
 
 File both, then post a comment on each linking to the other, saying they are
@@ -165,8 +177,8 @@ short, and in this order:
 2. **Check what is already open** with `gh issue list`, and drop every case
    that an open issue still lists. Those are already muted.
 3. **File one issue per group**, following
-   `.github/ISSUE_TEMPLATE/agent/ut-auto-issue-body.md` and the label rules in
-   `run.json.labels`.
+   `.github/ISSUE_TEMPLATE/agent/ut-auto-issue-body.md`. Its labels are the
+   `labels` list its cases carry in `cases.json` - copy it, do not work it out.
 4. **Report what you did** as your final message.
 
 Two limits from `run.json.limits` need care:
@@ -188,10 +200,12 @@ Check each of these. The first two are the ones that matter:
    Grep for it if you are not certain. Copy them; do not retype them, do not
    reformat them, do not fix what looks like a typo.
 2. The block is complete. No `...`, no `and N more`, no blank lines inside it.
-3. Every case in the issue has the same `cls`, and the same
+3. Every case in the issue carries the same `labels` and the same
    `is_collection_error`. Check this per group against `cases.json`; it is the
    rule most easily broken by grouping on the message alone.
-4. The labels match `run.json.labels` for that classification and leg.
+4. The issue's labels are that list, copied. Not one you derived, and not one
+   with a classification label you added because the failure looked new.
+5. The title starts with the literal `[Bug Skip]: `.
 5. Any traceback in the body was copied from `tracebacks.json`, not written.
 6. The marker at the end follows `run.json.marker_template`.
 
