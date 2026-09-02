@@ -24,6 +24,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/_convert_indices_from_coo_to_csr.h>
 #include <ATen/ops/_sparse_addmm.h>
 #include <ATen/ops/addmm.h>
 #include <ATen/ops/arange.h>
@@ -428,11 +429,14 @@ Tensor& _sspaddmm_out_xpu(
       self.size(1));
 
   bool mat1_is_coalesced = mat1.is_coalesced();
+  bool mat1_is_double = mat1.scalar_type() == at::kDouble;
   int64_t nnz1 = mat1._nnz();
   int64_t mat1_numel = dim_i * dim_j;
   int64_t sparse_threshold_divisor =
       at::isReducedFloatingType(mat1.scalar_type()) ? 128 : 8;
-  if (!mat1_is_coalesced && sparse_threshold_divisor < 128) {
+  // Uncoalesced input is penalized only for the atomic accumulation path; the
+  // double path reduces per output row and pays just the coalesce.
+  if (!mat1_is_coalesced && !mat1_is_double && sparse_threshold_divisor < 128) {
     sparse_threshold_divisor = 128;
   }
   bool use_sparse_path =
@@ -451,17 +455,35 @@ Tensor& _sspaddmm_out_xpu(
     Tensor col_indices = mat1_coalesced._indices()[1];
     Tensor values1 = mat1_coalesced._values();
 
-    Tensor gathered = mat2.index_select(0, col_indices);
-    Tensor prod = gathered * values1.unsqueeze(1);
+    if (mat1_is_double) {
+      Tensor self_dense = (beta.to<double>() != 0.0 && self._nnz() > 0)
+          ? self.to_dense()
+          : at::zeros({dim_i, dim_k}, mat2.options());
+      dense_result = at::empty({dim_i, dim_k}, mat2.options());
+      Tensor crow_indices =
+          at::_convert_indices_from_coo_to_csr(row_indices, dim_i, false);
+      xpu::sspaddmm_csr_dense_kernel(
+          dense_result,
+          crow_indices,
+          col_indices,
+          values1,
+          self_dense,
+          mat2,
+          beta,
+          alpha);
+    } else {
+      Tensor gathered = mat2.index_select(0, col_indices);
+      Tensor prod = gathered * values1.unsqueeze(1);
 
-    dense_result = at::zeros({dim_i, dim_k}, mat2.options());
-    dense_result.index_add_(0, row_indices, prod);
+      dense_result = at::zeros({dim_i, dim_k}, mat2.options());
+      dense_result.index_add_(0, row_indices, prod);
 
-    if (alpha.to<double>() != 1.0) {
-      dense_result.mul_(alpha);
-    }
-    if (beta.to<double>() != 0.0 && self._nnz() > 0) {
-      dense_result.add_(self.to_dense(), beta);
+      if (alpha.to<double>() != 1.0) {
+        dense_result.mul_(alpha);
+      }
+      if (beta.to<double>() != 0.0 && self._nnz() > 0) {
+        dense_result.add_(self.to_dense(), beta);
+      }
     }
   } else {
     Tensor mat1_dense = mat1.to_dense();
