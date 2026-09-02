@@ -85,6 +85,25 @@ if __name__ == "__main__":
 TestMultiprocessing.test_cuda_bad_call = _test_cuda_bad_call
 TestMultiprocessing.test_wrong_cuda_fork = _test_wrong_cuda_fork
 
+TestMultiprocessingDeviceType.test_integer_parameter_serialization = unittest.skip(
+    "XPU storage serialization is not supported"
+)(TestMultiprocessingDeviceType.test_integer_parameter_serialization)
+TestMultiprocessingDeviceType.test_leaf_variable_sharing = unittest.skip(
+    "XPU storage sharing is not supported"
+)(TestMultiprocessingDeviceType.test_leaf_variable_sharing)
+TestMultiprocessingDeviceType.test_parameter_sharing = unittest.skip(
+    "XPU storage sharing is not supported"
+)(TestMultiprocessingDeviceType.test_parameter_sharing)
+TestMultiprocessingDeviceType.test_variable_sharing = unittest.skip(
+    "XPU storage sharing is not supported"
+)(TestMultiprocessingDeviceType.test_variable_sharing)
+TestMultiprocessingDeviceType.test_simple_sharing = unittest.skip(
+    "XPU storage sharing is not supported"
+)(TestMultiprocessingDeviceType.test_simple_sharing)
+TestMultiprocessingDeviceType.test_empty_tensor_sharing = unittest.skipIf(
+    IS_WINDOWS, "XPU empty tensor sharing is not supported on Windows"
+)(TestMultiprocessingDeviceType.test_empty_tensor_sharing)
+
 instantiate_device_type_tests(
     TestMultiprocessingDeviceType, globals(), only_for="xpu", allow_xpu=True
 )
