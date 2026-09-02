@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: intel/llvm
-          ref: 880399f47228ac92f403e3b2b865cf1d6f0b1382  # sycl-rel-7.1
+          ref: v7.1.0
           path: intel-llvm
       - name: Install prerequisites
         run: |
