@@ -24,9 +24,9 @@ from torch._subclasses.functional_tensor import (
 )
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_cuda import SM70OrLater
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_quantization import skipIfNoDynamoSupport
 from torch.testing._internal.common_utils import (
-    decorateIf,
     instantiate_parametrized_tests,
     IS_WINDOWS,
     parametrize,
@@ -37,6 +37,18 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TestCase,
 )
+
+try:
+    from .xpu_test_utils import XPUImportCtx
+except Exception:
+    from ..xpu_test_utils import XPUImportCtx
+
+with XPUImportCtx(False):
+    from test_control_flow import (
+        AssociativeScanTestsDevice,
+        TestAutoFunctionalizeControlFlowDevice,
+    )
+
 
 requires_accelerator = unittest.skipUnless(
     torch.accelerator.is_available(), "Accelerator is needed"
@@ -8214,7 +8226,12 @@ instantiate_parametrized_tests(TestHopSchema)
 instantiate_parametrized_tests(TestControlFlowTraced)
 
 instantiate_parametrized_tests(TestControlFlow)
-instantiate_parametrized_tests(AssociativeScanTests)
+instantiate_device_type_tests(
+    AssociativeScanTestsDevice, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestAutoFunctionalizeControlFlowDevice, globals(), only_for="xpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
