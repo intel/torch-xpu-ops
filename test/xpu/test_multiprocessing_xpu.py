@@ -14,10 +14,10 @@
 
 import os
 import unittest
-from sys import platform
 
 import torch
 import torch.multiprocessing as mp
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
@@ -26,7 +26,7 @@ except Exception:
     from .xpu_test_utils import ensure_pytorch_test_path, XPUPatchForImport
 
 with XPUPatchForImport(False) as patcher:
-    from test_multiprocessing import TestMultiprocessing
+    from test_multiprocessing import TestMultiprocessing, TestMultiprocessingDeviceType
 
 
 test_dir = os.path.abspath(patcher.test_package[0])
@@ -82,19 +82,12 @@ if __name__ == "__main__":
     self.assertRegex(stderr, "Cannot re-initialize XPU in forked subprocess.")
 
 
-@unittest.skipIf(
-    platform == "darwin", "file descriptor strategy is not supported on macOS"
-)
-@unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
-def _test_is_shared_xpu(self):
-    t = torch.randn(5, 5).xpu()
-    self.assertTrue(t.is_shared())
-
-
 TestMultiprocessing.test_cuda_bad_call = _test_cuda_bad_call
 TestMultiprocessing.test_wrong_cuda_fork = _test_wrong_cuda_fork
-TestMultiprocessing.test_is_shared_cuda = _test_is_shared_xpu
 
+instantiate_device_type_tests(
+    TestMultiprocessingDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
