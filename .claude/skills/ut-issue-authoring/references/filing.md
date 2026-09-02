@@ -70,8 +70,14 @@ reshaped by shell quoting.
 [Bug Skip]: <prefix><what is failing>
 ```
 
-`<prefix>` is `[Regression] ` when the group's classification is `regression`,
-`[New Case] ` when it is `new_case_failure`, and empty otherwise. For a group
+**Every title starts with the literal `[Bug Skip]: `.** It is how a human
+scanning the issue list tells a machine-filed skip from a hand-written report,
+and there is no case in which it is dropped - not for a regression, not for a
+collection error, not to make room in a title that is already long.
+
+`<prefix>` is `[Regression] ` when the group's cases carry `cls: regression`,
+`[New Case] ` when they carry `cls: new_case_failure`, and empty otherwise -
+read off the evidence like the labels, not judged. For a group
 of whole-module rows the title names the file instead:
 
 ```
@@ -82,14 +88,26 @@ Keep it under about 140 characters and plain ASCII.
 
 ### Labels
 
-From `run.json.labels`:
+Copy the `labels` list from any case in the group - `cases.json` carries it
+resolved, per case. It is the same list for every case in a uniform group,
+because it is a pure function of `cls` and the runner that ran the leg.
 
-- `skipped` always.
-- `skipped_bmg` when the group's leg is in `labels.bmg_legs`.
-- The classification itself when it is `regression` or `new_case_failure`.
-  `persistent` and `unknown` get no classification label - neither "it used to
-  pass" nor "it is a new case" is true of them, so the body states the position
-  instead.
+What it resolves to, for reading the list rather than for producing one:
+
+- `skipped` on every issue, without exception. It is what mutes the case.
+- `skipped_bmg` only when the leg ran on a BMG runner - `fetch_issues.sh:25`
+  honours it on those and ignores it everywhere else, so putting it on a
+  non-BMG issue claims a scope the issue does not have.
+- The classification, and only when it is `regression` or `new_case_failure`.
+  `persistent` and `unknown` carry no classification label on purpose, since
+  neither "it used to pass" nor "it is a new case" is true of them, and the
+  body states the position instead.
+
+Do not derive it, and in particular do not reach for `new_case_failure` because
+a failure looks new to you.
+
+`run.json.labels` holds the same lists keyed `<cls>|<leg>`, for a group whose
+cases were all already placed.
 
 ### Body
 
