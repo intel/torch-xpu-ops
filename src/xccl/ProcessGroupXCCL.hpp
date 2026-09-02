@@ -199,6 +199,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     options_->timeout = timeout;
   }
 
+  void shutdown() override;
+
+  void abort() override;
+
   bool isInitialized();
 
   void setEnableNanCheck(bool enableNanCheck);
