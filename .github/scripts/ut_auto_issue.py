@@ -69,7 +69,17 @@ CLS_UNKNOWN = "unknown"
 # instead, because neither "it used to pass" nor "it is a new case" is true.
 CLS_LABELS = {CLS_REGRESSION, CLS_NEW_CASE}
 
+# How far back to look for a category's baseline. Charged per category, and
+# only against nightlies that had something to say about it: one whose artifact
+# is gone is not evidence that the category was unhealthy, and letting it spend
+# the budget is how a category ends up unclassified with no comparison made.
 MAX_BASELINE_LOOKBACK = 5
+# Hard cap on nightlies walked, so a stretch of artifact-less ones cannot turn
+# the walk into an unbounded crawl.
+MAX_BASELINE_CANDIDATES = 25
+# Pages of 100 workflow runs to scan while collecting those candidates. Most
+# runs of this workflow are on-demand, so a page holds far fewer than 100.
+MAX_CANDIDATE_PAGES = 5
 MAX_CASES_PER_ISSUE = 400
 MAX_ISSUES_PER_RUN = 15
 ABORT_THRESHOLD = 5000
@@ -622,15 +632,30 @@ def is_infra(normalized: str) -> bool:
 
 
 def baseline_candidates(run_id: int) -> list[dict]:
-    out = run([
-        "gh", "run", "list", "--repo", REPO, "--workflow", WORKFLOW,
-        "--status", "completed", "--limit", "30",
-        "--json", "databaseId,displayTitle,createdAt",
-    ])
+    """Nightlies older than `run_id`, newest first.
+
+    Paged until enough runs older than the target are found, rather than taking
+    a fixed window of the most recent ones. That window is anchored to today,
+    not to the run being classified, and most runs of this workflow are
+    on-demand: it slides past an older target within days and leaves it with no
+    candidates at all, so the same run classifies as `regression` one week and
+    `unknown` the next.
+    """
     pat = re.compile(r"^(Nightly|Weekly) / Build-from-source")
-    runs = [r for r in json.loads(out) if pat.match(r.get("displayTitle", ""))]
-    runs = [r for r in runs if int(r["databaseId"]) < run_id]
-    return sorted(runs, key=lambda r: r["createdAt"], reverse=True)
+    out: list[dict] = []
+    for page in range(1, MAX_CANDIDATE_PAGES + 1):
+        rows = gh_json(
+            f"repos/{REPO}/actions/workflows/{WORKFLOW}/runs"
+            f"?status=completed&per_page=100&page={page}"
+        ).get("workflow_runs", [])
+        for r in rows:
+            if int(r["id"]) < run_id and pat.match(r.get("display_title") or ""):
+                out.append({"databaseId": int(r["id"]),
+                            "createdAt": r.get("created_at", "")})
+        if len(rows) < 100 or len(out) >= MAX_BASELINE_CANDIDATES:
+            break
+    out.sort(key=lambda r: r["databaseId"], reverse=True)
+    return out[:MAX_BASELINE_CANDIDATES]
 
 
 def read_case_sets(root: Path, category: str) -> tuple[set, set, set]:
@@ -663,12 +688,19 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
     in which this category completed healthily". A run truncated in op_ut is
     still a perfectly good op_extended baseline, and one download of a
     candidate's `basic` artifact can resolve up to three categories at once.
+
+    So the lookback is spent per category rather than per run: a category whose
+    leg keeps failing goes on looking after its neighbours have settled, and a
+    candidate that produced no readable artifact for it costs it nothing.
     """
     pending = set(categories)
+    looked = {c: 0 for c in categories}
     baselines: dict[str, Baseline] = {}
-    for age, cand in enumerate(baseline_candidates(run_id)[:MAX_BASELINE_LOOKBACK], 1):
+    walked = 0
+    for age, cand in enumerate(baseline_candidates(run_id), 1):
         if not pending:
             break
+        walked = age
         cand_id = int(cand["databaseId"])
         names = list_artifacts(cand_id)
         jobs = resolve_jobs(cand_id)
@@ -681,13 +713,24 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
         for category in sorted(pending):
             root = dirs.get(CATEGORY_LEG[category])
             if root is None:
+                # Recorded but not charged, so that an empty walk is legible:
+                # "nothing to read" and "read and found unhealthy" are the two
+                # ways to reach `unknown` and they call for different fixes.
+                report["baseline_walk"].append({
+                    "run_id": cand_id, "category": category,
+                    "state": "no artifact", "actual": 0,
+                    "expected": EXPECTED_CASES.get(category, 0),
+                })
                 continue
             state, actual, expected = category_state(root, category)
             report["baseline_walk"].append({
                 "run_id": cand_id, "category": category,
                 "state": state, "actual": actual, "expected": expected,
             })
+            looked[category] += 1
             if state != "complete":
+                if looked[category] >= MAX_BASELINE_LOOKBACK:
+                    pending.discard(category)
                 continue
             leg = CATEGORY_LEG[category]
             passed, failed, every = read_case_sets(root, category)
@@ -711,10 +754,12 @@ def resolve_baselines(run_id: int, categories: set[str], work: Path,
             pending.discard(category)
         for path in dirs.values():
             shutil.rmtree(path, ignore_errors=True)
-    for category in sorted(pending):
+    for category in sorted(set(categories) - set(baselines)):
         warn(
-            f"no nightly in the last {MAX_BASELINE_LOOKBACK} runs completed "
-            f"{category} healthily; its issues will be filed unclassified"
+            f"no baseline for {category}: walked {walked} nightly/nightlies "
+            f"older than this run, {looked[category]} of which had a readable "
+            "artifact for it, and none completed it healthily; its issues will "
+            "be filed unclassified"
         )
     return baselines
 
