@@ -192,6 +192,8 @@ struct AssertAsyncKernelFunctor1 {
   void operator()(sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != 0);
   }
+  // TODO: add actual handling for the message argument
+  // See: https://github.com/intel/torch-xpu-ops/issues/5165
   AssertAsyncKernelFunctor1(const scalar_t* input, Msg) : input_(input) {}
 
  private:
