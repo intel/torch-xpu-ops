@@ -14,7 +14,14 @@
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-[[maybe_unused]] static inline int padto_le(int src, int padding) {
+
+#ifdef __SYCL_DEVICE_ONLY__
+#define MAYBE_UNUSED_ON_HOST
+#else
+#define MAYBE_UNUSED_ON_HOST [[maybe_unused]]
+#endif
+
+MAYBE_UNUSED_ON_HOST static inline int padto_le(int src, int padding) {
   return src / padding * padding;
 }
 
