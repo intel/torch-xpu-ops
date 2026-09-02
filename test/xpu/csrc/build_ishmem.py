@@ -9,6 +9,7 @@ standalone ISHMEM ops:
     - TokenDispatchIshmem.cpp        -> libtoken_dispatch_ishmem.so
     - TokenDispatchIshmemHier.cpp    -> libtoken_dispatch_ishmem_hier.so
     - InternodeDispatchRdmaSender.cpp -> libinternode_dispatch_rdma_sender.so
+    - DispatchRdmaNvl.cpp            -> libdispatch_rdma_nvl.so
 
 Usage:
     python build_ishmem.py          # build all .so outputs
@@ -42,6 +43,7 @@ ISHMEM_TARGETS = [
         "libinternode_dispatch_rdma_sender.so",
         "InternodeDispatchRdmaSender",
     ),
+    ("DispatchRdmaNvl.cpp", "libdispatch_rdma_nvl.so", "DispatchRdmaNvl"),
 ]
 
 
