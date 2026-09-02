@@ -591,6 +591,14 @@ def build_decision(
         decision = "dry-run"
     else:
         decision = would_decision
+    if would_decision == "blocked":
+        run_state = "failed"
+    elif collection_status == "partial":
+        run_state = "partial"
+    elif unit_blocker_messages or "review-verification-gap" in attention_reasons:
+        run_state = "complete-with-warnings"
+    else:
+        run_state = "complete"
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
@@ -598,6 +606,7 @@ def build_decision(
         "mode": mode,
         "decision": decision,
         "would_decision": would_decision,
+        "run_state": run_state,
         "needs_attention": bool(blockers or attention_reasons),
         "attention_reasons": attention_reasons,
         "global_blockers": global_blockers,
@@ -643,6 +652,7 @@ def main() -> int:
     if github_output:
         with Path(github_output).open("a", encoding="utf-8") as handle:
             handle.write(f"decision={decision['decision']}\n")
+            handle.write(f"run_state={decision['run_state']}\n")
             handle.write(f"needs_attention={'true' if decision['needs_attention'] else 'false'}\n")
             handle.write(f"actionable_count={len(decision['actionable_units'])}\n")
     return 0

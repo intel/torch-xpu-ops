@@ -26,7 +26,8 @@ PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
 PUBLISHED_UNIT_MARKER = "<!-- alignment-published-unit: {unit_id} -->"
-# One notification per run, so a re-run does not ping anyone twice.
+# Scheduled summaries are unique and updated in place on a re-run. Keeping the
+# same mention in an edited comment does not send a second notification.
 RUN_NOTE_MARKER = "<!-- alignment-run-note: {run_id} -->"
 TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
@@ -101,22 +102,29 @@ def has_unit(comments: list[dict], unit_id: str) -> bool:
     return any(marker in (comment.get("body") or "") for comment in comments)
 
 
-def has_run_note(comments: list[dict], run_id: str) -> bool:
+def find_run_note(comments: list[dict], run_id: str) -> dict | None:
     marker = RUN_NOTE_MARKER.format(run_id=run_id)
-    return any(marker in (comment.get("body") or "") for comment in comments)
+    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
+    if len(matches) > 1:
+        fail(f"{len(matches)} run summaries carry the marker for run `{run_id}`.")
+    return matches[0] if matches else None
 
 
 def render_run_note(
-    run_id: str, scan_date: str, headline: str, lines: list[str], notify: str
+    run_id: str,
+    headline: str,
+    lines: list[str],
+    notify: str,
+    *,
+    dry_run: bool = False,
 ) -> str:
-    """The one comment that actively pings a human, rather than waiting to be found."""
-    parts = [
-        RUN_NOTE_MARKER.format(run_id=run_id),
+    """Render a scheduled summary marker or a repeatable dry-run summary."""
+    parts = ([] if dry_run else [RUN_NOTE_MARKER.format(run_id=run_id)]) + [
         f"**{headline}**",
         "",
         *lines,
         "",
-        f"<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>",
+        f"<sub>run `{run_id}`</sub>",
     ]
     if notify:
         parts += ["", notify]

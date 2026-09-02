@@ -8,6 +8,8 @@ on:
       - '.github/workflows/bot.yml'
       - '.github/scripts/bot_*.py'
       - '.github/scripts/test_bot_*.py'
+      - '.github/scripts/alignment_triage.py'
+      - '.github/scripts/xpu_alignment_*.py'
 
 env:
   BEDROCK_MODEL: global.anthropic.claude-opus-5

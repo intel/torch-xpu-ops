@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from pathlib import Path
 
 from alignment_triage import (
@@ -25,7 +26,7 @@ from alignment_triage import (
     fail,
     filed_body,
     find_draft,
-    has_run_note,
+    find_run_note,
     has_unit,
     list_comments,
     post_comment,
@@ -36,111 +37,126 @@ from alignment_triage import (
 )
 
 
+RUN_STATES = {"complete", "complete-with-warnings", "partial", "failed"}
+UNIT_BLOCKER_PREFIX = "scan-blocked-result:"
+
+
+def _excluded_units(decision: dict) -> list[tuple[str, str]]:
+    excluded: dict[str, str] = {}
+    for blocker in map(str, decision.get("unit_blockers") or []):
+        if blocker.startswith(UNIT_BLOCKER_PREFIX):
+            unit_id, _, result = blocker[len(UNIT_BLOCKER_PREFIX) :].rpartition(":")
+            if unit_id:
+                excluded[unit_id] = result
+    for unit_id, verdict in (decision.get("unit_verdicts") or {}).items():
+        if verdict == "verification-gap":
+            excluded[str(unit_id)] = "verification-gap"
+    return sorted(excluded.items())
+
+
+def _safe(value: object, limit: int = 200) -> str:
+    message = " ".join(str(value).split()).replace("`", "'")
+    return message[: limit - 1].rstrip() + "…" if len(message) > limit else message
+
+
+def _blocker(blocker: object) -> str:
+    code, separator, detail = str(blocker).partition(":")
+    if separator and (code == "collection-invalid" or code.endswith("-unreadable")):
+        return f"`{code}`: `{_safe(detail)}`"
+    return f"`{blocker}`"
+
+
+def _partial_progress(decision: dict) -> list[str]:
+    affected = [
+        item
+        for item in decision.get("collection_progress") or []
+        if item.get("status") == "partial" or item.get("error")
+    ]
+    if not affected:
+        return ["  - No partial source progress was recorded."]
+    lines = []
+    for item in affected:
+        error = item.get("error") or {}
+        lines.append(
+            f"  - `{item.get('source', 'unknown')}`: "
+            f"{item.get('pages_completed', 0)} page(s), "
+            f"{item.get('items_fetched', 0)} item(s), status "
+            f"`{item.get('status', 'unknown')}`, last cursor "
+            f"`{item.get('last_cursor') or 'none'}`, rate reset "
+            f"`{item.get('rate_reset_at') or 'unknown'}`, error "
+            f"`{error.get('kind') or 'unknown'}`: "
+            f"`{_safe(error.get('message') or 'no message recorded')}`"
+        )
+    return lines
+
+
 def run_note(
     decision: dict, payloads: list[dict], filed: list[tuple[str, str]]
 ) -> tuple[str, list[str], bool]:
-    """What a human must be told about this run, if anything."""
-    lines: list[str] = []
+    """Render the outcome snapshot for one completed gate decision."""
+    state = decision.get("run_state")
+    if state not in RUN_STATES:
+        fail(f"Unknown alignment run state: {state}")
     mode = decision.get("mode", "schedule")
-    partial = decision.get("collection_status") == "partial"
-    if mode == "dry-run":
-        would = decision.get("would_decision", "blocked")
-        lines.append(
-            f"Dry run completed with `{would}` and {len(payloads)} review-approved candidate(s)."
-        )
-        if payloads:
-            lines.append("")
-            lines += [
-                f"- `{payload['unit_id']}` — {payload['title']}" for payload in payloads
-            ]
-    elif filed:
-        lines.append("Filed without human approval, so it is worth a second look:")
-        lines.append("")
-        lines += [f"- `{unit_id}` \u2014 {url}" for unit_id, url in filed]
-    elif decision["decision"] == "triage" and len(payloads) > 1:
-        lines.append(f"{len(payloads)} reviewed candidates are waiting for approval:")
-        lines.append("")
-        lines += [
-            f"- `{payload['unit_id']}` \u2014 {payload['title']}" for payload in payloads
-        ]
-        lines.append("")
-        lines.append("Approve them one at a time with `@torchxpubot file <unit-id>`.")
-
-    if partial:
-        if lines:
-            lines.append("")
-        lines.append(
-            "Collection was incomplete; reviewed candidates from the observed inventory "
-            + (
-                "were emitted as dry-run drafts."
-                if mode == "dry-run"
-                else "were still published or queued."
-            )
-            if payloads
-            else "Collection was incomplete and produced no review-approved candidates."
-        )
-        progress = decision.get("collection_progress") or []
-        if isinstance(progress, list):
-            for state in progress:
-                if not isinstance(state, dict):
-                    continue
-                lines.append(
-                    f"- `{state.get('source', 'unknown')}`: "
-                    f"{state.get('pages_completed', 0)} page(s), "
-                    f"{state.get('items_fetched', 0)} item(s), status "
-                    f"`{state.get('status', 'unknown')}`; last cursor "
-                    f"`{state.get('last_cursor') or 'none'}`"
-                )
-                error = state.get("error")
-                if isinstance(error, dict) and error.get("message"):
-                    lines.append(f"  - error: `{error['message']}`")
-                if state.get("rate_reset_at"):
-                    lines.append(f"  - rate reset: `{state['rate_reset_at']}`")
-
-    if decision.get("needs_attention"):
-        reasons: list[str] = []
-        attention = decision.get("attention_reasons") or []
-        if attention:
-            reasons.append("scan state: " + ", ".join(f"`{item}`" for item in attention))
-        blockers = decision.get("blockers") or []
-        if blockers:
-            shown = ", ".join(f"`{blocker}`" for blocker in blockers[:5])
-            more = "" if len(blockers) <= 5 else f" (+{len(blockers) - 5} more)"
-            reasons.append(f"{len(blockers)} blocker(s): {shown}{more}")
-        if lines:
-            lines.append("")
-        lines.append("This run did not finish cleanly:")
-        lines.append("")
-        lines += [f"- {reason}" for reason in reasons]
-        lines.append("")
-        if filed or payloads:
-            lines.append(
-                "Reviewed candidates were published or queued; blocked units were excluded."
-            )
+    verdicts = decision.get("unit_verdicts") or {}
+    counts = Counter(map(str, verdicts.values()))
+    reviewed = f"- Reviewed units: {len(verdicts)}"
+    if counts:
+        detail = ", ".join(f"`{name}`: {counts[name]}" for name in sorted(counts))
+        reviewed += f" ({detail})"
+    lines = [
+        f"- Scan date: `{decision.get('scan_date', '')}`",
+        f"- Collection: {decision.get('collection_status', 'unknown')}",
+        reviewed,
+        f"- New XPU tracker candidates: {len(payloads)}",
+        "",
+    ]
+    if filed:
+        lines.append("Automatically filed:")
+        lines += [f"- `{unit_id}` — {url}" for unit_id, url in filed]
+    elif payloads:
+        label = "Dry-run drafts" if mode == "dry-run" else "Formal candidate drafts"
+        lines.append(f"{label}:")
+        lines += [f"- `{item['unit_id']}` — {item['title']}" for item in payloads]
+        if mode == "dry-run":
+            lines.append("Dry-run drafts cannot be filed.")
         else:
-            lines.append("Nothing was published for the affected part; see the gate artifact.")
-
-    if not lines:
-        lines.append("The scheduled scan completed with 0 review-approved candidates.")
-    if partial and mode == "dry-run":
-        headline = "[DRY RUN][INCOMPLETE SCAN] XPU alignment run"
-    elif partial:
-        headline = "[INCOMPLETE SCAN] XPU alignment run"
-    elif mode == "dry-run":
-        headline = "[DRY RUN] XPU alignment run"
-    elif decision.get("needs_attention"):
-        headline = "XPU alignment run needs attention"
-    elif filed:
-        headline = f"{len(filed)} XPU alignment issue(s) filed automatically"
-    elif decision.get("decision") == "none":
-        headline = "XPU alignment run complete"
+            lines.append(
+                "Each draft comment carries its current filing state; approve with "
+                "`@torchxpubot file <unit-id>`."
+            )
     else:
-        headline = f"{len(payloads)} XPU alignment candidates need triage"
-    should_notify = mode == "schedule" and (
-        bool(filed)
-        or decision.get("decision") == "triage"
-        or bool(decision.get("needs_attention"))
-    )
+        lines.append("No new XPU tracker was filed or drafted.")
+
+    excluded = _excluded_units(decision)
+    if excluded:
+        lines += ["", "- Excluded units:"]
+        lines += [f"  - `{unit_id}` — `{reason}`" for unit_id, reason in excluded]
+
+    if decision.get("collection_status") == "partial":
+        lines += ["", "- Incomplete collection progress:"]
+        lines += _partial_progress(decision)
+    if state == "failed":
+        blockers = decision.get("global_blockers") or []
+        distinct = list(dict.fromkeys(_blocker(blocker) for blocker in blockers))
+        count = f"- Global blockers: {len(blockers)}"
+        if len(distinct) != len(blockers):
+            count += f" ({len(distinct)} distinct)"
+        lines += ["", count]
+        lines += [f"  - {blocker}" for blocker in distinct[:5]]
+        if len(distinct) > 5:
+            lines.append(f"  - {len(distinct) - 5} additional blocker(s) omitted")
+
+    headlines = {
+        "complete": "XPU alignment run complete",
+        "complete-with-warnings": "XPU alignment run completed with warnings",
+        "partial": "XPU alignment run completed with partial collection",
+        "failed": "XPU alignment run failed",
+    }
+    headline = headlines[state]
+    if mode == "dry-run":
+        headline = f"[DRY RUN] {headline}"
+    should_notify = mode == "schedule" and (bool(payloads) or state != "complete")
     return headline, lines, should_notify
 
 
@@ -156,19 +172,21 @@ def main() -> int:
     if not isinstance(decision, dict) or decision.get("schema_version") != 1:
         fail("The publishing decision is not an XPU alignment artifact.")
     verdict = decision["decision"]
-    if verdict not in {
-        "none",
-        "file-one",
-        "triage",
-        "blocked",
-        "dry-run",
-    }:
+    outcomes = {"none", "file-one", "triage", "blocked"}
+    if verdict not in outcomes | {"dry-run"}:
         fail(f"Unknown publishing decision: {verdict}")
+    would_decision = decision.get("would_decision")
+    if would_decision not in outcomes:
+        fail(f"Unknown effective publishing decision: {would_decision}")
     mode = decision.get("mode", "schedule")
     if mode not in {"schedule", "dry-run"}:
         fail(f"Unknown publishing mode: {mode}")
     if (mode == "dry-run") != (verdict == "dry-run"):
         fail("Dry-run mode and decision do not agree.")
+    if mode == "schedule" and verdict != would_decision:
+        fail("Scheduled decision and effective decision do not agree.")
+    if decision.get("run_state") not in RUN_STATES:
+        fail(f"Unknown alignment run state: {decision.get('run_state')}")
     run_id = str(decision.get("run_id", ""))
     scan_date = str(decision.get("scan_date", ""))
     # A blocked gate carries no payloads, so this loop is what keeps its
@@ -182,6 +200,7 @@ def main() -> int:
         fail("scheduled triage requires at least two payloads")
 
     existing = list_comments(args.repo, args.triage_issue)
+    existing_run_note = find_run_note(existing, run_id) if mode == "schedule" else None
     filed: list[tuple[str, str]] = []
     for payload in payloads:
         unit_id = payload["unit_id"]
@@ -230,17 +249,21 @@ def main() -> int:
         print(f"Filed {unit_id} as {issue_url}")
 
     headline, lines, should_notify = run_note(decision, payloads, filed)
-    if mode == "dry-run" or not has_run_note(existing, run_id):
+    summary = render_run_note(
+        run_id,
+        headline,
+        lines,
+        args.notify if should_notify else "",
+        dry_run=mode == "dry-run",
+    )
+    if existing_run_note:
+        update_comment(args.repo, existing_run_note["id"], summary)
+        print(f"Updated run summary on #{args.triage_issue}: {headline}")
+    else:
         post_comment(
             args.repo,
             args.triage_issue,
-            render_run_note(
-                run_id,
-                scan_date,
-                headline,
-                lines,
-                args.notify if should_notify else "",
-            ),
+            summary,
         )
         print(f"Posted run summary on #{args.triage_issue}: {headline}")
     return 0
