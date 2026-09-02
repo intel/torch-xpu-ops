@@ -25,9 +25,11 @@
 #include <future>
 #include <list>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
+#include <ATen/xpu/MemPool.h>
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -202,6 +204,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool isInitialized();
 
   void setEnableNanCheck(bool enableNanCheck);
+
+  // Register every segment of `pool` as a oneCCL communication window, and keep
+  // registering segments allocated in it from now on. Collectives on buffers
+  // that live in the pool then reuse the peer pointers exchanged here instead
+  // of exchanging L0 IPC handles on every call.
+  void registerMemPool(at::xpu::MemPool* pool);
+
+  void deregisterMemPool(at::xpu::MemPool* pool);
 
   std::shared_ptr<onecclComm_t> getXCCLComm(const std::string& deviceKey);
 

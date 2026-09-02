@@ -169,6 +169,121 @@ inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
 
 } // namespace
 
+// Map each communicator to the memory pools registered with it, mirroring
+// ProcessGroupNCCL. When a MemPool is registered with a ProcessGroup, all its
+// segments (current and future) are registered as oneCCL communication
+// windows. A window makes oneCCL exchange the L0 IPC handles once instead of
+// on every collective: ccl_comm::get_registered_ptrs() then returns the peer
+// pointers directly and the per-call do_ipc_exchange() is skipped.
+//
+// oneCCL's C API operates on a raw onecclComm_t rather than a wrapper class,
+// so the window handles live in a side table keyed by communicator.
+//
+// This state has to be global because the allocator hooks are called outside
+// the scope of any ProcessGroup.
+static std::mutex xcclCommMemPoolMapMutex;
+static std::unordered_map<onecclComm_t, std::set<c10::MempoolId_t>>
+    xcclCommMemPoolMap;
+static std::unordered_map<onecclComm_t, c10::DeviceIndex> xcclCommDeviceMap;
+static std::
+    unordered_map<onecclComm_t, std::unordered_map<void*, onecclWindow_t>>
+        xcclRegisteredSegments;
+
+// Caller must hold xcclCommMemPoolMapMutex.
+static void registerSegment(onecclComm_t comm, void* ptr, size_t size) {
+  auto& segments = xcclRegisteredSegments[comm];
+  if (segments.find(ptr) != segments.end()) {
+    return;
+  }
+  onecclWindow_t window = nullptr;
+  const auto result = onecclCommWindowRegister(
+      comm, ptr, size, &window, ONECCL_WINDOW_COLL_SYMMETRIC);
+  // oneCCL ignores the request on platforms where windows are unsupported and
+  // still reports success, so the handle has to be checked as well.
+  if (result != onecclSuccess || window == nullptr) {
+    LOG(WARNING) << "xccl: onecclCommWindowRegister failed for segment " << ptr
+                 << " of size " << size << " with code " << (int)result
+                 << "; collectives will fall back to per-call IPC exchange";
+    return;
+  }
+  segments.emplace(ptr, window);
+}
+
+// Caller must hold xcclCommMemPoolMapMutex.
+static void deregisterSegment(onecclComm_t comm, void* ptr) {
+  auto commIt = xcclRegisteredSegments.find(comm);
+  if (commIt == xcclRegisteredSegments.end()) {
+    return;
+  }
+  auto segmentIt = commIt->second.find(ptr);
+  if (segmentIt == commIt->second.end()) {
+    return;
+  }
+  const auto result = onecclCommWindowDeregister(comm, segmentIt->second);
+  if (result != onecclSuccess) {
+    LOG(WARNING) << "xccl: onecclCommWindowDeregister failed for segment "
+                 << ptr << " with code " << (int)result;
+  }
+  commIt->second.erase(segmentIt);
+}
+
+static bool isSegmentInRegisteredPool(
+    const c10::CachingDeviceAllocator::TraceEntry& te,
+    const std::set<c10::MempoolId_t>& memPools) {
+  return memPools.find(te.mempool_) != memPools.end();
+}
+
+static void cacheAllocatorRegisterHook(
+    const c10::CachingDeviceAllocator::TraceEntry& te) {
+  if (te.action_ !=
+      c10::CachingDeviceAllocator::TraceEntry::Action::SEGMENT_ALLOC) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  for (auto& [comm, memPools] : xcclCommMemPoolMap) {
+    const auto deviceIt = xcclCommDeviceMap.find(comm);
+    if (deviceIt == xcclCommDeviceMap.end() || te.device_ != deviceIt->second) {
+      continue;
+    }
+    if (isSegmentInRegisteredPool(te, memPools)) {
+      // NOLINTNEXTLINE(performance-no-int-to-ptr)
+      registerSegment(comm, reinterpret_cast<void*>(te.addr_), te.size_);
+    }
+  }
+}
+
+static void cacheAllocatorDeregisterHook(
+    const c10::CachingDeviceAllocator::TraceEntry& te) {
+  if (te.action_ !=
+      c10::CachingDeviceAllocator::TraceEntry::Action::SEGMENT_FREE) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  for (auto& [comm, memPools] : xcclCommMemPoolMap) {
+    const auto deviceIt = xcclCommDeviceMap.find(comm);
+    if (deviceIt == xcclCommDeviceMap.end() || te.device_ != deviceIt->second) {
+      continue;
+    }
+    if (isSegmentInRegisteredPool(te, memPools)) {
+      // NOLINTNEXTLINE(performance-no-int-to-ptr)
+      deregisterSegment(comm, reinterpret_cast<void*>(te.addr_));
+    }
+  }
+}
+
+static void attachAllocatorHooks() {
+  static auto flag [[maybe_unused]] = [] {
+    at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
+    c10::xpu::XPUCachingAllocator::attachAllocatorTraceTracker(
+        &cacheAllocatorRegisterHook);
+    c10::xpu::XPUCachingAllocator::attachAllocatorTraceTracker(
+        &cacheAllocatorDeregisterHook);
+    return true;
+  }();
+}
+
 std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
@@ -426,6 +541,16 @@ ProcessGroupXCCL::~ProcessGroupXCCL() {
   heartbeatMonitor_->stop();
   // Wait for all threads to finish before returning
   heartbeatMonitor_->join();
+
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  for (const auto& [key, comm] : devXCCLCommMap_) {
+    (void)key;
+    // The windows themselves are owned by the communicator, which this PG does
+    // not destroy; only drop the bookkeeping so the hooks stop looking at it.
+    xcclRegisteredSegments.erase(*comm);
+    xcclCommMemPoolMap.erase(*comm);
+    xcclCommDeviceMap.erase(*comm);
+  }
 }
 
 bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
@@ -504,6 +629,68 @@ void ProcessGroupXCCL::enableCollectivesTiming() {
 
 void ProcessGroupXCCL::setEnableNanCheck(bool enableNanCheck) {
   enableNanCheck_ = enableNanCheck;
+}
+
+void ProcessGroupXCCL::registerMemPool(at::xpu::MemPool* pool) {
+  const auto key = std::to_string(pool->device());
+  LOG(INFO) << logPrefix()
+            << "Performing oneCCL window registration for all buffers in "
+            << "MemPool: " << pool->id().first << ":" << pool->id().second
+            << ", device index: " << key;
+  auto comm = getXCCLComm(key);
+  TORCH_CHECK(
+      comm != nullptr,
+      "XCCL communicator has not been initialized before mem pool registration. "
+      "You can pass `device_id` to init_process_group -- one way of eager "
+      "initialization -- to work around this issue");
+
+  {
+    std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+    xcclCommMemPoolMap[*comm].insert(pool->id());
+  }
+
+  // Listen for allocator trace events so that future segments allocated in
+  // this pool get registered too (idempotent).
+  attachAllocatorHooks();
+
+  auto snapshot = c10::xpu::XPUCachingAllocator::snapshot(pool->id());
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  for (const auto& segmentInfo : snapshot.segments) {
+    TORCH_INTERNAL_ASSERT(
+        segmentInfo.device == pool->device(),
+        "Mismatch between XPU memory segment device and pool's device");
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
+    registerSegment(
+        *comm,
+        reinterpret_cast<void*>(segmentInfo.address),
+        segmentInfo.total_size);
+  }
+}
+
+void ProcessGroupXCCL::deregisterMemPool(at::xpu::MemPool* pool) {
+  const auto key = std::to_string(pool->device());
+  LOG(INFO) << logPrefix()
+            << "Performing oneCCL window deregistration for all buffers in "
+            << "MemPool: " << pool->id().first << ":" << pool->id().second
+            << ", device index: " << key;
+  auto comm = getXCCLComm(key);
+  TORCH_CHECK(
+      comm != nullptr,
+      "XCCL communicator has not been initialized before mem pool deregistration");
+
+  auto snapshot = c10::xpu::XPUCachingAllocator::snapshot(pool->id());
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  auto it = xcclCommMemPoolMap.find(*comm);
+  TORCH_CHECK(
+      it != xcclCommMemPoolMap.end() && it->second.erase(pool->id()) == 1,
+      "Trying to deregister a pool that was not previously registered");
+  for (const auto& segmentInfo : snapshot.segments) {
+    TORCH_INTERNAL_ASSERT(
+        segmentInfo.device == pool->device(),
+        "Mismatch between XPU memory segment device and pool's device");
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
+    deregisterSegment(*comm, reinterpret_cast<void*>(segmentInfo.address));
+  }
 }
 
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
@@ -640,6 +827,12 @@ std::shared_ptr<onecclComm_t> ProcessGroupXCCL::initXCCLComm(
       "xccl: onecclCommInitRank failed with code ",
       (int)initR);
   XCCLComm = std::make_shared<onecclComm_t>(comm);
+
+  {
+    std::lock_guard<std::mutex> poolLock(xcclCommMemPoolMapMutex);
+    xcclCommMemPoolMap.emplace(comm, std::set<c10::MempoolId_t>());
+    xcclCommDeviceMap.emplace(comm, device.index());
+  }
 
   RECORD_PARAM_COMMS(
       0, // seq
