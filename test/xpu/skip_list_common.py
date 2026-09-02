@@ -105,11 +105,7 @@ skip_dict = {
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
     ),
-    "test_indexing_xpu.py": (
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_index_add_fast_path_xpu_float64",
-    ),
+    "test_indexing_xpu.py": None,
     "test_linalg_xpu.py": (
         # skipped due to #2309, unsupported ops: aten::_dyn_quant_pack_4bit_weight, aten::narrow_copy, aten::_histogramdd_bin_edges
         "test__dyn_quant_matmul_4bit_m_1_k_128_n_11008_xpu",
@@ -364,20 +360,14 @@ skip_dict = {
         "test_compile_obj_torchbind_op_with_autocast_device_xpu_backend_eager",
     ),
     "functorch/test_aotdispatch_xpu.py": None,
-    "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
-        # XPU-side hot_load failures: https://github.com/intel/torch-xpu-ops/issues/3539
-        "test_cache_hot_load_device_cpu",
-        # CPU test: https://github.com/intel/torch-xpu-ops/issues/3540
-        "test_cache_lazy_backward_for_compiled_autograd",
-    ),
-    "dynamo/test_compiler_bisector_xpu.py": None,
-    "dynamo/test_deviceguard_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_aot_autograd_cache.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_compiler_bisector.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_deviceguard.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_functions.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_higher_order_ops.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_repros.py": None,
     "dynamo/test_misc_xpu.py": None,
-    "dynamo/test_regional_inductor_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_regional_inductor.py": None,
     "dynamo/test_streams_xpu.py": None,
     "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
@@ -398,12 +388,13 @@ skip_dict = {
     "test_fx_experimental_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_callback.py": None,
     "dynamo/test_cudagraphs_xpu.py": None,
-    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": (
-        # Worker crash on BMG; no dedicated tracking issue yet
-        "test_torch_size_tensor_index_scalar_constant_dynamic_shapes",
-    ),
-    "dynamo/test_export_xpu.py": None,
+    "dynamo/test_activation_checkpointing_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_debug_utils.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_dynamic_shapes.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_export.py": None,
     "dynamo/test_logging_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_structured_trace.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_subclasses.py": None,
     f"{PYTORCH_TEST_DIR}/test_modes.py": None,
     f"{PYTORCH_TEST_DIR}/dynamo/test_package.py": None,
     "dynamo/test_recompiles_xpu.py": None,
@@ -414,5 +405,6 @@ skip_dict = {
     "test_cuda_sanitizer_xpu.py": None,
     "test_cuda_trace_xpu.py": None,
     f"{PYTORCH_TEST_DIR}/test_dlpack.py": None,
+    f"{PYTORCH_TEST_DIR}/dynamo/test_trace_rules.py": None,
     "test_mkldnn_fusion_xpu.py": None,
 }
