@@ -173,8 +173,7 @@ Only when the user requests a "detailed" review. Group by severity:
 - **🟡 Should Fix** — imprecise but non-hiding gating, missing issue link, naming/convention mismatch
 - **🟢 Suggestion** — style nits
 
-For each, quote the offending line and give a concrete fix. End detailed reviews
-with a short "✅ What looks good" note.
+For each, quote the offending line and give a concrete fix.
 
 ## Files to Reference
 
