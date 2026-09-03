@@ -264,10 +264,10 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-4f082c2fec7057ba15fb7c46d7d56ef1e07c87a2-33595795984-2
+        name: manywheel-py3_10-xpu
         github-token: ${{ github.token }}
-        repository: mengfei25/torch-xpu-ops
-        run-id: 33595795984
+        repository: pytorch/pytorch
+        run-id: 33362074902
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
