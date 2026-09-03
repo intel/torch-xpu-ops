@@ -174,8 +174,10 @@ short, and in this order:
    a leg whose `infra_pattern_ratio` is above `limits.infra_leg_share` over at
    least `limits.infra_leg_min_cases` failures is machine breakage, not a set
    of product bugs, so nothing from that leg is filed.
-2. **Check what is already open** with `gh issue list`, and drop every case
-   that an open issue still lists. Those are already muted.
+2. **Check what is already open** with `gh issue list`, and drop every case an
+   open issue still mutes. A line struck through as `~~<line>~~` mutes nothing
+   and does not count: that issue released the case, so it is yours to file -
+   as a new issue, not as an append.
 3. **File one issue per group**, following
    `.github/ISSUE_TEMPLATE/agent/ut-auto-issue-body.md`. Its labels are the
    `labels` list its cases carry in `cases.json` - copy it, do not work it out.

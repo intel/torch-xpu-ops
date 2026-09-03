@@ -33,9 +33,10 @@ gh issue list --repo <repo> --state open --label skipped --limit 200 \
   --json number,title,body
 ```
 
-Read the `Cases:` block of each. Any case line that appears in an open issue is
-already muted by it - drop that case from your group. If every case in a group
-is already placed, do not file anything for it; the existing issue covers it.
+Read the `Cases:` block of each. A case line that appears there **as a live
+line** is already muted by that issue - drop that case from your group. If
+every case in a group is already placed, do not file anything for it; the
+existing issue covers it.
 
 If some of a group's cases are already placed and some are not, file only the
 unplaced ones, and comment on the existing issue that the same root cause
@@ -43,6 +44,39 @@ produced more failures tonight.
 
 Also fetch `skipped_bmg`, `regression` and `new_case_failure`, since an issue
 carrying one of those may not carry `skipped`.
+
+`--json body` hands you each body as a JSON string with its newlines escaped,
+so an issue is one physical line and a line-anchored `grep -x` for a case
+matches nothing however many issues hold it. Search for the case line as a
+**substring**, and read the characters on either side of the hit to tell what
+you found: `\n<line>\n` is live, `~~<line>~~` is released. Expect a case to
+turn up in more than one issue.
+
+### A struck-through line is not a muting line
+
+```
+<!-- cases:begin -->
+Cases:
+op_ut,test_foo_xpu.TestFooXPU,test_a_xpu_float32
+~~op_ut,test_foo_xpu.TestFooXPU,test_b_xpu_float32~~
+<!-- cases:end -->
+```
+
+`ut_result_check.sh:mark_passed_issue` rewrites a line to `~~<line>~~` once the
+case passes, and the subtraction that mutes is `grep -vFxf` - whole line, fixed
+string - so `~~x~~` does not match `x`. The struck line mutes nothing. It is
+history: this issue used to claim that case and has released it.
+
+So `test_b` above is **not placed**. Do not drop it, and do not read the
+surviving `~~` text as the case being present.
+
+When a released case fails again tonight, **file it as a new issue**. Do not
+append it to the issue that released it: that issue describes a failure seen
+against a different `torch` and `torch-xpu-ops` than tonight's, the case has
+passed in between, and what is failing now only looks like the same bug. Say in
+the new issue's summary which issue previously covered the case - every issue
+that did, when several released it - so a triager reading them knows why there
+are two. Do not edit or comment on those older issues; they are not yours.
 
 ## 3. File
 
