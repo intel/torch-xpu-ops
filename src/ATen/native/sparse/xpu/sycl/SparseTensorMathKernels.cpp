@@ -716,4 +716,112 @@ Tensor _sparse_sum_backward_kernel(
   }
 }
 
+template <typename scalar_t>
+struct SspaddmmCsrDenseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int64_t linear_id = item.get_global_id(0);
+    int64_t total = dim_i_ * dim_k_;
+    if (linear_id >= total) {
+      return;
+    }
+
+    int64_t row = linear_id / dim_k_;
+    int64_t out_col = linear_id - row * dim_k_;
+    scalar_t acc = 0;
+    int64_t start = crow_indices_.data[row];
+    int64_t end = crow_indices_.data[row + 1];
+
+    for (int64_t p = start; p < end; ++p) {
+      int64_t mat2_row = col_indices_.data[p];
+      acc += values_.data[p] *
+          mat2_.data[mat2_row * mat2_.strides[0] + out_col * mat2_.strides[1]];
+    }
+
+    scalar_t self_value =
+        self_dense_.data
+            [row * self_dense_.strides[0] + out_col * self_dense_.strides[1]];
+    result_.data[row * result_.strides[0] + out_col * result_.strides[1]] =
+        alpha_ * acc + beta_ * self_value;
+  }
+
+  SspaddmmCsrDenseKernelFunctor(
+      TensorInfo<scalar_t, uint64_t> result,
+      TensorInfo<int64_t, uint64_t> crow_indices,
+      TensorInfo<int64_t, uint64_t> col_indices,
+      TensorInfo<scalar_t, uint64_t> values,
+      TensorInfo<scalar_t, uint64_t> self_dense,
+      TensorInfo<scalar_t, uint64_t> mat2,
+      int64_t dim_i,
+      int64_t dim_k,
+      scalar_t beta,
+      scalar_t alpha)
+      : result_(result),
+        crow_indices_(crow_indices),
+        col_indices_(col_indices),
+        values_(values),
+        self_dense_(self_dense),
+        mat2_(mat2),
+        dim_i_(dim_i),
+        dim_k_(dim_k),
+        beta_(beta),
+        alpha_(alpha) {}
+
+ private:
+  TensorInfo<scalar_t, uint64_t> result_;
+  TensorInfo<int64_t, uint64_t> crow_indices_;
+  TensorInfo<int64_t, uint64_t> col_indices_;
+  TensorInfo<scalar_t, uint64_t> values_;
+  TensorInfo<scalar_t, uint64_t> self_dense_;
+  TensorInfo<scalar_t, uint64_t> mat2_;
+  int64_t dim_i_;
+  int64_t dim_k_;
+  scalar_t beta_;
+  scalar_t alpha_;
+};
+
+void sspaddmm_csr_dense_kernel(
+    Tensor& result,
+    const Tensor& crow_indices,
+    const Tensor& col_indices,
+    const Tensor& values,
+    const Tensor& self_dense,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  int64_t dim_i = result.size(0);
+  int64_t dim_k = result.size(1);
+  int64_t total = dim_i * dim_k;
+  if (total == 0) {
+    return;
+  }
+
+  AT_DISPATCH_FLOATING_TYPES(
+      values.scalar_type(), "sspaddmm_csr_dense_xpu", [&] {
+        auto result_info = getTensorInfo<scalar_t, uint64_t>(result);
+        auto crow_indices_info = getTensorInfo<int64_t, uint64_t>(crow_indices);
+        auto col_indices_info = getTensorInfo<int64_t, uint64_t>(col_indices);
+        auto values_info = getTensorInfo<scalar_t, uint64_t>(values);
+        auto self_dense_info = getTensorInfo<scalar_t, uint64_t>(self_dense);
+        auto mat2_info = getTensorInfo<scalar_t, uint64_t>(mat2);
+        auto kfn = SspaddmmCsrDenseKernelFunctor<scalar_t>(
+            result_info,
+            crow_indices_info,
+            col_indices_info,
+            values_info,
+            self_dense_info,
+            mat2_info,
+            dim_i,
+            dim_k,
+            beta.to<scalar_t>(),
+            alpha.to<scalar_t>());
+        int64_t group_size = syclMaxWorkGroupSize(kfn);
+        int64_t groups = (total + group_size - 1) / group_size;
+        sycl_kernel_submit(
+            sycl::range<1>(groups * group_size),
+            sycl::range<1>(group_size),
+            getCurrentSYCLQueue(),
+            kfn);
+      });
+}
+
 } // namespace at::native::xpu
