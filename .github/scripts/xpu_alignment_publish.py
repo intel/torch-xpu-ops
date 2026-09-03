@@ -66,6 +66,17 @@ def run_note(
         lines.append("")
         lines.append("Approve them one at a time with `@torchxpubot file <unit-id>`.")
 
+    tracked = [
+        unit_id
+        for unit_id, verdict in (decision.get("unit_verdicts") or {}).items()
+        if verdict == "track-upstream"
+    ]
+    if tracked:
+        if lines:
+            lines.append("")
+        lines.append("Observation-only upstream tracking:")
+        lines += [f"- `{unit_id}` \u2014 `track-upstream`" for unit_id in tracked]
+
     if partial:
         if lines:
             lines.append("")
