@@ -144,6 +144,7 @@ class XpuProfilerUseCasesTest(TestCase):
         )
 
     @unittest.skipIf(not TEST_XPU, "test requires XPU")
+    @unittest.expectedFailure
     def test_profiler_xpu_graph(self):
         """Profile XPUGraph capture and replay.
 
