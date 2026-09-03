@@ -1,245 +1,295 @@
 ---
 name: xpu-nightly-ci-fix
-description: Analyze nightly CI test failures and fix XPU test cases. Use when the user provides CI failure reports, nightly status emails, failing test names, or asks to "fix nightly failures", "analyze CI failures", or "debug XPU tests". Handles triaging, reproducing, root cause analysis, and applying fixes with verification.
----
-> **Before starting:** Read the `## Working Principles` section of `AGENTS.md` at the repository root.
-> Then explicitly state which principles apply to this task and how you will follow them.
-> Do not proceed until you have done this.
-
-# Nightly CI Test Fixing for XPU
-
-Analyze CI nightly test failure reports and fix failing XPU test cases on PyTorch.
-
-## Quick Start
-
-Provide a nightly failure report (email, test list, or log snippet). The skill will:
-1. Extract failing tests and PyTorch commit
-2. Reproduce each failure locally
-3. Categorize by root cause
-4. Apply fixes aligned with CUDA reference
-5. Verify all fixes individually
-6. Generate summary report
-
-```
-I have a nightly CI failure report from 2026-06-08. Here are the failing tests:
-- test_ops_xpu.py::TestBinaryUfuncsXPU::test_add_xpu
-- test_nn_xpu.py::TestNNXPU::test_relu_xpu
-PyTorch commit: abc123def
-```
-
-## Required: Initialize Todo List Before Starting
-
-**Immediately after reading this skill and parsing the failure report, use TodoWrite to create the
-following items before doing any other work.** Do not skip or merge steps. Each failing test group
-gets its own reproduce/fix/verify trio.
-
-```
-- [ ] Step 0: Ensure PyTorch checkout exists and is up to date
-- [ ] Step 1: Parse report — extract commit, date, failing test list
-- [ ] Step 2a: Checkout origin/main and rebuild PyTorch
-- [ ] Step 2b: Reproduce <test_group_1> — confirm failure
-- [ ] Step 2b: Reproduce <test_group_2> — confirm failure
-      ... (one entry per distinct failing test or group)
-- [ ] Step 3: Analyze root cause for each failure
-- [ ] Step 4+5: Fix + verify <test_group_1> (run test, confirm pass, lint, commit)
-- [ ] Step 4+5: Fix + verify <test_group_2> (run test, confirm pass, lint, commit)
-      ... (one entry per fix)
-- [ ] Step 6: Generate summary report
-```
-
-Only mark a fix item `completed` after the test actually passes. Never skip directly to Step 6.
-
-## Prerequisites
-
-- XPU hardware available and oneAPI environment configured
-- A local PyTorch checkout at `agent_space_xpu/pytorch/` (see Step 0 below)
-- PyTorch built from source with XPU support (see `AGENTS.md` Build section and `/xpu-build-pytorch` skill)
-
-## Step 0: Ensure PyTorch Checkout Exists
-
-Check whether `agent_space_xpu/pytorch/` already exists. If not, clone it before proceeding.
-
-```bash
-ls agent_space_xpu/pytorch/ 2>/dev/null || echo "NOT FOUND"
-```
-
-If **not found**, clone with a partial (blobless) clone to save time and disk space:
-
-```bash
-git clone --filter=blob:none https://github.com/pytorch/pytorch.git agent_space_xpu/pytorch
-cd agent_space_xpu/pytorch
-git submodule update --init --recursive
-```
-
-If **already found**, verify the remote is correct and fetch latest:
-
-```bash
-git -C agent_space_xpu/pytorch remote get-url origin  # should be pytorch/pytorch
-git -C agent_space_xpu/pytorch fetch origin
-```
-
-All subsequent steps run from `agent_space_xpu/pytorch/` as the working directory.
-
-## Step 1: Parse the Failure Report
-
-- Extract `report_date` from the report
-- Extract `commit_id` if present; otherwise use `origin/main`
-- Extract failing tests (test file, class, method name)
-- Group failures by test file / module
-
-## Step 2: Reproduce Locally
-
-All commands below run from `agent_space_xpu/pytorch/`.
-
-1. **Checkout the target commit:**
-
-   Always use `origin/main` by default, even if the report includes a commit ID.
-   Only use a specific commit if the user explicitly requests it.
-   ```bash
-   git fetch origin main
-   git checkout origin/main
-   ```
-
-2. **Create a fix branch:**
-   ```bash
-   git checkout -b fix-<report_date>  # e.g. fix-20260608
-   ```
-
-3. **Build PyTorch** (clean rebuild for accurate reproduction):
-   ```bash
-   python setup.py clean
-   pip install -e . -v --no-build-isolation
-   ```
-   For environment setup and building PyTorch, see `AGENTS.md` Build section and the `/xpu-build-pytorch` skill.
-
-4. **Run each failing test:**
-   ```bash
-   python <test_file> -k <test_name> 2>&1 | tail -80
-   ```
-
-5. **Confirm the failure reproduces** before proceeding to Step 3.
-
-**Branch strategy:** `fix-<report_date>` is a **local working branch only** — not a single upstream PR. Each independent fix is one focused commit. When submitting upstream, each commit becomes a **separate PR** to `pytorch/pytorch`. Fixes in `torch-xpu-ops` kernel code require a separate PR to `intel/torch-xpu-ops`. Step 6 tracks which fix maps to which PR.
-
-## Step 3: Analyze and Categorize
-
-**First:** Use `git log` to check when the test was added. If recently added, check the introducing commit/PR to see if XPU support is required — then skip to Step 4.
-
-**Otherwise**, categorize the root cause:
-
-| Category | Description | Typical Fix Location |
-|----------|-------------|---------------------|
-| XPU backend bug | Backend implementation issue | `torch/_inductor/` or `third_party/torch-xpu-ops/` |
-| Tolerance too tight | Numeric precision mismatch | Increase atol/rtol to match CUDA |
-| Skip decorator stale | Test now passes on XPU | Remove `@skipIfXpu` or `@expectedFailure` |
-| Upstream regression | New upstream code changed behavior XPU relied on. Apply XPU-side fix aligned with upstream intent using CUDA as reference (e.g., `intel/torch-xpu-ops#3809`). If the upstream commit is itself a bug (CUDA also broken), file issue in `pytorch/pytorch` + add temporary `@skipIfXpu` with tracking issue. Do not add bypasses deviating from CUDA behavior. | XPU-side fix in `torch-xpu-ops` or test file |
-| Test infrastructure | Environment, import, or setup issue | Test setup/config files |
-
-## Step 4: Fix
-
-Read the corresponding CUDA implementation in `pytorch/aten/src/ATen/native/cuda/` to understand expected behavior.
-
-- **Newly added test:** Try to enable XPU support. If not feasible (missing kernel, blocked feature), skip with `@skipIfXpu` and a tracking issue.
-- **Regression:** Find the guilty commit (`git log --oneline -20 -- <file>`). Apply an XPU-side fix aligned with upstream intent; document any CUDA divergence in comments.
-- **Unknown root cause:** Compare with CUDA/ROCm backend behavior to identify the issue.
-
-## Step 5: Verify and Commit
-
-1. Run the fixed test and confirm it passes:
-   ```bash
-   python <test_file> -k <test_name> 2>&1 | tail -80
-   ```
-2. Run the full test file to check for regressions
-3. Lint:
-   ```bash
-   spin fixlint
-   ```
-4. Commit (one fix per commit):
-   ```
-   [xpu][fix] <short description>
-
-   ## Motivation
-   <why this fix is needed>
-
-   ## Solution
-   <what was changed and CUDA alignment if applicable>
-
-   ## Test plan
-   <how it was verified>
-
-   Note: This commit was authored with AI assistance.
-   ```
-
-## Step 6: Generate Summary Report
-
-Write to `agent_space_xpu/summary_<report_date>.md`:
-
-```markdown
-# Nightly CI Fix Summary — 2026-06-08
-
-PyTorch commit: abc123def
-Total failures: 15 | Fixed: 12 | Skipped: 2 | Investigating: 1
-
-## Status at a Glance
-
-| Failure | Local fix | PR submitted | CI unblocked |
-|---------|-----------|--------------|--------------|
-| test_ops_xpu.py::...::test_add_xpu | YES (commit abc1234) | NO | NO |
-| test_nn_xpu.py::...::test_conv3d_groups | YES (commit def5678) | NO | NO |
-| Windows wheel-py3_*-xpu-test | N/A (infra) | N/A | NO — needs manual log investigation |
-
+description: >
+  Use when asked to fix nightly CI failures, analyze a nightly failure
+  report, debug XPU tests from a CI run, or process a batch of failing
+  tests emailed from the nightly job. Runs the same leaf pipeline as
+  `issue-handler` but batches multiple failures using a two-phase
+  sweep-then-fix loop: reproduce all failures first (sweep summary),
+  then deep-fix each STILL_FAILING entry with `allow_skip=true` so
+  unfixable failures can be skip-listed with a tracking issue and
+  nightly CI is unblocked while the deep fix is pursued
+  asynchronously.
 ---
 
-## Fixed Tests
+# XPU Nightly CI Fix — Batch Orchestrator
 
-### test_ops_xpu.py::TestBinaryUfuncsXPU::test_add_xpu
-- Root cause: Tolerance too tight
-- Fix: Increased atol 1e-5 → 1e-4 to match CUDA
-- Commit: fix-add-tolerance-20260608
-- AR: Submit PR to pytorch/pytorch
+Analyzes a nightly XPU CI failure report and produces staged fixes
+(or tracked skips) for the failing tests. Runs the same leaf skills
+as `issue-handler`; the differences are:
 
-[... more entries ...]
+1. Input is a **list of failing tests** (from a nightly report /
+   email / log excerpt), not a single GitHub issue.
+2. Uses a **two-phase sweep-then-fix loop** structurally (the same
+   shape as `issue-handler`'s Stage 1u batch fan-out): Phase 1
+   sweeps every failure through `fix-reproduce(stage=auto)`,
+   Phase 2 deep-fixes STILL_FAILING entries.
+3. Runs `fix-implement` with `allow_skip=true` — a nightly failure
+   the agent cannot deep-fix in this run can be skip-listed against
+   a tracking issue so CI unblocks now and the deep fix is followed
+   up async. `issue-handler` runs with `allow_skip=false` and never
+   skips.
 
-## Skipped Tests (with tracking issues)
+Every agent-produced diff is a **proposal**. This orchestrator and
+its leaves never commit, push, tag, or open a PR — the invoking
+workflow takes the staged diff after `fix-verify` passes and drives
+its own PR-creation path with human review.
 
-### test_nn_xpu.py::TestNNXPU::test_conv3d_groups
-- Root cause: Missing XPU kernel for grouped conv3d
-- Decision: Skip — implementation ~3-5 days, beyond nightly scope
-- Fix: Added @skipIfXpu with issue reference
-- Tracking issue: intel/torch-xpu-ops#1234
-- AR: Prioritize kernel implementation in next sprint
+## Contents
+
+- [Pipeline overview](#pipeline-overview)
+- [Inputs](#inputs)
+- [Execution modes](#execution-modes)
+- Step 1: [Parse the failure report](#step-1-parse-the-failure-report)
+- Step 2: [Preflight — install nightly wheel once](#step-2-preflight--install-nightly-wheel-once)
+- Step 3: [Phase 1 — reproduce sweep](#step-3-phase-1--reproduce-sweep)
+- Step 4: [Phase 1 report](#step-4-phase-1-report)
+- Step 5: [Phase 2 — deep-fix each STILL_FAILING](#step-5-phase-2--deep-fix-each-still_failing)
+- Step 6: [Final summary](#step-6-final-summary)
+
+## Pipeline overview
+
+```
+parse report → install nightly wheel once → for entry in failures:
+                                              fix-reproduce(stage=auto)
+                                                             │
+                                                → sweep summary
+                                                             │
+                                            for entry in STILL_FAILING:
+                                              reset checkouts →
+                                              fix-root-cause →
+                                              fix-implement(allow_skip=true) →
+                                              fix-verify
+                                                             │
+                                                → final summary
 ```
 
-## Critical Rules
+Leaves are identical to `issue-handler`'s Stage 2-5; only the
+flags differ:
 
-### Build Discipline
+| Leaf | Flag in this orchestrator | Flag in issue-handler |
+|---|---|---|
+| `fix-reproduce` | `stage=auto` (Phase 1 sweep only; Phase 2 does not call it) | `stage=nightly` |
+| `fix-implement` | `allow_skip=true` | `allow_skip=false` |
 
-- **Always rebuild after rebase or branch switch.** After `git rebase`, `git checkout`, or any commit-base change, rebuild before running tests. Without rebuilding, C++ extensions and generated code are stale — test results will be completely unreliable (segfaults, wrong pass/fail, masked issues).
-- **Never cherry-pick** upstream fixes. If a fix already landed on trunk after the CI commit, rebase onto latest trunk (`git rebase origin/main`) instead.
-- **Fix in `torch-xpu-ops`?** Update `xpu.txt` to your local HEAD **before rebuilding** so CMake's checkout becomes a no-op:
-  ```bash
-  git rev-parse HEAD > <pytorch_root>/third_party/xpu.txt
-  # Do NOT commit xpu.txt — local-only override
-  pip install -e . -v --no-build-isolation
-  ```
-  After verification, submit PR to `intel/torch-xpu-ops`, then update the pin in `pytorch/pytorch` once merged.
+`fix-verify` takes no flags — it always runs the before/after table
+and lint. **Keep the fix staged here — do not commit it**, or the
+pickup below (`git diff --cached`, see Output) sees an empty diff.
 
-### Verification
+## Inputs
 
-- **Run EVERY failing test case individually** after fixing. Do not skip any case or assume one representative case is sufficient. Run all cases explicitly, batch by batch if needed.
-- Always reproduce before fixing.
+- A nightly failure report — email, log excerpt, list of pytest
+  node ids, or an on-disk file. May include the base commit sha
+  (`report_commit`), the report date (`report_date`), and per-test
+  failure output; only the test list is strictly required.
+- `pytorch_dir` — path to a local pytorch checkout, resolved as
+  described in `fix-reproduce` Prepare. If absent, leaves clone
+  into `$XPU_OPS_ROOT/agent_space_xpu/pytorch/`.
+- Mode (interactive / pipeline; see below).
 
-### C++ / Header Changes
+## Execution modes
 
-- Editable installs resolve Python from source but C++ headers from `torch/include/`. After editing a C++ header, **manually copy** it to the installed include path.
+Same contract as `issue-handler`. See
+[../issue-handler/references/execution-modes.md](../issue-handler/references/execution-modes.md).
 
-### Code Style
+- **Interactive:** ask the user when blocked; do not post
+  comments unless asked.
+- **Pipeline:** post the sweep summary + final summary as
+  comments on a tracking issue (created if absent — the caller
+  usually passes an `$ISSUE_NUMBER` for the current nightly
+  cycle's rollup issue).
 
-- Match upstream CUDA tolerances when adjusting XPU tolerances
-- Remove unused imports when removing skip decorators
-- Keep commits focused: one fix per commit
-- Scratch files go in `agent_space_xpu/` (git-ignored)
+## Step 1: Parse the failure report
 
-## Advanced Usage
+Extract from the report:
 
-For AOT Inductor C++ compile error diagnosis and other advanced debug patterns, see [reference.md](reference.md).
+- **Failing tests** — pytest node ids or `Class::method` shorthand.
+  Normalize each into a node id; skip empty lines, comments, section
+  headers. Group duplicates.
+- **Report date** — used to name the eventual commit-message context
+  (`fix-<report_date>`, e.g. `fix-20260819`); the workflow uses this
+  for the branch it creates after `fix-verify` passes.
+- **Report commit** (optional) — the pytorch sha the nightly failed
+  against. **Do not use this as the analysis base.** Downstream
+  leaves analyze against `origin/main` unless the trunk fails to
+  build (see `fix-reproduce` Stage 2 fallback logic). The
+  report_commit is recorded in the final summary only.
+
+If the report contains a mix of "test failed" and "infra failed"
+(runner crashed, docker pull timeout, disk full), split them: infra
+failures go straight to the final summary as `NEEDS_HUMAN(infra)`,
+never enter the pipeline.
+
+## Step 2: Preflight — install nightly wheel once
+
+Same rationale as `issue-handler`'s skip-list preflight.
+`fix-reproduce` Stage 1 always issues `pip install --pre --upgrade`
+(it refuses to reuse a stale wheel), so running the upgrade once here
+front-loads the one real install; each per-entry
+`fix-reproduce(stage=auto)` afterwards issues the same `--upgrade`
+command as its first stage and pip returns quickly against the
+already-current environment (only falling through to source_build /
+ci_env when the nightly wheel does not reproduce). There is no flag to
+pass:
+
+```bash
+pip3 install --pre --upgrade torch torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/nightly/xpu
+python -c "import torch; print('nightly:', torch.__version__)"
+```
+
+Record the installed nightly version in the final summary.
+
+## Step 3: Phase 1 — reproduce sweep
+
+For each failing test, call `fix-reproduce` with `stage=auto` (full
+three-stage fallback nightly → source_build → ci_env, so a failure that
+only reproduces on a source build is still caught in the sweep):
+
+```
+for entry in failing_tests:
+    result = fix-reproduce(
+      reproducer_command=entry,
+      stage=auto,
+      ci_repo=<inferred from entry path>,
+    )
+    record (entry, result.verdict, result.refined_command, result.reason)
+```
+
+Categorize into four buckets:
+
+- `REPRODUCED` → **STILL_FAILING**. Deep fix in Phase 2.
+- `NOT_REPRODUCED` → **ALREADY_FIXED**. The nightly report was
+  correct at report_commit but the failure no longer reproduces on
+  latest nightly; either upstream fixed it, or it was flaky. Record
+  and move on — no fix needed.
+- `NO_REPRODUCER` → **INVALID_ENTRY**. Node id does not collect.
+  Test was renamed, moved, or removed. Needs human.
+- `CANNOT_VERIFY` → **UNVERIFIED**. Environmental — e.g. wheel
+  install failed, XPU device unavailable. Needs human.
+
+Do not abort on any single entry. Continue sweeping so the summary
+is complete.
+
+## Step 4: Phase 1 report
+
+Post one sweep summary comment (or surface it interactively). Marker
+`<!-- agent:nightly-sweep -->`:
+
+```
+<!-- agent:nightly-sweep -->
+
+## Nightly failure reproduce sweep — <report_date>
+
+Report commit: <report_commit or "not provided">
+Nightly wheel tested: <torch.__version__>
+
+| Test | Sweep verdict | Category |
+|---|---|---|
+| test/xpu/test_ops_xpu.py::TestBinaryUfuncsXPU::test_add_xpu_float32 | REPRODUCED | STILL_FAILING |
+| test/xpu/test_nn_xpu.py::TestNNXPU::test_relu_xpu | NOT_REPRODUCED | ALREADY_FIXED |
+| test/xpu/gone.py::TestX::test_removed | NO_REPRODUCER | INVALID_ENTRY |
+
+- **STILL_FAILING:** N tests — Phase 2 will attempt to fix.
+- **ALREADY_FIXED:** M tests — no action.
+- **INVALID_ENTRY:** P tests — needs human review.
+- **UNVERIFIED:** Q tests — environmental issue during sweep.
+
+*Automated by xpu-nightly-ci-fix.*
+```
+
+Stop here if the caller asked for sweep-only, or if STILL_FAILING
+is empty.
+
+## Step 5: Phase 2 — deep-fix each STILL_FAILING
+
+Capture the two base SHAs and reset both checkouts between entries per
+the shared
+[reset-between-entries recipe](../issue-handler/references/execution-modes.md#reset-between-entries-recipe-batched-fan-out)
+(identical to `issue-handler`'s Phase 2, including the 3-attempt cap).
+
+For each STILL_FAILING entry:
+
+1. Reset both checkouts (see the shared recipe above) so the prior
+   entry's staged diff does not bleed into this one.
+2. Call `fix-root-cause` on the entry's failure signature. If it
+   returns `NEEDS_HUMAN`, log the entry outcome and move on.
+3. On `IMPLEMENTING`, call `fix-implement` with `allow_skip=true`.
+   If it returns `READY`, call `fix-verify` (no flags — it always
+   runs the before/after table and lint).
+4. Each leaf posts its own per-entry
+   `<!-- agent:root-cause -->` / `<!-- agent:implement -->` /
+   `<!-- agent:verify -->` comment. Track each entry's outcome for
+   the final summary.
+5. On any leaf returning `NEEDS_HUMAN` / `CANNOT_VERIFY` /
+   `FAILED`, log the entry outcome and **move on** to the next
+   entry — do NOT abort the loop. On attempts exhausted (3-attempt
+   cap from the shared recipe), record
+   `NEEDS_HUMAN(attempts_exhausted)` for that entry and continue.
+
+### Skip-with-tracking-issue path
+
+`allow_skip=true` means `fix-implement` may add a skip decorator
+plus create a tracking issue when the deep fix is out of scope for
+this run (missing kernel, complex redesign, etc.). The leaf's
+inline "Add a new skip" recipe (see `fix-implement` Step 2) handles
+the `gh issue create` + edit + `tracking_issue` field itself.
+
+When Phase 2 encounters this outcome:
+
+- The entry's per-entry `<!-- agent:implement -->` comment records
+  the tracking issue URL.
+- The final summary (Step 6) lists it under "Skipped (with tracking
+  issue)".
+- The staged diff — a skip decorator addition, nothing else — is
+  still valid for the workflow to commit after `fix-verify` passes
+  (the skill re-runs the test and confirms it is now skipped
+  rather than failing).
+
+## Step 6: Final summary
+
+After Phase 2, post the final summary. Marker
+`<!-- agent:nightly-summary -->`:
+
+```
+<!-- agent:nightly-summary -->
+
+## Nightly CI fix summary — <report_date>
+
+Report commit: <report_commit>
+Nightly wheel: <torch.__version__>
+Total failures: <n> | Fixed: <k> | Skipped-with-tracking: <s> | Needs human: <h> | Already fixed: <m>
+
+### Fixed (staged diffs ready for PR)
+
+| Test | target_repo | analyzed_sha | Verify verdict |
+|---|---|---|---|
+| test_add_xpu_float32 | torch-xpu-ops | abc1234 | PASSED |
+
+### Skipped with tracking issue
+
+| Test | Tracking issue | Reason |
+|---|---|---|
+| test_conv3d_groups | intel/torch-xpu-ops#1234 | missing kernel |
+
+### Needs human
+
+| Test | Reason | Blocker |
+|---|---|---|
+| test_flaky_bar | CANNOT_VERIFY | test_timeout |
+| test_removed | NO_REPRODUCER | INVALID_ENTRY (renamed/removed upstream) |
+
+### Already fixed on latest nightly
+
+- test_relu_xpu
+
+*Automated by xpu-nightly-ci-fix. The workflow that invoked this
+skill picks up the staged diffs (`git diff --cached`) and drives
+its own PR-creation path.*
+```
+
+Advance the issue's status marker per the shared
+[execution-modes.md](../issue-handler/references/execution-modes.md)
+contract — final stage is `DONE` if all STILL_FAILING resolved,
+`NEEDS_HUMAN` if any entry remains unfixed, `SKIPPED` if all
+entries were `ALREADY_FIXED` / `INVALID_ENTRY`.
