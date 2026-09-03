@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <bit>
+
 #include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
@@ -225,18 +227,22 @@ class LoopScanConfig {
         func_(func),
         glb_range_x_(0),
         glb_range_y_(0),
-        wg_range_x_(0),
+        wg_range_x_(std::min<size_t>(32, std::bit_ceil(problem))),
         wg_range_y_(0) {
-    // One work-group contains exactly one sub-group (32 lanes). Each
-    // sub-group handles one batch independently, scanning the problem
-    // dimension with shfl. This maximizes the number of blocks.
-    wg_range_x_ = 32;
-    wg_range_y_ = 1;
+    size_t wg_size = syclMaxWorkItemsPerSubSlice();
+    wg_range_y_ = wg_size / wg_range_x_;
+    const auto target_global_size = syclMaxWorkItemsPerTile();
+    const size_t max_work_group_num = target_global_size / wg_size;
+    const size_t wg_number =
+        std::min(max_work_group_num, at::ceil_div(batch_, wg_range_y_));
     glb_range_x_ = wg_range_x_;
-    glb_range_y_ = batch_;
+    glb_range_y_ = wg_range_y_ * wg_number;
 
-    loops_batch = 1;
-    loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
+    // For up down sweep algorithm, each work-item handle two elements.
+    // This means that one work group would handle 2 times of work group size
+    // elements.
+    loops_batch = at::ceil_div(batch_, glb_range_y_);
+    loops_problem = at::ceil_div(problem_, wg_range_x_ * 2);
   }
 
   static LoopScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
