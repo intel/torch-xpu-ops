@@ -204,6 +204,8 @@ struct AssertAsyncKernelFunctor2 {
   void operator()(sycl::nd_item<1> item) const {
     SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
   }
+  // TODO: add actual handling for the message argument
+  // See: https://github.com/intel/torch-xpu-ops/issues/5165
   AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg)
       : input_(input) {}
 
