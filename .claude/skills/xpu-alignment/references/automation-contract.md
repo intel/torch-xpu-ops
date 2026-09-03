@@ -205,7 +205,7 @@ writes one result for every execution-plan entry:
   "results": [{
     "id": "issue-123",
     "script_sha256": "...",
-    "command": ["/usr/bin/python3", "scripts/repro_issue-123.py"],
+    "command": ["/usr/bin/python3", "-I", "-u", "scripts/repro_issue-123.py"],
     "log": "runner/logs/issue-123.log",
     "log_sha256": "...",
     "returncode": 0,
@@ -215,6 +215,10 @@ writes one result for every execution-plan entry:
   }]
 }
 ```
+
+`command` records the invoked Python options and artifact-relative script path;
+the scratch working directory, credential-free environment, and process-group
+isolation remain runner-owned execution context.
 
 `status: complete` means the runner produced a structurally valid result for
 every planned execution, not that every reproducer succeeded. The collection
@@ -298,10 +302,13 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. `implementation_repository`
-is `null` for verdicts that identify no implementation owner, such as
-`non-issue` and `verification-gap`. `status: blocked`
-lists blockers and contains no payloads. When an existing
+`needs-xpu-fix` without a canonical tracker has a payload. Its
+`implementation_repository` is `intel/torch-xpu-ops`. For `track-upstream`, the
+field is the GitHub `owner/repo` that owns the implementation, or
+`intel/torch-xpu-ops` for observation-only parity work that depends on an
+upstream change landing. It is `null` for `fixed`, `duplicate`, `non-issue`, and
+`verification-gap`. `status: blocked` lists blockers and contains no payloads.
+When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.
 

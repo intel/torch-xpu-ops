@@ -466,10 +466,6 @@ jobs:
             record it as `canonical_tracker`; do not create a payload or comment
             on it.
 
-            Apply the upstream merge-state and current-defect actionability rules
-            in `.claude/skills/xpu-alignment/references/evidence.md` when assigning
-            each verdict.
-
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`
             without a canonical tracker. Do not execute code or modify GitHub.

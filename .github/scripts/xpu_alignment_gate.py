@@ -20,6 +20,7 @@ from xpu_alignment_collect import CollectionError, validate_collection
 SCHEMA_VERSION = 1
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
 LOCAL_RESULTS = {
@@ -42,7 +43,6 @@ VERDICTS = {
     "duplicate",
     "verification-gap",
 }
-IMPLEMENTATION_REPOSITORIES = {"intel/torch-xpu-ops", "pytorch/pytorch"}
 ENVIRONMENT_FIELDS = {
     "python_executable",
     "python_version",
@@ -478,10 +478,15 @@ def _validate_review(
             continue
         verdicts[unit_id] = str(verdict)
         repository = entry.get("implementation_repository")
-        repository_required = verdict in {"needs-xpu-fix", "track-upstream"}
-        if (repository_required or repository is not None) and (
-            repository not in IMPLEMENTATION_REPOSITORIES
-        ):
+        if verdict == "needs-xpu-fix":
+            repository_valid = repository == "intel/torch-xpu-ops"
+        elif verdict == "track-upstream":
+            repository_valid = isinstance(repository, str) and bool(
+                REPOSITORY_RE.fullmatch(repository)
+            )
+        else:
+            repository_valid = repository is None
+        if not repository_valid:
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         if tracker is not None and (
