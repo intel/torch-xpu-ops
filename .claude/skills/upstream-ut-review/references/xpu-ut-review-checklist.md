@@ -30,12 +30,14 @@ as real review comments in landed PRs.
 
 ## 2. Device gating precision (blanket-skip anti-pattern)
 
-- [ ] **No blanket `if device_type == "xpu": self.skipTest(...)`** to route
-  around a check that is really CUDA-specific. Gate on the true condition and
-  name the device: e.g. `if device_type == "cuda" and not sm_is_or_higher_than(device, 8, 0)`.
-  Enumerate the devices/conditions that *lack* the capability (whitelist), rather
-  than disabling the whole test for a device; a blanket XPU skip both over-skips
-  and hides the real capability predicate.
+- [ ] **No blanket per-device skip inside a test the PR enables on XPU.** When a
+  test is already generalized and run on XPU, do not skip the whole test for XPU
+  just to route around one CUDA-specific check inside it. Gate only that check on
+  its true condition, naming the device that lacks the capability, so XPU still
+  gets the coverage the rest of the test provides. A whole-test XPU skip both
+  over-skips and hides the real capability predicate. (A test that is genuinely
+  CUDA-only and not being enabled on XPU should keep its existing CUDA scoping
+  untouched, not gain an XPU skip.)
 - [ ] **Arch/capability gates are device-scoped.** A CUDA arch check left as a
   device-agnostic `@unittest.skipIf(not SM70OrLater, ...)` wrongly skips XPU (and
   every non-CUDA device). Scope it: `@skipCUDAIf(not SM70OrLater, ...)`. When an
