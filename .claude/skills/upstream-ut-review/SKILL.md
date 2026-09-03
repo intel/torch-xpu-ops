@@ -45,7 +45,8 @@ If invoked with no arguments, **do not review**. Ask:
 ```
 
 Obtain the PR title, description, diff, changed-file list, and existing review
-comments before reviewing.
+comments before reviewing. If the command does not name a repo, default to
+fetching the PR from `pytorch/pytorch`
 
 ### Local Branch Mode
 
