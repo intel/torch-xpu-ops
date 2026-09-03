@@ -645,11 +645,17 @@ void ProcessGroupXCCL::registerMemPool(at::xpu::MemPool* pool) {
             << "MemPool: " << pool->id().first << ":" << pool->id().second
             << ", device index: " << key;
   auto comm = getXCCLComm(key);
+  if (comm == nullptr) {
+    // Creating a communicator is collective, and so is registerMemPool, so it
+    // is safe to establish it here rather than making the caller arrange for
+    // eager initialization. Note that `device_id` on init_process_group does
+    // not help: PyTorch only eagerly connects backends that support splitting.
+    at::Device device(at::kXPU, pool->device());
+    comm = initXCCLComm(key, device, OpType::ALLREDUCE);
+  }
   TORCH_CHECK(
       comm != nullptr,
-      "XCCL communicator has not been initialized before mem pool registration. "
-      "You can pass `device_id` to init_process_group -- one way of eager "
-      "initialization -- to work around this issue");
+      "Failed to create an XCCL communicator for mem pool registration");
 
   {
     std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
