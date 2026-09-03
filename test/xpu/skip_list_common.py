@@ -138,12 +138,6 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_lobpcg_ortho_xpu_float64",
-        "test_pca_lowrank_xpu",
-        "test_svd_lowrank_xpu_complex128",
-        "test_svd_lowrank_xpu_float64",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
