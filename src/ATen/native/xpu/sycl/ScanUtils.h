@@ -227,14 +227,15 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
+    // One work-group contains exactly one sub-group (32 lanes). Each
+    // sub-group handles one batch independently, scanning the problem
+    // dimension with shfl. This maximizes the number of blocks.
     wg_range_x_ = 32;
     wg_range_y_ = 1;
     glb_range_x_ = wg_range_x_;
-    const size_t max_work_group_num =
-        syclMaxWorkItemsPerTile() / (wg_range_x_ * wg_range_y_);
-    glb_range_y_ = std::min(max_work_group_num, batch_);
+    glb_range_y_ = batch_;
 
-    loops_batch = (batch_ + glb_range_y_ - 1) / glb_range_y_;
+    loops_batch = 1;
     loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
   }
 
