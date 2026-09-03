@@ -113,7 +113,7 @@ def run_note(
         f"- Scan date: `{decision.get('scan_date', '')}`",
         f"- Collection: {decision.get('collection_status') or 'unknown'}",
         reviewed,
-        f"- New XPU tracker candidates: {len(payloads)}",
+        f"- Review-approved tracker candidates: {len(payloads)}",
         "",
     ]
     if filed:
