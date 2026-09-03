@@ -162,22 +162,3 @@ as real review comments in landed PRs.
   `lambda params: params["device"] == torch.device("cpu")` must become
   `== "cpu"`, or they silently never match after the migration.
 
-## Quick reference: correct patterns
-
-```python
-# Device-generic enablement
-class TestFooDevice(TestCase):
-    hw_classification = HardwareClassification.ACCELERATOR
-
-    @onlyAccelerator
-    def test_bar(self, device):
-        x = torch.randn(4, device=device)          # not .cuda()
-
-instantiate_device_type_tests(TestFooDevice, globals(), allow_xpu=True)
-
-# Skip / xfail / tolerance are distinct mechanisms; each needs an issue link:
-@unittest.skipIf(TEST_XPU, "...")                  # capability unsupported
-@xfailIf(TEST_XPU)                                 # should pass, currently fails
-DecorateInfo(toleranceOverride({torch.float64: tol(atol=9e-6, rtol=8e-7)}),
-             "TestCommon", "test_numpy_ref", device_type="xpu")  # numeric drift
-```
