@@ -59,7 +59,11 @@ macro(set_build_flags)
   # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS /MD)
+    # The CRT flavor must follow the configuration: an unconditional /MD would be
+    # appended after CMAKE_CXX_FLAGS_DEBUG's /MDd (TORCH_XPU_OPS_FLAGS is used in
+    # target_compile_options) and win, mixing release CRT objects into a Debug
+    # build. Spelled as a genex so multi-config generators resolve it per config.
+    list(APPEND SYCL_HOST_FLAGS $<IF:$<CONFIG:Debug>,/MDd,/MD>)
     list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
@@ -171,7 +175,18 @@ macro(set_build_flags)
   #   Only effective in Debug/RelWithDebInfo builds.
   # DEBUG=1 alone: does NOT affect device code (same as CUDA).
   if(DEFINED ENV{XPU_DEVICE_DEBUG} AND "$ENV{XPU_DEVICE_DEBUG}" STREQUAL "1")
-    list(APPEND SYCL_KERNEL_OPTIONS -g -O0 -Rno-debug-disables-optimization)
+    if(WIN32)
+      # Large SYCL translation units in Windows Debug builds will exhaust Clang
+      # source locations resulting in errors during kernels' compilation; reduce
+      # debug metadata when the compiler supports it.
+      CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
+      if(SUPPORTS_FNO_SYSTEM_DEBUG)
+        list(APPEND SYCL_KERNEL_OPTIONS -fno-system-debug)
+      endif()
+      list(APPEND SYCL_KERNEL_OPTIONS -gline-tables-only -O0 -Rno-debug-disables-optimization)
+    else()
+      list(APPEND SYCL_KERNEL_OPTIONS -g -O0 -Rno-debug-disables-optimization)
+    endif()
   elseif(DEFINED ENV{DEBUG_XPU} AND "$ENV{DEBUG_XPU}" STREQUAL "1")
     list(APPEND SYCL_KERNEL_OPTIONS
       $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only;-O2>)
