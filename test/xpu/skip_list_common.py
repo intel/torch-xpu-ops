@@ -67,7 +67,7 @@ skip_dict = {
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
-    "test_autocast_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
