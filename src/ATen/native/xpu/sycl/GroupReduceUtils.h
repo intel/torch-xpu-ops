@@ -82,6 +82,8 @@ inline T& GroupReduceSumWithoutBroadcast(
   return val;
 }
 
+// Keep max_impl below: sycl::maximum under reduce_over_group can drop a NaN,
+// which torch.max/amax must not.
 template <typename T, int SIMD, int DIM>
 inline T& SubgroupReduceMaxWithoutBroadcast(sycl::nd_item<DIM>& item, T& val) {
   auto sg = item.get_sub_group();

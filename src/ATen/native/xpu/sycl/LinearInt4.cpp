@@ -76,8 +76,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (int iu = 0; iu < Unroll; iu++) {
           const uint8_t* tmps8 =
               reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
-          int scale_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
-          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int scale_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
+          int zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
