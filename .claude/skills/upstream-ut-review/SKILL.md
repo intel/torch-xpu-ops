@@ -46,7 +46,13 @@ If invoked with no arguments, **do not review**. Ask:
 
 Obtain the PR title, description, diff, changed-file list, and existing review
 comments before reviewing. If the command does not name a repo, default to
-fetching the PR from `pytorch/pytorch`
+fetching the PR from `pytorch/pytorch`.
+
+Suggested fetch commands (CLI environments with `gh`):
+
+    gh pr view <PR_NUMBER> --repo pytorch/pytorch --json title,body,author,baseRefName,headRefName,files,additions,deletions,commits
+    gh pr diff <PR_NUMBER> --repo pytorch/pytorch
+    gh pr view <PR_NUMBER> --repo pytorch/pytorch --json comments,reviews
 
 ### Local Branch Mode
 
