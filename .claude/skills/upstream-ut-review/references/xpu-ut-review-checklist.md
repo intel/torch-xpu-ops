@@ -161,4 +161,3 @@ as real review comments in landed PRs.
   `instantiate_device_type_tests` passes `device` as a string, so predicates like
   `lambda params: params["device"] == torch.device("cpu")` must become
   `== "cpu"`, or they silently never match after the migration.
-
