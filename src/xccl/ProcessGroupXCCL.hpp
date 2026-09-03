@@ -203,6 +203,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   bool isInitialized();
 
+  void eagerConnectSingleDevice(at::Device device) override;
+
   void setEnableNanCheck(bool enableNanCheck);
 
   // Register every segment of `pool` as a oneCCL communication window, and keep

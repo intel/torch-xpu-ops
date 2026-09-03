@@ -587,6 +587,13 @@ bool ProcessGroupXCCL::isInitialized() {
   return !devXCCLCommMap_.empty();
 }
 
+void ProcessGroupXCCL::eagerConnectSingleDevice(at::Device device) {
+  const auto key = std::to_string(device.index());
+  LOG(INFO) << logPrefix() << "Eagerly connecting xccl backend with device "
+            << device;
+  initXCCLComm(key, device, OpType::ALLREDUCE);
+}
+
 void ProcessGroupXCCL::setEnqueuedPgStatus(
     c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
   pgStatus_->lastEnqueuedSeq = static_cast<int64_t>(work->getSequencenumber());
