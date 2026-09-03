@@ -61,14 +61,14 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# proposed_labels.json lives with the label-issue skill. Resolve it robustly:
+# label_def.json lives with the label-issue skill. Resolve it robustly:
 # the workflow may colocate it next to this script (HERE/../reference), otherwise
 # fall back to the in-repo skill copy. First existing path wins.
 _PROPOSED_CANDIDATES = [
-    os.path.join(HERE, "..", "reference", "proposed_labels.json"),
+    os.path.join(HERE, "..", "reference", "label_def.json"),
     os.path.join(
         HERE, "..", "..", ".claude", "skills", "label-issue",
-        "reference", "proposed_labels.json",
+        "reference", "label_def.json",
     ),
 ]
 PROPOSED = next(

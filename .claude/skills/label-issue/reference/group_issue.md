@@ -17,7 +17,7 @@ Choose the grouping basis by what evidence the issue provides:
 When the cases carry an `error_message` (per-case, on each `test_cases[]` entry)
 and/or the issue-level `traceback`, group by them FIRST. Use each case's
 normalized `error_message` plus the traceback's failing frame (both are already
-normalized by extract-issue: addresses, device ids, file paths, line numbers,
+normalized during extraction (extract_issue.md): addresses, device ids, file paths, line numbers,
 tolerances/deltas, and timestamps are dropped). Same `error_message` + same
 failing frame -> same group; a clearly different message or frame -> different
 group.

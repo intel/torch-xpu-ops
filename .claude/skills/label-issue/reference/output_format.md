@@ -2,13 +2,13 @@
 
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md` in the
 layout below, and also print it to stdout. This file defines the artifact's
-*shape*; the label names and their evidence come from `proposed_labels.json`, and
+*shape*; the label names and their evidence come from `label_def.json`, and
 each axis is decided in the label-issue skill's Step 3.
 
 ## Skeleton
 
 Every `<value>` below is one of the enum values defined in
-`proposed_labels.json` (see **Axis sources**); this file never enumerates them.
+`label_def.json` (see **Axis sources**); this file never enumerates them.
 
 Wrap the ENTIRE artifact in a collapsible `<details>` block whose `<summary>` is
 the `label-issue: <repo>#<id>` title, so the content is hidden until clicked. Keep
@@ -69,13 +69,13 @@ The `value` column is the token a workflow applies verbatim: a label name for
 label axes (with its `type:` / `module:` / etc. prefix), or the bare enum value
 for the native `type` (GitHub Type) and `priority` (native org Priority issue
 field) fields.
-Emit each value exactly as it appears in `proposed_labels.json`. (Exception: on a
+Emit each value exactly as it appears in `label_def.json`. (Exception: on a
 `need_split` issue a consumer applies only the issue-wide axes to the umbrella
 issue — see the need_split suppression policy below.)
 
 ## Axis sources
 
-Read every enum value, spelling, and casing from these `proposed_labels.json`
+Read every enum value, spelling, and casing from these `label_def.json`
 locations — never hard-code them:
 
 | Row | JSON source | Emitted as |

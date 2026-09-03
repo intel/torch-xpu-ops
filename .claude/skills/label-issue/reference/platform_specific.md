@@ -7,7 +7,7 @@ incidentally (a `collect_env` dump, a log path, a hostname) is NOT
 platform-specific and yields no OS/hardware label.
 
 All labels, codes, and keywords live in `categories.os` and `categories.hw` of
-`proposed_labels.json`. Always read the label spellings, codes,
+`label_def.json`. Always read the label spellings, codes,
 and keywords from there — never hard-code an OS or hardware name, code, or label
 in this file.
 

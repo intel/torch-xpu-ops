@@ -1,7 +1,7 @@
 # Dependency Rules
 
 The label list, per-value `evidence`, `code`, and `exists_in_repo` are
-authoritative in `categories.dependency` of `proposed_labels.json`. This file
+authoritative in `categories.dependency` of `label_def.json`. This file
 adds only the reasoning the JSON cannot carry. Do not restate label names here.
 
 ## Deciding the value

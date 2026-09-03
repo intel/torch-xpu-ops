@@ -32,7 +32,7 @@ or human to apply.
 ## Label definitions are data, not code
 
 Every label — its exact name, its `keywords`, and its `evidence` criterion —
-is defined once in `reference/proposed_labels.json`:
+is defined once in `reference/label_def.json`:
 
 - `categories.<axis>` holds the per-axis label list (`type`, `test`, `module`,
   `os`, `hw`, `dependency`, `dtype`, `triage`, `symptom`, ...).
@@ -68,8 +68,8 @@ Under `.claude/skills/label-issue/reference/`. Before deciding an axis, read its
 source; do not decide from memory. Two kinds of source:
 
 - **Reasoning packs** (`.md`) — add the judgment the JSON cannot carry, and defer
-  label names/keywords/evidence to `proposed_labels.json`.
-- **JSON-only axes** — decided straight from a `proposed_labels.json` section; no
+  label names/keywords/evidence to `label_def.json`.
+- **JSON-only axes** — decided straight from a `label_def.json` section; no
   `.md` pack.
 
 | Axis | Reasoning pack | JSON-only source |
@@ -90,15 +90,15 @@ source; do not decide from memory. Two kinds of source:
 
 ### Step 1 — Extract issue information
 
-Run the `label-issue/extract-issue` skill. It uses `gh` plus its own reading of
+Follow `reference/extract_issue.md`. It uses `gh` plus your own reading of
 the issue — no script, no `python3`.
 
 ```bash
 mkdir -p agent_space/label_issue/<repo_underscored>_issue_<id>
 ```
 
-Invoke `extract-issue` with `<issue_ref>`, the optional `repo`, the optional
-`pytorch_folder`, and
+Extract the issue named by `<issue_ref>`, the optional `repo`, the optional
+`pytorch_folder`, writing the JSON to
 `output = agent_space/label_issue/<repo_underscored>_issue_<id>/extract.json`.
 `<repo_underscored>` replaces `/` with `_` (e.g. `intel_torch-xpu-ops`).
 
@@ -106,9 +106,9 @@ Invoke `extract-issue` with `<issue_ref>`, the optional `repo`, the optional
 `reproduce_steps`, and the pre-read fields (`os`, `hw`,
 `platform_specific`, `test`, `dependency`, `module`, `priority`, `issue_type`).
 
-A hard stop inside that skill (missing/unauthenticated `gh`, 404, network
+A hard stop in that procedure (missing/unauthenticated `gh`, 404, network
 failure, PR reference, malformed input) is a **hard-stop** here too. Do not
-substitute a Python extraction script for `extract-issue`.
+substitute a Python extraction script for `reference/extract_issue.md`.
 
 ### Step 2 — Group the failures
 
@@ -192,7 +192,7 @@ Per-axis specifics:
 | symptom | `categories.symptom` | multi | Evaluate EVERY label against the representative case. One issue routinely carries several (e.g. `regression` + `inference`, or `Accuracy` + `training`). |
 | dtype | `categories.dtype` | multi | Follow the axis `description` (structured-field-first, part-of-failure-signature, AMP disambiguation) and per-label `evidence`. |
 
-The `os` / `hw` axes are already decided by `extract-issue` per
+The `os` / `hw` axes are already decided in Step 1 (`reference/extract_issue.md`) per
 `reference/platform_specific.md` (emitted only when the issue is
 platform-specific); carry `extract.json`'s `os` / `hw` straight through.
 
@@ -210,7 +210,7 @@ Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md`
 following the exact table format and field rules in `reference/output_format.md`
 (read it first). Wrap the entire artifact in a collapsible `<details>` block whose
 `<summary>` is the `label-issue: <repo>#<id>` title, so the content stays hidden
-until clicked. Emit each label name verbatim from `proposed_labels.json`, with
+until clicked. Emit each label name verbatim from `label_def.json`, with
 a one-line evidence reason. Also print to stdout.
 
 Emit one labels section per analyzed group, in group order, one by one:
@@ -240,7 +240,7 @@ This is the final step. Report the `labels.md` path; do not apply to GitHub.
 3. Analyze exactly one representative case per group (each group's first
    `test_cases` entry). Never split a multi-group issue into sub-issues — only
    recommend the split via the `need_split` row.
-4. Decide every axis from `proposed_labels.json` (and the axis's reference pack
+4. Decide every axis from `label_def.json` (and the axis's reference pack
    for reasoning) this run. An existing triage comment or label is at most one
    input to Step 3.1; it never substitutes for reading the JSON evidence and
    re-deriving the axis.
@@ -253,7 +253,7 @@ This is the final step. Report the `labels.md` path; do not apply to GitHub.
 - Missing `issue_ref`.
 - `gh` CLI missing or unauthenticated.
 - Step 1 extraction hard-stops (404, network failure, PR reference, malformed
-  input) from `extract-issue`.
+  input) from `reference/extract_issue.md`.
 
 Not hard stops (normal degraded outcomes): a missing/nonexistent
 `pytorch_folder`, an inconclusive trace, `insufficient information for root

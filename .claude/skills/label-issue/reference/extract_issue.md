@@ -1,17 +1,12 @@
----
-name: extract-issue
-description: Extract metadata from a single intel/torch-xpu-ops GitHub issue and output JSON, using only gh and your own reading of the issue. Use when you need issue_id, title, status, labels, issue_type, test cases, traceback, reproduce steps, platform, and the native Priority field for ONE issue given its number or URL. Emits the extraction JSON consumed by the parent label-issue skill without running any script.
----
-
 # Extract Issue Info
 
 Fetch ONE GitHub issue with `gh` and emit its metadata plus classification as
 JSON. You do the parsing and classification yourself by reading the issue; no
 Python, no scripts.
 
-This is the only extraction path for the parent `label-issue` skill.
+This is the only extraction procedure for the `label-issue` skill (Step 1).
 
-This skill is **analysis-only**. It fetches issue data read-only and never
+This procedure is **analysis-only**. It fetches issue data read-only and never
 writes to GitHub — no label edits, comments, or issue creation. Its single
 artifact is the extraction JSON.
 
@@ -134,19 +129,19 @@ always yields `""`.
 | milestone | gh REST | Milestone title, or "". |
 | summary | gh REST | The `title`, verbatim. |
 | issue_type | gh GraphQL | The GitHub **Type** field (`issueType.name`) verbatim: `Bug` \| `Task` \| `Feature` \| `Epic`. |
-| priority | gh GraphQL | The native org-level `Priority` issue field (from `issueFieldValues`), whose options are defined in `priority_field` of `../reference/proposed_labels.json`. NOT a label and NOT a project field. `""` when unset — the parent decides `priority` itself when blank. Never inferred from severity text. |
-| os | you | An `os` code from `categories.os` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
-| hw | you | A `hw` code from `categories.hw` of `../reference/proposed_labels.json`, or "", derived per [../reference/platform_specific.md](../reference/platform_specific.md). |
-| platform_specific | you | `true`/`false`, derived per [../reference/platform_specific.md](../reference/platform_specific.md). Judged from the text; never probe local hardware. |
-| test | you | `ut` \| `e2e` \| `oob`, per [../reference/testcase_rules.md](../reference/testcase_rules.md) (keywords in `categories.test` of `../reference/proposed_labels.json`). |
-| dependency | labels | A `dependency` code from `categories.dependency` of `../reference/proposed_labels.json` when a human-set dependency label is present on the issue, else `""`. Copied from the label only; never inferred from the traceback — the parent re-derives it from evidence when blank. |
-| module | labels | A `module` code from `categories.module` of `../reference/proposed_labels.json` when a human-set module label is present on the issue, else `""`. Copied from the label only; the parent re-derives it from the traced root cause when blank. |
-| traceback | you | Full Python traceback, chained segments included, per [../reference/text_rules.md](../reference/text_rules.md). |
-| error_message | you | Issue-level normalized error/exception header (the sole failure signature), or "". Per-case `error_message` lives on each `test_cases[]` entry per [../reference/testcase_rules.md](../reference/testcase_rules.md). |
-| reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [../reference/text_rules.md](../reference/text_rules.md). |
-| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [../reference/testcase_rules.md](../reference/testcase_rules.md). All "" on an E2E issue. |
-| test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [../reference/testcase_rules.md](../reference/testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |
-| pr_link | you | PR URL the issue is tied to, per [../reference/text_rules.md](../reference/text_rules.md). |
+| priority | gh GraphQL | The native org-level `Priority` issue field (from `issueFieldValues`), whose options are defined in `priority_field` of `label_def.json`. NOT a label and NOT a project field. `""` when unset — the parent decides `priority` itself when blank. Never inferred from severity text. |
+| os | you | An `os` code from `categories.os` of `label_def.json`, or "", derived per [platform_specific.md](platform_specific.md). |
+| hw | you | A `hw` code from `categories.hw` of `label_def.json`, or "", derived per [platform_specific.md](platform_specific.md). |
+| platform_specific | you | `true`/`false`, derived per [platform_specific.md](platform_specific.md). Judged from the text; never probe local hardware. |
+| test | you | `ut` \| `e2e` \| `oob`, per [testcase_rules.md](testcase_rules.md) (keywords in `categories.test` of `label_def.json`). |
+| dependency | labels | A `dependency` code from `categories.dependency` of `label_def.json` when a human-set dependency label is present on the issue, else `""`. Copied from the label only; never inferred from the traceback — the parent re-derives it from evidence when blank. |
+| module | labels | A `module` code from `categories.module` of `label_def.json` when a human-set module label is present on the issue, else `""`. Copied from the label only; the parent re-derives it from the traced root cause when blank. |
+| traceback | you | Full Python traceback, chained segments included, per [text_rules.md](text_rules.md). |
+| error_message | you | Issue-level normalized error/exception header (the sole failure signature), or "". Per-case `error_message` lives on each `test_cases[]` entry per [testcase_rules.md](testcase_rules.md). |
+| reproduce_steps | you | Shell command lines, newline-joined, prose excluded, per [text_rules.md](text_rules.md). |
+| test_file / test_class / test_case | you | Mirror of the first unit-test-shaped `test_cases` entry, per the **Top-level mirror fields** section of [testcase_rules.md](testcase_rules.md). All "" on an E2E issue. |
+| test_cases | you | Every parsed case, in the scan order fixed by the **Ordering** contract of [testcase_rules.md](testcase_rules.md) - which the parent relies on for a stable `test_cases[0]`. |
+| pr_link | you | PR URL the issue is tied to, per [text_rules.md](text_rules.md). |
 
 Fields sourced from `gh REST` or `gh GraphQL` are copied from that one response.
 Do not re-derive `issue_type` from the title text, the body, or the labels: a
