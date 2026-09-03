@@ -37,8 +37,6 @@ class XPUSymmetricMemory : public SymmetricMemory {
       std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs,
       std::vector<void*> buffers,
       std::vector<void*> signal_pads,
-      HandleType mc_handle,
-      void* mc_addr,
       size_t buffer_size,
       int local_device_idx,
       int rank,
@@ -73,8 +71,6 @@ class XPUSymmetricMemory : public SymmetricMemory {
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs_;
   std::vector<void*> buffers_;
   std::vector<void*> signal_pads_;
-  HandleType mc_handle_;
-  void* mc_addr_;
   size_t buffer_size_;
   int local_device_idx_;
   int rank_;

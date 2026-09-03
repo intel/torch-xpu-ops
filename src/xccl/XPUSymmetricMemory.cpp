@@ -71,8 +71,6 @@ XPUSymmetricMemory::XPUSymmetricMemory(
     std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs,
     std::vector<void*> buffers,
     std::vector<void*> signal_pads,
-    HandleType mc_handle,
-    void* mc_addr,
     size_t buffer_size,
     int local_device_idx,
     int rank,
@@ -80,8 +78,6 @@ XPUSymmetricMemory::XPUSymmetricMemory(
     : alloc_refs_(std::move(alloc_refs)),
       buffers_(std::move(buffers)),
       signal_pads_(std::move(signal_pads)),
-      mc_handle_(mc_handle),
-      mc_addr_(mc_addr),
       buffer_size_(buffer_size),
       local_device_idx_(local_device_idx),
       rank_(rank),
@@ -422,9 +418,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   }
   storeExchange.barrier(store, rank, world_size);
 
-  HandleType mc_handle{};
-  void* mc_addr = nullptr;
-
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs;
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {
@@ -439,8 +432,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       std::move(alloc_refs),
       std::move(buffers),
       std::move(signal_pads),
-      mc_handle,
-      mc_addr,
       block->buffer_size,
       block->device_idx,
       rank,
