@@ -41,17 +41,22 @@ RUN_STATES = {"complete", "complete-with-warnings", "partial", "failed"}
 UNIT_BLOCKER_PREFIX = "scan-blocked-result:"
 
 
-def _excluded_units(decision: dict) -> list[tuple[str, str]]:
+def _excluded_units(
+    decision: dict,
+) -> tuple[list[tuple[str, str]], list[str]]:
     excluded: dict[str, str] = {}
+    unrecognized: list[str] = []
     for blocker in map(str, decision.get("unit_blockers") or []):
         if blocker.startswith(UNIT_BLOCKER_PREFIX):
             unit_id, _, result = blocker[len(UNIT_BLOCKER_PREFIX) :].rpartition(":")
             if unit_id:
                 excluded[unit_id] = result
+                continue
+        unrecognized.append(blocker)
     for unit_id, verdict in (decision.get("unit_verdicts") or {}).items():
         if verdict == "verification-gap":
             excluded[str(unit_id)] = "verification-gap"
-    return sorted(excluded.items())
+    return sorted(excluded.items()), sorted(set(unrecognized))
 
 
 def _safe(value: object, limit: int = 200) -> str:
@@ -61,9 +66,9 @@ def _safe(value: object, limit: int = 200) -> str:
 
 def _blocker(blocker: object) -> str:
     code, separator, detail = str(blocker).partition(":")
-    if separator and (code == "collection-invalid" or code.endswith("-unreadable")):
-        return f"`{code}`: `{_safe(detail)}`"
-    return f"`{blocker}`"
+    if separator:
+        return f"`{_safe(code)}`: `{_safe(detail)}`"
+    return f"`{_safe(code)}`"
 
 
 def _partial_progress(decision: dict) -> list[str]:
@@ -106,7 +111,7 @@ def run_note(
         reviewed += f" ({detail})"
     lines = [
         f"- Scan date: `{decision.get('scan_date', '')}`",
-        f"- Collection: {decision.get('collection_status', 'unknown')}",
+        f"- Collection: {decision.get('collection_status') or 'unknown'}",
         reviewed,
         f"- New XPU tracker candidates: {len(payloads)}",
         "",
@@ -118,6 +123,7 @@ def run_note(
         label = "Dry-run drafts" if mode == "dry-run" else "Formal candidate drafts"
         lines.append(f"{label}:")
         lines += [f"- `{item['unit_id']}` — {item['title']}" for item in payloads]
+        lines.append("")
         if mode == "dry-run":
             lines.append("Dry-run drafts cannot be filed.")
         else:
@@ -128,10 +134,11 @@ def run_note(
     else:
         lines.append("No new XPU tracker was filed or drafted.")
 
-    excluded = _excluded_units(decision)
-    if excluded:
+    excluded, unrecognized = _excluded_units(decision)
+    if excluded or unrecognized:
         lines += ["", "- Excluded units:"]
         lines += [f"  - `{unit_id}` — `{reason}`" for unit_id, reason in excluded]
+        lines += [f"  - {_blocker(blocker)}" for blocker in unrecognized]
 
     if decision.get("collection_status") == "partial":
         lines += ["", "- Incomplete collection progress:"]
