@@ -15,6 +15,10 @@ summaries = []
 failures_by_category = defaultdict(list)
 passed_cases = []
 passed_by_category = defaultdict(list)
+# Every case seen, whatever its status. passed/failures alone cannot express
+# "skipped", which ut_auto_issue.py needs to tell a newly-enabled case from a
+# brand-new one.
+all_by_category = defaultdict(list)
 category_totals = defaultdict(lambda: {
     'Test cases': 0,
     'Passed': 0,
@@ -234,6 +238,7 @@ def parse_log_file(log_file):
         }
         failures.append(failure_case)
         failures_by_category[category].append(failure_case)
+        all_by_category[category].append(failure_case)
         failures_number += 1
 
     if failures_number > summary['Failures']:
@@ -299,11 +304,11 @@ def process_xml_file(xml_file):
             category_totals[category]['Errors'] += suite_summary['Errors']
 
             for case in suite:
+                case._file_category = category
+                all_by_category[category].append(case)
                 if get_result(case) not in ["passed", "skipped"]:
-                    case._file_category = category
                     failures.append(case)
                 elif get_result(case) == "passed":
-                    case._file_category = category
                     passed_cases.append(case)
                     passed_by_category[category].append(case)
     except Exception as e:
@@ -323,6 +328,19 @@ def generate_passed_log():
                 class_name = get_classname(case)
                 test_name = get_name(case)
                 status = get_result(case)
+                log_file.write(f"{category},{class_name},{test_name}\n")
+
+def generate_all_cases_log():
+    """Full case universe per category, including skipped cases."""
+    for category, cases in all_by_category.items():
+        if not cases:
+            continue
+
+        log_filename = f"all_cases_{category}.log"
+        with open(log_filename, "w", encoding='utf-8') as log_file:
+            for case in cases:
+                class_name = get_classname(case)
+                test_name = get_name(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
 
 def generate_category_totals_log():
@@ -390,6 +408,7 @@ def main():
 
     generate_failures_log()
     generate_passed_log()
+    generate_all_cases_log()
     generate_category_totals_log()
     print_summary()
 
