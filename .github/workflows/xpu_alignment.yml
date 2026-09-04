@@ -572,6 +572,7 @@ jobs:
           python3 .github/scripts/xpu_alignment_publish.py \
             --repo "$GITHUB_REPOSITORY" \
             --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --notify "$ALIGNMENT_TRIAGE_NOTIFY" \
             --decision gate/filing_decision.json
 
@@ -595,13 +596,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Report a blocked or incomplete run
-        if: steps.decision.outputs.needs_attention == 'true'
+      - name: Report run status
+        if: steps.decision.outputs.run_state != 'complete'
+        env:
+          RUN_STATE: ${{ steps.decision.outputs.run_state }}
         run: |
           set -euo pipefail
-          echo '::error::The alignment run needs attention; see the gate artifact.'
-          if jq -e '((.global_blockers // []) | length > 0) or (.collection_status == "partial")' \
-            gate/filing_decision.json >/dev/null; then
-            exit 1
+          if [[ "$RUN_STATE" == 'complete-with-warnings' ]]; then
+            echo '::warning::Unit-level blockers or review verification gaps were isolated; reviewed candidates remain publishable.'
+            exit 0
           fi
-          echo 'Unit-level blockers were isolated; reviewed candidates remain publishable.'
+          echo '::error::The alignment run failed or collection was partial; see the run summary and gate artifact.'
+          exit 1
