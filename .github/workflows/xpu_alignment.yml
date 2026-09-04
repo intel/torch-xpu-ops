@@ -26,7 +26,7 @@ env:
   ALIGNMENT_RUN_ROOT: agent_space_xpu/runs
   ALIGNMENT_ARTIFACT: xpu-alignment-${{ github.run_id }}-${{ github.run_attempt }}
   ALIGNMENT_TRIAGE_ISSUE: '5018'
-  ALIGNMENT_TRIAGE_NOTIFY: '@laifenxiawucha @ZhaoqiongZ'
+  ALIGNMENT_COST_ISSUE: '4251'
 
 jobs:
   collect:
@@ -83,6 +83,7 @@ jobs:
       pull-requests: read
     outputs:
       scan_date: ${{ needs.collect.outputs.scan_date }}
+      usage: ${{ steps.usage.outputs.usage }}
     container:
       image: intelgpu/ubuntu-26.04-rolling:26.18
       volumes:
@@ -164,6 +165,47 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           GH_TOKEN: ${{ github.token }}
+
+      - name: Capture Claude usage
+        id: usage
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.prepare.outputs.execution_file }}
+          USAGE_ROLE: scan-prepare
+        run: |
+          set -euo pipefail
+          python3 - "$EXECUTION_FILE" "$USAGE_ROLE" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+
+          source, role, output = sys.argv[1:]
+          try:
+              entries = json.load(open(source, encoding="utf-8")) if source else []
+          except (OSError, json.JSONDecodeError):
+              entries = []
+          results = [entry for entry in entries if entry.get("type") == "result"]
+          if not results:
+              open(output, "a", encoding="utf-8").write("usage=\n")
+              raise SystemExit
+
+          result = results[-1]
+          number = lambda value: value if type(value) in (int, float) else 0
+          models = result.get("modelUsage")
+          metrics = models.values() if isinstance(models, dict) else []
+          usage = {
+              "role": role,
+              "cost_usd": number(result.get("total_cost_usd")),
+              "input_tokens": sum(
+                  number(value.get(key))
+                  for value in metrics
+                  for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+              ),
+              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
+              "is_error": result.get("is_error") is True,
+          }
+          open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
+          PY
 
       - name: Upload immutable preparation
         if: always() && needs.collect.outputs.scan_date != ''
@@ -322,6 +364,8 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      usage: ${{ steps.usage.outputs.usage }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -380,6 +424,47 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
+      - name: Capture Claude usage
+        id: usage
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.finalize.outputs.execution_file }}
+          USAGE_ROLE: scan-finalize
+        run: |
+          set -euo pipefail
+          python3 - "$EXECUTION_FILE" "$USAGE_ROLE" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+
+          source, role, output = sys.argv[1:]
+          try:
+              entries = json.load(open(source, encoding="utf-8")) if source else []
+          except (OSError, json.JSONDecodeError):
+              entries = []
+          results = [entry for entry in entries if entry.get("type") == "result"]
+          if not results:
+              open(output, "a", encoding="utf-8").write("usage=\n")
+              raise SystemExit
+
+          result = results[-1]
+          number = lambda value: value if type(value) in (int, float) else 0
+          models = result.get("modelUsage")
+          metrics = models.values() if isinstance(models, dict) else []
+          usage = {
+              "role": role,
+              "cost_usd": number(result.get("total_cost_usd")),
+              "input_tokens": sum(
+                  number(value.get(key))
+                  for value in metrics
+                  for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+              ),
+              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
+              "is_error": result.get("is_error") is True,
+          }
+          open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
+          PY
+
       - name: Upload final scan
         if: always()
         uses: actions/upload-artifact@v4
@@ -402,6 +487,8 @@ jobs:
       actions: read
       issues: read
       pull-requests: read
+    outputs:
+      usage: ${{ steps.usage.outputs.usage }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -474,6 +561,47 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           GH_TOKEN: ${{ github.token }}
 
+      - name: Capture Claude usage
+        id: usage
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.reviewer.outputs.execution_file }}
+          USAGE_ROLE: independent-review
+        run: |
+          set -euo pipefail
+          python3 - "$EXECUTION_FILE" "$USAGE_ROLE" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+
+          source, role, output = sys.argv[1:]
+          try:
+              entries = json.load(open(source, encoding="utf-8")) if source else []
+          except (OSError, json.JSONDecodeError):
+              entries = []
+          results = [entry for entry in entries if entry.get("type") == "result"]
+          if not results:
+              open(output, "a", encoding="utf-8").write("usage=\n")
+              raise SystemExit
+
+          result = results[-1]
+          number = lambda value: value if type(value) in (int, float) else 0
+          models = result.get("modelUsage")
+          metrics = models.values() if isinstance(models, dict) else []
+          usage = {
+              "role": role,
+              "cost_usd": number(result.get("total_cost_usd")),
+              "input_tokens": sum(
+                  number(value.get(key))
+                  for value in metrics
+                  for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+              ),
+              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
+              "is_error": result.get("is_error") is True,
+          }
+          open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
+          PY
+
       - name: Upload independent review
         if: always()
         uses: actions/upload-artifact@v4
@@ -494,7 +622,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-      issues: write
+      issues: read
     timeout-minutes: 20
     steps:
       - name: Checkout torch-xpu-ops
@@ -566,7 +694,8 @@ jobs:
 
       - name: Publish decision to the triage issue
         env:
-          GH_TOKEN: ${{ github.token }}
+          ALIGNMENT_TRIAGE_NOTIFY: ${{ secrets.ALIGNMENT_TRIAGE_NOTIFY }}
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: |
           set -euo pipefail
           python3 .github/scripts/xpu_alignment_publish.py \
@@ -605,3 +734,61 @@ jobs:
             exit 1
           fi
           echo 'Unit-level blockers were isolated; reviewed candidates remain publishable.'
+
+      - name: Report alignment usage cost
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          ALIGNMENT_MODE: ${{ github.event_name == 'schedule' && 'schedule' || 'dry-run' }}
+          COST_ISSUE: ${{ env.ALIGNMENT_COST_ISSUE }}
+          PREPARE_USAGE: ${{ needs.scan-prepare.outputs.usage }}
+          FINALIZE_USAGE: ${{ needs.scan-finalize.outputs.usage }}
+          REVIEW_USAGE: ${{ needs.independent-review.outputs.usage }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const sources = [
+              ['scan-prepare', process.env.PREPARE_USAGE],
+              ['scan-finalize', process.env.FINALIZE_USAGE],
+              ['independent-review', process.env.REVIEW_USAGE],
+            ];
+            const usage = [];
+            for (const [role, raw] of sources) {
+              if (!raw) continue;
+              try {
+                const item = JSON.parse(raw);
+                if (item.role === role) usage.push(item);
+              } catch (_) {}
+            }
+
+            const cost = usage.reduce((sum, item) => sum + item.cost_usd, 0);
+            const input = usage.reduce((sum, item) => sum + item.input_tokens, 0);
+            const output = usage.reduce((sum, item) => sum + item.output_tokens, 0);
+            const status = usage.some(item => item.is_error)
+              ? 'error'
+              : usage.length === sources.length ? 'ok' : 'partial';
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+            const job = jobs.find(item => item.name === 'Gate and publish');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const jobUrl = job?.html_url || runUrl;
+            const totals = usage.length
+              ? `**$${cost.toFixed(4)} total** (${input.toLocaleString()} in / ${output.toLocaleString()} out)`
+              : '**cost unavailable** (tokens unavailable)';
+            const roles = sources.map(([role]) => {
+              const item = usage.find(value => value.role === role);
+              return `- ${role}: ${item ? `$${item.cost_usd.toFixed(4)}` : 'unavailable'}`;
+            }).join('\n');
+            const date = new Date().toISOString().split('T')[0];
+            const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${totals} [${status}]\n\n${roles}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.COST_ISSUE),
+              body,
+            });
