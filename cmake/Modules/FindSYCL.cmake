@@ -48,6 +48,17 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# Keep custom-command tool invocation stable across per-Python CMake reconfigure
+# in unified manywheel loops. CMake rewrites `cmake` to its own absolute binary
+# path in build.ninja, and manywheel's per-Python cmake wheels make that path
+# drift across iterations. Route through /usr/bin/env on non-Windows so the
+# recorded command stays ABI-agnostic.
+if(WIN32)
+  set(SYCL_CMAKE_COMMAND cmake)
+else()
+  set(SYCL_CMAKE_COMMAND /usr/bin/env cmake)
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -129,11 +140,17 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
   set(SYCL_include_dirs "${SYCL_INCLUDE_DIR}")
   list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${sycl_target},INCLUDE_DIRECTORIES>")
+  list(FILTER SYCL_include_dirs EXCLUDE REGEX "(^|/)site-packages(/|$)")
+  list(FILTER SYCL_include_dirs EXCLUDE REGEX "(^|/)python[0-9.]+(/|$)")
+  list(REMOVE_DUPLICATES SYCL_include_dirs)
+  list(SORT SYCL_include_dirs)
 
   set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
 
   # Extra definitions for the SYCL device compiler only, not host C++ code.
   set(SYCL_compile_definitions "${SYCL_compile_definitions};${SYCL_DEVICE_COMPILE_DEFINITIONS}")
+  list(REMOVE_DUPLICATES SYCL_compile_definitions)
+  list(SORT SYCL_compile_definitions)
 
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
@@ -161,8 +178,14 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
     set(SYCL_HOST_SHARED_FLAGS)
   endif()
 
-  set(_sycl_c_or_cxx_flags ${CMAKE_${SYCL_C_OR_CXX}_FLAGS})
-  set(_sycl_host_flags "set(CMAKE_HOST_FLAGS ${_sycl_c_or_cxx_flags} ${SYCL_HOST_SHARED_FLAGS} ${SYCL_HOST_FLAGS})")
+  set(_sycl_c_or_cxx_define_flags)
+  separate_arguments(_sycl_c_or_cxx_flags NATIVE_COMMAND "${CMAKE_${SYCL_C_OR_CXX}_FLAGS}")
+  foreach(_sycl_c_or_cxx_flag IN LISTS _sycl_c_or_cxx_flags)
+    if(_sycl_c_or_cxx_flag MATCHES "^-D" OR _sycl_c_or_cxx_flag MATCHES "^/D")
+      list(APPEND _sycl_c_or_cxx_define_flags "${_sycl_c_or_cxx_flag}")
+    endif()
+  endforeach()
+  set(_sycl_host_flags "set(CMAKE_HOST_FLAGS ${_sycl_c_or_cxx_define_flags} ${SYCL_HOST_SHARED_FLAGS} ${SYCL_HOST_FLAGS})")
   set(SYCL_host_flags ${_sycl_host_flags})
 
   # Reset the output variable
@@ -187,8 +210,6 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_basename "${sycl_target}_gen_${_sycl_dir_hash}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
       set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # compiler -MD -MF depfile, consumed via DEPFILE
-      set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
-      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.cmake")
 
       set_source_files_properties("${generated_file}"
         PROPERTIES
@@ -202,6 +223,15 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       else()
         set(source_file "${CMAKE_CURRENT_SOURCE_DIR}/${file}")
       endif()
+
+      set(_sycl_script_key
+        "${source_file};${generated_file};${SYCL_generated_dependency_file};${SYCL_EXECUTABLE};"
+        "${SYCL_COMPILE_FLAGS};${SYCL_INCLUDE_DIR};${SYCL_compile_definitions};${SYCL_host_flags}"
+      )
+      string(SHA256 _sycl_script_hash "${_sycl_script_key}")
+      string(SUBSTRING "${_sycl_script_hash}" 0 16 _sycl_script_hash)
+      set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.${_sycl_script_hash}.cmake.pre-gen")
+      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.${_sycl_script_hash}.cmake")
 
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
 
@@ -237,11 +267,10 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         OUTPUT ${generated_file}
         ${main_dep}
         DEPENDS ${SYCL_EXTERNAL_DEPEND}
-        DEPENDS ${custom_target_script}
         DEPFILE ${SYCL_generated_dependency_file}
         # Make sure the output directory exists before trying to write to it.
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
-        COMMAND ${CMAKE_COMMAND} ARGS
+        COMMAND ${SYCL_CMAKE_COMMAND} -E make_directory "${generated_file_path}"
+        COMMAND ${SYCL_CMAKE_COMMAND} ARGS
           -D verbose:BOOL=${verbose_output}
           -D "generated_file:STRING=${generated_file}"
           -P "${custom_target_script}"
@@ -321,7 +350,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
-      COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
+      COMMAND ${SYCL_CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
