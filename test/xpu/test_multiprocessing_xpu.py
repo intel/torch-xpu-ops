@@ -17,7 +17,10 @@ import unittest
 
 import torch
 import torch.multiprocessing as mp
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_device_type import (
+    instantiate_device_type_tests,
+    skipXPUIf,
+)
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
@@ -85,22 +88,22 @@ if __name__ == "__main__":
 TestMultiprocessing.test_cuda_bad_call = _test_cuda_bad_call
 TestMultiprocessing.test_wrong_cuda_fork = _test_wrong_cuda_fork
 
-TestMultiprocessingDeviceType.test_integer_parameter_serialization = unittest.skip(
-    "XPU storage serialization is not supported"
+TestMultiprocessingDeviceType.test_integer_parameter_serialization = skipXPUIf(
+    True, "XPU storage serialization is not supported"
 )(TestMultiprocessingDeviceType.test_integer_parameter_serialization)
-TestMultiprocessingDeviceType.test_leaf_variable_sharing = unittest.skip(
-    "XPU storage sharing is not supported"
+TestMultiprocessingDeviceType.test_leaf_variable_sharing = skipXPUIf(
+    True, "XPU storage sharing is not supported"
 )(TestMultiprocessingDeviceType.test_leaf_variable_sharing)
-TestMultiprocessingDeviceType.test_parameter_sharing = unittest.skip(
-    "XPU storage sharing is not supported"
+TestMultiprocessingDeviceType.test_parameter_sharing = skipXPUIf(
+    True, "XPU storage sharing is not supported"
 )(TestMultiprocessingDeviceType.test_parameter_sharing)
-TestMultiprocessingDeviceType.test_variable_sharing = unittest.skip(
-    "XPU storage sharing is not supported"
+TestMultiprocessingDeviceType.test_variable_sharing = skipXPUIf(
+    True, "XPU storage sharing is not supported"
 )(TestMultiprocessingDeviceType.test_variable_sharing)
-TestMultiprocessingDeviceType.test_simple_sharing = unittest.skip(
-    "XPU storage sharing is not supported"
+TestMultiprocessingDeviceType.test_simple_sharing = skipXPUIf(
+    True, "XPU storage sharing is not supported"
 )(TestMultiprocessingDeviceType.test_simple_sharing)
-TestMultiprocessingDeviceType.test_empty_tensor_sharing = unittest.skipIf(
+TestMultiprocessingDeviceType.test_empty_tensor_sharing = skipXPUIf(
     IS_WINDOWS, "XPU empty tensor sharing is not supported on Windows"
 )(TestMultiprocessingDeviceType.test_empty_tensor_sharing)
 
