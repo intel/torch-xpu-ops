@@ -44,8 +44,8 @@ void weight_norm_reduce_kernel(
     bool need_squre,
     bool is_final) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  char* shared_ptr = (char*)syclexp::get_work_group_scratch_memory();
-
+  char* shared_ptr = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  
   auto id = cfg.get_item_desc(item);
   int64_t si = id.glb_batch % cfg.stride_;
   int64_t bi = id.glb_batch / cfg.stride_;
