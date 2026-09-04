@@ -205,7 +205,7 @@ writes one result for every execution-plan entry:
   "results": [{
     "id": "issue-123",
     "script_sha256": "...",
-    "command": ["/usr/bin/python3", "scripts/repro_issue-123.py"],
+    "command": ["/usr/bin/python3", "-I", "-u", "scripts/repro_issue-123.py"],
     "log": "runner/logs/issue-123.log",
     "log_sha256": "...",
     "returncode": 0,
@@ -215,6 +215,10 @@ writes one result for every execution-plan entry:
   }]
 }
 ```
+
+`command` records the invoked Python options and artifact-relative script path;
+the scratch working directory, credential-free environment, and process-group
+isolation remain runner-owned execution context.
 
 `status: complete` means the runner produced a structurally valid result for
 every planned execution, not that every reproducer succeeded. The collection
@@ -285,7 +289,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
   "units": [{
     "id": "issue-123",
     "verdict": "needs-xpu-fix",
-    "implementation_repository": "intel/torch-xpu-ops",
+    "implementation_repository": "pytorch/pytorch",
     "canonical_tracker": null,
     "payload": {
       "title": "[xpu-alignment] ...",
@@ -298,8 +302,14 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. `status: blocked`
-lists blockers and contains no payloads. When an existing
+`needs-xpu-fix` without a canonical tracker has a payload. Its
+`implementation_repository` is the GitHub `owner/repo` where the code change
+belongs; the payload still targets `intel/torch-xpu-ops`. For `track-upstream`,
+the field names the repository that already owns the implementation, or
+`intel/torch-xpu-ops` for observation-only parity work that depends on an
+upstream change landing. Other verdicts do not use this field. `status: blocked`
+lists blockers and contains no payloads.
+When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.
 
