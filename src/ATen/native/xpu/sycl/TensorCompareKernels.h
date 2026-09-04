@@ -22,6 +22,8 @@ TORCH_XPU_API void isneginf_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void clamp_kernel(TensorIteratorBase& iter);
 
+TORCH_XPU_API void clamp_backward_kernel(TensorIteratorBase& iter);
+
 TORCH_XPU_API void clamp_scalar_kernel(
     TensorIteratorBase& iter,
     const Scalar& min,
