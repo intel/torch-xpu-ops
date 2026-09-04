@@ -443,7 +443,7 @@ void max_pool3d_with_indices_kernel(
       : safe_downcast<int, int64_t>(kernel_size[2]);
 
   TORCH_CHECK(
-      stride.size() == 0 || stride.size() == 1 || stride.size() == 3,
+      stride.empty() || stride.size() == 1 || stride.size() == 3,
       "max_pool3d: stride must either be omitted, a single int, or a tuple of three ints")
   const int dT = stride.empty() ? kT : safe_downcast<int, int64_t>(stride[0]);
   const int dH = stride.empty() ? kH
@@ -649,7 +649,7 @@ void max_pool3d_with_indices_backward_kernel(
       : safe_downcast<int, int64_t>(kernel_size[2]);
 
   TORCH_CHECK(
-      stride.size() == 0 || stride.size() == 1 || stride.size() == 3,
+      stride.empty() || stride.size() == 1 || stride.size() == 3,
       "max_pool3d: stride must either be omitted, a single int, or a tuple of three ints")
   const int dT = stride.empty() ? kT : safe_downcast<int, int64_t>(stride[0]);
   const int dH = stride.empty() ? kH

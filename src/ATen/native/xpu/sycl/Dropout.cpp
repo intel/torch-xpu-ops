@@ -239,7 +239,10 @@ void masked_scale_kernel(
 }
 
 template <typename scalar_t>
-int get_vector_size(at::Tensor self, at::Tensor ret, at::Tensor mask) {
+int get_vector_size(
+    const at::Tensor& self,
+    const at::Tensor& ret,
+    const at::Tensor& mask) {
   constexpr int MAX_VEC_SIZE =
       4; // Philox4x32 engine only support max vectorize size of 4
   int vec_size = MAX_VEC_SIZE;
@@ -435,7 +438,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
 std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
-    std::optional<Generator> gen_) {
+    const std::optional<Generator>& gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   return dropout<uint8_t>(gen, self, p);
