@@ -280,81 +280,47 @@ std::tuple<Tensor, Tensor> _euclidean_dist_backward(
 }
 
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
-struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto out_ptr = out_data_;
-    auto x1_ptr = x1_data_;
-    auto x2_ptr = x2_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void cdist_forward_kernel(
+    const int64_t r1,
+    const int64_t r2,
+    const int64_t m,
+    const int64_t r_size,
+    const int64_t l1_size,
+    const int64_t l2_size,
+    accscalar_t p_val,
+    scalar_t* out_data,
+    const scalar_t* x1_data,
+    const scalar_t* x2_data) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto* shared =
+      reinterpret_cast<scalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    const int64_t group_id = item_id.get_group_linear_id();
-    const int64_t local_id = item_id.get_local_linear_id();
-    const int64_t l = group_id / r_size_;
-    const int64_t k = group_id % r_size_;
-    const int64_t i = k / r2_;
-    const int64_t j = k % r2_;
-    const size_t stride = item_id.get_local_range().size();
+  const int64_t group_id = item_id.get_group_linear_id();
+  const int64_t local_id = item_id.get_local_linear_id();
+  const int64_t l = group_id / r_size;
+  const int64_t k = group_id % r_size;
+  const int64_t i = k / r2;
+  const int64_t j = k % r2;
+  const size_t stride = item_id.get_local_range().size();
 
-    const scalar_t* const start = x1_ptr + l * l1_size_ + i * m_;
-    const scalar_t* const end = start + m_;
-    const scalar_t* a = start + local_id;
-    const scalar_t* b = x2_ptr + l * l2_size_ + j * m_ + local_id;
+  const scalar_t* const start = x1_data + l * l1_size + i * m;
+  const scalar_t* const end = start + m;
+  const scalar_t* a = start + local_id;
+  const scalar_t* b = x2_data + l * l2_size + j * m + local_id;
 
-    scalar_t agg = 0.0f;
-    for (; a < end; a += stride, b += stride) {
-      F::inc(
-          agg,
-          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
-          p_val_);
-    }
-    agg =
-        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
-    if (local_id == 0) {
-      out_ptr[group_id] = F::finish(agg, p_val_);
-    }
+  scalar_t agg = 0.0f;
+  for (; a < end; a += stride, b += stride) {
+    F::inc(
+        agg,
+        sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+        p_val);
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<scalar_t>(wgroup_size_, cgh);
+  agg = group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared);
+  if (local_id == 0) {
+    out_data[group_id] = F::finish(agg, p_val);
   }
-
-  CdistForwardKernelFunctor(
-      const int64_t r1,
-      const int64_t r2,
-      const int64_t m,
-      const int64_t r_size,
-      const int64_t l1_size,
-      const int64_t l2_size,
-      accscalar_t p_val,
-      scalar_t* out_data,
-      const scalar_t* x1_data,
-      const scalar_t* x2_data,
-      const int64_t wgroup_size)
-      : r1_(r1),
-        r2_(r2),
-        m_(m),
-        r_size_(r_size),
-        l1_size_(l1_size),
-        l2_size_(l2_size),
-        p_val_(p_val),
-        out_data_(out_data),
-        x1_data_(x1_data),
-        x2_data_(x2_data),
-        wgroup_size_(wgroup_size) {}
-
- private:
-  const int64_t r1_;
-  const int64_t r2_;
-  const int64_t m_;
-  const int64_t r_size_;
-  const int64_t l1_size_;
-  const int64_t l2_size_;
-  accscalar_t p_val_;
-  scalar_t* out_data_;
-  const scalar_t* x1_data_;
-  const scalar_t* x2_data_;
-  sycl_local_acc_t<scalar_t, 1> shared_;
-  const int64_t wgroup_size_;
-};
+}
 
 template <typename scalar_t, typename F, int p_type>
 static void launch_cdist_forward_kernel(
@@ -376,7 +342,12 @@ static void launch_cdist_forward_kernel(
   auto x1_data = x1.const_data_ptr<scalar_t>();
   auto x2_data = x2.const_data_ptr<scalar_t>();
 
-  CdistForwardKernelFunctor<scalar_t, F, p_type, accscalar_t> kfn(
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<cdist_forward_kernel<scalar_t, F, p_type, accscalar_t>>(
+      ngroups * wgroup_size,
+      wgroup_size,
+      queue,
+      wgroup_size * sizeof(scalar_t),
       r1,
       r2,
       m,
@@ -386,10 +357,7 @@ static void launch_cdist_forward_kernel(
       p_val,
       out_data,
       x1_data,
-      x2_data,
-      wgroup_size);
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(ngroups * wgroup_size, wgroup_size, queue, kfn);
+      x2_data);
 }
 
 void cdist_kernel(
@@ -467,104 +435,62 @@ void cdist_kernel(
 }
 
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
-struct CdistBackwardKernelImplFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto buff_ptr = buff_data_;
-    auto grad_ptr = grad_data_;
-    auto dist_ptr = dist_data_;
-    auto x1_ptr = x1_data_;
-    auto x2_ptr = x2_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void cdist_backward_kernel_impl_func(
+    const int64_t r1,
+    const int64_t r2,
+    const int64_t m,
+    const int64_t count,
+    const int64_t r_size,
+    const int64_t l1_size,
+    const int64_t l2_size,
+    const int group_size_x,
+    const int group_size_y,
+    const int group_num_x,
+    accscalar_t p_val,
+    const int group_num_z,
+    scalar_t* buff_data,
+    const scalar_t* grad_data,
+    const scalar_t* dist_data,
+    const scalar_t* x1_data,
+    const scalar_t* x2_data) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
 
-    const int y =
-        (item.get_group(1) * group_num_z_ + item.get_group(2)) * group_size_y_ +
-        item.get_local_id(1);
-    const int init = item.get_group(0) * group_size_x_ + item.get_local_id(0);
-    if (y >= count_ || init >= m_) {
-      return;
-    }
-
-    const int l = y / r_size_;
-    const int k = y % r_size_;
-    const int stride = group_size_x_ * group_num_x_;
-    const int l_size = r_size_ * m_;
-
-    int64_t i = k / r2_;
-    int64_t j = k % r2_;
-
-    const scalar_t grad_k = grad_ptr[y];
-    const scalar_t dist_k = dist_ptr[y];
-
-    const scalar_t* const start = x1_ptr + l * l1_size_ + i * m_;
-    const scalar_t* const end = start + m_;
-    const scalar_t* self_i = start + init;
-    const scalar_t* self_j = x2_ptr + l * l2_size_ + j * m_ + init;
-
-    scalar_t* buff_i = buff_ptr + l * l_size + (r1_ * j + i) * m_ + init;
-
-    for (; self_i < end; self_i += stride, self_j += stride, buff_i += stride) {
-      const scalar_t res = F::backward(
-          static_cast<scalar_t>(*self_i) - static_cast<scalar_t>(*self_j),
-          grad_k,
-          dist_k,
-          p_val_);
-      *buff_i = res;
-    }
+  const int y =
+      (item.get_group(1) * group_num_z + item.get_group(2)) * group_size_y +
+      item.get_local_id(1);
+  const int init = item.get_group(0) * group_size_x + item.get_local_id(0);
+  if (y >= count || init >= m) {
+    return;
   }
-  CdistBackwardKernelImplFunctor(
-      const int64_t r1,
-      const int64_t r2,
-      const int64_t m,
-      const int64_t count,
-      const int64_t r_size,
-      const int64_t l1_size,
-      const int64_t l2_size,
-      const int group_size_x,
-      const int group_size_y,
-      const int group_num_x,
-      accscalar_t p_val,
-      const int group_num_z,
-      scalar_t* buff_data,
-      const scalar_t* grad_data,
-      const scalar_t* dist_data,
-      const scalar_t* x1_data,
-      const scalar_t* x2_data)
-      : r1_(r1),
-        r2_(r2),
-        m_(m),
-        count_(count),
-        r_size_(r_size),
-        l1_size_(l1_size),
-        l2_size_(l2_size),
-        group_size_x_(group_size_x),
-        group_size_y_(group_size_y),
-        group_num_x_(group_num_x),
-        p_val_(p_val),
-        group_num_z_(group_num_z),
-        buff_data_(buff_data),
-        grad_data_(grad_data),
-        dist_data_(dist_data),
-        x1_data_(x1_data),
-        x2_data_(x2_data) {}
 
- private:
-  const int64_t r1_;
-  const int64_t r2_;
-  const int64_t m_;
-  const int64_t count_;
-  const int64_t r_size_;
-  const int64_t l1_size_;
-  const int64_t l2_size_;
-  const int group_size_x_;
-  const int group_size_y_;
-  const int group_num_x_;
-  accscalar_t p_val_;
-  const int group_num_z_;
-  scalar_t* buff_data_;
-  const scalar_t* grad_data_;
-  const scalar_t* dist_data_;
-  const scalar_t* x1_data_;
-  const scalar_t* x2_data_;
-};
+  const int l = y / r_size;
+  const int k = y % r_size;
+  const int stride = group_size_x * group_num_x;
+  const int l_size = r_size * m;
+
+  int64_t i = k / r2;
+  int64_t j = k % r2;
+
+  const scalar_t grad_k = grad_data[y];
+  const scalar_t dist_k = dist_data[y];
+
+  const scalar_t* const start = x1_data + l * l1_size + i * m;
+  const scalar_t* const end = start + m;
+  const scalar_t* self_i = start + init;
+  const scalar_t* self_j = x2_data + l * l2_size + j * m + init;
+
+  scalar_t* buff_i = buff_data + l * l_size + (r1 * j + i) * m + init;
+
+  for (; self_i < end; self_i += stride, self_j += stride, buff_i += stride) {
+    const scalar_t res = F::backward(
+        static_cast<scalar_t>(*self_i) - static_cast<scalar_t>(*self_j),
+        grad_k,
+        dist_k,
+        p_val);
+    *buff_i = res;
+  }
+}
 
 template <typename scalar_t, typename F, int p_type>
 static void cdist_backward_kernel_impl(
@@ -606,7 +532,13 @@ static void cdist_backward_kernel_impl(
   auto x1_data = x1.const_data_ptr<scalar_t>();
   auto x2_data = x2.const_data_ptr<scalar_t>();
 
-  CdistBackwardKernelImplFunctor<scalar_t, F, p_type, accscalar_t> kfn(
+  sycl_kernel_submit<
+      cdist_backward_kernel_impl_func<scalar_t, F, p_type, accscalar_t>,
+      3>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      0,
       r1,
       r2,
       m,
@@ -624,7 +556,6 @@ static void cdist_backward_kernel_impl(
       dist_data,
       x1_data,
       x2_data);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 void cdist_backward_kernel(
@@ -751,71 +682,43 @@ void cdist_backward_kernel(
 }
 
 template <typename scalar_t, typename F, typename accscalar_t>
-struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto out_ptr = out_data_;
-    auto in_ptr = in_data_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void pdist_kernel(
+    const int64_t n,
+    const int64_t m,
+    accscalar_t p_val,
+    const double n2_val,
+    const double n2_squared_minus_1_val,
+    scalar_t* out_data,
+    const scalar_t* in_data) {
+  auto item_id = syclext::this_work_item::get_nd_item<1>();
+  auto* shared =
+      reinterpret_cast<scalar_t*>(syclexp::get_work_group_scratch_memory());
 
-    const size_t k = item_id.get_group_linear_id();
-    const size_t stride = item_id.get_local_range().size();
+  const size_t k = item_id.get_group_linear_id();
+  const size_t stride = item_id.get_local_range().size();
 
-    int64_t i = static_cast<int64_t>(
-        (n2_val_ - device_sqrt<double>(n2_squared_minus_1_val_ - 2 * k)));
-    int64_t j = k - n_ * i + i * (i + 1) / 2 + i + 1;
+  int64_t i = static_cast<int64_t>(
+      (n2_val - device_sqrt<double>(n2_squared_minus_1_val - 2 * k)));
+  int64_t j = k - n * i + i * (i + 1) / 2 + i + 1;
 
-    const scalar_t* const start = in_ptr + i * m_;
-    const scalar_t* const end = start + m_;
-    const scalar_t* a = start + item_id.get_local_linear_id();
-    const scalar_t* b = in_ptr + j * m_ + item_id.get_local_linear_id();
-    scalar_t agg = 0.0f;
-    for (; a < end; a += stride, b += stride) {
-      F::inc(
-          agg,
-          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
-          p_val_);
-    }
-
-    agg =
-        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
-    if (item_id.get_local_linear_id() == 0) {
-      out_ptr[k] = F::finish(agg, p_val_);
-    }
+  const scalar_t* const start = in_data + i * m;
+  const scalar_t* const end = start + m;
+  const scalar_t* a = start + item_id.get_local_linear_id();
+  const scalar_t* b = in_data + j * m + item_id.get_local_linear_id();
+  scalar_t agg = 0.0f;
+  for (; a < end; a += stride, b += stride) {
+    F::inc(
+        agg,
+        sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+        p_val);
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    // Create the local shared memory for reducing
-    shared_ = sycl_local_acc_t<scalar_t>(wgroup_size_, cgh);
+  agg = group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared);
+  if (item_id.get_local_linear_id() == 0) {
+    out_data[k] = F::finish(agg, p_val);
   }
-
-  PdistKernelFunctor(
-      const int64_t n,
-      const int64_t m,
-      accscalar_t p_val,
-      const double n2_val,
-      const double n2_squared_minus_1_val,
-      scalar_t* out_data,
-      const scalar_t* in_data,
-      const int64_t wgroup_size)
-      : n_(n),
-        m_(m),
-        p_val_(p_val),
-        n2_val_(n2_val),
-        n2_squared_minus_1_val_(n2_squared_minus_1_val),
-        out_data_(out_data),
-        in_data_(in_data),
-        wgroup_size_(wgroup_size) {}
-
- private:
-  const int64_t n_;
-  const int64_t m_;
-  accscalar_t p_val_;
-  const double n2_val_;
-  const double n2_squared_minus_1_val_;
-  scalar_t* out_data_;
-  const scalar_t* in_data_;
-  sycl_local_acc_t<scalar_t, 1> shared_;
-  const int64_t wgroup_size_;
-};
+}
 
 template <typename scalar_t, typename F>
 static void pdist_kernel_impl(
@@ -828,9 +731,9 @@ static void pdist_kernel_impl(
     const double n2_squared_minus_1) {
   const auto ngroups = result.numel();
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using KernelClass = PdistKernelFunctor<scalar_t, F, accscalar_t>;
   auto min_sg_size = syclMinSubGroupSize();
-  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  auto wgroup_size =
+      syclMaxWorkGroupSize<pdist_kernel<scalar_t, F, accscalar_t>>();
   while (wgroup_size >> 1 >= m && wgroup_size >> 1 >= 32 /* sg_size */) {
     wgroup_size >>= 1;
   }
@@ -840,17 +743,19 @@ static void pdist_kernel_impl(
   auto out_data = result.mutable_data_ptr<scalar_t>();
   auto in_data = self.const_data_ptr<scalar_t>();
 
-  auto kfn = KernelClass(
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit<pdist_kernel<scalar_t, F, accscalar_t>>(
+      ngroups * wgroup_size,
+      wgroup_size,
+      queue,
+      (wgroup_size / min_sg_size) * sizeof(scalar_t),
       n,
       m,
       p_val,
       n2,
       n2_squared_minus_1,
       out_data,
-      in_data,
-      wgroup_size / min_sg_size);
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(ngroups * wgroup_size, wgroup_size, queue, kfn);
+      in_data);
 }
 
 void pdist_forward_kernel(Tensor& result, const Tensor& self, double p) {
@@ -880,82 +785,55 @@ void pdist_forward_kernel(Tensor& result, const Tensor& self, double p) {
 }
 
 template <typename scalar_t, typename F, typename accscalar_t = double>
-struct PdistBackwardKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    const int64_t k =
-        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
-    const int init =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    const int stride = item.get_local_range(0) * item.get_group_range(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void pdist_backward_kernel_func(
+    scalar_t* out_ptr,
+    const scalar_t* grad_ptr,
+    const scalar_t* in_ptr,
+    const scalar_t* dist_ptr,
+    int64_t gs,
+    const int64_t n,
+    const int64_t m,
+    const int64_t combs,
+    const scalar_t p_val,
+    const accscalar_t n2_val,
+    const accscalar_t n2_squared_minus_1_val) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
 
-    if (k >= combs_) {
-      return;
-    }
+  const int64_t k =
+      item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+  const int init =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  const int stride = item.get_local_range(0) * item.get_group_range(0);
 
-    // select row i, j depending on k
-    int64_t i = static_cast<int64_t>(
-        (n2_val_ - device_sqrt<accscalar_t>(n2_squared_minus_1_val_ - 2 * k)));
-    int64_t j = k - n_ * i + i * (i + 1) / 2 + i + 1;
-    int64_t ib = j - i - 1;
-    int64_t jb = n_ - 2 - i;
-
-    const scalar_t grad_k = grad_ptr_[k * gs_];
-    const scalar_t dist_k = dist_ptr_[k];
-
-    const scalar_t* const start = in_ptr_ + i * m_;
-    const scalar_t* const end = start + m_;
-    const scalar_t* self_i = start + init;
-    const scalar_t* self_j = in_ptr_ + j * m_ + init;
-    scalar_t* buff_i = out_ptr_ + (ib * n_ + i) * m_ + init;
-    scalar_t* buff_j = out_ptr_ + (jb * n_ + j) * m_ + init;
-
-    for (; self_i < end; self_i += stride,
-                         self_j += stride,
-                         buff_i += stride,
-                         buff_j += stride) {
-      const scalar_t res =
-          F::backward(*self_i - *self_j, grad_k, dist_k, p_val_);
-      *buff_i = res;
-      *buff_j = -res;
-    }
+  if (k >= combs) {
+    return;
   }
-  PdistBackwardKernelFunctor(
-      scalar_t* buffer,
-      const scalar_t* grad,
-      const scalar_t* self,
-      const scalar_t* dist,
-      int64_t gs,
-      const int64_t n,
-      const int64_t m,
-      const int64_t combs,
-      const scalar_t p,
-      const accscalar_t n2,
-      const accscalar_t n2_squared_minus_1)
-      : out_ptr_(buffer),
-        grad_ptr_(grad),
-        in_ptr_(self),
-        dist_ptr_(dist),
-        gs_(gs),
-        n_(n),
-        m_(m),
-        combs_(combs),
-        p_val_(p),
-        n2_val_(n2),
-        n2_squared_minus_1_val_(n2_squared_minus_1) {}
 
- private:
-  scalar_t* out_ptr_;
-  const scalar_t* grad_ptr_;
-  const scalar_t* in_ptr_;
-  const scalar_t* dist_ptr_;
-  int64_t gs_;
-  const int64_t n_;
-  const int64_t m_;
-  const int64_t combs_;
-  const scalar_t p_val_;
-  const accscalar_t n2_val_;
-  const accscalar_t n2_squared_minus_1_val_;
-};
+  // select row i, j depending on k
+  int64_t i = static_cast<int64_t>(
+      (n2_val - device_sqrt<accscalar_t>(n2_squared_minus_1_val - 2 * k)));
+  int64_t j = k - n * i + i * (i + 1) / 2 + i + 1;
+  int64_t ib = j - i - 1;
+  int64_t jb = n - 2 - i;
+
+  const scalar_t grad_k = grad_ptr[k * gs];
+  const scalar_t dist_k = dist_ptr[k];
+
+  const scalar_t* const start = in_ptr + i * m;
+  const scalar_t* const end = start + m;
+  const scalar_t* self_i = start + init;
+  const scalar_t* self_j = in_ptr + j * m + init;
+  scalar_t* buff_i = out_ptr + (ib * n + i) * m + init;
+  scalar_t* buff_j = out_ptr + (jb * n + j) * m + init;
+
+  for (; self_i < end;
+       self_i += stride, self_j += stride, buff_i += stride, buff_j += stride) {
+    const scalar_t res = F::backward(*self_i - *self_j, grad_k, dist_k, p_val);
+    *buff_i = res;
+    *buff_j = -res;
+  }
+}
 
 void pdist_backward_kernel(
     Tensor& result,
@@ -988,8 +866,15 @@ void pdist_backward_kernel(
     auto grad_ptr = grad.const_data_ptr<scalar_t>();
     auto self_ptr = self.const_data_ptr<scalar_t>();
     auto dist_ptr = dist.const_data_ptr<scalar_t>();
+    auto p_val = static_cast<scalar_t>(p);
     if (p == 1.0) {
-      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsOne<scalar_t>>(
+      sycl_kernel_submit<
+          pdist_backward_kernel_func<scalar_t, DistsOne<scalar_t>>,
+          2>(
+          global_range,
+          local_range,
+          getCurrentSYCLQueue(),
+          0,
           buffer_ptr,
           grad_ptr,
           self_ptr,
@@ -998,13 +883,17 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
+          p_val,
           n2,
           n2_squared_minus_1);
-      sycl_kernel_submit(
-          global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (p < 2.0) {
-      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsLtTwo<scalar_t>>(
+      sycl_kernel_submit<
+          pdist_backward_kernel_func<scalar_t, DistsLtTwo<scalar_t>>,
+          2>(
+          global_range,
+          local_range,
+          getCurrentSYCLQueue(),
+          0,
           buffer_ptr,
           grad_ptr,
           self_ptr,
@@ -1013,13 +902,17 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
+          p_val,
           n2,
           n2_squared_minus_1);
-      sycl_kernel_submit(
-          global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (p == 2.0) {
-      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsTwo<scalar_t>>(
+      sycl_kernel_submit<
+          pdist_backward_kernel_func<scalar_t, DistsTwo<scalar_t>>,
+          2>(
+          global_range,
+          local_range,
+          getCurrentSYCLQueue(),
+          0,
           buffer_ptr,
           grad_ptr,
           self_ptr,
@@ -1028,13 +921,17 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
+          p_val,
           n2,
           n2_squared_minus_1);
-      sycl_kernel_submit(
-          global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (std::isinf(p)) {
-      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsInf<scalar_t>>(
+      sycl_kernel_submit<
+          pdist_backward_kernel_func<scalar_t, DistsInf<scalar_t>>,
+          2>(
+          global_range,
+          local_range,
+          getCurrentSYCLQueue(),
+          0,
           buffer_ptr,
           grad_ptr,
           self_ptr,
@@ -1043,13 +940,17 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
+          p_val,
           n2,
           n2_squared_minus_1);
-      sycl_kernel_submit(
-          global_range, local_range, getCurrentSYCLQueue(), caller);
     } else {
-      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsP<scalar_t>>(
+      sycl_kernel_submit<
+          pdist_backward_kernel_func<scalar_t, DistsP<scalar_t>>,
+          2>(
+          global_range,
+          local_range,
+          getCurrentSYCLQueue(),
+          0,
           buffer_ptr,
           grad_ptr,
           self_ptr,
@@ -1058,11 +959,9 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
+          p_val,
           n2,
           n2_squared_minus_1);
-      sycl_kernel_submit(
-          global_range, local_range, getCurrentSYCLQueue(), caller);
     }
   });
 
