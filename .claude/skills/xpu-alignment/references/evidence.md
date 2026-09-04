@@ -66,8 +66,7 @@ Before execution, identify:
 Retain the exact script and raw stdout/stderr. A broad exception or substring
 match does not establish a result by itself. Treat timeout, crash, or setup
 failure as actionable only when target-stage evidence makes the signature
-defensible. Automation runs Python unbuffered, so keep diagnostic output bounded
-and do not print from hot loops.
+defensible.
 
 Use these local results:
 
