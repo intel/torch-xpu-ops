@@ -45,8 +45,8 @@ void multi_margin_loss_forward_kernel(
   int i_end = dim;
   int i_step = item.get_local_range(0);
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto smem = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem = reinterpret_cast<accscalar_t*>(slm);
   smem[item.get_local_linear_id()] = 0;
   for (int i = i_start; i < i_end; i += i_step) {
     scalar_t z = margin - input_target_k + input_k[i];
@@ -105,8 +105,8 @@ void multi_margin_loss_backward_kernel(
   int i_end = dim;
   int i_step = item.get_local_range(0);
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto smem = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem = reinterpret_cast<accscalar_t*>(slm);
   smem[item.get_local_linear_id()] = 0;
   for (int i = i_start; i < i_end; i += i_step) {
     scalar_t z = margin - input_target_k + input_k[i];
