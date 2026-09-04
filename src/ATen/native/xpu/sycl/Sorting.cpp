@@ -184,7 +184,7 @@ void gather_median_kernel_func(
     int64_t* indices_data) {
   auto item = syclext::this_work_item::get_nd_item<1>();
 
-  int* smem = (int*)syclexp::get_work_group_scratch_memory();
+  int* smem = static_cast<int*>(syclexp::get_work_group_scratch_memory());
   index_t* num_nan = (index_t*)(smem + 32);
 
   index_t slice = item.get_group_linear_id();
