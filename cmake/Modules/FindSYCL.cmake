@@ -48,6 +48,13 @@ if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER
     CACHE STRING "Compiler launcher for SYCL.")
 endif()
 
+# Keep custom-command tool invocation stable across per-Python CMake reconfigure
+# in unified manywheel loops. Absolute CMAKE_COMMAND paths are Python-env
+# specific (for example .../cp310.../site-packages/... vs .../cp311.../...),
+# and that command drift makes Ninja rebuild SYCL outputs even when sources and
+# flags are unchanged.
+set(SYCL_CMAKE_COMMAND cmake)
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   set(SYCL_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindSYCL/${_full_name}")
@@ -240,8 +247,8 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         DEPENDS ${custom_target_script}
         DEPFILE ${SYCL_generated_dependency_file}
         # Make sure the output directory exists before trying to write to it.
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
-        COMMAND ${CMAKE_COMMAND} ARGS
+        COMMAND ${SYCL_CMAKE_COMMAND} -E make_directory "${generated_file_path}"
+        COMMAND ${SYCL_CMAKE_COMMAND} ARGS
           -D verbose:BOOL=${verbose_output}
           -D "generated_file:STRING=${generated_file}"
           -P "${custom_target_script}"
@@ -321,7 +328,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
-      COMMAND ${CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
+      COMMAND ${SYCL_CMAKE_COMMAND} -E make_directory "$<PATH:REMOVE_FILENAME,${output_file}>"
       COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}

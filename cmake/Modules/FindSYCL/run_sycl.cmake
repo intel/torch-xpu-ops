@@ -27,7 +27,13 @@ if(NOT generated_file)
   message(FATAL_ERROR "You must specify generated_file on the command line")
 endif()
 
-set(CMAKE_COMMAND "@CMAKE_COMMAND@") # path
+# Keep this as a plain command name instead of a configure-time absolute path.
+# In unified manywheel loops each Python env provides its own cmake wheel path
+# (for example .../cp310.../site-packages/... vs .../cp311.../site-packages/...),
+# and embedding that path here rewrites every generated SYCL custom script on
+# each Python iteration. That makes Ninja rerun all torch-xpu-ops SYCL custom
+# commands even when sources/flags are unchanged.
+set(CMAKE_COMMAND "cmake") # command name
 set(source_file "@source_file@") # path
 set(SYCL_generated_dependency_file "@SYCL_generated_dependency_file@") # path
 set(generated_file_path "@generated_file_path@") # path
