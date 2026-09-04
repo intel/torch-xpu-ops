@@ -2,13 +2,13 @@
 
 Write `agent_space/label_issue/<repo_underscored>_issue_<id>/labels.md` in the
 layout below, and also print it to stdout. This file defines the artifact's
-*shape*; the label names and their evidence come from `label_def.json`, and
+*shape*; the label names and their evidence come from `labels.json`, and
 each axis is decided in the label-issue skill's Step 3.
 
 ## Skeleton
 
 Every `<value>` below is one of the enum values defined in
-`label_def.json` (see **Axis sources**); this file never enumerates them.
+`labels.json` (see **Axis sources**); this file never enumerates them.
 
 Wrap the ENTIRE artifact in a collapsible `<details>` block whose `<summary>` is
 the `label-issue: <repo>#<id>` title, so the content is hidden until clicked. Keep
@@ -32,6 +32,7 @@ emit one block (no `Test cases` list needed unless the group has 2+ cases).
 | axis | value | reason |
 |---|---|---|
 | triage | `need_split` | <N> groups: <one-line signature each> |
+| <issue-wide axis> | `<value>` | <collapsed across the groups - see below> |
 
 ## Group <n> — <summary of the group of tests>
 
@@ -69,13 +70,13 @@ The `value` column is the token a workflow applies verbatim: a label name for
 label axes (with its `type:` / `module:` / etc. prefix), or the bare enum value
 for the native `type` (GitHub Type) and `priority` (native org Priority issue
 field) fields.
-Emit each value exactly as it appears in `label_def.json`. (Exception: on a
+Emit each value exactly as it appears in `labels.json`. (Exception: on a
 `need_split` issue a consumer applies only the issue-wide axes to the umbrella
-issue — see the need_split suppression policy below.)
+issue — see **Multi-group and consumer policy** below.)
 
 ## Axis sources
 
-Read every enum value, spelling, and casing from these `label_def.json`
+Read every enum value, spelling, and casing from these `labels.json`
 locations — never hard-code them:
 
 | Row | JSON source | Emitted as |
@@ -114,7 +115,7 @@ Each appears as a single line above the table, only when its condition holds:
 | `module`, `priority` | always | Emit the chosen value verbatim from its Axis source. |
 | `os`, `hw` | value present | Straight from `extract.json`; omit when blank (not OS/HW-specific). |
 | `dtype`, symptom | value present | Multi-label: one row per value, omit the axis when none. |
-| `dependency component` | value present | Match the decided value to a label by its `code`, emit its `name`; when `exists_in_repo` is false, note in the reason it must be created. Omit on `none`/`null`. |
+| `dependency component` | value present | Match the decided value to a label by its `code`, emit its `name`. Omit on `none`/`null`. |
 | `duplicate`, `wontfix` | true | Omit otherwise. |
 | `need_split` | 2+ groups | Emitted once in the top-level output table (never inside a group block). Reason = group count + one-line signature per group. Never emit for one group; never write "1 group". |
 | `Test cases (<M>)` list | per group when 2+ groups, or a single group with 2+ cases | Enumerate every test case in the group at the END of that group's block, after the table. |
@@ -123,17 +124,36 @@ Omitting a row means the axis produced no value — not that its step was skippe
 (Step 3.5 must still have run to conclude `null`/`none`). Do not add any prose
 explaining which rows were omitted.
 
-### need_split suppression policy
+## Multi-group and consumer policy
 
-When the `need_split` row is present, the per-group axes describe the individual
-sub-issues that will be created by the split, not the umbrella issue. A consumer
-applying labels.md to the umbrella issue (e.g. `apply_labels.py`) therefore
-applies ONLY the issue-wide axes — `need_split`, `type`, `test`, `os`, `hw` — and
-suppresses the per-group axes `module`, `dtype`, `dependency component`,
-`symptom`, `duplicate`, `wontfix`, and `priority`. Those carry over to the
-sub-issues once the split happens. The artifact still emits every row for the
-human reader and for the sub-issues; the suppression is a write-time policy, not
-a reason to drop rows from labels.md.
+On a `need_split` artifact the per-group axes describe the sub-issues the split
+will create, not the umbrella issue. Two rules follow.
+
+**Collapse the issue-wide axes** (`test`, `os`, `hw`, `type`) across the groups
+before they reach the top-level table. Where the groups agree, emit the shared
+value once, reasoned as agreement. Where they disagree, emit no row for `test` /
+`os` / `hw` and name the disagreement in the `need_split` reason (e.g.
+`os differs: Linux (group 1), Windows (group 2)`); for `type` emit `Bug` if any
+group is `Bug`, since a reported defect dominates a feature request on an
+umbrella. Never union a single-label axis — an umbrella issue must not carry both
+`os: Linux` and `os: Windows`. Each group's own table still shows its own value.
+
+**A consumer applying the artifact** (e.g. `apply_labels.py`) writes additively
+and never clobbers human triage:
+
+- Only the issue-wide axes (`need_split`, `type`, `test`, `os`, `hw`) go on the
+  umbrella issue; `module`, `dtype`, `dependency component`, `symptom`,
+  `duplicate`, `wontfix`, and `priority` are suppressed and carry over to the
+  sub-issues after the split.
+- Labels are add-only and allowlisted against `labels.json`; a name absent from
+  the JSON is dropped, not created.
+- `type` and `priority` are written only when the issue has no value set. An
+  existing native field is left unchanged even when it disagrees; the
+  disagreement is surfaced for a human (`apply_labels.py` appends a
+  `> [!WARNING]` block to its comment, or prints it under `--no-comment`).
+
+These are write-time policies: labels.md still emits every row for the human
+reader and for the sub-issues.
 
 ## Reasons
 
@@ -154,6 +174,8 @@ with its `Test cases` list):
 | axis | value | reason |
 |---|---|---|
 | triage | `need_split` | 2 groups: RuntimeError missing addmm primitive in test_addmm_bfloat16; AssertionError tolerance in test_div_float64. |
+| `type` | `Bug` | Both groups are `Bug`. |
+| `test` | `test: ut` | Both groups run pytest UT cases. |
 
 ## Group 1 — bf16 addmm matmul missing oneDNN primitive
 

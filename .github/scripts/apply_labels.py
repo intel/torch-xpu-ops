@@ -43,6 +43,11 @@ the write proceeds.
 
 Dry-run by default: prints exactly what it would do. Pass --apply to write.
 
+labels.md is derived from attacker-controlled issue text, so this script only
+ever ADDS: every proposed label must appear in labels.json (unknown ones are
+dropped), at most MAX_LABELS are applied, no existing label is removed, and the
+native Type/Priority fields are never overwritten.
+
 For a `need_split` issue, the per-group axes (module, dtype, dependency
 component, symptom, duplicate, wontfix, and the priority) are NOT applied to the
 umbrella issue -- they belong to the individual sub-issues created after the
@@ -61,20 +66,24 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# label_def.json lives with the label-issue skill. Resolve it robustly:
+# labels.json lives with the label-issue skill. Resolve it robustly:
 # the workflow may colocate it next to this script (HERE/../reference), otherwise
 # fall back to the in-repo skill copy. First existing path wins.
-_PROPOSED_CANDIDATES = [
-    os.path.join(HERE, "..", "reference", "label_def.json"),
+_LABELS_JSON_CANDIDATES = [
+    os.path.join(HERE, "..", "reference", "labels.json"),
     os.path.join(
         HERE, "..", "..", ".claude", "skills", "label-issue",
-        "reference", "label_def.json",
+        "reference", "labels.json",
     ),
 ]
-PROPOSED = next(
-    (p for p in _PROPOSED_CANDIDATES if os.path.isfile(p)),
-    _PROPOSED_CANDIDATES[0],
+LABELS_JSON = next(
+    (p for p in _LABELS_JSON_CANDIDATES if os.path.isfile(p)),
+    _LABELS_JSON_CANDIDATES[0],
 )
+
+# Upper bound on how many labels a single run may add. labels.md is derived from
+# attacker-controlled issue text, so cap the blast radius of a bad artifact.
+MAX_LABELS = 15
 
 # Name of the native org-level issue field that holds the priority tier.
 PRIORITY_FIELD_NAME = "Priority"
@@ -82,6 +91,10 @@ PRIORITY_FIELD_NAME = "Priority"
 # Axes that are NOT applied as labels.
 NATIVE_TYPE_AXIS = "type"
 PRIORITY_AXIS = "priority"
+
+# Issue-wide axes that carry exactly one label per issue. A multi-group artifact
+# holds one row per group for each, so they are collapsed rather than unioned.
+SINGLE_LABEL_AXES = ("test", "os", "hw")
 
 
 def run(cmd, check=True, capture=True):
@@ -118,9 +131,26 @@ def load_priority_order():
     tier->option mapping is needed; this only gives an ordering so the most
     urgent tier can be chosen across a multi-group issue.
     """
-    with open(PROPOSED) as f:
+    with open(LABELS_JSON) as f:
         d = json.load(f)
     return {v["tier"]: i for i, v in enumerate(d["priority_field"]["values"])}
+
+
+def load_known_labels():
+    """Every label name defined in labels.json, as a set.
+
+    labels.md is generated from issue text, which is attacker-controlled, so the
+    proposed labels are an allowlist match against this set before anything is
+    written: an injected instruction can then at worst pick a wrong label from a
+    fixed vocabulary, never invent one.
+    """
+    with open(LABELS_JSON) as f:
+        d = json.load(f)
+    return {
+        lb["name"]
+        for cat in d["categories"].values()
+        for lb in cat.get("labels", [])
+    }
 
 
 def parse_labels_md(path):
@@ -156,10 +186,13 @@ def parse_labels_md(path):
 def classify(rows, priority_order):
     """Split parsed rows into labels, native type, priority tier.
 
-    A multi-group issue carries one type/priority row per group, but GitHub's
-    Type and the native Priority issue field are per-issue. Collapse type to the
-    single distinct value (warn on conflict) and priority to the most urgent
-    tier across groups (rank from priority_order, 0 = most urgent).
+    A multi-group issue carries one row per group for axes that are per-issue on
+    GitHub, so each is collapsed here: type to a single value (Bug wins over any
+    other tier, since a reported defect dominates a feature request on an
+    umbrella issue), priority to the most urgent tier across groups (rank from
+    priority_order, 0 = most urgent), and the single-label issue-wide axes
+    (test, os, hw) to their shared value -- dropped entirely when the groups
+    disagree, because an umbrella issue must never carry two of them at once.
 
     When the issue is `need_split`, the per-group axes (module, dtype,
     dependency component, symptom, duplicate, wontfix, and the priority) describe
@@ -175,6 +208,7 @@ def classify(rows, priority_order):
     labels = []
     types = []
     priorities = []
+    single = {}  # single-label issue-wide axis -> list of distinct values
     seen = set()
 
     for axis, value in rows:
@@ -186,6 +220,10 @@ def classify(rows, priority_order):
                 continue
             if value not in priorities:
                 priorities.append(value)
+        elif axis in SINGLE_LABEL_AXES:
+            vals = single.setdefault(axis, [])
+            if value not in vals:
+                vals.append(value)
         else:
             if need_split and axis in split_drop_axes:
                 continue
@@ -196,7 +234,20 @@ def classify(rows, priority_order):
                 seen.add(value)
                 labels.append(value)
 
-    native_type = types[0] if types else None
+    for axis, vals in single.items():
+        if len(vals) > 1:
+            sys.stderr.write(
+                f"warning: groups disagree on {axis} {vals}; "
+                f"applying no {axis} label\n"
+            )
+            continue
+        if vals[0] not in seen:
+            seen.add(vals[0])
+            labels.append(vals[0])
+
+    native_type = None
+    if types:
+        native_type = "Bug" if "Bug" in types else types[0]
     if len(types) > 1:
         sys.stderr.write(
             f"warning: multiple type values {types}; using {native_type}\n"
@@ -402,6 +453,21 @@ def main():
     repo, issue_id, rows, full_text = parse_labels_md(args.labels_md)
     labels, native_type, priority_tier = classify(rows, priority_order)
 
+    # Allowlist: only labels defined in labels.json may be written.
+    known = load_known_labels()
+    unknown = [lb for lb in labels if lb not in known]
+    if unknown:
+        sys.stderr.write(
+            f"warning: dropping label(s) not defined in labels.json: {unknown}\n"
+        )
+        labels = [lb for lb in labels if lb in known]
+    if len(labels) > MAX_LABELS:
+        sys.stderr.write(
+            f"warning: {len(labels)} labels exceeds the cap of {MAX_LABELS}; "
+            f"dropping {labels[MAX_LABELS:]}\n"
+        )
+        labels = labels[:MAX_LABELS]
+
     mode = "APPLY" if args.apply else "DRY RUN"
     print(f"[{mode}] {repo}#{issue_id}")
     print(f"  labels     : {labels}")
@@ -476,6 +542,14 @@ def main():
         run(["gh", "issue", "comment", issue_id, "--repo", repo,
              "--body", body], capture=False)
         print("  posted comment")
+    elif mismatch_notes:
+        # The comment is their only GitHub-side channel, so with --no-comment
+        # print them instead of losing the disagreement entirely.
+        sys.stderr.write(
+            "warning: native field(s) already set and NOT changed; the values "
+            "below disagree with this analysis:\n"
+            + "\n".join(mismatch_notes) + "\n"
+        )
 
     # 3. native org Priority issue field. Best-effort: the native issue-fields
     # surface may be unavailable to the token, so any failure here warns and
