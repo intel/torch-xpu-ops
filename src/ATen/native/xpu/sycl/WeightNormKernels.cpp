@@ -46,7 +46,7 @@ void weight_norm_reduce_kernel(
   auto item = syclext::this_work_item::get_nd_item<2>();
   char* shared_ptr =
       static_cast<char*>(syclexp::get_work_group_scratch_memory());
-  
+
   auto id = cfg.get_item_desc(item);
   int64_t si = id.glb_batch % cfg.stride_;
   int64_t bi = id.glb_batch / cfg.stride_;
@@ -236,7 +236,8 @@ void weight_norm_combine_kernel(
     BatchKernelConfig cfg,
     int batch_wg_range) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  accscalar_t* shared_ = (accscalar_t*)syclexp::get_work_group_scratch_memory();
+  accscalar_t* shared_ =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
   auto id = cfg.get_item_desc(item);
   int64_t n_lid = id.glb_batch;
@@ -420,7 +421,8 @@ void weight_norm_backward_reduce_kernel(
     AccTypeInfo oinfo,
     BatchKernelConfig cfg) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  char* shared_ptr = (char*)syclexp::get_work_group_scratch_memory();
+  char* shared_ptr =
+      static_cast<char*>(syclexp::get_work_group_scratch_memory());
 
   auto id = cfg.get_item_desc(item);
   int64_t si = id.glb_batch % cfg.stride_;
@@ -692,7 +694,8 @@ void weight_norm_backward_combine_kernel(
     BatchKernelConfig cfg,
     int batch_wg_range) {
   auto item = syclext::this_work_item::get_nd_item<2>();
-  accscalar_t* shared_ = (accscalar_t*)syclexp::get_work_group_scratch_memory();
+  accscalar_t* shared_ =
+      static_cast<accscalar_t*>(syclexp::get_work_group_scratch_memory());
 
   auto id = cfg.get_item_desc(item);
   int64_t n_lid = id.glb_batch;
