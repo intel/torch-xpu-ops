@@ -186,11 +186,10 @@ struct Msg {
   char msg[MAX_MSG_LENGTH];
 };
 
-// SYCL_KERNEL_ASSERT_MSG is not ready
 template <typename scalar_t>
 struct AssertAsyncKernelFunctor1 {
   void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != 0);
+    SYCL_KERNEL_ASSERT_MSG(input_[0] != 0, msg_.msg);
   }
   AssertAsyncKernelFunctor1(const scalar_t* input, Msg msg)
       : input_(input), msg_(msg) {}
@@ -202,7 +201,7 @@ struct AssertAsyncKernelFunctor1 {
 
 struct AssertAsyncKernelFunctor2 {
   void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
+    SYCL_KERNEL_ASSERT_MSG(input_[0] != c10::complex<float>(0, 0), msg_.msg);
   }
   AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg msg)
       : input_(input), msg_(msg) {}
@@ -214,7 +213,7 @@ struct AssertAsyncKernelFunctor2 {
 
 struct AssertAsyncKernelFunctor3 {
   void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
+    SYCL_KERNEL_ASSERT_MSG(input_[0] != c10::complex<double>(0, 0), msg_.msg);
   }
   AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg msg)
       : input_(input), msg_(msg) {}

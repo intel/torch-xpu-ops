@@ -10184,6 +10184,41 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         ):
             torch._assert_async(torch.tensor(0 + 0j))
 
+    def test_assert_async_msg(self):
+        # Host-side validation matches the message-less _assert_async.
+        with self.assertRaisesRegex(
+            RuntimeError, "Boolean value of Tensor with no values is ambiguous"
+        ):
+            torch._assert_async(torch.tensor([], device="xpu"), "empty")
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Boolean value of Tensor with more than one value is ambiguous",
+        ):
+            torch._assert_async(
+                torch.tensor([0, 0], device="xpu"), "multiple"
+            )
+        # A satisfied assertion must not raise.
+        torch._assert_async(torch.tensor(1, device="xpu"), "ok")
+
+        # A violated assertion must trigger a device-side assert through
+        # SYCL_KERNEL_ASSERT_MSG. The assert aborts the process, so run it in a
+        # subprocess. The DPC++ runtime only surfaces "AssertHandler" here; the
+        # assertion string itself is not printed on this platform, matching the
+        # existing SYCL_KERNEL_ASSERT tests (see test_nn_xpu.py).
+        stderr = TestCase.runWithPytorchAPIUsageStderr(
+            """\
+import torch
+
+torch._assert_async(torch.tensor(0, device="xpu"), "CustomSyclAssertMessage")
+torch.xpu.synchronize()
+"""
+        )
+        self.assertTrue(
+            "AssertHandler" in stderr
+            or ("Assertion" in stderr and "failed" in stderr),
+            f"Expected a device-side assert in stderr, got: {stderr}",
+        )
+
     # NB: we must not be built with CUDA; if we are built with CUDA but no CUDA
     # is available, we get a different error.
     @unittest.skipIf(
