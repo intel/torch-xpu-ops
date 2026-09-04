@@ -36,6 +36,7 @@ TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
+AUTO_FILE_LIMIT = 3
 # Unit ids become comment markers, file names and glob fragments, so they are
 # restricted to one plain token with no separator or metacharacter.
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -101,9 +102,10 @@ def post_comment(repo: str, issue: int, body: str) -> int:
     return int(created["id"])
 
 
-def has_unit(comments: list[dict], unit_id: str) -> bool:
+def find_unit_comments(comments: list[dict], unit_id: str) -> list[dict]:
     marker = UNIT_MARKER.format(unit_id=unit_id)
-    return any(marker in (comment.get("body") or "") for comment in comments)
+    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
+    return sorted(matches, key=lambda comment: int(comment.get("id", 0)))
 
 
 def find_run_note(comments: list[dict], run_id: str) -> dict | None:
@@ -134,16 +136,6 @@ def render_run_note(
     if notify:
         parts += ["", notify]
     return "\n".join(parts) + "\n"
-
-
-def find_draft(comments: list[dict], unit_id: str) -> dict:
-    marker = UNIT_MARKER.format(unit_id=unit_id)
-    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
-    if not matches:
-        fail(f"No draft comment carries the marker for `{unit_id}`.")
-    if len(matches) > 1:
-        fail(f"{len(matches)} draft comments carry the marker for `{unit_id}`.")
-    return matches[0]
 
 
 def parse_draft(body: str, unit_id: str) -> tuple[str, str]:
