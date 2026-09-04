@@ -236,7 +236,7 @@ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void compute_mo
     int64_t slices,
     int64_t memsize) {
   auto item = syclext::this_work_item::get_nd_item<3>();
-  char* shmem = (char*)syclexp::get_work_group_scratch_memory();
+  char* shmem = static_cast<char*>(syclexp::get_work_group_scratch_memory());
   T* mode = (T*)(shmem + memsize);
 
   int tidx = item.get_local_id(2);
