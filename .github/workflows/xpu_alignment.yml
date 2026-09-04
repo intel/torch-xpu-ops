@@ -190,20 +190,25 @@ jobs:
               raise SystemExit
 
           result = results[-1]
-          number = lambda value: value if type(value) in (int, float) else 0
+          number = lambda value: value if type(value) in (int, float) and value >= 0 else None
           models = result.get("modelUsage")
-          metrics = models.values() if isinstance(models, dict) else []
-          usage = {
-              "role": role,
-              "cost_usd": number(result.get("total_cost_usd")),
-              "input_tokens": sum(
-                  number(value.get(key))
+          metrics = list(models.values()) if isinstance(models, dict) else []
+          usage = {"role": role}
+          cost = number(result.get("total_cost_usd"))
+          if cost is not None:
+              usage["total_cost_usd"] = cost
+          if metrics and all(isinstance(value, dict) for value in metrics):
+              inputs = [
+                  number(value.get(key, 0))
                   for value in metrics
                   for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
-              ),
-              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
-              "is_error": result.get("is_error") is True,
-          }
+              ]
+              outputs = [number(value.get("outputTokens")) for value in metrics]
+              if all(value is not None for value in inputs + outputs):
+                  usage["input_tokens"] = sum(inputs)
+                  usage["output_tokens"] = sum(outputs)
+          if type(result.get("is_error")) is bool:
+              usage["is_error"] = result["is_error"]
           open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
           PY
 
@@ -448,20 +453,25 @@ jobs:
               raise SystemExit
 
           result = results[-1]
-          number = lambda value: value if type(value) in (int, float) else 0
+          number = lambda value: value if type(value) in (int, float) and value >= 0 else None
           models = result.get("modelUsage")
-          metrics = models.values() if isinstance(models, dict) else []
-          usage = {
-              "role": role,
-              "cost_usd": number(result.get("total_cost_usd")),
-              "input_tokens": sum(
-                  number(value.get(key))
+          metrics = list(models.values()) if isinstance(models, dict) else []
+          usage = {"role": role}
+          cost = number(result.get("total_cost_usd"))
+          if cost is not None:
+              usage["total_cost_usd"] = cost
+          if metrics and all(isinstance(value, dict) for value in metrics):
+              inputs = [
+                  number(value.get(key, 0))
                   for value in metrics
                   for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
-              ),
-              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
-              "is_error": result.get("is_error") is True,
-          }
+              ]
+              outputs = [number(value.get("outputTokens")) for value in metrics]
+              if all(value is not None for value in inputs + outputs):
+                  usage["input_tokens"] = sum(inputs)
+                  usage["output_tokens"] = sum(outputs)
+          if type(result.get("is_error")) is bool:
+              usage["is_error"] = result["is_error"]
           open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
           PY
 
@@ -585,20 +595,25 @@ jobs:
               raise SystemExit
 
           result = results[-1]
-          number = lambda value: value if type(value) in (int, float) else 0
+          number = lambda value: value if type(value) in (int, float) and value >= 0 else None
           models = result.get("modelUsage")
-          metrics = models.values() if isinstance(models, dict) else []
-          usage = {
-              "role": role,
-              "cost_usd": number(result.get("total_cost_usd")),
-              "input_tokens": sum(
-                  number(value.get(key))
+          metrics = list(models.values()) if isinstance(models, dict) else []
+          usage = {"role": role}
+          cost = number(result.get("total_cost_usd"))
+          if cost is not None:
+              usage["total_cost_usd"] = cost
+          if metrics and all(isinstance(value, dict) for value in metrics):
+              inputs = [
+                  number(value.get(key, 0))
                   for value in metrics
                   for key in ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
-              ),
-              "output_tokens": sum(number(value.get("outputTokens")) for value in metrics),
-              "is_error": result.get("is_error") is True,
-          }
+              ]
+              outputs = [number(value.get("outputTokens")) for value in metrics]
+              if all(value is not None for value in inputs + outputs):
+                  usage["input_tokens"] = sum(inputs)
+                  usage["output_tokens"] = sum(outputs)
+          if type(result.get("is_error")) is bool:
+              usage["is_error"] = result["is_error"]
           open(output, "a", encoding="utf-8").write(f"usage={json.dumps(usage, separators=(',', ':'))}\n")
           PY
 
@@ -765,12 +780,20 @@ jobs:
               } catch (_) {}
             }
 
-            const cost = usage.reduce((sum, item) => sum + item.cost_usd, 0);
-            const input = usage.reduce((sum, item) => sum + item.input_tokens, 0);
-            const output = usage.reduce((sum, item) => sum + item.output_tokens, 0);
+            const hasNumber = (item, field) =>
+              typeof item[field] === 'number' && Number.isFinite(item[field]) && item[field] >= 0;
+            const complete = item =>
+              hasNumber(item, 'total_cost_usd') && hasNumber(item, 'input_tokens') &&
+              hasNumber(item, 'output_tokens') && typeof item.is_error === 'boolean';
+            const costs = usage.filter(item => hasNumber(item, 'total_cost_usd'));
+            const inputs = usage.filter(item => hasNumber(item, 'input_tokens'));
+            const outputs = usage.filter(item => hasNumber(item, 'output_tokens'));
+            const cost = costs.reduce((sum, item) => sum + item.total_cost_usd, 0);
+            const input = inputs.reduce((sum, item) => sum + item.input_tokens, 0);
+            const output = outputs.reduce((sum, item) => sum + item.output_tokens, 0);
             const status = usage.some(item => item.is_error)
               ? 'error'
-              : usage.length === sources.length ? 'ok' : 'partial';
+              : usage.length === sources.length && usage.every(complete) ? 'ok' : 'partial';
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -780,15 +803,26 @@ jobs:
             const job = jobs.find(item => item.name === 'Gate and publish');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const jobUrl = job?.html_url || runUrl;
-            const totals = usage.length
-              ? `**$${cost.toFixed(4)} total** (${input.toLocaleString()} in / ${output.toLocaleString()} out)`
-              : '**cost unavailable** (tokens unavailable)';
+            const costTotal = costs.length === sources.length
+              ? `**$${cost.toFixed(4)} total**`
+              : costs.length ? `**cost unavailable** ($${cost.toFixed(4)} known subtotal)` : '**cost unavailable**';
+            const tokenTotal = inputs.length === sources.length && outputs.length === sources.length
+              ? `${input.toLocaleString()} in / ${output.toLocaleString()} out`
+              : inputs.length || outputs.length
+                ? `tokens unavailable (${input.toLocaleString()} known in / ${output.toLocaleString()} known out)`
+                : 'tokens unavailable';
             const roles = sources.map(([role]) => {
               const item = usage.find(value => value.role === role);
-              return `- ${role}: ${item ? `$${item.cost_usd.toFixed(4)}` : 'unavailable'}`;
+              if (!item) return `- ${role}: unavailable`;
+              const roleCost = hasNumber(item, 'total_cost_usd')
+                ? `$${item.total_cost_usd.toFixed(4)}` : 'cost unavailable';
+              const roleTokens = hasNumber(item, 'input_tokens') && hasNumber(item, 'output_tokens')
+                ? `${item.input_tokens.toLocaleString()} in / ${item.output_tokens.toLocaleString()} out`
+                : 'tokens unavailable';
+              return `- ${role}: ${roleCost} (${roleTokens})${item.is_error === true ? ' [error]' : ''}`;
             }).join('\n');
             const date = new Date().toISOString().split('T')[0];
-            const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${totals} [${status}]\n\n${roles}`;
+            const body = `\`${date}\` [\`xpu-alignment\`](${jobUrl}) run \`${context.runId}\`, attempt \`${process.env.RUN_ATTEMPT}\` (${process.env.ALIGNMENT_MODE}) — ${costTotal} (${tokenTotal}) [${status}]\n\n${roles}`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
