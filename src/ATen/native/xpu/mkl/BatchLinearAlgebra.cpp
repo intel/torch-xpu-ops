@@ -662,4 +662,66 @@ Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
   return result;
 }
 
+
+template <typename scalar_t>
+void potrf_mkl_impl(
+    const Tensor& A,
+    const Tensor& info,
+    bool upper
+    ) {
+      using mkl_scalar_t = get_mkl_type<scalar_t>::type;
+  TORCH_CHECK(A.device().is_xpu(), "A must be an XPU tensor");
+
+  if (A.numel() == 0) {
+    info.zero_();
+    return;
+  }
+
+  at::Tensor A_contig = A.contiguous();
+  
+  int64_t batch_size = native::batchCount(A_contig);
+  int64_t n = A_contig.size(-2);
+  int64_t stride_a = n * n;
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+  // this is intentionally flipped:
+  // PyTorch's row major is interpreted as MKL's column major
+  // the side effect is that for MKL the input matrix is seen as transposed
+  // however, this changes lowes/upper meaning
+  auto uplo = upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
+
+  int64_t bufsize = oneapi::mkl::lapack::potrf_batch_scratchpad_size<mkl_scalar_t>(
+      queue, uplo, n, n, stride_a, batch_size);
+  mkl_scalar_t* buffer = sycl::malloc_device<mkl_scalar_t>(bufsize, queue);
+  mkl_scalar_t* r_buf = reinterpret_cast<mkl_scalar_t*>(A_contig.data_ptr<scalar_t>());
+
+  Tensor info_cpu = at::zeros(info.sizes(), info.options().device(at::kCPU));
+  int32_t* info_data = info_cpu.data_ptr<int32_t>();
+
+  try {
+    oneapi::mkl::lapack::potrf_batch(
+        queue, uplo, n, r_buf, n, stride_a, batch_size, buffer, bufsize);
+  } catch (const oneapi::mkl::lapack::batch_error& be) {
+    error_handle(info_data, be);
+  } catch (const oneapi::mkl::lapack::exception& e) {
+    info_data[0] = e.info();
+  }
+  queue.wait_and_throw();
+  info.copy_(info_cpu);
+  sycl::free(buffer, queue);
+
+  A.copy_(A_contig);
+ }
+
+void potrf_mkl(
+    const Tensor& A,
+    const Tensor& info,
+    bool upper) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+      A.scalar_type(),
+      "potrf_mkl",
+      [&] {
+        potrf_mkl_impl<scalar_t>(A, info, upper);
+      });
+}
 } // namespace at::native::xpu
