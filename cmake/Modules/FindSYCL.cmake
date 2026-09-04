@@ -194,8 +194,6 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_basename "${sycl_target}_gen_${_sycl_dir_hash}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
       set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.SYCL-depend") # compiler -MD -MF depfile, consumed via DEPFILE
-      set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
-      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.cmake")
 
       set_source_files_properties("${generated_file}"
         PROPERTIES
@@ -209,6 +207,15 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       else()
         set(source_file "${CMAKE_CURRENT_SOURCE_DIR}/${file}")
       endif()
+
+      set(_sycl_script_key
+        "${source_file};${generated_file};${SYCL_generated_dependency_file};${SYCL_EXECUTABLE};"
+        "${SYCL_COMPILE_FLAGS};${SYCL_INCLUDE_DIR};${SYCL_compile_definitions};${SYCL_host_flags};${CMAKE_${SYCL_C_OR_CXX}_FLAGS}"
+      )
+      string(SHA256 _sycl_script_hash "${_sycl_script_key}")
+      string(SUBSTRING "${_sycl_script_hash}" 0 16 _sycl_script_hash)
+      set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.${_sycl_script_hash}.cmake.pre-gen")
+      set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}${SYCL_config_suffix}.${_sycl_script_hash}.cmake")
 
       list(APPEND ${sycl_target}_INTERMEDIATE_LINK_OBJECTS "${generated_file}")
 
@@ -244,7 +251,6 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         OUTPUT ${generated_file}
         ${main_dep}
         DEPENDS ${SYCL_EXTERNAL_DEPEND}
-        DEPENDS ${custom_target_script}
         DEPFILE ${SYCL_generated_dependency_file}
         # Make sure the output directory exists before trying to write to it.
         COMMAND ${SYCL_CMAKE_COMMAND} -E make_directory "${generated_file_path}"
