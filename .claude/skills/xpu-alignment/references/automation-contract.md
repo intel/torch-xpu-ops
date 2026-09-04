@@ -205,7 +205,7 @@ writes one result for every execution-plan entry:
   "results": [{
     "id": "issue-123",
     "script_sha256": "...",
-    "command": ["/usr/bin/python3", "-I", "-u", "scripts/repro_issue-123.py"],
+    "command": ["/usr/bin/python3", "-I", "scripts/repro_issue-123.py"],
     "log": "runner/logs/issue-123.log",
     "log_sha256": "...",
     "returncode": 0,
@@ -215,10 +215,6 @@ writes one result for every execution-plan entry:
   }]
 }
 ```
-
-`command` records the invoked Python options and artifact-relative script path;
-the scratch working directory, credential-free environment, and process-group
-isolation remain runner-owned execution context.
 
 `status: complete` means the runner produced a structurally valid result for
 every planned execution, not that every reproducer succeeded. The collection
