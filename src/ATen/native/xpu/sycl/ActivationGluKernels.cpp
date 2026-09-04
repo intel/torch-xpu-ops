@@ -74,55 +74,36 @@ T* byte_offset(T* ptr, int64_t offset) {
 }
 
 template <typename scalar_t, typename OffsetCalc>
-struct GluBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    using opmath_t = at::opmath_type<scalar_t>;
-
-    const uint32_t linear_index = item.get_global_linear_id();
-    if (linear_index >= numel_) {
-      return;
-    }
-    const auto offsets = offset_calculator_.get(linear_index);
-
-    const opmath_t a = I_[offsets[1]];
-    const opmath_t b = *byte_offset(I_ + offsets[1], I_byte_offset_);
-    const opmath_t gO_val = gO_[offsets[2]];
-
-    const auto one = opmath_t(1);
-    const opmath_t sigmoid = one / (one + sycl::exp(-b));
-
-    auto* gA = gI_ + offsets[0];
-    *gA = sigmoid * gO_val;
-
-    auto* gB = byte_offset(gA, gI_byte_offset_);
-    *gB = (one - sigmoid) * sigmoid * gO_val * a;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void glu_backward_kernel(
+    int numel,
+    scalar_t* gI,
+    const scalar_t* I,
+    const scalar_t* gO,
+    OffsetCalc offset_calculator,
+    int64_t gI_byte_offset,
+    int64_t I_byte_offset) {
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  const uint32_t linear_index = item.get_global_linear_id();
+  if (linear_index >= numel) {
+    return;
   }
+  const auto offsets = offset_calculator.get(linear_index);
 
-  GluBackwardKernelFunctor(
-      int numel,
-      scalar_t* gI,
-      const scalar_t* I,
-      const scalar_t* gO,
-      OffsetCalc offset_calculator,
-      int64_t gI_byte_offset,
-      int64_t I_byte_offset)
-      : numel_(numel),
-        gI_(gI),
-        I_(I),
-        gO_(gO),
-        offset_calculator_(offset_calculator),
-        gI_byte_offset_(gI_byte_offset),
-        I_byte_offset_(I_byte_offset) {}
+  const opmath_t a = I[offsets[1]];
+  const opmath_t b = *byte_offset(I + offsets[1], I_byte_offset);
+  const opmath_t gO_val = gO[offsets[2]];
 
- private:
-  int numel_;
-  scalar_t* gI_;
-  const scalar_t* I_;
-  const scalar_t* gO_;
-  OffsetCalc offset_calculator_;
-  int64_t gI_byte_offset_;
-  int64_t I_byte_offset_;
-};
+  const auto one = opmath_t(1);
+  const opmath_t sigmoid = one / (one + sycl::exp(-b));
+
+  auto* gA = gI + offsets[0];
+  *gA = sigmoid * gO_val;
+
+  auto* gB = byte_offset(gA, gI_byte_offset);
+  *gB = (one - sigmoid) * sigmoid * gO_val * a;
+}
 
 template <typename scalar_t, typename OffsetCalc>
 void launch_glu_backward_kernel(
@@ -133,14 +114,23 @@ void launch_glu_backward_kernel(
     OffsetCalc offset_calculator,
     int64_t gI_byte_offset,
     int64_t I_byte_offset) {
-  GluBackwardKernelFunctor<scalar_t, OffsetCalc> kfn(
-      numel, gI, I, gO, offset_calculator, gI_byte_offset, I_byte_offset);
-
-  const int64_t local_size = syclMaxWorkGroupSize(kfn);
+  const int64_t local_size =
+      syclMaxWorkGroupSize<glu_backward_kernel<scalar_t, OffsetCalc>>();
   const int64_t num_wg = (numel + local_size - 1) / local_size;
   const int64_t global_size = num_wg * local_size;
 
-  sycl_kernel_submit(global_size, local_size, getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit<glu_backward_kernel<scalar_t, OffsetCalc>>(
+      global_size,
+      local_size,
+      getCurrentSYCLQueue(),
+      0,
+      numel,
+      gI,
+      I,
+      gO,
+      offset_calculator,
+      gI_byte_offset,
+      I_byte_offset);
 }
 
 void glu_backward_kernel(
