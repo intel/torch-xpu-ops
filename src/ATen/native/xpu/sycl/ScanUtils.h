@@ -436,7 +436,7 @@ inline void loop_scan_kernel_func(LSConfig_ cfg_) {
 
   auto item = syclext::this_work_item::get_nd_item<2>();
 
-  T* slm_ = (T*)syclexp::get_work_group_scratch_memory();
+  T* slm_ = static_cast<T*>(syclexp::get_work_group_scratch_memory());
   T* max_carr_ = slm_ + cfg_.wg_range_x_ * cfg_.wg_range_y_ * 2;
 
   const int loops_batch = cfg_.loops_batch;
