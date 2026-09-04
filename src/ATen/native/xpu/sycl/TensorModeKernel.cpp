@@ -228,7 +228,8 @@ inline T reduceGroupWithNThreadLocalReductions(
 
 template <typename T, unsigned int Power2Size>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<32>))
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>)) void compute_mode_kernel(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void compute_mode_kernel(
     const T* input,
     at::xpu::detail::TensorInfo<T, unsigned int> values,
     at::xpu::detail::TensorInfo<int64_t, unsigned int> indices,
