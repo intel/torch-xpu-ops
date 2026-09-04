@@ -65,13 +65,13 @@ if(USE_XCCL)
   endif()
 endif()
 
-set(USE_SYCLTLA ON)
+option(USE_SYCLTLA "Build with SYCL-TLA support" ON)
 if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
-  set(USE_SYCLTLA OFF)
+  set(USE_SYCLTLA OFF CACHE BOOL "Build with SYCL-TLA support" FORCE)
   message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
 elseif(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
   # Before the include below, so SYCLTLA.cmake is skipped in debug builds.
-  set(USE_SYCLTLA OFF)
+  set(USE_SYCLTLA OFF CACHE BOOL "Build with SYCL-TLA support" FORCE)
   message(STATUS "SYCL-TLA disabled in ${CMAKE_BUILD_TYPE} build (excessive memory usage with debug info)")
 endif()
 
