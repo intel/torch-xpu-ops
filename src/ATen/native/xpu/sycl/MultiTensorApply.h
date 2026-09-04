@@ -18,6 +18,9 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <comm/SYCLContext.h>
 
+#include <tuple>
+#include <utility>
+
 namespace at::native::xpu {
 
 // Instruction level Parallelism, namely vec size
@@ -77,48 +80,34 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
   return max_wg_size * kILP;
 }
 
-template <typename T, typename Y, typename U, typename... ArgTypes>
-struct MultiTensorApplyKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    // Expand the tuple elements manually and call the callable
-    expandAndCall(item_id, std::index_sequence_for<ArgTypes...>());
-  }
-  MultiTensorApplyKernelFunctor(
-      int64_t kChunkSize_,
-      T tlAddressMeta_,
-      Y tlWGMeta_,
-      U callable_,
-      ArgTypes... args_)
-      : kChunkSize(kChunkSize_),
-        tlAddressMeta(tlAddressMeta_),
-        tlWGMeta(tlWGMeta_),
-        callable(callable_),
-        args(std::make_tuple(args_...)) {}
+// functions marked with `nd_range_kernel` cannot be variadic.
+// For the variadic kernel template, fold the extra args into
+// a single non-variadic, device-copyable functor
+template <typename T, typename Y, typename U>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multi_tensor_apply_kernel(
+    int64_t kChunkSize,
+    T tlAddressMeta,
+    Y tlWGMeta,
+    U callable) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  callable(kChunkSize, tlAddressMeta, tlWGMeta, item);
+}
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, U>) {
-      callable.sycl_ker_config_convention(cgh);
-    }
-  }
-
- private:
-  template <std::size_t... Indices>
-  void expandAndCall(sycl::nd_item<1> item_id, std::index_sequence<Indices...>)
-      const {
-    // Call the callable with expanded tuple elements
-    callable(
-        kChunkSize,
-        tlAddressMeta,
-        tlWGMeta,
-        item_id,
-        std::get<Indices>(args)...);
-  }
-
-  int64_t kChunkSize;
-  T tlAddressMeta;
-  Y tlWGMeta;
+template <typename U, typename... ArgTypes>
+struct MultiTensorApplyCallableWrapper {
   U callable;
   std::tuple<ArgTypes...> args;
+
+  template <typename T, typename Y, typename Item>
+  void operator()(int64_t kChunkSize, T tlAddressMeta, Y tlWGMeta, Item item)
+      const {
+    std::apply(
+        [&](const ArgTypes&... unpacked) {
+          callable(kChunkSize, tlAddressMeta, tlWGMeta, item, unpacked...);
+        },
+        args);
+  }
 };
 
 template <
@@ -143,14 +132,22 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
-      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+  // See MultiTensorApplyCallableWrapper above: fold extra args into a
+  // non-variadic, device-copyable callable
+  using WrappedCallable = MultiTensorApplyCallableWrapper<U, ArgTypes...>;
+  WrappedCallable wrapped{callable, std::tuple<ArgTypes...>(args...)};
 
-  sycl_kernel_submit(
+  constexpr auto kfn = multi_tensor_apply_kernel<T, Y, WrappedCallable>;
+
+  sycl_kernel_submit<kfn>(
       sycl::range<1>(num_wg * max_wg_size),
       sycl::range<1>(max_wg_size),
       q,
-      kfn);
+      0,
+      kChunkSize,
+      tlAddressMeta,
+      tlWGMeta,
+      wrapped);
 }
 
 template <int depth, typename scalar_t, typename T, typename... ArgTypes>
@@ -397,3 +394,13 @@ void multi_tensor_apply_for_fused_optimizer(
 }
 
 } // namespace at::native::xpu
+
+// Opt MultiTensorApplyCallableWrapper into SYCL device-copyability. std::tuple
+// is not implicitly device-copyable, so declare the wrapper copyable whenever
+// its callable and bound argument types are.
+template <typename U, typename... ArgTypes>
+struct sycl::is_device_copyable<
+    ::at::native::xpu::MultiTensorApplyCallableWrapper<U, ArgTypes...>>
+    : std::bool_constant<(
+          sycl::is_device_copyable_v<U> && ... &&
+          sycl::is_device_copyable_v<ArgTypes>)> {};
