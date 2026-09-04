@@ -1,7 +1,7 @@
 # Dependency Rules
 
-The label list, per-value `evidence`, `code`, and `exists_in_repo` are
-authoritative in `categories.dependency` of `label_def.json`. This file
+The label list and the per-value `evidence` and `code` are
+authoritative in `categories.dependency` of `labels.json`. This file
 adds only the reasoning the JSON cannot carry. Do not restate label names here.
 
 ## Deciding the value
@@ -39,10 +39,10 @@ Not dependency values:
 
 Special cases:
 
-- **Not yet in the repo.** When a label's `exists_in_repo` is false (currently
-  `oneCCL`, `IGC`, `Level_Zero`), it does not exist in `intel/torch-xpu-ops` yet.
-  `labels.md` is a proposal, so emit it anyway and note in the reason that it must
-  be created first.
+- **Not yet in the repo.** A label carrying `"exists_in_repo": false` does not
+  exist in `intel/torch-xpu-ops` yet. `labels.md` is a proposal, so emit it anyway
+  and note in the reason that it must be created first. No current label is
+  flagged this way.
 - **Existing label.** If `extract.json`'s `dependency` is non-blank, it is the
   issue's existing label: preserve it, do not re-decide. Blank is not evidence of
   `none` — decide from the rules above.

@@ -1,5 +1,5 @@
 {
-  "description": "Final proposed label set for intel/torch-xpu-ops (label-issue skill), organized by category. Includes proposed labels plus existing repo labels unchanged by this proposal.",
+  "description": "Label taxonomy for intel/torch-xpu-ops, read by the label-issue skill. Organized by category. The skill decides these axes: test, module, os, hw, dependency, dtype, triage, symptom (plus type and priority from issue_type_field / priority_field). 'categories.type' is inventory only.",
   "issue_type_field": {
     "description": "GitHub native issue 'Type' field values enabled in the intel org (distinct from labels). These are set on the issue Type field, not applied as labels. 'keywords' are heuristic hints used only when the native Type field is unset; they never override an explicitly set Type.",
     "values": [
@@ -135,7 +135,7 @@
   },
   "categories": {
     "type": {
-      "description": "Issue type signal (labels). Native GitHub Type field values Bug/Feature/Task/Epic are NOT labels and are excluded.",
+      "description": "Inventory only -- the 'type' axis is decided from issue_type_field (the GitHub native Type field), NOT from here. These legacy type-signal labels are listed so an existing one on an issue can be recognized; the skill never emits them. Native Type field values Bug/Feature/Task/Epic are not labels.",
       "labels": [
         {
           "name": "bug",
@@ -436,6 +436,15 @@
       "description": "Operating system.",
       "labels": [
         {
+          "name": "os: WSL",
+          "code": "WSL",
+          "evidence": "Windows Subsystem for Linux",
+          "keywords": [
+            "wsl",
+            "windows subsystem for linux"
+          ]
+        },
+        {
           "name": "os: Windows",
           "code": "Windows",
           "evidence": "Windows platform",
@@ -454,19 +463,10 @@
           "keywords": [
             "linux",
             "ubuntu",
-            "wsl",
             "debian",
             "centos",
             "rhel",
             "fedora"
-          ]
-        },
-        {
-          "name": "os: WSL",
-          "code": "WSL",
-          "evidence": "Windows Subsystem for Linux",
-          "keywords": [
-            "wsl"
           ]
         }
       ]
@@ -571,7 +571,7 @@
       ]
     },
     "dependency": {
-      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and dependency_info.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only. 'code' is the bare taxonomy value the analysis resolves to; the emitted GitHub label is 'name'. 'exists_in_repo' defaults to true; when false the label must be created before applying and the reason must say so.",
+      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and dependency_info.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only. 'code' is the bare taxonomy value the analysis resolves to; the emitted GitHub label is 'name'. 'exists_in_repo' is optional and defaults to true; a label that carries it as false must be created before applying and the reason must say so (no current label does).",
       "labels": [
         {
           "name": "dependency component: driver",
@@ -616,25 +616,21 @@
         {
           "name": "dependency component: oneCCL",
           "code": "oneCCL",
-          "exists_in_repo": false,
           "evidence": "Failure originates in oneCCL: ProcessGroupXCCL, c10d, or a collective-op frame."
         },
         {
           "name": "dependency component: IGC",
           "code": "IGC",
-          "exists_in_repo": false,
           "evidence": "JIT/IGC compilation, ocloc, shader dump, or an illegal-instruction failure originating in IGC."
         },
         {
           "name": "dependency component: Level_Zero",
           "code": "Level_Zero",
-          "exists_in_repo": false,
           "evidence": "A zeXxx call, Level Zero runtime, or device-enumeration failure."
         },
         {
           "name": "dependency component: PTI",
           "code": "PTI",
-          "exists_in_repo": false,
           "evidence": "Failure originates in Intel PTI (Profiling Tools Interface): libpti/pti-sdk, ptiView* calls, or XPU profiler/Kineto tracing backed by PTI."
         }
       ]
@@ -975,162 +971,6 @@
             "optimizer step",
             "loss.backward"
           ]
-        }
-      ]
-    },
-    "workflow": {
-      "description": "Existing status / triage / workflow labels unchanged by this proposal (not emitted by the label-issue skill).",
-      "labels": [
-        {
-          "name": "good first issue",
-          "evidence": "Good for newcomers"
-        },
-        {
-          "name": "help wanted",
-          "evidence": "Extra attention needed"
-        },
-        {
-          "name": "triaged",
-          "evidence": "Issue has been triaged"
-        },
-        {
-          "name": "Ready for merge",
-          "evidence": "PR ready to merge"
-        },
-        {
-          "name": "client",
-          "evidence": "Client-reported"
-        },
-        {
-          "name": "roadmap",
-          "evidence": "Planning / roadmap"
-        },
-        {
-          "name": "wait_upstream",
-          "evidence": "Needs upstream tests adjustment"
-        },
-        {
-          "name": "ut_upstream",
-          "evidence": "Upstream unit-test dependency"
-        },
-        {
-          "name": "skipped",
-          "evidence": "Temporarily skipped test tracking"
-        },
-        {
-          "name": "skipped_windows",
-          "evidence": "Temporarily skipped on Windows"
-        },
-        {
-          "name": "skipped_bmg",
-          "evidence": "Temporarily skipped on BMG"
-        },
-        {
-          "name": "skipped_dpclang",
-          "evidence": "Temporarily skipped on dpclang"
-        }
-      ]
-    },
-    "ci_control": {
-      "description": "CI-control / Windows toggle labels unchanged by this proposal.",
-      "labels": [
-        {
-          "name": "disable_all",
-          "evidence": "Disable all CI test jobs for the PR, keep basic lint"
-        },
-        {
-          "name": "disable_ut",
-          "evidence": "Disable all non-distributed UT test jobs for the PR"
-        },
-        {
-          "name": "disable_e2e",
-          "evidence": "Disable all e2e test jobs for the PR"
-        },
-        {
-          "name": "disable_distributed",
-          "evidence": "Disable distributed UT test jobs for the PR"
-        },
-        {
-          "name": "disable_win",
-          "evidence": "Disable Windows CI test jobs for the PR"
-        },
-        {
-          "name": "disable_windows_ut",
-          "evidence": "Disable Windows UT test jobs for the PR"
-        },
-        {
-          "name": "disable_accelerate",
-          "evidence": "Disable accelerate test job in PR CI testing"
-        },
-        {
-          "name": "disable_transformers",
-          "evidence": "Disable transformers UT test in PR CI"
-        },
-        {
-          "name": "disable_build",
-          "evidence": "Disable source-code build for CI test, use nightly wheel"
-        },
-        {
-          "name": "disable_auto",
-          "evidence": "Disable auto-label workflow for PR"
-        },
-        {
-          "name": "windows_ci",
-          "evidence": "Windows CI trigger"
-        },
-        {
-          "name": "windows_ut",
-          "evidence": "Windows UT trigger"
-        },
-        {
-          "name": "pytorch-ci-failure",
-          "evidence": "Auto-added on PyTorch CI failure issues"
-        }
-      ]
-    },
-    "agent": {
-      "description": "Agent lifecycle labels unchanged by this proposal.",
-      "labels": [
-        {
-          "name": "agent:active",
-          "evidence": "Agent lifecycle: active"
-        },
-        {
-          "name": "agent:needs-human",
-          "evidence": "Agent lifecycle: needs human"
-        },
-        {
-          "name": "agent:blocked",
-          "evidence": "Agent lifecycle: blocked"
-        },
-        {
-          "name": "agent:skipped",
-          "evidence": "Agent lifecycle: skipped"
-        },
-        {
-          "name": "agent:close",
-          "evidence": "Agent lifecycle: close"
-        },
-        {
-          "name": "agent:merged",
-          "evidence": "PR auto-generated by copilot agent and merged after review"
-        },
-        {
-          "name": "agent:reproduction-needed",
-          "evidence": "Issue needs a reproducer before agent can proceed"
-        },
-        {
-          "name": "ai_generated",
-          "evidence": "Content generated by an AI assistant"
-        }
-      ]
-    },
-    "misc": {
-      "description": "Other existing labels unchanged by this proposal, outside every proposed axis.",
-      "labels": [
-        {
-          "name": "lib: helion",
-          "evidence": "Helion library"
         }
       ]
     }
