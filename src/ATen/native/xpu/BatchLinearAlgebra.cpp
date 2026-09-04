@@ -199,17 +199,11 @@ void cholesky_kernel_fallback(
 
 void cholesky_kernel_xpu(const Tensor& result, const Tensor& info,bool upper) {
 #if defined(USE_ONEMKL_XPU)
-  //if (result.is_complex()) {
-  //  return native::xpu::ungqr_mkl(result, tau);
-  //} else {
-    std::cout << "WTF" << std::endl;
-    return native::xpu::potrf_mkl(result, info, upper);
-  //}
+  return native::xpu::potrf_mkl(result, info, upper);
 #else
   return cholesky_kernel_fallback(result, info, upper);
 #endif // USE_ONEMKL_XPU
 }
-
 
 REGISTER_XPU_DISPATCH(cholesky_stub, &cholesky_kernel_xpu);
 

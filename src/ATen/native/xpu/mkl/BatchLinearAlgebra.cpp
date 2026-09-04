@@ -681,17 +681,18 @@ void potrf_mkl_impl(
   
   int64_t batch_size = native::batchCount(A_contig);
   int64_t n = A_contig.size(-2);
-  int64_t lda = n;
   int64_t stride_a = n * n;
 
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
-  // ODWROTNIE!
+  // this is intentionally flipped:
+  // PyTorch's row major is interpreted as MKL's column major
+  // the side effect is that for MKL the input matrix is seen as transposed
+  // however, this changes lowes/upper meaning
   auto uplo = upper ? oneapi::mkl::uplo::lower : oneapi::mkl::uplo::upper;
 
   int64_t bufsize = oneapi::mkl::lapack::potrf_batch_scratchpad_size<mkl_scalar_t>(
       queue, uplo, n, n, stride_a, batch_size);
   mkl_scalar_t* buffer = sycl::malloc_device<mkl_scalar_t>(bufsize, queue);
-  //scalar_t* r_buf = A_contig.data_ptr<scalar_t>();
   mkl_scalar_t* r_buf = reinterpret_cast<mkl_scalar_t*>(A_contig.data_ptr<scalar_t>());
 
   Tensor info_cpu = at::zeros(info.sizes(), info.options().device(at::kCPU));
@@ -710,15 +711,7 @@ void potrf_mkl_impl(
   sycl::free(buffer, queue);
 
   A.copy_(A_contig);
-  // Zero out the unused triangular part of the output
-  // potrf writes only one triangle; clear the other half
-  /*
-  if (upper) {
-    A.triu_();
-  } else {
-    A.tril_();
-  }*/
-}
+ }
 
 void potrf_mkl(
     const Tensor& A,
@@ -728,21 +721,9 @@ void potrf_mkl(
       A.scalar_type(),
       "potrf_mkl",
       [&] {
-         //using T = get_mkl_type<scalar_t>::type;
         potrf_mkl_impl<scalar_t>(A, info, upper);
       });
 }
-/*
-void potrf_mkl(
-    const Tensor& A,
-    const Tensor& info,
-    bool upper) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
-      A.scalar_type(), "linalg_cholesky_ex_xpu", [&] {
-        linalg_cholesky_ex_kernel_impl<scalar_t>(
-            A, upper, check_errors, L, info);
-      });
-}*/
 } // namespace at::native::xpu
 
 
