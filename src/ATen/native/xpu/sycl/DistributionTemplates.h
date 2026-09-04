@@ -716,10 +716,14 @@ void uniform_kernel(
 
 // ====================== Bernoulli ======================
 
+// One `rand_uniform4` draw feeds four elements per op invocation.
+constexpr int bernoulli_tensor_step = 4;
+constexpr int bernoulli_threads_per_group = 512;
+
 template <typename scalar_t, typename prob_t>
 struct BernoulliTensorApplyFunctor {
   void operator()(
-      sycl::nd_item<1> item,
+      randStatePhilox4_32_10_t& state,
       int n,
       scalar_t& v1,
       scalar_t& v2,
@@ -729,13 +733,6 @@ struct BernoulliTensorApplyFunctor {
       const prob_t& p2,
       const prob_t& p3,
       const prob_t& p4) const {
-    auto seeds = at::xpu::philox::unpack(philox_args_);
-    randStatePhilox4_32_10_t state;
-    rand_init(
-        std::get<0>(seeds),
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
-        std::get<1>(seeds),
-        &state);
     auto rand = rand_uniform4(&state);
     switch (n) {
       case 4: {
@@ -759,11 +756,6 @@ struct BernoulliTensorApplyFunctor {
       }
     }
   }
-  BernoulliTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
-      : philox_args_(rng_engine_inputs) {}
-
- private:
-  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t, typename prob_t>
@@ -771,16 +763,13 @@ void bernoulli_tensor_kernel(
     TensorBase& ret,
     TensorBase& p,
     PhiloxXpuState rng_engine_inputs) {
-  auto functor =
-      BernoulliTensorApplyFunctor<scalar_t, prob_t>(rng_engine_inputs);
-  // The template argument `4` below indicates that we want to operate on four
-  // element at each time.
+  BernoulliTensorApplyFunctor<scalar_t, prob_t> functor;
   at::native::xpu::tensor_apply2<
       scalar_t,
       const prob_t,
-      4,
+      bernoulli_tensor_step,
       decltype(functor),
-      /*threads_per_group=*/512>(ret, p, functor);
+      bernoulli_threads_per_group>(ret, p, rng_engine_inputs, functor);
 }
 
 template <typename RNG>
@@ -789,7 +778,11 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_xpu_state(10);
+    rng_engine_inputs =
+        gen->philox_xpu_state(get_apply_counter_offset<bernoulli_tensor_step>(
+            self.numel(),
+            bernoulli_threads_per_group,
+            /*offsets_per_op=*/rand4_engine_calls));
   }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),

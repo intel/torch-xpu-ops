@@ -156,6 +156,35 @@ def _test_poisson_gpu_sample(self):
         )
 
 
+def _test_gamma_poisson_gpu_large_sample_independence(self):
+    # Regression test for https://github.com/pytorch/pytorch/issues/194926
+    #
+    # The gamma/poisson kernels run a global-range-strided loop, so the number
+    # of work items launched is capped well below the element count for large
+    # tensors. Re-seeding Philox from the work item id on every element made
+    # each element handled by the same work item replay the exact same random
+    # stream, which duplicated samples and skewed the moments.
+    set_rng_seed(0)
+    n = 10000000
+
+    for alpha in [1.1644, 2.3335, 10.076]:
+        concentration = torch.tensor(alpha, device="xpu", dtype=torch.float64)
+        rate = torch.tensor(1.0, device="xpu", dtype=torch.float64)
+        x = Gamma(concentration, rate).sample((n,)).cpu()
+
+        # Gamma(alpha, 1) has mean == variance == alpha.
+        mean_se = (alpha / n) ** 0.5
+        # Var(S^2) = (mu4 - sigma^4) / n = (2 * alpha^2 + 6 * alpha) / n.
+        var_se = ((2 * alpha**2 + 6 * alpha) / n) ** 0.5
+        self.assertLess(abs(x.mean().item() - alpha) / mean_se, 5.0)
+        self.assertEqual(x.var().item(), alpha, atol=5 * var_se, rtol=0)
+        self.assertGreater(x.unique().numel(), n // 2)
+
+    lam = torch.full((n,), 4.0, device="xpu", dtype=torch.float64)
+    p = torch.poisson(lam).cpu()
+    self.assertEqual(p.mean().item(), 4.0, atol=10 * (4.0 / n) ** 0.5, rtol=0)
+
+
 def _test_torch_binomial_dtype_errors(self):
     dtypes = [torch.int, torch.long, torch.short]
     devices = ["cpu", "xpu"]
@@ -204,6 +233,9 @@ TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
+TestDistributions.test_gamma_poisson_gpu_large_sample_independence = (
+    _test_gamma_poisson_gpu_large_sample_independence
+)
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
 TestDistributions.test_lowrank_multivariate_normal_moments = (
     _test_lowrank_multivariate_normal_moments
