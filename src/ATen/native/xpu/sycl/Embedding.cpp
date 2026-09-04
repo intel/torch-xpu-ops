@@ -104,7 +104,7 @@ void renorm_kernel(
     accscalar_t norm_type,
     int64_t dim,
     int64_t weights_stride0,
-    int64_t weihts_stride1,
+    int64_t weights_stride1,
     int64_t num_unique_indices) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int tid = item.get_local_linear_id();
