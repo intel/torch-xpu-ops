@@ -232,11 +232,11 @@ void pointwiseApply2Kernel(
     const Op op) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   for (IndexType linearIndex = (item.get_group(0) * item.get_local_range(0) +
-                                  item.get_local_id(0)) *
-            step;
-        linearIndex < totalElements;
-        linearIndex +=
-        item.get_group_range(0) * item.get_local_range(0) * step) {
+                                item.get_local_id(0)) *
+           step;
+       linearIndex < totalElements;
+       linearIndex +=
+       item.get_group_range(0) * item.get_local_range(0) * step) {
     ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
         item,
         a,
@@ -329,7 +329,8 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = unsigned int;
-    constexpr auto fn = pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
     sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
@@ -348,7 +349,8 @@ inline bool tensor_apply2(
     bInfo.collapseDims();
 
     using index_t = uint64_t;
-    constexpr auto fn = pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
+    constexpr auto fn =
+        pointwiseApply2Kernel<Op, scalar1, scalar2, index_t, step>;
     sycl_kernel_submit<fn>(
         group_count * threads_per_group,
         threads_per_group,
