@@ -59,8 +59,8 @@ void nms_sub_kernel(
   const int col_size =
       std::min(dets_num - col_start * nms_items_per_group, nms_items_per_group);
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto block_boxes = reinterpret_cast<scalar_t*>(lsm);
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto block_boxes = reinterpret_cast<scalar_t*>(slm);
   if (item.get_local_id(1) < col_size) {
     block_boxes[item.get_local_id(1) * 4 + 0] = dets_sorted_ptr
         [(nms_items_per_group * col_start + item.get_local_id(1)) * 4 + 0];
@@ -103,8 +103,8 @@ void gather_keep_from_mask_kernel(
   auto item = syclext::this_work_item::get_nd_item<1>();
   const int thread_id = item.get_local_id(0);
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto removed = reinterpret_cast<unsigned long long*>(lsm);
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto removed = reinterpret_cast<unsigned long long*>(slm);
   // Initialize removed
   for (int i = thread_id; i < col_blocks; i += nms_items_per_group) {
     removed[i] = 0;
