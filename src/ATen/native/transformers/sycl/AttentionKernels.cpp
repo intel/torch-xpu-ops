@@ -438,7 +438,9 @@ void _transform_bias_rescale_qkv_kernel(
 
           native::narrow_symint(offsets, 0, sizes.numel() + 1, sizes.numel())
               .copy_(sizes.reshape({-1}));
-          auto metadata = offsets.to(at::Device(kXPU), at::kInt, true, true);
+          // Blocking H2D: `offsets` is a pageable host-local that frees on
+          // return, so a non-blocking copy can read freed memory on XPU.
+          auto metadata = offsets.to(at::Device(kXPU), at::kInt, false, true);
           const auto offsets_ptr = metadata.data_ptr<int>();
           const auto sizes_ptr = offsets_ptr + sizes.numel() + 1;
           // const auto input_dim = sizes.sizes()[1];
