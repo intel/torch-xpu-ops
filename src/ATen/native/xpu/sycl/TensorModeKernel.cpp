@@ -227,240 +227,217 @@ inline T reduceGroupWithNThreadLocalReductions(
 }
 
 template <typename T, unsigned int Power2Size>
-struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<3> item) const {
-    int tidx = item.get_local_id(2);
-    int stidx = item.get_local_range(2) +
-        item.get_local_id(2); // Second index this thread responsible for
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<32>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void compute_mode_kernel(
+    const T* input,
+    at::xpu::detail::TensorInfo<T, unsigned int> values,
+    at::xpu::detail::TensorInfo<int64_t, unsigned int> indices,
+    int64_t sliceSize,
+    int64_t slices,
+    int64_t memsize) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  char* shmem = static_cast<char*>(syclexp::get_work_group_scratch_memory());
+  T* mode = (T*)(shmem + memsize);
 
-    // First, we need to calculate the offset into the sorted Tensor that
-    // represents the start of the slice for this group to calculate the mode
-    // for. This offset is a combination of the gridIndices, and the number of
-    // elements in the slice.
-    unsigned int groupId = get_linear_group_id<unsigned int>(item);
-    unsigned int linearOffset = groupId * sliceSize_;
+  int tidx = item.get_local_id(2);
+  int stidx = item.get_local_range(2) +
+      item.get_local_id(2); // Second index this thread responsible for
 
-    if (groupId >= slices_) {
-      return;
-    }
+  // First, we need to calculate the offset into the sorted Tensor that
+  // represents the start of the slice for this group to calculate the mode
+  // for. This offset is a combination of the gridIndices, and the number of
+  // elements in the slice.
+  unsigned int groupId = get_linear_group_id<unsigned int>(item);
+  unsigned int linearOffset = groupId * sliceSize;
 
-    // smem represents a proportion of the shared memory buffer that is used to
-    // store the elements from the slice:
-    T* smem = reinterpret_cast<T*>(
-        shmem_.template get_multi_ptr<sycl::access::decorated::no>().get());
-
-    // Each thread loads up to two elements from the Tensor into shared memory
-    if (tidx < sliceSize_) {
-      smem[tidx] = c10::load(&input_[linearOffset + tidx]);
-    }
-    if (stidx < sliceSize_) {
-      smem[stidx] = c10::load(&input_[linearOffset + stidx]);
-    }
-
-    // Next, we initialize a boolean region of the buffer, offset by the loaded
-    // element smem region
-    bool* bmem = reinterpret_cast<bool*>(&smem[Power2Size]);
-
-    // The first use of this region stores bmem[i] = i < sliceSize to mark the
-    // valid components in the smem buffer
-    bmem[tidx] = tidx < sliceSize_;
-    bmem[stidx] = stidx < sliceSize_;
-    sycl::group_barrier(
-        item.get_group()); // barrier for smem, bmem initialization
-
-    // First, sort the input slice in ascending order. smem contains the input
-    // elements, and bmem marks the valid indices
-    bitonicSortKeys<T, unsigned int, Power2Size>(
-        item, smem, bmem, BitonicSortFn<T>());
-    sycl::group_barrier(
-        item.get_group()); // make no assumptions that the sort syncs at end
-
-    // The next step of our algorithm is performing a group-wide comparison of
-    // neighboring elements. In particular, given an sorted input slice A, we
-    // produce an output slice B, such that B[i] = 1 if A[i-i] != A[i],
-    // otherwise 0.
-    //
-    // Given the input A = [0, 0, 1, 1, 2, 2, 2, 4, 5, 6, 6, 7, 8]
-    //                 B = [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1]
-    //
-    // In particular, we can think of B[i] true indicating the start of a
-    // sequence of equal values in the sorted list. Similarly, we will also
-    // store the negation of B, which we'll call C. In particular, we can think
-    // of C[i] = true iff A[i-1] == A[i] in our original sorted slice.
-    //
-    //                 C = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
-
-    // We overwrite bmem, and treat the rest of shared memory as a buffer of
-    // (index, flag) pairs where the index represents values from C, and the
-    // flag represents values from B.
-    //
-    // [smem (sorted slice) | ubpmem (index, flag pairs)]
-
-    struct ModeUnsignedBoolPair* ubpmem =
-        reinterpret_cast<struct ModeUnsignedBoolPair*>(&smem[Power2Size]);
-
-    if (tidx == 0) {
-      ubpmem[0].flag = true;
-      ubpmem[0].val = 0;
-    }
-
-    // Compares elements (0, 1), (2, 3), ... and sets 1, 3, ...
-    ubpmem[tidx * 2 + 1].flag =
-        smem[tidx * 2] != smem[tidx * 2 + 1]; // (0, 1), (1, 2), etc.
-    ubpmem[tidx * 2 + 1].val = !ubpmem[tidx * 2 + 1].flag;
-
-    // Compares elements (1, 2), (3, 4), ... and sets 2, 4, ...
-    if (((tidx + 1) * 2) < Power2Size) {
-      ubpmem[(tidx + 1) * 2].flag =
-          smem[((tidx + 1) * 2) - 1] != smem[(tidx + 1) * 2];
-      ubpmem[(tidx + 1) * 2].val = !ubpmem[(tidx + 1) * 2].flag;
-    }
-    sycl::group_barrier(item.get_group()); // barrier for ubpmem initialization
-
-    // Next, we perform a segmented prefix sum on the neighboring elements,
-    // where
-    // the presence of a one indicates the start of a segment. In this case B
-    // acts as the segment start flags, and C is the buffer to be summed:
-    //
-    // Input  (C)  = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
-    // Flag   (B)  = [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1]
-    // Output (C)  = [0, 1, 0, 1, 0, 1, 2, 0, 0, 0, 1, 0, 0]
-    //
-    // Afterwards, the (index) components of the ubpmem buffer contain the
-    // lengths of the segments (minus 1), i.e. the counts of each element in the
-    // original input.
-    inclusivePrefixScan<Power2Size, ModeUnsignedBoolPair>(
-        item, ubpmem, InclusivePrefixScanFunctor<ModeUnsignedBoolPair>());
-    // assumes scan syncs at the end
-
-    // Next, we reinterpret the ubpmem buffer as pairs of unsigned integers
-    // (i.e. we treat the boolean flag regions as integers). We initialize these
-    // to represent indices, and we'll call this buffer I
-    struct ModeUnsignedPair* uupmem =
-        reinterpret_cast<struct ModeUnsignedPair*>(ubpmem);
-
-    // At this point, we need to find the maximum element in lengths buffer C.
-    // This element will represent the count (-1) of the mode. Because of the
-    // way we have set up the problem, the index where this mode occurs will
-    // also be the location of the mode value in the sorted array, e.g.
-    //
-    // smem = [0, 0, 1, 1, 1, 2]
-    // C    = [0, 1, 0, 1, 2, 0]
-    // I    = [0, 1, 2, 3, 4, 5]
-    //                     ^
-    //                     maximum value, also aligned with mode = 1
-    //
-    // We perform a group wide max-reduction of the C buffer, but we also need
-    // the indices to come along with it, so we utilize the uupmem construction.
-    //
-    // At the end we need to return the ModeUnsignedPair containing index = 4,
-    // val = 2, which represents the max
-
-    // In practice, we will make each thread locally reduce 2 values in its
-    // registers prior to the global group-wide reduction. Note that instead of
-    // tidx/stidx, we utilize tidx * 2, tidx * 2 + 1, so each thread deals with
-    // adjacent elements. This is because the reduce code below relies on thread
-    // elements to be adjacent.
-    struct ModeUnsignedPair uup[2];
-    uup[0].index = tidx * 2;
-    uup[0].val = ubpmem[tidx * 2].val;
-    uup[1].index = tidx * 2 + 1;
-    uup[1].val = ubpmem[tidx * 2 + 1].val;
-    sycl::group_barrier(item.get_group());
-
-    struct ModeUnsignedPair max = {0, 0};
-
-    struct MaxOp {
-      inline ModeUnsignedPair combine(ModeUnsignedPair a, ModeUnsignedPair b)
-          const {
-        return b.val > a.val ? b : a;
-      }
-    } max_op;
-
-    max = reduceGroupWithNThreadLocalReductions<2>(
-        item, uupmem, uup, sliceSize_, max_op, max);
-
-    // Given the above constraints, the mode is the value at the reduced index
-    // in the original sorted element buffer
-    if (tidx == 0) {
-      mode_[0] = smem[max.index];
-    }
-    sycl::group_barrier(item.get_group()); // broadcast mode
-
-    // Finally, we need to find "an" index of the mode in the input
-    // Tensor. The API does not constrain which index we pick, but here
-    // we always pick the largest index. We store the index if the value
-    // is the mode, or 0 otherwise. Then find the maximum value.
-    //
-    // Again we reduce 2 elements in the thread's registers prior to the
-    // group-wide reduction
-    unsigned mode_index[2] = {0u, 0u};
-    if (tidx * 2 < sliceSize_) {
-      const unsigned idx = tidx * 2;
-      mode_index[0] =
-          c10::load(&input_[linearOffset + idx]) == mode_[0] ? idx : 0u;
-    }
-    if (tidx * 2 + 1 < sliceSize_) {
-      const unsigned idx = tidx * 2 + 1;
-      mode_index[1] =
-          c10::load(&input_[linearOffset + idx]) == mode_[0] ? idx : 0u;
-    }
-
-    struct MaxIndexOp {
-      inline unsigned combine(unsigned a, unsigned b) const {
-        return b > a ? b : a;
-      }
-    } max_index_op;
-
-    int64_t index = reduceGroupWithNThreadLocalReductions<2>(
-        item,
-        reinterpret_cast<unsigned*>(
-            shmem_.template get_multi_ptr<sycl::access::decorated::no>().get()),
-        mode_index,
-        sliceSize_,
-        max_index_op,
-        0u);
-
-    // Finally, we have the mode, and an index where it occurs. We use a single
-    // thread to place this in the appropriate output position
-    if (tidx == 0) {
-      unsigned int outputOffset =
-          at::xpu::detail::IndexToOffset<T, unsigned int, -1>::get(
-              groupId, values_);
-      values_.data[outputOffset] = mode_[0];
-      indices_.data[outputOffset] = index;
-    }
+  if (groupId >= slices) {
+    return;
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shmem_ = sycl_local_acc_t<char>(memsize_, cgh);
-    mode_ = sycl_local_acc_t<T>(1, cgh);
+  // smem represents a proportion of the shared memory buffer that is used to
+  // store the elements from the slice:
+  T* smem = reinterpret_cast<T*>(shmem);
+
+  // Each thread loads up to two elements from the Tensor into shared memory
+  if (tidx < sliceSize) {
+    smem[tidx] = c10::load(&input[linearOffset + tidx]);
+  }
+  if (stidx < sliceSize) {
+    smem[stidx] = c10::load(&input[linearOffset + stidx]);
   }
 
-  ComputeModeKernelFunctor(
-      const T* input,
-      at::xpu::detail::TensorInfo<T, unsigned int> values,
-      at::xpu::detail::TensorInfo<int64_t, unsigned int> indices,
-      int64_t sliceSize,
-      int64_t slices,
-      int64_t memsize)
-      : input_(input),
-        values_(values),
-        indices_(indices),
-        sliceSize_(sliceSize),
-        slices_(slices),
-        memsize_(memsize) {}
+  // Next, we initialize a boolean region of the buffer, offset by the loaded
+  // element smem region
+  bool* bmem = reinterpret_cast<bool*>(&smem[Power2Size]);
 
- private:
-  const T* input_;
-  at::xpu::detail::TensorInfo<T, unsigned int> values_;
-  at::xpu::detail::TensorInfo<int64_t, unsigned int> indices_;
-  int64_t sliceSize_;
-  int64_t slices_;
-  int64_t memsize_;
-  sycl_local_acc_t<char> shmem_;
-  sycl_local_acc_t<T> mode_;
-};
+  // The first use of this region stores bmem[i] = i < sliceSize to mark the
+  // valid components in the smem buffer
+  bmem[tidx] = tidx < sliceSize;
+  bmem[stidx] = stidx < sliceSize;
+  sycl::group_barrier(
+      item.get_group()); // barrier for smem, bmem initialization
+
+  // First, sort the input slice in ascending order. smem contains the input
+  // elements, and bmem marks the valid indices
+  bitonicSortKeys<T, unsigned int, Power2Size>(
+      item, smem, bmem, BitonicSortFn<T>());
+  sycl::group_barrier(
+      item.get_group()); // make no assumptions that the sort syncs at end
+
+  // The next step of our algorithm is performing a group-wide comparison of
+  // neighboring elements. In particular, given an sorted input slice A, we
+  // produce an output slice B, such that B[i] = 1 if A[i-i] != A[i],
+  // otherwise 0.
+  //
+  // Given the input A = [0, 0, 1, 1, 2, 2, 2, 4, 5, 6, 6, 7, 8]
+  //                 B = [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1]
+  //
+  // In particular, we can think of B[i] true indicating the start of a
+  // sequence of equal values in the sorted list. Similarly, we will also
+  // store the negation of B, which we'll call C. In particular, we can think
+  // of C[i] = true iff A[i-1] == A[i] in our original sorted slice.
+  //
+  //                 C = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
+
+  // We overwrite bmem, and treat the rest of shared memory as a buffer of
+  // (index, flag) pairs where the index represents values from C, and the
+  // flag represents values from B.
+  //
+  // [smem (sorted slice) | ubpmem (index, flag pairs)]
+
+  struct ModeUnsignedBoolPair* ubpmem =
+      reinterpret_cast<struct ModeUnsignedBoolPair*>(&smem[Power2Size]);
+
+  if (tidx == 0) {
+    ubpmem[0].flag = true;
+    ubpmem[0].val = 0;
+  }
+
+  // Compares elements (0, 1), (2, 3), ... and sets 1, 3, ...
+  ubpmem[tidx * 2 + 1].flag =
+      smem[tidx * 2] != smem[tidx * 2 + 1]; // (0, 1), (1, 2), etc.
+  ubpmem[tidx * 2 + 1].val = !ubpmem[tidx * 2 + 1].flag;
+
+  // Compares elements (1, 2), (3, 4), ... and sets 2, 4, ...
+  if (((tidx + 1) * 2) < Power2Size) {
+    ubpmem[(tidx + 1) * 2].flag =
+        smem[((tidx + 1) * 2) - 1] != smem[(tidx + 1) * 2];
+    ubpmem[(tidx + 1) * 2].val = !ubpmem[(tidx + 1) * 2].flag;
+  }
+  sycl::group_barrier(item.get_group()); // barrier for ubpmem initialization
+
+  // Next, we perform a segmented prefix sum on the neighboring elements,
+  // where
+  // the presence of a one indicates the start of a segment. In this case B
+  // acts as the segment start flags, and C is the buffer to be summed:
+  //
+  // Input  (C)  = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
+  // Flag   (B)  = [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1]
+  // Output (C)  = [0, 1, 0, 1, 0, 1, 2, 0, 0, 0, 1, 0, 0]
+  //
+  // Afterwards, the (index) components of the ubpmem buffer contain the
+  // lengths of the segments (minus 1), i.e. the counts of each element in the
+  // original input.
+  inclusivePrefixScan<Power2Size, ModeUnsignedBoolPair>(
+      item, ubpmem, InclusivePrefixScanFunctor<ModeUnsignedBoolPair>());
+  // assumes scan syncs at the end
+
+  // Next, we reinterpret the ubpmem buffer as pairs of unsigned integers
+  // (i.e. we treat the boolean flag regions as integers). We initialize these
+  // to represent indices, and we'll call this buffer I
+  struct ModeUnsignedPair* uupmem =
+      reinterpret_cast<struct ModeUnsignedPair*>(ubpmem);
+
+  // At this point, we need to find the maximum element in lengths buffer C.
+  // This element will represent the count (-1) of the mode. Because of the
+  // way we have set up the problem, the index where this mode occurs will
+  // also be the location of the mode value in the sorted array, e.g.
+  //
+  // smem = [0, 0, 1, 1, 1, 2]
+  // C    = [0, 1, 0, 1, 2, 0]
+  // I    = [0, 1, 2, 3, 4, 5]
+  //                     ^
+  //                     maximum value, also aligned with mode = 1
+  //
+  // We perform a group wide max-reduction of the C buffer, but we also need
+  // the indices to come along with it, so we utilize the uupmem construction.
+  //
+  // At the end we need to return the ModeUnsignedPair containing index = 4,
+  // val = 2, which represents the max
+
+  // In practice, we will make each thread locally reduce 2 values in its
+  // registers prior to the global group-wide reduction. Note that instead of
+  // tidx/stidx, we utilize tidx * 2, tidx * 2 + 1, so each thread deals with
+  // adjacent elements. This is because the reduce code below relies on thread
+  // elements to be adjacent.
+  struct ModeUnsignedPair uup[2];
+  uup[0].index = tidx * 2;
+  uup[0].val = ubpmem[tidx * 2].val;
+  uup[1].index = tidx * 2 + 1;
+  uup[1].val = ubpmem[tidx * 2 + 1].val;
+  sycl::group_barrier(item.get_group());
+
+  struct ModeUnsignedPair max = {0, 0};
+
+  struct MaxOp {
+    inline ModeUnsignedPair combine(ModeUnsignedPair a, ModeUnsignedPair b)
+        const {
+      return b.val > a.val ? b : a;
+    }
+  } max_op;
+
+  max = reduceGroupWithNThreadLocalReductions<2>(
+      item, uupmem, uup, sliceSize, max_op, max);
+
+  // Given the above constraints, the mode is the value at the reduced index
+  // in the original sorted element buffer
+  if (tidx == 0) {
+    mode[0] = smem[max.index];
+  }
+  sycl::group_barrier(item.get_group()); // broadcast mode
+
+  // Finally, we need to find "an" index of the mode in the input
+  // Tensor. The API does not constrain which index we pick, but here
+  // we always pick the largest index. We store the index if the value
+  // is the mode, or 0 otherwise. Then find the maximum value.
+  //
+  // Again we reduce 2 elements in the thread's registers prior to the
+  // group-wide reduction
+  unsigned mode_index[2] = {0u, 0u};
+  if (tidx * 2 < sliceSize) {
+    const unsigned idx = tidx * 2;
+    mode_index[0] = c10::load(&input[linearOffset + idx]) == mode[0] ? idx : 0u;
+  }
+  if (tidx * 2 + 1 < sliceSize) {
+    const unsigned idx = tidx * 2 + 1;
+    mode_index[1] = c10::load(&input[linearOffset + idx]) == mode[0] ? idx : 0u;
+  }
+
+  struct MaxIndexOp {
+    inline unsigned combine(unsigned a, unsigned b) const {
+      return b > a ? b : a;
+    }
+  } max_index_op;
+
+  int64_t index = reduceGroupWithNThreadLocalReductions<2>(
+      item,
+      reinterpret_cast<unsigned*>(shmem),
+      mode_index,
+      sliceSize,
+      max_index_op,
+      0u);
+
+  // Finally, we have the mode, and an index where it occurs. We use a single
+  // thread to place this in the appropriate output position
+  if (tidx == 0) {
+    unsigned int outputOffset =
+        at::xpu::detail::IndexToOffset<T, unsigned int, -1>::get(
+            groupId, values);
+    values.data[outputOffset] = mode[0];
+    indices.data[outputOffset] = index;
+  }
+}
 
 template <int64_t size, typename scalar_t>
 void handle_fused_mode(
@@ -481,14 +458,18 @@ void handle_fused_mode(
   auto gz = std::get<2>(nwgs);
   sycl::range<3> local_range(1, 1, num_threads);
   sycl::range<3> global_range(gz, gy, gx * num_threads);
-  auto caller = ComputeModeKernelFunctor<scalar_t, size>(
+  int slm_sz = sizeof(char) * memsize + sizeof(scalar_t);
+  sycl_kernel_submit<compute_mode_kernel<scalar_t, size>>(
+      global_range,
+      local_range,
+      getCurrentSYCLQueue(),
+      slm_sz,
       self.const_data_ptr<scalar_t>(),
       ti_values,
       ti_indices,
       slice_size,
       slices,
       memsize);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
 }
 
 template <typename scalar_t>
