@@ -74,7 +74,7 @@ jobs:
   scan-prepare:
     name: Prepare XPU alignment scan
     needs: collect
-    runs-on: xpu-agent
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
@@ -84,14 +84,6 @@ jobs:
     outputs:
       scan_date: ${{ needs.collect.outputs.scan_date }}
       usage: ${{ steps.usage.outputs.usage }}
-    container:
-      image: intelgpu/ubuntu-26.04-rolling:26.18
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: >-
-        --device=/dev/mem --device=/dev/dri
-        --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-        -e ZE_AFFINITY_MASK
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -109,17 +101,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ! command -v gh >/dev/null 2>&1; then
-            apt-get update -qq
-            apt-get install -y -qq curl ca-certificates
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-              -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-            chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-              > /etc/apt/sources.list.d/github-cli.list
-            apt-get update -qq
-            apt-get install -y -qq gh
-          fi
+          command -v gh >/dev/null
           gh auth status
 
       - name: Triage inventory and prepare immutable reproducers
@@ -223,24 +205,6 @@ jobs:
             ${{ env.ALIGNMENT_RUN_ROOT }}/${{ needs.collect.outputs.scan_date }}/prepare_report.md
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Restore runner access after XPU preparation
-        if: always()
-        run: |
-          set -euo pipefail
-          runner_owner="$(stat --format='%u:%g' /__e)"
-          for target in \
-            "$GITHUB_WORKSPACE" \
-            /__w/_actions \
-            /__w/_tool \
-            /__w/_temp \
-            /github; do
-            if [[ ! -e "$target" ]]; then
-              continue
-            fi
-            chown --recursive --no-dereference "$runner_owner" "$target"
-            chmod --recursive u+rwX "$target"
-          done
 
   run-reproducers:
     name: Run immutable reproducers without agent credentials

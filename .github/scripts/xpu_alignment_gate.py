@@ -14,6 +14,7 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
+from alignment_triage import AUTO_FILE_LIMIT
 from xpu_alignment_collect import CollectionError, validate_collection
 
 
@@ -570,8 +571,8 @@ def build_decision(
     elif not payloads:
         would_decision = "none"
         published_payloads = []
-    elif len(payloads) == 1:
-        would_decision = "file-one"
+    elif len(payloads) <= AUTO_FILE_LIMIT:
+        would_decision = "auto-file"
         published_payloads = payloads
     else:
         would_decision = "triage"

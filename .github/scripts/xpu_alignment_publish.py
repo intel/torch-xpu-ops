@@ -4,9 +4,9 @@
 
 """Publish the alignment gate's decision to the standing triage issue.
 
-Every reviewed candidate is posted as a draft comment first. `triage` stops
-there and waits for `@torchxpubot file <unit-id>`; `file-one` goes on to open
-the issue and marks its own draft as filed.
+Every reviewed candidate is posted or refreshed as a draft comment first.
+`auto-file` opens up to three issues and marks their drafts as filed; larger
+batches stop at drafts for manual handling.
 
 Usage:
     python xpu_alignment_publish.py --repo owner/repo --triage-issue 5018 \
@@ -22,13 +22,13 @@ from collections import Counter
 from pathlib import Path
 
 from alignment_triage import (
+    AUTO_FILE_LIMIT,
     FILED_MARKER_RE,
     create_issue,
     fail,
     filed_body,
-    find_draft,
     find_run_note,
-    has_unit,
+    find_unit_comments,
     list_comments,
     post_comment,
     render_draft,
@@ -97,7 +97,10 @@ def _partial_progress(decision: dict) -> list[str]:
 
 
 def run_note(
-    decision: dict, payloads: list[dict], filed: list[tuple[str, str]]
+    decision: dict,
+    payloads: list[dict],
+    filed: list[tuple[str, str]],
+    publication_failures: list[str],
 ) -> tuple[str, list[str], bool]:
     """Render the outcome snapshot for one completed gate decision."""
     state = decision.get("run_state")
@@ -117,23 +120,34 @@ def run_note(
         f"- Review-approved tracker candidates: {len(payloads)}",
         "",
     ]
+    effective_decision = decision.get("would_decision")
     if filed:
         lines.append("Automatically filed:")
         lines += [f"- `{unit_id}` — {url}" for unit_id, url in filed]
-    elif payloads:
-        label = "Dry-run drafts" if mode == "dry-run" else "Formal candidate drafts"
-        lines.append(f"{label}:")
+    if mode == "dry-run" and payloads:
+        if filed:
+            lines.append("")
+        lines.append("Dry-run drafts:")
         lines += [f"- `{item['unit_id']}` — {item['title']}" for item in payloads]
-        lines.append("")
-        if mode == "dry-run":
-            lines.append("Dry-run drafts cannot be filed.")
-        else:
-            lines.append(
-                "Each draft comment carries its current filing state; approve with "
-                "`@torchxpubot file <unit-id>`."
-            )
-    else:
+        lines += ["", "Dry-run drafts cannot be filed."]
+    elif effective_decision == "triage" and payloads:
+        if filed:
+            lines.append("")
+        lines.append("Formal candidate drafts:")
+        lines += [f"- `{item['unit_id']}` — {item['title']}" for item in payloads]
+        lines += [
+            "",
+            f"Automatic filing is limited to {AUTO_FILE_LIMIT} candidates; "
+            "review these drafts and create trackers manually.",
+        ]
+    elif not filed and payloads and not publication_failures:
+        lines.append("No new XPU tracker was filed.")
+    elif not payloads:
         lines.append("No new XPU tracker was filed or drafted.")
+
+    if publication_failures:
+        lines += ["", f"- Publication failures: {len(publication_failures)}"]
+        lines += [f"  - `{unit_id}` — issue publication failed; see the workflow log" for unit_id in publication_failures]
 
     excluded, unrecognized = _excluded_units(decision)
     if excluded or unrecognized:
@@ -161,11 +175,26 @@ def run_note(
         "partial": "XPU alignment run completed with partial collection",
         "failed": "XPU alignment run failed",
     }
-    headline = headlines[state]
+    headline = "XPU alignment run failed" if publication_failures else headlines[state]
     if mode == "dry-run":
         headline = f"[DRY RUN] {headline}"
-    should_notify = mode == "schedule" and (bool(payloads) or state != "complete")
+    should_notify = mode == "schedule" and (
+        bool(payloads) or state != "complete" or bool(publication_failures)
+    )
     return headline, lines, should_notify
+
+
+def _file_candidate(
+    repo: str,
+    payload: dict,
+    draft: str,
+    comment_id: int,
+) -> str:
+    unit_id = payload["unit_id"]
+    title, body = parse_draft(draft, unit_id)
+    issue_url = create_issue(repo, title, body, unit_id)
+    update_comment(repo, comment_id, filed_body(draft, unit_id, issue_url))
+    return issue_url
 
 
 def main() -> int:
@@ -181,7 +210,7 @@ def main() -> int:
     if not isinstance(decision, dict) or decision.get("schema_version") != 1:
         fail("The publishing decision is not an XPU alignment artifact.")
     verdict = decision["decision"]
-    outcomes = {"none", "file-one", "triage", "blocked"}
+    outcomes = {"none", "auto-file", "triage", "blocked"}
     if verdict not in outcomes | {"dry-run"}:
         fail(f"Unknown publishing decision: {verdict}")
     would_decision = decision.get("would_decision")
@@ -198,45 +227,20 @@ def main() -> int:
         fail(f"Unknown alignment run state: {decision.get('run_state')}")
     run_id = str(decision.get("run_id", ""))
     scan_date = str(decision.get("scan_date", ""))
-    # A blocked gate carries no payloads, so this loop is what keeps its
-    # unreviewed verdicts off GitHub while the note below still reaches a human.
     payloads = decision["payloads"]
-    if verdict == "file-one" and len(payloads) != 1:
-        fail(f"decision file-one carries {len(payloads)} payloads")
+    if verdict == "auto-file" and not (1 <= len(payloads) <= AUTO_FILE_LIMIT):
+        fail(f"decision auto-file carries {len(payloads)} payloads")
     if verdict in {"none", "blocked"} and payloads:
         fail(f"decision {verdict} must not carry payloads")
-    if mode == "schedule" and verdict == "triage" and len(payloads) < 2:
-        fail("scheduled triage requires at least two payloads")
+    if mode == "schedule" and verdict == "triage" and len(payloads) <= AUTO_FILE_LIMIT:
+        fail(f"scheduled triage requires more than {AUTO_FILE_LIMIT} payloads")
 
     existing = list_comments(args.repo, args.triage_issue)
     existing_run_note = find_run_note(existing, run_id) if mode == "schedule" else None
     filed: list[tuple[str, str]] = []
+    publication_failures: list[str] = []
     for payload in payloads:
         unit_id = payload["unit_id"]
-        if mode == "schedule" and has_unit(existing, unit_id):
-            if verdict == "file-one":
-                comment = find_draft(existing, unit_id)
-                already_filed = FILED_MARKER_RE.search(comment["body"])
-                if already_filed:
-                    issue_url = f"https://github.com/{args.repo}/issues/{already_filed.group(1)}"
-                else:
-                    title, body = parse_draft(comment["body"], unit_id)
-                    if title != payload["title"] or body != payload["body"].strip():
-                        fail(f"Existing draft for `{unit_id}` does not match the gate payload.")
-                    issue_url = create_issue(args.repo, title, body, unit_id)
-                    update_comment(
-                        args.repo,
-                        comment["id"],
-                        filed_body(comment["body"], unit_id, issue_url),
-                    )
-                filed.append((unit_id, issue_url))
-                print(f"Recovered filed unit {unit_id} as {issue_url}")
-            else:
-                print(f"Skipping {unit_id}: already present on #{args.triage_issue}.")
-            continue
-        # The draft goes up before the issue does. Crashing after this point
-        # leaves a candidate a human can still file by hand; crashing after the
-        # issue instead would leave no record and re-file it on the next run.
         draft = render_draft(
             unit_id,
             payload["title"],
@@ -246,19 +250,56 @@ def main() -> int:
             args.run_url,
             dry_run=mode == "dry-run",
         )
-        comment_id = post_comment(args.repo, args.triage_issue, draft)
-        if mode == "dry-run":
-            print(f"Posted dry-run draft for {unit_id} on #{args.triage_issue}")
-            continue
-        if verdict != "file-one":
-            print(f"Queued {unit_id} for triage on #{args.triage_issue}")
-            continue
-        issue_url = create_issue(args.repo, payload["title"], payload["body"], unit_id)
-        update_comment(args.repo, comment_id, filed_body(draft, unit_id, issue_url))
-        filed.append((unit_id, issue_url))
-        print(f"Filed {unit_id} as {issue_url}")
+        comments = find_unit_comments(existing, unit_id) if mode == "schedule" else []
+        filed_comment = next(
+            (comment for comment in reversed(comments) if FILED_MARKER_RE.search(comment["body"])),
+            None,
+        )
+        filed_issue_url = None
+        if filed_comment is not None:
+            issue_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
+            filed_issue_url = f"https://github.com/{args.repo}/issues/{issue_number}"
+            if int(filed_comment["id"]) == int(comments[-1]["id"]):
+                if verdict == "auto-file":
+                    filed.append((unit_id, filed_issue_url))
+                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
+                continue
 
-    headline, lines, should_notify = run_note(decision, payloads, filed)
+        try:
+            if comments:
+                comment_id = int(comments[-1]["id"])
+                update_comment(args.repo, comment_id, draft)
+                print(f"Updated the latest draft for {unit_id} on #{args.triage_issue}")
+            else:
+                comment_id = post_comment(args.repo, args.triage_issue, draft)
+
+            if mode == "dry-run":
+                print(f"Posted dry-run draft for {unit_id} on #{args.triage_issue}")
+                continue
+            if filed_issue_url is not None:
+                update_comment(
+                    args.repo,
+                    comment_id,
+                    filed_body(draft, unit_id, filed_issue_url),
+                )
+                if verdict == "auto-file":
+                    filed.append((unit_id, filed_issue_url))
+                print(f"Skipping {unit_id}: already filed as {filed_issue_url}.")
+                continue
+            if verdict == "triage":
+                print(f"Queued {unit_id} for manual triage on #{args.triage_issue}")
+                continue
+
+            issue_url = _file_candidate(args.repo, payload, draft, comment_id)
+            filed.append((unit_id, issue_url))
+            print(f"Filed {unit_id} as {issue_url}")
+        except SystemExit:
+            publication_failures.append(unit_id)
+            print(f"::warning::Continuing after publication failed for `{unit_id}`.")
+
+    headline, lines, should_notify = run_note(
+        decision, payloads, filed, publication_failures
+    )
     summary = render_run_note(
         run_id,
         args.run_url,
@@ -271,13 +312,9 @@ def main() -> int:
         update_comment(args.repo, existing_run_note["id"], summary)
         print(f"Updated run summary on #{args.triage_issue}: {headline}")
     else:
-        post_comment(
-            args.repo,
-            args.triage_issue,
-            summary,
-        )
+        post_comment(args.repo, args.triage_issue, summary)
         print(f"Posted run summary on #{args.triage_issue}: {headline}")
-    return 0
+    return 1 if publication_failures else 0
 
 
 if __name__ == "__main__":

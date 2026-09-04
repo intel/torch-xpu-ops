@@ -327,11 +327,13 @@ payload ownership, and payload shape.
 
 Clean producer jobs and complete artifact coverage are required for publication.
 An individual runner-backed unit blocker excludes only that unit; it does not
-invalidate other fully covered, independently reviewed payloads. Exactly one
-review-approved scheduled payload is filed automatically, while two or more go
-to human triage. The same policy applies to a structurally valid partial
-collection, but the workflow also publishes the source progress and errors,
-notifies maintainers for a scheduled run, and finishes red. Source progress is
-also shown when a partial collection has an unrelated global blocker. Dry runs never file
-and never notify. A malformed collection, incomplete coverage, environment core
-failure, or producer job failure publishes only a blocker summary.
+invalidate other fully covered, independently reviewed payloads. A scheduled run
+automatically files all review-approved payloads when there are one to three.
+With four or more payloads, it publishes every candidate as a draft for manual
+handling and files none automatically. The same policy applies to a structurally
+valid partial collection, but the workflow also publishes the source progress
+and errors, notifies maintainers for a scheduled run, and finishes red. Source
+progress is also shown when a partial collection has an unrelated global
+blocker. Dry runs publish drafts only and never notify. A malformed collection,
+incomplete coverage, environment core failure, or producer job failure publishes
+only a blocker summary.
