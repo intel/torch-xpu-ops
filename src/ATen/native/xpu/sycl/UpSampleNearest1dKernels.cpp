@@ -19,58 +19,38 @@ namespace at::native {
 namespace xpu {
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
-struct UpsampleNearest1dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
-    if (dst_idx >= dim_c_ * dst_dim_w_)
-      return;
-    int c = (dst_idx / (dst_dim_w_)) % dim_c_;
-    int dst_x = dst_idx % dst_dim_w_;
-    // note that we do not want to clamp src_x to src_dim_w, since we might
-    // intentionally want to skip in case of scale_factor < 1.0
-    int src_x = index_bw_op_(scale_factor_, dst_x, src_dim_w_);
-    int src_x_up = index_bw_op_(scale_factor_, dst_x + 1, src_dim_w_);
-    for (int b = 0; b < dim_b_; b++) {
-      accscalar_t grad = 0;
-      int src_idx = b * dim_c_ * src_dim_w_ + c * src_dim_w_ + src_x;
-      for (int x = src_x; x < src_x_up; x++) {
-        grad += grad_o_[src_idx++];
-      }
-      grad_i_[dst_idx] = grad;
-      dst_idx += dim_c_ * dst_dim_w_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_nearest1d_backward_kernel(
+    int n_,
+    const scalar_t* grad_o_,
+    size_t dim_b_,
+    size_t dim_c_,
+    size_t src_dim_w_,
+    size_t dst_dim_w_,
+    scalar_t* grad_i_,
+    float scale_factor_,
+    index_bw_op_t index_bw_op_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int dst_idx = item.get_global_linear_id();
+  if (dst_idx >= dim_c_ * dst_dim_w_)
+    return;
+  int c = (dst_idx / (dst_dim_w_)) % dim_c_;
+  int dst_x = dst_idx % dst_dim_w_;
+  // note that we do not want to clamp src_x to src_dim_w, since we might
+  // intentionally want to skip in case of scale_factor < 1.0
+  int src_x = index_bw_op_(scale_factor_, dst_x, src_dim_w_);
+  int src_x_up = index_bw_op_(scale_factor_, dst_x + 1, src_dim_w_);
+  for (int b = 0; b < dim_b_; b++) {
+    accscalar_t grad = 0;
+    int src_idx = b * dim_c_ * src_dim_w_ + c * src_dim_w_ + src_x;
+    for (int x = src_x; x < src_x_up; x++) {
+      grad += grad_o_[src_idx++];
     }
+    grad_i_[dst_idx] = grad;
+    dst_idx += dim_c_ * dst_dim_w_;
   }
-  UpsampleNearest1dBackwardKernelFunctor(
-      int n,
-      const scalar_t* grad_o,
-      size_t dim_b,
-      size_t dim_c,
-      size_t src_dim_w,
-      size_t dst_dim_w,
-      scalar_t* grad_i,
-      float scale_factor,
-      index_bw_op_t index_bw_op)
-      : n_(n),
-        grad_o_(grad_o),
-        dim_b_(dim_b),
-        dim_c_(dim_c),
-        src_dim_w_(src_dim_w),
-        dst_dim_w_(dst_dim_w),
-        grad_i_(grad_i),
-        scale_factor_(scale_factor),
-        index_bw_op_(index_bw_op) {}
+}
 
- private:
-  int n_;
-  const scalar_t* grad_o_;
-  size_t dim_b_;
-  size_t dim_c_;
-  size_t src_dim_w_;
-  size_t dst_dim_w_;
-  scalar_t* grad_i_;
-  float scale_factor_;
-  index_bw_op_t index_bw_op_;
-};
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 void upsample_nearest1d_backward_frame(
     int n,
@@ -86,10 +66,13 @@ void upsample_nearest1d_backward_frame(
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
-  auto caller = UpsampleNearest1dBackwardKernelFunctor<
-      scalar_t,
-      accscalar_t,
-      index_bw_op_t>(
+
+  sycl_kernel_submit<
+      upsample_nearest1d_backward_kernel<scalar_t, accscalar_t, index_bw_op_t>>(
+      global_range,
+      work_group_size,
+      queue,
+      0,
       n,
       grad_o,
       dim_b,
@@ -99,7 +82,6 @@ void upsample_nearest1d_backward_frame(
       grad_i,
       scale_factor,
       index_bw_op);
-  sycl_kernel_submit(global_range, work_group_size, queue, caller);
 }
 
 void upsample_nearest1d_backward_kernel(
@@ -167,58 +149,37 @@ void upsample_nearest1d_backward_kernel(
 }
 
 template <typename scalar_t, typename index_op_t>
-struct UpsampleNearest1dKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    int dst_idx = item.get_global_linear_id();
-    if (dst_idx >= dim_c_ * dst_dim_w_)
-      return;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_nearest1d_kernel(
+    int n_,
+    const scalar_t* input_,
+    size_t dim_b_,
+    size_t dim_c_,
+    size_t src_dim_w_,
+    size_t dst_dim_w_,
+    scalar_t* output_,
+    float scale_factor_,
+    index_op_t index_op_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int dst_idx = item.get_global_linear_id();
+  if (dst_idx >= dim_c_ * dst_dim_w_)
+    return;
 
-    int c = (dst_idx / dst_dim_w_) % dim_c_;
+  int c = (dst_idx / dst_dim_w_) % dim_c_;
 
-    int dst_x = dst_idx % dst_dim_w_;
-    int src_x = index_op_(scale_factor_, dst_x, src_dim_w_);
+  int dst_x = dst_idx % dst_dim_w_;
+  int src_x = index_op_(scale_factor_, dst_x, src_dim_w_);
 
-    int src_idx = c * src_dim_w_ + src_x;
-    int src_stride = dim_c_ * src_dim_w_;
-    int dst_stride = dim_c_ * dst_dim_w_;
+  int src_idx = c * src_dim_w_ + src_x;
+  int src_stride = dim_c_ * src_dim_w_;
+  int dst_stride = dim_c_ * dst_dim_w_;
 
-    for (int b = 0; b < dim_b_; b++) {
-      output_[dst_idx] = input_[src_idx];
-      src_idx += src_stride;
-      dst_idx += dst_stride;
-    }
+  for (int b = 0; b < dim_b_; b++) {
+    output_[dst_idx] = input_[src_idx];
+    src_idx += src_stride;
+    dst_idx += dst_stride;
   }
-  UpsampleNearest1dKernelFunctor(
-      int n,
-      const scalar_t* input,
-      size_t dim_b,
-      size_t dim_c,
-      size_t src_dim_w,
-      size_t dst_dim_w,
-      scalar_t* output,
-      float scale_factor,
-      index_op_t index_op)
-      : n_(n),
-        input_(input),
-        dim_b_(dim_b),
-        dim_c_(dim_c),
-        src_dim_w_(src_dim_w),
-        dst_dim_w_(dst_dim_w),
-        output_(output),
-        scale_factor_(scale_factor),
-        index_op_(index_op) {}
-
- private:
-  int n_;
-  const scalar_t* input_;
-  size_t dim_b_;
-  size_t dim_c_;
-  size_t src_dim_w_;
-  size_t dst_dim_w_;
-  scalar_t* output_;
-  float scale_factor_;
-  index_op_t index_op_;
-};
+}
 
 template <typename scalar_t, typename index_op_t>
 void upsample_nearest1d_frame(
@@ -237,7 +198,11 @@ void upsample_nearest1d_frame(
   int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
 
-  auto kfn = UpsampleNearest1dKernelFunctor<scalar_t, index_op_t>(
+  sycl_kernel_submit<upsample_nearest1d_kernel<scalar_t, index_op_t>>(
+      global_range,
+      work_group_size,
+      queue,
+      0,
       n,
       input,
       dim_b,
@@ -247,8 +212,6 @@ void upsample_nearest1d_frame(
       output,
       scale_factor,
       index_op);
-
-  sycl_kernel_submit(global_range, work_group_size, queue, kfn);
 }
 
 void upsample_nearest1d_kernel(

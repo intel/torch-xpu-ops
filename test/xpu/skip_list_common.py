@@ -67,7 +67,7 @@ skip_dict = {
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
-    "test_autocast_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_autocast.py": None,
     "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": (
         # skipped due to #2536, torch._C._scatter or torch._C._gather
@@ -138,12 +138,6 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
-        # BMG hang (>10 min) taking down the xdist worker
-        # https://github.com/intel/torch-xpu-ops/issues/4947
-        "test_lobpcg_ortho_xpu_float64",
-        "test_pca_lowrank_xpu",
-        "test_svd_lowrank_xpu_complex128",
-        "test_svd_lowrank_xpu_float64",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
@@ -387,7 +381,7 @@ skip_dict = {
     "test_multiprocessing_xpu.py": None,
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
-    "test_out_dtype_op_xpu.py": None,
+    f"{PYTORCH_TEST_DIR}/test_out_dtype_op.py": None,
     "test_prims_xpu.py": None,
     "test_proxy_tensor_xpu.py": None,
     "test_python_dispatch_xpu.py": None,

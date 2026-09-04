@@ -119,9 +119,15 @@ local result is `confirmed` or `related-failure`; do not silently omit a difficu
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 
+Apply the upstream merge-state and current-defect actionability rules in the
+[evidence reference](references/evidence.md) when assigning each verdict.
+
 Only `needs-xpu-fix` without a reusable canonical tracker may carry a new issue
 payload. When an existing `intel/torch-xpu-ops` issue covers the work, record it
 as `canonical_tracker` and do not create a payload or comment on the tracker. In
+that verdict, `implementation_repository` names where the code change belongs;
+the payload still proposes a tracker in `intel/torch-xpu-ops`. For
+`track-upstream`, it names the repository that already owns the work. In
 automation, write only under `review/` and follow the minimal review contract. A
 blocked review produces no publishable payloads.
 
