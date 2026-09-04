@@ -81,53 +81,35 @@ inline void get_coordinate_in_tril_trapezoid(
 }
 
 template <typename scalar_t>
-struct TriuIndicesKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto tensor_ptr = data_;
-    int64_t r, c;
-    for (int64_t linearIndex = item.get_global_id(0);
-         linearIndex < totalElements_;
-         linearIndex += item.get_global_range()[0]) {
-      if (linearIndex < rectangle_size_) {
-        // the coordinate is within the top rectangle
-        r = linearIndex / col_;
-        c = linearIndex % col_;
-      } else {
-        // the coordinate falls in the bottom trapezoid
-        get_coordinate_in_triu_trapezoid(
-            m_first_row_, linearIndex - rectangle_size_, r, c);
-        r += rectangle_size_ / col_;
-      }
-      c += col_offset_;
-      tensor_ptr[linearIndex] = r;
-      tensor_ptr[linearIndex + triu_size_] = c;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void triu_indices_kernel(
+    scalar_t* data,
+    int64_t col_offset,
+    int64_t m_first_row,
+    int64_t col,
+    int64_t rectangle_size,
+    int64_t triu_size,
+    int64_t totalElements) {
+  auto tensor_ptr = data;
+  int64_t r, c;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  for (int64_t linearIndex = item.get_global_id(0); linearIndex < totalElements;
+       linearIndex += item.get_global_range()[0]) {
+    if (linearIndex < rectangle_size) {
+      // the coordinate is within the top rectangle
+      r = linearIndex / col;
+      c = linearIndex % col;
+    } else {
+      // the coordinate falls in the bottom trapezoid
+      get_coordinate_in_triu_trapezoid(
+          m_first_row, linearIndex - rectangle_size, r, c);
+      r += rectangle_size / col;
     }
+    c += col_offset;
+    tensor_ptr[linearIndex] = r;
+    tensor_ptr[linearIndex + triu_size] = c;
   }
-  TriuIndicesKernelFunctor(
-      scalar_t* data,
-      int64_t col_offset,
-      int64_t m_first_row,
-      int64_t col,
-      int64_t rectangle_size,
-      int64_t triu_size,
-      int64_t totalElements)
-      : data_(data),
-        col_offset_(col_offset),
-        m_first_row_(m_first_row),
-        col_(col),
-        rectangle_size_(rectangle_size),
-        triu_size_(triu_size),
-        totalElements_(totalElements) {}
-
- private:
-  scalar_t* data_;
-  int64_t col_offset_;
-  int64_t m_first_row_;
-  int64_t col_;
-  int64_t rectangle_size_;
-  int64_t triu_size_;
-  int64_t totalElements_;
-};
+}
 
 template <typename scalar_t>
 void triu_indices_kernel_template(
@@ -137,15 +119,19 @@ void triu_indices_kernel_template(
     int64_t col,
     int64_t rectangle_size,
     int64_t triu_size) {
-  using Kernel = TriuIndicesKernelFunctor<scalar_t>;
+  constexpr auto Kernel = triu_indices_kernel<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = triu_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;
-
-  Kernel kfn(
+  // kick off kernel
+  sycl_kernel_submit<Kernel>(
+      {total_items},
+      {group_size},
+      getCurrentSYCLQueue(),
+      0,
       data,
       col_offset,
       m_first_row,
@@ -153,59 +139,38 @@ void triu_indices_kernel_template(
       rectangle_size,
       triu_size,
       totalElements);
-
-  // kick off kernel
-  sycl_kernel_submit({total_items}, {group_size}, getCurrentSYCLQueue(), kfn);
 }
 
 template <typename scalar_t>
-struct TrilIndicesKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto tensor_ptr = data_;
-    int64_t r, c;
-    for (int64_t linearIndex = item.get_global_id(0);
-         linearIndex < totalElements_;
-         linearIndex += item.get_global_range()[0]) {
-      if (linearIndex < trapezoid_size_) {
-        // the coordinate is within the top trapezoid
-        get_coordinate_in_tril_trapezoid(m_first_row_, linearIndex, r, c);
-      } else {
-        // the coordinate falls in the bottom rectangle
-        auto surplus = linearIndex - trapezoid_size_;
-        // add the height of trapezoid: m_last_row (col) - m_first_row + 1
-        r = surplus / col_ + col_ - m_first_row_ + 1;
-        c = surplus % col_;
-      }
-      r += row_offset_;
-      tensor_ptr[linearIndex] = r;
-      tensor_ptr[linearIndex + tril_size_] = c;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void tril_indices_kernel(
+    scalar_t* data,
+    int64_t row_offset,
+    int64_t m_first_row,
+    int64_t col,
+    int64_t trapezoid_size,
+    int64_t tril_size,
+    int64_t totalElements) {
+  auto tensor_ptr = data;
+  int64_t r, c;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  for (int64_t linearIndex = item.get_global_id(0); linearIndex < totalElements;
+       linearIndex += item.get_global_range()[0]) {
+    if (linearIndex < trapezoid_size) {
+      // the coordinate is within the top trapezoid
+      get_coordinate_in_tril_trapezoid(m_first_row, linearIndex, r, c);
+    } else {
+      // the coordinate falls in the bottom rectangle
+      auto surplus = linearIndex - trapezoid_size;
+      // add the height of trapezoid: m_last_row (col) - m_first_row + 1
+      r = surplus / col + col - m_first_row + 1;
+      c = surplus % col;
     }
+    r += row_offset;
+    tensor_ptr[linearIndex] = r;
+    tensor_ptr[linearIndex + tril_size] = c;
   }
-  TrilIndicesKernelFunctor(
-      scalar_t* data,
-      int64_t row_offset,
-      int64_t m_first_row,
-      int64_t col,
-      int64_t trapezoid_size,
-      int64_t tril_size,
-      int64_t totalElements)
-      : data_(data),
-        row_offset_(row_offset),
-        m_first_row_(m_first_row),
-        col_(col),
-        trapezoid_size_(trapezoid_size),
-        tril_size_(tril_size),
-        totalElements_(totalElements) {}
-
- private:
-  scalar_t* data_;
-  int64_t row_offset_;
-  int64_t m_first_row_;
-  int64_t col_;
-  int64_t trapezoid_size_;
-  int64_t tril_size_;
-  int64_t totalElements_;
-};
+}
 
 template <typename scalar_t>
 void tril_indices_kernel_template(
@@ -215,15 +180,19 @@ void tril_indices_kernel_template(
     int64_t col,
     int64_t trapezoid_size,
     int64_t tril_size) {
-  using Kernel = TrilIndicesKernelFunctor<scalar_t>;
+  constexpr auto Kernel = tril_indices_kernel<scalar_t>;
   int64_t group_size = syclMaxWorkGroupSize<Kernel>();
   auto totalElements = tril_size;
   auto num_groups = at::ceil_div(totalElements, group_size);
   auto total_items = num_groups * group_size;
 
   auto data = tensor;
-
-  Kernel kfn(
+  // kick off kernel
+  sycl_kernel_submit<Kernel>(
+      {total_items},
+      {group_size},
+      getCurrentSYCLQueue(),
+      0,
       data,
       row_offset,
       m_first_row,
@@ -231,9 +200,6 @@ void tril_indices_kernel_template(
       trapezoid_size,
       tril_size,
       totalElements);
-
-  // kick off kernel
-  sycl_kernel_submit({total_items}, {group_size}, getCurrentSYCLQueue(), kfn);
 }
 
 Tensor tril_indices_kernel(
