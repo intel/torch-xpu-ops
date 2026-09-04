@@ -207,6 +207,10 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       set(SYCL_build_type "Device")
 
+      # Apply the compiler launcher (e.g. ccache) to the individual SYCL object
+      # compile, mirroring the device-link step in SYCL_LINK_DEVICE_OBJECTS.
+      set(SYCL_compiler_launcher ${CMAKE_SYCL_COMPILER_LAUNCHER})
+
       # Configure the build script
       configure_file("${SYCL_run_sycl}" "${custom_target_script_pregen}" @ONLY)
       file(GENERATE
