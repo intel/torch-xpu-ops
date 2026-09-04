@@ -22,7 +22,10 @@ UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
 # Provenance is visible text, not an HTML comment: a triager reading a draft
 # needs the run that produced it in order to re-read the underlying evidence.
-PROVENANCE_LINE = "<sub>alignment scan `{scan_date}`, run `{run_id}`</sub>"
+PROVENANCE_LINE = (
+    "<sub>alignment scan `{scan_date}`, "
+    "[workflow run `{run_id}`]({run_url})</sub>"
+)
 FILED_MARKER = "<!-- alignment-unit-filed: #{number} -->"
 FILED_MARKER_RE = re.compile(r"<!-- alignment-unit-filed: #(\d+) -->")
 PUBLISHED_UNIT_MARKER = "<!-- alignment-published-unit: {unit_id} -->"
@@ -71,6 +74,7 @@ def render_draft(
     body: str,
     run_id: str,
     scan_date: str,
+    run_url: str,
     *,
     dry_run: bool = False,
 ) -> str:
@@ -82,7 +86,7 @@ def render_draft(
     prefix = "[DRY RUN] " if dry_run else ""
     return (
         f"{marker}\n"
-        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date)}\n"
+        f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date, run_url=run_url)}\n"
         f"### {prefix}{title}\n\n{body}\n"
     )
 
@@ -112,6 +116,7 @@ def find_run_note(comments: list[dict], run_id: str) -> dict | None:
 
 def render_run_note(
     run_id: str,
+    run_url: str,
     headline: str,
     lines: list[str],
     notify: str,
@@ -124,7 +129,7 @@ def render_run_note(
         "",
         *lines,
         "",
-        f"<sub>run `{run_id}`</sub>",
+        f"<sub>[workflow run `{run_id}`]({run_url})</sub>",
     ]
     if notify:
         parts += ["", notify]

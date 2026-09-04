@@ -10,6 +10,7 @@ the issue and marks its own draft as filed.
 
 Usage:
     python xpu_alignment_publish.py --repo owner/repo --triage-issue 5018 \
+        --run-url https://github.com/owner/repo/actions/runs/123 \
         --decision alignment-artifacts/filing_decision.json
 """
 
@@ -171,6 +172,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Publish the alignment gate decision")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--triage-issue", type=int, required=True)
+    parser.add_argument("--run-url", required=True)
     parser.add_argument("--decision", type=Path, required=True)
     parser.add_argument("--notify", default="")
     args = parser.parse_args()
@@ -241,6 +243,7 @@ def main() -> int:
             payload["body"],
             run_id,
             scan_date,
+            args.run_url,
             dry_run=mode == "dry-run",
         )
         comment_id = post_comment(args.repo, args.triage_issue, draft)
@@ -258,6 +261,7 @@ def main() -> int:
     headline, lines, should_notify = run_note(decision, payloads, filed)
     summary = render_run_note(
         run_id,
+        args.run_url,
         headline,
         lines,
         args.notify if should_notify else "",

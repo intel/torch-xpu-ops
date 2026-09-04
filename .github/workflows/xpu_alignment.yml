@@ -572,6 +572,7 @@ jobs:
           python3 .github/scripts/xpu_alignment_publish.py \
             --repo "$GITHUB_REPOSITORY" \
             --triage-issue "$ALIGNMENT_TRIAGE_ISSUE" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --notify "$ALIGNMENT_TRIAGE_NOTIFY" \
             --decision gate/filing_decision.json
 
