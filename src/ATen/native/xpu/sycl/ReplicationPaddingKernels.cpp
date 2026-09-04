@@ -27,48 +27,27 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
-struct ParallelReplicationPad1dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_id = item.get_global_id(2);
-    if (output_id < output_plane_size_) {
-      int64_t output_x = output_id % output_.size(2);
-      int64_t i_start_x = sycl::max(int64_t(0), -pad_left_);
-      int64_t o_start_x = sycl::max(int64_t(0), pad_left_);
-      int64_t input_x =
-          sycl::min(
-              sycl::max(pad_left_, output_x), input_.size(2) + pad_left_ - 1) -
-          o_start_x + i_start_x;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void parallel_replication_pad_1d_kernel_func(
+    PackedTensorAccessor64<input_scalar_t, 3> input,
+    PackedTensorAccessor64<output_scalar_t, 3> output,
+    int64_t pad_left,
+    int64_t pad_right,
+    const F f,
+    int64_t output_plane_size) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_id = item.get_global_id(2);
+  if (output_id < output_plane_size) {
+    int64_t output_x = output_id % output.size(2);
+    int64_t i_start_x = sycl::max(int64_t(0), -pad_left);
+    int64_t o_start_x = sycl::max(int64_t(0), pad_left);
+    int64_t input_x =
+        sycl::min(sycl::max(pad_left, output_x), input.size(2) + pad_left - 1) -
+        o_start_x + i_start_x;
 
-      f_(input_,
-         output_,
-         item.get_group(1),
-         item.get_group(0),
-         output_x,
-         input_x);
-    }
+    f(input, output, item.get_group(1), item.get_group(0), output_x, input_x);
   }
-  ParallelReplicationPad1dKernelFunctor(
-      PackedTensorAccessor64<input_scalar_t, 3> input,
-      PackedTensorAccessor64<output_scalar_t, 3> output,
-      int64_t pad_left,
-      int64_t pad_right,
-      const F f,
-      int64_t output_plane_size)
-      : input_(input),
-        output_(output),
-        pad_left_(pad_left),
-        pad_right_(pad_right),
-        f_(f),
-        output_plane_size_(output_plane_size) {}
-
- private:
-  PackedTensorAccessor64<input_scalar_t, 3> input_;
-  PackedTensorAccessor64<output_scalar_t, 3> output_;
-  int64_t pad_left_;
-  int64_t pad_right_;
-  const F f_;
-  int64_t output_plane_size_;
-};
+}
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad1d(
@@ -80,19 +59,29 @@ void parallel_replication_pad1d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2);
 
-  ParallelReplicationPad1dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
-      input, output, pad_left, pad_right, f, output_plane_size);
-
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size =
+      syclMaxWorkGroupSize<parallel_replication_pad_1d_kernel_func<
+          input_scalar_t,
+          output_scalar_t,
+          F>>();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);
 
-  sycl_kernel_submit(
+  sycl_kernel_submit<parallel_replication_pad_1d_kernel_func<
+      input_scalar_t,
+      output_scalar_t,
+      F>>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
+      0,
+      input,
+      output,
+      pad_left,
+      pad_right,
+      f,
+      output_plane_size);
 }
 
 template <typename scalar_t>
@@ -146,48 +135,39 @@ void replication_pad1d_backward_template(
 }
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
-struct ParallelReplicationPad2dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    const int output_id = item.get_global_id(2);
-    const int batch = item.get_global_id(0);
-    const int plane = item.get_global_id(1);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void parallel_replication_pad_2d_kernel_func(
+    PackedTensorAccessor64<input_scalar_t, 4> input,
+    PackedTensorAccessor64<output_scalar_t, 4> output,
+    int64_t padT,
+    int64_t padL,
+    const F f) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  const int output_id = item.get_global_id(2);
+  const int batch = item.get_global_id(0);
+  const int plane = item.get_global_id(1);
 
-    if (output_id < output_.size(2) * output_.size(3)) {
-      const int output_x = output_id / output_.size(3); // height
-      const int output_y = output_id % output_.size(3); // width
+  if (output_id < output.size(2) * output.size(3)) {
+    const int output_x = output_id / output.size(3); // height
+    const int output_y = output_id % output.size(3); // width
 
-      const int iStartX = sycl::max(0, static_cast<int>(-padT_));
-      const int iStartY = sycl::max(0, static_cast<int>(-padL_));
-      const int oStartX = sycl::max(0, static_cast<int>(padT_));
-      const int oStartY = sycl::max(0, static_cast<int>(padL_));
+    const int iStartX = sycl::max(0, static_cast<int>(-padT));
+    const int iStartY = sycl::max(0, static_cast<int>(-padL));
+    const int oStartX = sycl::max(0, static_cast<int>(padT));
+    const int oStartY = sycl::max(0, static_cast<int>(padL));
 
-      const int input_x = sycl::min(
-                              sycl::max(static_cast<int>(padT_), output_x),
-                              static_cast<int>(input_.size(2) + padT_ - 1)) -
-          oStartX + iStartX;
-      const int input_y = sycl::min(
-                              sycl::max(static_cast<int>(padL_), output_y),
-                              static_cast<int>(input_.size(3) + padL_ - 1)) -
-          oStartY + iStartY;
+    const int input_x = sycl::min(
+                            sycl::max(static_cast<int>(padT), output_x),
+                            static_cast<int>(input.size(2) + padT - 1)) -
+        oStartX + iStartX;
+    const int input_y = sycl::min(
+                            sycl::max(static_cast<int>(padL), output_y),
+                            static_cast<int>(input.size(3) + padL - 1)) -
+        oStartY + iStartY;
 
-      f_(input_, output_, batch, plane, input_x, input_y, output_x, output_y);
-    }
+    f(input, output, batch, plane, input_x, input_y, output_x, output_y);
   }
-  ParallelReplicationPad2dKernelFunctor(
-      PackedTensorAccessor64<input_scalar_t, 4> input,
-      PackedTensorAccessor64<output_scalar_t, 4> output,
-      int64_t padT,
-      int64_t padL,
-      const F f)
-      : input_(input), output_(output), padT_(padT), padL_(padL), f_(f) {}
-
- private:
-  PackedTensorAccessor64<input_scalar_t, 4> input_;
-  PackedTensorAccessor64<output_scalar_t, 4> output_;
-  int64_t padT_;
-  int64_t padL_;
-  const F f_;
-};
+}
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad2d(
@@ -199,19 +179,28 @@ void parallel_replication_pad2d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3);
 
-  ParallelReplicationPad2dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
-      input, output, padT, padL, f);
-
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size =
+      syclMaxWorkGroupSize<parallel_replication_pad_2d_kernel_func<
+          input_scalar_t,
+          output_scalar_t,
+          F>>();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);
 
-  sycl_kernel_submit(
+  sycl_kernel_submit<parallel_replication_pad_2d_kernel_func<
+      input_scalar_t,
+      output_scalar_t,
+      F>>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
+      0,
+      input,
+      output,
+      padT,
+      padL,
+      f);
 }
 
 template <typename scalar_t>
@@ -269,71 +258,52 @@ void replication_pad2d_backward_template(
 }
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
-struct ParallelReplicationPad3dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_id = item.get_global_id(2);
-    if (output_id < output_plane_size_) {
-      int64_t output_x = output_id % output_.size(4);
-      int64_t output_y = (output_id / output_.size(4)) % output_.size(3);
-      int64_t output_z = output_id / (output_.size(3) * output_.size(4));
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void parallel_replication_pad_3d_kernel_func(
+    PackedTensorAccessor64<input_scalar_t, 5> input,
+    PackedTensorAccessor64<output_scalar_t, 5> output,
+    int64_t pad_left,
+    int64_t pad_top,
+    int64_t pad_front,
+    const F f,
+    int64_t output_plane_size) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_id = item.get_global_id(2);
+  if (output_id < output_plane_size) {
+    int64_t output_x = output_id % output.size(4);
+    int64_t output_y = (output_id / output.size(4)) % output.size(3);
+    int64_t output_z = output_id / (output.size(3) * output.size(4));
 
-      int64_t i_start_x = sycl::max(int64_t(0), -pad_left_);
-      int64_t i_start_y = sycl::max(int64_t(0), -pad_top_);
-      int64_t i_start_z = sycl::max(int64_t(0), -pad_front_);
-      int64_t o_start_x = sycl::max(int64_t(0), pad_left_);
-      int64_t o_start_y = sycl::max(int64_t(0), pad_top_);
-      int64_t o_start_z = sycl::max(int64_t(0), pad_front_);
+    int64_t i_start_x = sycl::max(int64_t(0), -pad_left);
+    int64_t i_start_y = sycl::max(int64_t(0), -pad_top);
+    int64_t i_start_z = sycl::max(int64_t(0), -pad_front);
+    int64_t o_start_x = sycl::max(int64_t(0), pad_left);
+    int64_t o_start_y = sycl::max(int64_t(0), pad_top);
+    int64_t o_start_z = sycl::max(int64_t(0), pad_front);
 
-      int64_t input_x =
-          sycl::min(
-              sycl::max(pad_left_, output_x), input_.size(4) + pad_left_ - 1) -
-          o_start_x + i_start_x;
-      int64_t input_y =
-          sycl::min(
-              sycl::max(pad_top_, output_y), input_.size(3) + pad_top_ - 1) -
-          o_start_y + i_start_y;
-      int64_t input_z = sycl::min(
-                            sycl::max(pad_front_, output_z),
-                            input_.size(2) + pad_front_ - 1) -
-          o_start_z + i_start_z;
+    int64_t input_x =
+        sycl::min(sycl::max(pad_left, output_x), input.size(4) + pad_left - 1) -
+        o_start_x + i_start_x;
+    int64_t input_y =
+        sycl::min(sycl::max(pad_top, output_y), input.size(3) + pad_top - 1) -
+        o_start_y + i_start_y;
+    int64_t input_z =
+        sycl::min(
+            sycl::max(pad_front, output_z), input.size(2) + pad_front - 1) -
+        o_start_z + i_start_z;
 
-      f_(input_,
-         output_,
-         item.get_group(1),
-         item.get_group(0),
-         output_z,
-         output_y,
-         output_x,
-         input_z,
-         input_y,
-         input_x);
-    }
+    f(input,
+      output,
+      item.get_group(1),
+      item.get_group(0),
+      output_z,
+      output_y,
+      output_x,
+      input_z,
+      input_y,
+      input_x);
   }
-  ParallelReplicationPad3dKernelFunctor(
-      PackedTensorAccessor64<input_scalar_t, 5> input,
-      PackedTensorAccessor64<output_scalar_t, 5> output,
-      int64_t pad_left,
-      int64_t pad_top,
-      int64_t pad_front,
-      const F f,
-      int64_t output_plane_size)
-      : input_(input),
-        output_(output),
-        pad_left_(pad_left),
-        pad_top_(pad_top),
-        pad_front_(pad_front),
-        f_(f),
-        output_plane_size_(output_plane_size) {}
-
- private:
-  PackedTensorAccessor64<input_scalar_t, 5> input_;
-  PackedTensorAccessor64<output_scalar_t, 5> output_;
-  int64_t pad_left_;
-  int64_t pad_top_;
-  int64_t pad_front_;
-  const F f_;
-  int64_t output_plane_size_;
-};
+}
 
 template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad3d(
@@ -346,18 +316,30 @@ void parallel_replication_pad3d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
 
-  ParallelReplicationPad3dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
-      input, output, pad_left, pad_top, pad_front, f, output_plane_size);
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size =
+      syclMaxWorkGroupSize<parallel_replication_pad_3d_kernel_func<
+          input_scalar_t,
+          output_scalar_t,
+          F>>();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);
 
-  sycl_kernel_submit(
+  sycl_kernel_submit<parallel_replication_pad_3d_kernel_func<
+      input_scalar_t,
+      output_scalar_t,
+      F>>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
+      0,
+      input,
+      output,
+      pad_left,
+      pad_top,
+      pad_front,
+      f,
+      output_plane_size);
 }
 
 template <typename scalar_t>
