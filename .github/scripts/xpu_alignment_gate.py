@@ -478,15 +478,9 @@ def _validate_review(
             continue
         verdicts[unit_id] = str(verdict)
         repository = entry.get("implementation_repository")
-        if verdict == "needs-xpu-fix":
-            repository_valid = repository == "intel/torch-xpu-ops"
-        elif verdict == "track-upstream":
-            repository_valid = isinstance(repository, str) and bool(
-                REPOSITORY_RE.fullmatch(repository)
-            )
-        else:
-            repository_valid = repository is None
-        if not repository_valid:
+        if verdict in {"needs-xpu-fix", "track-upstream"} and not (
+            isinstance(repository, str) and REPOSITORY_RE.fullmatch(repository)
+        ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
         if tracker is not None and (

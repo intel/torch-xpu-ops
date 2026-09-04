@@ -120,11 +120,14 @@ alone does not establish upstream ownership. When upstream explicitly owns the
 XPU work, use `track-upstream`, set `implementation_repository` to the GitHub
 `owner/repo` that owns the implementation, and emit no payload. When an existing
 ops tracker covers the work, record its URL as `canonical_tracker`; do not create
-a new payload or automatically comment on the existing tracker.
+a new payload or automatically comment on the existing tracker. Otherwise,
+`needs-xpu-fix` creates the ops tracker while `implementation_repository` names
+the repository where its code change belongs.
 
 Use exactly one verdict:
 
-- `needs-xpu-fix`: current independent work in `intel/torch-xpu-ops`;
+- `needs-xpu-fix`: current XPU work that needs a new ops tracker; name the
+  GitHub `owner/repo` where the code change belongs;
 - `track-upstream`: no payload; name the GitHub `owner/repo` that owns the
   implementation, or use `intel/torch-xpu-ops` for observation-only parity work
   that depends on an upstream change landing;
