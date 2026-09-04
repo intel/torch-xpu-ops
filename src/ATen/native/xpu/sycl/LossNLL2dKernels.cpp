@@ -226,7 +226,7 @@ void nll_loss2d_forward_kernel(
               output.packed_accessor64<scalar_t, 3>(),
               optional_data<scalar_t>(weight_),
               ignore_index);
-          int64_t local_range = syclMaxWorkGroupSize(kfn);
+          int64_t local_range = at::xpu::getKernelMaxWorkGroupSize(kfn);
           auto global_range = (count + local_range - 1) / local_range;
           sycl_kernel_submit(
               global_range * local_range,
@@ -490,7 +490,7 @@ void nll_loss2d_backward_kernel(
               grad_input.packed_accessor64<scalar_t, 4>(),
               optional_data<scalar_t>(weight_),
               ignore_index);
-          int64_t local_range = syclMaxWorkGroupSize(kfn);
+          int64_t local_range = at::xpu::getKernelMaxWorkGroupSize(kfn);
           auto global_range = (count + local_range - 1) / local_range;
           sycl_kernel_submit(
               global_range * local_range,
@@ -516,7 +516,8 @@ void nll_loss2d_backward_kernel(
           auto weight_ = optional_contiguous(weight);
           int64_t map_nelem = target_numel / batch_size;
           using KernelClass = NllLoss2dBackwardKernelFunctor<scalar_t>;
-          int64_t max_work_group_size = syclMaxWorkGroupSize<KernelClass>();
+          int64_t max_work_group_size =
+              at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
           int blocks_per_sample =
               (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
           blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;

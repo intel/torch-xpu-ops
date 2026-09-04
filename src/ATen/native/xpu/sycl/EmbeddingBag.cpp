@@ -739,7 +739,7 @@ void _embedding_bag_per_sample_weights_backward_impl(
       index_t,
       accscalar_t>;
 
-  int64_t max_group_size = syclMaxWorkGroupSize<Kernel>();
+  int64_t max_group_size = at::xpu::getKernelMaxWorkGroupSize<Kernel>();
 
   int64_t num_group = (num_samples + max_group_size - 1) / max_group_size;
   auto global_range{num_group * max_group_size};

@@ -140,7 +140,7 @@ void launch_upsample_trilinear3d_kernel(
   UpsampleTrilinear3dKernelFunctor<scalar_t, accscalar_t> kfn(
       n, rdepth, rheight, rwidth, align_corners, idata_acc, odata_acc);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -365,7 +365,7 @@ void launch_upsample_trilinear3d_backward_kernel(
       odata,
       idata_ptr);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
   auto queue = getCurrentSYCLQueue();
 

@@ -49,8 +49,8 @@ static void compute_xpu(
   if (size == 0)
     return;
 
-  int64_t wg_size =
-      syclMaxWorkGroupSize<repeat_interleave_kernel_implement<index_t>>();
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize<
+      repeat_interleave_kernel_implement<index_t>>();
 
   int64_t local_range = size < wg_size ? size : wg_size;
   int64_t global_range = ((size + local_range - 1) / local_range) * local_range;

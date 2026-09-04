@@ -530,7 +530,7 @@ void lstm_forward_impl(
         workspaceI);
     using KernelT =
         LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -550,7 +550,7 @@ void lstm_forward_impl(
   } else {
     using KernelT =
         LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -600,7 +600,7 @@ void lstm_backward_impl(
         grad_hyI, grad_cyI, cxI, cyI, workspaceI, grad_gatesI, grad_cxI);
     using KernelT =
         LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -619,7 +619,7 @@ void lstm_backward_impl(
   } else {
     using KernelT =
         LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -679,7 +679,7 @@ void gru_forward_impl(
         hyI,
         workspaceI);
     using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -697,7 +697,7 @@ void gru_forward_impl(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
     using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -744,7 +744,7 @@ void gru_backward_impl(
         grad_hyI, workspaceI, grad_input_gatesI, grad_hidden_gatesI, grad_hxI);
     using KernelT =
         GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);
@@ -761,7 +761,7 @@ void gru_backward_impl(
   } else {
     using KernelT =
         GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
-    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelT>();
     auto config = rnn_get_launch_config(max_wg_size, numel);
     auto nwg = std::get<0>(config);
     auto local_range = std::get<1>(config);

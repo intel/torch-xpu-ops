@@ -451,7 +451,7 @@ void multinomial_kernel(
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         using KernelClass = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>;
-        int maxThreads = syclMaxWorkGroupSize<KernelClass>();
+        int maxThreads = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
         int maxShared = syclLocalMemSize();
 
         int SubGroupSize = syclMinSubGroupSize();

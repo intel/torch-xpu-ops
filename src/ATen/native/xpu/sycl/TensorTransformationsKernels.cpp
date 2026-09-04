@@ -59,7 +59,7 @@ void elementwise_kernel(int total_n_elems, func_t f) {
   using KernelClass = ElementwiseKernelFunctor<func_t>;
 
   auto& queue = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   const auto target_global_size = syclMaxWorkItemsPerTile();
   int work_group_size =
       total_n_elems > max_wg_size ? max_wg_size : total_n_elems;
@@ -226,7 +226,7 @@ void roll_template(
   auto start_offset = start * stride;
   auto total_offset = size * stride;
 
-  auto local_range = syclMaxWorkGroupSize<KernelClass>();
+  auto local_range = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   const auto target_global_range =
       syclMaxWorkItemsPerTile() / local_range * local_range;
   int global_range = (N + local_range - 1) / local_range * local_range;

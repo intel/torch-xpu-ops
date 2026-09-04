@@ -1473,7 +1473,8 @@ void index_reduce_add_xpu_template(
 
             auto caller = LARGE_INDEX(
                 scalar_t, index_t, uint64_t, -1, -1, -1, true, func_t);
-            // uint64_t defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+            // uint64_t defaultMaxGroupThreads =
+            // at::xpu::getKernelMaxWorkGroupSize(caller);
             uint64_t defaultMaxGroupThreads = syclDeviceMaxWorkGroupSize();
             size_t num_wg = std::min(
                 ceil_div(sourceTotalSize, (uint64_t)128), (uint64_t)(ssc * 8));
@@ -1722,7 +1723,8 @@ void index_reduce_func_xpu_template(
                         -2,
                         true,
                         func_t);
-                    int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                    int defaultMaxGroupThreads =
+                        at::xpu::getKernelMaxWorkGroupSize(caller);
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(ssc * 8));
@@ -1746,7 +1748,8 @@ void index_reduce_func_xpu_template(
                           -2,
                           true,
                           func_t);
-                      int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                      int defaultMaxGroupThreads =
+                          at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
@@ -1769,7 +1772,8 @@ void index_reduce_func_xpu_template(
                           -2,
                           false,
                           func_t);
-                      int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                      int defaultMaxGroupThreads =
+                          at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
@@ -1795,7 +1799,8 @@ void index_reduce_func_xpu_template(
                           -2,
                           true,
                           func_t);
-                      int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                      int defaultMaxGroupThreads =
+                          at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
@@ -1818,7 +1823,8 @@ void index_reduce_func_xpu_template(
                           -2,
                           false,
                           func_t);
-                      int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                      int defaultMaxGroupThreads =
+                          at::xpu::getKernelMaxWorkGroupSize(caller);
                       size_t num_wg = std::min(
                           ceil_div(sourceTotalSize, (uint64_t)128),
                           (uint64_t)(ssc * 8));
@@ -1842,7 +1848,8 @@ void index_reduce_func_xpu_template(
                         -1,
                         true,
                         func_t);
-                    int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                    int defaultMaxGroupThreads =
+                        at::xpu::getKernelMaxWorkGroupSize(caller);
                     size_t num_wg = std::min(
                         ceil_div(sourceTotalSize, (uint64_t)128),
                         (uint64_t)(ssc * 8));
@@ -1883,7 +1890,8 @@ void index_reduce_func_xpu_template(
                 indexInfo.collapseDims();
                 auto caller = LARGE_INDEX(
                     scalar_t, index_t, uint64_t, -1, -1, -1, true, func_t);
-                int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                int defaultMaxGroupThreads =
+                    at::xpu::getKernelMaxWorkGroupSize(caller);
                 size_t num_wg = std::min(
                     ceil_div(sourceTotalSize, (uint64_t)128),
                     (uint64_t)(ssc * 8));

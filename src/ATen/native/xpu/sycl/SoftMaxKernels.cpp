@@ -146,7 +146,7 @@ static inline int get_wgroup_size(
     int& global_size_row,
     int& local_size_row,
     int& local_size_col) {
-  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
 
   int local_size = (dim_size + NUM * vec_size - 1) / (NUM * vec_size);
   local_size = std::min(local_size, maxWGSize);
@@ -190,7 +190,7 @@ static inline void get_wgroup_size_spatial(
     int inner_size,
     int& GroupSize,
     int& GroupRow) {
-  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
+  int maxWGSize = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
   int total_resource = syclMaxWorkItemsPerTile();
 
   // set the GroupSize smaller to ensure larger group number
@@ -723,7 +723,7 @@ void softmax_forward_kernel(
 
   int local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
@@ -1384,7 +1384,7 @@ void softmax_backward_kernel(
 
   int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int64_t(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(at::xpu::getKernelMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 

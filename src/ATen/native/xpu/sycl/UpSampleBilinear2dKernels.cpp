@@ -133,7 +133,7 @@ void launch_upsample_bilinear2d_kernel(
       nbatch,
       channels);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int num_group = at::ceil_div(n, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -266,7 +266,7 @@ void launch_upsample_bilinear2d_nhwc_kernel(
       odata,
       out_numel);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int num_group = at::ceil_div(out_numel, (int)wg_size);
   auto queue = getCurrentSYCLQueue();
 
@@ -648,7 +648,7 @@ void launch_upsample_bilinear2d_backward_kernel(
               channels,
               i_numel);
 
-      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
       int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
       auto queue = getCurrentSYCLQueue();
 
@@ -671,7 +671,7 @@ void launch_upsample_bilinear2d_backward_kernel(
               channels,
               i_numel);
 
-      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
       int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
       auto queue = getCurrentSYCLQueue();
 
@@ -701,7 +701,7 @@ void launch_upsample_bilinear2d_backward_kernel(
         o_numel,
         i_numel);
 
-    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
     auto queue = getCurrentSYCLQueue();
 
@@ -862,7 +862,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
               channels,
               i_numel);
 
-      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
       int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
       auto queue = getCurrentSYCLQueue();
 
@@ -886,7 +886,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
               channels,
               i_numel);
 
-      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
       int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
       auto queue = getCurrentSYCLQueue();
 
@@ -912,7 +912,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
         o_numel,
         i_numel);
 
-    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int64_t wg_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
     int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
     auto queue = getCurrentSYCLQueue();
 
@@ -1436,7 +1436,7 @@ void launch_upsample_gen2d_aa_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
   int block_x = syclMaxSubGroupSize();
@@ -1504,7 +1504,7 @@ void launch_upsample_gen2d_aa_backward_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   int maxThreadsPerBlock = std::min<int>(
-      syclMaxWorkGroupSize<
+      at::xpu::getKernelMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
       256); // 256 performs better
   int block_x = syclMaxSubGroupSize();

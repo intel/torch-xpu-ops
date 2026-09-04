@@ -288,7 +288,7 @@ struct ReduceConfig {
 
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
+    auto max_wg_sz = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     // Bypass reduction on SLM by sparing workload to other SGs. As the
     // result, reduction of small shape input only requires some shift
     // operations in side of SG. It is functional WA. We got case failures on

@@ -403,7 +403,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
 
   using CTCLossLogAlphaKernel =
       CTCLossLogAlphaKernelFunctor<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<CTCLossLogAlphaKernel>();
+  int max_threads = at::xpu::getKernelMaxWorkGroupSize<CTCLossLogAlphaKernel>();
 
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
@@ -1048,7 +1048,8 @@ Tensor ctc_loss_backward_kernel_template(
 
   using CTCLossBackwardLogBetaKernel =
       CTCLossBackwardLogBetaKernelFunctor<scalar_t, target_t>;
-  int max_threads = syclMaxWorkGroupSize<CTCLossBackwardLogBetaKernel>();
+  int max_threads =
+      at::xpu::getKernelMaxWorkGroupSize<CTCLossBackwardLogBetaKernel>();
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
     threads_target /= 2;
@@ -1126,7 +1127,8 @@ Tensor ctc_loss_backward_kernel_template(
 
     using CTCLossBackwardCollectNonblankKernel =
         CTCLossBackwardCollectNonblankKernelFunctor<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectNonblankKernel>();
+    max_threads = at::xpu::getKernelMaxWorkGroupSize<
+        CTCLossBackwardCollectNonblankKernel>();
     int threads_target = max_threads;
     while (threads_target / 2 >= max_target_length && threads_target > 1) {
       threads_target /= 2;
@@ -1170,7 +1172,8 @@ Tensor ctc_loss_backward_kernel_template(
   } else { // small problem, use naive algorithm
     using CTCLossBackwardCollectKernel =
         CTCLossBackwardCollectKernelFunctor<scalar_t, target_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectKernel>();
+    max_threads =
+        at::xpu::getKernelMaxWorkGroupSize<CTCLossBackwardCollectKernel>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0) && threads_input > 1) {
       threads_input /= 2;
@@ -1220,7 +1223,8 @@ Tensor ctc_loss_backward_kernel_template(
   {
     using CTCLossZeroPaddedGradientsKernel =
         CTCLossZeroPaddedGradients<scalar_t>;
-    max_threads = syclMaxWorkGroupSize<CTCLossZeroPaddedGradientsKernel>();
+    max_threads =
+        at::xpu::getKernelMaxWorkGroupSize<CTCLossZeroPaddedGradientsKernel>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0)) {
       threads_input /= 2;

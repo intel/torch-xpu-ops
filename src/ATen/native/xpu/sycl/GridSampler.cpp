@@ -311,7 +311,7 @@ void grid_sampler_2d_forward_template(
       out_sH,
       out_sW);
 
-  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 
@@ -788,7 +788,7 @@ void grid_sampler_2d_backward_template(
       gInp_sW,
       gGrid_sW);
 
-  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 
@@ -1172,7 +1172,7 @@ void grid_sampler_3d_forward_template(
       out_sH,
       out_sW);
 
-  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 
@@ -1748,7 +1748,7 @@ void grid_sampler_3d_backward_template(
       gInp_sW,
       gGrid_sW);
 
-  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto wgroup_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
   auto& queue = getCurrentSYCLQueue();
 

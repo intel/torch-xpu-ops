@@ -152,7 +152,8 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
             index_t,
             ReductionOp,
             acc_t>;
-        int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
+        int64_t work_group_size =
+            at::xpu::getKernelMaxWorkGroupSize<KernelFn>();
         int64_t work_group_num =
             (new_nnz + work_group_size - 1) / work_group_size;
         auto kfn = KernelFn(
@@ -282,7 +283,8 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
             index_t,
             ReductionOp,
             acc_t>;
-        int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
+        int64_t work_group_size =
+            at::xpu::getKernelMaxWorkGroupSize<KernelFn>();
         int64_t work_group_num =
             (nrows + work_group_size - 1) / work_group_size;
 
@@ -518,7 +520,7 @@ void launch_convert_indices_from_coo_to_csr_xpu_kernel(
   auto functor = ConvertIndicesFromCooToCsrXPUFunctor<input_t, output_t>(
       numel, data_in, data_out, size);
 
-  int64_t wgroup_size = syclMaxWorkGroupSize(functor);
+  int64_t wgroup_size = at::xpu::getKernelMaxWorkGroupSize(functor);
   int64_t ngroups = (numel + wgroup_size - 1) / wgroup_size;
   sycl::range<1> global_range(ngroups * wgroup_size);
   sycl::range<1> local_range(wgroup_size);
@@ -563,7 +565,7 @@ void launch_convert_indices_from_csr_to_coo_xpu_kernel(
   auto functor = ConvertIndicesFromCsrToCooXPUFunctor<input_t, output_t>(
       data_out, crow_indices_data_in, nrows, nnz, nbatches);
 
-  int64_t THREADS = syclMaxWorkGroupSize(functor);
+  int64_t THREADS = at::xpu::getKernelMaxWorkGroupSize(functor);
   int64_t GROUPS = (nrows * nbatches + THREADS) / THREADS;
 
   sycl::range<1> global_range(GROUPS * THREADS);

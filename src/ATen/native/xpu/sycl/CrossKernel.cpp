@@ -98,7 +98,8 @@ void launch_cross_kernel(
       "cross_xpu",
       [&]() {
         using KernelClass = CrossKernelFunctor<scalar_t>;
-        int64_t work_group_size = syclMaxWorkGroupSize<KernelClass>();
+        int64_t work_group_size =
+            at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
         int64_t work_group_num = (N + work_group_size - 1) / work_group_size;
         auto out = static_cast<scalar_t*>(iter.data_ptr(0));
         auto x1 = static_cast<const scalar_t*>(iter.data_ptr(1));

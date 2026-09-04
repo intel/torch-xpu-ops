@@ -83,7 +83,7 @@ void parallel_replication_pad1d(
   ParallelReplicationPad1dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, pad_left, pad_right, f, output_plane_size);
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);
@@ -202,7 +202,7 @@ void parallel_replication_pad2d(
   ParallelReplicationPad2dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, padT, padL, f);
 
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);
@@ -348,7 +348,7 @@ void parallel_replication_pad3d(
 
   ParallelReplicationPad3dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, pad_left, pad_top, pad_front, f, output_plane_size);
-  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t work_group_size = at::xpu::getKernelMaxWorkGroupSize(kfn);
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = output.size(1);
   int64_t nbatch = output.size(0);

@@ -208,7 +208,7 @@ class BatchKernelConfig {
         prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
       wg_size = prefer_wg_size_;
     } else {
-      wg_size = syclMaxWorkGroupSize<KernelClass>();
+      wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelClass>();
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;

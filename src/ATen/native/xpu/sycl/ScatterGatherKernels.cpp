@@ -195,7 +195,7 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
   }
 
   using KernelFn = ScatterGatherElementwiseKernelFunctor<func_t>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelFn>();
+  int64_t max_wg_size = at::xpu::getKernelMaxWorkGroupSize<KernelFn>();
   int outputSize = N;
   int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
   const auto target_global_size = syclMaxWorkItemsPerTile();

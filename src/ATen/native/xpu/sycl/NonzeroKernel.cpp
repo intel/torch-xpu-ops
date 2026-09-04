@@ -258,7 +258,8 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
           idx_flat_begin,
           divisor,
           sizes);
-      const auto wg_sz = std::min(syclMaxWorkGroupSize(kfn), total);
+      const auto wg_sz = std::min(
+          static_cast<int64_t>(at::xpu::getKernelMaxWorkGroupSize(kfn)), total);
       const auto num_wg = at::ceil_div(total, wg_sz);
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, queue, kfn);
     }
@@ -276,7 +277,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   // ---- Pass 1: count nonzeros per chunk via work-group reduction ----
   using CountFunctor = CountNonzerosKernelFunctor<scalar_t>;
-  const auto count_wg_size = syclMaxWorkGroupSize<CountFunctor>();
+  const auto count_wg_size = at::xpu::getKernelMaxWorkGroupSize<CountFunctor>();
 
   // Pre-allocate a single device buffer wide enough to hold every WG's partial
   // sum for every chunk. All count kernels are enqueued without blocking so
