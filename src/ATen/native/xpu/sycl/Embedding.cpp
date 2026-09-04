@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
@@ -48,12 +48,10 @@ Tensor embedding_dense_backward_kernel(
 
   Tensor grad_weight;
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_V2(
       grad.scalar_type(),
       "embedding_backward",
-      [&]() {
+      AT_WRAP([&]() {
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_backward", [&] {
               // TODO: port pstl functions
@@ -90,7 +88,10 @@ Tensor embedding_dense_backward_kernel(
                       num_weights,
                       padding_idx);
             });
-      });
+      }),
+      AT_EXPAND(AT_FLOATING_TYPES),
+      kHalf,
+      kBFloat16);
   return grad_weight;
 }
 
@@ -103,7 +104,7 @@ void renorm_kernel(
     accscalar_t norm_type,
     int64_t dim,
     int64_t weights_stride0,
-    int64_t weights_stride1,
+    int64_t weihts_stride1,
     int64_t num_unique_indices) {
   auto item = syclext::this_work_item::get_nd_item<1>();
   int tid = item.get_local_linear_id();
@@ -128,8 +129,8 @@ void renorm_kernel(
     }
   }
 
-  char* lsm = (char*)syclexp::get_work_group_scratch_memory();
-  auto smem_ = reinterpret_cast<accscalar_t*>(lsm);
+  char* slm = (char*)syclexp::get_work_group_scratch_memory();
+  auto smem_ = reinterpret_cast<accscalar_t*>(slm);
 
   v = GroupReduceSumSGSizeEqualstoNumSG(item, v, smem_);
 
@@ -209,12 +210,10 @@ Tensor& embedding_renorm_kernel(
 
         int dim = self.stride(0);
 
-        AT_DISPATCH_FLOATING_TYPES_AND2(
-            at::ScalarType::Half,
-            at::ScalarType::BFloat16,
+        AT_DISPATCH_V2(
             self.scalar_type(),
             "embedding_renorm_xpu_",
-            [&] {
+            AT_WRAP([&] {
               using accscalar_t = acc_type_device<scalar_t, kXPU>;
               embedding_renorm_template(
                   self.data_ptr<scalar_t>(),
@@ -225,7 +224,10 @@ Tensor& embedding_renorm_kernel(
                   self.stride(0),
                   self.stride(1),
                   num_unique_indices);
-            });
+            }),
+            AT_EXPAND(AT_FLOATING_TYPES),
+            kHalf,
+            kBFloat16);
       });
   return self;
 }
