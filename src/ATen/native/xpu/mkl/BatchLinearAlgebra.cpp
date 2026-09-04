@@ -725,6 +725,3 @@ void potrf_mkl(
       });
 }
 } // namespace at::native::xpu
-
-
-
