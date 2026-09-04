@@ -96,20 +96,19 @@ The reviewer did not produce the scan. For every `confirmed` or
 
 A non-null merge timestamp (`mergedAt` in GraphQL and `gh pr view`, or
 `merged_at` in the REST API) establishes only that a PR entered its recorded
-base branch. It proves landing on the scanned default branch only when the
-recorded base ref is that default branch and a linked commit or equivalent
-source is reachable from or present at the exact
+base branch. To determine whether the relevant change exists in the default
+branch snapshot, inspect a linked commit or the equivalent source at the exact
 `collection.json.snapshot.default_branch_head`; do not substitute the live
-default branch. A release-branch merge, missing merge timestamp, or closed
-state alone establishes neither outcome.
+default branch. Treat the behavior as landed for this scan only when that
+evidence is reachable from or present at the frozen head. A missing merge
+timestamp or a closed state alone establishes neither outcome.
 
 An open or genuinely unlanded PR may justify `needs-xpu-fix` only when evidence
 independently establishes a defect in the current XPU implementation whose fix
 does not depend on that PR landing. If independent XPU parity work would be
 required only after the proposed upstream behavior lands, use `track-upstream`,
 set `implementation_repository` to `intel/torch-xpu-ops`, and emit no payload.
-This is an observation-only verdict, not a GitHub issue tracker; the gate
-retains the unit in its attention reasons and run note, and a later
+This is an observation-only verdict, not a durable tracker; a later
 default-branch commit scan re-evaluates the change after it lands. Use
 `non-issue` only when runner and source evidence establish that the observed
 behavior is not a current XPU defect. Otherwise use `verification-gap`.

@@ -516,20 +516,6 @@ def _validate_review(
     return payloads, dict(sorted(verdicts.items())), errors
 
 
-def _attention_reasons(collection_status: object, verdicts: dict[str, str]) -> list[str]:
-    reasons = []
-    if collection_status == "partial":
-        reasons.append("incomplete-collection")
-    if "verification-gap" in verdicts.values():
-        reasons.append("review-verification-gap")
-    reasons.extend(
-        f"track-upstream:{unit_id}"
-        for unit_id, verdict in verdicts.items()
-        if verdict == "track-upstream"
-    )
-    return reasons
-
-
 def build_decision(
     collection_root: Path,
     prepare_root: Path,
@@ -591,7 +577,11 @@ def build_decision(
         + [str(blocker) for blocker in collection_blockers]
         + unit_blocker_messages
     )
-    attention_reasons = _attention_reasons(collection.get("status"), verdicts)
+    attention_reasons = []
+    if collection.get("status") == "partial":
+        attention_reasons.append("incomplete-collection")
+    if "verification-gap" in verdicts.values():
+        attention_reasons.append("review-verification-gap")
 
     collection_status = collection.get("status")
     if global_blockers:

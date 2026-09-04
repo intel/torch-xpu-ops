@@ -306,8 +306,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 `implementation_repository` is `intel/torch-xpu-ops`. For `track-upstream`, the
 field is the GitHub `owner/repo` that owns the implementation, or
 `intel/torch-xpu-ops` for observation-only parity work that depends on an
-upstream change landing; these units are retained in `attention_reasons` and
-the published run note. It is `null` for `fixed`, `duplicate`, `non-issue`, and
+upstream change landing. It is `null` for `fixed`, `duplicate`, `non-issue`, and
 `verification-gap`. `status: blocked` lists blockers and contains no payloads.
 When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
