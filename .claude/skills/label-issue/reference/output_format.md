@@ -72,7 +72,7 @@ for the native `type` (GitHub Type) and `priority` (native org Priority issue
 field) fields.
 Emit each value exactly as it appears in `labels.json`. (Exception: on a
 `need_split` issue a consumer applies only the issue-wide axes to the umbrella
-issue — see the need_split suppression policy below.)
+issue — see **Multi-group and consumer policy** below.)
 
 ## Axis sources
 
@@ -124,50 +124,36 @@ Omitting a row means the axis produced no value — not that its step was skippe
 (Step 3.5 must still have run to conclude `null`/`none`). Do not add any prose
 explaining which rows were omitted.
 
-### need_split suppression policy
+## Multi-group and consumer policy
 
-When the `need_split` row is present, the per-group axes describe the individual
-sub-issues that will be created by the split, not the umbrella issue. A consumer
-applying labels.md to the umbrella issue (e.g. `apply_labels.py`) therefore
-applies ONLY the issue-wide axes — `need_split`, `type`, `test`, `os`, `hw` — and
-suppresses the per-group axes `module`, `dtype`, `dependency component`,
-`symptom`, `duplicate`, `wontfix`, and `priority`. Those carry over to the
-sub-issues once the split happens. The artifact still emits every row for the
-human reader and for the sub-issues; the suppression is a write-time policy, not
-a reason to drop rows from labels.md.
+On a `need_split` artifact the per-group axes describe the sub-issues the split
+will create, not the umbrella issue. Two rules follow.
 
-### Write-time field policy
+**Collapse the issue-wide axes** (`test`, `os`, `hw`, `type`) across the groups
+before they reach the top-level table. Where the groups agree, emit the shared
+value once, reasoned as agreement. Where they disagree, emit no row for `test` /
+`os` / `hw` and name the disagreement in the `need_split` reason (e.g.
+`os differs: Linux (group 1), Windows (group 2)`); for `type` emit `Bug` if any
+group is `Bug`, since a reported defect dominates a feature request on an
+umbrella. Never union a single-label axis — an umbrella issue must not carry both
+`os: Linux` and `os: Windows`. Each group's own table still shows its own value.
 
-A consumer applying labels.md writes additively and never clobbers human triage:
+**A consumer applying the artifact** (e.g. `apply_labels.py`) writes additively
+and never clobbers human triage:
 
-- **Labels are add-only** and must be allowlisted against `labels.json`; a label
-  name absent from the JSON is dropped, not created.
-- **`type` and `priority` are written only when the issue has no value set.** An
-  existing native Type or Priority is left unchanged even when it disagrees with
-  this artifact; the disagreement is surfaced (`apply_labels.py` appends a
-  `> [!WARNING]` block to the comment it posts, or prints it when the comment is
-  suppressed) for a human to reconcile.
+- Only the issue-wide axes (`need_split`, `type`, `test`, `os`, `hw`) go on the
+  umbrella issue; `module`, `dtype`, `dependency component`, `symptom`,
+  `duplicate`, `wontfix`, and `priority` are suppressed and carry over to the
+  sub-issues after the split.
+- Labels are add-only and allowlisted against `labels.json`; a name absent from
+  the JSON is dropped, not created.
+- `type` and `priority` are written only when the issue has no value set. An
+  existing native field is left unchanged even when it disagrees; the
+  disagreement is surfaced for a human (`apply_labels.py` appends a
+  `> [!WARNING]` block to its comment, or prints it under `--no-comment`).
 
-Like the suppression policy above, this is a write-time policy — labels.md still
-emits every row.
-
-### Collapsing the issue-wide axes
-
-The issue-wide axes are decided per group — `platform_specific.md` Step 2 picks
-exactly ONE `os` and one `hw` per group — but they land on the single umbrella
-issue. So on a `need_split` artifact, collapse each of `test`, `os`, `hw`, and
-`type` across the groups before it reaches the top-level table:
-
-- **Groups agree** — emit the shared value once in the top-level table, reasoned
-  as agreement across all groups.
-- **Groups disagree** — for `test`, `os`, `hw`, emit NO row for that axis and name
-  the disagreement in the `need_split` reason (e.g. `os differs: Linux (group 1),
-  Windows (group 2)`). For `type`, emit `Bug` if any group is `Bug` — a reported
-  defect dominates a feature request on an umbrella — and say so in the reason.
-
-Never union a single-label axis: an umbrella issue must never carry both
-`os: Linux` and `os: Windows`. Each group's own table still shows that group's own
-value; the collapse applies only to the top-level table.
+These are write-time policies: labels.md still emits every row for the human
+reader and for the sub-issues.
 
 ## Reasons
 
