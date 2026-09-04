@@ -320,6 +320,7 @@ invalidate other fully covered, independently reviewed payloads. Exactly one
 review-approved scheduled payload is filed automatically, while two or more go
 to human triage. The same policy applies to a structurally valid partial
 collection, but the workflow also publishes the source progress and errors,
-notifies maintainers for a scheduled run, and finishes red. Dry runs never file
+notifies maintainers for a scheduled run, and finishes red. Source progress is
+also shown when a partial collection has an unrelated global blocker. Dry runs never file
 and never notify. A malformed collection, incomplete coverage, environment core
 failure, or producer job failure publishes only a blocker summary.
