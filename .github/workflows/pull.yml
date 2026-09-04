@@ -284,11 +284,11 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
+      runner: distributed
       pytorch: artifact_wheel
-      pytorch_artifact_run_id: '33362074902'
-      pytorch_artifact_name: manywheel-py3_10-xpu
-      miniforge: true
+      pytorch_artifact_repo: mengfei25/torch-xpu-ops
+      pytorch_artifact_run_id: '33595795984'
+      pytorch_artifact_name: Torch-XPU-Wheel-4f082c2fec7057ba15fb7c46d7d56ef1e07c87a2-33595795984-2
       torch_xpu_ops: daisyden/distributed_2.13
       ut: ${{ matrix.ut_name }}
 

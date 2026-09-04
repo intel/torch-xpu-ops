@@ -19,10 +19,6 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      miniforge:
-        type: boolean
-        default: false
-        description: Use a Miniforge conda environment
       ut:
         required: true
         type: string
@@ -35,6 +31,10 @@ on:
         type: boolean
         default: false
         description: 'Skip the UT summary/issue-update job (e.g. when caller handles its own comparison)'
+      pytorch_artifact_repo:
+        type: string
+        default: 'pytorch/pytorch'
+        description: 'GitHub repo containing the wheel artifact, used when pytorch == artifact_wheel'
       pytorch_artifact_run_id:
         type: string
         default: ''
@@ -77,8 +77,8 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-          miniforge: ${{ inputs.miniforge }}
           category: ${{ inputs.category }}
+          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
           pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
           pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
@@ -119,8 +119,8 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-          miniforge: ${{ inputs.miniforge }}
           category: ${{ inputs.category }}
+          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
           pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
           pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
