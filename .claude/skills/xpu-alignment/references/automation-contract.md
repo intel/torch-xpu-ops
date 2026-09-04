@@ -290,7 +290,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
   "units": [{
     "id": "issue-123",
     "verdict": "needs-xpu-fix",
-    "implementation_repository": "pytorch/pytorch",
+    "implementation_repository": "intel/torch-xpu-ops",
     "canonical_tracker": null,
     "payload": {
       "title": "[xpu-alignment] ...",
