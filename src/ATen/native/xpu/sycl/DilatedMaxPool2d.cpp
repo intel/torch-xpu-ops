@@ -34,6 +34,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 
 namespace at::native::xpu {
 
+#ifdef __SYCL_DEVICE_ONLY__
 static inline int p_start(
     int size,
     int pad,
@@ -48,6 +49,7 @@ static inline int p_start(
 static inline int p_end(int size, int pad, int pooled_size, int stride) {
   return std::min((size + pad) / stride + 1, pooled_size);
 }
+#endif
 
 static inline bool can_use_int32_nhwc(
     int64_t nbatch,

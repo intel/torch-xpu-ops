@@ -36,8 +36,16 @@ set(SYCL_executable "@SYCL_EXECUTABLE@") # path
 set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
+set(SYCL_host_flags_excluded_from_sycl [==[@SYCL_HOST_FLAGS_EXCLUDED_FROM_SYCL@]==]) # list
+set(SYCL_host_flags_only_for_sycl [==[@SYCL_HOST_FLAGS_ONLY_FOR_SYCL@]==]) # list
 
 list(REMOVE_DUPLICATES SYCL_include_dirs)
+
+# The Intel SYCL driver (icx/icpx) performs host and device compilation from
+# the same SYCL command. Pass each CMAKE_HOST_FLAGS entry as a separate
+# -Xarch_host pair so flags containing spaces remain one argument, while
+# SYCL_compile_flags contains the common/device options.
+set(SYCL_host_arch_flags)
 
 set(SYCL_include_args)
 
@@ -61,16 +69,12 @@ endforeach()
 
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
-  # Extract -D (GCC/Clang) or /D (MSVC) defines from CMAKE_HOST_FLAGS and pass
-  # them directly to icpx, since host compiler is removed. This is needed for
-  # macros like HAVE_AVX512_CPU_DEFINITION that control signatures, to avoid
-  # symbol mismatch with libtorch_cpu.so.
-  if(flag MATCHES "^-D")
-    list(APPEND SYCL_compile_flags "${flag}")
-  elseif(flag MATCHES "^/D")
-    string(REGEX REPLACE "^/D" "-D" converted_flag "${flag}")
-    list(APPEND SYCL_compile_flags "${converted_flag}")
+  if(NOT flag IN_LIST SYCL_host_flags_excluded_from_sycl)
+    list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
   endif()
+endforeach()
+foreach(flag ${SYCL_host_flags_only_for_sycl})
+  list(APPEND SYCL_host_arch_flags -Xarch_host "${flag}")
 endforeach()
 
 # SYCL_execute_process - Executes a command with optional command echo and status message.
@@ -131,6 +135,7 @@ SYCL_execute_process(
   "${source_file}"
   -o "${generated_file}"
   ${SYCL_include_args}
+  ${SYCL_host_arch_flags}
   ${SYCL_compile_flags}
   )
 
