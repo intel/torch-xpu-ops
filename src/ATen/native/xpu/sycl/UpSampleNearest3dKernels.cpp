@@ -27,80 +27,49 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t, typename index_op_t>
-struct UpsampleNearest3dKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    index_t dst_idx = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_nearest3d_kernel(
+    const scalar_t* input_,
+    size_t dim_b_,
+    size_t dim_c_,
+    size_t src_dim_d_,
+    size_t src_dim_h_,
+    size_t src_dim_w_,
+    size_t dst_dim_d_,
+    size_t dst_dim_h_,
+    size_t dst_dim_w_,
+    scalar_t* output_,
+    float depth_scale_,
+    float height_scale_,
+    float width_scale_,
+    index_op_t index_op_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int dst_idx = item.get_global_linear_id();
 
-    if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
-      return;
+  if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
+    return;
 
-    index_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    index_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+  int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+  int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
-    int c = (dst_idx / (dst_c_stride)) % dim_c_;
+  int c = (dst_idx / (dst_c_stride)) % dim_c_;
 
-    int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
-    int src_z = index_op_(depth_scale_, dst_z, src_dim_d_);
-    int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
-    int src_y = index_op_(height_scale_, dst_y, src_dim_h_);
+  int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
+  int src_z = index_op_(depth_scale_, dst_z, src_dim_d_);
+  int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
+  int src_y = index_op_(height_scale_, dst_y, src_dim_h_);
 
-    int dst_x = dst_idx % dst_dim_w_;
-    int src_x = index_op_(width_scale_, dst_x, src_dim_w_);
+  int dst_x = dst_idx % dst_dim_w_;
+  int src_x = index_op_(width_scale_, dst_x, src_dim_w_);
 
-    index_t src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
-        src_y * src_dim_w_ + src_x;
-    for (int b = 0; b < dim_b_; b++) {
-      output_[dst_idx] = input_[src_idx];
-      src_idx += dim_c_ * src_c_stride;
-      dst_idx += dim_c_ * dst_c_stride;
-    }
+  int src_idx = c * src_c_stride + src_z * src_dim_h_ * src_dim_w_ +
+      src_y * src_dim_w_ + src_x;
+  for (int b = 0; b < dim_b_; b++) {
+    output_[dst_idx] = input_[src_idx];
+    src_idx += dim_c_ * src_c_stride;
+    dst_idx += dim_c_ * dst_c_stride;
   }
-  UpsampleNearest3dKernelFunctor(
-      const scalar_t* input,
-      size_t dim_b,
-      size_t dim_c,
-      size_t src_dim_d,
-      size_t src_dim_h,
-      size_t src_dim_w,
-      size_t dst_dim_d,
-      size_t dst_dim_h,
-      size_t dst_dim_w,
-      scalar_t* output,
-      float depth_scale,
-      float height_scale,
-      float width_scale,
-      index_op_t index_op)
-      : input_(input),
-        dim_b_(dim_b),
-        dim_c_(dim_c),
-        src_dim_d_(src_dim_d),
-        src_dim_h_(src_dim_h),
-        src_dim_w_(src_dim_w),
-        dst_dim_d_(dst_dim_d),
-        dst_dim_h_(dst_dim_h),
-        dst_dim_w_(dst_dim_w),
-        output_(output),
-        depth_scale_(depth_scale),
-        height_scale_(height_scale),
-        width_scale_(width_scale),
-        index_op_(index_op) {}
-
- private:
-  const scalar_t* input_;
-  size_t dim_b_;
-  size_t dim_c_;
-  size_t src_dim_d_;
-  size_t src_dim_h_;
-  size_t src_dim_w_;
-  size_t dst_dim_d_;
-  size_t dst_dim_h_;
-  size_t dst_dim_w_;
-  scalar_t* output_;
-  float depth_scale_;
-  float height_scale_;
-  float width_scale_;
-  index_op_t index_op_;
-};
+}
 
 template <typename scalar_t, typename index_t, typename index_op_t>
 void upsample_nearest3d_out_template(
@@ -120,7 +89,15 @@ void upsample_nearest3d_out_template(
     float width_scale,
     index_op_t index_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto kfn = UpsampleNearest3dKernelFunctor<scalar_t, index_t, index_op_t>(
+  auto work_group_size = syclMaxWorkGroupSize<
+      upsample_nearest3d_kernel<scalar_t, index_t, index_op_t>>();
+  int64_t work_group_num =
+      at::ceil_div((unsigned int)n, (unsigned int)work_group_size);
+  sycl_kernel_submit<upsample_nearest3d_kernel<scalar_t, index_t, index_op_t>>(
+      work_group_num * work_group_size,
+      work_group_size,
+      queue,
+      0,
       input,
       dim_b,
       dim_c,
@@ -135,11 +112,6 @@ void upsample_nearest3d_out_template(
       height_scale,
       width_scale,
       index_op);
-  auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num =
-      at::ceil_div(n, static_cast<int64_t>(work_group_size));
-  sycl_kernel_submit(
-      work_group_num * work_group_size, work_group_size, queue, kfn);
 }
 
 void upsample_nearest3d_kernel(
@@ -240,90 +212,60 @@ template <
     typename accscalar_t,
     typename index_t,
     typename index_bw_op_t>
-struct UpsampleNearest3dBackwardFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    index_t dst_idx = item.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void upsample_nearest3d_backward_kernel(
+    const scalar_t* grad_o_,
+    size_t dim_b_,
+    size_t dim_c_,
+    size_t src_dim_d_,
+    size_t src_dim_h_,
+    size_t src_dim_w_,
+    size_t dst_dim_d_,
+    size_t dst_dim_h_,
+    size_t dst_dim_w_,
+    scalar_t* grad_i_,
+    float depth_scale_,
+    float height_scale_,
+    float width_scale_,
+    index_bw_op_t index_bw_op_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int dst_idx = item.get_global_linear_id();
 
-    if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
-      return;
+  if (dst_idx >= dim_c_ * dst_dim_d_ * dst_dim_h_ * dst_dim_w_)
+    return;
 
-    index_t dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
-    index_t src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
+  int dst_c_stride = dst_dim_d_ * dst_dim_h_ * dst_dim_w_;
+  int src_c_stride = src_dim_d_ * src_dim_h_ * src_dim_w_;
 
-    int c = (dst_idx / (dst_c_stride)) % dim_c_;
+  int c = (dst_idx / (dst_c_stride)) % dim_c_;
 
-    int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
-    int src_z = index_bw_op_(depth_scale_, dst_z, src_dim_d_);
-    int src_z_up = index_bw_op_(depth_scale_, dst_z + 1, src_dim_d_);
+  int dst_z = (dst_idx / dst_dim_h_ / dst_dim_w_) % dst_dim_d_;
+  int src_z = index_bw_op_(depth_scale_, dst_z, src_dim_d_);
+  int src_z_up = index_bw_op_(depth_scale_, dst_z + 1, src_dim_d_);
 
-    int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
-    int src_y = index_bw_op_(height_scale_, dst_y, src_dim_h_);
-    int src_y_up = index_bw_op_(height_scale_, dst_y + 1, src_dim_h_);
+  int dst_y = (dst_idx / dst_dim_w_) % dst_dim_h_;
+  int src_y = index_bw_op_(height_scale_, dst_y, src_dim_h_);
+  int src_y_up = index_bw_op_(height_scale_, dst_y + 1, src_dim_h_);
 
-    int dst_x = dst_idx % dst_dim_w_;
-    int src_x = index_bw_op_(width_scale_, dst_x, src_dim_w_);
-    int src_x_up = index_bw_op_(width_scale_, dst_x + 1, src_dim_w_);
+  int dst_x = dst_idx % dst_dim_w_;
+  int src_x = index_bw_op_(width_scale_, dst_x, src_dim_w_);
+  int src_x_up = index_bw_op_(width_scale_, dst_x + 1, src_dim_w_);
 
-    for (int b = 0; b < dim_b_; b++) {
-      accscalar_t grad = 0;
-      for (int z = src_z; z < src_z_up; z++) {
-        for (int y = src_y; y < src_y_up; y++) {
-          for (int x = src_x; x < src_x_up; x++) {
-            index_t src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
-                z * src_dim_h_ * src_dim_w_ + y * src_dim_w_ + x;
-            grad += grad_o_[src_idx];
-          }
+  for (int b = 0; b < dim_b_; b++) {
+    accscalar_t grad = 0;
+    for (int z = src_z; z < src_z_up; z++) {
+      for (int y = src_y; y < src_y_up; y++) {
+        for (int x = src_x; x < src_x_up; x++) {
+          int src_idx = b * dim_c_ * src_c_stride + c * src_c_stride +
+              z * src_dim_h_ * src_dim_w_ + y * src_dim_w_ + x;
+          grad += grad_o_[src_idx];
         }
       }
-      grad_i_[dst_idx] = grad;
-      dst_idx += dim_c_ * dst_c_stride;
     }
+    grad_i_[dst_idx] = grad;
+    dst_idx += dim_c_ * dst_c_stride;
   }
-  UpsampleNearest3dBackwardFunctor(
-      const scalar_t* grad_o,
-      size_t dim_b,
-      size_t dim_c,
-      size_t src_dim_d,
-      size_t src_dim_h,
-      size_t src_dim_w,
-      size_t dst_dim_d,
-      size_t dst_dim_h,
-      size_t dst_dim_w,
-      scalar_t* grad_i,
-      float depth_scale,
-      float height_scale,
-      float width_scale,
-      index_bw_op_t index_bw_op)
-      : grad_o_(grad_o),
-        dim_b_(dim_b),
-        dim_c_(dim_c),
-        src_dim_d_(src_dim_d),
-        src_dim_h_(src_dim_h),
-        src_dim_w_(src_dim_w),
-        dst_dim_d_(dst_dim_d),
-        dst_dim_h_(dst_dim_h),
-        dst_dim_w_(dst_dim_w),
-        grad_i_(grad_i),
-        depth_scale_(depth_scale),
-        height_scale_(height_scale),
-        width_scale_(width_scale) {}
-
- private:
-  const scalar_t* grad_o_;
-  size_t dim_b_;
-  size_t dim_c_;
-  size_t src_dim_d_;
-  size_t src_dim_h_;
-  size_t src_dim_w_;
-  size_t dst_dim_d_;
-  size_t dst_dim_h_;
-  size_t dst_dim_w_;
-  scalar_t* grad_i_;
-  float depth_scale_;
-  float height_scale_;
-  float width_scale_;
-  index_bw_op_t index_bw_op_;
-};
+}
 
 template <
     typename scalar_t,
@@ -347,11 +289,22 @@ void upsample_nearest3d_backward_template(
     float width_scale,
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  auto kfn = UpsampleNearest3dBackwardFunctor<
+  auto work_group_size =
+      syclMaxWorkGroupSize<upsample_nearest3d_backward_kernel<
+          scalar_t,
+          accscalar_t,
+          index_t,
+          index_bw_op_t>>();
+  int64_t work_group_num = at::ceil_div(n, (int64_t)work_group_size);
+  sycl_kernel_submit<upsample_nearest3d_backward_kernel<
       scalar_t,
       accscalar_t,
       index_t,
-      index_bw_op_t>(
+      index_bw_op_t>>(
+      work_group_num * work_group_size,
+      work_group_size,
+      queue,
+      0,
       grad_o,
       dim_b,
       dim_c,
@@ -366,11 +319,6 @@ void upsample_nearest3d_backward_template(
       height_scale,
       width_scale,
       index_bw_op);
-  auto work_group_size = syclMaxWorkGroupSize(kfn);
-  int64_t work_group_num =
-      at::ceil_div(n, static_cast<int64_t>(work_group_size));
-  sycl_kernel_submit(
-      work_group_num * work_group_size, work_group_size, queue, kfn);
 }
 
 void upsample_nearest3d_backward_kernel(
