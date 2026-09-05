@@ -22,7 +22,6 @@ export DESIRED_CUDA=xpu
 if [ "${USE_DPCLANG}" == "yes" ]; then
     # dpclang: open-source SYCL compiler, skip upstream env setup (no oneAPI)
     export XPU_SYCL_COMPILER=dpclang
-    export USE_KINETO=0
     export USE_ONEMKL_XPU=0
     export USE_STATIC_MKL=1
     export TH_BINARY_BUILD=1
