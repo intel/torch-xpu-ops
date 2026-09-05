@@ -31,18 +31,6 @@ on:
         type: boolean
         default: false
         description: 'Skip the UT summary/issue-update job (e.g. when caller handles its own comparison)'
-      pytorch_artifact_repo:
-        type: string
-        default: 'pytorch/pytorch'
-        description: 'GitHub repo containing the wheel artifact, used when pytorch == artifact_wheel'
-      pytorch_artifact_run_id:
-        type: string
-        default: ''
-        description: 'PyTorch workflow run id, used when pytorch == artifact_wheel'
-      pytorch_artifact_name:
-        type: string
-        default: ''
-        description: 'PyTorch wheel artifact name, used when pytorch == artifact_wheel'
 
 permissions:
   contents: read
@@ -78,9 +66,6 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
-          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
-          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
-          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -120,9 +105,6 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
           category: ${{ inputs.category }}
-          pytorch_artifact_repo: ${{ inputs.pytorch_artifact_repo }}
-          pytorch_artifact_run_id: ${{ inputs.pytorch_artifact_run_id }}
-          pytorch_artifact_name: ${{ inputs.pytorch_artifact_name }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
