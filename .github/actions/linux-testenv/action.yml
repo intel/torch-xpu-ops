@@ -159,7 +159,9 @@ runs:
         cd pytorch
         cp /home/jenkins/mengfeil/tmp-file ~/.netrc
         rm -rf third_party/torch-xpu-ops
-        git clone https://github.com/intel-innersource/frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
+        mv /home/jenkins/mengfeil/frameworks.ai.pytorch.torch-xpu-ops.tgz .
+        tar xf frameworks.ai.pytorch.torch-xpu-ops.tgz
+        mv frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
         cd third_party/torch-xpu-ops
         git checkout e12bf65e4eb0445bedf965ee84e0ce75d43b2a00
         git status && git diff && git show -s
