@@ -39,6 +39,7 @@ runs:
         fi
         rm -rf Torch-XPU-Wheel-*
     - name: Install DLE
+      shell: bash -xe {0}
       run: |
         rm -rf /opt/intel/oneapi intel-deep-learning-essentials-2026.2.0.466_offline.sh linux_qa_release.tgz
         cp /home/jenkins/mengfeil/intel-deep-learning-essentials-2026.2.0.466_offline.sh .
