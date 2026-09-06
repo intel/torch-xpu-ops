@@ -42,16 +42,10 @@ runs:
       shell: bash -xe {0}
       run: |
         rm -rf /opt/intel/oneapi intel-deep-learning-essentials-2026.2.0.466_offline.sh linux_qa_release.tgz
-        cp /home/jenkins/mengfeil/intel-deep-learning-essentials-2026.2.0.466_offline.sh .
-        bash intel-deep-learning-essentials-2026.2.0.466_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action remove || true
-        bash intel-deep-learning-essentials-2026.2.0.466_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action install
-        bash intel-deep-learning-essentials-2026.2.0.466_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action repair
-        cp /home/jenkins/mengfeil/linux_qa_release.tgz .
-        rm -rf /opt/intel/oneapi/compiler/20260903_160000 && mkdir -p /opt/intel/oneapi/compiler/20260903_160000
-        tar -xzf linux_qa_release.tgz -C /opt/intel/oneapi/compiler/20260903_160000
-        rm -rf /opt/intel/oneapi/compiler/latest /opt/intel/oneapi/compiler/2026.2
-        ln -sf /opt/intel/oneapi/compiler/20260903_160000 /opt/intel/oneapi/compiler/latest
-        ln -sf /opt/intel/oneapi/compiler/20260903_160000 /opt/intel/oneapi/compiler/2026.2
+        wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/bedab612-cf6b-4ece-872e-e72e9534ccab/intel-deep-learning-essentials-2026.1.3.17_offline.sh
+        bash intel-deep-learning-essentials-2026.1.3.17_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action remove || true
+        bash intel-deep-learning-essentials-2026.1.3.17_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action install
+        bash intel-deep-learning-essentials-2026.1.3.17_offline.sh -a -s --eula accept --install-dir /opt/intel/oneapi --action repair
         echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> ${GITHUB_ENV}
         echo "source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1" > ${RUNNER_TEMP}/oneapi_env.sh
         echo "BASH_ENV=${RUNNER_TEMP}/oneapi_env.sh" >> ${GITHUB_ENV}
@@ -164,7 +158,7 @@ runs:
         mv frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
         cd third_party/torch-xpu-ops
         git config --global --add safe.directory /__w/torch-xpu-ops/torch-xpu-ops/pytorch/third_party/torch-xpu-ops
-        git checkout e12bf65e4eb0445bedf965ee84e0ce75d43b2a00
+        git checkout a0191118f8c8e6558c7e696864884b01dfd491eb
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
