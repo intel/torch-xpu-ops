@@ -110,7 +110,7 @@ runs:
         latest_whl="$(find ./wheels -type f -name "torch-*.whl" |sort -V |tail -n 1)"
         pip install --force-reinstall ${latest_whl}
         pip install triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        uv pip install pip pandas psutil scipy requests numpy
+        pip install pip pandas psutil scipy requests numpy
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
