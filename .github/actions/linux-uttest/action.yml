@@ -156,12 +156,12 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
-    - name: xpu_distributed_bmg
+    - name: xpu_distributed_weekly
       shell: timeout 36000 bash -xeu -o pipefail {0}
-      if: ${{ inputs.ut_name == 'xpu_distributed_bmg' }}
+      if: ${{ inputs.ut_name == 'xpu_distributed_weekly' }}
       run: |
         xpu-smi topology -m
-        mkdir -p ut_log/xpu_distributed_bmg
+        mkdir -p ut_log/xpu_distributed_weekly
 
         rm -rf pytorch/third_party/torch-xpu-ops
         git clone --depth 1 --branch daisyden/distributed_2.13 \
@@ -182,8 +182,8 @@ runs:
         sudo rm -rf /tmp/torchinductor_jenkins/
         python -c "import inspect, shutil, torch.testing._internal.distributed.distributed_test as m; shutil.copyfile('distributed/distributed_test.py', inspect.getsourcefile(m) or m.__file__)"
         python run_distributed_local.py \
-          2> ${{ github.workspace }}/ut_log/xpu_distributed_bmg/xpu_distributed_bmg_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/xpu_distributed_bmg/xpu_distributed_bmg_test.log
+          2> ${{ github.workspace }}/ut_log/xpu_distributed_weekly/xpu_distributed_weekly_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/xpu_distributed_weekly/xpu_distributed_weekly_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
     - name: p0
