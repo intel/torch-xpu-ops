@@ -89,6 +89,14 @@ runs:
         echo "PATH=$(pwd)/install-dpclang/bin:$PATH" >> $GITHUB_ENV
         echo "$(pwd)/install-dpclang/bin" >> $GITHUB_PATH
     - name: Download Pytorch wheel
+      uses: actions/download-artifact@v4
+      with:
+        name: Torch-XPU-Wheel-8cd50b4bc9722a87c60363e4c3434e1e6281eb64-34023316096-1
+        github-token: ${{ github.token }}
+        repository: mengfei25/torch-xpu-ops
+        run-id: 34023316096
+        path: ${{ github.workspace }}/wheels
+    - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
@@ -106,8 +114,9 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           pip install torch==2.15.0.dev20260829+xpu torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
+          latest_whl="$(find ./wheels -type f -name "torch-*.whl" |sort -V |tail -n 1)"
+          pip install --force-reinstall ${latest_whl}
+          pip install triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
@@ -123,6 +132,34 @@ runs:
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        VISION_COMMIT_ID="$(cat pytorch/.github/ci_commit_pins/vision.txt)"
+        AUDIO_COMMIT_ID="$(cat pytorch/.github/ci_commit_pins/audio.txt)"
+        rm -rf torchvision torchaudio
+
+        git clone --recursive https://github.com/pytorch/vision torchvision
+        cd torchvision
+        git checkout ${VISION_COMMIT_ID}
+        git submodule update --init --recursive
+        python setup.py clean
+        python -m pip install -v --no-build-isolation --no-deps .
+        cd ..
+
+        git clone --recursive https://github.com/pytorch/audio torchaudio
+        cd torchaudio
+        git checkout ${AUDIO_COMMIT_ID}
+        git submodule update --init --recursive
+        python setup.py clean
+        python -m pip install -v --no-build-isolation --no-deps .
+        cd ..
+
+        python -c "import torch; print(torch.__version__, torch.version.git_version)"
+        python -c "import torchvision; print(torchvision.__version__)"
+        python -c "import torchaudio; print(torchaudio.__version__)"
+        pip list |grep -E 'intel|torch|triton'
+
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -268,39 +305,3 @@ runs:
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
-    - name: Download Pytorch wheel
-      uses: actions/download-artifact@v4
-      with:
-        name: Torch-XPU-Wheel-8cd50b4bc9722a87c60363e4c3434e1e6281eb64-34023316096-1
-        github-token: ${{ github.token }}
-        repository: mengfei25/torch-xpu-ops
-        run-id: 34023316096
-        path: ${{ github.workspace }}/wheels
-    - name: Install test target
-      shell: bash -xe {0}
-      run: |
-        pip uninstall -y \
-          torch \
-          intel-cmplr-lib-rt \
-          intel-cmplr-lib-ur \
-          intel-cmplr-lic-rt \
-          intel-sycl-rt \
-          oneccl-devel \
-          oneccl \
-          impi-rt \
-          onemkl-license \
-          onemkl-sycl-blas \
-          onemkl-sycl-dft \
-          onemkl-sycl-lapack \
-          onemkl-sycl-rng \
-          onemkl-sycl-sparse \
-          dpcpp-cpp-rt \
-          intel-opencl-rt \
-          mkl \
-          intel-openmp \
-          tbb \
-          tcmlib \
-          umf \
-          intel-pti
-        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
-        pip list |grep -E 'intel|torch|triton'
