@@ -85,10 +85,10 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: Torch-XPU-Wheel-8cd50b4bc9722a87c60363e4c3434e1e6281eb64-34023316096-1
+        name: Torch-XPU-Wheel-27bab7ff5e35e31d3df5f883bc2778bf1d8b08e7-34023368211-1
         github-token: ${{ github.token }}
         repository: mengfei25/torch-xpu-ops
-        run-id: 34023316096
+        run-id: 34023368211
         path: ${{ github.workspace }}/wheels
     - name: Download Pytorch wheel
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
