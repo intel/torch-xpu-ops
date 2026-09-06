@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,xpu_distributed_bmg,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
+  description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,xpu_distributed_weekly,upstream_distributed,upstream_inductor,upstream_default,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -107,7 +107,7 @@ jobs:
               ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_inductor","upstream_default"]'
             fi
             if [[ "${test_type}" == "wheel-weekly" ]];then
-              ut="${ut%]},\"xpu_distributed_bmg\"]"
+              ut="${ut%]},\"xpu_distributed_weekly\"]"
             fi
             scenario='["accuracy","performance"]'
             triton=''
