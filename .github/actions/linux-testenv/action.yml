@@ -156,26 +156,11 @@ runs:
       shell: bash -xe {0}
       run: |
         cd pytorch
+        cp /home/jenkins/mengfeil/tmp-file ~/.netrc
         rm -rf third_party/torch-xpu-ops
-        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-        else
-          TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
-          else
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-          fi
-        fi
-        if [ "${{ github.event_name }}" == "pull_request" ];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-        fi
+        git clone https://github.com/intel-innersource/frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
+        cd third_party/torch-xpu-ops
+        git checkout e12bf65e4eb0445bedf965ee84e0ce75d43b2a00
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
