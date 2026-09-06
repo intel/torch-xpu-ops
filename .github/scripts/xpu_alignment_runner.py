@@ -385,7 +385,7 @@ def run_plan(
                 process: subprocess.Popen[bytes] | None = None
                 try:
                     process = subprocess.Popen(
-                        [str(python), "-I", str(script)],
+                        [str(python), "-I", "-u", str(script)],
                         cwd=scratch,
                         env=child_environment,
                         stdin=subprocess.DEVNULL,
@@ -411,7 +411,7 @@ def run_plan(
             {
                 "id": unit_id,
                 "script_sha256": entry["script_sha256"],
-                "command": [str(python), "-I", entry["script_path"]],
+                "command": [str(python), "-I", "-u", entry["script_path"]],
                 "log": str(log.relative_to(root)),
                 "log_sha256": sha256(log),
                 "returncode": returncode,
