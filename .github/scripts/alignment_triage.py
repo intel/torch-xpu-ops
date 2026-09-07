@@ -6,7 +6,7 @@
 
 Drafts live as bot comments carrying a unit marker. Publishing preserves the
 reviewed title and visible body and adds only a hidden stable-unit marker for
-idempotency. No agent runs between approval and filing.
+idempotency. Newly created issues may trigger the separate issue-fix workflow.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ def render_draft(
     prefix = "[DRY RUN] " if dry_run else ""
     scan_day = date.fromisoformat(scan_date)
     dated_title = (
-        f"{ISSUE_TITLE_PREFIX} [{scan_day.year % 100}-{scan_day.month}-{scan_day.day}] "
+        f"{ISSUE_TITLE_PREFIX} [{scan_day.strftime('%y-%m-%d')}] "
         f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
     )
     return (

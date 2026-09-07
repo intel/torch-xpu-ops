@@ -261,8 +261,8 @@ def main() -> int:
         )
         filed_issue_url = None
         if filed_comment is not None:
-            issue_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
-            filed_issue_url = f"https://github.com/{args.repo}/issues/{issue_number}"
+            filed_number = FILED_MARKER_RE.search(filed_comment["body"]).group(1)
+            filed_issue_url = f"https://github.com/{args.repo}/issues/{filed_number}"
             if int(filed_comment["id"]) == int(comments[-1]["id"]):
                 if verdict == "auto-file":
                     filed.append((unit_id, filed_issue_url))
@@ -297,7 +297,7 @@ def main() -> int:
             issue_url = _file_candidate(args.repo, payload, draft, comment_id)
             filed.append((unit_id, issue_url))
             print(f"Filed {unit_id} as {issue_url}")
-        except SystemExit:
+        except (SystemExit, ValueError, KeyError, TypeError, OSError):
             publication_failures.append(unit_id)
             print(f"::warning::Continuing after publication failed for `{unit_id}`.")
 

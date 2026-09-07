@@ -337,3 +337,11 @@ progress is also shown when a partial collection has an unrelated global
 blocker. Dry runs publish drafts only and never notify. A malformed collection,
 incomplete coverage, environment core failure, or producer job failure publishes
 only a blocker summary.
+
+The gate records `run_state` as `complete`, `complete-with-warnings`, `partial`,
+or `failed`; the publisher uses this value for the Run Summary and workflow
+status. An automatically created issue is published by `torchxpubot` and receives
+one `@torchxpubot fix` comment. Draft and issue titles include the UTC scan date
+after the `[xpu-alignment]` prefix. The publishing and cost-comment steps use the
+repository's `MERGE_TOKEN` so their author remains `torchxpubot`; agents never
+receive that token.

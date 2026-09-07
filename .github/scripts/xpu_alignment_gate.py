@@ -501,6 +501,8 @@ def _validate_review(
         title, body = payload.get("title"), payload.get("body")
         if not isinstance(title, str) or not title.startswith(f"{ISSUE_TITLE_PREFIX} "):
             errors.append(f"payload-invalid-title:{unit_id}")
+        elif "\n" in title or "\r" in title:
+            errors.append(f"payload-multiline-title:{unit_id}")
         if not isinstance(body, str) or not body.strip():
             errors.append(f"payload-empty-body:{unit_id}")
         if payload.get("labels") != ISSUE_LABELS:
