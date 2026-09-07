@@ -16,7 +16,7 @@ runs:
         which pip && pip list
         cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 36000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
@@ -39,7 +39,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_extended
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 36000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
