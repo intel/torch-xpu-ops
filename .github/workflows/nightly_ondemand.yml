@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,upstream_distributed,upstream_ut,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -96,7 +96,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
+            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed","upstream_distributed","upstream_ut"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             scenario='["accuracy","performance"]'
             triton=''
@@ -163,7 +163,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: ${{ matrix.ut_name == 'xpu_distributed' && 'distributed' || 'bmg-test' }}
+      runner: ${{ (matrix.ut_name == 'xpu_distributed' || matrix.ut_name == 'upstream_distributed') && 'distributed' || 'bmg-test' }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
