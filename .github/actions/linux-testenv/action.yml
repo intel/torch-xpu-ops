@@ -163,6 +163,7 @@ runs:
         tar xf frameworks.ai.pytorch.torch-xpu-ops.tgz
         mv frameworks.ai.pytorch.torch-xpu-ops third_party/torch-xpu-ops
         cd third_party/torch-xpu-ops
+        git config --global --add safe.directory /__w/torch-xpu-ops/torch-xpu-ops/pytorch/third_party/torch-xpu-ops
         git checkout e12bf65e4eb0445bedf965ee84e0ce75d43b2a00
         git status && git diff && git show -s
     - name: Install E2E Requirements
