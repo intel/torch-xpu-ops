@@ -175,6 +175,51 @@ runs:
         echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
 
+    - name: upstream_distributed
+      shell: timeout 36000 bash -xeu -o pipefail {0}
+      if: ${{ inputs.ut_name == 'upstream_distributed' }}
+      run: |
+        xpu-smi topology -m
+        log_dir="${{ github.workspace }}/ut_log/upstream_distributed"
+        mkdir -p ${log_dir}
+        export PATH="${VENV_ROOT}/bin/libfabric:${PATH}"
+        XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+        if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
+          echo -e "[ERROR] XCCL is not enabled"
+          exit 1
+        fi
+        python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
+          --category distributed --distributed-output ${log_dir}/upstream_distributed_files.txt > /dev/null
+        cd pytorch
+        test_cmd="python test/run_test.py --include"
+        while IFS= read -r test_file; do
+          [ -z "${test_file}" ] && continue
+          test_cmd="${test_cmd} ${test_file#test/}"
+        done < ${log_dir}/upstream_distributed_files.txt
+        eval ${test_cmd} \
+          2> ${log_dir}/upstream_distributed_test_error.log | \
+          tee ${log_dir}/upstream_distributed_test.log
+        find test -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \; || true
+    - name: upstream_ut
+      shell: timeout 72000 bash -xe {0}
+      if: ${{ inputs.ut_name == 'upstream_ut' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        log_dir="${{ github.workspace }}/ut_log/upstream_ut"
+        mkdir -p ${log_dir}
+        python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
+          --category others --others-output ${log_dir}/upstream_ut_files.txt > /dev/null
+        cd pytorch
+        test_cmd="python test/run_test.py --include"
+        while IFS= read -r test_file; do
+          [ -z "${test_file}" ] && continue
+          test_cmd="${test_cmd} ${test_file#test/}"
+        done < ${log_dir}/upstream_ut_files.txt
+        eval ${test_cmd} \
+          2> ${log_dir}/upstream_ut_test_error.log | \
+          tee ${log_dir}/upstream_ut_test.log
+
     # Summary
     - name: UT Test Results Summary
       if: ${{ !cancelled() }}
