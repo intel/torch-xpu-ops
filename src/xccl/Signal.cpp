@@ -78,7 +78,7 @@ struct putSignalKernel {
 
     if (thread_id == 0) {
       auto put_success = try_put_signal_device(
-          signal_pads[dst_rank] + world_size * channel + rank, 10000000);
+          signal_pads[dst_rank] + world_size * channel + rank, timeout_ms);
       if (!put_success) {
         SYCL_KERNEL_ASSERT(false);
       }
@@ -140,12 +140,10 @@ struct waitSignalKernel {
 
     if (thread_id == 0) {
       auto wait_success = try_wait_signal_device(
-          signal_pads[rank] + world_size * channel + src_rank, 10000000);
+          signal_pads[rank] + world_size * channel + src_rank, timeout_ms);
       if (!wait_success) {
         SYCL_KERNEL_ASSERT(false);
       }
-
-      sycl::atomic_fence(sycl::memory_order_seq_cst, sycl::memory_scope_system);
     }
   }
 

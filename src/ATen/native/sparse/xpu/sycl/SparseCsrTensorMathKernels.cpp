@@ -138,14 +138,15 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
       values.options(), values.scalar_type(), new_nnz);
   Tensor new_values = std::get<0>(acc_buffer);
   Tensor new_values_acc = std::get<1>(acc_buffer);
-  scalar_t* values_ptr = values.data_ptr<scalar_t>();
+  const scalar_t* values_ptr = values.const_data_ptr<scalar_t>();
   acc_t* new_values_acc_ptr = new_values_acc.data_ptr<acc_t>();
   auto queue = getCurrentSYCLQueue();
 
   AT_DISPATCH_INDEX_TYPES(
       col_indices.scalar_type(), "reduce_sparse_csr_dim0_xpu_indices", [&]() {
         const index_t* col_indices_ptr = col_indices.const_data_ptr<index_t>();
-        index_t* new_col_indices_ptr = new_col_indices.data_ptr<index_t>();
+        const index_t* new_col_indices_ptr =
+            new_col_indices.const_data_ptr<index_t>();
         using KernelFn = ReduceSparseCsrDim0KernelFunctor<
             scalar_t,
             index_t,
@@ -300,7 +301,7 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
         new_values.resize_(new_nnz);
         new_values_acc.resize_(new_nnz);
 
-        scalar_t* values_ptr = values.data_ptr<scalar_t>();
+        const scalar_t* values_ptr = values.const_data_ptr<scalar_t>();
         acc_t* new_values_acc_ptr = new_values_acc.data_ptr<acc_t>();
         auto kfn = KernelFn(
             new_values_acc_ptr,
@@ -379,7 +380,7 @@ Tensor reduce_sparse_csr_xpu_template(
         ((dims[0] == 0 && dims[1] == 1) || (dims[0] == 1 && dims[1] == 0)));
     return reduce_sparse_csr_dim01_xpu_template<scalar_t>(sparse, rop);
   }
-  TORCH_INTERNAL_ASSERT(dims.size() == 0);
+  TORCH_INTERNAL_ASSERT(dims.empty());
   return sparse.clone();
 }
 
@@ -399,7 +400,7 @@ Tensor reduce_sparse_csr_xpu_template(
   TORCH_INTERNAL_ASSERT(input_dim == 2);
   auto dims = dims_to_sum.vec();
   maybe_wrap_dims(dims, input_dim);
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     dims.emplace_back(0);
     dims.emplace_back(1);
   }

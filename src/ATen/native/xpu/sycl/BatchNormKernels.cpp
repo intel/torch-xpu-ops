@@ -138,7 +138,7 @@ struct InvStd {
   inline T operator()(T var, double epsilon) const {
     T invstd = 0.0f;
     if (var != static_cast<T>(0.0f) || epsilon != static_cast<T>(0.0f)) {
-      invstd = static_cast<T>(1.0f) / sycl::sqrt(var + static_cast<T>(epsilon));
+      invstd = sycl::rsqrt(var + static_cast<T>(epsilon));
     }
     return invstd;
   }
@@ -1048,10 +1048,8 @@ struct BatchNormTransformInputKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -1168,10 +1166,8 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
     if constexpr (train) {
       invstd = var_or_invstd_[plane];
     } else {
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bs = input_.size(0);
@@ -2365,16 +2361,13 @@ batch_norm_backward_reduce_channels_last_template(
   at::Tensor sumn_dy = at::empty({stride}, mean.options());
   at::Tensor sum_dy_xmu = at::empty({stride}, mean.options());
 
-  at::Tensor grad_weight;
-  at::Tensor grad_bias;
-  if (weight.defined()) {
-    grad_weight = at::zeros({stride}, weight.options());
-    grad_bias = at::zeros({stride}, weight.options());
-  } else {
-    // because I cannot return an uninitialized at::Tensor
-    grad_weight = at::empty({0}, mean.options());
-    grad_bias = at::empty({0}, mean.options());
-  }
+  // Without a weight the gradients are empty rather than undefined, since an
+  // undefined Tensor cannot be returned.
+  const bool has_weight = weight.defined();
+  const auto grad_opts = has_weight ? weight.options() : mean.options();
+  const int64_t grad_size = has_weight ? stride : 0;
+  at::Tensor grad_weight = at::empty({grad_size}, grad_opts);
+  at::Tensor grad_bias = at::empty({grad_size}, grad_opts);
 
   auto config = get_adaptive_launch_config(
       syclMaxWorkItemsPerSubSlice() * 2,
@@ -3860,8 +3853,8 @@ void batch_norm_mean_var(
           save_var,
           save_mean,
           self,
-          /*dims=*/reduce_dims,
-          /*unbiased=*/false,
+          /*dim=*/reduce_dims,
+          /*correction=*/false,
           /*keepdim=*/false);
       return;
     }
@@ -3972,7 +3965,7 @@ template <typename scalar_t, typename acc_t>
 struct BatchNormCalcInvstdFunctor {
   acc_t operator()(scalar_t var) const {
     volatile acc_t v = var + eps_;
-    return c10::xpu::compat::rsqrt(v);
+    return sycl::rsqrt(v);
   }
 
   BatchNormCalcInvstdFunctor(acc_t eps) : eps_(eps) {}
@@ -4177,10 +4170,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
@@ -4384,10 +4375,8 @@ struct BatchNormBackwardVectorizedKernelFunctor
       invstd = save_invstd_[plane];
     } else {
       mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
-      invstd =
-          static_cast<stat_accscalar_t>(1) /
-          sycl::sqrt(
-              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+      invstd = sycl::rsqrt(
+          static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
     }
 
     stat_accscalar_t weight_val = weight_.size(0) > 0
@@ -5099,8 +5088,7 @@ struct BatchNormReduceStatisticsKernelFunctor {
         n += count;
       }
       mean[i] = avg;
-      invstd[i] =
-          static_cast<accscalar_t>(1) / sycl::sqrt(var_n / n + epsilon_);
+      invstd[i] = sycl::rsqrt(var_n / n + epsilon_);
       if (running_mean.data() != NULL) {
         running_mean[i] = static_cast<scalar_t>(
             (1 - momentum_) * running_mean[i] + momentum_ * avg);

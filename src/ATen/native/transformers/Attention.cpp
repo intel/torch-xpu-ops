@@ -97,7 +97,7 @@ std::tuple<Tensor, Tensor, Tensor> transform_bias_rescale_qkv_xpu(
 }
 
 static bool check_for_seq_len_1_nested_tensor(
-    sdp::sdp_params params,
+    const sdp::sdp_params& params,
     bool debug) {
   // When this function is called we are assured that the nt is dim==4
   if (!params.query.is_nested()) {

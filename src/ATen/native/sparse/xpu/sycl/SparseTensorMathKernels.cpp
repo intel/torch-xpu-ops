@@ -666,10 +666,10 @@ Tensor _sparse_sum_backward_kernel(
           at::empty_like(input_indices_1D, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
 
       pstl::lower_bound_tensor<int64_t>(
-          grad_indices_1D.data_ptr<int64_t>(),
-          grad_indices_1D.data_ptr<int64_t>() + grad_nnz,
-          input_indices_1D.data_ptr<int64_t>(),
-          input_indices_1D.data_ptr<int64_t>() + input_nnz,
+          grad_indices_1D.const_data_ptr<int64_t>(),
+          grad_indices_1D.const_data_ptr<int64_t>() + grad_nnz,
+          input_indices_1D.const_data_ptr<int64_t>(),
+          input_indices_1D.const_data_ptr<int64_t>() + input_nnz,
           input_indices_pos.data_ptr<int64_t>());
 
       auto grad_indices_ti = getTensorInfo<int64_t, int64_t>(grad_indices_1D);
