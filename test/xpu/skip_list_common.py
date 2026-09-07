@@ -79,6 +79,10 @@ skip_dict = {
         "test_view_copy_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
         "test_foward_mode_AD_xpu",
+        # skipped due to #4951: XPU enable_timing events (submit_profiling_tag)
+        # serialize otherwise-concurrent streams, so the backward-stream overlap
+        # this test measures cannot be observed. Pending an oneAPI runtime fix.
+        "test_side_stream_backward_overlap_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,
