@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import date
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
@@ -86,10 +87,15 @@ def render_draft(
         else UNIT_MARKER.format(unit_id=unit_id)
     )
     prefix = "[DRY RUN] " if dry_run else ""
+    scan_day = date.fromisoformat(scan_date)
+    dated_title = (
+        f"{ISSUE_TITLE_PREFIX} [{scan_day.year % 100}-{scan_day.month}-{scan_day.day}] "
+        f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
+    )
     return (
         f"{marker}\n"
         f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date, run_url=run_url)}\n"
-        f"### {prefix}{title}\n\n{body}\n"
+        f"### {prefix}{dated_title}\n\n{body}\n"
     )
 
 
