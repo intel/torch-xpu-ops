@@ -37,12 +37,8 @@ Not dependency values:
    templating it from `code` — the two are not always a mechanical match (e.g.
    `third_party_packages` -> `dependency component: third_party`).
 
-Special cases:
+Special case:
 
-- **Not yet in the repo.** A label carrying `"exists_in_repo": false` does not
-  exist in `intel/torch-xpu-ops` yet. `labels.md` is a proposal, so emit it anyway
-  and note in the reason that it must be created first. No current label is
-  flagged this way.
 - **Existing label.** If `extract.json`'s `dependency` is non-blank, it is the
   issue's existing label: preserve it, do not re-decide. Blank is not evidence of
   `none` — decide from the rules above.

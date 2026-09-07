@@ -571,7 +571,7 @@
       ]
     },
     "dependency": {
-      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and dependency_info.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only. 'code' is the bare taxonomy value the analysis resolves to; the emitted GitHub label is 'name'. 'exists_in_repo' is optional and defaults to true; a label that carries it as false must be created before applying and the reason must say so (no current label does).",
+      "description": "External dependency owner. A taxonomy value requires direct traceback/source/operator evidence that the failure originates in that component (see dependency.md and dependency_info.md); a library merely appearing in the call path never qualifies. This axis carries no 'keywords' by design -- unlike keyword-driven axes, it is evidence-only. 'code' is the bare taxonomy value the analysis resolves to; the emitted GitHub label is 'name'.",
       "labels": [
         {
           "name": "dependency component: driver",

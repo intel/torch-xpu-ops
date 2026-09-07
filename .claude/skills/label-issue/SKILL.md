@@ -59,7 +59,11 @@ axis's sources before deciding it; never decide from memory.
 
 Everything is written under
 `agent_space/label_issue/<repo_underscored>_issue_<id>/`, where
-`<repo_underscored>` replaces `/` with `_` (e.g. `intel_torch-xpu-ops`).
+`<repo_underscored>` replaces `/` with `_`. Create it first:
+
+```bash
+mkdir -p agent_space/label_issue/intel_torch-xpu-ops_issue_<id>
+```
 
 ### Step 1 — Extract
 
@@ -79,8 +83,7 @@ is fixed: a group's FIRST member in `extract.json` `test_cases` order, never
 reordered or re-ranked. With 0 or 1 `test_cases` entries there is one group and
 the issue as a whole is the representative case.
 
-Every axis below is decided for the representative case ONLY, and any case-count
-condition counts just the cases in THIS group, not the whole issue.
+Every axis below is decided for the representative case ONLY.
 
 **3.1 Root cause** — `reference/triage_issue.md` (mode split on `pytorch_folder`,
 `trace_mode` and `root_cause`).
@@ -111,15 +114,17 @@ section, under these shared rules:
 | Axis | JSON section | Kind | How to decide |
 |---|---|---|---|
 | type | `issue_type_field` | single | Match `values` by `evidence`/`keywords`. |
-| priority | `priority_field` | single | Evaluate tiers in severity order by `evidence`; fall back to the tier the JSON marks default. |
+| priority | `priority_field` | single | Evaluate tiers in severity order by `evidence`; fall back to the tier the JSON marks default. Case-count conditions count only the cases in THIS group, not the whole issue. |
 | module | `categories.module` | single | `labels` is ordered by decision priority: take the FIRST whose `evidence` is met, driven by the traced root cause. Tie-breaks are in the axis `description`. |
 | symptom | `categories.symptom` | multi | Evaluate EVERY label; issues routinely carry several (`regression` + `inference`, `Accuracy` + `training`). |
 | dtype | `categories.dtype` | multi | Follow the axis `description` and per-label `evidence`. |
 
-`os` / `hw` were already decided in Step 1 per `reference/platform_specific.md`;
-carry `extract.json`'s values straight through.
+`os` / `hw` were already decided in Step 1 per `reference/platform_specific.md`
+(emitted only when the issue is platform-specific); carry `extract.json`'s values
+straight through.
 
-**3.5 Dependency** — `reference/dependency.md`. Preserve a non-empty
+**3.5 Dependency** — `reference/dependency.md`. It returns exactly one value from
+`categories.dependency`, or `none`, or `null`. Preserve a non-empty
 `extract.json` `dependency`.
 
 ### Step 4 — Output

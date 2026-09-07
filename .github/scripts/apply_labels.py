@@ -209,7 +209,6 @@ def classify(rows, priority_order):
     types = []
     priorities = []
     single = {}  # single-label issue-wide axis -> list of distinct values
-    seen = set()
 
     for axis, value in rows:
         if axis == NATIVE_TYPE_AXIS:
@@ -230,8 +229,7 @@ def classify(rows, priority_order):
             if need_split and axis == "triage" and value in ("duplicate", "wontfix"):
                 continue
             # everything else is a label token, applied verbatim
-            if value not in seen:
-                seen.add(value)
+            if value not in labels:
                 labels.append(value)
 
     for axis, vals in single.items():
@@ -241,8 +239,7 @@ def classify(rows, priority_order):
                 f"applying no {axis} label\n"
             )
             continue
-        if vals[0] not in seen:
-            seen.add(vals[0])
+        if vals[0] not in labels:
             labels.append(vals[0])
 
     native_type = None
