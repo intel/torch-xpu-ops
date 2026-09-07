@@ -85,18 +85,39 @@ placeholders in the template.
 posts).** Leaf skills do NOT post to the issue — each returns its
 `<!-- agent:<name> -->` report block on stdout (per each leaf's own
 "the skill does not post comments" contract). The `issue-handler`
-orchestrator maintains **a single session comment** and appends each
-stage's block to it as the pipeline advances, rather than one comment
-per stage:
+orchestrator owns **a single session comment**, edits it in place as each
+stage completes, and never creates a second one:
 
-- Stage 3 (root-cause) **creates** the session comment with the
-  root-cause block.
-- Stage 4 (implement) **appends** its block to that same comment
-  (`gh issue comment --edit-last`, or locate the comment by its
-  `<!-- agent:session -->` marker and edit it in place) — not a new
-  comment.
-- Stage 5 (verify) **appends** the before/after result block to the
-  same comment.
+- The invoking workflow may hand over a comment it already created, in
+  `$SESSION_COMMENT_ID`. When that is set, adopt it as the session
+  comment; otherwise create one at Stage 1.
+- Stage 1 (triage) **fills** the comment: the `<!-- agent:session -->`
+  marker followed by the triage block, replacing whatever placeholder
+  text it held.
+- Stages 3-5 (root-cause, implement, verify) each **append** their block
+  to that same comment.
+- Stage 6 **appends** the closing summary: verdict, branch, caveats.
+
+Edit in place by id — read the current body, append, PATCH it back:
+
+```bash
+gh api "/repos/$OWNER/$REPO/issues/comments/$SESSION_COMMENT_ID" \
+  --jq .body > session_comment.md
+cat next_block.md >> session_comment.md
+gh api --method PATCH "/repos/$OWNER/$REPO/issues/comments/$SESSION_COMMENT_ID" \
+  -F body=@session_comment.md
+```
+
+`--raw-field` would post the literal string `@session_comment.md` as the
+comment; only `--field` reads the value from a file.
+
+Keep the accumulating body under 65000 chars (the GitHub limit is 65536,
+and a PATCH over it fails outright): if the diff in the implement block
+would blow past it, include the key hunks only.
+
+The comment is public and editing does not retract anything (edit history
+stays visible), so it carries stage reports only — never raw command
+output, environment, or credentials.
 
 The implement block shows the **diff** (`git diff --cached`, or the
 key hunks), not a prose description of what changed — the analysis
@@ -113,6 +134,7 @@ markers are sub-headings within that one comment.
 | `<!-- agent:root-cause -->` | `fix-root-cause` |
 | `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `fix-verify` |
+| `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
 | `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
 ### 4. Canonical section headings
@@ -129,8 +151,8 @@ Objective, Current Status`.
 ## Per-stage ownership summary
 
 - **Stage 1** (`issue-triage`) owns: the `<!-- agent:triage -->`
-  report block (returned to the orchestrator, which seeds the session
-  comment at Stage 3); the `agent:status:DISCOVERED → TRIAGING`
+  report block (returned to the orchestrator, which fills the session
+  comment with it); the `agent:status:DISCOVERED → TRIAGING`
   transition; section-heading skeleton.
 - **Stage 2** (`fix-reproduce`) owns: the `refined_command`
   extracted for downstream stages; the
@@ -139,8 +161,8 @@ Objective, Current Status`.
   comment on issue-handler pipeline runs (comments are for
   standalone `@torchxpubot reproduce` invocations).
 - **Stage 3** (`fix-root-cause`) owns: the `<!-- agent:root-cause -->`
-  report block (returned to the orchestrator, which creates the single
-  session comment from it); `Root Cause Analysis`, `Proposed
+  report block (returned to the orchestrator, which appends it to the
+  session comment); `Root Cause Analysis`, `Proposed
   Fix Strategy`, `Target Repository` sections filled in the issue
   body.
 - **Stage 4** (`fix-implement`) owns: the `<!-- agent:implement -->`
@@ -148,7 +170,8 @@ Objective, Current Status`.
   which appends it to the session comment.
 - **Stage 5** (`fix-verify`) owns: the `<!-- agent:verify -->` block.
 - **Stage 6** (the orchestrator's own wrap-up, not a leaf) owns: advancing
-  `agent:status` to the terminal value; final Action Items check;
+  `agent:status` to the terminal value; final Action Items check; the
+  `<!-- agent:summary -->` closing block appended to the session comment;
   in batch fan-out runs (Stage 1u), the `<!-- agent:batch-fanout -->`
   summary comment.
 
