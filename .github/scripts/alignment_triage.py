@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import date
 
 UNIT_MARKER = "<!-- alignment-unit: {unit_id} -->"
 DRY_RUN_UNIT_MARKER = "<!-- alignment-dry-run-unit: {run_id}:{unit_id} -->"
@@ -36,6 +37,8 @@ TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
+AUTO_FILE_LIMIT = 3
+AUTO_FIX_COMMAND = "@torchxpubot fix"
 # Unit ids become comment markers, file names and glob fragments, so they are
 # restricted to one plain token with no separator or metacharacter.
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -84,10 +87,15 @@ def render_draft(
         else UNIT_MARKER.format(unit_id=unit_id)
     )
     prefix = "[DRY RUN] " if dry_run else ""
+    scan_day = date.fromisoformat(scan_date)
+    dated_title = (
+        f"{ISSUE_TITLE_PREFIX} [{scan_day.year % 100}-{scan_day.month}-{scan_day.day}] "
+        f"{title.removeprefix(ISSUE_TITLE_PREFIX).lstrip()}"
+    )
     return (
         f"{marker}\n"
         f"{PROVENANCE_LINE.format(run_id=run_id, scan_date=scan_date, run_url=run_url)}\n"
-        f"### {prefix}{title}\n\n{body}\n"
+        f"### {prefix}{dated_title}\n\n{body}\n"
     )
 
 
@@ -101,9 +109,10 @@ def post_comment(repo: str, issue: int, body: str) -> int:
     return int(created["id"])
 
 
-def has_unit(comments: list[dict], unit_id: str) -> bool:
+def find_unit_comments(comments: list[dict], unit_id: str) -> list[dict]:
     marker = UNIT_MARKER.format(unit_id=unit_id)
-    return any(marker in (comment.get("body") or "") for comment in comments)
+    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
+    return sorted(matches, key=lambda comment: int(comment.get("id", 0)))
 
 
 def find_run_note(comments: list[dict], run_id: str) -> dict | None:
@@ -134,16 +143,6 @@ def render_run_note(
     if notify:
         parts += ["", notify]
     return "\n".join(parts) + "\n"
-
-
-def find_draft(comments: list[dict], unit_id: str) -> dict:
-    marker = UNIT_MARKER.format(unit_id=unit_id)
-    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
-    if not matches:
-        fail(f"No draft comment carries the marker for `{unit_id}`.")
-    if len(matches) > 1:
-        fail(f"{len(matches)} draft comments carry the marker for `{unit_id}`.")
-    return matches[0]
 
 
 def parse_draft(body: str, unit_id: str) -> tuple[str, str]:
@@ -196,14 +195,14 @@ def find_published_issue(repo: str, unit_id: str) -> str | None:
         page += 1
 
 
-def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
+def create_issue(repo: str, title: str, body: str, unit_id: str) -> tuple[str, bool]:
     if not title.startswith(ISSUE_TITLE_PREFIX):
         fail(f"Refusing to file `{title}`: the title must start with `{ISSUE_TITLE_PREFIX}`.")
     if not UNIT_ID_RE.fullmatch(unit_id):
         fail(f"Refusing to file an invalid unit id: `{unit_id}`.")
     existing = find_published_issue(repo, unit_id)
     if existing:
-        return existing
+        return existing, False
     published_body = f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
         handle.write(published_body)
@@ -212,7 +211,7 @@ def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
         command = ["issue", "create", "--repo", repo, "--title", title, "--body-file", body_file]
         for label in ISSUE_LABELS:
             command += ["--label", label]
-        return gh(command).strip().splitlines()[-1].strip()
+        return gh(command).strip().splitlines()[-1].strip(), True
     finally:
         os.unlink(body_file)
 
