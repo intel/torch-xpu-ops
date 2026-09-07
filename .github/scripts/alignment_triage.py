@@ -37,6 +37,7 @@ TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
 AUTO_FILE_LIMIT = 3
+AUTO_FIX_COMMAND = "@torchxpubot fix"
 # Unit ids become comment markers, file names and glob fragments, so they are
 # restricted to one plain token with no separator or metacharacter.
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -188,14 +189,14 @@ def find_published_issue(repo: str, unit_id: str) -> str | None:
         page += 1
 
 
-def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
+def create_issue(repo: str, title: str, body: str, unit_id: str) -> tuple[str, bool]:
     if not title.startswith(ISSUE_TITLE_PREFIX):
         fail(f"Refusing to file `{title}`: the title must start with `{ISSUE_TITLE_PREFIX}`.")
     if not UNIT_ID_RE.fullmatch(unit_id):
         fail(f"Refusing to file an invalid unit id: `{unit_id}`.")
     existing = find_published_issue(repo, unit_id)
     if existing:
-        return existing
+        return existing, False
     published_body = f"{PUBLISHED_UNIT_MARKER.format(unit_id=unit_id)}\n{body.rstrip()}\n"
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
         handle.write(published_body)
@@ -204,7 +205,7 @@ def create_issue(repo: str, title: str, body: str, unit_id: str) -> str:
         command = ["issue", "create", "--repo", repo, "--title", title, "--body-file", body_file]
         for label in ISSUE_LABELS:
             command += ["--label", label]
-        return gh(command).strip().splitlines()[-1].strip()
+        return gh(command).strip().splitlines()[-1].strip(), True
     finally:
         os.unlink(body_file)
 
