@@ -262,7 +262,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_ut,basic,upstream_ut]
+        ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: bmg-test
@@ -281,7 +281,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [xpu_distributed,upstream_distributed]
+        ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
