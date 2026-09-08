@@ -238,10 +238,10 @@ Field notes:
 
 `suggested_labels` is populated as follows:
 
-- If `reproduction_missing == true` → include `agent:reproduction-needed`.
 - If `handling == "needs-human"` → include `agent:needs-human`.
-- Empty array when neither applies (i.e. agent-fixable with a
-  reproducer).
+- Empty array otherwise. A missing reproducer needs no label of its
+  own: the orchestrator reports it as `SKIPPED(reproduction_missing)`
+  and applies `agent:skipped`.
 
 Scope and dependency values live in the JSON structure, not as labels.
 
