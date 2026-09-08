@@ -902,6 +902,47 @@ void batch_norm_stats_channels_last_template(
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
   bool use_vec_kernel = false;
 
+  // Try row-outer kernel first for n_chunks 2-4
+  using RowOuterKernel = WelfordBatchNormStatChannelsLastVecRowOuterKernelFunctor<
+      VarTransform,
+      scalar_t,
+      accscalar_t,
+      PREFERRED_VEC_SIZE>;
+
+  if (RowOuterKernel::valid(
+          reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
+    auto kfn = RowOuterKernel(
+        input_ptr,
+        out_mean_ptr,
+        out_invstd_ptr,
+        reduction_size,
+        stride,
+        nullptr,
+        nullptr,
+        epsilon);
+    kfn.init();
+
+    staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
+    semaphores = at::zeros(
+        {(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
+    accscalar_t* staging_data_ptr = kfn.num_cooperative_groups() > 1
+        ? staging_data.mutable_data_ptr<accscalar_t>()
+        : nullptr;
+    int* semaphores_ptr = kfn.num_cooperative_groups() > 1
+        ? semaphores.mutable_data_ptr<int>()
+        : nullptr;
+
+    bool use_row_outer = kfn.set_staging_data_check(staging_data_ptr);
+
+    if (use_row_outer) {
+      kfn.set_semaphores(semaphores_ptr);
+      sycl_kernel_submit(
+          kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      return;
+    }
+  }
+
+  // Original vec kernel for all other cases
   using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
