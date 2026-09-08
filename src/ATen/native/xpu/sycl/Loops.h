@@ -23,11 +23,69 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#include <cstdlib>
+#include <type_traits>
+
 using namespace at::xpu;
 
 namespace at {
 namespace native {
 namespace xpu {
+
+// Opt-in tag for the "improved" element-wise launcher (grid-stride loop +
+// fixed sub-group size on top of the existing vectorized load/store policies).
+// A functor derives from this tag to request the improved launch path for the
+// contiguous, no-dynamic-cast case; every other functor keeps the standard
+// path unchanged. The improved launcher reuses the functor's own math, so
+// numerics are identical to the regular path (no fast-math substitution).
+struct improved_elementwise_kernel_tag {};
+
+template <typename func_t>
+inline constexpr bool has_improved_elementwise_v =
+    std::is_base_of_v<improved_elementwise_kernel_tag, func_t>;
+
+// Runtime gate for the improved launcher (default off). On BMG the upstream
+// vectorized kernel is already near memory-bound peak, so the improved launcher
+// is opt-in only: set TORCH_XPU_IMPROVED_ELEMENTWISE=1 to enable it without a
+// rebuild. Read once (thread-safe magic static); set the env var before the
+// process starts.
+inline bool improved_elementwise_enabled() {
+  static const bool enabled = [] {
+    const char* v = std::getenv("TORCH_XPU_IMPROVED_ELEMENTWISE");
+    return v != nullptr && v[0] == '1';
+  }();
+  return enabled;
+}
+
+// Experimental override for the improved launcher's vector width. Set
+// TORCH_XPU_IMPROVED_VEC_SIZE=1|2|4|8|16 to force a specific per-work-item
+// vector width. The value is used verbatim (no clamp to the auto-selected
+// width), so you can probe widths above what can_vectorize_up_to() picks.
+// launch_improved_vectorized_kernel still enforces max_scalar_bytes * vec_size
+// <= 32, so widths that exceed that byte cap for the dtype (e.g. vec_size>16
+// for float32) will trip that TORCH_CHECK. A value of 0 (unset or invalid)
+// means "use the auto-selected width". Read once (thread-safe magic static);
+// set the env var before the process starts.
+inline int improved_vec_size_override() {
+  static const int forced = [] {
+    const char* v = std::getenv("TORCH_XPU_IMPROVED_VEC_SIZE");
+    if (v == nullptr) {
+      return 0;
+    }
+    int n = std::atoi(v);
+    switch (n) {
+      case 1:
+      case 2:
+      case 4:
+      case 8:
+      case 16:
+        return n;
+      default:
+        return 0;
+    }
+  }();
+  return forced;
+}
 
 template <int item_work_size, typename func_t, typename policy_t>
 inline void elementwise_kernel_helper(func_t f, policy_t policy) {
@@ -130,6 +188,61 @@ struct VectorizedElementwiseKernel {
   }
 
   VectorizedElementwiseKernel(
+      int numel,
+      const func_t f,
+      array_t data,
+      in_calc_t ic)
+      : numel_(numel), f_(f), data_(data), ic_(ic) {}
+
+ private:
+  int numel_;
+  const func_t f_;
+  array_t data_;
+  in_calc_t ic_;
+};
+
+// Improved variant of VectorizedElementwiseKernel: adds a grid-stride loop over
+// work-groups and a fixed sub-group size while reusing the exact same load/
+// store policies (so it works for any arity/dtype and produces identical
+// numerics). The launched grid is capped to the hardware work-group count, so
+// each work-group processes several group-sized chunks. This keeps more data
+// resident per work-group and reduces launch overhead vs. one group per chunk.
+template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
+struct ImprovedVectorizedElementwiseKernel {
+  SYCL_REQD_SUB_GROUP_SIZE(16) void operator()(
+      sycl::nd_item<1> item) const {
+    int grpsz = item.get_local_range(0);
+    int lid = item.get_local_id(0);
+    int group_work_size = vec_size * grpsz;
+    int num_groups = (numel_ + group_work_size - 1) / group_work_size;
+    int grid_groups = item.get_group_range(0);
+
+    for (int grpid = item.get_group(0); grpid < num_groups;
+         grpid += grid_groups) {
+      int remaining = numel_ - grpid * group_work_size;
+      if (remaining < group_work_size) {
+        auto oc = TrivialOffsetCalculator<1>();
+        auto l = at::native::memory::LoadWithoutCast();
+        auto s = at::native::memory::StoreWithoutCast();
+        auto policy = at::native::memory::policies::unroll<
+            vec_size,
+            array_t,
+            in_calc_t,
+            decltype(oc),
+            at::native::memory::LoadWithoutCast,
+            at::native::memory::StoreWithoutCast>(
+            data_, remaining, ic_, oc, l, s, lid, grpid, grpsz);
+        elementwise_kernel_helper<vec_size>(f_, policy);
+      } else {
+        auto policy = at::native::memory::policies::
+            vectorized<vec_size, array_t, in_calc_t>(
+                data_, ic_, lid, grpid, grpsz);
+        elementwise_kernel_helper<vec_size>(f_, policy);
+      }
+    }
+  }
+
+  ImprovedVectorizedElementwiseKernel(
       int numel,
       const func_t f,
       array_t data,
@@ -445,6 +558,66 @@ static inline void launch_vectorized_kernel(
   }
 }
 
+template <typename func_t, typename array_t, typename in_calc_t>
+static inline void launch_improved_vectorized_kernel(
+    int64_t N,
+    const func_t& f,
+    array_t data,
+    in_calc_t input_calc,
+    int vec_size) {
+  constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
+  TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
+  using traits = function_traits<func_t>;
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
+
+#define IMPROVED_VEC_KER(vec_size)                                    \
+  {                                                                   \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 32);                    \
+    if constexpr (max_scalar_bytes * vec_size <= 32) {               \
+      auto ker = ImprovedVectorizedElementwiseKernel<                \
+          vec_size,                                                   \
+          func_t,                                                     \
+          array_t,                                                    \
+          in_calc_t>(N, f, data, input_calc);                        \
+      int64_t num_wg_full = ceil_div<int64_t>(N, wg_sz * vec_size);   \
+      int64_t num_wg =                                                \
+          num_wg_full < hw_max_num_wg ? num_wg_full : hw_max_num_wg;  \
+      sycl_kernel_submit(                                             \
+          wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);         \
+    }                                                                 \
+  }
+
+  switch (vec_size) {
+    case 16:
+      IMPROVED_VEC_KER(16);
+      break;
+    case 8:
+      IMPROVED_VEC_KER(8);
+      break;
+    case 4:
+      IMPROVED_VEC_KER(4);
+      break;
+    case 2:
+      IMPROVED_VEC_KER(2);
+      break;
+    case 1: {
+      // vec_size == 1 offers no vectorization benefit; use the standard
+      // unrolled kernel (identical to launch_vectorized_kernel's fallback).
+      auto input_calc = TrivialOffsetCalculator<traits::arity>();
+      auto output_calc = TrivialOffsetCalculator<1>();
+      auto loader = memory::LoadWithoutCast();
+      auto storer = memory::StoreWithoutCast();
+      launch_unrolled_kernel(
+          N, f, data, input_calc, output_calc, loader, storer);
+      break;
+    }
+    default:
+      TORCH_INTERNAL_ASSERT(false, "Unexpected vectorization size");
+  }
+#undef IMPROVED_VEC_KER
+}
+
 template <
     int num_outputs,
     typename func_t,
@@ -530,6 +703,21 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
     vec_size = memory::can_vectorize_up_to<func_t>(data);
+    if constexpr (has_improved_elementwise_v<func_t>) {
+      if (improved_elementwise_enabled()) {
+        // Optional experiment: force a specific vector width (used verbatim,
+        // no clamp to the auto-selected max).
+        const int forced_vec_size = improved_vec_size_override();
+        if (forced_vec_size > 0) {
+          vec_size = forced_vec_size;
+        }
+        TORCH_WARN_ONCE(
+            "Using improved element-wise kernel (vec_size=", vec_size, ")");
+        launch_improved_vectorized_kernel(
+            numel, f, data, input_calc, vec_size);
+        return;
+      }
+    }
     launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
     return;
   } else {
