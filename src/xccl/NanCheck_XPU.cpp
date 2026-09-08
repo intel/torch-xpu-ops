@@ -213,6 +213,12 @@ void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream) {
   if (!tensor.is_floating_point()) {
     return;
   }
+  // Both report as floating point but are moved as opaque bytes: fp4 has no
+  // NaN encoding at all, and e8m0 is absent from the dispatch below.
+  if (tensor.scalar_type() == at::kFloat4_e2m1fn_x2 ||
+      tensor.scalar_type() == at::kFloat8_e8m0fnu) {
+    return;
+  }
   if (tensor.numel() == 0) {
     return;
   }
