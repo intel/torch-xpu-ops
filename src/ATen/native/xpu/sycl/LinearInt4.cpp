@@ -27,195 +27,169 @@ static inline size_t padto_le(size_t src, int padding) {
 }
 
 template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
-struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  LinearInt4KernelFunctor(
-      const scalar_t* A,
-      const uint8_t* B,
-      scalar_t* C,
-      const scalar_t* ScaleAndZeros,
-      int m,
-      int n,
-      int k,
-      int lda,
-      int ldb,
-      int ldc)
-      : A(A),
-        B(B),
-        C(C),
-        ScaleAndZeros(ScaleAndZeros),
-        m(m),
-        n(n),
-        k(k),
-        lda(lda),
-        ldb(ldb),
-        ldc(ldc) {}
-  void sycl_ker_config_convention(sycl::handler& cgh) {}
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<16>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>)) void linear_int4_kernel_(
+    const scalar_t* A,
+    const uint8_t* B,
+    scalar_t* C,
+    const scalar_t* ScaleAndZeros,
+    int m,
+    int n,
+    int k,
+    int lda,
+    int ldb,
+    int ldc) {
+  int constexpr Unroll = 2;
+  int constexpr SgSize = 16;
+  int constexpr blocksize = block_size;
+  using scalarx2_t = memory::aligned_vector<scalar_t, 2>;
+  int ld_scale_zp = 2 * n;
+  auto it = syclext::this_work_item::get_nd_item<1>();
+  if (k % (SgSize * 32 * Unroll) == 0) {
+    int constexpr TileK = 32;
+    int constexpr GroupK = SgSize * TileK;
 
-  SYCL_REQD_SUB_GROUP_SIZE(16) void operator()(sycl::nd_item<1> it) const {
-    int constexpr Unroll = 2;
-    int constexpr SgSize = 16;
-    int constexpr blocksize = block_size;
-    using scalarx2_t = memory::aligned_vector<scalar_t, 2>;
-    int ld_scale_zp = 2 * n;
-    if (k % (SgSize * 32 * Unroll) == 0) {
-      int constexpr TileK = 32;
-      int constexpr GroupK = SgSize * TileK;
+    int g_idx = it.get_group(0);
+    auto sg = it.get_sub_group();
+    int sg_id = sg.get_local_id()[0];
+    int g_n = g_idx;
+    auto sptr = ScaleAndZeros + g_n * 2;
+    auto zptr = ScaleAndZeros + g_n * 2 + 1;
+    auto bptr = B + g_n * k / 2;
+    auto aptr = A;
+    auto cptr = C + g_n;
 
-      int g_idx = it.get_group(0);
-      auto sg = it.get_sub_group();
-      int sg_id = sg.get_local_id()[0];
-      int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * 2;
-      auto zptr = ScaleAndZeros + g_n * 2 + 1;
-      auto bptr = B + g_n * k / 2;
-      auto aptr = A;
-      auto cptr = C + g_n;
-
-      float tmpAcc = 0.f;
-      for (int i = 0; i < k; i += GroupK * Unroll) {
+    float tmpAcc = 0.f;
+    for (int i = 0; i < k; i += GroupK * Unroll) {
 #pragma unroll
-        for (int iu = 0; iu < Unroll; iu++) {
-          const uint8_t* tmps8 =
-              reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
-          int scale_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
-          int zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_offset);
-          scalar_t zero_point = *(zptr + zp_offset);
+      for (int iu = 0; iu < Unroll; iu++) {
+        const uint8_t* tmps8 =
+            reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
+        int scale_offset = (sg_id * TileK) / blocksize * ld_scale_zp;
+        int zp_offset = (sg_id * TileK) / blocksize * ld_scale_zp;
+        scalar_t scale = *(sptr + scale_offset);
+        scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
-          for (int ikk = 0; ikk < TileK; ikk += 2) {
-            scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
-            scalarx2_t tmpB = {
-                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
-            scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-            tmpAcc += static_cast<float>(tmpAmulB[0]);
-            tmpAcc += static_cast<float>(tmpAmulB[1]);
-          }
-          sptr += (GroupK / blocksize) * ld_scale_zp;
-          zptr += (GroupK / blocksize) * ld_scale_zp;
-          aptr += GroupK;
-          bptr += GroupK / 2;
-        }
-      }
-      float sum = 0.f;
-      sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
-      if (sg_id == 0) {
-        *cptr = static_cast<scalar_t>(sum);
-      }
-    } else { // k % (SgSize * 32 * Unroll) != 0
-      int constexpr TileK = 32;
-      int constexpr GroupK = SgSize * TileK;
-      int k_body = padto_le(k, GroupK * Unroll);
-
-      int constexpr TileK2 = 8;
-      int constexpr GroupK2 = SgSize * TileK2;
-      int k_body2 = padto_le(k, GroupK2 * Unroll);
-      int g_idx = it.get_group(0);
-      auto sg = it.get_sub_group();
-      int sg_id = sg.get_local_id()[0];
-      int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * 2;
-      auto zptr = ScaleAndZeros + g_n * 2 + 1;
-      auto bptr = B + g_n * k / 2;
-      auto aptr = A;
-      auto cptr = C + g_n;
-      float tmpAcc = 0.f;
-      int i = 0;
-      for (; i < k_body; i += GroupK * Unroll) {
-#pragma unroll
-        for (int iu = 0; iu < Unroll; iu++) {
-          const uint8_t* tmps8 =
-              reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
-          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
-          int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
-
-          scalar_t scale = *(sptr + scale_offset);
-          scalar_t zero_point = *(zptr + zp_offset);
-#pragma unroll
-          for (int ikk = 0; ikk < TileK; ikk += 2) {
-            scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
-            scalarx2_t tmpB = {
-                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
-            scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-            tmpAcc += static_cast<float>(tmpAmulB[0]);
-            tmpAcc += static_cast<float>(tmpAmulB[1]);
-          }
-          sptr += (GroupK / blocksize) * ld_scale_zp;
-          zptr += (GroupK / blocksize) * ld_scale_zp;
-          aptr += GroupK;
-          bptr += GroupK / 2;
-        }
-      }
-      if (i + GroupK2 * Unroll < k_body2) {
-        for (; i < k_body2; i += GroupK2 * Unroll) {
-#pragma unroll
-          for (int iu = 0; iu < Unroll; iu++) {
-            const uint8_t* tmps8 =
-                reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK2 / 2);
-            int scale_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
-            int zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
-            scalar_t scale = *(sptr + scale_offset);
-            scalar_t zero_point = *(zptr + zp_offset);
-#pragma unroll
-            for (int ikk = 0; ikk < TileK2; ikk += 2) {
-              scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK2 + ikk);
-              scalarx2_t tmpB = {
-                  static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                  static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
-              scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-              tmpAcc += static_cast<float>(tmpAmulB[0]);
-              tmpAcc += static_cast<float>(tmpAmulB[1]);
-            }
-            sptr += (GroupK2 / blocksize) * ld_scale_zp;
-            zptr += (GroupK2 / blocksize) * ld_scale_zp;
-            aptr += GroupK2;
-            bptr += GroupK2 / 2;
-          }
-        }
-      }
-      if (i + SgSize * 2 <= k) {
-        for (; i < k; i += SgSize * 2) {
-          uint8_t tmps8 = *(bptr + sg_id);
-
-          int scale_zp_offset = (sg_id * 2 / blocksize) * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_zp_offset);
-          scalar_t zero_point = *(zptr + scale_zp_offset);
-
-          scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
+        for (int ikk = 0; ikk < TileK; ikk += 2) {
+          scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
           scalarx2_t tmpB = {
-              static_cast<scalar_t>((tmps8 & 0x0f) - 8),
-              static_cast<scalar_t>((tmps8 >> 4) - 8)};
+              static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+              static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
           scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
           tmpAcc += static_cast<float>(tmpAmulB[0]);
           tmpAcc += static_cast<float>(tmpAmulB[1]);
-          sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
-          zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
-          aptr += SgSize * 2;
-          bptr += SgSize * 2 / 2;
         }
-      }
-      float sum = 0.f;
-      sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
-
-      if (sg_id == 0) {
-        *cptr = static_cast<scalar_t>(sum);
+        sptr += (GroupK / blocksize) * ld_scale_zp;
+        zptr += (GroupK / blocksize) * ld_scale_zp;
+        aptr += GroupK;
+        bptr += GroupK / 2;
       }
     }
-  }
+    float sum = 0.f;
+    sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
+    if (sg_id == 0) {
+      *cptr = static_cast<scalar_t>(sum);
+    }
+  } else { // k % (SgSize * 32 * Unroll) != 0
+    int constexpr TileK = 32;
+    int constexpr GroupK = SgSize * TileK;
+    int k_body = padto_le(k, GroupK * Unroll);
 
- private:
-  const scalar_t* A;
-  const uint8_t* B;
-  scalar_t* C;
-  const scalar_t* ScaleAndZeros;
-  int m;
-  int n;
-  int k;
-  int lda;
-  int ldb;
-  int ldc;
-};
+    int constexpr TileK2 = 8;
+    int constexpr GroupK2 = SgSize * TileK2;
+    int k_body2 = padto_le(k, GroupK2 * Unroll);
+    int g_idx = it.get_group(0);
+    auto sg = it.get_sub_group();
+    int sg_id = sg.get_local_id()[0];
+    int g_n = g_idx;
+    auto sptr = ScaleAndZeros + g_n * 2;
+    auto zptr = ScaleAndZeros + g_n * 2 + 1;
+    auto bptr = B + g_n * k / 2;
+    auto aptr = A;
+    auto cptr = C + g_n;
+    float tmpAcc = 0.f;
+    int i = 0;
+    for (; i < k_body; i += GroupK * Unroll) {
+#pragma unroll
+      for (int iu = 0; iu < Unroll; iu++) {
+        const uint8_t* tmps8 =
+            reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK / 2);
+        int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
+        int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
+
+        scalar_t scale = *(sptr + scale_offset);
+        scalar_t zero_point = *(zptr + zp_offset);
+#pragma unroll
+        for (int ikk = 0; ikk < TileK; ikk += 2) {
+          scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
+          scalarx2_t tmpB = {
+              static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+              static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
+          scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
+          tmpAcc += static_cast<float>(tmpAmulB[0]);
+          tmpAcc += static_cast<float>(tmpAmulB[1]);
+        }
+        sptr += (GroupK / blocksize) * ld_scale_zp;
+        zptr += (GroupK / blocksize) * ld_scale_zp;
+        aptr += GroupK;
+        bptr += GroupK / 2;
+      }
+    }
+    if (i + GroupK2 * Unroll < k_body2) {
+      for (; i < k_body2; i += GroupK2 * Unroll) {
+#pragma unroll
+        for (int iu = 0; iu < Unroll; iu++) {
+          const uint8_t* tmps8 =
+              reinterpret_cast<const uint8_t*>(bptr + sg_id * TileK2 / 2);
+          int scale_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
+#pragma unroll
+          for (int ikk = 0; ikk < TileK2; ikk += 2) {
+            scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK2 + ikk);
+            scalarx2_t tmpB = {
+                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
+            scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            tmpAcc += static_cast<float>(tmpAmulB[0]);
+            tmpAcc += static_cast<float>(tmpAmulB[1]);
+          }
+          sptr += (GroupK2 / blocksize) * ld_scale_zp;
+          zptr += (GroupK2 / blocksize) * ld_scale_zp;
+          aptr += GroupK2;
+          bptr += GroupK2 / 2;
+        }
+      }
+    }
+    if (i + SgSize * 2 <= k) {
+      for (; i < k; i += SgSize * 2) {
+        uint8_t tmps8 = *(bptr + sg_id);
+
+        int scale_zp_offset = (sg_id * 2 / blocksize) * ld_scale_zp;
+        scalar_t scale = *(sptr + scale_zp_offset);
+        scalar_t zero_point = *(zptr + scale_zp_offset);
+
+        scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
+        scalarx2_t tmpB = {
+            static_cast<scalar_t>((tmps8 & 0x0f) - 8),
+            static_cast<scalar_t>((tmps8 >> 4) - 8)};
+        scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
+        tmpAcc += static_cast<float>(tmpAmulB[0]);
+        tmpAcc += static_cast<float>(tmpAmulB[1]);
+        sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
+        zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
+        aptr += SgSize * 2;
+        bptr += SgSize * 2 / 2;
+      }
+    }
+    float sum = 0.f;
+    sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
+    if (sg_id == 0) {
+      *cptr = static_cast<scalar_t>(sum);
+    }
+  }
+}
 
 void linear_int4_kernel(
     const Tensor& A,
@@ -250,7 +224,12 @@ void linear_int4_kernel(
 
         switch (qGroupSize) {
           case 16: {
-            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 16>(
+            constexpr auto kfn = linear_int4_kernel_<scalar_sycl_t, 16>;
+            sycl_kernel_submit<kfn>(
+                global_range,
+                local_range,
+                sycl_queue,
+                0,
                 input_data,
                 weight_data,
                 output_data,
@@ -261,11 +240,15 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 32: {
-            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 32>(
+            constexpr auto kfn = linear_int4_kernel_<scalar_sycl_t, 32>;
+            sycl_kernel_submit<kfn>(
+                global_range,
+                local_range,
+                sycl_queue,
+                0,
                 input_data,
                 weight_data,
                 output_data,
@@ -276,11 +259,15 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 64: {
-            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 64>(
+            constexpr auto kfn = linear_int4_kernel_<scalar_sycl_t, 64>;
+            sycl_kernel_submit<kfn>(
+                global_range,
+                local_range,
+                sycl_queue,
+                0,
                 input_data,
                 weight_data,
                 output_data,
@@ -291,11 +278,15 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 128: {
-            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 128>(
+            constexpr auto kfn = linear_int4_kernel_<scalar_sycl_t, 128>;
+            sycl_kernel_submit<kfn>(
+                global_range,
+                local_range,
+                sycl_queue,
+                0,
                 input_data,
                 weight_data,
                 output_data,
@@ -306,11 +297,15 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 256: {
-            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 256>(
+            constexpr auto kfn = linear_int4_kernel_<scalar_sycl_t, 256>;
+            sycl_kernel_submit<kfn>(
+                global_range,
+                local_range,
+                sycl_queue,
+                0,
                 input_data,
                 weight_data,
                 output_data,
@@ -321,7 +316,6 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
         }
