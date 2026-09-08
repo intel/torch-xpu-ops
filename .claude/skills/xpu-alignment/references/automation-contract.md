@@ -205,7 +205,7 @@ writes one result for every execution-plan entry:
   "results": [{
     "id": "issue-123",
     "script_sha256": "...",
-    "command": ["/usr/bin/python3", "scripts/repro_issue-123.py"],
+    "command": ["/usr/bin/python3", "-I", "-u", "scripts/repro_issue-123.py"],
     "log": "runner/logs/issue-123.log",
     "log_sha256": "...",
     "returncode": 0,
@@ -285,7 +285,7 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
   "units": [{
     "id": "issue-123",
     "verdict": "needs-xpu-fix",
-    "implementation_repository": "intel/torch-xpu-ops",
+    "implementation_repository": "pytorch/pytorch",
     "canonical_tracker": null,
     "payload": {
       "title": "[xpu-alignment] ...",
@@ -298,8 +298,11 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. `status: blocked`
-lists blockers and contains no payloads. When an existing
+`needs-xpu-fix` without a canonical tracker has a payload, and every payload
+targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`needs-xpu-fix` and `track-upstream` and unused otherwise; the
+[evidence reference](evidence.md) defines which repository to name.
+`status: blocked` lists blockers and contains no payloads. When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.
 
@@ -316,10 +319,21 @@ payload ownership, and payload shape.
 
 Clean producer jobs and complete artifact coverage are required for publication.
 An individual runner-backed unit blocker excludes only that unit; it does not
-invalidate other fully covered, independently reviewed payloads. Exactly one
-review-approved scheduled payload is filed automatically, while two or more go
-to human triage. The same policy applies to a structurally valid partial
-collection, but the workflow also publishes the source progress and errors,
-notifies maintainers for a scheduled run, and finishes red. Dry runs never file
-and never notify. A malformed collection, incomplete coverage, environment core
-failure, or producer job failure publishes only a blocker summary.
+invalidate other fully covered, independently reviewed payloads. A scheduled run
+automatically files all review-approved payloads when there are one to three.
+With four or more payloads, it publishes every candidate as a draft for manual
+handling and files none automatically. The same policy applies to a structurally
+valid partial collection, but the workflow also publishes the source progress
+and errors, notifies maintainers for a scheduled run, and finishes red. Source
+progress is also shown when a partial collection has an unrelated global
+blocker. Dry runs publish drafts only and never notify. A malformed collection,
+incomplete coverage, environment core failure, or producer job failure publishes
+only a blocker summary.
+
+The gate records `run_state` as `complete`, `complete-with-warnings`, `partial`,
+or `failed`; the publisher uses this value for the Run Summary and workflow
+status. An automatically created issue is published by `torchxpubot`. Draft and
+issue titles include the UTC scan date
+after the `[xpu-alignment]` prefix. The publishing and cost-comment steps use the
+repository's `MERGE_TOKEN` so their author remains `torchxpubot`; agents never
+receive that token.

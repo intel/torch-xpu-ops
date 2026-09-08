@@ -69,8 +69,12 @@ Apply the matching GitHub label when advancing the marker:
 |----------|-------|
 | DISCOVERED, TRIAGING, REPRODUCING, IMPLEMENTING, VERIFYING | `agent:active` |
 | TRIAGED | `agent:triaged` |
-| DONE, SKIPPED | `agent:done` |
+| DONE | `agent:done` |
+| SKIPPED | `agent:skipped` |
 | NEEDS_HUMAN | `agent:needs-human` |
+
+Always exactly one of these five: swap the old one for the new one,
+never leave the issue with none.
 
 The `agent:active` label sticks across all in-progress stages so
 external filters (dashboards, CI monitors) can bucket "currently
@@ -96,7 +100,9 @@ stage completes, and never creates a second one:
   text it held.
 - Stages 3-5 (root-cause, implement, verify) each **append** their block
   to that same comment.
-- Stage 6 **appends** the closing summary: verdict, branch, caveats.
+- Stage 6 **appends** the closing summary: verdict, branch, caveats. Its
+  `**Outcome:**` line goes at the top instead, with the reason:
+  `SKIPPED(no_longer_reproduces)`, never bare `SKIPPED`.
 
 Edit in place by id — read the current body, append, PATCH it back:
 
