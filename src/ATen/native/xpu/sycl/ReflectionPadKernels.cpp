@@ -89,36 +89,21 @@ inline std::pair<int64_t, int64_t> get_index_mapping2d(
 }
 
 template <typename scalar_t>
-struct ReflectionPad1dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_x = item.get_global_id(2);
-
-    if (output_x < output_w_) {
-      // input index and output index mapping
-      auto index_pair =
-          get_index_mapping1d(input_w_, output_w_, output_x, pad_l_, item);
-      output_data_[index_pair.second] = input_data_[index_pair.first];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void reflection_pad1d_kernel(
+    const scalar_t* input_data,
+    scalar_t* output_data,
+    int64_t input_w,
+    int64_t pad_l,
+    int64_t output_w) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_x = item.get_global_id(2);
+  if (output_x < output_w) {
+    auto index_pair =
+        get_index_mapping1d(input_w, output_w, output_x, pad_l, item);
+    output_data[index_pair.second] = input_data[index_pair.first];
   }
-  ReflectionPad1dKernelFunctor(
-      const scalar_t* input_data,
-      scalar_t* output_data,
-      int64_t input_w,
-      int64_t pad_l,
-      int64_t output_w)
-      : input_data_(input_data),
-        output_data_(output_data),
-        input_w_(input_w),
-        pad_l_(pad_l),
-        output_w_(output_w) {}
-
- private:
-  const scalar_t* input_data_;
-  scalar_t* output_data_;
-  int64_t input_w_;
-  int64_t pad_l_;
-  int64_t output_w_;
-};
+}
 
 template <typename scalar_t>
 void reflection_pad1d_template(
@@ -133,49 +118,36 @@ void reflection_pad1d_template(
   auto queue = getCurrentSYCLQueue();
   int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
-
-  ReflectionPad1dKernelFunctor<scalar_t> kfn(
-      input, output, input_w, pad_l, output_w);
-  sycl_kernel_submit(
+  sycl_kernel_submit<reflection_pad1d_kernel<scalar_t>, 3>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
+      0,
+      input,
+      output,
+      input_w,
+      pad_l,
+      output_w);
 }
 
 template <typename scalar_t>
-struct ReflectionPad1dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_x = item.get_global_id(2);
-
-    if (output_x < output_w_) {
-      // grad input index and grad output index mapping
-      auto index_pair =
-          get_index_mapping1d(input_w_, output_w_, output_x, pad_l_, item);
-      atomicAdd(
-          (sycl_global_ptr<scalar_t>)&grad_input_data_[index_pair.first],
-          grad_output_data_[index_pair.second]);
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void reflection_pad1d_backward_kernel(
+    scalar_t* grad_input_data,
+    const scalar_t* grad_output_data,
+    int64_t input_w,
+    int64_t pad_l,
+    int64_t output_w) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_x = item.get_global_id(2);
+  if (output_x < output_w) {
+    auto index_pair =
+        get_index_mapping1d(input_w, output_w, output_x, pad_l, item);
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&grad_input_data[index_pair.first],
+        grad_output_data[index_pair.second]);
   }
-  ReflectionPad1dBackwardKernelFunctor(
-      scalar_t* grad_input_data,
-      const scalar_t* grad_output_data,
-      int64_t input_w,
-      int64_t pad_l,
-      int64_t output_w)
-      : grad_input_data_(grad_input_data),
-        grad_output_data_(grad_output_data),
-        input_w_(input_w),
-        pad_l_(pad_l),
-        output_w_(output_w) {}
-
- private:
-  scalar_t* grad_input_data_;
-  const scalar_t* grad_output_data_;
-  int64_t input_w_;
-  int64_t pad_l_;
-  int64_t output_w_;
-};
+}
 
 template <typename scalar_t>
 void reflection_pad1d_backward_template(
@@ -190,63 +162,44 @@ void reflection_pad1d_backward_template(
   auto queue = getCurrentSYCLQueue();
   int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
-
-  ReflectionPad1dBackwardKernelFunctor<scalar_t> kfn(
-      grad_input, grad_output, input_w, pad_l, output_w);
-  sycl_kernel_submit(
+  sycl_kernel_submit<reflection_pad1d_backward_kernel<scalar_t>, 3>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
+      0,
+      grad_input,
+      grad_output,
+      input_w,
+      pad_l,
+      output_w);
 }
 
 template <typename scalar_t>
-struct ReflectionPad2dKernellFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_xy = item.get_global_id(2);
-
-    if (output_xy < output_dim_x_ * output_dim_y_) {
-      // input index and output index mapping
-      auto index_pair = get_index_mapping2d(
-          input_dim_x_,
-          input_dim_y_,
-          output_dim_x_,
-          output_dim_y_,
-          pad_l_,
-          pad_t_,
-          output_xy,
-          item);
-      output_[index_pair.second] = input_[index_pair.first];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void reflection_pad2d_kernel(
+    const scalar_t* input,
+    scalar_t* output,
+    int64_t input_dim_x,
+    int64_t input_dim_y,
+    int64_t pad_l,
+    int64_t pad_t,
+    int64_t output_dim_x,
+    int64_t output_dim_y) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_xy = item.get_global_id(2);
+  if (output_xy < output_dim_x * output_dim_y) {
+    auto index_pair = get_index_mapping2d(
+        input_dim_x,
+        input_dim_y,
+        output_dim_x,
+        output_dim_y,
+        pad_l,
+        pad_t,
+        output_xy,
+        item);
+    output[index_pair.second] = input[index_pair.first];
   }
-  ReflectionPad2dKernellFunctor(
-      const scalar_t* input,
-      scalar_t* output,
-      int64_t input_dim_x,
-      int64_t input_dim_y,
-      int64_t pad_t,
-      int64_t pad_l,
-      int64_t output_dim_x,
-      int64_t output_dim_y)
-      : input_(input),
-        output_(output),
-        input_dim_x_(input_dim_x),
-        input_dim_y_(input_dim_y),
-        pad_t_(pad_t),
-        pad_l_(pad_l),
-        output_dim_x_(output_dim_x),
-        output_dim_y_(output_dim_y) {}
-
- private:
-  const scalar_t* input_;
-  scalar_t* output_;
-  int64_t input_dim_x_;
-  int64_t input_dim_y_;
-  int64_t pad_t_;
-  int64_t pad_l_;
-  int64_t output_dim_x_;
-  int64_t output_dim_y_;
-};
+}
 
 template <typename scalar_t>
 void reflection_pad2d_template(
@@ -267,72 +220,49 @@ void reflection_pad2d_template(
   int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
-
-  ReflectionPad2dKernellFunctor<scalar_t> kfn(
+  sycl_kernel_submit<reflection_pad2d_kernel<scalar_t>, 3>(
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
+      queue,
+      0,
       input,
       output,
       input_dim_x,
       input_dim_y,
-      pad_t,
       pad_l,
+      pad_t,
       output_dim_x,
       output_dim_y);
-  sycl_kernel_submit(
-      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
-      sycl::range<3>(1, 1, work_group_size),
-      queue,
-      kfn);
 }
 
 template <typename scalar_t>
-struct ReflectionPad2dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_xy = item.get_global_id(2);
-
-    if (output_xy < output_dim_x_ * output_dim_y_) {
-      // grad input index and grad output index mapping
-      auto index_pair = get_index_mapping2d(
-          input_dim_x_,
-          input_dim_y_,
-          output_dim_x_,
-          output_dim_y_,
-          pad_l_,
-          pad_t_,
-          output_xy,
-          item);
-      atomicAdd(
-          (sycl_global_ptr<scalar_t>)&grad_input_[index_pair.first],
-          grad_output_[index_pair.second]);
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void reflection_pad2d_backward_kernel(
+    scalar_t* grad_input,
+    const scalar_t* grad_output,
+    int64_t input_dim_x,
+    int64_t input_dim_y,
+    int64_t pad_l,
+    int64_t pad_t,
+    int64_t output_dim_x,
+    int64_t output_dim_y) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_xy = item.get_global_id(2);
+  if (output_xy < output_dim_x * output_dim_y) {
+    auto index_pair = get_index_mapping2d(
+        input_dim_x,
+        input_dim_y,
+        output_dim_x,
+        output_dim_y,
+        pad_l,
+        pad_t,
+        output_xy,
+        item);
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&grad_input[index_pair.first],
+        grad_output[index_pair.second]);
   }
-  ReflectionPad2dBackwardKernelFunctor(
-      scalar_t* grad_input,
-      const scalar_t* grad_output,
-      int64_t input_dim_x,
-      int64_t input_dim_y,
-      int64_t pad_t,
-      int64_t pad_l,
-      int64_t output_dim_x,
-      int64_t output_dim_y)
-      : grad_input_(grad_input),
-        grad_output_(grad_output),
-        input_dim_x_(input_dim_x),
-        input_dim_y_(input_dim_y),
-        pad_t_(pad_t),
-        pad_l_(pad_l),
-        output_dim_x_(output_dim_x),
-        output_dim_y_(output_dim_y) {}
-
- private:
-  scalar_t* grad_input_;
-  const scalar_t* grad_output_;
-  int64_t input_dim_x_;
-  int64_t input_dim_y_;
-  int64_t pad_t_;
-  int64_t pad_l_;
-  int64_t output_dim_x_;
-  int64_t output_dim_y_;
-};
+}
 
 template <typename scalar_t>
 void reflection_pad2d_backward_template(
@@ -352,309 +282,62 @@ void reflection_pad2d_backward_template(
   int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
-
-  ReflectionPad2dBackwardKernelFunctor<scalar_t> kfn(
-      grad_input,
-      grad_output,
-      input_dim_x,
-      input_dim_y,
-      pad_t,
-      pad_l,
-      output_dim_x,
-      output_dim_y);
-  sycl_kernel_submit(
+  sycl_kernel_submit<reflection_pad2d_backward_kernel<scalar_t>, 3>(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
       queue,
-      kfn);
-}
-
-template <typename scalar_t>
-struct ReflectionPad2dBackwardDetKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    const int64_t tid = static_cast<int64_t>(item.get_global_id(0));
-
-    const int64_t width = input_dim_x_ + pad_left_ + pad_right_;
-    const int64_t height = input_dim_y_ + pad_top_ + pad_bottom_;
-    const int64_t N = height * width;
-
-    const int64_t end = nbatch_ * nplane_ * input_dim_y_ * input_dim_x_;
-
-    if (tid >= end) {
-      return;
-    }
-    // linear index over B*C*H*W (contiguous)
-    const int64_t pos_xy = tid % (input_dim_x_ * input_dim_y_);
-    const int64_t inp_row = pos_xy / input_dim_x_;
-    const int64_t inp_col = pos_xy % input_dim_x_;
-
-    const int64_t bottom_row = input_dim_y_ - 1;
-    const int64_t rightmost_col = input_dim_x_ - 1;
-    const int64_t dist_from_bottom = sycl::abs(inp_row - bottom_row);
-    const int64_t dist_from_right = sycl::abs(inp_col - rightmost_col);
-
-    const bool is_top = (inp_row >= 1) && (inp_row <= pad_top_);
-    const bool is_bottom =
-        (inp_row < bottom_row) && (inp_row >= bottom_row - pad_bottom_);
-    const bool is_left = (inp_col >= 1) && (inp_col <= pad_left_);
-    const bool is_right =
-        (inp_col < rightmost_col) && (inp_col >= rightmost_col - pad_right_);
-
-    // Accumulate grad_output at reflected output position (row, col)
-    // into partial, if the linearized index falls within [0, N).
-    scalar_t partial = static_cast<scalar_t>(0);
-
-    const int64_t batch_idx = tid / (nplane_ * input_dim_x_ * input_dim_y_);
-    const int64_t channel_idx = (tid / (input_dim_x_ * input_dim_y_)) % nplane_;
-    const int64_t grad_output_base_offset =
-        batch_idx * (nplane_ * N) + channel_idx * N;
-
-    auto accum_grad_at = [&](int64_t row, int64_t col) {
-      const int64_t idx = row * width + col;
-      if (idx >= 0 && idx < N) {
-        partial += grad_output_[grad_output_base_offset + idx];
-      }
-    };
-
-    if (is_top) {
-      // Reflect across the top border: row mirrors above pad_top_,
-      // column stays at its padded position.
-      accum_grad_at(pad_top_ - inp_row, pad_left_ + inp_col);
-
-      if (is_left) { // top-left corner
-        // Row mirrors above pad_top_, column mirrors left of pad_left_.
-        accum_grad_at(pad_top_ - inp_row, pad_left_ - inp_col);
-      } else if (is_right) { // top-right corner
-        // Row mirrors above pad_top_, column mirrors right of
-        // the right border at pad_left_ + rightmost_col,
-        // offset by the distance from inp_col to the right edge.
-        accum_grad_at(
-            pad_top_ - inp_row, pad_left_ + rightmost_col + dist_from_right);
-      }
-    }
-
-    if (is_bottom) {
-      // Reflect across the bottom border: row mirrors below
-      // pad_top_ + bottom_row, column stays at its padded position.
-      accum_grad_at(
-          pad_top_ + bottom_row + dist_from_bottom, pad_left_ + inp_col);
-
-      if (is_left) { // bottom-left corner
-        // Row mirrors below pad_top_ + bottom_row, column mirrors
-        // left of pad_left_, offset by inp_col.
-        accum_grad_at(
-            pad_top_ + bottom_row + dist_from_bottom, pad_left_ - inp_col);
-      } else if (is_right) { // bottom-right corner
-        // Row mirrors below pad_top_ + bottom_row, column mirrors right
-        // of the right border at pad_left_ + rightmost_col,
-        // each offset by their respective distances from the corner.
-        accum_grad_at(
-            pad_top_ + bottom_row + dist_from_bottom,
-            pad_left_ + rightmost_col + dist_from_right);
-      }
-    }
-
-    if (is_left) {
-      // Reflect across the left border: row stays at its padded
-      // position, column mirrors left of pad_left_.
-      accum_grad_at(inp_row + pad_top_, pad_left_ - inp_col);
-    }
-
-    if (is_right) {
-      // Reflect across the right border: row stays at its padded
-      // position, column mirrors right of pad_left_ + rightmost_col,
-      // offset by the distance from inp_col to the right edge.
-      accum_grad_at(
-          inp_row + pad_top_, pad_left_ + rightmost_col + dist_from_right);
-    }
-
-    // Center (always): direct padded position, no reflection.
-    accum_grad_at(inp_row + pad_top_, inp_col + pad_left_);
-
-    grad_input_[tid] = partial;
-  }
-
-  ReflectionPad2dBackwardDetKernelFunctor(
-      scalar_t* grad_input,
-      const scalar_t* grad_output,
-      int64_t input_dim_x,
-      int64_t input_dim_y,
-      int64_t pad_t,
-      int64_t pad_b,
-      int64_t pad_l,
-      int64_t pad_r,
-      int64_t nbatch,
-      int64_t nplane)
-      : grad_input_(grad_input),
-        grad_output_(grad_output),
-        input_dim_x_(input_dim_x),
-        input_dim_y_(input_dim_y),
-        pad_top_(pad_t),
-        pad_bottom_(pad_b),
-        pad_left_(pad_l),
-        pad_right_(pad_r),
-        nbatch_(nbatch),
-        nplane_(nplane) {}
-
- private:
-  scalar_t* grad_input_;
-  const scalar_t* grad_output_;
-  int64_t input_dim_x_;
-  int64_t input_dim_y_;
-  int64_t pad_top_;
-  int64_t pad_bottom_;
-  int64_t pad_left_;
-  int64_t pad_right_;
-  int64_t nbatch_;
-  int64_t nplane_;
-};
-
-template <typename scalar_t>
-void reflection_pad2d_backward_det_template(
-    scalar_t* grad_input,
-    const scalar_t* grad_output,
-    int64_t input_dim_x,
-    int64_t input_dim_y,
-    int64_t pad_t,
-    int64_t pad_b,
-    int64_t pad_l,
-    int64_t pad_r,
-    int64_t nbatch,
-    int64_t nplane) {
-  auto queue = getCurrentSYCLQueue();
-  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
-
-  const int64_t total_elements = nbatch * nplane * input_dim_x * input_dim_y;
-  const int64_t work_group_num = at::ceil_div(total_elements, work_group_size);
-
-  ReflectionPad2dBackwardDetKernelFunctor<scalar_t> kfn(
+      0,
       grad_input,
       grad_output,
       input_dim_x,
       input_dim_y,
-      pad_t,
-      pad_b,
       pad_l,
-      pad_r,
-      nbatch,
-      nplane);
-
-  // Use a flat 1D range for one work-item per input element.
-  sycl_kernel_submit(
-      sycl::range<1>(work_group_size * work_group_num),
-      sycl::range<1>(work_group_size),
-      queue,
-      kfn);
+      pad_t,
+      output_dim_x,
+      output_dim_y);
 }
 
-template <typename input_scalar_t, typename output_scalar_t, typename F>
-struct ParallelReflectionPad3dKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    auto output_id = item.get_global_id(2);
-    if (output_id >= output_plane_size_) {
-      return;
-    }
-
-    int64_t output_x = output_id % output_.size(4);
-    int64_t output_y = (output_id / output_.size(4)) % output_.size(3);
-    int64_t output_z = output_id / (output_.size(3) * output_.size(4));
-
-    int64_t i_start_x = std::max(int64_t(0), -pad_left_);
-    int64_t o_start_x = std::max(int64_t(0), pad_left_);
-    int64_t i_start_y = std::max(int64_t(0), -pad_top_);
-    int64_t o_start_y = std::max(int64_t(0), pad_top_);
-    int64_t i_start_z = std::max(int64_t(0), -pad_front_);
-    int64_t o_start_z = std::max(int64_t(0), pad_front_);
-
-    int64_t input_x = sycl::abs(output_x - pad_left_) -
-        sycl::abs(output_x - (input_.size(4) + pad_left_ - 1)) - output_x +
-        2 * pad_left_ + input_.size(4) - 1 - o_start_x + i_start_x;
-    int64_t input_y = sycl::abs(output_y - pad_top_) -
-        sycl::abs(output_y - (input_.size(3) + pad_top_ - 1)) - output_y +
-        2 * pad_top_ + input_.size(3) - 1 - o_start_y + i_start_y;
-
-    int64_t input_z = sycl::abs(output_z - pad_front_) -
-        sycl::abs(output_z - (input_.size(2) + pad_front_ - 1)) - output_z +
-        2 * pad_front_ + input_.size(2) - 1 - o_start_z + i_start_z;
-
-    f_(input_,
-       output_,
-       item.get_group(1),
-       item.get_group(0),
-       output_z,
-       output_y,
-       output_x,
-       input_z,
-       input_y,
-       input_x);
-  }
-  ParallelReflectionPad3dKernelFunctor(
-      PackedTensorAccessor64<input_scalar_t, 5> input,
-      PackedTensorAccessor64<output_scalar_t, 5> output,
-      int64_t pad_left,
-      int64_t pad_top,
-      int64_t pad_front,
-      const F f,
-      int64_t output_plane_size)
-      : input_(input),
-        output_(output),
-        pad_left_(pad_left),
-        pad_top_(pad_top),
-        pad_front_(pad_front),
-        f_(f),
-        output_plane_size_(output_plane_size) {}
-
- private:
-  PackedTensorAccessor64<input_scalar_t, 5> input_;
-  PackedTensorAccessor64<output_scalar_t, 5> output_;
-  int64_t pad_left_;
-  int64_t pad_top_;
-  int64_t pad_front_;
-  const F f_;
-  int64_t output_plane_size_;
-};
-
-template <typename input_scalar_t, typename output_scalar_t, typename F>
-inline void parallel_reflection_pad3d(
-    PackedTensorAccessor64<input_scalar_t, 5> input,
-    PackedTensorAccessor64<output_scalar_t, 5> output,
+template <typename scalar_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void parallel_reflection_pad3d_kernel(
+    PackedTensorAccessor64<const scalar_t, 5> input,
+    PackedTensorAccessor64<scalar_t, 5> output,
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front,
-    const F& f) {
-  auto queue = getCurrentSYCLQueue();
-  int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
-  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
-  int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
-  int64_t nplane = input.size(1);
-  int64_t nbatch = input.size(0);
-
-  ParallelReflectionPad3dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
-      input, output, pad_left, pad_top, pad_front, f, output_plane_size);
-  sycl_kernel_submit(
-      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
-      sycl::range<3>(1, 1, work_group_size),
-      queue,
-      kfn);
-}
-
-template <typename scalar_t>
-struct reflection_pad3d_kernel_functor {
-  void operator()(
-      PackedTensorAccessor64<const scalar_t, 5> input,
-      PackedTensorAccessor64<scalar_t, 5> output,
-      int64_t plane,
-      int64_t batch,
-      int64_t output_z,
-      int64_t output_y,
-      int64_t output_x,
-      int64_t input_z,
-      int64_t input_y,
-      int64_t input_x) const {
-    auto value_to_copy = input[batch][plane][input_z][input_y][input_x];
-    output[batch][plane][output_z][output_y][output_x] = value_to_copy;
+    int64_t output_plane_size) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_id = item.get_global_id(2);
+  if (output_id >= output_plane_size) {
+    return;
   }
-};
+
+  int64_t output_x = output_id % output.size(4);
+  int64_t output_y = (output_id / output.size(4)) % output.size(3);
+  int64_t output_z = output_id / (output.size(3) * output.size(4));
+
+  int64_t i_start_x = std::max(int64_t(0), -pad_left);
+  int64_t o_start_x = std::max(int64_t(0), pad_left);
+  int64_t i_start_y = std::max(int64_t(0), -pad_top);
+  int64_t o_start_y = std::max(int64_t(0), pad_top);
+  int64_t i_start_z = std::max(int64_t(0), -pad_front);
+  int64_t o_start_z = std::max(int64_t(0), pad_front);
+
+  int64_t input_x = std::abs(output_x - pad_left) -
+      std::abs(output_x - (input.size(4) + pad_left - 1)) - output_x +
+      2 * pad_left + input.size(4) - 1 - o_start_x + i_start_x;
+  int64_t input_y = std::abs(output_y - pad_top) -
+      std::abs(output_y - (input.size(3) + pad_top - 1)) - output_y +
+      2 * pad_top + input.size(3) - 1 - o_start_y + i_start_y;
+  int64_t input_z = std::abs(output_z - pad_front) -
+      std::abs(output_z - (input.size(2) + pad_front - 1)) - output_z +
+      2 * pad_front + input.size(2) - 1 - o_start_z + i_start_z;
+
+  int64_t batch = item.get_group(0);
+  int64_t plane = item.get_group(1);
+  output[batch][plane][output_z][output_y][output_x] =
+      input[batch][plane][input_z][input_y][input_x];
+}
 
 template <typename scalar_t>
 void reflection_pad3d_template(
@@ -663,29 +346,68 @@ void reflection_pad3d_template(
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
-  reflection_pad3d_kernel_functor<scalar_t> f;
-  parallel_reflection_pad3d(input, output, pad_left, pad_top, pad_front, f);
+  auto queue = getCurrentSYCLQueue();
+  int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
+  int64_t nplane = input.size(1);
+  int64_t nbatch = input.size(0);
+  sycl_kernel_submit<parallel_reflection_pad3d_kernel<scalar_t>, 3>(
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
+      queue,
+      0,
+      input,
+      output,
+      pad_left,
+      pad_top,
+      pad_front,
+      output_plane_size);
 }
 
 template <typename scalar_t>
-struct reflection_pad3d_backward_kernel_functor {
-  void operator()(
-      PackedTensorAccessor64<scalar_t, 5> grad_input,
-      PackedTensorAccessor64<const scalar_t, 5> grad_output,
-      int64_t plane,
-      int64_t batch,
-      int64_t output_z,
-      int64_t output_y,
-      int64_t output_x,
-      int64_t input_z,
-      int64_t input_y,
-      int64_t input_x) const {
-    auto value_to_add = grad_output[batch][plane][output_z][output_y][output_x];
-    auto target = (sycl_global_ptr<scalar_t>)&grad_input[batch][plane][input_z]
-                                                        [input_y][input_x];
-    atomicAdd(target, value_to_add);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<3>))
+void reflection_pad3d_backward_kernel(
+    PackedTensorAccessor64<scalar_t, 5> grad_input,
+    PackedTensorAccessor64<const scalar_t, 5> grad_output,
+    int64_t pad_left,
+    int64_t pad_top,
+    int64_t pad_front,
+    int64_t output_plane_size) {
+  auto item = syclext::this_work_item::get_nd_item<3>();
+  auto output_id = item.get_global_id(2);
+  if (output_id >= output_plane_size) {
+    return;
   }
-};
+
+  int64_t output_x = output_id % grad_output.size(4);
+  int64_t output_y = (output_id / grad_output.size(4)) % grad_output.size(3);
+  int64_t output_z = output_id / (grad_output.size(3) * grad_output.size(4));
+
+  int64_t i_start_x = std::max(int64_t(0), -pad_left);
+  int64_t o_start_x = std::max(int64_t(0), pad_left);
+  int64_t i_start_y = std::max(int64_t(0), -pad_top);
+  int64_t o_start_y = std::max(int64_t(0), pad_top);
+  int64_t i_start_z = std::max(int64_t(0), -pad_front);
+  int64_t o_start_z = std::max(int64_t(0), pad_front);
+
+  int64_t input_x = std::abs(output_x - pad_left) -
+      std::abs(output_x - (grad_input.size(4) + pad_left - 1)) - output_x +
+      2 * pad_left + grad_input.size(4) - 1 - o_start_x + i_start_x;
+  int64_t input_y = std::abs(output_y - pad_top) -
+      std::abs(output_y - (grad_input.size(3) + pad_top - 1)) - output_y +
+      2 * pad_top + grad_input.size(3) - 1 - o_start_y + i_start_y;
+  int64_t input_z = std::abs(output_z - pad_front) -
+      std::abs(output_z - (grad_input.size(2) + pad_front - 1)) - output_z +
+      2 * pad_front + grad_input.size(2) - 1 - o_start_z + i_start_z;
+
+  int64_t batch = item.get_group(0);
+  int64_t plane = item.get_group(1);
+  auto value_to_add = grad_output[batch][plane][output_z][output_y][output_x];
+  auto target = (sycl_global_ptr<scalar_t>)&grad_input[batch][plane][input_z]
+                                                      [input_y][input_x];
+  atomicAdd(target, value_to_add);
+}
 
 template <typename scalar_t>
 void reflection_pad3d_backward_template(
@@ -694,9 +416,24 @@ void reflection_pad3d_backward_template(
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
-  reflection_pad3d_backward_kernel_functor<scalar_t> f;
-  parallel_reflection_pad3d(
-      grad_input, grad_output, pad_left, pad_top, pad_front, f);
+  auto queue = getCurrentSYCLQueue();
+  int64_t output_plane_size =
+      grad_output.size(2) * grad_output.size(3) * grad_output.size(4);
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+  int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
+  int64_t nplane = grad_input.size(1);
+  int64_t nbatch = grad_input.size(0);
+  sycl_kernel_submit<reflection_pad3d_backward_kernel<scalar_t>, 3>(
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
+      queue,
+      0,
+      grad_input,
+      grad_output,
+      pad_left,
+      pad_top,
+      pad_front,
+      output_plane_size);
 }
 
 void reflection_pad1d_kernel(
@@ -961,31 +698,17 @@ void reflection_pad2d_backward_kernel(
       input.scalar_type(),
       "reflection_pad2d_backward_xpu",
       [&] {
-        if (at::globalContext().deterministicAlgorithms()) {
-          reflection_pad2d_backward_det_template<scalar_t>(
-              grad_input.mutable_data_ptr<scalar_t>(),
-              grad_output.const_data_ptr<scalar_t>(),
-              input_w,
-              input_h,
-              pad_t,
-              pad_b,
-              pad_l,
-              pad_r,
-              nbatch,
-              nplane);
-        } else {
-          reflection_pad2d_backward_template<scalar_t>(
-              grad_input.mutable_data_ptr<scalar_t>(),
-              grad_output.const_data_ptr<scalar_t>(),
-              input_w,
-              input_h,
-              pad_t,
-              pad_b,
-              pad_l,
-              pad_r,
-              nbatch,
-              nplane);
-        }
+        reflection_pad2d_backward_template<scalar_t>(
+            grad_input.mutable_data_ptr<scalar_t>(),
+            grad_output.const_data_ptr<scalar_t>(),
+            input_w,
+            input_h,
+            pad_t,
+            pad_b,
+            pad_l,
+            pad_r,
+            nbatch,
+            nplane);
       });
 }
 

@@ -66,7 +66,8 @@ Before execution, identify:
 Retain the exact script and raw stdout/stderr. A broad exception or substring
 match does not establish a result by itself. Treat timeout, crash, or setup
 failure as actionable only when target-stage evidence makes the signature
-defensible.
+defensible. Automation runs Python unbuffered, so keep diagnostic output bounded
+and do not print from hot loops.
 
 Use these local results:
 
@@ -90,24 +91,51 @@ The reviewer did not produce the scan. For every `confirmed` or
 2. target-path XPU execution and observed signature;
 3. whether the behavior is a defect rather than unsupported or expected behavior;
 4. whether an independent XPU change is required;
-5. current source, fix PR, and canonical tracker state;
+5. current source, fix PR merge state, and canonical tracker state;
 6. whether a claimed fix is present in the tested build and passes the same check.
+
+A non-null merge timestamp (`mergedAt` in GraphQL and `gh pr view`, or
+`merged_at` in the REST API) establishes only that a PR entered its recorded
+base branch. To determine whether the relevant change exists in the default
+branch snapshot, inspect a linked commit or the equivalent source at the exact
+`collection.json.snapshot.default_branch_head`; do not substitute the live
+default branch. Treat the behavior as landed for this scan only when that
+evidence is reachable from or present at the frozen head. A missing merge
+timestamp or a closed state alone establishes neither outcome.
+
+An open or genuinely unlanded PR may justify `needs-xpu-fix` only when evidence
+independently establishes a defect in the current XPU implementation whose fix
+does not depend on that PR landing. If independent XPU parity work would be
+required only after the proposed upstream behavior lands, use `track-upstream`,
+set `implementation_repository` to `intel/torch-xpu-ops`, and emit no payload.
+This is an observation-only verdict, not a durable tracker; a later
+default-branch commit scan re-evaluates the change after it lands. Use
+`non-issue` only when runner and source evidence establish that the observed
+behavior is not a current XPU defect. Otherwise use `verification-gap`.
 
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream` and emit no payload. When an existing ops tracker
-covers the work, record its URL as `canonical_tracker`; do not create a new
-payload or automatically comment on the existing tracker.
+XPU work, use `track-upstream`, set `implementation_repository` to the GitHub
+`owner/repo` that owns the implementation, and emit no payload. When an existing
+ops tracker covers the work, record its URL as `canonical_tracker`; do not create
+a new payload or automatically comment on the existing tracker. Otherwise,
+`needs-xpu-fix` creates the ops tracker while `implementation_repository` names
+the repository where its code change belongs.
+
 Use exactly one verdict:
 
-- `needs-xpu-fix`
-- `track-upstream`
-- `fixed`
-- `non-issue`
-- `duplicate`
-- `verification-gap`
+- `needs-xpu-fix`: current XPU work that needs a new ops tracker; name the
+  GitHub `owner/repo` where the code change belongs;
+- `track-upstream`: no payload; name the GitHub `owner/repo` that owns the
+  implementation, or use `intel/torch-xpu-ops` for observation-only parity work
+  that depends on an upstream change landing;
+- `fixed`: the relevant change is already present and verified;
+- `non-issue`: evidence establishes that the observed behavior is not a current
+  XPU defect;
+- `duplicate`: a canonical tracker already covers the same work;
+- `verification-gap`: available evidence cannot support another verdict.
 
 Prefer `verification-gap` over a forced conclusion. A `needs-xpu-fix` payload has
 a `[xpu-alignment]` title, exactly the `ai_generated` label, upstream source and

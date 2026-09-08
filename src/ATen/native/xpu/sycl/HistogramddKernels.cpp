@@ -21,6 +21,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -35,148 +36,114 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct HistogramddKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto input_data = input_;
-    int64_t wi_id = item_id.get_local_linear_id();
-    int64_t wg_id = item_id.get_group_linear_id();
-    int64_t batch_idx = (batch_num_ == 1) ? 0 : wi_id / batch_wg_size_;
-    int64_t batch_local_id = (batch_num_ == 1) ? wi_id : wi_id % batch_wg_size_;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void histogramdd_kernel(
+    const PackedTensorAccessor64<const scalar_t, 2> input,
+    const scalar_t* const* bin_edges_list,
+    scalar_t* hist,
+    const int64_t* hist_strides,
+    const PackedTensorAccessor64<const scalar_t, 1> weight,
+    bool use_weight,
+    int64_t input_size,
+    int64_t input_dim,
+    const int64_t* num_bin_edges,
+    int64_t total_bin_size,
+    int64_t wg_size,
+    int64_t batch_num,
+    int64_t batch_wg_size,
+    int64_t scan_size) {
+  sycl::nd_item<1> item_id =
+      sycl::ext::oneapi::this_work_item::get_nd_item<1>();
 
-    int64_t ele_idx = wg_id * batch_num_ + batch_idx;
-    bool active = (ele_idx < input_size_);
+  // Get SLM pointer from work group scratch memory (dynamic size)
+  int64_t* slm =
+      static_cast<int64_t*>(syclexp::get_work_group_scratch_memory());
 
-    for (int64_t dim = 0; active && dim < input_dim_; ++dim) {
-      auto elem = input_data[ele_idx][dim];
-      const scalar_t* bin_edges = bin_edges_list_[dim];
-      int64_t bin_edges_size = num_bin_edges_[dim];
-      if (!(elem >= bin_edges[0] && elem <= bin_edges[bin_edges_size - 1])) {
-        active = false;
-        break;
-      }
-    }
+  auto input_data = input;
+  int64_t wi_id = item_id.get_local_linear_id();
+  int64_t wg_id = item_id.get_group_linear_id();
+  int64_t batch_idx = (batch_num == 1) ? 0 : wi_id / batch_wg_size;
+  int64_t batch_local_id = (batch_num == 1) ? wi_id : wi_id % batch_wg_size;
 
-    // initialize slm
-    if (active && batch_local_id == 0) {
-      slm_[batch_idx] = 0;
-    }
-    sycl::group_barrier(item_id.get_group());
+  int64_t ele_idx = wg_id * batch_num + batch_idx;
+  bool active = (ele_idx < input_size);
 
-    // loop if wg_size_ is smaller than total_bin_size_
-    for (int s = 0; active && s < scan_size_; ++s) {
-      // map each work item to its corresponding bin
-      // (batch_local_id, s) |-> (dim, bin_idx)
-      int64_t dim = 0;
-      int64_t bin_idx = -1;
-
-      int64_t target_bin_linear_idx = batch_local_id + s * batch_wg_size_;
-      if (target_bin_linear_idx >= total_bin_size_) {
-        active = false;
-        break;
-      }
-
-      for (int64_t cnt = 0; dim < input_dim_; ++dim) {
-        int64_t bin_size = num_bin_edges_[dim] - 1;
-        if (target_bin_linear_idx - cnt < bin_size) {
-          bin_idx = target_bin_linear_idx - cnt;
-          break;
-        }
-        cnt += bin_size;
-      }
-
-      if (bin_idx == -1) {
-        active = false;
-        break;
-      }
-
-      auto elem = input_data[ele_idx][dim];
-      const scalar_t* bin_edges = bin_edges_list_[dim];
-      int64_t bin_size = num_bin_edges_[dim] - 1;
-
-      bool match = false;
-      if (bin_idx == bin_size - 1) {
-        if (bin_edges[bin_idx] <= elem && elem <= bin_edges[bin_idx + 1]) {
-          match = true;
-        }
-      } else {
-        if (bin_edges[bin_idx] <= elem && elem < bin_edges[bin_idx + 1]) {
-          match = true;
-        }
-      }
-      if (match) {
-        auto ptr =
-            slm_.template get_multi_ptr<sycl::access::decorated::no>().get();
-        atomicAdd(
-            sycl_local_ptr<int64_t>(ptr + batch_idx),
-            bin_idx * hist_strides_[dim]);
-      }
-    }
-    sycl::group_barrier(item_id.get_group());
-
-    if (active && batch_local_id == 0) {
-      auto hist_idx = slm_[batch_idx];
-      scalar_t value = (scalar_t)1;
-      if (use_weight_) {
-        auto weight_data = weight_;
-        value = weight_data[ele_idx];
-      }
-      atomicAdd((sycl_global_ptr<scalar_t>)(hist_ + hist_idx), value);
+  for (int64_t dim = 0; active && dim < input_dim; ++dim) {
+    auto elem = input_data[ele_idx][dim];
+    const scalar_t* bin_edges = bin_edges_list[dim];
+    int64_t bin_edges_size = num_bin_edges[dim];
+    if (!(elem >= bin_edges[0] && elem <= bin_edges[bin_edges_size - 1])) {
+      active = false;
+      break;
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    // SLM is used for accumulating hist_idx
-    slm_ = sycl_local_acc_t<int64_t, 1>(batch_num_, cgh);
+  // initialize slm
+  if (active && batch_local_id == 0) {
+    slm[batch_idx] = 0;
   }
+  sycl::group_barrier(item_id.get_group());
 
-  HistogramddKernelFunctor(
-      const PackedTensorAccessor64<const scalar_t, 2> input,
-      const scalar_t* const* bin_edges_list,
-      scalar_t* hist,
-      const int64_t* hist_strides,
-      const PackedTensorAccessor64<const scalar_t, 1> weight,
-      bool use_weight,
-      int64_t input_size,
-      int64_t input_dim,
-      const int64_t* num_bin_edges,
-      int64_t total_bin_size,
-      int64_t wg_size,
-      int64_t batch_num,
-      int64_t batch_wg_size,
-      int64_t scan_size)
-      : input_(input),
-        bin_edges_list_(bin_edges_list),
-        hist_(hist),
-        hist_strides_(hist_strides),
-        weight_(weight),
-        use_weight_(use_weight),
-        input_size_(input_size),
-        input_dim_(input_dim),
-        num_bin_edges_(num_bin_edges),
-        total_bin_size_(total_bin_size),
-        wg_size_(wg_size),
-        batch_num_(batch_num),
-        batch_wg_size_(batch_wg_size),
-        scan_size_(scan_size) {}
+  // loop if wg_size is smaller than total_bin_size
+  for (int s = 0; active && s < scan_size; ++s) {
+    // map each work item to its corresponding bin
+    // (batch_local_id, s) |-> (dim, bin_idx)
+    int64_t dim = 0;
+    int64_t bin_idx = -1;
 
- private:
-  const PackedTensorAccessor64<const scalar_t, 2> input_;
-  const scalar_t* const* bin_edges_list_;
-  scalar_t* hist_;
-  const int64_t* hist_strides_;
-  const PackedTensorAccessor64<const scalar_t, 1> weight_;
-  bool use_weight_;
-  int64_t input_size_;
-  int64_t input_dim_;
-  const int64_t* num_bin_edges_;
-  const int64_t total_bin_size_;
-  const int64_t wg_size_;
-  const int64_t batch_num_;
-  const int64_t batch_wg_size_;
-  const int64_t scan_size_;
+    int64_t target_bin_linear_idx = batch_local_id + s * batch_wg_size;
+    if (target_bin_linear_idx >= total_bin_size) {
+      active = false;
+      break;
+    }
 
-  sycl_local_acc_t<int64_t, 1> slm_;
-};
+    for (int64_t cnt = 0; dim < input_dim; ++dim) {
+      int64_t bin_size = num_bin_edges[dim] - 1;
+      if (target_bin_linear_idx - cnt < bin_size) {
+        bin_idx = target_bin_linear_idx - cnt;
+        break;
+      }
+      cnt += bin_size;
+    }
+
+    if (bin_idx == -1) {
+      active = false;
+      break;
+    }
+
+    auto elem = input_data[ele_idx][dim];
+    const scalar_t* bin_edges = bin_edges_list[dim];
+    int64_t bin_size = num_bin_edges[dim] - 1;
+
+    bool match = false;
+    if (bin_idx == bin_size - 1) {
+      if (bin_edges[bin_idx] <= elem && elem <= bin_edges[bin_idx + 1]) {
+        match = true;
+      }
+    } else {
+      if (bin_edges[bin_idx] <= elem && elem < bin_edges[bin_idx + 1]) {
+        match = true;
+      }
+    }
+    if (match) {
+      atomicAdd(
+          sycl_local_ptr<int64_t>(slm + batch_idx),
+          bin_idx * hist_strides[dim]);
+    }
+  }
+  sycl::group_barrier(item_id.get_group());
+
+  if (active && batch_local_id == 0) {
+    auto hist_idx = slm[batch_idx];
+    scalar_t value = (scalar_t)1;
+    if (use_weight) {
+      auto weight_data = weight;
+      value = weight_data[ele_idx];
+    }
+    atomicAdd((sycl_global_ptr<scalar_t>)(hist + hist_idx), value);
+  }
+}
 
 template <typename scalar_t>
 void histogramdd_template(
@@ -190,8 +157,8 @@ void histogramdd_template(
     int64_t input_dim,
     const int64_t* num_bin_edges,
     const int64_t total_bin_size) {
-  using Kernel = HistogramddKernelFunctor<scalar_t>;
-  const int64_t max_wg_size = syclMaxWorkGroupSize<Kernel>();
+  const int64_t max_wg_size =
+      syclMaxWorkGroupSize<histogramdd_kernel<scalar_t>>();
   int64_t num_wg = input_size;
   int64_t batch_num = 1;
   int64_t batch_wg_size = max_wg_size;
@@ -204,7 +171,13 @@ void histogramdd_template(
     work_group_size = batch_num * batch_wg_size;
     num_wg = (input_size + batch_num - 1) / batch_num;
   }
-  Kernel kfn(
+  // SLM size for batch_num int64_t elements
+  int slm_sz = batch_num * sizeof(int64_t);
+  sycl_kernel_submit<histogramdd_kernel<scalar_t>>(
+      num_wg * work_group_size,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      slm_sz,
       input,
       bin_edges_list,
       hist,
@@ -219,76 +192,54 @@ void histogramdd_template(
       batch_num,
       batch_wg_size,
       scan_size);
-  sycl_kernel_submit(
-      num_wg * work_group_size, work_group_size, getCurrentSYCLQueue(), kfn);
 }
 
 template <typename scalar_t>
-struct HistogramddLinearKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto input_data = input_;
-    int64_t wi_id = item_id.get_global_id();
-    if (wi_id >= input_size_) {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY(
+    (sycl::ext::oneapi::experimental::nd_range_kernel<1>))
+void histogramdd_linear_kernel(
+    const PackedTensorAccessor64<const scalar_t, 2> input,
+    const scalar_t* const* bin_edges_list,
+    scalar_t* hist,
+    const int64_t* hist_strides,
+    const PackedTensorAccessor64<const scalar_t, 1> weight,
+    bool use_weight,
+    int64_t input_size,
+    int64_t input_dim,
+    const int64_t* num_bin_edges) {
+  sycl::nd_item<1> item_id =
+      sycl::ext::oneapi::this_work_item::get_nd_item<1>();
+  auto input_data = input;
+  int64_t wi_id = item_id.get_global_id();
+  if (wi_id >= input_size) {
+    return;
+  }
+  int64_t ele_idx = wi_id;
+  int64_t hist_idx = 0;
+  for (int dim = 0; dim < input_dim; ++dim) {
+    auto i_value = input_data[ele_idx][dim];
+    const scalar_t* bin_edges = bin_edges_list[dim];
+    auto bin_size = num_bin_edges[dim] - 1;
+    auto leftmost_edge = bin_edges[0];
+    auto rightmost_edge = bin_edges[bin_size];
+    if (!(i_value >= leftmost_edge && i_value <= rightmost_edge)) {
       return;
     }
-    int64_t ele_idx = wi_id;
-    int64_t hist_idx = 0;
-    for (int dim = 0; dim < input_dim_; ++dim) {
-      auto i_value = input_data[ele_idx][dim];
-      const scalar_t* bin_edges = bin_edges_list_[dim];
-      auto bin_size = num_bin_edges_[dim] - 1;
-      auto leftmost_edge = bin_edges[0];
-      auto rightmost_edge = bin_edges[bin_size];
-      if (!(i_value >= leftmost_edge && i_value <= rightmost_edge)) {
-        return;
-      }
-      int64_t bin_idx = (int64_t)(((i_value - leftmost_edge)) * bin_size /
-                                  (rightmost_edge - leftmost_edge));
-      if (bin_idx == bin_size) {
-        bin_idx -= 1;
-      }
-      hist_idx += bin_idx * hist_strides_[dim];
+    int64_t bin_idx = (int64_t)(((i_value - leftmost_edge)) * bin_size /
+                                (rightmost_edge - leftmost_edge));
+    if (bin_idx == bin_size) {
+      bin_idx -= 1;
     }
-
-    scalar_t value = (scalar_t)1;
-    if (use_weight_) {
-      auto weight_data = weight_;
-      value = weight_data[wi_id];
-    }
-    atomicAdd((sycl_global_ptr<scalar_t>)(hist_ + hist_idx), value);
+    hist_idx += bin_idx * hist_strides[dim];
   }
 
-  HistogramddLinearKernelFunctor(
-      const PackedTensorAccessor64<const scalar_t, 2> input,
-      const scalar_t* const* bin_edges_list,
-      scalar_t* hist,
-      const int64_t* hist_strides,
-      const PackedTensorAccessor64<const scalar_t, 1> weight,
-      bool use_weight,
-      int64_t input_size,
-      int64_t input_dim,
-      const int64_t* num_bin_edges)
-      : input_(input),
-        bin_edges_list_(bin_edges_list),
-        hist_(hist),
-        hist_strides_(hist_strides),
-        weight_(weight),
-        use_weight_(use_weight),
-        input_size_(input_size),
-        input_dim_(input_dim),
-        num_bin_edges_(num_bin_edges) {}
-
- private:
-  const PackedTensorAccessor64<const scalar_t, 2> input_;
-  const scalar_t* const* bin_edges_list_;
-  scalar_t* hist_;
-  const int64_t* hist_strides_;
-  const PackedTensorAccessor64<const scalar_t, 1> weight_;
-  bool use_weight_;
-  int64_t input_size_;
-  int64_t input_dim_;
-  const int64_t* num_bin_edges_;
-};
+  scalar_t value = (scalar_t)1;
+  if (use_weight) {
+    auto weight_data = weight;
+    value = weight_data[wi_id];
+  }
+  atomicAdd((sycl_global_ptr<scalar_t>)(hist + hist_idx), value);
+}
 
 template <typename scalar_t>
 void histogramdd_linear_template(
@@ -301,7 +252,14 @@ void histogramdd_linear_template(
     int64_t input_size,
     int64_t input_dim,
     const int64_t* num_bin_edges) {
-  HistogramddLinearKernelFunctor<scalar_t> kfn(
+  const int64_t work_group_size =
+      syclMaxWorkGroupSize<histogramdd_linear_kernel<scalar_t>>();
+  const int64_t num_wg = (input_size + work_group_size - 1) / work_group_size;
+  sycl_kernel_submit<histogramdd_linear_kernel<scalar_t>>(
+      num_wg * work_group_size,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      0,
       input,
       bin_edges_list,
       hist,
@@ -311,10 +269,6 @@ void histogramdd_linear_template(
       input_size,
       input_dim,
       num_bin_edges);
-  const int64_t work_group_size = syclMaxWorkGroupSize(kfn);
-  const int64_t num_wg = (input_size + work_group_size - 1) / work_group_size;
-  sycl_kernel_submit(
-      num_wg * work_group_size, work_group_size, getCurrentSYCLQueue(), kfn);
 }
 
 /* The main algorithm. Expects that the input tensor has shape (N, D).
