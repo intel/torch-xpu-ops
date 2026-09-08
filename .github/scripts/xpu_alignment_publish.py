@@ -297,9 +297,12 @@ def main() -> int:
             issue_url = _file_candidate(args.repo, payload, draft, comment_id)
             filed.append((unit_id, issue_url))
             print(f"Filed {unit_id} as {issue_url}")
-        except (SystemExit, ValueError, KeyError, TypeError, OSError):
+        except (Exception, SystemExit) as error:
             publication_failures.append(unit_id)
-            print(f"::warning::Continuing after publication failed for `{unit_id}`.")
+            print(
+                f"::warning::Continuing after publication failed for "
+                f"`{unit_id}`: {error!r}"
+            )
 
     headline, lines, should_notify = run_note(
         decision, payloads, filed, publication_failures
