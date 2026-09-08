@@ -61,26 +61,36 @@ No write scope is required — this skill only reads.
 
 ## Step 1: Classify issue_type
 
-- **bug** — test failures, runtime errors, assertion errors, incorrect
-  output, crashes.
+- **single-bug** — a single failure: test failures, runtime errors,
+  assertion errors, incorrect output, crashes.
   Indicators: error tracebacks, failing test names, `RuntimeError`,
   `AssertionError`, "fails with", `### 🐛 Describe the bug`, test logs.
 
-- **skip-list** — a "Bug Skip" tracking issue asking whether a list of
-  already-skipped tests should still be skipped.
-  Indicators: `Bug Skip` in the title/template, `agent_test: skip-list`
-  label, body is a checklist of test node ids (often with
-  `~~strike-through~~` for entries already resolved), no fresh
-  traceback.
+- **batch-bug** — a parent issue tracking *multiple* child failures
+  rather than describing one. Two `batch_kind`s:
+  - `skip-list` — a "Bug Skip" tracking issue asking whether a list of
+    already-skipped tests should still be skipped. Indicators: `Bug
+    Skip` in the title/template, `agent_test: skip-list` label, body is
+    a checklist of test node ids (often with `~~strike-through~~` for
+    entries already resolved), no fresh traceback. Homogeneous — every
+    entry is the same kind of skipped test.
+  - `heterogeneous` — a parent/umbrella issue whose body lists
+    *distinct* sub-bugs, each with its own reproducer, test node id, or
+    linked child issue reference (`owner/repo#N`). Indicators:
+    `[Umbrella]` / `[Tracking]` in the title, a checklist where each
+    item names a *different* test/error, a "Tasks" / "Sub-issues"
+    section of `#N` references.
 
 - **nonbug** — feature requests, tasks, performance issues, questions,
-  discussions, tracking issues, enhancement proposals, feature gaps.
-  Indicators: "Enable", "[Task]", "Consider", "Align", "feature gap",
-  "clarification", checklists of work items, `enhancement` label,
-  `performance` label, no failing tests.
+  discussions, enhancement proposals, feature gaps. Indicators:
+  "Enable", "[Task]", "Consider", "Align", "feature gap",
+  "clarification", `enhancement` label, `performance` label, no failing
+  tests. A checklist of *work items* (things to build) is `nonbug`; a
+  checklist of *failing tests / sub-bugs* is `batch-bug`.
 
 **Labels are authoritative** — if labels say `agent_test: skip-list`,
-`issue_type = skip-list` regardless of body content.
+`issue_type = batch-bug` with `batch_kind = skip-list` regardless of
+body content.
 
 ## Step 2: Detect `reproduction_missing`
 
@@ -92,8 +102,8 @@ Report `yes` when the issue lacks all of:
 
 Report `no` when at least one of the above is present.
 
-Skip-list issues list already-skipped test node ids in their body, so
-they satisfy the second bullet and report `no`.
+Batch-bug issues list child test node ids / sub-bug references in their
+body, so they satisfy the second bullet and report `no`.
 
 ## Step 3: Estimate `scope`
 
@@ -136,10 +146,10 @@ Empty array `[]` when none are named.
 
 Evaluate in order; first match wins:
 
-1. `issue_type` is `nonbug` or an umbrella tracking task (a "parent"
-   issue tracking multiple skip-listed/child test issues, not a single
-   bug itself) → **needs-human**
-   (reason: `"not a bug / task issue"`).
+1. `issue_type` is `nonbug` → **needs-human**
+   (reason: `"not a bug / task issue"`). `batch-bug` does NOT match
+   this rule — a batch of sub-bugs is handled by the orchestrator's
+   fan-out, per-sub-item; do not force it to needs-human here.
 2. `reproduction_missing == yes` → **needs-human**
    (reason: `"no reproducer or test-name reference"`).
 3. `runtime_dependencies` is non-empty → **needs-human**
@@ -197,7 +207,8 @@ emit:
 
 ```json
 {
-  "issue_type": "bug | skip-list | nonbug",
+  "issue_type": "single-bug | batch-bug | nonbug",
+  "batch_kind": null,
   "reproduction_missing": true | false,
   "scope": "pytorch | torch-xpu-ops | both | unclear",
   "runtime_dependencies": [],
@@ -209,6 +220,9 @@ emit:
 
 Field notes:
 
+- `batch_kind` is `"skip-list"` or `"heterogeneous"` when
+  `issue_type == "batch-bug"`, and `null` otherwise. The orchestrator
+  routes batch fan-out on it (no re-derivation needed downstream).
 - `reproduction_missing` is a JSON boolean: `true` for the `yes` shown
   in the table, `false` for `no`.
 - `runtime_dependencies` is an array from the closed set in Step 4;

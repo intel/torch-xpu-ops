@@ -73,12 +73,6 @@ foreach(flag ${CMAKE_HOST_FLAGS})
   endif()
 endforeach()
 
-if(WIN32)
-  list(APPEND SYCL_compile_flags "/Qno-intel-lib:libirc")
-else()
-  list(APPEND SYCL_compile_flags "-no-intel-lib=libirc")
-endif()
-
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #
 #   status  - Status message to print if verbose is true
