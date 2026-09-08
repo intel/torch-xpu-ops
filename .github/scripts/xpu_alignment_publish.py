@@ -23,14 +23,12 @@ from pathlib import Path
 
 from alignment_triage import (
     AUTO_FILE_LIMIT,
-    AUTO_FIX_COMMAND,
     FILED_MARKER_RE,
     create_issue,
     fail,
     filed_body,
     find_run_note,
     find_unit_comments,
-    issue_number,
     list_comments,
     post_comment,
     render_draft,
@@ -194,9 +192,7 @@ def _file_candidate(
 ) -> str:
     unit_id = payload["unit_id"]
     title, body = parse_draft(draft, unit_id)
-    issue_url, created = create_issue(repo, title, body, unit_id)
-    if created:
-        post_comment(repo, int(issue_number(issue_url)), AUTO_FIX_COMMAND)
+    issue_url = create_issue(repo, title, body, unit_id)
     update_comment(repo, comment_id, filed_body(draft, unit_id, issue_url))
     return issue_url
 
