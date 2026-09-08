@@ -6,7 +6,7 @@
 
 Drafts live as bot comments carrying a unit marker. Publishing preserves the
 reviewed title and visible body and adds only a hidden stable-unit marker for
-idempotency. Newly created issues may trigger the separate issue-fix workflow.
+idempotency.
 """
 
 from __future__ import annotations

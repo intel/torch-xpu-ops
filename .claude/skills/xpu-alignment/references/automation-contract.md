@@ -340,8 +340,8 @@ only a blocker summary.
 
 The gate records `run_state` as `complete`, `complete-with-warnings`, `partial`,
 or `failed`; the publisher uses this value for the Run Summary and workflow
-status. An automatically created issue is published by `torchxpubot` and receives
-one `@torchxpubot fix` comment. Draft and issue titles include the UTC scan date
+status. An automatically created issue is published by `torchxpubot`. Draft and
+issue titles include the UTC scan date
 after the `[xpu-alignment]` prefix. The publishing and cost-comment steps use the
 repository's `MERGE_TOKEN` so their author remains `torchxpubot`; agents never
 receive that token.
