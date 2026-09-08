@@ -108,7 +108,8 @@ independently establishes a defect in the current XPU implementation whose fix
 does not depend on that PR landing. If independent XPU parity work would be
 required only after the proposed upstream behavior lands, use `track-upstream`;
 a later default-branch commit scan re-evaluates the change after it lands.
-Otherwise use `verification-gap`.
+`non-issue` only when runner and source evidence establish that the observed
+behavior is not a current XPU defect. Otherwise use `verification-gap`.
 
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
