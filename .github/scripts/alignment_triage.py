@@ -38,6 +38,11 @@ TITLE_LINE_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 ISSUE_TITLE_PREFIX = "[xpu-alignment]"
 ISSUE_LABELS = ["ai_generated"]
 AUTO_FILE_LIMIT = 3
+# A marker only identifies a comment the publisher itself wrote. Quoting or
+# copying a draft reproduces the marker verbatim, and neither identity below can
+# be impersonated. `github-actions[bot]` wrote the drafts published before the
+# workflow moved to `MERGE_TOKEN`.
+PUBLISHER_LOGINS = frozenset({"torchxpubot", "github-actions[bot]"})
 # Unit ids become comment markers, file names and glob fragments, so they are
 # restricted to one plain token with no separator or metacharacter.
 UNIT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -108,15 +113,24 @@ def post_comment(repo: str, issue: int, body: str) -> int:
     return int(created["id"])
 
 
+def _published_comments(comments: list[dict], marker: str) -> list[dict]:
+    return [
+        comment
+        for comment in comments
+        if (comment.get("user") or {}).get("login") in PUBLISHER_LOGINS
+        and marker in (comment.get("body") or "")
+    ]
+
+
 def find_unit_comments(comments: list[dict], unit_id: str) -> list[dict]:
     marker = UNIT_MARKER.format(unit_id=unit_id)
-    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
+    matches = _published_comments(comments, marker)
     return sorted(matches, key=lambda comment: int(comment.get("id", 0)))
 
 
 def find_run_note(comments: list[dict], run_id: str) -> dict | None:
     marker = RUN_NOTE_MARKER.format(run_id=run_id)
-    matches = [comment for comment in comments if marker in (comment.get("body") or "")]
+    matches = _published_comments(comments, marker)
     if len(matches) > 1:
         fail(f"{len(matches)} run summaries carry the marker for run `{run_id}`.")
     return matches[0] if matches else None
