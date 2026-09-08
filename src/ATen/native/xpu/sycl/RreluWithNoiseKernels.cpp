@@ -188,9 +188,7 @@ Tensor& rrelu_with_noise_kernel(
       noise.sym_sizes());
 
   if (training) {
-    // The kernel writes noise directly; a non-contiguous noise (e.g. an
-    // expanded view) would only have room for a fraction of the
-    // self.numel() distinct values it writes.
+    // The kernel writes noise directly, so it must be a real buffer.
     checkContiguous("rrelu_with_noise_out_xpu", noise_arg);
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
