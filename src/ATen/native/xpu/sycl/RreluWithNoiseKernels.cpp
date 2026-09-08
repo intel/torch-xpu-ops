@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/TensorUtils.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
@@ -101,7 +102,6 @@ inline void _rrelu_with_noise_xpu_train(
     const Scalar& upper_,
     const std::optional<Generator>& generator) {
   auto input = input_.contiguous();
-  auto noise = noise_.contiguous();
   Tensor tmp_output = output.contiguous();
 
   int64_t numel = input.numel();
@@ -122,7 +122,7 @@ inline void _rrelu_with_noise_xpu_train(
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();
-  scalar_t* noise_data = noise.mutable_data_ptr<scalar_t>();
+  scalar_t* noise_data = noise_.mutable_data_ptr<scalar_t>();
   scalar_t* output_data = tmp_output.mutable_data_ptr<scalar_t>();
 
   double lower = lower_.to<double>();
@@ -180,8 +180,18 @@ Tensor& rrelu_with_noise_kernel(
       output_arg{output, "output", 3};
   checkAllSameGPU(
       "rrelu_with_noise_out_xpu", {self_arg, noise_arg, output_arg});
+  TORCH_CHECK(
+      self.sym_sizes() == noise.sym_sizes(),
+      "noise tensor shape must match self tensor shape. Got self.shape = ",
+      self.sym_sizes(),
+      " noise.shape = ",
+      noise.sym_sizes());
 
   if (training) {
+    // The kernel writes noise directly; a non-contiguous noise (e.g. an
+    // expanded view) would only have room for a fraction of the
+    // self.numel() distinct values it writes.
+    checkContiguous("rrelu_with_noise_out_xpu", noise_arg);
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
