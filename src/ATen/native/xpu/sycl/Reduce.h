@@ -20,6 +20,7 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
+#include <c10/util/complex_utils.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
@@ -1155,6 +1156,12 @@ class AccumulationBuffer {
 inline constexpr int DEFAULT_OUTPUT_VEC_SIZE = 4;
 template <typename scalar_t, int vt1>
 int get_output_vec_size(at::TensorIterator& iter) {
+  // The vectorized aligned_vector store below corrupts a complex value's
+  // real/imaginary components; keep those scalar.
+  if constexpr (c10::is_complex<scalar_t>::value) {
+    return 1;
+  }
+
   int vec_size = DEFAULT_OUTPUT_VEC_SIZE;
   auto update_vec_size = [&vec_size](uint64_t n) {
     while (n % vec_size != 0) {
