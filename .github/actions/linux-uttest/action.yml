@@ -176,7 +176,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
 
     - name: upstream_distributed
-      shell: timeout 72000 bash -xeu -o pipefail {0}
+      shell: timeout 72000 bash -eu -o pipefail {0}
       if: ${{ inputs.ut_name == 'upstream_distributed' }}
       run: |
         xpu-smi topology -m
@@ -191,17 +191,18 @@ runs:
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
           --category distributed --distributed-output ${log_dir}/upstream_distributed_files.txt > /dev/null
         cd pytorch
-        test_cmd="python test/run_test.py --include"
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
-          test_cmd="${test_cmd} ${test_file#test/}"
+          log_name="${test_file//\//_}"
+          echo "::group::${test_file}"
+          python -m pytest -v "${test_file}" \
+            --junit-xml="${{ github.workspace }}/ut_log/upstream_distributed_${log_name}.xml" \
+            2>&1 | tee "${log_dir}/${log_name}.log" \
+            || echo -e "${test_file}" >> "${log_dir}/upstream_distributed_failed.log"
+          echo "::endgroup::"
         done < ${log_dir}/upstream_distributed_files.txt
-        eval ${test_cmd} \
-          2> ${log_dir}/upstream_distributed_test_error.log | \
-          tee ${log_dir}/upstream_distributed_test.log
-        find test -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \; || true
     - name: upstream_ut
-      shell: timeout 72000 bash -xeu -o pipefail {0}
+      shell: timeout 72000 bash -eu -o pipefail {0}
       if: ${{ inputs.ut_name == 'upstream_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -211,14 +212,16 @@ runs:
         python ${GITHUB_WORKSPACE}/.github/scripts/get_upstream_test_files.py \
           --category others --others-output ${log_dir}/upstream_ut_files.txt > /dev/null
         cd pytorch
-        test_cmd="python test/run_test.py --include"
         while IFS= read -r test_file; do
           [ -z "${test_file}" ] && continue
-          test_cmd="${test_cmd} ${test_file#test/}"
+          log_name="${test_file//\//_}"
+          echo "::group::${test_file}"
+          python -m pytest -v "${test_file}" \
+            --junit-xml="${{ github.workspace }}/ut_log/upstream_ut_${log_name}.xml" \
+            2>&1 | tee "${log_dir}/${log_name}.log" \
+            || echo -e "${test_file}" >> "${log_dir}/upstream_ut_failed.log"
+          echo "::endgroup::"
         done < ${log_dir}/upstream_ut_files.txt
-        eval ${test_cmd} \
-          2> ${log_dir}/upstream_ut_test_error.log | \
-          tee ${log_dir}/upstream_ut_test.log
 
     # Summary
     - name: UT Test Results Summary
