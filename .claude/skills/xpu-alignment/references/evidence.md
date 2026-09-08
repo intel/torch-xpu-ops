@@ -106,31 +106,27 @@ timestamp or a closed state alone establishes neither outcome.
 An open or genuinely unlanded PR may justify `needs-xpu-fix` only when evidence
 independently establishes a defect in the current XPU implementation whose fix
 does not depend on that PR landing. If independent XPU parity work would be
-required only after the proposed upstream behavior lands, use `track-upstream`,
-set `implementation_repository` to `intel/torch-xpu-ops`, and emit no payload.
-This is an observation-only verdict, not a durable tracker; a later
-default-branch commit scan re-evaluates the change after it lands. Use
-`non-issue` only when runner and source evidence establish that the observed
-behavior is not a current XPU defect. Otherwise use `verification-gap`.
+required only after the proposed upstream behavior lands, use `track-upstream`;
+a later default-branch commit scan re-evaluates the change after it lands.
+Otherwise use `verification-gap`.
 
 Before allowing a new issue, search `pytorch/pytorch` for an issue or PR that
 explicitly owns the independent XPU work and search `intel/torch-xpu-ops` for a
 canonical tracker. The current source, a generic related issue, or an XPU mention
 alone does not establish upstream ownership. When upstream explicitly owns the
-XPU work, use `track-upstream`, set `implementation_repository` to the GitHub
-`owner/repo` that owns the implementation, and emit no payload. When an existing
-ops tracker covers the work, record its URL as `canonical_tracker`; do not create
-a new payload or automatically comment on the existing tracker. Otherwise,
-`needs-xpu-fix` creates the ops tracker while `implementation_repository` names
-the repository where its code change belongs.
+XPU work, use `track-upstream`. When an existing ops tracker covers the work,
+record its URL as `canonical_tracker`; do not create a new payload or
+automatically comment on the existing tracker.
 
 Use exactly one verdict:
 
-- `needs-xpu-fix`: current XPU work that needs a new ops tracker; name the
-  GitHub `owner/repo` where the code change belongs;
-- `track-upstream`: no payload; name the GitHub `owner/repo` that owns the
-  implementation, or use `intel/torch-xpu-ops` for observation-only parity work
-  that depends on an upstream change landing;
+- `needs-xpu-fix`: current XPU work that needs a new ops tracker; set
+  `implementation_repository` to the GitHub `owner/repo` where the code change
+  belongs;
+- `track-upstream`: an observation-only verdict, not a durable tracker; emit no
+  payload and set `implementation_repository` to the GitHub `owner/repo` that
+  owns the implementation, or to `intel/torch-xpu-ops` for parity work that
+  depends on an upstream change landing;
 - `fixed`: the relevant change is already present and verified;
 - `non-issue`: evidence establishes that the observed behavior is not a current
   XPU defect;

@@ -216,11 +216,6 @@ writes one result for every execution-plan entry:
 }
 ```
 
-`command` records the invoked Python options and artifact-relative script path;
-the scratch working directory, credential-free environment, and process-group
-isolation remain runner-owned execution context. Python runs unbuffered so
-diagnostic output written before a timeout or signal is retained in the log.
-
 `status: complete` means the runner produced a structurally valid result for
 every planned execution, not that every reproducer succeeded. The collection
 digest must match the prepare artifact and original collector manifest. A digest
@@ -303,14 +298,11 @@ artifacts. It does not execute code or sample rejected inventory. It covers ever
 ```
 
 `units` covers the provisional actionable set exactly once. Only
-`needs-xpu-fix` without a canonical tracker has a payload. Its
-`implementation_repository` is the GitHub `owner/repo` where the code change
-belongs; the payload still targets `intel/torch-xpu-ops`. For `track-upstream`,
-the field names the repository that already owns the implementation, or
-`intel/torch-xpu-ops` for observation-only parity work that depends on an
-upstream change landing. Other verdicts do not use this field. `status: blocked`
-lists blockers and contains no payloads.
-When an existing
+`needs-xpu-fix` without a canonical tracker has a payload, and every payload
+targets `intel/torch-xpu-ops`. `implementation_repository` is required for
+`needs-xpu-fix` and `track-upstream` and unused otherwise; the
+[evidence reference](evidence.md) defines which repository to name.
+`status: blocked` lists blockers and contains no payloads. When an existing
 `intel/torch-xpu-ops` issue covers the same work, record its URL as
 `canonical_tracker`; do not create a payload or comment on that tracker.
 
