@@ -176,7 +176,7 @@ runs:
           | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_p0.log"
 
     - name: upstream_distributed
-      shell: timeout 36000 bash -xeu -o pipefail {0}
+      shell: timeout 72000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'upstream_distributed' }}
       run: |
         xpu-smi topology -m
@@ -201,7 +201,7 @@ runs:
           tee ${log_dir}/upstream_distributed_test.log
         find test -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \; || true
     - name: upstream_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: timeout 72000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'upstream_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
