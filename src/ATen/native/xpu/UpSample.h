@@ -17,7 +17,6 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 
 #include <c10/util/ArrayRef.h>
-#include <c10/util/Optional.h>
 #include <c10/util/OptionalArrayRef.h>
 #include <c10/util/SmallVector.h>
 

@@ -202,12 +202,12 @@ void add_out_sparse_csr_kernel(
               auto a_val = A.values().to(output_values_dtype);
               auto b_val = B.values().to(output_values_dtype);
 
-              const index_t* a_crow_ptr = a_crow.data_ptr<index_t>();
-              const index_t* a_col_ptr = a_col.data_ptr<index_t>();
-              const index_t* b_crow_ptr = b_crow.data_ptr<index_t>();
-              const index_t* b_col_ptr = b_col.data_ptr<index_t>();
-              const scalar_t* a_val_ptr = a_val.data_ptr<scalar_t>();
-              const scalar_t* b_val_ptr = b_val.data_ptr<scalar_t>();
+              const index_t* a_crow_ptr = a_crow.const_data_ptr<index_t>();
+              const index_t* a_col_ptr = a_col.const_data_ptr<index_t>();
+              const index_t* b_crow_ptr = b_crow.const_data_ptr<index_t>();
+              const index_t* b_col_ptr = b_col.const_data_ptr<index_t>();
+              const scalar_t* a_val_ptr = a_val.const_data_ptr<scalar_t>();
+              const scalar_t* b_val_ptr = b_val.const_data_ptr<scalar_t>();
 
               // Pass 1: compute per-row output nnz.
               auto dense_idx_options = at::TensorOptions()

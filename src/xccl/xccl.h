@@ -43,7 +43,7 @@ DISABLE_SYCL_DEPRECATED_WARNING_END
 #define ENABLE_XCCL_PREMUL_SUM_SUPPORT
 #endif // oneCCL version >= 2022.0
 
-inline std::string reduceOpToString(c10d::ReduceOp op) {
+inline std::string reduceOpToString(const c10d::ReduceOp& op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
       return "SUM";
