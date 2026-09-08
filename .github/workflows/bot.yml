@@ -1263,7 +1263,7 @@ jobs:
                 "Stop": [{
                   "hooks": [{
                     "type": "prompt",
-                    "prompt": "A headless /issue-handler pipeline is trying to end its turn: $ARGUMENTS. Nothing can resume it, so a turn that ends mid-run loses the whole build. ok=false unless BOTH hold: last_assistant_message reports a terminal outcome (IMPLEMENTING(fix_verified) / NEEDS_HUMAN(reason) / SKIPPED(reason), or an equivalent per-sub-item batch report), AND background_tasks is empty. Otherwise reason must tell it to continue in this session from the stage it stopped at -- waiting on a background task means polling that task in the foreground, and a sub-skill's output is never the final answer."
+                    "prompt": "$ARGUMENTS\n\nAllow the stop only if both are true:\n1. last_assistant_message contains an explicit exit status for the whole run -- a stated final outcome, not a progress update or a partial result\n2. background_tasks is empty\n\nIf both: {\"ok\": true}\nOtherwise: {\"ok\": false, \"reason\": \"Not finished. Keep working in this session. If a background task is running, poll it in the foreground.\"}"
                   }]
                 }]
               }
@@ -1425,20 +1425,20 @@ jobs:
             const outcome = process.env.AI_FIX_OUTCOME || 'skipped';
             const file = '${{ steps.ai-fix.outputs.execution_file }}';
 
-            let result = null;
+            let resultEvent = null;
             if (file && fs.existsSync(file)) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              result = data.filter(e => e.type === 'result').pop();
-              // Log only status fields, not result.result (agent free text that
+              resultEvent = data.filter(e => e.type === 'result').pop();
+              // Log only status fields, not resultEvent.result (agent free text that
               // may echo a token) into the job log.
-              if (result) console.log('Result status:', JSON.stringify({
-                is_error: result.is_error, total_cost_usd: result.total_cost_usd
+              if (resultEvent) console.log('Result status:', JSON.stringify({
+                is_error: resultEvent.is_error, total_cost_usd: resultEvent.total_cost_usd
               }));
             }
-            const reportedOutcome = /(?:^|\n)\s*(?:\*\*)?Done\b|\b(IMPLEMENTING\(fix_verified\)|NEEDS_HUMAN|SKIPPED|NOT_REPRODUCED|NO_REPRODUCER|CANNOT_VERIFY|ALREADY_FIXED|STALE_SKIP|FIXED|PASSED|FAILED)\b/
-              .test((result && result.result) || '');
-            if (outcome === 'success' && result && !result.is_error
-                && result.total_cost_usd > 0 && reportedOutcome) {
+            const reportedOutcome = /(?:^|\n)\s*(?:\*\*)?Done\b|\b(IMPLEMENTING\(fix_verified\)|NEEDS_HUMAN|SKIPPED|NOT_REPRODUCED|NO_REPRODUCER|CANNOT_VERIFY|ALREADY_FIXED|STALE_SKIP|FIXED|PASSED|FAILED)\b/i
+              .test((resultEvent && resultEvent.result) || '');
+            if (outcome === 'success' && resultEvent && !resultEvent.is_error
+                && resultEvent.total_cost_usd > 0 && reportedOutcome) {
               return;
             }
 
@@ -1449,9 +1449,9 @@ jobs:
               reason = 'the run was cancelled.';
             } else if (outcome === 'skipped') {
               reason = 'the environment setup failed before the agent started -- checkout, Python setup, or the nightly PyTorch-XPU install.';
-            } else if (result && result.is_error) {
+            } else if (resultEvent && resultEvent.is_error) {
               reason = 'the agent returned an error. This is usually a Bedrock or model failure; check AWS token validity.';
-            } else if (!result) {
+            } else if (!resultEvent) {
               reason = 'the agent produced no output. This is usually a Bedrock connectivity or credential failure; check AWS token validity.';
             } else if (!reportedOutcome) {
               reason = 'the pipeline exited before reporting a terminal outcome -- it dropped out mid-run instead of reaching stage 6. Re-run `@torchxpubot fix`: the re-run gate skips the stages that already completed.';
