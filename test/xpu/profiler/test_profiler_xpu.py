@@ -112,6 +112,21 @@ def _current_accelerator_activity():
     return getattr(ProfilerActivity, device_type.upper(), None) if device_type else None
 
 
+def setUpModule():
+    device = _current_accelerator_device_type()
+    activity = _current_accelerator_activity()
+    if kineto_available() and device and activity:
+        # Kineto's process-global profiler cannot currently upgrade from a
+        # CPU-only first initialization to device-capable profiling. Prime it
+        # with the accelerator so CPU-only tests do not poison later device
+        # profiler tests. See https://github.com/intel/torch-xpu-ops/issues/4977
+        # and the upstream analog in test/profiler/test_profiler.py.
+        x = torch.ones(1, device=device)
+        with profile(activities=[ProfilerActivity.CPU, activity]):
+            x + x
+            torch.accelerator.synchronize()
+
+
 @unittest.skipIf(not HAS_PSUTIL, "Requires psutil to run")
 @unittest.skipIf(IS_WINDOWS, "Test is flaky on Windows")
 @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is required")
