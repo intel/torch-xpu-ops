@@ -103,7 +103,7 @@ class InductorSuite(BenchmarkSuite):
             "--backend=inductor",
             "--cold-start-latency",
             "-n10",
-            "--timeout=10800",
+            "--timeout=1800",
             "--disable-cudagraphs",
             f"--output={output_csv}",
         ]
