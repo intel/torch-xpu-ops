@@ -50,14 +50,11 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_CROSSREF,
     TestCase,
 )
+from torch.testing._internal.common_xpu import PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import requires_gpu
 
 nested_compile_region = torch.compiler.nested_compile_region
-
-PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION = (
-    torch.xpu.is_available() and torch._C._is_flash_attention_available()
-)
 
 if HAS_GPU:
     import triton
@@ -640,7 +637,7 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(x.grad, x_clone.grad)
 
     @unittest.skipIf(
-        not PLATFORM_SUPPORTS_XPU_FLASH_ATTENTION, "XPU flash attention not available"
+        not PLATFORM_SUPPORTS_FLASH_ATTENTION_XPU, "XPU flash attention not available"
     )
     def test_sdpa(self):
         @nested_compile_region

@@ -13,8 +13,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/DeviceAddCmulCdiv.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
 
 namespace at::native::xpu {
@@ -23,8 +23,11 @@ template <typename scalar_t>
 struct AddcmulFunctor {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
-    return static_cast<accscalar_t>(a) +
-        alpha_ * static_cast<accscalar_t>(b) * static_cast<accscalar_t>(c);
+    auto input = static_cast<accscalar_t>(a);
+    auto t1 = static_cast<accscalar_t>(b);
+    auto t2 = static_cast<accscalar_t>(c);
+    return static_cast<scalar_t>(pointwise_op_impl(
+        input, t1, t2, alpha_, std::multiplies<accscalar_t>{}));
   }
 
   AddcmulFunctor(accscalar_t alpha) : alpha_(alpha) {}

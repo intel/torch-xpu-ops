@@ -81,17 +81,17 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   AdaptiveAvgPool2dBwdKernelFunctor(
       PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : gyacc_(gyacc), gxacc_(gxacc) {
-    ib_ = gxacc_.size(0);
-    ic_ = gxacc_.size(1);
-    ih_ = gxacc_.size(2);
-    iw_ = gxacc_.size(3);
-    oh_ = gyacc_.size(2);
-    ow_ = gyacc_.size(3);
-
-    numel_ = ib_ * ic_ * ih_ * iw_;
+      : ib_(gxacc.size(0)),
+        ic_(gxacc.size(1)),
+        ih_(gxacc.size(2)),
+        iw_(gxacc.size(3)),
+        oh_(gyacc.size(2)),
+        ow_(gyacc.size(3)),
+        numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
+        local_range_(syclMaxWorkItemsPerSubSlice()),
+        gyacc_(gyacc),
+        gxacc_(gxacc) {
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
-    local_range_ = syclMaxWorkItemsPerSubSlice();
     global_range_ = total_item < local_range_
         ? local_range_
         : (total_item / local_range_) * local_range_;
@@ -197,18 +197,18 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
       PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
-      : gyacc_(gyacc), gxacc_(gxacc) {
-    ib_ = gxacc_.size(0);
-    ic_ = gxacc_.size(1);
-    ih_ = gxacc_.size(2);
-    iw_ = gxacc_.size(3);
-    oh_ = gyacc_.size(2);
-    ow_ = gyacc_.size(3);
-
-    numel_ = ib_ * ic_ * ih_ * iw_;
+      : ib_(gxacc.size(0)),
+        ic_(gxacc.size(1)),
+        ih_(gxacc.size(2)),
+        iw_(gxacc.size(3)),
+        oh_(gyacc.size(2)),
+        ow_(gyacc.size(3)),
+        numel_(static_cast<int64_t>(ib_) * ic_ * ih_ * iw_),
+        local_range_(
+            syclMaxWorkGroupSize<AdaptiveAvgPool2dBwdSLMKernelFunctor>()),
+        gyacc_(gyacc),
+        gxacc_(gxacc) {
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
-
-    local_range_ = syclMaxWorkGroupSize(*this);
     global_range_ = total_item < local_range_
         ? local_range_
         : (total_item / local_range_) * local_range_;

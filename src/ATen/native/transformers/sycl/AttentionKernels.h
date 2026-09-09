@@ -11,6 +11,7 @@
 #pragma once
 
 #include <ATen/core/Tensor.h>
+#include <ATen/xpu/PhiloxXpuState.h>
 
 namespace at::native::xpu {
 
@@ -23,5 +24,10 @@ TORCH_XPU_API void _transform_bias_rescale_qkv_kernel(
     int64_t T,
     int64_t D,
     int64_t dim_per_head);
+
+TORCH_XPU_API void unpack_philox_kernel(
+    at::PhiloxXpuState arg,
+    int64_t* seed_ptr,
+    int64_t* offset_ptr);
 
 } // namespace at::native::xpu

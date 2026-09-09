@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <bit>
+
 #include <ATen/ceil_div.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/Resize.h>
@@ -22,10 +24,10 @@ namespace at::native::xpu {
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
-typedef enum {
+enum ScanType {
   EXCLUSIVE_TYPE = 0,
   INCLUSIVE_TYPE = 1,
-} ScanType;
+};
 
 template <typename scalar_t, typename idx_t, typename BinaryOperation>
 void binary_op_update(
@@ -320,7 +322,7 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  LoopScanConfig() {}
+  LoopScanConfig() = default;
 
   LoopScanConfig(
       InputInfo input_info,
@@ -342,13 +344,9 @@ class LoopScanConfig {
         func_(func),
         glb_range_x_(0),
         glb_range_y_(0),
-        wg_range_x_(0),
+        wg_range_x_(std::min<size_t>(32, std::bit_ceil(problem))),
         wg_range_y_(0) {
     size_t wg_size = syclMaxWorkItemsPerSubSlice();
-    wg_range_x_ = 32;
-    while (problem_ <= wg_range_x_ >> 1) {
-      wg_range_x_ = wg_range_x_ >> 1;
-    }
     wg_range_y_ = wg_size / wg_range_x_;
     const auto target_global_size = syclMaxWorkItemsPerTile();
     ;
@@ -361,8 +359,8 @@ class LoopScanConfig {
     // For up down sweep algorithm, each work-item handle two elements.
     // This means that one work group would handle 2 times of work group size
     // elements.
-    loops_batch = (batch_ + glb_range_y_ - 1) / glb_range_y_;
-    loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
+    loops_batch = at::ceil_div(batch_, glb_range_y_);
+    loops_problem = at::ceil_div(problem_, wg_range_x_ * 2);
   }
 
   static LoopScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
@@ -682,7 +680,7 @@ class SegmentScanConfig : public BatchKernelConfig {
   using IndicesInfoType = IndicesInfo;
   using IndicesT = typename IndicesInfo::scalar_t;
 
-  SegmentScanConfig() {}
+  SegmentScanConfig() = default;
 
   SegmentScanConfig(
       InputInfo input_info,

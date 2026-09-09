@@ -47,7 +47,7 @@ void sgd_math(
     if (weight_decay != 0) {
       g += weight_decay * p;
     }
-    if (depth > 2) {
+    if constexpr (depth > 2) {
       const auto momentum_buffer = is_first_step
           ? g
           : (momentum * static_cast<opmath_t>(r_args[2][ii]) +
@@ -73,7 +73,7 @@ struct FusedSgdMathFunctor {
 
   template <typename TLA, typename TLW>
   void operator()(
-      const int chunk_size,
+      const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item,
@@ -130,7 +130,7 @@ struct FusedSgdMathFunctor {
         if (grad_scale_ptr) {
           load_store(args[1], r_args[1], i_start, 0);
         }
-        if (depth > 2) {
+        if constexpr (depth > 2) {
           load_store(args[2], r_args[2], i_start, 0);
         }
       }
@@ -156,7 +156,7 @@ struct FusedSgdMathFunctor {
           store_args(
               args[1], r_args[1], i_start, chunk_size, n, item_id, local_range);
         }
-        if (depth > 2) {
+        if constexpr (depth > 2) {
           store_args(
               args[2], r_args[2], i_start, chunk_size, n, item_id, local_range);
         }

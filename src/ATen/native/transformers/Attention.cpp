@@ -97,7 +97,7 @@ std::tuple<Tensor, Tensor, Tensor> transform_bias_rescale_qkv_xpu(
 }
 
 static bool check_for_seq_len_1_nested_tensor(
-    sdp::sdp_params params,
+    const sdp::sdp_params& params,
     bool debug) {
   // When this function is called we are assured that the nt is dim==4
   if (!params.query.is_nested()) {
@@ -651,6 +651,17 @@ _scaled_dot_product_efficient_attention_backward_xpu(
       std::move(grad_v),
       std::move(grad_bias));
 }
+
+namespace xpu::philox {
+
+void unpack_onednn_wrapper(
+    at::PhiloxXpuState arg,
+    int64_t* seed_ptr,
+    int64_t* offset_ptr) {
+  xpu::unpack_philox_kernel(arg, seed_ptr, offset_ptr);
+}
+
+} // namespace xpu::philox
 
 } // namespace native
 } // namespace at

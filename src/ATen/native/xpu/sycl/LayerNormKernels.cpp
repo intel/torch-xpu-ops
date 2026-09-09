@@ -27,7 +27,8 @@ namespace native {
 namespace xpu {
 
 template <typename scalar_t, typename mean_t, typename weight_t, bool rms_norm>
-class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
+class LayerNormBackward
+    : public NormBackward<scalar_t, mean_t, weight_t, rms_norm> {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   LayerNormBackward() = delete;
@@ -40,7 +41,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       const weight_t* gamma_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -50,9 +51,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             nullptr,
             nullptr),
         M(M),
-        N(N) {
-    numel = M * N;
-  }
+        N(N) {}
 
   LayerNormBackward(
       const scalar_t* X_data,
@@ -65,7 +64,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       accscalar_t* b_data,
       int64_t M,
       int64_t N)
-      : NormBackward<scalar_t, mean_t, weight_t>(
+      : NormBackward<scalar_t, mean_t, weight_t, rms_norm>(
             X_data,
             dY_data,
             dX_data,
@@ -76,7 +75,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
             b_data),
         M(M),
         N(N) {}
-  typedef NormBackward<scalar_t, mean_t, weight_t> NB;
+  using NB = NormBackward<scalar_t, mean_t, weight_t, rms_norm>;
 
   template <
       int vec_size,
@@ -188,7 +187,6 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
   int64_t M;
   int64_t N;
-  int64_t numel;
 };
 
 // we could make it dependent on dtype, but that would lead to different results
@@ -222,9 +220,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item_id, val, welford_op, shared_);
 
     if (item_id.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      auto [m2, m1] = welford_op.project(val);
       if constexpr (!rms_norm) {
         mean_[i] = m1;
         rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
@@ -502,34 +498,41 @@ struct VectorizedLayerNormKernelFunctor
       // Computation is performed in T_ACC, X is cast to T_ACC and result is
       // implicitly cast to T
       if (gamma_vec != nullptr && beta_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
+        if constexpr (!rms_norm) {
+          vec_t beta_data = beta_vec[i];
 #pragma unroll
-        for (int ii = 0; ii < vec_size; ii++) {
-          if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+          for (int ii = 0; ii < vec_size; ii++) {
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                     (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-                static_cast<T_ACC>(beta_vec[i].val[ii]);
-          } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+                static_cast<T_ACC>(beta_data.val[ii]);
+          }
+        } else {
+#pragma unroll
+          for (int ii = 0; ii < vec_size; ii++) {
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (gamma_vec != nullptr) {
+        vec_t gamma_data = gamma_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size; ii++) {
           if constexpr (!rms_norm) {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean));
           } else {
-            out.val[ii] = static_cast<T_ACC>(gamma_vec[i].val[ii]) *
+            out.val[ii] = static_cast<T_ACC>(gamma_data.val[ii]) *
                 (rstd_val * static_cast<T_ACC>(data.val[ii]));
           }
         }
       } else if (beta_vec != nullptr) {
+        vec_t beta_data = beta_vec[i];
 #pragma unroll
         for (int ii = 0; ii < vec_size; ii++) {
           out.val[ii] =
               (rstd_val * (static_cast<T_ACC>(data.val[ii]) - wd.mean)) +
-              static_cast<T_ACC>(beta_vec[i].val[ii]);
+              static_cast<T_ACC>(beta_data.val[ii]);
         }
       } else {
 #pragma unroll
@@ -664,7 +667,10 @@ void layer_norm_kernel_impl(
   const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
   const T* beta_data = beta.defined() ? beta.const_data_ptr<T>() : nullptr;
   T* Y_data = Y->data_ptr<T>();
-  T_ACC* mean_data = !rms_norm ? mean->data_ptr<T_ACC>() : nullptr;
+  T_ACC* mean_data = nullptr;
+  if constexpr (!rms_norm) {
+    mean_data = mean->data_ptr<T_ACC>();
+  }
   T_ACC* rstd_data = rstd->data_ptr<T_ACC>();
 
   constexpr int num_vec_elems = vec_size;
@@ -1161,9 +1167,10 @@ void layer_norm_backward_kernel_impl(
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      Tensor a = at::empty({M}, X.options().dtype(kAccType));
+      Tensor a =
+          rms_norm ? Tensor() : at::empty({M}, X.options().dtype(kAccType));
+      accscalar_t* a_data = rms_norm ? nullptr : a.data_ptr<accscalar_t>();
       Tensor b = at::empty({M}, X.options().dtype(kAccType));
-      accscalar_t* a_data = a.data_ptr<accscalar_t>();
       accscalar_t* b_data = b.data_ptr<accscalar_t>();
 
       LayerNormBackward<scalar_t, mean_t, weight_t, rms_norm> norm(
@@ -1178,8 +1185,7 @@ void layer_norm_backward_kernel_impl(
           M,
           N);
       Tensor semaphores, scratchpad;
-      config.template init_global_reduce<accscalar_t>(
-          X, semaphores, scratchpad);
+      config.template init_global_reduce<rms_norm>(X, semaphores, scratchpad);
       rowwise_moments_kernel<
           scalar_t,
           mean_t,
@@ -1311,7 +1317,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1397,7 +1405,9 @@ void layer_norm_backward_kernel_impl(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else {
       return;
     }
@@ -1503,8 +1513,18 @@ void rms_norm_backward_kernel(
       "rms_norm_backward_xpu",
       [&]() {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        Tensor unused_dbeta;
         layer_norm_backward_kernel_impl<scalar_t, accscalar_t, scalar_t, true>(
-            dY.contiguous(), X, rstd, rstd, gamma, M, N, dX, dgamma, dgamma);
+            dY.contiguous(),
+            X,
+            rstd,
+            rstd,
+            gamma,
+            M,
+            N,
+            dX,
+            dgamma,
+            &unused_dbeta);
       });
 }
 

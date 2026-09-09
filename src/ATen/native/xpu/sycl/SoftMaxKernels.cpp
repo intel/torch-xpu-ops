@@ -10,6 +10,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -310,6 +311,9 @@ struct DispatchSoftmaxForwardKernelFunctor
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
+      // The max reduce can drop a NaN, so max_value == lowest() alone does not
+      // mean the row was fully masked; sum_value still carries the NaN.
+
       // update result
 #pragma unroll(outer_loop)
     for (int i = 0; i < outer_loop; ++i) {
@@ -326,7 +330,8 @@ struct DispatchSoftmaxForwardKernelFunctor
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
           } else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest()) {
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value)) {
             reg_in[i][j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             reg_in[i][j] = nan_;
@@ -340,7 +345,8 @@ struct DispatchSoftmaxForwardKernelFunctor
                 static_cast<outscalar_t>(reg_in[i][j] - max_value - sum_value);
           } else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest()) {
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value)) {
             out_data_point[j] = static_cast<outscalar_t>(0);
           } else if (sum_value == 0) {
             out_data_point[j] = static_cast<outscalar_t>(nan_);
@@ -592,10 +598,13 @@ struct SoftmaxForwardKernelFunctor {
     }
     sum_value = sycl::reduce_over_group(
         item.get_group(), sum_value, sycl::plus<accscalar_t>());
-    if (LogSoftMax)
+    if constexpr (LogSoftMax)
       sum_value = sycl::log(sum_value);
     else
       sum_value = accscalar_t(1) / sum_value;
+
+    // The max reduce can drop a NaN, so max_value == lowest() alone does not
+    // mean the row was fully masked; sum_value still carries the NaN.
 
     // update result
     constexpr int out_vec_size = align_bytes / sizeof(outscalar_t);
@@ -615,12 +624,13 @@ struct SoftmaxForwardKernelFunctor {
         for (int j = 0; j < vec_size; ++j) {
           IndexType linear_idx = i * vec_size + j - start;
           if (linear_idx >= 0 && linear_idx < dim_size_) {
-            if (LogSoftMax)
+            if constexpr (LogSoftMax)
               out_data_[group_offset + linear_idx] = static_cast<outscalar_t>(
                   in_data_[group_offset + linear_idx] - max_value - sum_value);
             else if (
                 is_safe_softmax &&
-                max_value == std::numeric_limits<accscalar_t>::lowest())
+                max_value == std::numeric_limits<accscalar_t>::lowest() &&
+                !at::_isnan(sum_value))
               out_data_[group_offset + linear_idx] =
                   static_cast<outscalar_t>(0);
             else
@@ -635,12 +645,13 @@ struct SoftmaxForwardKernelFunctor {
         outscalar_t results[vec_size];
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
-          if (LogSoftMax)
+          if constexpr (LogSoftMax)
             results[j] =
                 static_cast<outscalar_t>(in_val[j] - max_value - sum_value);
           else if (
               is_safe_softmax &&
-              max_value == std::numeric_limits<accscalar_t>::lowest())
+              max_value == std::numeric_limits<accscalar_t>::lowest() &&
+              !at::_isnan(sum_value))
             results[j] = static_cast<outscalar_t>(0);
           else
             results[j] = static_cast<outscalar_t>(
@@ -799,7 +810,7 @@ struct SpatialSoftmaxForwardKernelFunctor
           [](accscalar_t a, accscalar_t b) { return a + b; });
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        if (LogSoftMax)
+        if constexpr (LogSoftMax)
           sum_value[j] = sycl::log(local_data_[0][local_col_id][j]);
         else
           sum_value[j] = accscalar_t(1) / local_data_[0][local_col_id][j];
@@ -807,7 +818,7 @@ struct SpatialSoftmaxForwardKernelFunctor
     } else {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        if (LogSoftMax)
+        if constexpr (LogSoftMax)
           sum_value[j] = sycl::log(sum_value[j]);
         else
           sum_value[j] = accscalar_t(1) / sum_value[j];
@@ -824,7 +835,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if constexpr (is_same_dtype) {
-            if (LogSoftMax)
+            if constexpr (LogSoftMax)
               in_val[j] = static_cast<inscalar_t>(
                   in_val[j] - max_value[j] - sum_value[j]);
             else if (
@@ -835,7 +846,7 @@ struct SpatialSoftmaxForwardKernelFunctor
               in_val[j] = static_cast<inscalar_t>(
                   sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
           } else {
-            if (LogSoftMax)
+            if constexpr (LogSoftMax)
               out_data_point[j] = static_cast<outscalar_t>(
                   in_val[j] - max_value[j] - sum_value[j]);
             else if (
@@ -1002,7 +1013,7 @@ struct DispatchSoftmaxBackwardKernelFunctor
 
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        if (LogSoftMax) {
+        if constexpr (LogSoftMax) {
           sum_value += reg_gradout[i][j];
         } else {
           sum_value += reg_out[i][j] * reg_gradout[i][j];
@@ -1028,7 +1039,7 @@ struct DispatchSoftmaxBackwardKernelFunctor
       auto offset = group_offset + index;
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        if (LogSoftMax) {
+        if constexpr (LogSoftMax) {
           auto exp_out = sycl::exp(static_cast<accscalar_t>(reg_out[i][j]));
           if constexpr (is_same_dtype) {
             reg_out[i][j] = static_cast<outscalar_t>(
@@ -1254,7 +1265,7 @@ struct SoftmaxBackwardKernelFunctor {
     auto sum_value = accscalar_t(0);
     for (int i = local_id; i < loops_end; i += local_size_) {
       auto gradout_val = vec_gradout_data_ptr[i];
-      if (LogSoftMax) {
+      if constexpr (LogSoftMax) {
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           int64_t linear_idx = i * vec_size + j - start;
@@ -1286,7 +1297,7 @@ struct SoftmaxBackwardKernelFunctor {
           auto linear_idx = i * vec_size + j - start;
           if (linear_idx >= 0 && linear_idx < dim_size_) {
             auto offset = group_offset + linear_idx;
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               auto exp_out =
                   sycl::exp(static_cast<accscalar_t>(output_[offset]));
               gradInput_[offset] = gradOutput_[offset] - exp_out * sum_value;
@@ -1302,7 +1313,7 @@ struct SoftmaxBackwardKernelFunctor {
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if constexpr (is_same_dtype) {
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               out_val[j] = grad_val[j] - exp_out * sum_value;
             } else {
@@ -1310,7 +1321,7 @@ struct SoftmaxBackwardKernelFunctor {
             }
           } else {
             auto offset = group_offset - start + i * vec_size + j;
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               gradInput_[offset] = grad_val[j] - exp_out * sum_value;
             } else {
@@ -1414,7 +1425,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
       auto offset = i * inner_size_ + global_col * vec_size;
       vec_t gradout_val =
           *(reinterpret_cast<const vec_t*>(gradout_ptr + offset));
-      if (LogSoftMax) {
+      if constexpr (LogSoftMax) {
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j)
           sum_value[j] += gradout_val[j];
@@ -1448,7 +1459,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if constexpr (is_same_dtype) {
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               out_val[j] = static_cast<outscalar_t>(
                   gradout_val[j] - exp_out * sum_value[j]);
@@ -1457,7 +1468,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
                   out_val[j] * (gradout_val[j] - sum_value[j]));
             }
           } else {
-            if (LogSoftMax) {
+            if constexpr (LogSoftMax) {
               auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               gradin_ptr[offset + j] = static_cast<inscalar_t>(
                   gradout_val[j] - exp_out * sum_value[j]);
@@ -1903,7 +1914,7 @@ Tensor& masked_softmax_forward(
     Tensor& output,
     Tensor& input,
     int dim,
-    const Tensor mask) {
+    const Tensor& mask) {
   auto inner_size = input.stride(dim);
   auto dim_size = input.size(dim);
   auto outer_size = input.numel() / (inner_size * dim_size);
