@@ -29,130 +29,102 @@ namespace at::native::xpu {
 
 using namespace at::sparse_csr;
 
-// Pass 1 functor: compute per-row output nnz by merging sorted column arrays.
+// Pass 1 kernel: compute per-row output nnz by merging sorted column arrays.
 template <typename index_t>
-struct ComputeRowNnzFunctor {
-  void operator()(sycl::item<1> item) const {
-    int64_t row = item.get_id(0);
-    index_t a_start = a_crow_[row];
-    index_t a_end = a_crow_[row + 1];
-    index_t b_start = b_crow_[row];
-    index_t b_end = b_crow_[row + 1];
-
-    index_t i = a_start, j = b_start;
-    index_t count = 0;
-    while (i < a_end && j < b_end) {
-      if (a_col_[i] < b_col_[j]) {
-        ++i;
-      } else if (a_col_[i] > b_col_[j]) {
-        ++j;
-      } else {
-        ++i;
-        ++j;
-      }
-      ++count;
-    }
-    count += (a_end - i) + (b_end - j);
-    row_nnz_[row] = count;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void compute_row_nnz_kernel(
+    const index_t* a_crow,
+    const index_t* a_col,
+    const index_t* b_crow,
+    const index_t* b_col,
+    index_t* row_nnz,
+    int64_t nrows) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t row = item.get_global_linear_id();
+  if (row >= nrows) {
+    return;
   }
 
-  ComputeRowNnzFunctor(
-      const index_t* a_crow,
-      const index_t* a_col,
-      const index_t* b_crow,
-      const index_t* b_col,
-      index_t* row_nnz)
-      : a_crow_(a_crow),
-        a_col_(a_col),
-        b_crow_(b_crow),
-        b_col_(b_col),
-        row_nnz_(row_nnz) {}
+  index_t a_start = a_crow[row];
+  index_t a_end = a_crow[row + 1];
+  index_t b_start = b_crow[row];
+  index_t b_end = b_crow[row + 1];
 
- private:
-  const index_t* a_crow_;
-  const index_t* a_col_;
-  const index_t* b_crow_;
-  const index_t* b_col_;
-  index_t* row_nnz_;
-};
-
-// Pass 2 functor: merge column indices and combine values.
-template <typename scalar_t, typename index_t>
-struct MergeRowsFunctor {
-  void operator()(sycl::item<1> item) const {
-    int64_t row = item.get_id(0);
-    index_t a_start = a_crow_[row];
-    index_t a_end = a_crow_[row + 1];
-    index_t b_start = b_crow_[row];
-    index_t b_end = b_crow_[row + 1];
-    index_t out_pos = out_crow_[row];
-
-    index_t i = a_start, j = b_start;
-    while (i < a_end && j < b_end) {
-      if (a_col_[i] < b_col_[j]) {
-        out_col_[out_pos] = a_col_[i];
-        out_val_[out_pos] = a_val_[i];
-        ++i;
-      } else if (a_col_[i] > b_col_[j]) {
-        out_col_[out_pos] = b_col_[j];
-        out_val_[out_pos] = alpha_ * b_val_[j];
-        ++j;
-      } else {
-        out_col_[out_pos] = a_col_[i];
-        out_val_[out_pos] = a_val_[i] + alpha_ * b_val_[j];
-        ++i;
-        ++j;
-      }
-      ++out_pos;
-    }
-    while (i < a_end) {
-      out_col_[out_pos] = a_col_[i];
-      out_val_[out_pos] = a_val_[i];
+  index_t i = a_start, j = b_start;
+  index_t count = 0;
+  while (i < a_end && j < b_end) {
+    if (a_col[i] < b_col[j]) {
       ++i;
-      ++out_pos;
-    }
-    while (j < b_end) {
-      out_col_[out_pos] = b_col_[j];
-      out_val_[out_pos] = alpha_ * b_val_[j];
+    } else if (a_col[i] > b_col[j]) {
       ++j;
-      ++out_pos;
+    } else {
+      ++i;
+      ++j;
     }
+    ++count;
+  }
+  count += (a_end - i) + (b_end - j);
+  row_nnz[row] = count;
+}
+
+// Pass 2 kernel: merge column indices and combine values.
+template <typename scalar_t, typename index_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void merge_rows_kernel(
+    const index_t* a_crow,
+    const index_t* a_col,
+    const scalar_t* a_val,
+    const index_t* b_crow,
+    const index_t* b_col,
+    const scalar_t* b_val,
+    const index_t* out_crow,
+    index_t* out_col,
+    scalar_t* out_val,
+    scalar_t alpha,
+    int64_t nrows) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int64_t row = item.get_global_linear_id();
+  if (row >= nrows) {
+    return;
   }
 
-  MergeRowsFunctor(
-      const index_t* a_crow,
-      const index_t* a_col,
-      const scalar_t* a_val,
-      const index_t* b_crow,
-      const index_t* b_col,
-      const scalar_t* b_val,
-      const index_t* out_crow,
-      index_t* out_col,
-      scalar_t* out_val,
-      scalar_t alpha)
-      : a_crow_(a_crow),
-        a_col_(a_col),
-        a_val_(a_val),
-        b_crow_(b_crow),
-        b_col_(b_col),
-        b_val_(b_val),
-        out_crow_(out_crow),
-        out_col_(out_col),
-        out_val_(out_val),
-        alpha_(alpha) {}
+  index_t a_start = a_crow[row];
+  index_t a_end = a_crow[row + 1];
+  index_t b_start = b_crow[row];
+  index_t b_end = b_crow[row + 1];
+  index_t out_pos = out_crow[row];
 
- private:
-  const index_t* a_crow_;
-  const index_t* a_col_;
-  const scalar_t* a_val_;
-  const index_t* b_crow_;
-  const index_t* b_col_;
-  const scalar_t* b_val_;
-  const index_t* out_crow_;
-  index_t* out_col_;
-  scalar_t* out_val_;
-  scalar_t alpha_;
-};
+  index_t i = a_start, j = b_start;
+  while (i < a_end && j < b_end) {
+    if (a_col[i] < b_col[j]) {
+      out_col[out_pos] = a_col[i];
+      out_val[out_pos] = a_val[i];
+      ++i;
+    } else if (a_col[i] > b_col[j]) {
+      out_col[out_pos] = b_col[j];
+      out_val[out_pos] = alpha * b_val[j];
+      ++j;
+    } else {
+      out_col[out_pos] = a_col[i];
+      out_val[out_pos] = a_val[i] + alpha * b_val[j];
+      ++i;
+      ++j;
+    }
+    ++out_pos;
+  }
+  while (i < a_end) {
+    out_col[out_pos] = a_col[i];
+    out_val[out_pos] = a_val[i];
+    ++i;
+    ++out_pos;
+  }
+  while (j < b_end) {
+    out_col[out_pos] = b_col[j];
+    out_val[out_pos] = alpha * b_val[j];
+    ++j;
+    ++out_pos;
+  }
+}
 
 // Compute out = A + alpha * B for 2-D CSR tensors using a two-pass
 // sorted-merge strategy (one work-item per row).
@@ -219,10 +191,21 @@ void add_out_sparse_csr_kernel(
               Tensor row_nnz = at::empty({nrows}, dense_idx_options);
               index_t* row_nnz_ptr = row_nnz.data_ptr<index_t>();
 
-              auto pass1 = ComputeRowNnzFunctor<index_t>(
-                  a_crow_ptr, a_col_ptr, b_crow_ptr, b_col_ptr, row_nnz_ptr);
-              sycl_kernel_submit(
-                  sycl::range<1>(nrows), getCurrentSYCLQueue(), pass1);
+              constexpr auto pass1_kernel = compute_row_nnz_kernel<index_t>;
+              int64_t pass1_group_size = syclMaxWorkGroupSize<pass1_kernel>();
+              int64_t pass1_group_num =
+                  (nrows + pass1_group_size - 1) / pass1_group_size;
+              sycl_kernel_submit<pass1_kernel>(
+                  sycl::range<1>(pass1_group_num * pass1_group_size),
+                  sycl::range<1>(pass1_group_size),
+                  getCurrentSYCLQueue(),
+                  0,
+                  a_crow_ptr,
+                  a_col_ptr,
+                  b_crow_ptr,
+                  b_col_ptr,
+                  row_nnz_ptr,
+                  nrows);
 
               // Build crow_indices (size nrows + 1) via inclusive scan of
               // row_nnz into out_crow[1..nrows], then setting out_crow[0] = 0.
@@ -255,7 +238,16 @@ void add_out_sparse_csr_kernel(
                 scalar_t* out_val_ptr = out_val.data_ptr<scalar_t>();
 
                 // Pass 2: merge rows and fill col_indices + values.
-                auto pass2 = MergeRowsFunctor<scalar_t, index_t>(
+                constexpr auto pass2_kernel =
+                    merge_rows_kernel<scalar_t, index_t>;
+                int64_t pass2_group_size = syclMaxWorkGroupSize<pass2_kernel>();
+                int64_t pass2_group_num =
+                    (nrows + pass2_group_size - 1) / pass2_group_size;
+                sycl_kernel_submit<pass2_kernel>(
+                    sycl::range<1>(pass2_group_num * pass2_group_size),
+                    sycl::range<1>(pass2_group_size),
+                    getCurrentSYCLQueue(),
+                    0,
                     a_crow_ptr,
                     a_col_ptr,
                     a_val_ptr,
@@ -265,9 +257,8 @@ void add_out_sparse_csr_kernel(
                     out_crow_ptr,
                     out_col_ptr,
                     out_val_ptr,
-                    alpha_val);
-                sycl_kernel_submit(
-                    sycl::range<1>(nrows), getCurrentSYCLQueue(), pass2);
+                    alpha_val,
+                    nrows);
               }
 
               // Write results into out tensor in-place.
