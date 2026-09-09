@@ -602,6 +602,19 @@ invoking workflow reads that, exports `base_sha..branch` as a patch
 artifact, and a human applies it. **Do not push or open the PR from this
 skill.**
 
+### Review request block
+
+When the job ends, the `fix` workflow appends a template to the session
+comment for a human to review the fix. Do not write it yourself:
+
+```
+<!-- review: accepted -->
+<!-- review: rejected -->
+notes:
+```
+
+A reviewer copies it into a new comment, keeps one line, and says why.
+
 ## Iterative loop bounds
 
 The pipeline is not strictly linear. Loop when a later stage
