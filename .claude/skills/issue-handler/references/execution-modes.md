@@ -141,6 +141,7 @@ markers are sub-headings within that one comment.
 | `<!-- agent:implement -->` | `fix-implement` (diff, not prose) |
 | `<!-- agent:verify -->` | `fix-verify` |
 | `<!-- agent:summary -->` | `issue-handler` (Stage 6 closing summary) |
+| `<!-- agent:review -->` | `issue-handler` (Stage 6 review request block) |
 | `<!-- agent:batch-fanout -->` | `issue-handler` (batch fan-out summary, skip-list or heterogeneous) |
 
 ### 4. Canonical section headings
@@ -178,8 +179,9 @@ Objective, Current Status`.
 - **Stage 6** (the orchestrator's own wrap-up, not a leaf) owns: advancing
   `agent:status` to the terminal value; final Action Items check; the
   `<!-- agent:summary -->` closing block appended to the session comment;
-  in batch fan-out runs (Stage 1u), the `<!-- agent:batch-fanout -->`
-  summary comment.
+  the `<!-- agent:review -->` block that follows it, carrying the verdict
+  template a human fills in; in batch fan-out runs (Stage 1u), the
+  `<!-- agent:batch-fanout -->` summary comment.
 
 ## Reset-between-entries recipe (batched fan-out)
 

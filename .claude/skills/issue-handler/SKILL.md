@@ -602,6 +602,67 @@ invoking workflow reads that, exports `base_sha..branch` as a patch
 artifact, and a human applies it. **Do not push or open the PR from this
 skill.**
 
+### Review request block
+
+In **pipeline mode**, append the `<!-- agent:review -->` block below to
+the session comment, after the summary. Emit it verbatim, fenced,
+whatever the outcome — a `NEEDS_HUMAN` run is exactly the one worth
+telling a reviewer about.
+
+````markdown
+<!-- agent:review -->
+
+## Review
+
+Copy this block into a **new comment**, keep one verdict line, delete
+the other two, and fill in `why:` and `notes:`.
+
+```
+<!-- review: accepted -->
+<!-- review: changes  -->
+<!-- review: rejected -->
+why:   root-cause | already-fixed | skip-not-fix | wrong-layer |
+       incomplete | style | unverified | other
+notes: one line — what makes it acceptable, what to improve, or why not
+```
+
+| verdict | meaning |
+|---|---|
+| `accepted` | the fix stands as written |
+| `changes` | right track, not acceptable as it stands |
+| `rejected` | do not take this fix |
+
+| `why:` | |
+|---|---|
+| `root-cause` | fixes the root cause |
+| `already-fixed` | no longer reproduces; nothing to fix |
+| `skip-not-fix` | green by skipping or disabling; the bug remains |
+| `wrong-layer` | belongs upstream or in the kernel, not here |
+| `incomplete` | handles only part of the reported failure |
+| `style` | works, but not acceptable as written |
+| `unverified` | evidence insufficient to judge |
+| `other` | see notes |
+````
+
+Why it is shaped this way:
+
+- **A new comment, not an edit of this one.** The comment author is
+  where `reviewer` comes from; editing this comment would attribute the
+  verdict to the bot.
+- **The markers are fenced.** The harvester strips fenced code before
+  matching and skips any comment containing `<!-- agent:session -->`, so
+  this template cannot be read back as the agent approving itself.
+- **Keep exactly one verdict line.** A comment carrying more than one
+  distinct verdict is refused, not guessed.
+- **`why:` is a closed vocabulary** so non-acceptances aggregate into
+  "what does the agent keep getting wrong". `notes:` is free text
+  because the specifics are the part a reader actually needs.
+
+The verdict cannot live in `fix_result.json`: that artifact is written
+when the run ends, and the review happens afterwards. Add
+`run=<run_id>` to the verdict line when the issue has several runs and
+the newest is not the one being judged.
+
 ## Iterative loop bounds
 
 The pipeline is not strictly linear. Loop when a later stage
