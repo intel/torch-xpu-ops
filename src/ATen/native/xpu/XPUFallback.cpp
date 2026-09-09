@@ -355,7 +355,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
       "_linalg_eigh.eigenvalues",
       "linalg_ldl_factor_ex.out",
       "linalg_ldl_solve.out",
-      "linalg_lstsq.out",
       "linalg_lu.out",
       "linalg_matrix_exp",
       "linalg_matrix_sqrth",
