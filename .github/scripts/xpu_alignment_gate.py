@@ -36,6 +36,8 @@ LOCAL_RESULTS = {
 }
 ACTIONABLE_RESULTS = {"confirmed", "related-failure"}
 BLOCKED_RESULTS = LOCAL_RESULTS - ACTIONABLE_RESULTS - {"not-reproduced"}
+VERIFICATIONS = {"runtime", "static"}
+TRACKER_RE = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+")
 VERDICTS = {
     "needs-xpu-fix",
     "track-upstream",
@@ -238,15 +240,27 @@ def _validate_prepare(
                 continue
             if unit_id not in decisions or decisions[unit_id].get("triage") != "validate":
                 errors.append(f"execution-not-validated:{unit_id}")
-            script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
-            script_digest = entry.get("script_sha256")
-            if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(script_digest):
-                errors.append(f"execution-invalid-digest:{unit_id}")
-            elif script is not None and _sha256(script) != script_digest:
-                errors.append(f"execution-digest-mismatch:{unit_id}")
-            timeout = entry.get("timeout_seconds")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= 120:
-                errors.append(f"execution-invalid-timeout:{unit_id}")
+            verification = entry.get("verification", "runtime")
+            if verification not in VERIFICATIONS:
+                errors.append(f"execution-invalid-verification:{unit_id}")
+            if verification == "static":
+                # A source-only divergence has nothing to execute, so it carries no script.
+                if {"script", "script_sha256", "timeout_seconds"} & set(entry):
+                    errors.append(f"execution-static-carries-script:{unit_id}")
+            else:
+                script = _inside_file(root, entry.get("script"), f"script:{unit_id}", errors)
+                script_digest = entry.get("script_sha256")
+                if not isinstance(script_digest, str) or not SHA256_RE.fullmatch(script_digest):
+                    errors.append(f"execution-invalid-digest:{unit_id}")
+                elif script is not None and _sha256(script) != script_digest:
+                    errors.append(f"execution-digest-mismatch:{unit_id}")
+                timeout = entry.get("timeout_seconds")
+                if (
+                    not isinstance(timeout, int)
+                    or isinstance(timeout, bool)
+                    or not 1 <= timeout <= 120
+                ):
+                    errors.append(f"execution-invalid-timeout:{unit_id}")
             for field in ("oracle", "target_path"):
                 if not str(entry.get(field, "")).strip():
                     errors.append(f"execution-missing-{field}:{unit_id}")
@@ -282,6 +296,11 @@ def _validate_runner(
     if prepare_path is not None and runner.get("prepare_sha256") != _sha256(prepare_path):
         errors.append("runner-prepare-digest-mismatch")
     environment = _validate_environment(runner.get("environment"), errors)
+    runtime = {
+        unit_id
+        for unit_id, entry in executions.items()
+        if entry.get("verification") != "static"
+    }
     results: dict[str, dict[str, object]] = {}
     raw_results = runner.get("results")
     if not isinstance(raw_results, list):
@@ -292,7 +311,7 @@ def _validate_runner(
                 errors.append("runner-result-not-object")
                 continue
             unit_id = result.get("id")
-            if not isinstance(unit_id, str) or unit_id in results or unit_id not in executions:
+            if not isinstance(unit_id, str) or unit_id in results or unit_id not in runtime:
                 errors.append(f"runner-invalid-unit:{unit_id}")
                 continue
             execution = executions[unit_id]
@@ -317,7 +336,7 @@ def _validate_runner(
             if error is not None and not isinstance(error, str):
                 errors.append(f"runner-invalid-error:{unit_id}")
             results[unit_id] = result
-    if set(results) != set(executions):
+    if set(results) != runtime:
         errors.append("runner-coverage-mismatch")
     return path, environment, results, errors
 
@@ -371,12 +390,23 @@ def _validate_scan(
             result = candidate.get("local_result")
             if result not in LOCAL_RESULTS:
                 errors.append(f"scan-invalid-result:{unit_id}")
+            static = executions[unit_id].get("verification") == "static"
             runner_result = results.get(unit_id, {})
             if result in ACTIONABLE_RESULTS | {"not-reproduced"}:
-                if runner_result.get("timed_out") or runner_result.get("error") is not None:
+                if not static and (
+                    runner_result.get("timed_out") or runner_result.get("error") is not None
+                ):
                     errors.append(f"scan-result-contradicts-runner:{unit_id}")
                 if candidate.get("target_path_verified") is not True:
                     errors.append(f"scan-target-unverified:{unit_id}")
+            if static:
+                # Source read at the frozen head cannot be blocked by the runtime environment.
+                if result in BLOCKED_RESULTS:
+                    errors.append(f"scan-static-blocked:{unit_id}")
+                if not str(candidate.get("evidence", "")).strip():
+                    errors.append(f"scan-evidence-missing:{unit_id}")
+                candidates[unit_id] = candidate
+                continue
             evidence = _inside_file(
                 runner_root,
                 candidate.get("evidence"),
@@ -484,13 +514,20 @@ def _validate_review(
         ):
             errors.append(f"review-invalid-repository:{unit_id}")
         tracker = entry.get("canonical_tracker")
+        tracker_state = entry.get("canonical_tracker_state")
         if tracker is not None and (
-            not isinstance(tracker, str)
-            or not tracker.startswith("https://github.com/intel/torch-xpu-ops/issues/")
+            not isinstance(tracker, str) or not TRACKER_RE.fullmatch(tracker)
         ):
             errors.append(f"review-invalid-tracker:{unit_id}")
+        if (tracker is None) != (tracker_state is None) or tracker_state not in {
+            None,
+            "open",
+            "closed",
+        }:
+            errors.append(f"review-invalid-tracker-state:{unit_id}")
         payload = entry.get("payload")
-        expects_payload = verdict == "needs-xpu-fix" and tracker is None
+        # A closed tracker cannot receive the work, so the finding still needs its own issue.
+        expects_payload = verdict == "needs-xpu-fix" and tracker_state != "open"
         if not expects_payload:
             if payload is not None:
                 errors.append(f"review-unexpected-payload:{unit_id}")

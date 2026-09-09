@@ -95,7 +95,11 @@ most; reject the rest with `duplicate-chain` in the reason and name that object.
 
 For each validated candidate, construct the smallest faithful XPU reproducer and
 an execution-plan entry. Record the upstream oracle, expected target path, exact
-script digest, and bounded timeout. In automation, stop after writing `prepare.json`
+script digest, and bounded timeout. When source at the frozen head already
+decides the divergence -- a moved upstream helper, a changed signature or error
+string, a check XPU keeps a private copy of -- mark the entry
+`"verification": "static"` and write no script for it. In automation, stop after
+writing `prepare.json`
 and the reproducer scripts; do not execute them or write final scan results. A
 structurally valid partial collection may still be prepared and validated. Its
 partial scope remains attached to every downstream artifact so the gate can
@@ -119,9 +123,11 @@ local result is `confirmed` or `related-failure`; do not silently omit a difficu
 case. Decide whether the behavior needs independent XPU work, is owned upstream,
 is already fixed or tracked, is not a defect, or lacks sufficient evidence.
 
-Only `needs-xpu-fix` without a reusable canonical tracker may carry a new issue
-payload. When an existing `intel/torch-xpu-ops` issue covers the work, record it
-as `canonical_tracker` and do not create a payload or comment on the tracker. In
+Only `needs-xpu-fix` without an open canonical tracker may carry a new issue
+payload. When an existing issue covers the work, record it as
+`canonical_tracker` with its open/closed state. An open `intel/torch-xpu-ops`
+tracker replaces the payload and is not commented on; a closed one still needs a
+payload that cites it. In
 automation, write only under `review/` and follow the minimal review contract. A
 blocked review produces no publishable payloads.
 

@@ -138,7 +138,9 @@ jobs:
             the free-text reason.
             For each validated object, write a faithful bounded XPU reproducer
             and execution entry with its exact SHA-256, 120-second timeout,
-            upstream oracle, and expected target path.
+            upstream oracle, and expected target path. When the divergence is
+            decided by reading source at the frozen head alone, mark the entry
+            `"verification": "static"` and write no script for it.
 
             Write only prepare.json, scripts/, and an optional prepare report.
             Do not execute any reproducer, write scan/review artifacts, or modify
@@ -380,7 +382,9 @@ jobs:
             Preserve the original collection digest and complete/partial status
             in scan.json, and copy its environment object exactly into scan.json.
             Read every raw log and classify every validated unit from the upstream
-            oracle and target-path evidence. A timeout, launch error, environment
+            oracle and target-path evidence. A `"verification": "static"` unit has
+            no log: classify it from the upstream and XPU source it names and cite
+            that source as its evidence. A timeout, launch error, environment
             failure, or inconclusive result must remain a blocked result for that
             unit and be recorded in scan.json blockers with id, local_result,
             detail, and evidence. A unit blocker may still allow other reviewed
@@ -523,13 +527,14 @@ jobs:
             `confirmed` or `related-failure`. Re-read its source, exact reproducer,
             runner log, target-path evidence, current upstream fix state, and
             existing intel/torch-xpu-ops trackers. Do not sample rejected inventory.
-            If an existing intel/torch-xpu-ops tracker covers the same work,
-            record it as `canonical_tracker`; do not create a payload or comment
-            on it.
+            If an existing tracker covers the same work, record it as
+            `canonical_tracker` with its `canonical_tracker_state`. An open
+            intel/torch-xpu-ops tracker replaces the payload and is not commented
+            on; a closed one still needs a payload that cites it.
 
             Write only alignment-run/review/review.json and optional
             review_report.md. Include a payload only for reviewed `needs-xpu-fix`
-            without a canonical tracker. Do not execute code or modify GitHub.
+            without an open canonical tracker. Do not execute code or modify GitHub.
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}

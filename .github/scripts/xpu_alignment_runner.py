@@ -120,6 +120,9 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         unit_id = entry.get("id")
         if not isinstance(unit_id, str) or not UNIT_ID_RE.fullmatch(unit_id) or unit_id in seen:
             raise PlanError(f"invalid or duplicate unit id: {unit_id!r}")
+        seen.add(unit_id)
+        if entry.get("verification") == "static":
+            continue
         script = _inside(root, entry.get("script"), existing=True)
         expected_digest = entry.get("script_sha256")
         if not isinstance(expected_digest, str) or not SHA256_RE.fullmatch(expected_digest):
@@ -136,7 +139,6 @@ def load_prepare(root: Path, prepare_path: Path) -> list[dict[str, object]]:
         for field in ("oracle", "target_path"):
             if not str(entry.get(field, "")).strip():
                 raise PlanError(f"{unit_id}: missing {field}")
-        seen.add(unit_id)
         normalized.append(
             {
                 "id": unit_id,
